@@ -11,16 +11,49 @@ Harbor is a Rust CLI tool that scaffolds full-stack DDD projects. It uses `cargo
 
 ```
 crates/
-  cli/              — The harbor binary (cargo-generate wrapper)
-    src/main.rs     — GenerateArgs setup + test suite
+  cli/              — The harbor binary
+    src/main.rs     — CLI definition, GenerateArgs setup, test suite
+    src/scaffold.rs — File writer, lib.rs patcher, bootstrap generator
+    src/harbor_toml.rs — harbor.toml serde structs + read/write/add_entity
   template/
     basic/          — The "basic" DDD template
       Cargo.toml          — Workspace manifest (workspace only, no [package])
       cargo-generate.toml — Template config (controls which files get substitution)
+      harbor.toml         — Source of truth for entities ({{project-name}} substituted)
       business/           — Domain + Application crate
       infrastructure/     — Adapters crate
       presentation/       — REST API crate
+        src/
+          main.rs.liquid        — Minimal entry point (never changes after harbor new)
+          generated.rs          — pub mod bootstrap; (static, never changes)
+          generated/
+            bootstrap.rs        — AUTO-GENERATED, full DI wiring
 ```
+
+## harbor.toml — Source of Truth
+
+Every generated project has a `harbor.toml` at the root:
+
+```toml
+[project]
+name = "my-app"
+
+[[entity]]
+name = "Greeting"           # PascalCase
+use_cases = ["get_greeting"] # snake_case action names
+
+[[entity]]
+name = "Product"
+use_cases = ["create_product"]
+```
+
+**Rules:**
+- `harbor generate scaffold <Name>` appends a new `[[entity]]` block automatically
+- `presentation/src/generated/bootstrap.rs` is regenerated from harbor.toml on every scaffold run
+- **Never hand-edit `generated/bootstrap.rs`** — run `harbor generate bootstrap` instead
+- All derived identifiers come from `name` (PascalCase) and `use_cases` entries (snake_case)
+
+See `.claude/rules/harbor-toml.md` for the full derivation table.
 
 ## Generated Project Architecture
 
@@ -42,6 +75,7 @@ Presentation → Infrastructure → Application → Domain
 - **`no_workspace: true`** must be set in `GenerateArgs` — prevents cargo-generate from trying to add the generated project as a member of Harbor's own workspace.
 - **Template `.liquid` files**: cargo-generate strips the `.liquid` extension and processes Liquid syntax. Use for `main.rs.liquid` → `main.rs`.
 - **Never add `[package]` to the template root `Cargo.toml`** — it is a workspace manifest only.
+- **`generated/bootstrap.rs` is auto-generated** — never edit manually, never commit hand-edits to it in generated projects.
 
 ## Commands
 
@@ -64,6 +98,7 @@ make format     # cargo fmt --all
 ## Detailed Rules
 
 - `.claude/rules/architecture.md` — Layer rules, naming conventions, error patterns
+- `.claude/rules/harbor-toml.md` — harbor.toml schema + identifier derivation table
 - `.claude/rules/testing.md` — TDD cycle, test naming, AAA pattern, DO/DON'T
 - `.claude/rules/testing-conventions.md` — Object Mother pattern, mock setup, naming table
-- `.claude/rules/workflow.md` — Step-by-step TDD implementation workflow
+- `.claude/rules/workflow.md` — Harbor development workflow (Spec-Driven) + generated project TDD workflow

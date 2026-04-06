@@ -171,18 +171,50 @@ Tests live inside each file in `#[cfg(test)] mod tests { ... }`.
 
 ---
 
-## Presentation Layer (`presentation/src/api/<entity>/`)
+## Presentation Layer
 
 **Entry points only. No business logic.**
 
-Each entity module has **exactly** these four files:
+### Module layout
 
-| File | Responsibility |
-|------|----------------|
-| `routes.rs` | OpenApi impl — endpoints, auth, param parsing |
-| `dto.rs` | Request/Response structs (`#[derive(Object)]`) |
-| `responses.rs` | `#[derive(ApiResponse)]` enums |
-| `error_mapper.rs` | `impl IntoErrorResponse for EntityError` |
+```
+presentation/src/
+  main.rs                  # 5-line entry point — calls generated::bootstrap::build_app()
+  generated.rs             # pub mod bootstrap; — static, never changes
+  generated/
+    bootstrap.rs           # AUTO-GENERATED from harbor.toml — never hand-edit
+  api.rs                   # pub mod error; pub mod <entity>; ...
+  api/
+    error.rs               # Shared ErrorResponse + IntoErrorResponse trait
+    <entity>.rs            # pub mod dto; pub mod routes; pub mod responses; pub mod error_mapper;
+    <entity>/
+      routes.rs            # OpenApi impl — endpoints, auth, param parsing
+      dto.rs               # Request/Response structs (#[derive(Object)])
+      responses.rs         # #[derive(ApiResponse)] enums
+      error_mapper.rs      # impl IntoErrorResponse for EntityError
+```
+
+### `presentation/src/api/<entity>.rs`
+
+Every entity API module **must** have this sibling declaration file:
+
+```rust
+// presentation/src/api/product.rs
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+```
+
+`harbor generate scaffold` creates this file automatically. Do not omit it — without it Rust cannot resolve the sub-modules.
+
+### `presentation/src/generated/bootstrap.rs`
+
+**Never edit by hand.** Regenerated from `harbor.toml` by:
+- `harbor generate scaffold <Name>` (automatic)
+- `harbor generate bootstrap` (manual)
+
+Contains all DI wiring: repo instantiation, use case wiring, `OpenApiService` setup, route registration.
 
 ### Rules
 
@@ -190,7 +222,7 @@ Each entity module has **exactly** these four files:
 - Domain models are **never** exposed in responses — always map via `EntityDto::from_domain(&entity)`
 - Every `ApiResponse` enum has a `from_status(StatusCode, Json<ErrorResponse>) -> Self` helper
 - All errors use the shared `ErrorResponse { name: String, message: String }` from `api/error.rs`
-- Dependencies wired manually in `main.rs` — no DI framework
+- DI wiring lives in `generated/bootstrap.rs` — never in `main.rs`
 
 ```rust
 pub struct EntityApi {
@@ -211,6 +243,8 @@ impl EntityApi {
     }
 }
 ```
+
+`EntityApi` fields are wired automatically by `harbor generate scaffold` into `generated/bootstrap.rs`.
 
 ---
 
