@@ -882,6 +882,7 @@ name = "harbor-cli"
 version = "0.1.0"
 dependencies = [
  "cargo-generate",
+ "clap",
 ]
 
 [[package]]
