@@ -1,0 +1,56 @@
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+// ── Config types ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct HarborConfig {
+    pub project: Project,
+    #[serde(default)]
+    pub entity: Vec<Entity>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Project {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Entity {
+    /// PascalCase entity name, e.g. "Product"
+    pub name: String,
+    /// snake_case use case action names, e.g. ["create_product"]
+    pub use_cases: Vec<String>,
+}
+
+// ── I/O helpers ───────────────────────────────────────────────────────────────
+
+pub fn read(base: &Path) -> Result<HarborConfig, Box<dyn std::error::Error>> {
+    let path = base.join("harbor.toml");
+    let src = std::fs::read_to_string(&path)?;
+    Ok(toml::from_str(&src)?)
+}
+
+pub fn write(base: &Path, config: &HarborConfig) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("harbor.toml");
+    std::fs::write(path, toml::to_string_pretty(config)?)?;
+    Ok(())
+}
+
+/// Append a new entity to harbor.toml. No-op if entity already present.
+pub fn add_entity(
+    base: &Path,
+    name: &str,
+    use_cases: Vec<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = read(base)?;
+    if config.entity.iter().any(|e| e.name == name) {
+        return Ok(());
+    }
+    config.entity.push(Entity {
+        name: name.to_string(),
+        use_cases,
+    });
+    write(base, &config)
+}

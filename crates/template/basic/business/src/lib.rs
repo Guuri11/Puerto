@@ -5,9 +5,9 @@ pub mod domain {
     pub mod repository;
     pub mod use_cases;
   }
-};
+}
 pub mod application {
   pub mod greeting {
     pub mod get_greeting;
   }
-};
+}

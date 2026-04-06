@@ -7,4 +7,5 @@ include = [
     "infrastructure/Cargo.toml",
     "presentation/Cargo.toml",
     "presentation/src/main.rs.liquid",
+    "harbor.toml",
 ]

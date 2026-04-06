@@ -1,27 +1,11 @@
-use std::sync::Arc;
-
-use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
-use poem::{Route, Server, listener::TcpListener};
-use poem_openapi::OpenApiService;
-
 mod api;
+mod generated;
 
-use api::greeting::routes::GreetingApi;
+use poem::{Server, listener::TcpListener};
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    // Wire dependencies
-    let repository = Arc::new(InMemoryGreetingRepository);
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository });
-
-    let api = GreetingApi { get_greeting };
-
-    let api_service = OpenApiService::new(api, "{{crate_name}}", "1.0")
-        .server("http://localhost:8080/api");
-    let ui = api_service.swagger_ui();
-
     Server::new(TcpListener::bind("0.0.0.0:8080"))
-        .run(Route::new().nest("/api", api_service).nest("/", ui))
+        .run(generated::bootstrap::build_app())
         .await
 }

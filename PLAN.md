@@ -54,18 +54,17 @@ business/src/domain/<name>/
   model.rs           # Entity struct + Props struct + new() + business rules
   errors.rs          # <Name>Error enum with thiserror
   repository.rs      # <Name>RepositoryTrait + mockall mock behind test-utils feature
-  use_cases/mod.rs
+  use_cases.rs       # pub mod <action>;  (sibling to use_cases/)
+  use_cases/
+    <action>.rs      # Use case trait + Params
 
 business/src/application/<name>/
-  mod.rs
+  <action>.rs        # UseCaseImpl + unit tests
 
-infrastructure/src/
-  <name>/
-    mod.rs
-    repository.rs    # Stub implementation (InMemory or SQLx skeleton)
+infrastructure/src/<name>/
+  repository.rs      # Stub implementation (InMemory or SQLx skeleton)
 
 presentation/src/api/<name>/
-  mod.rs
   routes.rs          # Empty OpenApi impl struct
   dto.rs             # Empty DTO placeholder
   responses.rs       # Basic ApiResponse enum (Ok / BadRequest / NotFound / InternalError)
@@ -73,10 +72,9 @@ presentation/src/api/<name>/
 ```
 
 **Updates required after generation (no auto-patch yet):**
-- `business/src/domain/mod.rs` — add `pub mod <name>;`
-- `business/src/application/mod.rs` — add `pub mod <name>;`
-- `infrastructure/src/lib.rs` — add `pub mod <name>;`
-- `presentation/src/api/mod.rs` — add `pub mod <name>;`
+- `business/src/lib.rs` — add `pub mod <name>;` inside `domain { }` and `application { }` inline blocks
+- `infrastructure/src/lib.rs` — add `pub mod <name>;` inside `pub mod <name> { }` block
+- `presentation/src/api.rs` — add `pub mod <name>;`
 
 > Phase 3 will auto-patch these.
 
@@ -93,8 +91,8 @@ business/src/application/<entity>/<action>.rs         # UseCaseImpl + #[tokio::t
 ```
 
 **Updates required after generation:**
-- `business/src/domain/<entity>/use_cases/mod.rs` — add `pub mod <action>;`
-- `business/src/application/<entity>/mod.rs` — add `pub mod <action>;`
+- `business/src/domain/<entity>/use_cases.rs` — add `pub mod <action>;`
+- `business/src/lib.rs` — add `pub mod <action>;` inside `application { <entity> { } }` inline block
 
 **Test convention (from ant_backend):**
 ```rust
@@ -121,11 +119,11 @@ Wraps `sqlx migrate add` with Harbor conventions.
 
 ---
 
-## Phase 3 — Auto-patching mod.rs
+## Phase 3 — Auto-patching lib.rs
 
-When a generator creates new files, it should automatically update the relevant `mod.rs` / `lib.rs` to declare the new module, instead of printing manual instructions.
+When a generator creates new files, it should automatically update `lib.rs` / `api.rs` / `use_cases.rs` to declare the new module, instead of printing manual instructions.
 
-Approach: parse existing file, find the right insertion point, append `pub mod <name>;`.
+Approach: parse existing file, find the right inline block, insert `pub mod <name>;` at the correct indentation level.
 
 ---
 

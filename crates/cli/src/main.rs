@@ -1,3 +1,4 @@
+mod harbor_toml;
 mod scaffold;
 
 use cargo_generate::{GenerateArgs, TemplatePath, generate};
@@ -31,6 +32,8 @@ enum GenerateAction {
         /// Entity name in PascalCase (e.g. Product, OrderItem)
         name: String,
     },
+    /// Regenerate presentation/src/generated/bootstrap.rs from harbor.toml
+    Bootstrap,
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -67,6 +70,12 @@ fn main() {
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             scaffold::run(&name, &cwd)
+        }
+        Commands::Generate {
+            action: GenerateAction::Bootstrap,
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            scaffold::regenerate_bootstrap(&cwd).map(|_| println!("✓ bootstrap.rs regenerated."))
         }
     };
 
@@ -148,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn main_rs_wires_ddd_layers() {
+    fn main_rs_is_minimal_entry_point() {
         let dir = temp_dir("cg_main");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
@@ -156,23 +165,27 @@ mod tests {
         let output = generate_project("cool-project", &dir).unwrap();
 
         let content = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
-        assert!(content.contains("GetGreetingUseCaseImpl"));
-        assert!(content.contains("InMemoryGreetingRepository"));
-        assert!(content.contains("GreetingApi"));
+        // main.rs now delegates to generated::bootstrap — no raw DI wiring here
+        assert!(content.contains("generated::bootstrap::build_app"));
+        assert!(content.contains("mod generated"));
         assert!(!content.contains("{{project-name}}"));
 
         cleanup(&dir);
     }
 
     #[test]
-    fn main_rs_has_poem_openapi() {
-        let dir = temp_dir("cg_poem");
+    fn bootstrap_rs_wires_ddd_layers() {
+        let dir = temp_dir("cg_bootstrap");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
 
         let output = generate_project("api-test", &dir).unwrap();
 
-        let content = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
+        let content =
+            fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(content.contains("GetGreetingUseCaseImpl"));
+        assert!(content.contains("InMemoryGreetingRepository"));
+        assert!(content.contains("GreetingApi"));
         assert!(content.contains("OpenApiService"));
         assert!(content.contains("8080"));
 
@@ -233,6 +246,30 @@ mod tests {
                 .join("presentation/src/api/greeting/responses.rs")
                 .exists()
         );
+        // New bootstrap infrastructure
+        assert!(output.join("harbor.toml").exists());
+        assert!(output.join("presentation/src/generated.rs").exists());
+        assert!(
+            output
+                .join("presentation/src/generated/bootstrap.rs")
+                .exists()
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn harbor_toml_has_project_name_and_greeting_entity() {
+        let dir = temp_dir("cg_harbor_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = generate_project("my-app", &dir).unwrap();
+
+        let content = fs::read_to_string(output.join("harbor.toml")).unwrap();
+        assert!(content.contains("name = \"my-app\""));
+        assert!(content.contains("name = \"Greeting\""));
+        assert!(content.contains("get_greeting"));
 
         cleanup(&dir);
     }
@@ -296,6 +333,7 @@ mod tests {
                 .exists()
         );
         // Presentation
+        assert!(dir.join("presentation/src/api/product.rs").exists());
         assert!(dir.join("presentation/src/api/product/dto.rs").exists());
         assert!(
             dir.join("presentation/src/api/product/responses.rs")
@@ -410,7 +448,7 @@ mod tests {
         fs::create_dir_all(base.join("business/src")).unwrap();
         fs::write(
             base.join("business/src/lib.rs"),
-            "pub mod domain {\n  pub mod greeting {\n    pub mod errors;\n    pub mod model;\n    pub mod repository;\n    pub mod use_cases;\n  }\n};\npub mod application {\n  pub mod greeting {\n    pub mod get_greeting;\n  }\n};\n",
+            "pub mod domain {\n  pub mod greeting {\n    pub mod errors;\n    pub mod model;\n    pub mod repository;\n    pub mod use_cases;\n  }\n}\npub mod application {\n  pub mod greeting {\n    pub mod get_greeting;\n  }\n}\n",
         )
         .unwrap();
 
@@ -425,6 +463,12 @@ mod tests {
         fs::write(
             base.join("presentation/src/api.rs"),
             "pub mod error;\npub mod greeting;\n",
+        )
+        .unwrap();
+
+        fs::write(
+            base.join("harbor.toml"),
+            "[project]\nname = \"test-app\"\n\n[[entity]]\nname = \"Greeting\"\nuse_cases = [\"get_greeting\"]\n",
         )
         .unwrap();
     }
@@ -480,6 +524,33 @@ mod tests {
         // error and greeting still present
         assert!(content.contains("pub mod error;"));
         assert!(content.contains("pub mod greeting;"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_updates_harbor_toml_and_regenerates_bootstrap() {
+        let dir = temp_dir("scaffold_bootstrap");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs(&dir);
+        scaffold::run("Product", &dir).unwrap();
+
+        // harbor.toml now contains both entities
+        let toml = fs::read_to_string(dir.join("harbor.toml")).unwrap();
+        assert!(toml.contains("name = \"Product\""));
+        assert!(toml.contains("create_product"));
+        assert!(toml.contains("name = \"Greeting\"")); // original still present
+
+        // bootstrap.rs was regenerated with both entities wired
+        let bootstrap =
+            fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(bootstrap.contains("CreateProductUseCaseImpl"));
+        assert!(bootstrap.contains("InMemoryProductRepository"));
+        assert!(bootstrap.contains("ProductApi"));
+        assert!(bootstrap.contains("GetGreetingUseCaseImpl"));
+        assert!(bootstrap.contains("InMemoryGreetingRepository"));
+        assert!(bootstrap.contains("GreetingApi"));
 
         cleanup(&dir);
     }
