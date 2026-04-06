@@ -1,0 +1,11 @@
+[package]
+name = "harbor-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "harbor"
+path = "src/main.rs"
+
+[dependencies]
+cargo-generate = "0.23"
