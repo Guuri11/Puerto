@@ -3,7 +3,10 @@ mod scaffold;
 
 use cargo_generate::{GenerateArgs, TemplatePath, generate};
 use clap::{Parser, Subcommand};
+use include_dir::{Dir, include_dir};
 use std::path::PathBuf;
+
+static TEMPLATE_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/template");
 
 // ── CLI definition ────────────────────────────────────────────────────────────
 
@@ -60,19 +63,21 @@ enum GenerateAction {
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-fn templates_dir() -> PathBuf {
-    let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    dir.push("../template");
-    dir
+/// Extract the embedded template to a temp directory and return its path.
+/// The caller is responsible for cleaning up the directory when done.
+fn extract_template() -> Result<tempfile::TempDir, Box<dyn std::error::Error>> {
+    let tmp = tempfile::tempdir()?;
+    TEMPLATE_DIR.extract(tmp.path())?;
+    Ok(tmp)
 }
 
 /// Core project generation. `name = None` lets cargo-generate prompt interactively.
 fn generate_new_project(name: Option<String>) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let template_dir = templates_dir().join("basic");
+    let tmp = extract_template()?;
 
     let args = GenerateArgs {
         template_path: TemplatePath {
-            path: Some(template_dir.to_string_lossy().into_owned()),
+            path: Some(tmp.path().to_string_lossy().into_owned()),
             ..Default::default()
         },
         name: name.clone(),
@@ -80,7 +85,9 @@ fn generate_new_project(name: Option<String>) -> Result<PathBuf, Box<dyn std::er
         ..Default::default()
     };
 
-    Ok(generate(args)?)
+    let output = generate(args)?;
+    // tmp is dropped here — extracted template cleaned up after generation
+    Ok(output)
 }
 
 /// Interactive `harbor new`: prompts for any missing values.
@@ -166,11 +173,11 @@ mod tests {
         name: &str,
         destination: &Path,
     ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let template_dir = templates_dir().join("basic");
+        let tmp = extract_template()?;
 
         let args = GenerateArgs {
             template_path: TemplatePath {
-                path: Some(template_dir.to_string_lossy().into_owned()),
+                path: Some(tmp.path().to_string_lossy().into_owned()),
                 ..Default::default()
             },
             name: Some(name.to_string()),
@@ -181,6 +188,7 @@ mod tests {
         };
 
         let output_dir = generate(args)?;
+        drop(tmp); // extracted template no longer needed
         Ok(output_dir)
     }
 
@@ -834,10 +842,10 @@ mod tests {
         db: bool,
         destination: &Path,
     ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let template_dir = templates_dir().join("basic");
+        let tmp = extract_template()?;
         let args = GenerateArgs {
             template_path: TemplatePath {
-                path: Some(template_dir.to_string_lossy().into_owned()),
+                path: Some(tmp.path().to_string_lossy().into_owned()),
                 ..Default::default()
             },
             name: name.clone(),
@@ -847,6 +855,7 @@ mod tests {
             ..Default::default()
         };
         let output = generate(args)?;
+        drop(tmp);
         if db {
             scaffold::apply_db_to_new_project(&output)?;
         }

@@ -1,4 +1,4 @@
-.PHONY: help run build install test test/full lint check format setup
+.PHONY: help run build install test test/full lint check format setup sync-template
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z/]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -30,3 +30,7 @@ check: ## cargo check (fast compile check, no binary)
 
 format: ## Format all code with rustfmt
 	cargo fmt --all
+
+sync-template: ## Sync crates/template/basic → crates/cli/template (run after template changes)
+	rm -rf crates/cli/template
+	cp -r crates/template/basic crates/cli/template

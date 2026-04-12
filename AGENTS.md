@@ -117,3 +117,4 @@ make format     # cargo fmt --all
 - `.claude/rules/testing.md` — TDD cycle, test naming, AAA pattern, DO/DON'T
 - `.claude/rules/testing-conventions.md` — Object Mother pattern, mock setup, naming table
 - `.claude/rules/workflow.md` — Harbor development workflow (Spec-Driven) + generated project TDD workflow
+- `.claude/rules/release.md` — Versioning, changelog, release process, breaking changes policy, crates.io checklist

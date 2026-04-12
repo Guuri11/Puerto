@@ -2,6 +2,20 @@
 name = "harbor-cli"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "Harbor — Rust full-stack DDD framework CLI. Scaffolds Clean Architecture projects with auto-wired DI, SQLx support, and zero manual wiring."
+license = "MIT"
+repository = "https://github.com/Guuri11/harbor"
+homepage = "https://github.com/Guuri11/harbor"
+keywords = ["ddd", "scaffold", "framework", "clean-architecture", "code-generator"]
+categories = ["command-line-utilities", "development-tools"]
+include = [
+    "src/**/*",
+    "template/**/*",
+    "template/.config/**/*",
+    "Cargo.toml",
+    "README.md",
+]
 
 [[bin]]
 name = "harbor"
@@ -11,5 +25,7 @@ path = "src/main.rs"
 cargo-generate = "0.23"
 clap = { version = "4", features = ["derive"] }
 dialoguer = "0.11"
+include_dir = "0.7"
 serde = { version = "1", features = ["derive"] }
+tempfile = "3"
 toml = "0.8"
