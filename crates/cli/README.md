@@ -5,7 +5,7 @@ Harbor is a Rust CLI that scaffolds full-stack DDD projects following Clean Arch
 ## Install
 
 ```bash
-cargo install harbor-cli
+cargo install harbor-framework
 ```
 
 ## Quick start
