@@ -41,6 +41,11 @@ enum GenerateAction {
     },
     /// Regenerate presentation/src/generated/bootstrap.rs from harbor.toml
     Bootstrap,
+    /// Create a new SQLx migration file
+    Migration {
+        /// Migration name in snake_case (e.g. add_products_table)
+        name: String,
+    },
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -89,6 +94,12 @@ fn main() {
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             scaffold::regenerate_bootstrap(&cwd).map(|_| println!("✓ bootstrap.rs regenerated."))
+        }
+        Commands::Generate {
+            action: GenerateAction::Migration { name },
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            scaffold::run_migration(&name, &cwd, None)
         }
     };
 
@@ -726,6 +737,48 @@ mod tests {
 
         let result = scaffold::run_use_case("NonExistent", "do_something", &dir);
         assert!(result.is_err());
+
+        cleanup(&dir);
+    }
+
+    // ── harbor generate migration ─────────────────────────────────────────────
+
+    #[test]
+    fn migration_errors_when_sqlx_not_in_path() {
+        let dir = temp_dir("migration_no_sqlx");
+        cleanup(&dir);
+        fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+
+        let result =
+            scaffold::run_migration("add_products_table", &dir, Some("nonexistent_sqlx_bin"));
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("sqlx CLI not found"),
+            "expected 'sqlx CLI not found' in: {msg}"
+        );
+        assert!(
+            msg.contains("cargo install sqlx-cli"),
+            "expected install hint in: {msg}"
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn migration_creates_migrations_dir_when_missing() {
+        let dir = temp_dir("migration_no_dir");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // infrastructure/migrations does NOT exist — should be created automatically
+
+        // /bin/true acts as a stub sqlx: passes the existence check, returns exit 0
+        let _ = scaffold::run_migration("add_products_table", &dir, Some("/bin/true"));
+
+        assert!(
+            dir.join("infrastructure/migrations").exists(),
+            "expected infrastructure/migrations to be created automatically"
+        );
 
         cleanup(&dir);
     }
