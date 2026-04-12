@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" fill="none">
+  <!--
+    Harbor — GitHub Social Preview
+    1280×640px · Dark theme
+    Convert to PNG for GitHub: npx sharp-cli input.svg -o social-preview.png -f png -w 1280 -h 640
+    Or: rsvg-convert -w 1280 -h 640 github-social.svg > github-social.png
+  -->
+  <defs>
+    <!-- Background gradient: deep ocean -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#060F1A"/>
+      <stop offset="100%" stop-color="#0D1B2A"/>
+    </linearGradient>
+
+    <!-- Teal glow behind icon -->
+    <radialGradient id="glow" cx="640" cy="260" r="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0891B2" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#0891B2" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Subtle indigo glow -->
+    <radialGradient id="glow2" cx="640" cy="260" r="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366F1" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#6366F1" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- ── Background ── -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <!-- Subtle horizontal scanlines (water/harbor atmosphere) -->
+  <rect x="0" y="480" width="1280" height="1" fill="#0891B2" opacity="0.06"/>
+  <rect x="0" y="500" width="1280" height="1" fill="#0891B2" opacity="0.04"/>
+  <rect x="0" y="520" width="1280" height="1" fill="#0891B2" opacity="0.03"/>
+  <rect x="0" y="540" width="1280" height="1" fill="#0891B2" opacity="0.025"/>
+  <rect x="0" y="560" width="1280" height="1" fill="#0891B2" opacity="0.02"/>
+
+  <!-- Dot grid (subtle, top-right quadrant) -->
+  <g opacity="0.04" fill="#94A3B8">
+    <!-- Row 1 -->
+    <circle cx="820" cy="60" r="1.5"/><circle cx="860" cy="60" r="1.5"/><circle cx="900" cy="60" r="1.5"/>
+    <circle cx="940" cy="60" r="1.5"/><circle cx="980" cy="60" r="1.5"/><circle cx="1020" cy="60" r="1.5"/>
+    <circle cx="1060" cy="60" r="1.5"/><circle cx="1100" cy="60" r="1.5"/><circle cx="1140" cy="60" r="1.5"/>
+    <circle cx="1180" cy="60" r="1.5"/><circle cx="1220" cy="60" r="1.5"/>
+    <!-- Row 2 -->
+    <circle cx="820" cy="100" r="1.5"/><circle cx="860" cy="100" r="1.5"/><circle cx="900" cy="100" r="1.5"/>
+    <circle cx="940" cy="100" r="1.5"/><circle cx="980" cy="100" r="1.5"/><circle cx="1020" cy="100" r="1.5"/>
+    <circle cx="1060" cy="100" r="1.5"/><circle cx="1100" cy="100" r="1.5"/><circle cx="1140" cy="100" r="1.5"/>
+    <circle cx="1180" cy="100" r="1.5"/><circle cx="1220" cy="100" r="1.5"/>
+    <!-- Row 3 -->
+    <circle cx="820" cy="140" r="1.5"/><circle cx="860" cy="140" r="1.5"/><circle cx="900" cy="140" r="1.5"/>
+    <circle cx="940" cy="140" r="1.5"/><circle cx="980" cy="140" r="1.5"/><circle cx="1020" cy="140" r="1.5"/>
+    <circle cx="1060" cy="140" r="1.5"/><circle cx="1100" cy="140" r="1.5"/><circle cx="1140" cy="140" r="1.5"/>
+    <circle cx="1180" cy="140" r="1.5"/><circle cx="1220" cy="140" r="1.5"/>
+    <!-- Row 4 -->
+    <circle cx="820" cy="180" r="1.5"/><circle cx="860" cy="180" r="1.5"/><circle cx="900" cy="180" r="1.5"/>
+    <circle cx="940" cy="180" r="1.5"/><circle cx="980" cy="180" r="1.5"/><circle cx="1020" cy="180" r="1.5"/>
+    <circle cx="1060" cy="180" r="1.5"/><circle cx="1100" cy="180" r="1.5"/><circle cx="1140" cy="180" r="1.5"/>
+    <circle cx="1180" cy="180" r="1.5"/><circle cx="1220" cy="180" r="1.5"/>
+  </g>
+
+  <!-- Glow behind ship -->
+  <rect width="1280" height="640" fill="url(#glow)"/>
+  <rect width="1280" height="640" fill="url(#glow2)"/>
+
+  <!-- ── Ship icon (centered, large) — scaled 4× (256×256 from 64×64) ── -->
+  <g transform="translate(512, 90) scale(4)">
+
+    <!-- Container 1: business layer (teal) -->
+    <rect x="7" y="11" width="14" height="20" rx="2" fill="#0891B2"/>
+    <rect x="10" y="14" width="8" height="2" rx="1" fill="white" opacity="0.35"/>
+    <rect x="10" y="18" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+    <rect x="10" y="22" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+
+    <!-- Container 2: infrastructure layer (indigo) -->
+    <rect x="25" y="11" width="14" height="20" rx="2" fill="#818CF8"/>
+    <rect x="28" y="14" width="8" height="2" rx="1" fill="white" opacity="0.35"/>
+    <rect x="28" y="18" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+    <rect x="28" y="22" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+
+    <!-- Container 3: presentation layer (rust/orange) -->
+    <rect x="43" y="11" width="14" height="20" rx="2" fill="#F97316"/>
+    <rect x="46" y="14" width="8" height="2" rx="1" fill="white" opacity="0.35"/>
+    <rect x="46" y="18" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+    <rect x="46" y="22" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+
+    <!-- Deck rail -->
+    <rect x="4" y="31" width="56" height="2" rx="1" fill="#4A7FB5"/>
+    <!-- Deck surface -->
+    <rect x="4" y="33" width="56" height="4" fill="#2D5986"/>
+    <!-- Hull -->
+    <path d="M4 37 L60 37 L55 52 L9 52 Z" fill="#2D5986"/>
+    <!-- Hull highlight -->
+    <path d="M4 37 L60 37" stroke="#4A7FB5" stroke-width="1" fill="none"/>
+
+    <!-- Water line -->
+    <path d="M2 53 Q16 50.5 32 53 Q48 55.5 62 53" stroke="#0891B2" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.8"/>
+    <path d="M6 57 Q19 55 32 57 Q45 59 58 57" stroke="#0891B2" stroke-width="1" stroke-linecap="round" fill="none" opacity="0.5"/>
+  </g>
+
+  <!-- ── Wordmark: "harbor" ── -->
+  <text
+    x="640"
+    y="415"
+    text-anchor="middle"
+    font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'Courier New', monospace"
+    font-size="100"
+    font-weight="700"
+    letter-spacing="-2"
+    fill="#F1F5F9"
+  >harbor</text>
+
+  <!-- Orange accent dot (matches logo-full) -->
+  <circle cx="888" cy="403" r="8" fill="#F97316"/>
+
+  <!-- ── Tagline ── -->
+  <text
+    x="640"
+    y="470"
+    text-anchor="middle"
+    font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, 'Courier New', monospace"
+    font-size="28"
+    font-weight="400"
+    letter-spacing="6"
+    fill="#94A3B8"
+  >Scaffold. Structure. Ship.</text>
+
+  <!-- ── Separator line ── -->
+  <line x1="480" y1="498" x2="800" y2="498" stroke="#1E3A5F" stroke-width="1"/>
+
+  <!-- ── Tech stack badges ── -->
+  <!-- Rust badge -->
+  <rect x="338" y="514" width="72" height="26" rx="5" fill="#1E3A5F" stroke="#2D5986" stroke-width="1"/>
+  <text x="374" y="531" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="600" fill="#94A3B8">rust</text>
+
+  <!-- DDD badge -->
+  <rect x="422" y="514" width="58" height="26" rx="5" fill="#1E3A5F" stroke="#2D5986" stroke-width="1"/>
+  <text x="451" y="531" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="600" fill="#94A3B8">DDD</text>
+
+  <!-- poem-openapi badge -->
+  <rect x="492" y="514" width="130" height="26" rx="5" fill="#1E3A5F" stroke="#2D5986" stroke-width="1"/>
+  <text x="557" y="531" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="600" fill="#94A3B8">poem-openapi</text>
+
+  <!-- tokio badge -->
+  <rect x="634" y="514" width="66" height="26" rx="5" fill="#1E3A5F" stroke="#2D5986" stroke-width="1"/>
+  <text x="667" y="531" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="600" fill="#94A3B8">tokio</text>
+
+  <!-- Clean Arch badge -->
+  <rect x="712" y="514" width="132" height="26" rx="5" fill="#1E3A5F" stroke="#2D5986" stroke-width="1"/>
+  <text x="778" y="531" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="600" fill="#94A3B8">Clean Arch</text>
+
+  <!-- cargo-generate badge -->
+  <rect x="856" y="514" width="136" height="26" rx="5" fill="#1E3A5F" stroke="#2D5986" stroke-width="1"/>
+  <text x="924" y="531" text-anchor="middle" font-family="ui-monospace, monospace" font-size="13" font-weight="600" fill="#94A3B8">cargo-generate</text>
+
+  <!-- ── Subtle bottom waterline decoration ── -->
+  <path d="M0 610 Q160 600 320 610 Q480 620 640 610 Q800 600 960 610 Q1120 620 1280 610 L1280 640 L0 640 Z" fill="#0891B2" opacity="0.05"/>
+  <path d="M0 625 Q160 618 320 625 Q480 632 640 625 Q800 618 960 625 Q1120 632 1280 625 L1280 640 L0 640 Z" fill="#0891B2" opacity="0.04"/>
+</svg>

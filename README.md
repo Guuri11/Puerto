@@ -1,4 +1,20 @@
-# Harbor
+<p align="center">
+  <img src="assets/brand/logo-full.svg#gh-light-mode-only" alt="Harbor" width="320"/>
+  <img src="assets/brand/logo-full-dark.svg#gh-dark-mode-only" alt="Harbor" width="320"/>
+</p>
+
+<p align="center">
+  <em>Scaffold. Structure. Ship.</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/rust-2024-orange?logo=rust&logoColor=white" alt="Rust 2024"/>
+  <img src="https://img.shields.io/badge/architecture-DDD%20%2B%20Clean%20Arch-6366f1" alt="DDD + Clean Architecture"/>
+  <img src="https://img.shields.io/badge/api-poem--openapi-0891b2" alt="poem-openapi"/>
+  <img src="https://img.shields.io/badge/async-tokio-0891b2?logo=tokio" alt="tokio"/>
+</p>
+
+---
 
 A Rust full-stack framework that brings the **delightful developer experience** of Laravel and Ruby on Rails to a **Domain-Driven Design** architecture.
 
