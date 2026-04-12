@@ -1,10 +1,5 @@
 <p align="center">
-  <img src="assets/brand/logo-full.svg#gh-light-mode-only" alt="Harbor" width="320"/>
-  <img src="assets/brand/logo-full-dark.svg#gh-dark-mode-only" alt="Harbor" width="320"/>
-</p>
-
-<p align="center">
-  <em>Scaffold. Structure. Ship.</em>
+  <img src="assets/brand/github-social.svg" alt="Harbor — Scaffold. Structure. Ship." width="100%"/>
 </p>
 
 <p align="center">
