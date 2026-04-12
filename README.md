@@ -76,7 +76,7 @@ The domain depends on nothing. Everything else depends on the domain.
 
 ```bash
 # Install Harbor
-cargo install harbor
+cargo install harbor-framework
 
 # Scaffold a new project
 harbor new my-app
@@ -100,10 +100,10 @@ Harbor is also a Cargo workspace:
 
 ```
 harbor/
-├── crates/
-│   ├── cli/           # The harbor binary (cargo-generate wrapper)
-│   └── template/
-│       └── basic/     # The "basic" project template
+└── crates/
+    └── cli/                # The harbor binary (cargo-generate wrapper)
+        ├── src/            # CLI source
+        └── template/       # The "basic" project template (edit directly here)
 ```
 
 | Command | Description |

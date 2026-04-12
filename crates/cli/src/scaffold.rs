@@ -375,13 +375,18 @@ pub fn run(name: &str, base: &Path, db: bool) -> Result<(), Box<dyn std::error::
         .and_then(|_| regenerate_bootstrap(base))
         .is_ok();
 
-    println!("✓ Scaffolded {pascal} (11 files).");
-    if bootstrapped {
-        println!("  harbor.toml updated + bootstrap.rs regenerated. No manual wiring needed.");
+    let repo_name = if db {
+        format!("Pg{pascal}Repository")
     } else {
-        println!(
-            "  Tip: run `harbor generate bootstrap` from your project root to wire automatically."
-        );
+        format!("InMemory{pascal}Repository")
+    };
+    println!("✓ business/        — model, errors, repository trait, use cases");
+    println!("✓ infrastructure/  — {repo_name}");
+    println!("✓ presentation/    — routes, dto, responses, error mapper");
+    if bootstrapped {
+        println!("✓ Done. Zero manual wiring.");
+    } else {
+        println!("✓ Done. Run `harbor generate bootstrap` to wire DI.");
     }
 
     Ok(())

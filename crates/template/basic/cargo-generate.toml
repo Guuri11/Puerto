@@ -1,9 +1,0 @@
-[template]
-cargo_generate_version = ">=0.23.0"
-# Only process substitution in these files; all other files are copied verbatim
-include = [
-    "presentation/Cargo.toml",
-    "presentation/src/main.rs.liquid",
-    "harbor.toml",
-    "Makefile",
-]

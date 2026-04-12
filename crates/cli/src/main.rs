@@ -82,6 +82,8 @@ fn generate_new_project(name: Option<String>) -> Result<PathBuf, Box<dyn std::er
         },
         name: name.clone(),
         no_workspace: true,
+        // Suppress cargo-generate's [1/N] Skipped/Done progress output
+        quiet: true,
         ..Default::default()
     };
 
@@ -91,7 +93,7 @@ fn generate_new_project(name: Option<String>) -> Result<PathBuf, Box<dyn std::er
 }
 
 /// Interactive `harbor new`: prompts for any missing values.
-fn new_project(name: Option<String>, db: bool) -> Result<String, Box<dyn std::error::Error>> {
+fn new_project(name: Option<String>, db: bool) -> Result<PathBuf, Box<dyn std::error::Error>> {
     // If --db not given, ask interactively (only when running with a TTY)
     let resolved_db = if db {
         true
@@ -104,22 +106,29 @@ fn new_project(name: Option<String>, db: bool) -> Result<String, Box<dyn std::er
         false
     };
 
+    eprintln!("Constructing project skeleton...");
+
     let output = generate_new_project(name)?;
 
     if resolved_db {
         scaffold::apply_db_to_new_project(&output)?;
     }
 
-    Ok(output.display().to_string())
+    Ok(output)
 }
 
 fn main() {
     let cli = Cli::parse();
 
     let result: Result<(), Box<dyn std::error::Error>> = match cli.command {
-        Commands::New { name, db } => {
-            new_project(name, db).map(|path| println!("Project created at: {path}"))
-        }
+        Commands::New { name, db } => new_project(name, db).map(|path| {
+            let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            println!("├── business/        (domain logic)");
+            println!("├── infrastructure/  (adapters)");
+            println!("├── presentation/    (openapi routes)");
+            println!("└── Cargo.toml");
+            println!("✓ Project '{project_name}' initialized successfully.");
+        }),
         Commands::Generate {
             action: GenerateAction::Scaffold { name, db },
         } => {

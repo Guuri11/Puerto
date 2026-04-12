@@ -1,2 +1,0 @@
-[profile.default]
-retries = { backoff = "fixed", count = 1, delay = "500ms" }

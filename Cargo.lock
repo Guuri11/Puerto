@@ -904,7 +904,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "harbor-cli"
+name = "harbor-framework"
 version = "0.1.0"
 dependencies = [
  "cargo-generate",

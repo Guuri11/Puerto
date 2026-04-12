@@ -116,7 +116,6 @@ Every release — automated or manual — must pass:
 - [ ] `make test/full` — generated project compiles and internal tests pass ← **most important gate**
 - [ ] `make lint` — zero clippy warnings
 - [ ] `make format` — no formatting diff
-- [ ] `make sync-template` — `crates/cli/template/` is in sync with `crates/template/basic/`
 - [ ] `cargo package --list` — template files present in package
 - [ ] `cargo publish --dry-run` — no publish errors
 - [ ] `CHANGELOG.md` has an entry for this version

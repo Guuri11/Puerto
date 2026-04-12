@@ -1,6 +1,0 @@
-[project]
-name = "{{project-name}}"
-
-[[entity]]
-name = "Greeting"
-use_cases = ["get_greeting"]

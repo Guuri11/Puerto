@@ -15,8 +15,7 @@ crates/
     src/main.rs     — CLI definition, GenerateArgs setup, test suite
     src/scaffold.rs — File writer, lib.rs patcher, bootstrap generator
     src/harbor_toml.rs — harbor.toml serde structs + read/write/add_entity
-  template/
-    basic/          — The "basic" DDD template
+    template/       — The "basic" DDD template (edit directly here)
       Cargo.toml          — Workspace manifest (workspace only, no [package])
       cargo-generate.toml — Template config (controls which files get substitution)
       harbor.toml         — Source of truth for entities ({{project-name}} substituted)
@@ -101,7 +100,6 @@ make test/full     # Slow test: generates a real project, compiles it, runs its 
 make lint          # cargo clippy --workspace -- -D warnings
 make check         # cargo check --workspace
 make format        # cargo fmt --all
-make sync-template # Sync crates/template/basic → crates/cli/template (run after template changes)
 ```
 
 ## Completion Checklist
