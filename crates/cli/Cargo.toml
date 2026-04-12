@@ -10,9 +10,8 @@ homepage = "https://github.com/Guuri11/harbor"
 keywords = ["ddd", "scaffold", "framework", "clean-architecture", "code-generator"]
 categories = ["command-line-utilities", "development-tools"]
 include = [
-    "src/**/*",
-    "template/**/*",
-    "template/.config/**/*",
+    "src/**",
+    "template",
     "Cargo.toml",
     "README.md",
 ]
