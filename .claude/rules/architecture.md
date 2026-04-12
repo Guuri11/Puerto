@@ -52,10 +52,24 @@ domain/<entity>/
   model.rs          # Entity struct + Props struct + constructors
   errors.rs         # Domain error enum (thiserror)
   repository.rs     # Repository trait (port) + mockall mock
-  use_cases.rs      # pub mod <action>;  (sibling to use_cases/)
   use_cases/
     <action>.rs     # Params struct + Trait
 ```
+
+No `use_cases.rs` sibling file. Use case modules are declared inline in `business/src/lib.rs`:
+
+```rust
+pub mod domain {
+    pub mod product {
+        pub mod use_cases {
+            pub mod create_product;
+            pub mod delete_product;
+        }
+    }
+}
+```
+
+`harbor generate use-case` patches lib.rs automatically.
 
 ### Model constructor pattern
 

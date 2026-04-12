@@ -54,3 +54,22 @@ pub fn add_entity(
     });
     write(base, &config)
 }
+
+/// Append a use case action to an existing entity. Errors if entity not found. No-op if action already present.
+pub fn add_use_case(
+    base: &Path,
+    entity_name: &str,
+    action: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = read(base)?;
+    let entity = config
+        .entity
+        .iter_mut()
+        .find(|e| e.name == entity_name)
+        .ok_or_else(|| format!("entity '{entity_name}' not found in harbor.toml"))?;
+    if !entity.use_cases.contains(&action.to_string()) {
+        entity.use_cases.push(action.to_string());
+        write(base, &config)?;
+    }
+    Ok(())
+}

@@ -62,8 +62,8 @@ Given `name = "Product"`, `use_cases = ["create_product"]`:
 business/src/domain/product/model.rs
 business/src/domain/product/errors.rs
 business/src/domain/product/repository.rs
-business/src/domain/product/use_cases.rs
 business/src/domain/product/use_cases/create_product.rs
+# use_cases modules declared inline in business/src/lib.rs — no use_cases.rs file
 
 business/src/application/product/create_product.rs
 

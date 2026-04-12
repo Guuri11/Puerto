@@ -32,6 +32,13 @@ enum GenerateAction {
         /// Entity name in PascalCase (e.g. Product, OrderItem)
         name: String,
     },
+    /// Add a use case to an existing entity
+    UseCase {
+        /// Entity name in PascalCase (e.g. Product)
+        entity: String,
+        /// Use case action in snake_case (e.g. delete_product)
+        action: String,
+    },
     /// Regenerate presentation/src/generated/bootstrap.rs from harbor.toml
     Bootstrap,
 }
@@ -70,6 +77,12 @@ fn main() {
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             scaffold::run(&name, &cwd)
+        }
+        Commands::Generate {
+            action: GenerateAction::UseCase { entity, action },
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            scaffold::run_use_case(&entity, &action, &cwd)
         }
         Commands::Generate {
             action: GenerateAction::Bootstrap,
@@ -315,10 +328,6 @@ mod tests {
                 .exists()
         );
         assert!(
-            dir.join("business/src/domain/product/use_cases.rs")
-                .exists()
-        );
-        assert!(
             dir.join("business/src/domain/product/use_cases/create_product.rs")
                 .exists()
         );
@@ -448,7 +457,7 @@ mod tests {
         fs::create_dir_all(base.join("business/src")).unwrap();
         fs::write(
             base.join("business/src/lib.rs"),
-            "pub mod domain {\n  pub mod greeting {\n    pub mod errors;\n    pub mod model;\n    pub mod repository;\n    pub mod use_cases;\n  }\n}\npub mod application {\n  pub mod greeting {\n    pub mod get_greeting;\n  }\n}\n",
+            "pub mod domain {\n  pub mod greeting {\n    pub mod errors;\n    pub mod model;\n    pub mod repository;\n    pub mod use_cases {\n      pub mod get_greeting;\n    }\n  }\n}\npub mod application {\n  pub mod greeting {\n    pub mod get_greeting;\n  }\n}\n",
         )
         .unwrap();
 
@@ -485,7 +494,8 @@ mod tests {
         // domain block now contains product
         assert!(content.contains("pub mod product {"));
         assert!(content.contains("pub mod errors;"));
-        assert!(content.contains("pub mod use_cases;"));
+        assert!(content.contains("pub mod use_cases {"));
+        assert!(!content.contains("pub mod use_cases;")); // never the bare form
         // application block now contains product
         assert!(content.contains("pub mod create_product;"));
         // greeting still present
@@ -551,6 +561,189 @@ mod tests {
         assert!(bootstrap.contains("GetGreetingUseCaseImpl"));
         assert!(bootstrap.contains("InMemoryGreetingRepository"));
         assert!(bootstrap.contains("GreetingApi"));
+
+        cleanup(&dir);
+    }
+
+    // ── harbor generate use-case ──────────────────────────────────────────────
+
+    fn setup_use_case_stubs(base: &Path) {
+        fs::write(
+            base.join("harbor.toml"),
+            "[project]\nname = \"test-app\"\n\n[[entity]]\nname = \"Product\"\nuse_cases = [\"create_product\"]\n",
+        )
+        .unwrap();
+
+        fs::create_dir_all(base.join("business/src/domain/product")).unwrap();
+        fs::write(
+            base.join("business/src/lib.rs"),
+            "pub mod domain {\n    pub mod product {\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases {\n            pub mod create_product;\n        }\n    }\n}\npub mod application {\n    pub mod product {\n        pub mod create_product;\n    }\n}\n",
+        )
+        .unwrap();
+
+        fs::create_dir_all(base.join("business/src/application/product")).unwrap();
+    }
+
+    #[test]
+    fn use_case_creates_trait_file() {
+        let dir = temp_dir("uc_trait");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+        assert!(
+            dir.join("business/src/domain/product/use_cases/delete_product.rs")
+                .exists()
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_creates_impl_file() {
+        let dir = temp_dir("uc_impl");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+        assert!(
+            dir.join("business/src/application/product/delete_product.rs")
+                .exists()
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_trait_file_has_correct_content() {
+        let dir = temp_dir("uc_trait_content");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("business/src/domain/product/use_cases/delete_product.rs"))
+                .unwrap();
+        assert!(content.contains("DeleteProductParams"));
+        assert!(content.contains("DeleteProductUseCaseTrait"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_impl_file_has_correct_content() {
+        let dir = temp_dir("uc_impl_content");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("business/src/application/product/delete_product.rs"))
+                .unwrap();
+        assert!(content.contains("DeleteProductUseCaseImpl"));
+        assert!(content.contains("ProductRepositoryTrait"));
+        assert!(content.contains("DeleteProductUseCaseTrait"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_patches_business_lib_rs() {
+        let dir = temp_dir("uc_patch_lib");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+        let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+        // domain use_cases block has new entry
+        assert!(content.contains("pub mod delete_product;"));
+        assert!(content.contains("pub mod create_product;")); // existing preserved
+        // application block also has new entry
+        assert_eq!(content.matches("pub mod delete_product;").count(), 2); // domain + application
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_updates_harbor_toml() {
+        let dir = temp_dir("uc_harbor_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+        let content = fs::read_to_string(dir.join("harbor.toml")).unwrap();
+        assert!(content.contains("delete_product"));
+        assert!(content.contains("create_product")); // existing preserved
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_regenerates_bootstrap() {
+        let dir = temp_dir("uc_bootstrap");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(content.contains("DeleteProductUseCaseImpl"));
+        assert!(content.contains("CreateProductUseCaseImpl"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_normalizes_entity_casing() {
+        let dir = temp_dir("uc_normalize");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        // lowercase "product" should resolve to "Product"
+        scaffold::run_use_case("product", "delete_product", &dir).unwrap();
+
+        assert!(
+            dir.join("business/src/domain/product/use_cases/delete_product.rs")
+                .exists()
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_errors_when_entity_not_in_harbor_toml() {
+        let dir = temp_dir("uc_missing_entity");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+
+        let result = scaffold::run_use_case("NonExistent", "do_something", &dir);
+        assert!(result.is_err());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_is_idempotent() {
+        let dir = temp_dir("uc_idempotent");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap(); // second run
+
+        let toml = fs::read_to_string(dir.join("harbor.toml")).unwrap();
+        assert_eq!(toml.matches("delete_product").count(), 1);
+
+        let lib = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+        assert_eq!(lib.matches("pub mod delete_product;").count(), 2); // domain + application
 
         cleanup(&dir);
     }

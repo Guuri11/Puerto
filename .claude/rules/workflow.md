@@ -191,7 +191,7 @@ make format
 | Domain model | `business/src/domain/<entity>/model.rs` |
 | Domain errors | `business/src/domain/<entity>/errors.rs` |
 | Repository trait | `business/src/domain/<entity>/repository.rs` |
-| Use case trait | `business/src/domain/<entity>/use_cases/<action>.rs` |
+| Use case trait | `business/src/domain/<entity>/use_cases/<action>.rs` (declared inline in lib.rs) |
 | Use case impl | `business/src/application/<entity>/<action>.rs` |
 | Infra repository | `infrastructure/src/<entity>/repository.rs` |
 | API module decl | `presentation/src/api/<entity>.rs` |

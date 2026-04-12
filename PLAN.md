@@ -9,121 +9,136 @@ Harbor is a Rust full-stack framework built around DDD + Clean Architecture (Hex
 
 ---
 
-## Current state
+## Current state ✅
 
-`harbor new <name>` scaffolds a workspace with three crates that mirror the DDD layers:
+`harbor new <name>` scaffolds a workspace with three crates mirroring DDD layers, plus a `harbor.toml` and auto-generated DI bootstrap:
 
 ```
 <name>/
-├── business/          # Domain + Application (pure Rust, no framework deps)
+├── harbor.toml                    # Source of truth for entities + use cases
+├── business/
 │   └── src/
 │       ├── domain/greeting/
-│       │   ├── model.rs           # Entity with business rules
-│       │   ├── errors.rs          # thiserror domain errors
+│       │   ├── model.rs
+│       │   ├── errors.rs
 │       │   ├── repository.rs      # Trait (port) + mockall mock
 │       │   └── use_cases/
-│       │       └── get_greeting.rs  # Use case trait
+│       │       └── get_greeting.rs
 │       └── application/greeting/
-│           └── get_greeting.rs    # Use case implementation + unit tests
-├── infrastructure/    # Adapters (DB, HTTP clients, etc.)
+│           └── get_greeting.rs    # Use case impl + unit tests
+├── infrastructure/
 │   └── src/greeting/
-│       └── repository.rs          # In-memory implementation (replace with SQLx)
-└── presentation/      # poem-openapi REST API
+│       └── repository.rs          # InMemory implementation
+└── presentation/
     └── src/
-        ├── main.rs                # DI wiring + server bootstrap
+        ├── main.rs                # 5-line entry point — never changes
+        ├── generated.rs           # pub mod bootstrap; — never changes
+        ├── generated/
+        │   └── bootstrap.rs       # AUTO-GENERATED from harbor.toml
         └── api/greeting/
-            ├── routes.rs          # OpenApi endpoints
-            ├── dto.rs             # Request/Response objects
-            ├── responses.rs       # poem ApiResponse enums
-            └── error_mapper.rs    # Domain error → HTTP status
+            ├── greeting.rs        # pub mod dto/routes/responses/error_mapper
+            ├── routes.rs
+            ├── dto.rs
+            ├── responses.rs
+            └── error_mapper.rs
 ```
 
-Dependency rule (inward only): `presentation → infrastructure → application → domain`
+`harbor generate scaffold <Name>` creates all DDD files, patches `lib.rs` files, updates `harbor.toml`, and regenerates `bootstrap.rs` — zero manual wiring.
 
 ---
 
 ## Phase 2 — Generators
 
-### 2.1 `harbor generate entity <Name>`
+### 2.1 `harbor generate scaffold <Name>` ✅ DONE
 
-Scaffolds all files for a new DDD entity across every layer.
+Creates all files for a new DDD entity across every layer:
 
-**Files created:**
 ```
 business/src/domain/<name>/
   model.rs           # Entity struct + Props struct + new() + business rules
   errors.rs          # <Name>Error enum with thiserror
-  repository.rs      # <Name>RepositoryTrait + mockall mock behind test-utils feature
-  use_cases.rs       # pub mod <action>;  (sibling to use_cases/)
+  repository.rs      # <Name>RepositoryTrait + mockall mock
+  use_cases.rs       # pub mod <action>;
   use_cases/
-    <action>.rs      # Use case trait + Params
+    create_<name>.rs # Create use case trait + Params
 
 business/src/application/<name>/
-  <action>.rs        # UseCaseImpl + unit tests
+  create_<name>.rs   # UseCaseImpl + unit tests
 
 infrastructure/src/<name>/
-  repository.rs      # Stub implementation (InMemory or SQLx skeleton)
+  repository.rs      # InMemory<Name>Repository
 
+presentation/src/api/<name>.rs        # pub mod dto/routes/responses/error_mapper
 presentation/src/api/<name>/
-  routes.rs          # Empty OpenApi impl struct
-  dto.rs             # Empty DTO placeholder
-  responses.rs       # Basic ApiResponse enum (Ok / BadRequest / NotFound / InternalError)
-  error_mapper.rs    # IntoErrorResponse impl for <Name>Error
+  routes.rs
+  dto.rs
+  responses.rs
+  error_mapper.rs
 ```
 
-**Updates required after generation (no auto-patch yet):**
-- `business/src/lib.rs` — add `pub mod <name>;` inside `domain { }` and `application { }` inline blocks
-- `infrastructure/src/lib.rs` — add `pub mod <name>;` inside `pub mod <name> { }` block
-- `presentation/src/api.rs` — add `pub mod <name>;`
-
-> Phase 3 will auto-patch these.
+Auto-patches: `business/src/lib.rs`, `infrastructure/src/lib.rs`, `presentation/src/api.rs`, `harbor.toml`, `presentation/src/generated/bootstrap.rs`.
 
 ---
 
-### 2.2 `harbor generate use-case <Entity> <action>`
+### 2.2 `harbor generate use-case <Entity> <action>` ✅ DONE
 
-Adds a single use case (trait + implementation + unit test) for an existing entity.
+Adds a single use case (trait + impl + unit tests) for an existing entity.
+
+**Spec:**
 
 **Files created:**
 ```
-business/src/domain/<entity>/use_cases/<action>.rs   # Use case trait + Params + Response structs
-business/src/application/<entity>/<action>.rs         # UseCaseImpl + #[tokio::test] unit tests
+business/src/domain/<entity>/use_cases/<action>.rs   # Params struct + UseCaseTrait
+business/src/application/<entity>/<action>.rs         # UseCaseImpl + unit tests
 ```
 
-**Updates required after generation:**
-- `business/src/domain/<entity>/use_cases.rs` — add `pub mod <action>;`
-- `business/src/lib.rs` — add `pub mod <action>;` inside `application { <entity> { } }` inline block
+**Auto-patches:**
+- `business/src/domain/<entity>/use_cases.rs` — append `pub mod <action>;`
+- `harbor.toml` — append `<action>` to the entity's `use_cases` array
+- `presentation/src/generated/bootstrap.rs` — regenerated
 
-**Test convention (from ant_backend):**
-```rust
-#[tokio::test]
-async fn should_<expected_outcome>_when_<condition>() {
-    // Arrange
-    // Act
-    // Assert
-}
-```
+**Behavior:**
+- `<Entity>` must be PascalCase; error if not found in `harbor.toml`
+- `<action>` must be snake_case
+- Generated `UseCaseImpl` struct has one field: `repository: Arc<dyn <Entity>RepositoryTrait>`
+- Tests follow AAA pattern with `Mock<Entity>Repository`
+- Running twice for same entity+action is a no-op (idempotent)
+
+**Test scenarios to cover:**
+- Creates both files with correct content
+- Patches `use_cases.rs` without removing existing entries
+- Updates `harbor.toml` entity's use_cases array
+- Regenerates bootstrap with new use case wired
+- PascalCase normalisation (`orderItem` → `OrderItem`)
+- Error when entity not in harbor.toml
 
 ---
 
-### 2.3 `harbor generate migration <name>`
+### 2.3 `harbor generate migration <name>` — TODO
 
 Wraps `sqlx migrate add` with Harbor conventions.
 
+**Spec:**
+
 **What it does:**
 1. Creates `infrastructure/persistence/migrations/<timestamp>_<name>.sql`
-2. Adds a comment header with entity name and description
-3. Reminds to run `make sqlx/prepare` after editing
+2. Adds comment header: `-- Harbor migration: <name>`
+3. Prints reminder to run `make sqlx/prepare` after editing
 
 **Requires:** SQLx CLI installed + `DATABASE_URL` set in `.env`
 
+**Error if:** SQLx CLI not found (print install instructions)
+
 ---
 
-## Phase 3 — Auto-patching lib.rs
+## Phase 3 — Auto-patching lib.rs ✅ DONE
 
-When a generator creates new files, it should automatically update `lib.rs` / `api.rs` / `use_cases.rs` to declare the new module, instead of printing manual instructions.
-
-Approach: parse existing file, find the right inline block, insert `pub mod <name>;` at the correct indentation level.
+`harbor generate scaffold` automatically updates:
+- `business/src/lib.rs` — inline `domain { }` and `application { }` blocks
+- `infrastructure/src/lib.rs` — appends new module block
+- `presentation/src/api.rs` — appends `pub mod <name>;`
+- `harbor.toml` — appends `[[entity]]` block
+- `presentation/src/generated/bootstrap.rs` — full regeneration
 
 ---
 

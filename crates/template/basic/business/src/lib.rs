@@ -3,7 +3,9 @@ pub mod domain {
     pub mod errors;
     pub mod model;
     pub mod repository;
-    pub mod use_cases;
+    pub mod use_cases {
+      pub mod get_greeting;
+    }
   }
 }
 pub mod application {

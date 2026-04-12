@@ -85,12 +85,52 @@ fn insert_before_block_end(
     ))
 }
 
+/// Navigate nested `pub mod` blocks and insert `content` before the innermost closing `}`.
+/// `path = &["domain", "product", "use_cases"]` finds `domain { ... product { ... use_cases { <here> } } }`.
+fn patch_lib_block(source: &str, path: &[&str], content: &str) -> Result<String, String> {
+    match path {
+        [] => Err("empty path".to_string()),
+        [name] => insert_before_block_end(source, name, content),
+        [name, rest @ ..] => {
+            let marker = format!("pub mod {name} {{");
+            let start = source
+                .find(&marker)
+                .ok_or_else(|| format!("block '{name}' not found"))?;
+            let after_open = start + marker.len();
+            let mut depth = 1usize;
+            let mut close = None;
+            for (i, ch) in source[after_open..].char_indices() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            close = Some(after_open + i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let close = close.ok_or_else(|| format!("unclosed block '{name}'"))?;
+            let inner = &source[after_open..close];
+            let new_inner = patch_lib_block(inner, rest, content)?;
+            Ok(format!(
+                "{}{}{}",
+                &source[..after_open],
+                new_inner,
+                &source[close..]
+            ))
+        }
+    }
+}
+
 fn patch_business_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("business/src/lib.rs");
     let src = fs::read_to_string(&path)?;
 
     let domain_mod = format!(
-        "\n    pub mod {snake} {{\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases;\n    }}\n"
+        "\n    pub mod {snake} {{\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases {{\n            pub mod create_{snake};\n        }}\n    }}\n"
     );
     let after_domain = insert_before_block_end(&src, "domain", &domain_mod)?;
 
@@ -254,6 +294,38 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+fn patch_business_lib_use_case(
+    base: &Path,
+    snake: &str,
+    uc: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("business/src/lib.rs");
+    let src = fs::read_to_string(&path)?;
+
+    // Idempotency: if already registered, skip
+    let line = format!("pub mod {uc};");
+    if src.contains(&line) {
+        return Ok(());
+    }
+
+    let uc_content = format!("\n            pub mod {uc};\n");
+    let after_uc = patch_lib_block(&src, &["domain", snake, "use_cases"], &uc_content)?;
+
+    let app_content = format!("\n        pub mod {uc};\n");
+    let final_src = patch_lib_block(&after_uc, &["application", snake], &app_content)?;
+
+    fs::write(&path, final_src)?;
+    Ok(())
+}
+
+fn apply_uc(template: &str, pascal: &str, snake: &str, uc_pascal: &str, uc: &str) -> String {
+    template
+        .replace("{Pascal}", pascal)
+        .replace("{snake}", snake)
+        .replace("{uc_pascal}", uc_pascal)
+        .replace("{uc}", uc)
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 pub fn run(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -280,6 +352,37 @@ pub fn run(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+pub fn run_use_case(
+    entity: &str,
+    action: &str,
+    base: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let pascal = to_pascal_case(entity);
+    let snake = pascal_to_snake(&pascal);
+    let uc = action.to_string();
+    let uc_pascal = to_pascal_case(&uc);
+
+    // Errors if entity not in harbor.toml
+    crate::harbor_toml::add_use_case(base, &pascal, &uc)?;
+
+    write(
+        &base.join(format!("business/src/domain/{snake}/use_cases/{uc}.rs")),
+        &apply_uc(UC_TRAIT, &pascal, &snake, &uc_pascal, &uc),
+    )?;
+    write(
+        &base.join(format!("business/src/application/{snake}/{uc}.rs")),
+        &apply_uc(UC_IMPL, &pascal, &snake, &uc_pascal, &uc),
+    )?;
+
+    patch_business_lib_use_case(base, &snake, &uc)?;
+    regenerate_bootstrap(base)?;
+
+    println!("✓ Use case {uc_pascal} added to {pascal} (2 files).");
+    println!("  harbor.toml updated + bootstrap.rs regenerated.");
+
+    Ok(())
+}
+
 fn write_files(pascal: &str, snake: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // Domain layer
     write(
@@ -293,10 +396,6 @@ fn write_files(pascal: &str, snake: &str, base: &Path) -> Result<(), Box<dyn std
     write(
         &base.join(format!("business/src/domain/{snake}/repository.rs")),
         &apply(REPOSITORY, pascal, snake),
-    )?;
-    write(
-        &base.join(format!("business/src/domain/{snake}/use_cases.rs")),
-        &apply(USE_CASES_MOD, pascal, snake),
     )?;
     write(
         &base.join(format!(
@@ -439,9 +538,6 @@ pub mod mocks {
         }
     }
 }
-"#;
-
-const USE_CASES_MOD: &str = r#"pub mod create_{snake};
 "#;
 
 const USE_CASE_TRAIT: &str = r#"use async_trait::async_trait;
@@ -655,6 +751,65 @@ impl {Pascal}Api {
                 Create{Pascal}Response::from_status(status, error)
             }
         }
+    }
+}
+"#;
+
+// ── Use-case generator templates ──────────────────────────────────────────────
+
+const UC_TRAIT: &str = r#"use async_trait::async_trait;
+
+use crate::domain::{snake}::{errors::{Pascal}Error, model::{Pascal}};
+
+#[derive(Debug, Clone)]
+pub struct {uc_pascal}Params {
+    pub name: String,
+}
+
+#[async_trait]
+pub trait {uc_pascal}UseCaseTrait: Send + Sync {
+    async fn execute(&self, params: {uc_pascal}Params) -> Result<{Pascal}, {Pascal}Error>;
+}
+"#;
+
+const UC_IMPL: &str = r#"use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::{snake}::{
+    errors::{Pascal}Error,
+    model::{Pascal},
+    repository::{Pascal}RepositoryTrait,
+    use_cases::{uc}::{{uc_pascal}Params, {uc_pascal}UseCaseTrait},
+};
+
+pub struct {uc_pascal}UseCaseImpl {
+    pub repository: Arc<dyn {Pascal}RepositoryTrait>,
+}
+
+#[async_trait]
+impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
+    async fn execute(&self, params: {uc_pascal}Params) -> Result<{Pascal}, {Pascal}Error> {
+        todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{snake}::repository::mocks::Mock{Pascal}Repository;
+
+    #[tokio::test]
+    async fn should_{uc}_when_valid() {
+        // Arrange
+        let mock_repo = Mock{Pascal}Repository::new();
+        let use_case = {uc_pascal}UseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        // TODO: implement test body
+        let _ = &use_case;
     }
 }
 "#;

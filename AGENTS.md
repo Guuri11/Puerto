@@ -77,7 +77,16 @@ Presentation → Infrastructure → Application → Domain
 - **Never add `[package]` to the template root `Cargo.toml`** — it is a workspace manifest only.
 - **`generated/bootstrap.rs` is auto-generated** — never edit manually, never commit hand-edits to it in generated projects.
 
-## Commands
+## CLI Commands
+
+```bash
+harbor new                                 # Scaffold a new project
+harbor generate scaffold <Name>            # Add a new DDD entity (all layers)
+harbor generate use-case <Entity> <action> # Add a use case to an existing entity
+harbor generate bootstrap                  # Regenerate bootstrap.rs from harbor.toml
+```
+
+## Make Commands
 
 ```bash
 make run        # Run harbor CLI (prompts for project name)
