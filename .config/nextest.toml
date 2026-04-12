@@ -1,0 +1,4 @@
+[profile.default]
+# cargo-generate has internal global state that causes occasional failures
+# when many tests run concurrently. Retry up to 2 times before marking as failed.
+retries = { backoff = "fixed", count = 2, delay = "500ms" }

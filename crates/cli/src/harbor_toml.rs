@@ -22,6 +22,9 @@ pub struct Entity {
     pub name: String,
     /// snake_case use case action names, e.g. ["create_product"]
     pub use_cases: Vec<String>,
+    /// true when this entity uses a SQLx (Postgres) repository instead of InMemory
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub db: bool,
 }
 
 // ── I/O helpers ───────────────────────────────────────────────────────────────
@@ -43,6 +46,7 @@ pub fn add_entity(
     base: &Path,
     name: &str,
     use_cases: Vec<String>,
+    db: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = read(base)?;
     if config.entity.iter().any(|e| e.name == name) {
@@ -51,6 +55,7 @@ pub fn add_entity(
     config.entity.push(Entity {
         name: name.to_string(),
         use_cases,
+        db,
     });
     write(base, &config)
 }

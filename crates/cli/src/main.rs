@@ -17,7 +17,14 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Scaffold a new Harbor project
-    New,
+    New {
+        /// Project name (skips interactive prompt)
+        #[arg(long)]
+        name: Option<String>,
+        /// Include database support (SQLx + Postgres) (skips interactive prompt)
+        #[arg(long)]
+        db: bool,
+    },
     /// Code generators for existing Harbor projects
     Generate {
         #[command(subcommand)]
@@ -31,6 +38,9 @@ enum GenerateAction {
     Scaffold {
         /// Entity name in PascalCase (e.g. Product, OrderItem)
         name: String,
+        /// Generate a SQLx (Postgres) repository instead of InMemory
+        #[arg(long)]
+        db: bool,
     },
     /// Add a use case to an existing entity
     UseCase {
@@ -56,7 +66,8 @@ fn templates_dir() -> PathBuf {
     dir
 }
 
-fn new_project() -> Result<String, Box<dyn std::error::Error>> {
+/// Core project generation. `name = None` lets cargo-generate prompt interactively.
+fn generate_new_project(name: Option<String>) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let template_dir = templates_dir().join("basic");
 
     let args = GenerateArgs {
@@ -64,24 +75,49 @@ fn new_project() -> Result<String, Box<dyn std::error::Error>> {
             path: Some(template_dir.to_string_lossy().into_owned()),
             ..Default::default()
         },
+        name: name.clone(),
         no_workspace: true,
         ..Default::default()
     };
 
-    let output_dir = generate(args)?;
-    Ok(output_dir.display().to_string())
+    Ok(generate(args)?)
+}
+
+/// Interactive `harbor new`: prompts for any missing values.
+fn new_project(name: Option<String>, db: bool) -> Result<String, Box<dyn std::error::Error>> {
+    // If --db not given, ask interactively (only when running with a TTY)
+    let resolved_db = if db {
+        true
+    } else if dialoguer::console::user_attended() {
+        dialoguer::Confirm::new()
+            .with_prompt("Include database support (SQLx + Postgres)?")
+            .default(false)
+            .interact()?
+    } else {
+        false
+    };
+
+    let output = generate_new_project(name)?;
+
+    if resolved_db {
+        scaffold::apply_db_to_new_project(&output)?;
+    }
+
+    Ok(output.display().to_string())
 }
 
 fn main() {
     let cli = Cli::parse();
 
     let result: Result<(), Box<dyn std::error::Error>> = match cli.command {
-        Commands::New => new_project().map(|path| println!("Project created at: {path}")),
+        Commands::New { name, db } => {
+            new_project(name, db).map(|path| println!("Project created at: {path}"))
+        }
         Commands::Generate {
-            action: GenerateAction::Scaffold { name },
+            action: GenerateAction::Scaffold { name, db },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            scaffold::run(&name, &cwd)
+            scaffold::run(&name, &cwd, db)
         }
         Commands::Generate {
             action: GenerateAction::UseCase { entity, action },
@@ -146,6 +182,55 @@ mod tests {
 
         let output_dir = generate(args)?;
         Ok(output_dir)
+    }
+
+    // ── harbor new (non-interactive / flag-driven) ────────────────────────────
+
+    #[test]
+    fn new_name_flag_sets_project_name() {
+        let dir = temp_dir("new_name_flag");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output =
+            new_project_non_interactive(Some("explicit-name".into()), false, &dir).unwrap();
+
+        let content = fs::read_to_string(output.join("presentation/Cargo.toml")).unwrap();
+        assert!(content.contains("name = \"explicit-name\""));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn new_db_flag_creates_db_files() {
+        let dir = temp_dir("new_db_flag");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("db-project".into()), true, &dir).unwrap();
+
+        assert!(output.join(".env.example").exists());
+        assert!(output.join(".cargo/config.toml").exists());
+        assert!(output.join("infrastructure/migrations").is_dir());
+        assert!(output.join("infrastructure/src/db.rs").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn new_without_db_flag_has_no_db_files() {
+        let dir = temp_dir("new_no_db");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output =
+            new_project_non_interactive(Some("plain-project".into()), false, &dir).unwrap();
+
+        assert!(!output.join(".env.example").exists());
+        assert!(!output.join(".cargo/config.toml").exists());
+        assert!(!output.join("infrastructure/src/db.rs").exists());
+
+        cleanup(&dir);
     }
 
     // ── harbor new ────────────────────────────────────────────────────────────
@@ -329,7 +414,7 @@ mod tests {
         let dir = temp_dir("scaffold_single_word");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
 
         // Domain
         assert!(dir.join("business/src/domain/product/model.rs").exists());
@@ -373,7 +458,7 @@ mod tests {
         let dir = temp_dir("scaffold_multi_word");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("OrderItem", &dir).unwrap();
+        scaffold::run("OrderItem", &dir, false).unwrap();
 
         assert!(dir.join("business/src/domain/order_item/model.rs").exists());
         assert!(
@@ -401,7 +486,7 @@ mod tests {
         let dir = temp_dir("scaffold_lowercase");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("product", &dir).unwrap();
+        scaffold::run("product", &dir, false).unwrap();
 
         assert!(dir.join("business/src/domain/product/model.rs").exists());
         assert!(
@@ -417,7 +502,7 @@ mod tests {
         let dir = temp_dir("scaffold_model_content");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
 
         let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
         assert!(content.contains("pub struct ProductProps"));
@@ -433,7 +518,7 @@ mod tests {
         let dir = temp_dir("scaffold_errors_content");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
 
         let content =
             fs::read_to_string(dir.join("business/src/domain/product/errors.rs")).unwrap();
@@ -449,7 +534,7 @@ mod tests {
         let dir = temp_dir("scaffold_impl_content");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
 
         let content =
             fs::read_to_string(dir.join("business/src/application/product/create_product.rs"))
@@ -499,7 +584,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
 
         let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
         // domain block now contains product
@@ -521,7 +606,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
 
         let content = fs::read_to_string(dir.join("infrastructure/src/lib.rs")).unwrap();
         assert!(content.contains("pub mod product {"));
@@ -538,7 +623,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
 
         let content = fs::read_to_string(dir.join("presentation/src/api.rs")).unwrap();
         assert!(content.contains("pub mod product;"));
@@ -555,7 +640,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
 
         // harbor.toml now contains both entities
         let toml = fs::read_to_string(dir.join("harbor.toml")).unwrap();
@@ -738,6 +823,175 @@ mod tests {
         let result = scaffold::run_use_case("NonExistent", "do_something", &dir);
         assert!(result.is_err());
 
+        cleanup(&dir);
+    }
+
+    // ── harbor new --db ───────────────────────────────────────────────────────
+
+    /// Non-interactive wrapper for tests — always passes name so no TTY is needed.
+    fn new_project_non_interactive(
+        name: Option<String>,
+        db: bool,
+        destination: &Path,
+    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let template_dir = templates_dir().join("basic");
+        let args = GenerateArgs {
+            template_path: TemplatePath {
+                path: Some(template_dir.to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+            name: name.clone(),
+            destination: Some(destination.to_path_buf()),
+            vcs: Some(Vcs::None),
+            no_workspace: true,
+            ..Default::default()
+        };
+        let output = generate(args)?;
+        if db {
+            scaffold::apply_db_to_new_project(&output)?;
+        }
+        Ok(output)
+    }
+
+    fn generate_db_project(
+        name: &str,
+        destination: &Path,
+    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let output = generate_project(name, destination)?;
+        scaffold::apply_db_to_new_project(&output)?;
+        Ok(output)
+    }
+
+    #[test]
+    fn db_project_has_env_example() {
+        let dir = temp_dir("db_env");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("db-app", &dir).unwrap();
+        let content = fs::read_to_string(output.join(".env.example")).unwrap();
+        assert!(content.contains("DATABASE_URL"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn db_project_has_cargo_config_with_sqlx_offline() {
+        let dir = temp_dir("db_cargo_config");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("db-app", &dir).unwrap();
+        let content = fs::read_to_string(output.join(".cargo/config.toml")).unwrap();
+        assert!(content.contains("SQLX_OFFLINE"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn db_project_has_migrations_dir() {
+        let dir = temp_dir("db_migrations");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("db-app", &dir).unwrap();
+        assert!(output.join("infrastructure/migrations").is_dir());
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn db_project_has_db_rs_with_pool_function() {
+        let dir = temp_dir("db_db_rs");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("db-app", &dir).unwrap();
+        let content = fs::read_to_string(output.join("infrastructure/src/db.rs")).unwrap();
+        assert!(content.contains("create_postgres_pool"));
+        assert!(content.contains("PgPool"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn db_project_infrastructure_cargo_has_sqlx() {
+        let dir = temp_dir("db_infra_cargo");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("db-app", &dir).unwrap();
+        let content = fs::read_to_string(output.join("infrastructure/Cargo.toml")).unwrap();
+        assert!(content.contains("sqlx"));
+        assert!(content.contains("postgres"));
+        cleanup(&dir);
+    }
+
+    // ── harbor generate scaffold --db ─────────────────────────────────────────
+
+    fn setup_db_harbor_stubs(base: &Path) {
+        setup_harbor_stubs(base);
+        // add the db infrastructure files that harbor new --db would create
+        fs::create_dir_all(base.join("infrastructure/migrations")).unwrap();
+    }
+
+    #[test]
+    fn scaffold_db_creates_entity_rs() {
+        let dir = temp_dir("scaffold_db_entity");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_db_harbor_stubs(&dir);
+        scaffold::run("Product", &dir, true).unwrap();
+        assert!(dir.join("infrastructure/src/product/entity.rs").exists());
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_db_repository_uses_pgpool() {
+        let dir = temp_dir("scaffold_db_repo");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_db_harbor_stubs(&dir);
+        scaffold::run("Product", &dir, true).unwrap();
+        let content =
+            fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
+        assert!(content.contains("PgPool"));
+        assert!(content.contains("PgProductRepository"));
+        assert!(!content.contains("InMemoryProductRepository"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_db_harbor_toml_has_db_true() {
+        let dir = temp_dir("scaffold_db_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_db_harbor_stubs(&dir);
+        scaffold::run("Product", &dir, true).unwrap();
+        let content = fs::read_to_string(dir.join("harbor.toml")).unwrap();
+        assert!(content.contains("db = true"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_db_bootstrap_uses_pg_repo() {
+        let dir = temp_dir("scaffold_db_bootstrap");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_db_harbor_stubs(&dir);
+        scaffold::run("Product", &dir, true).unwrap();
+        let content =
+            fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(content.contains("PgProductRepository"));
+        assert!(!content.contains("InMemoryProductRepository"));
+        // Greeting (non-db) still uses InMemory
+        assert!(content.contains("InMemoryGreetingRepository"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_without_db_still_uses_inmemory() {
+        let dir = temp_dir("scaffold_no_db");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs(&dir);
+        scaffold::run("Product", &dir, false).unwrap();
+        let content =
+            fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
+        assert!(content.contains("InMemoryProductRepository"));
+        assert!(!content.contains("PgPool"));
+        assert!(!dir.join("infrastructure/src/product/entity.rs").exists());
         cleanup(&dir);
     }
 

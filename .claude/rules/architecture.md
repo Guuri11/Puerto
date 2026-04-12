@@ -178,10 +178,31 @@ Tests live inside each file in `#[cfg(test)] mod tests { ... }`.
 
 **Adapters for external systems. No business logic.**
 
-- `repository.rs` — implements the domain repository trait
-- Start with `InMemory<Entity>Repository`; replace with SQLx adapter when adding a DB
+### InMemory (default — `harbor generate scaffold <Name>`)
+
+```
+infrastructure/src/<entity>/
+  repository.rs    # InMemory<Entity>Repository — implements domain repository trait
+```
+
+### SQLx/Postgres (`harbor generate scaffold <Name> --db`)
+
+```
+infrastructure/src/<entity>/
+  entity.rs        # <Entity>Db struct (#[derive(FromRow)]) + TryFrom + From conversions
+  repository.rs    # Pg<Entity>Repository { pool: PgPool } — implements domain repository trait
+infrastructure/src/
+  db.rs            # create_postgres_pool() — created once by harbor new --db
+infrastructure/migrations/
+  <ts>_<name>.sql  # created by harbor generate migration <name>
+```
+
+**Rules:**
 - `from_repository()` is the **only** entry point from persistence to domain — never call `Entity::new()` inside a repository
-- Conversion pattern (SQLx): `TryFrom<EntityDb> for Entity` and `From<&Entity> for EntityDb`
+- `TryFrom<EntityDb> for Entity` handles row → domain conversion (can fail)
+- `From<&Entity> for EntityDb` handles domain → row conversion (infallible)
+- `db.rs` is shared across all entities — never duplicated per entity
+- `entity.rs` and `db.rs` are only present when `db = true` in harbor.toml
 
 ---
 

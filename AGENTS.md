@@ -80,9 +80,15 @@ Presentation → Infrastructure → Application → Domain
 ## CLI Commands
 
 ```bash
-harbor new                                 # Scaffold a new project
-harbor generate scaffold <Name>            # Add a new DDD entity (all layers)
+harbor new                                 # Interactive: prompts for name + db support
+harbor new --name <name>                   # Skip name prompt
+harbor new --db                            # Skip db prompt (enables SQLx/Postgres)
+harbor new --name <name> --db              # Fully non-interactive (CI-friendly)
+
+harbor generate scaffold <Name>            # Add a new DDD entity (InMemory repository)
+harbor generate scaffold <Name> --db       # Add a new DDD entity (SQLx/Postgres repository)
 harbor generate use-case <Entity> <action> # Add a use case to an existing entity
+harbor generate migration <name>           # Create a new SQLx migration file
 harbor generate bootstrap                  # Regenerate bootstrap.rs from harbor.toml
 ```
 

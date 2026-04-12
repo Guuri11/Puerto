@@ -49,6 +49,35 @@ Harbor is a Rust full-stack framework built around DDD + Clean Architecture (Hex
 
 ## Phase 2 — Generators
 
+### 2.0 `harbor new` — interactive project creation ✅ DONE
+
+**Command signature:**
+```
+harbor new [--name <name>] [--db]
+```
+
+**Behavior:**
+- If `--name` is not provided → prompt: `Project name:`
+- If `--db` is not provided → prompt: `Include database support (SQLx + Postgres)? [y/N]`
+- If both flags are provided → no prompts, fully scriptable (CI-friendly)
+- Flags and prompts are independent: any combination works
+
+**Examples:**
+```bash
+harbor new                          # prompts for both name and db
+harbor new --name my-app            # prompts only for db
+harbor new --db                     # prompts only for name
+harbor new --name my-app --db       # no prompts, creates db project
+```
+
+**Test scenarios:**
+- Non-interactive: `--name` flag passed to cargo-generate, project name appears in Cargo.toml
+- Non-interactive: `--db` flag skips db prompt, db files created
+- Non-interactive: both flags, fully silent (no stdin required)
+- Interactive path is validated manually (`harbor new` with TTY)
+
+---
+
 ### 2.1 `harbor generate scaffold <Name>` ✅ DONE
 
 Creates all files for a new DDD entity across every layer:
@@ -170,9 +199,9 @@ infrastructure/migrations/<timestamp>_<name>.sql
 
 ---
 
-## Phase 4 — Database layer (SQLx)
+## Phase 4 — Database layer (SQLx) ✅ DONE
 
-### 4.0 `harbor new --db` — project template with database support
+### 4.0 `harbor new --db` — project template with database support ✅
 
 Extends the base `harbor new` with database plumbing baked into the generated project.
 
@@ -228,9 +257,9 @@ setup:
 ```
 
 **`presentation/src/generated/bootstrap.rs` template change:**
-- Receives `PgPool` as argument instead of constructing `InMemory*` repos
-- `build_app(pool: PgPool)` signature
-- `main.rs.liquid` updated to load `DATABASE_URL`, create pool, call `build_app(pool)`
+- When any entity has `db = true`: `pub async fn build_app() -> Route` — creates pool internally from `DATABASE_URL`
+- When no db entities: `pub fn build_app() -> Route` (sync, unchanged)
+- `main.rs` stays 5 lines in both cases; the `.await` difference is handled inside `build_app`
 
 **Test scenarios:**
 - `harbor new --db` generates all additional files
@@ -241,7 +270,7 @@ setup:
 
 ---
 
-### 4.1 `harbor generate scaffold <Name> --db` — entity with SQLx repository
+### 4.1 `harbor generate scaffold <Name> --db` — entity with SQLx repository ✅
 
 **Command signature:**
 ```
@@ -384,7 +413,7 @@ db = true          # NEW: controls InMemory vs Pg repository in bootstrap
 
 ---
 
-### 4.2 `harbor generate use-case <Entity> <action>` with db entities — unchanged
+### 4.2 `harbor generate use-case <Entity> <action>` with db entities — unchanged ✅
 
 `harbor generate use-case` does not change in Phase 4. The use case trait + impl are database-agnostic. Bootstrap regeneration already handles the correct repo type via `db` flag in `harbor.toml`.
 

@@ -9,11 +9,13 @@ name = "my-app"          # project name (hyphen-separated, matches Cargo binary 
 [[entity]]
 name = "Product"         # PascalCase entity name
 use_cases = ["create_product", "delete_product"]  # snake_case action names
+db = true                # optional — omit for InMemory, set true for SQLx/Postgres
 ```
 
 - One `[[entity]]` block per DDD entity
 - `name` is canonical PascalCase — all other identifiers derived from it
 - `use_cases` entries are snake_case action names — match the file/module name exactly
+- `db = true` → generates `PgEntityRepository` + `entity.rs`; absent/false → `InMemoryEntityRepository`
 - Managed by Harbor CLI — do not add entities manually unless also running `harbor generate bootstrap`
 
 ---
@@ -83,12 +85,17 @@ presentation/src/api/product/error_mapper.rs
 `generated/bootstrap.rs` is generated from the full entity list. For each entity:
 
 1. Import use case impls: `use business::application::{snake}::{uc}::{uc_pascal}UseCaseImpl;`
-2. Import repo: `use infrastructure::{snake}::repository::InMemory{pascal}Repository;`
+2. Import repo:
+   - `db = false` → `use infrastructure::{snake}::repository::InMemory{pascal}Repository;`
+   - `db = true`  → `use infrastructure::{snake}::repository::Pg{pascal}Repository;`
 3. Import API struct: `use crate::api::{snake}::routes::{pascal}Api;`
-4. Wire in `build_app()`:
-   - **Single use case**: inline repo — `Arc::new(InMemory{pascal}Repository)`
+4. Function signature:
+   - **No db entities** → `pub fn build_app() -> Route` (sync)
+   - **Any db entity** → `pub async fn build_app() -> Route` (reads `DATABASE_URL`, creates pool internally)
+5. Wire in `build_app()`:
+   - **Single use case**: inline repo
    - **Multiple use cases**: bind repo once, clone for each — `Arc::clone(&{snake}_repo)`
-5. `OpenApiService::new(...)` argument:
+6. `OpenApiService::new(...)` argument:
    - **Single entity**: `greeting_api`
    - **Multiple entities**: `(greeting_api, product_api, ...)`
 
@@ -98,7 +105,9 @@ presentation/src/api/product/error_mapper.rs
 
 | Command | Effect |
 |---------|--------|
-| `harbor new` | Creates harbor.toml from template with initial Greeting entity |
-| `harbor generate scaffold <Name>` | Appends `[[entity]]` block, regenerates bootstrap.rs |
+| `harbor new [--name] [--db]` | Creates harbor.toml from template with initial Greeting entity |
+| `harbor generate scaffold <Name>` | Appends `[[entity]]` block (`db` omitted), regenerates bootstrap.rs |
+| `harbor generate scaffold <Name> --db` | Appends `[[entity]]` block with `db = true`, regenerates bootstrap.rs |
 | `harbor generate bootstrap` | Reads harbor.toml, regenerates bootstrap.rs (no other changes) |
 | `harbor generate use-case <Entity> <action>` | Appends action to entity's `use_cases`, regenerates bootstrap.rs |
+| `harbor generate migration <name>` | Creates migration file — does not touch harbor.toml |

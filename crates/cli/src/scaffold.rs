@@ -141,16 +141,26 @@ fn patch_business_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-fn patch_infra_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn patch_infra_lib(base: &Path, snake: &str, db: bool) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("infrastructure/src/lib.rs");
     let mut src = fs::read_to_string(&path)?;
 
     if !src.ends_with('\n') {
         src.push('\n');
     }
-    src.push_str(&format!(
-        "pub mod {snake} {{\n    pub mod repository;\n}}\n"
-    ));
+    if db {
+        src.push_str(&format!(
+            "pub mod {snake} {{\n    pub mod entity;\n    pub mod repository;\n}}\n"
+        ));
+        // Ensure `pub mod db;` is declared (idempotent)
+        if !src.contains("pub mod db;") {
+            src.push_str("pub mod db;\n");
+        }
+    } else {
+        src.push_str(&format!(
+            "pub mod {snake} {{\n    pub mod repository;\n}}\n"
+        ));
+    }
 
     fs::write(&path, src)?;
     Ok(())
@@ -169,9 +179,9 @@ fn patch_api_rs(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-fn try_patch_libs(snake: &str, base: &Path) -> bool {
+fn try_patch_libs(snake: &str, base: &Path, db: bool) -> bool {
     patch_business_lib(base, snake).is_ok()
-        && patch_infra_lib(base, snake).is_ok()
+        && patch_infra_lib(base, snake, db).is_ok()
         && patch_api_rs(base, snake).is_ok()
 }
 
@@ -199,13 +209,24 @@ pub fn generate_bootstrap_content(entities: &[crate::harbor_toml::Entity]) -> St
     }
     out.push('\n');
 
-    // Repo imports
+    // Repo imports — InMemory for non-db, Pg for db
+    let has_db = entities.iter().any(|e| e.db);
     for entity in entities {
         let snake = pascal_to_snake(&entity.name);
-        out.push_str(&format!(
-            "use infrastructure::{snake}::repository::InMemory{}Repository;\n",
-            entity.name
-        ));
+        if entity.db {
+            out.push_str(&format!(
+                "use infrastructure::{snake}::repository::Pg{}Repository;\n",
+                entity.name
+            ));
+        } else {
+            out.push_str(&format!(
+                "use infrastructure::{snake}::repository::InMemory{}Repository;\n",
+                entity.name
+            ));
+        }
+    }
+    if has_db {
+        out.push_str("use sqlx::PgPool;\n");
     }
     out.push('\n');
 
@@ -222,24 +243,38 @@ pub fn generate_bootstrap_content(entities: &[crate::harbor_toml::Entity]) -> St
     }
     out.push('\n');
 
-    out.push_str("pub fn build_app() -> Route {\n");
+    // build_app signature: async when any entity needs a pool
+    if has_db {
+        out.push_str("pub async fn build_app() -> Route {\n");
+        out.push_str("    dotenvy::dotenv().ok();\n");
+        out.push_str(
+            "    let database_url = std::env::var(\"DATABASE_URL\").expect(\"DATABASE_URL must be set\");\n",
+        );
+        out.push_str(
+            "    let pool = infrastructure::db::create_postgres_pool(&database_url).await;\n\n",
+        );
+    } else {
+        out.push_str("pub fn build_app() -> Route {\n");
+    }
 
     // Wire each entity
     for entity in entities {
         let pascal = &entity.name;
         let snake = pascal_to_snake(pascal);
         let uc_count = entity.use_cases.len();
+        let repo_type = if entity.db {
+            format!("Pg{pascal}Repository {{ pool: pool.clone() }}")
+        } else {
+            format!("InMemory{pascal}Repository")
+        };
 
         for (i, uc) in entity.use_cases.iter().enumerate() {
             let uc_pascal = to_pascal_case(uc);
             // Single use case: inline the repo. Multiple: bind repo once then clone.
             let repo_expr = if uc_count == 1 {
-                format!("Arc::new(InMemory{pascal}Repository)")
+                format!("Arc::new({repo_type})")
             } else if i == 0 {
-                // First of many: bind repo separately so we can clone it
-                out.push_str(&format!(
-                    "    let {snake}_repo = Arc::new(InMemory{pascal}Repository);\n"
-                ));
+                out.push_str(&format!("    let {snake}_repo = Arc::new({repo_type});\n"));
                 format!("Arc::clone(&{snake}_repo)")
             } else if i < uc_count - 1 {
                 format!("Arc::clone(&{snake}_repo)")
@@ -328,15 +363,15 @@ fn apply_uc(template: &str, pascal: &str, snake: &str, uc_pascal: &str, uc: &str
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-pub fn run(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(name: &str, base: &Path, db: bool) -> Result<(), Box<dyn std::error::Error>> {
     let pascal = to_pascal_case(name);
     let snake = pascal_to_snake(&pascal);
 
-    write_files(&pascal, &snake, base)?;
-    try_patch_libs(&snake, base);
+    write_files(&pascal, &snake, base, db)?;
+    try_patch_libs(&snake, base, db);
 
     let use_case = format!("create_{snake}");
-    let bootstrapped = crate::harbor_toml::add_entity(base, &pascal, vec![use_case])
+    let bootstrapped = crate::harbor_toml::add_entity(base, &pascal, vec![use_case], db)
         .and_then(|_| regenerate_bootstrap(base))
         .is_ok();
 
@@ -349,6 +384,70 @@ pub fn run(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    Ok(())
+}
+
+/// Write the extra files that `harbor new --db` adds on top of the base template.
+pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    // .env.example
+    write(
+        &base.join(".env.example"),
+        "DATABASE_URL=postgres://user:password@localhost/dbname\n",
+    )?;
+
+    // .cargo/config.toml — SQLX_OFFLINE so CI compiles without a live DB
+    write(
+        &base.join(".cargo/config.toml"),
+        "[env]\nSQLX_OFFLINE = \"true\"\n",
+    )?;
+
+    // infrastructure/migrations/ directory (empty, sqlx needs it)
+    fs::create_dir_all(base.join("infrastructure/migrations"))?;
+
+    // infrastructure/src/db.rs
+    write(&base.join("infrastructure/src/db.rs"), DB_RS)?;
+
+    // Patch infrastructure/Cargo.toml to add sqlx
+    patch_infra_cargo_toml(base)?;
+
+    // Patch Makefile setup target to also install sqlx-cli
+    patch_makefile_setup_for_db(base)?;
+
+    Ok(())
+}
+
+fn patch_makefile_setup_for_db(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("Makefile");
+    if !path.exists() {
+        return Ok(()); // no Makefile — nothing to patch
+    }
+    let src = fs::read_to_string(&path)?;
+    let sqlx_line = "\tcargo install sqlx-cli --no-default-features --features postgres --locked\n";
+    if src.contains("sqlx-cli") {
+        return Ok(()); // idempotent
+    }
+    // Append sqlx-cli install after the nextest install line inside setup target
+    let patched = src.replace(
+        "\tcargo install cargo-nextest --locked\n",
+        &format!("\tcargo install cargo-nextest --locked\n{sqlx_line}"),
+    );
+    fs::write(&path, patched)?;
+    Ok(())
+}
+
+fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("infrastructure/Cargo.toml");
+    let mut src = fs::read_to_string(&path)?;
+    if src.contains("sqlx") {
+        return Ok(()); // idempotent
+    }
+    if !src.ends_with('\n') {
+        src.push('\n');
+    }
+    src.push_str(
+        "\n[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\"]\n",
+    );
+    fs::write(&path, src)?;
     Ok(())
 }
 
@@ -458,7 +557,12 @@ pub fn run_migration(
     Ok(())
 }
 
-fn write_files(pascal: &str, snake: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn write_files(
+    pascal: &str,
+    snake: &str,
+    base: &Path,
+    db: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Domain layer
     write(
         &base.join(format!("business/src/domain/{snake}/model.rs")),
@@ -488,10 +592,21 @@ fn write_files(pascal: &str, snake: &str, base: &Path) -> Result<(), Box<dyn std
     )?;
 
     // Infrastructure layer
-    write(
-        &base.join(format!("infrastructure/src/{snake}/repository.rs")),
-        &apply(INFRA_REPOSITORY, pascal, snake),
-    )?;
+    if db {
+        write(
+            &base.join(format!("infrastructure/src/{snake}/entity.rs")),
+            &apply(INFRA_ENTITY, pascal, snake),
+        )?;
+        write(
+            &base.join(format!("infrastructure/src/{snake}/repository.rs")),
+            &apply(INFRA_DB_REPOSITORY, pascal, snake),
+        )?;
+    } else {
+        write(
+            &base.join(format!("infrastructure/src/{snake}/repository.rs")),
+            &apply(INFRA_REPOSITORY, pascal, snake),
+        )?;
+    }
 
     // Presentation layer
     write(
@@ -827,6 +942,96 @@ impl {Pascal}Api {
             }
         }
     }
+}
+"#;
+
+// ── SQLx templates ────────────────────────────────────────────────────────────
+
+const INFRA_ENTITY: &str = r#"use sqlx::FromRow;
+use uuid::Uuid;
+
+use business::domain::{snake}::{errors::{Pascal}Error, model::{Pascal}};
+
+#[derive(FromRow)]
+pub struct {Pascal}Db {
+    pub id: Uuid,
+    pub name: String,
+}
+
+impl TryFrom<{Pascal}Db> for {Pascal} {
+    type Error = {Pascal}Error;
+
+    fn try_from(row: {Pascal}Db) -> Result<Self, Self::Error> {
+        Ok(Self::from_repository({Pascal} {
+            name: row.name,
+        }))
+    }
+}
+
+impl From<&{Pascal}> for {Pascal}Db {
+    fn from(entity: &{Pascal}) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name: entity.name.clone(),
+        }
+    }
+}
+"#;
+
+const INFRA_DB_REPOSITORY: &str = r#"use async_trait::async_trait;
+use sqlx::PgPool;
+
+use business::domain::{snake}::{
+    errors::{Pascal}Error,
+    model::{Pascal},
+    repository::{Pascal}RepositoryTrait,
+};
+
+use super::entity::{Pascal}Db;
+
+pub struct Pg{Pascal}Repository {
+    pub pool: PgPool,
+}
+
+#[async_trait]
+impl {Pascal}RepositoryTrait for Pg{Pascal}Repository {
+    async fn find_by_id(&self, id: &str) -> Result<Option<{Pascal}>, {Pascal}Error> {
+        let row = sqlx::query_as!(
+            {Pascal}Db,
+            "SELECT id, name FROM {snake}s WHERE id = $1",
+            id.parse::<uuid::Uuid>().ok()
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| {Pascal}Error::RepositoryError)?;
+
+        row.map(|r| r.try_into()).transpose()
+    }
+
+    async fn save(&self, entity: &{Pascal}) -> Result<(), {Pascal}Error> {
+        let db = {Pascal}Db::from(entity);
+        sqlx::query!(
+            "INSERT INTO {snake}s (id, name) VALUES ($1, $2)
+             ON CONFLICT (id) DO UPDATE SET name = $2",
+            db.id,
+            db.name
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|_| {Pascal}Error::RepositoryError)?;
+        Ok(())
+    }
+}
+"#;
+
+const DB_RS: &str = r#"use sqlx::{PgPool, postgres::PgPoolOptions};
+
+pub async fn create_postgres_pool(database_url: &str) -> PgPool {
+    PgPoolOptions::new()
+        .max_connections(5)
+        .connect(database_url)
+        .await
+        .expect("Failed to connect to database")
 }
 "#;
 
