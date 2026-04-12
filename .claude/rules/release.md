@@ -97,13 +97,13 @@ make test/full
 make lint
 make format
 cargo package --list          # confirm template files are included
-cargo publish --dry-run -p harbor-cli
+cargo publish --dry-run -p harbor-framework
 
 # 4. Tag and publish
 git add -A && git commit -m "chore: release v0.x.y"
 git tag v0.x.y
 git push && git push --tags
-cargo publish -p harbor-cli
+cargo publish -p harbor-framework
 ```
 
 ---
@@ -139,10 +139,10 @@ cargo fmt --check
 **`release.yml`** — runs on `v*` tag push:
 ```
 make test/full
-cargo publish -p harbor-cli
+cargo publish -p harbor-framework
 ```
 
-Binary distribution via **cargo-dist** — builds cross-platform binaries and generates a `curl | sh` install script on each GitHub Release.
+Binary distribution via **cargo-dist** is not set up yet — future work.
 
 ---
 

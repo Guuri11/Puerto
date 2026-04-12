@@ -95,12 +95,13 @@ harbor generate bootstrap                  # Regenerate bootstrap.rs from harbor
 ## Make Commands
 
 ```bash
-make run        # Run harbor CLI (prompts for project name)
-make test       # Fast structural tests (verifies generated file structure)
-make test/full  # Slow test: generates a real project, compiles it, runs its internal tests
-make lint       # cargo clippy --workspace -- -D warnings
-make check      # cargo check --workspace
-make format     # cargo fmt --all
+make run           # Run harbor CLI (prompts for project name)
+make test          # Fast structural tests (verifies generated file structure)
+make test/full     # Slow test: generates a real project, compiles it, runs its internal tests
+make lint          # cargo clippy --workspace -- -D warnings
+make check         # cargo check --workspace
+make format        # cargo fmt --all
+make sync-template # Sync crates/template/basic → crates/cli/template (run after template changes)
 ```
 
 ## Completion Checklist
