@@ -1,0 +1,225 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Getting Started"
+  description="Install Harbor and scaffold your first Rust DDD project in under a minute."
+>
+  <div class="min-h-screen pt-20">
+    <div class="mx-auto max-w-6xl px-6 py-16 lg:grid lg:grid-cols-[240px_1fr] lg:gap-12">
+
+      <!-- Sidebar -->
+      <aside class="hidden lg:block">
+        <nav class="sticky top-28 space-y-1" aria-label="Documentation navigation">
+          <p class="mb-3 font-mono text-xs font-semibold uppercase tracking-widest text-harbor-mist/50">Getting Started</p>
+          <a href="#installation" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Installation</a>
+          <a href="#new-project" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">New Project</a>
+          <a href="#scaffold" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Generate Scaffold</a>
+          <a href="#use-case" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Add Use Case</a>
+          <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Database (SQLx)</a>
+          <a href="#architecture" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Architecture</a>
+        </nav>
+      </aside>
+
+      <!-- Content -->
+      <article class="prose-harbor min-w-0">
+        <h1 class="font-mono text-4xl font-bold text-harbor-ice lg:text-5xl">Getting Started</h1>
+        <p class="mt-4 font-sans text-lg text-harbor-mist">
+          Harbor is a CLI tool that scaffolds production-ready Rust backends with Domain-Driven Design architecture. From install to running API in under a minute.
+        </p>
+
+        <!-- Prerequisites -->
+        <div class="mt-8 rounded-md border border-harbor-teal/30 bg-harbor-teal/5 px-5 py-4">
+          <p class="font-mono text-sm font-semibold text-harbor-teal">Prerequisites</p>
+          <ul class="mt-2 space-y-1 font-sans text-sm text-harbor-mist">
+            <li>Rust stable (1.75+) — <a href="https://rustup.rs" target="_blank" rel="noopener noreferrer" class="text-harbor-teal hover:underline">install via rustup</a></li>
+            <li>Cargo (included with Rust)</li>
+            <li>Optional: PostgreSQL + SQLx CLI for database projects</li>
+          </ul>
+        </div>
+
+        <!-- Installation -->
+        <section id="installation" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Installation</h2>
+          <p class="mt-3 font-sans text-harbor-mist">Install the Harbor CLI from crates.io:</p>
+          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+            <code class="font-mono text-sm text-harbor-ice">cargo install harbor</code>
+            <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="cargo install harbor" aria-label="Copy">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+          </div>
+          <p class="mt-4 font-sans text-sm text-harbor-mist">Verify the installation:</p>
+          <div class="code-block mt-2 flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
+            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+            <code class="font-mono text-sm text-harbor-ice">harbor --version</code>
+          </div>
+        </section>
+
+        <!-- New Project -->
+        <section id="new-project" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-harbor-ice">New Project</h2>
+          <p class="mt-3 font-sans text-harbor-mist">
+            Create a new Harbor workspace. The interactive wizard will ask for your project name and whether you need database support.
+          </p>
+          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+            <code class="font-mono text-sm text-harbor-ice">harbor new my-app</code>
+            <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor new my-app" aria-label="Copy">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+          </div>
+          <p class="mt-4 font-sans text-sm text-harbor-mist">For non-interactive use (CI/scripts):</p>
+          <div class="code-block mt-2 flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
+            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+            <code class="font-mono text-sm text-harbor-ice">harbor new my-app --name my-app --db</code>
+          </div>
+
+          <p class="mt-6 font-sans text-sm font-semibold text-harbor-ice">Generated structure:</p>
+          <div class="mt-3 rounded-md border border-harbor-steel/40 bg-harbor-navy p-5 font-mono text-sm leading-relaxed">
+            <div class="text-harbor-mist/60">my-app/</div>
+            <div class="pl-4"><span class="text-harbor-teal">business/</span><span class="text-harbor-mist/40 ml-3">← domain + application</span></div>
+            <div class="pl-8 text-harbor-mist/50">src/domain/greeting/</div>
+            <div class="pl-8 text-harbor-mist/50">src/application/greeting/</div>
+            <div class="pl-4 mt-1"><span class="text-harbor-indigo">infrastructure/</span><span class="text-harbor-mist/40 ml-3">← adapters</span></div>
+            <div class="pl-8 text-harbor-mist/50">src/greeting/repository.rs</div>
+            <div class="pl-4 mt-1"><span class="text-harbor-rust">presentation/</span><span class="text-harbor-mist/40 ml-3">← http api</span></div>
+            <div class="pl-8 text-harbor-mist/50">src/api/greeting/routes.rs</div>
+            <div class="pl-4 mt-1 text-harbor-mist/50">harbor.toml</div>
+            <div class="pl-4 text-harbor-mist/50">Cargo.toml</div>
+          </div>
+        </section>
+
+        <!-- Scaffold -->
+        <section id="scaffold" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Generate Scaffold</h2>
+          <p class="mt-3 font-sans text-harbor-mist">
+            Scaffold a complete DDD entity across all layers. Harbor creates the domain model, repository trait, use cases, infrastructure adapter, and presentation routes — wired together automatically.
+          </p>
+          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+            <code class="font-mono text-sm text-harbor-ice">harbor generate scaffold User</code>
+            <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate scaffold User" aria-label="Copy">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+          </div>
+
+          <p class="mt-6 font-sans text-sm font-semibold text-harbor-ice">What gets created:</p>
+          <div class="mt-3 space-y-2 font-sans text-sm text-harbor-mist">
+            <div class="flex gap-2"><span class="text-harbor-teal font-mono">business/</span><span>model.rs, errors.rs, repository.rs (trait + mockall mock), use_cases/</span></div>
+            <div class="flex gap-2"><span class="text-harbor-indigo font-mono">infrastructure/</span><span>InMemoryUserRepository</span></div>
+            <div class="flex gap-2"><span class="text-harbor-rust font-mono">presentation/</span><span>routes.rs, dto.rs, responses.rs, error_mapper.rs</span></div>
+          </div>
+        </section>
+
+        <!-- Use Case -->
+        <section id="use-case" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Add a Use Case</h2>
+          <p class="mt-3 font-sans text-harbor-mist">
+            Add a single use case to an existing entity. Harbor generates the trait, implementation, and unit tests.
+          </p>
+          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+            <code class="font-mono text-sm text-harbor-ice">harbor generate use-case User create</code>
+            <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate use-case User create" aria-label="Copy">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- Database -->
+        <section id="database" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Database (SQLx)</h2>
+          <p class="mt-3 font-sans text-harbor-mist">
+            Harbor has first-class SQLx + Postgres support. Add the <code class="font-mono text-xs text-harbor-rust">--db</code> flag when creating a project or scaffolding an entity.
+          </p>
+          <div class="mt-4 space-y-3">
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-indigo bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor new my-app --db</code>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-indigo bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate scaffold User --db</code>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate migration create_users_table</code>
+            </div>
+          </div>
+          <p class="mt-4 font-sans text-sm text-harbor-mist">
+            With <code class="font-mono text-xs text-harbor-rust">--db</code>, Harbor generates a <code class="font-mono text-xs text-harbor-mist">PgUserRepository</code> instead of InMemory, wires the connection pool in bootstrap, and runs the initial migration automatically.
+          </p>
+        </section>
+
+        <!-- Architecture -->
+        <section id="architecture" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Architecture</h2>
+          <p class="mt-3 font-sans text-harbor-mist">
+            Harbor enforces a strict dependency rule: dependencies only point inward. The domain layer has zero external dependencies.
+          </p>
+          <div class="mt-6 rounded-md border border-harbor-steel/40 bg-harbor-navy p-6 font-mono text-sm">
+            <div class="text-harbor-mist/50 text-xs mb-4">dependency flow (inward only)</div>
+            <div class="space-y-2">
+              <div class="flex items-center gap-3">
+                <span class="w-36 text-harbor-rust">presentation/</span>
+                <span class="text-harbor-mist/40">→ depends on</span>
+                <span class="text-harbor-indigo">infrastructure/</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="w-36 text-harbor-indigo">infrastructure/</span>
+                <span class="text-harbor-mist/40">→ depends on</span>
+                <span class="text-harbor-teal">business/</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="w-36 text-harbor-teal">business/</span>
+                <span class="text-harbor-mist/40">→ depends on</span>
+                <span class="text-harbor-mist/60">nothing (std + thiserror only)</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Next steps -->
+        <div class="mt-16 rounded-lg border border-harbor-steel/40 bg-harbor-navy p-6">
+          <p class="font-mono text-sm font-semibold text-harbor-ice">What's next?</p>
+          <ul class="mt-3 space-y-2 font-sans text-sm text-harbor-mist">
+            <li>→ <a href="https://github.com/sergio-gurillo/harbor" target="_blank" rel="noopener noreferrer" class="text-harbor-teal hover:underline">Read the full README on GitHub</a></li>
+            <li>→ <a href="https://github.com/sergio-gurillo/harbor/blob/main/PLAN.md" target="_blank" rel="noopener noreferrer" class="text-harbor-teal hover:underline">See the roadmap (PLAN.md)</a></li>
+            <li>→ <a href="https://github.com/sergio-gurillo/harbor/issues" target="_blank" rel="noopener noreferrer" class="text-harbor-teal hover:underline">Report an issue or request a feature</a></li>
+          </ul>
+        </div>
+      </article>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  // Copy-to-clipboard
+  document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy ?? '';
+      await navigator.clipboard.writeText(text);
+      const original = btn.innerHTML;
+      btn.innerHTML = `<svg class="h-4 w-4 text-harbor-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`;
+      setTimeout(() => { btn.innerHTML = original; }, 1500);
+    });
+  });
+
+  // Active sidebar link on scroll
+  const sections = document.querySelectorAll('section[id]');
+  const links = document.querySelectorAll<HTMLAnchorElement>('.doc-link');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        links.forEach((l) => l.classList.remove('bg-harbor-navy', 'text-harbor-ice'));
+        const active = document.querySelector<HTMLAnchorElement>(`.doc-link[href="#${entry.target.id}"]`);
+        active?.classList.add('bg-harbor-navy', 'text-harbor-ice');
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+
+  sections.forEach((s) => observer.observe(s));
+</script>

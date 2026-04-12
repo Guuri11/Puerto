@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Harbor | High-Performance Rust CLI Framework</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&amp;family=IBM+Plex+Sans:wght@300;400;600&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#783200",
+                        "tertiary-container": "#ec6a06",
+                        "tertiary-fixed": "#ffdbca",
+                        "error-container": "#93000a",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-lowest": "#020f1e",
+                        "background": "#061423",
+                        "inverse-on-surface": "#243141",
+                        "on-surface": "#d6e4f9",
+                        "tertiary": "#ffb690",
+                        "secondary": "#c0c1ff",
+                        "primary-fixed-dim": "#6cd3f7",
+                        "on-secondary-fixed": "#07006c",
+                        "surface-container-low": "#0f1c2c",
+                        "surface-container-high": "#1e2b3b",
+                        "on-primary-container": "#002e3b",
+                        "on-secondary-fixed-variant": "#2f2ebe",
+                        "primary": "#6cd3f7",
+                        "error": "#ffb4ab",
+                        "surface": "#061423",
+                        "secondary-fixed-dim": "#c0c1ff",
+                        "surface-bright": "#2d3a4a",
+                        "inverse-surface": "#d6e4f9",
+                        "secondary-fixed": "#e1e0ff",
+                        "secondary-container": "#3131c0",
+                        "on-tertiary-container": "#4a1c00",
+                        "tertiary-fixed-dim": "#ffb690",
+                        "on-primary": "#003543",
+                        "on-primary-fixed": "#001f28",
+                        "outline": "#879298",
+                        "on-surface-variant": "#bdc8ce",
+                        "surface-container": "#132030",
+                        "on-tertiary": "#552100",
+                        "surface-dim": "#061423",
+                        "primary-container": "#269dbe",
+                        "surface-tint": "#6cd3f7",
+                        "on-tertiary-fixed": "#341100",
+                        "primary-fixed": "#b7eaff",
+                        "on-secondary-container": "#b0b2ff",
+                        "on-secondary": "#1000a9",
+                        "surface-variant": "#283646",
+                        "inverse-primary": "#006780",
+                        "surface-container-highest": "#283646",
+                        "on-error": "#690005",
+                        "on-background": "#d6e4f9",
+                        "on-primary-fixed-variant": "#004e61",
+                        "outline-variant": "#3e484d"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["JetBrains Mono", "monospace"],
+                        "body": ["IBM Plex Sans", "sans-serif"],
+                        "label": ["JetBrains Mono", "monospace"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { background-color: #061423; color: #d6e4f9; font-family: 'IBM Plex Sans', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .material-symbols-outlined { vertical-align: middle; line-height: 1; }
+        .terminal-glass { backdrop-filter: blur(20px); background: rgba(15, 28, 44, 0.8); }
+    </style>
+</head>
+<body class="selection:bg-primary selection:text-on-primary">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full bg-[#061423] z-50">
+<div class="flex justify-between items-center px-8 py-4 max-w-7xl mx-auto bg-[#0F1C2C] border-none">
+<div class="text-2xl font-bold text-cyan-400 after:content-['.'] after:text-orange-500 font-['JetBrains_Mono'] tracking-tighter">
+                Harbor
+            </div>
+<div class="hidden md:flex gap-8 items-center">
+<a class="text-cyan-400 font-bold border-b-2 border-cyan-400 pb-1 font-['JetBrains_Mono'] text-sm" href="#">Docs</a>
+<a class="text-slate-400 hover:text-cyan-300 transition-colors font-['JetBrains_Mono'] text-sm" href="#">GitHub</a>
+<div class="h-8 w-px bg-outline-variant/20 mx-2"></div>
+<button class="bg-surface-container-highest text-primary px-4 py-1.5 rounded-lg text-sm font-['JetBrains_Mono'] flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">terminal</span>
+                    v0.8.2
+                </button>
+</div>
+</div>
+</nav>
+<!-- HERO SECTION -->
+<header class="pt-40 pb-32 px-8 bg-[#0D1B2A] relative overflow-hidden">
+<div class="max-w-7xl mx-auto relative z-10">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-8">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span class="text-xs font-['JetBrains_Mono'] font-bold text-[#0891B2] tracking-wider uppercase">Open Source · Rust Framework</span>
+</div>
+<h1 class="text-6xl md:text-8xl font-extrabold font-['JetBrains_Mono'] text-[#F1F5F9] tracking-tighter mb-6 max-w-4xl leading-[0.9]">
+                Scaffold. Structure. <span class="text-primary">Ship.</span>
+</h1>
+<p class="text-xl md:text-2xl text-[#94A3B8] font-['IBM_Plex_Sans'] max-w-2xl mb-12 leading-relaxed">
+                Stop bikeshedding your architecture. Harbor provides a production-ready Rust skeleton using Domain-Driven Design and Clean Architecture by default.
+            </p>
+<div class="flex flex-col md:flex-row gap-4 mb-20">
+<button class="bg-[#F97316] hover:bg-[#EC6A06] text-white px-8 py-4 rounded-xl font-['JetBrains_Mono'] font-bold flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-orange-500/20">
+<span class="material-symbols-outlined">terminal</span>
+                    cargo install harbor
+                </button>
+<button class="border border-primary/30 hover:bg-primary/5 text-primary px-8 py-4 rounded-xl font-['JetBrains_Mono'] font-bold flex items-center justify-center gap-3 transition-all">
+                    View on GitHub
+                </button>
+</div>
+<!-- Terminal Mockup -->
+<div class="max-w-4xl mx-auto bg-[#1E3A5F] border border-[#2D5986] rounded-xl overflow-hidden shadow-2xl">
+<div class="flex gap-2 px-4 py-3 bg-[#0F1C2C]/50 border-b border-[#2D5986]/30">
+<div class="w-3 h-3 rounded-full bg-red-500/50"></div>
+<div class="w-3 h-3 rounded-full bg-yellow-500/50"></div>
+<div class="w-3 h-3 rounded-full bg-green-500/50"></div>
+<div class="ml-4 text-xs font-['JetBrains_Mono'] text-slate-500">harbor — zsh — 80×24</div>
+</div>
+<div class="p-6 font-['JetBrains_Mono'] text-sm leading-relaxed whitespace-pre-wrap">
+<div class="flex gap-3 mb-2">
+<span class="text-green-400">➜</span>
+<span class="text-cyan-400">~</span>
+<span>harbor new my-app</span>
+</div>
+<div class="text-slate-400 mb-4 italic">// Constructing project skeleton...</div>
+<div class="grid grid-cols-1 gap-1">
+<div class="flex items-center gap-2"><span class="text-slate-600">├──</span> <span class="text-cyan-400 font-bold">business/</span> <span class="text-slate-500 text-xs">(domain logic)</span></div>
+<div class="flex items-center gap-2"><span class="text-slate-600">├──</span> <span class="text-[#c0c1ff] font-bold">infrastructure/</span> <span class="text-slate-500 text-xs">(adapters)</span></div>
+<div class="flex items-center gap-2"><span class="text-slate-600">├──</span> <span class="text-orange-400 font-bold">presentation/</span> <span class="text-slate-500 text-xs">(openapi routes)</span></div>
+<div class="flex items-center gap-2"><span class="text-slate-600">└──</span> <span class="text-slate-400">Cargo.toml</span></div>
+</div>
+<div class="mt-4 text-green-400">✓ Project 'my-app' initialized successfully.</div>
+</div>
+</div>
+</div>
+<!-- Abstract Background Shape -->
+<div class="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-primary/5 to-transparent -z-10 pointer-events-none"></div>
+</header>
+<!-- ARCHITECTURE SECTION -->
+<section class="py-32 px-8 bg-[#1E3A5F]">
+<div class="max-w-7xl mx-auto">
+<h2 class="text-4xl md:text-5xl font-['JetBrains_Mono'] font-extrabold mb-16 text-center text-white tracking-tighter">
+                Clean Architecture, Zero Decisions
+            </h2>
+<div class="grid md:grid-cols-3 gap-8 relative">
+<!-- Connectors for Desktop -->
+<div class="hidden md:block absolute top-1/2 left-[30%] right-[30%] h-px border-t border-dashed border-primary/20 -z-0"></div>
+<!-- Card 1 -->
+<div class="bg-[#0D1B2A] p-8 rounded-xl border-l-4 border-cyan-400 shadow-xl relative z-10">
+<div class="mb-4 inline-block px-2 py-1 rounded bg-cyan-400/10 text-cyan-400 text-xs font-['JetBrains_Mono'] font-bold uppercase tracking-widest">
+                        Domain + Application
+                    </div>
+<h3 class="text-2xl font-['JetBrains_Mono'] font-bold text-white mb-4 italic">business/</h3>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        Pure business logic. No dependencies on databases or frameworks. Contains your Entities, Value Objects, and Use Cases.
+                    </p>
+</div>
+<!-- Card 2 -->
+<div class="bg-[#0D1B2A] p-8 rounded-xl border-l-4 border-[#c0c1ff] shadow-xl relative z-10">
+<div class="mb-4 inline-block px-2 py-1 rounded bg-[#c0c1ff]/10 text-[#c0c1ff] text-xs font-['JetBrains_Mono'] font-bold uppercase tracking-widest">
+                        Adapters
+                    </div>
+<h3 class="text-2xl font-['JetBrains_Mono'] font-bold text-white mb-4 italic">infrastructure/</h3>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        Database implementations (SQLx), external API clients, and messaging services. Where technical details live.
+                    </p>
+</div>
+<!-- Card 3 -->
+<div class="bg-[#0D1B2A] p-8 rounded-xl border-l-4 border-orange-400 shadow-xl relative z-10">
+<div class="mb-4 inline-block px-2 py-1 rounded bg-orange-400/10 text-orange-400 text-xs font-['JetBrains_Mono'] font-bold uppercase tracking-widest">
+                        HTTP API
+                    </div>
+<h3 class="text-2xl font-['JetBrains_Mono'] font-bold text-white mb-4 italic">presentation/</h3>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        Poem-openapi routes, CLI commands, and DTO mapping. The entry point for your system's users.
+                    </p>
+</div>
+</div>
+</div>
+</section>
+<!-- QUICK START SECTION -->
+<section class="py-32 px-8 bg-[#0D1B2A]">
+<div class="max-w-5xl mx-auto">
+<div class="flex items-center gap-4 mb-16">
+<div class="h-px flex-1 bg-gradient-to-r from-transparent to-primary/20"></div>
+<h2 class="text-4xl font-['JetBrains_Mono'] font-bold text-white">Quick Start</h2>
+<div class="h-px flex-1 bg-gradient-to-l from-transparent to-primary/20"></div>
+</div>
+<div class="space-y-12">
+<!-- Step 01 -->
+<div class="flex flex-col md:flex-row gap-8 items-start">
+<div class="text-5xl font-['JetBrains_Mono'] font-extrabold text-primary opacity-20">01</div>
+<div class="flex-1 w-full">
+<p class="text-lg text-slate-300 font-['IBM_Plex_Sans'] mb-4">Install the global CLI tool via Cargo.</p>
+<div class="bg-[#1E3A5F] border-l-4 border-cyan-400 p-6 rounded-r-xl">
+<code class="font-['JetBrains_Mono'] text-white">cargo install harbor</code>
+</div>
+</div>
+</div>
+<!-- Step 02 -->
+<div class="flex flex-col md:flex-row gap-8 items-start">
+<div class="text-5xl font-['JetBrains_Mono'] font-extrabold text-primary opacity-20">02</div>
+<div class="flex-1 w-full">
+<p class="text-lg text-slate-300 font-['IBM_Plex_Sans'] mb-4">Bootstrap a new project with DDD structure.</p>
+<div class="bg-[#1E3A5F] border-l-4 border-cyan-400 p-6 rounded-r-xl">
+<code class="font-['JetBrains_Mono'] text-white">harbor new my-app</code>
+</div>
+</div>
+</div>
+<!-- Step 03 -->
+<div class="flex flex-col md:flex-row gap-8 items-start">
+<div class="text-5xl font-['JetBrains_Mono'] font-extrabold text-primary opacity-20">03</div>
+<div class="flex-1 w-full">
+<p class="text-lg text-slate-300 font-['IBM_Plex_Sans'] mb-4">Scaffold a new resource across all layers.</p>
+<div class="bg-[#1E3A5F] border-l-4 border-cyan-400 p-6 rounded-r-xl">
+<code class="font-['JetBrains_Mono'] text-white">harbor generate scaffold User</code>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- FEATURES SECTION -->
+<section class="py-32 px-8 bg-[#1E3A5F]">
+<div class="max-w-7xl mx-auto">
+<div class="grid md:grid-cols-3 gap-6">
+<!-- Feature 1 -->
+<div class="bg-[#0D1B2A] p-8 border border-[#2D5986] rounded-xl hover:border-primary transition-colors group">
+<div class="w-12 h-12 flex items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-400 mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="memory">memory</span>
+</div>
+<h4 class="text-xl font-['JetBrains_Mono'] font-bold text-white mb-3">AI-Ready</h4>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        Metadata-rich structure designed for LLMs to easily navigate and generate code for your project.
+                    </p>
+</div>
+<!-- Feature 2 -->
+<div class="bg-[#0D1B2A] p-8 border border-[#2D5986] rounded-xl hover:border-orange-400 transition-colors group">
+<div class="w-12 h-12 flex items-center justify-center rounded-lg bg-orange-400/10 text-orange-400 mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</div>
+<h4 class="text-xl font-['JetBrains_Mono'] font-bold text-white mb-3">Convention over Config</h4>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        Pre-defined patterns for logging, metrics, and error handling so you can start coding instantly.
+                    </p>
+</div>
+<!-- Feature 3 -->
+<div class="bg-[#0D1B2A] p-8 border border-[#2D5986] rounded-xl hover:border-[#c0c1ff] transition-colors group">
+<div class="w-12 h-12 flex items-center justify-center rounded-lg bg-[#c0c1ff]/10 text-[#c0c1ff] mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="bolt">bolt</span>
+</div>
+<h4 class="text-xl font-['JetBrains_Mono'] font-bold text-white mb-3">Zero Boilerplate</h4>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        Proprietary macros eliminate the repetitiveness of mapping DTOs and injecting dependencies.
+                    </p>
+</div>
+<!-- Feature 4 -->
+<div class="bg-[#0D1B2A] p-8 border border-[#2D5986] rounded-xl hover:border-cyan-400 transition-colors group">
+<div class="w-12 h-12 flex items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-400 mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="shield">shield</span>
+</div>
+<h4 class="text-xl font-['JetBrains_Mono'] font-bold text-white mb-3">Type-Safe by Default</h4>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        Leverage Rust's type system across your entire architecture for maximum reliability.
+                    </p>
+</div>
+<!-- Feature 5 -->
+<div class="bg-[#0D1B2A] p-8 border border-[#2D5986] rounded-xl hover:border-orange-400 transition-colors group">
+<div class="w-12 h-12 flex items-center justify-center rounded-lg bg-orange-400/10 text-orange-400 mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="hub">hub</span>
+</div>
+<h4 class="text-xl font-['JetBrains_Mono'] font-bold text-white mb-3">Auto-wired DI</h4>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        Automatic compile-time dependency injection ensuring your architecture is decoupled but fast.
+                    </p>
+</div>
+<!-- Feature 6 -->
+<div class="bg-[#0D1B2A] p-8 border border-[#2D5986] rounded-xl hover:border-[#c0c1ff] transition-colors group">
+<div class="w-12 h-12 flex items-center justify-center rounded-lg bg-[#c0c1ff]/10 text-[#c0c1ff] mb-6 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="database">database</span>
+</div>
+<h4 class="text-xl font-['JetBrains_Mono'] font-bold text-white mb-3">Built for SQLx</h4>
+<p class="text-slate-400 font-['IBM_Plex_Sans'] leading-relaxed">
+                        First-class support for SQLx for asynchronous, compile-time checked database queries.
+                    </p>
+</div>
+</div>
+</div>
+</section>
+<!-- FINAL CTA SECTION -->
+<section class="py-32 bg-[#F97316]">
+<div class="max-w-4xl mx-auto text-center px-8">
+<h2 class="text-4xl md:text-6xl font-['JetBrains_Mono'] font-extrabold text-[#0D1B2A] mb-8 tracking-tighter">
+                Start building in seconds.
+            </h2>
+<p class="text-xl font-['IBM_Plex_Sans'] text-[#0D1B2A]/80 mb-12 max-w-2xl mx-auto">
+                Join hundreds of engineers building scalable Rust microservices with the stability of Domain-Driven Design.
+            </p>
+<button class="bg-[#061423] text-[#F1F5F9] px-10 py-5 rounded-2xl font-['JetBrains_Mono'] font-bold text-xl flex items-center justify-center gap-4 mx-auto transition-all hover:scale-105 active:scale-95 shadow-2xl">
+<span class="material-symbols-outlined">terminal</span>
+                cargo install harbor
+            </button>
+</div>
+</section>
+<!-- Footer -->
+<footer class="bg-[#061423]">
+<div class="flex flex-col md:flex-row justify-between items-center px-8 py-12 max-w-7xl mx-auto bg-[#0F1C2C] border-none font-['JetBrains_Mono'] text-sm tracking-tight">
+<div class="text-lg font-bold text-cyan-400 after:content-['.'] after:text-orange-500 mb-6 md:mb-0">
+                Harbor
+            </div>
+<div class="flex gap-8 items-center text-slate-500">
+<a class="hover:text-cyan-300 transition-colors" href="#">Docs</a>
+<a class="hover:text-cyan-300 transition-colors" href="#">GitHub</a>
+<a class="hover:text-cyan-300 transition-colors" href="#">License</a>
+</div>
+<div class="mt-6 md:mt-0 text-slate-500">
+                © 2024 Harbor Framework
+            </div>
+</div>
+</footer>
+</body></html>

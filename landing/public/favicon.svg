@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!--
+    Harbor — favicon (32×32)
+    Ultra-simplified for small sizes:
+    3 colored containers + hull silhouette
+  -->
+
+  <!-- Container 1: teal -->
+  <rect x="3" y="5" width="7" height="10" rx="1" fill="#0891B2"/>
+  <!-- Container 2: indigo -->
+  <rect x="12" y="5" width="7" height="10" rx="1" fill="#6366F1"/>
+  <!-- Container 3: orange -->
+  <rect x="21" y="5" width="8" height="10" rx="1" fill="#F97316"/>
+
+  <!-- Deck -->
+  <rect x="2" y="15" width="28" height="3" rx="1" fill="#1E3A5F"/>
+
+  <!-- Hull -->
+  <path d="M2 18 L30 18 L27 26 L5 26 Z" fill="#1E3A5F"/>
+
+  <!-- Water line -->
+  <path d="M1 27 Q8 25.5 16 27 Q24 28.5 31 27" stroke="#0891B2" stroke-width="1" stroke-linecap="round" fill="none" opacity="0.6"/>
+</svg>

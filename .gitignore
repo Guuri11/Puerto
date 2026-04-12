@@ -1,1 +1,6 @@
 /target
+
+# Landing site
+/landing/node_modules
+/landing/dist
+/landing/.astro

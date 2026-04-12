@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 80" fill="none">
+  <!--
+    Harbor — full logo (icon + wordmark)
+    Dark background variant
+  -->
+
+  <!-- ── Icon (64×64, centered vertically in 80px) ── -->
+  <g transform="translate(8, 8)">
+
+    <!-- Container 1: business layer (teal) -->
+    <rect x="7" y="11" width="14" height="20" rx="2" fill="#0891B2"/>
+    <rect x="10" y="14" width="8" height="2" rx="1" fill="white" opacity="0.35"/>
+    <rect x="10" y="18" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+    <rect x="10" y="22" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+
+    <!-- Container 2: infrastructure layer (indigo) -->
+    <rect x="25" y="11" width="14" height="20" rx="2" fill="#818CF8"/>
+    <rect x="28" y="14" width="8" height="2" rx="1" fill="white" opacity="0.35"/>
+    <rect x="28" y="18" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+    <rect x="28" y="22" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+
+    <!-- Container 3: presentation layer (rust/orange) -->
+    <rect x="43" y="11" width="14" height="20" rx="2" fill="#F97316"/>
+    <rect x="46" y="14" width="8" height="2" rx="1" fill="white" opacity="0.35"/>
+    <rect x="46" y="18" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+    <rect x="46" y="22" width="8" height="1.5" rx="0.75" fill="white" opacity="0.2"/>
+
+    <!-- Deck rail -->
+    <rect x="4" y="31" width="56" height="2" rx="1" fill="#4A7FB5"/>
+    <!-- Deck surface -->
+    <rect x="4" y="33" width="56" height="4" fill="#2D5986"/>
+    <!-- Hull -->
+    <path d="M4 37 L60 37 L55 52 L9 52 Z" fill="#2D5986"/>
+    <!-- Hull highlight -->
+    <path d="M4 37 L60 37" stroke="#4A7FB5" stroke-width="1" fill="none"/>
+
+    <!-- Water line -->
+    <path d="M2 53 Q16 50.5 32 53 Q48 55.5 62 53" stroke="#0891B2" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.7"/>
+    <path d="M6 57 Q19 55 32 57 Q45 59 58 57" stroke="#0891B2" stroke-width="1" stroke-linecap="round" fill="none" opacity="0.4"/>
+  </g>
+
+  <!-- ── Wordmark (light on dark) ── -->
+  <text
+    x="94"
+    y="52"
+    font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace"
+    font-size="40"
+    font-weight="700"
+    letter-spacing="-0.5"
+    fill="#F1F5F9"
+  >harbor</text>
+
+  <!-- Accent dot -->
+  <circle cx="380" cy="49" r="4" fill="#F97316"/>
+</svg>

@@ -1,0 +1,405 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+---
+
+<BaseLayout>
+  <!-- HERO -->
+  <section class="relative overflow-hidden px-6 pt-40 pb-32 text-center">
+    <!-- Gradient background right -->
+    <div class="pointer-events-none absolute top-0 right-0 h-full w-1/2 bg-gradient-to-l from-harbor-teal/5 to-transparent" aria-hidden="true"></div>
+
+    <div class="relative z-10 mx-auto max-w-6xl">
+      <!-- Badge -->
+      <div class="hero-eyebrow mb-8 inline-flex items-center gap-2 rounded-full border border-harbor-teal/20 bg-harbor-teal/10 px-3 py-1.5">
+        <span class="h-2 w-2 rounded-full bg-harbor-teal animate-pulse"></span>
+        <span class="font-mono text-xs font-bold text-harbor-teal tracking-widest uppercase">Open Source · Rust Framework</span>
+      </div>
+
+      <!-- Headline -->
+      <h1 class="hero-title mb-6 font-mono text-7xl font-extrabold tracking-tighter text-harbor-ice lg:text-8xl" style="line-height: 0.95">
+        Scaffold. Structure. <span class="text-harbor-teal">Ship.</span>
+      </h1>
+
+      <!-- Subtitle -->
+      <p class="hero-subtitle mx-auto mb-12 max-w-2xl font-sans text-xl leading-relaxed text-harbor-mist md:text-2xl">
+        Stop bikeshedding your architecture. Harbor gives Rust developers
+        the productivity of Rails with the safety of Rust's type system.
+      </p>
+
+      <!-- CTAs -->
+      <div class="hero-actions mb-20 flex flex-col items-center justify-center gap-4 md:flex-row">
+        <a
+          href="/docs"
+          class="flex items-center gap-3 rounded-xl bg-harbor-rust px-8 py-4 font-mono text-base font-bold text-white shadow-lg shadow-harbor-rust/20 transition-opacity hover:opacity-90"
+        >
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          cargo install harbor
+        </a>
+        <a
+          href="https://github.com/sergio-gurillo/harbor"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-3 rounded-xl border border-harbor-teal/30 px-8 py-4 font-mono text-base font-bold text-harbor-teal transition-colors hover:bg-harbor-teal/5"
+        >
+          <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+          </svg>
+          View on GitHub
+        </a>
+      </div>
+
+      <!-- Terminal block -->
+      <div class="hero-terminal mx-auto max-w-4xl overflow-hidden rounded-xl border border-harbor-steel/60 bg-harbor-navy shadow-2xl text-left">
+        <!-- Terminal chrome -->
+        <div class="flex items-center gap-2 border-b border-harbor-steel/30 bg-harbor-deep/50 px-4 py-3">
+          <span class="h-3 w-3 rounded-full bg-red-500/50"></span>
+          <span class="h-3 w-3 rounded-full bg-yellow-500/50"></span>
+          <span class="h-3 w-3 rounded-full bg-green-500/50"></span>
+          <span class="ml-4 font-mono text-xs text-harbor-mist/50">harbor — zsh — 80×24</span>
+        </div>
+        <!-- Terminal content -->
+        <div class="p-6 font-mono text-sm leading-relaxed">
+          <div class="flex gap-3">
+            <span class="text-green-400">➜</span>
+            <span class="text-harbor-teal">~</span>
+            <span class="text-harbor-ice">harbor new my-app</span>
+          </div>
+          <div class="mt-2 text-harbor-mist/60 italic text-xs">// Constructing project skeleton...</div>
+          <div class="mt-4 space-y-1 text-sm">
+            <div class="flex items-center gap-2">
+              <span class="text-harbor-mist/40">├──</span>
+              <span class="text-harbor-teal font-bold">business/</span>
+              <span class="text-harbor-mist/40 text-xs">(domain logic)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-harbor-mist/40">├──</span>
+              <span class="text-harbor-indigo-light font-bold">infrastructure/</span>
+              <span class="text-harbor-mist/40 text-xs">(adapters)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-harbor-mist/40">├──</span>
+              <span class="text-harbor-rust font-bold">presentation/</span>
+              <span class="text-harbor-mist/40 text-xs">(openapi routes)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-harbor-mist/40">└──</span>
+              <span class="text-harbor-mist/60">Cargo.toml</span>
+            </div>
+          </div>
+          <div class="mt-4 text-green-400">✓ Project 'my-app' initialized successfully.</div>
+          <div class="mt-4 flex gap-3">
+            <span class="text-green-400">➜</span>
+            <span class="text-harbor-teal">~</span>
+            <span class="text-harbor-ice">harbor generate scaffold User</span>
+          </div>
+          <div class="mt-2 space-y-0.5 text-xs text-harbor-mist/70">
+            <div>✓ <span class="text-harbor-teal">business/</span> — model, errors, repository trait, use cases</div>
+            <div>✓ <span class="text-harbor-indigo-light">infrastructure/</span> — InMemoryUserRepository</div>
+            <div>✓ <span class="text-harbor-rust">presentation/</span> — routes, dto, responses, error mapper</div>
+          </div>
+          <div class="mt-2 text-green-400">✓ Done in 0.3s. Zero manual wiring.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section class="bg-harbor-navy px-6 py-28">
+    <div class="mx-auto max-w-6xl">
+      <div class="mb-16 text-center">
+        <h2 class="arch-title font-mono text-4xl font-bold text-harbor-ice lg:text-5xl">
+          Clean Architecture, Zero Decisions
+        </h2>
+        <p class="arch-subtitle mt-4 font-sans text-lg text-harbor-mist">
+          Every Harbor project ships with a battle-tested 3-layer DDD structure.
+        </p>
+      </div>
+
+      <div class="arch-cards grid gap-6 md:grid-cols-3">
+        <!-- Business layer -->
+        <div class="rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card border-l-4 border-l-harbor-teal">
+          <div class="mb-3 font-mono text-lg font-semibold text-harbor-teal">business/</div>
+          <div class="mb-3 inline-block rounded bg-harbor-teal/10 px-2 py-0.5 font-mono text-xs text-harbor-teal">Domain + Application</div>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed">
+            Pure business logic. No framework dependencies. 100% testable with mockall-generated mocks.
+          </p>
+        </div>
+
+        <!-- Infrastructure layer -->
+        <div class="rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card border-l-4 border-l-harbor-indigo">
+          <div class="mb-3 font-mono text-lg font-semibold text-harbor-indigo">infrastructure/</div>
+          <div class="mb-3 inline-block rounded bg-harbor-indigo/10 px-2 py-0.5 font-mono text-xs text-harbor-indigo-light">Adapters</div>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed">
+            Database, external APIs. Implements your domain ports. Swap InMemory for Postgres with one flag.
+          </p>
+        </div>
+
+        <!-- Presentation layer -->
+        <div class="rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card border-l-4 border-l-harbor-rust">
+          <div class="mb-3 font-mono text-lg font-semibold text-harbor-rust">presentation/</div>
+          <div class="mb-3 inline-block rounded bg-harbor-rust/10 px-2 py-0.5 font-mono text-xs text-harbor-rust">HTTP API</div>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed">
+            poem-openapi routes with auto-generated Swagger UI. Dependency injection wired automatically.
+          </p>
+        </div>
+      </div>
+
+      <!-- Dependency rule -->
+      <p class="mt-8 text-center font-mono text-xs text-harbor-mist/50">
+        dependency rule: domain ← application ← infrastructure ← presentation
+      </p>
+    </div>
+  </section>
+
+  <!-- QUICK START -->
+  <section id="quickstart" class="bg-harbor-deep px-6 py-28">
+    <div class="mx-auto max-w-4xl">
+      <div class="mb-16 text-center">
+        <h2 class="qs-title font-mono text-4xl font-bold text-harbor-ice lg:text-5xl">
+          From zero to DDD<br />in 30 seconds
+        </h2>
+      </div>
+
+      <div class="space-y-8">
+        <!-- Step 1 -->
+        <div class="qs-step flex gap-6 items-start">
+          <div class="flex-none font-mono text-4xl font-bold text-harbor-steel/40 leading-none w-12 text-right">01</div>
+          <div class="flex-1">
+            <p class="mb-3 font-sans text-sm text-harbor-mist">Install the Harbor CLI</p>
+            <div class="group relative flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">cargo install harbor</code>
+              <button
+                class="copy-btn ml-auto opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-harbor-mist hover:text-harbor-ice"
+                data-copy="cargo install harbor"
+                aria-label="Copy command"
+              >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="qs-step flex gap-6 items-start">
+          <div class="flex-none font-mono text-4xl font-bold text-harbor-steel/40 leading-none w-12 text-right">02</div>
+          <div class="flex-1">
+            <p class="mb-3 font-sans text-sm text-harbor-mist">Create a new project with interactive setup</p>
+            <div class="group relative flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor new my-app</code>
+              <button
+                class="copy-btn ml-auto opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-harbor-mist hover:text-harbor-ice"
+                data-copy="harbor new my-app"
+                aria-label="Copy command"
+              >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="qs-step flex gap-6 items-start">
+          <div class="flex-none font-mono text-4xl font-bold text-harbor-steel/40 leading-none w-12 text-right">03</div>
+          <div class="flex-1">
+            <p class="mb-3 font-sans text-sm text-harbor-mist">Scaffold a full DDD entity across all layers</p>
+            <div class="group relative flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate scaffold User</code>
+              <button
+                class="copy-btn ml-auto opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-harbor-mist hover:text-harbor-ice"
+                data-copy="harbor generate scaffold User"
+                aria-label="Copy command"
+              >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-12 text-center">
+        <a href="/docs" class="font-sans text-sm text-harbor-teal hover:underline">
+          Full documentation →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features" class="bg-harbor-navy px-6 py-28">
+    <div class="mx-auto max-w-6xl">
+      <div class="mb-16 text-center">
+        <h2 class="features-title font-mono text-4xl font-bold text-harbor-ice lg:text-5xl">
+          Built for how you actually work
+        </h2>
+      </div>
+
+      <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- AI-Ready -->
+        <div class="feature-card group rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card transition-colors hover:border-harbor-teal">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-harbor-teal/10">
+            <svg class="h-5 w-5 text-harbor-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-harbor-ice">AI-Ready</h3>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed">Rust's compiler catches AI-generated errors instantly. Precise, actionable feedback on every generation.</p>
+        </div>
+
+        <!-- Convention over Config -->
+        <div class="feature-card group rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card transition-colors hover:border-harbor-rust">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-harbor-rust/10">
+            <svg class="h-5 w-5 text-harbor-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-harbor-ice">Convention over Config</h3>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed">Standardized structure across every project. Navigate any Harbor codebase from day one.</p>
+        </div>
+
+        <!-- Zero Boilerplate -->
+        <div class="feature-card group rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card transition-colors hover:border-harbor-indigo">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-harbor-indigo/10">
+            <svg class="h-5 w-5 text-harbor-indigo-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-harbor-ice">Zero Boilerplate</h3>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed">Full DDD entity across all layers with one command. Repository traits, mocks, and unit tests included.</p>
+        </div>
+
+        <!-- Type-Safe -->
+        <div class="feature-card group rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card transition-colors hover:border-harbor-teal">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-harbor-teal/10">
+            <svg class="h-5 w-5 text-harbor-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-harbor-ice">Type-Safe by Default</h3>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed">Strict Rust types from domain to API layer. No runtime surprises, no implicit conversions.</p>
+        </div>
+
+        <!-- Auto-wired DI -->
+        <div class="feature-card group rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card transition-colors hover:border-harbor-rust">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-harbor-rust/10">
+            <svg class="h-5 w-5 text-harbor-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-harbor-ice">Auto-wired DI</h3>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed"><code class="text-harbor-rust text-xs">bootstrap.rs</code> generated automatically from <code class="text-harbor-rust text-xs">harbor.toml</code>. No manual dependency wiring.</p>
+        </div>
+
+        <!-- SQLx -->
+        <div class="feature-card group rounded-lg border border-harbor-steel/40 bg-harbor-deep p-6 shadow-card transition-colors hover:border-harbor-indigo">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-harbor-indigo/10">
+            <svg class="h-5 w-5 text-harbor-indigo-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-harbor-ice">Built for SQLx</h3>
+          <p class="font-sans text-sm text-harbor-mist leading-relaxed">First-class Postgres support. Connection pools, compile-time queries, and migrations with <code class="text-harbor-indigo-light text-xs">--db</code>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section class="bg-harbor-rust px-6 py-24 text-center">
+    <div class="mx-auto max-w-2xl">
+      <h2 class="cta-title font-mono text-4xl font-bold text-harbor-deep lg:text-5xl">
+        Start building in seconds.
+      </h2>
+      <p class="cta-subtitle mt-4 font-sans text-lg text-harbor-deep/70">
+        Join developers building production Rust apps without the architecture tax.
+      </p>
+      <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
+        <a
+          href="/docs"
+          class="flex items-center gap-2 rounded-md bg-harbor-deep px-8 py-4 font-mono text-sm font-bold text-harbor-ice transition-opacity hover:opacity-90"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          cargo install harbor
+        </a>
+        <a
+          href="/docs"
+          class="font-sans text-sm font-semibold text-harbor-deep/80 underline underline-offset-2 hover:text-harbor-deep"
+        >
+          View Documentation →
+        </a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  import { gsap } from 'gsap';
+  import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // Hero entrance
+    gsap.set(['.hero-eyebrow', '.hero-title', '.hero-subtitle', '.hero-actions', '.hero-terminal'], {
+      opacity: 0,
+    });
+
+    gsap.timeline({ defaults: { ease: 'power2.out' }, delay: 0.1 })
+      .fromTo('.hero-eyebrow',   { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6 })
+      .fromTo('.hero-title',     { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8 }, '-=0.3')
+      .fromTo('.hero-subtitle',  { y: 25, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6 }, '-=0.4')
+      .fromTo('.hero-actions',   { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6 }, '-=0.35')
+      .fromTo('.hero-terminal',  { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7 }, '-=0.3');
+
+    // Architecture cards
+    gsap.from('.arch-title', {
+      y: 30, opacity: 0, duration: 0.7, ease: 'power2.out',
+      scrollTrigger: { trigger: '.arch-title', start: 'top 85%', once: true },
+    });
+    gsap.from('.arch-cards > *', {
+      y: 40, opacity: 0, duration: 0.7, stagger: 0.12, ease: 'power2.out',
+      scrollTrigger: { trigger: '.arch-cards', start: 'top 82%', once: true },
+    });
+
+    // Quick start steps
+    gsap.from('.qs-step', {
+      x: -20, opacity: 0, duration: 0.6, stagger: 0.15, ease: 'power2.out',
+      scrollTrigger: { trigger: '.qs-title', start: 'top 85%', once: true },
+    });
+
+    // Feature cards
+    gsap.from('.feature-card', {
+      y: 40, opacity: 0, duration: 0.6, stagger: 0.10, ease: 'power2.out',
+      scrollTrigger: { trigger: '.features-title', start: 'top 85%', once: true },
+    });
+
+    // CTA
+    gsap.from(['.cta-title', '.cta-subtitle'], {
+      y: 25, opacity: 0, duration: 0.7, stagger: 0.15, ease: 'power2.out',
+      scrollTrigger: { trigger: '.cta-title', start: 'top 85%', once: true },
+    });
+  }
+
+  // Copy-to-clipboard
+  document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy ?? '';
+      await navigator.clipboard.writeText(text);
+      const original = btn.innerHTML;
+      btn.innerHTML = `<svg class="h-4 w-4 text-harbor-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`;
+      setTimeout(() => { btn.innerHTML = original; }, 1500);
+    });
+  });
+</script>

@@ -1,0 +1,27 @@
+---
+import { siteConfig } from '@/config/site';
+---
+
+<footer class="border-t border-harbor-steel/40 bg-harbor-deep">
+  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
+    <a href="/" aria-label="Harbor home">
+      <img
+        src={siteConfig.logo.src}
+        alt={siteConfig.logo.alt}
+        width={80}
+        height={18}
+        class="h-5 w-auto opacity-70 transition-opacity hover:opacity-100"
+      />
+    </a>
+
+    <nav class="flex items-center gap-6" aria-label="Footer navigation">
+      <a href="/docs" class="font-sans text-sm text-harbor-mist transition-colors hover:text-harbor-ice">Docs</a>
+      <a href={siteConfig.github} target="_blank" rel="noopener noreferrer" class="font-sans text-sm text-harbor-mist transition-colors hover:text-harbor-ice">GitHub</a>
+      <a href="https://github.com/sergio-gurillo/harbor/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="font-sans text-sm text-harbor-mist transition-colors hover:text-harbor-ice">MIT License</a>
+    </nav>
+
+    <p class="font-sans text-xs text-harbor-mist/60">
+      Built with Harbor · {new Date().getFullYear()}
+    </p>
+  </div>
+</footer>

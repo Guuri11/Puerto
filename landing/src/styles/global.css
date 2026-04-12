@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Harbor color palette */
+  --color-harbor-deep: #0D1B2A;
+  --color-harbor-navy: #1E3A5F;
+  --color-harbor-steel: #2D5986;
+  --color-harbor-teal: #0891B2;
+  --color-harbor-indigo: #6366F1;
+  --color-harbor-indigo-light: #818CF8;
+  --color-harbor-rust: #F97316;
+  --color-harbor-ice: #F1F5F9;
+  --color-harbor-mist: #94A3B8;
+
+  /* Semantic aliases */
+  --color-bg: #0D1B2A;
+  --color-bg-alt: #1E3A5F;
+  --color-border: #2D5986;
+  --color-primary: #0891B2;
+  --color-secondary: #6366F1;
+  --color-accent: #F97316;
+  --color-text: #F1F5F9;
+  --color-text-muted: #94A3B8;
+
+  /* Typography */
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+
+  /* Spacing */
+  --spacing-section: 7rem;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* Shadows */
+  --shadow-card: 0 4px 24px 0 rgb(13 27 42 / 0.6);
+}
+
+/* Base */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Body text uses IBM Plex Sans */
+p, li, blockquote, label, input, textarea, select {
+  font-family: var(--font-sans);
+}
+
+/* Code blocks */
+pre, code, kbd, .mono {
+  font-family: var(--font-mono);
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: var(--color-primary);
+  color: var(--color-harbor-deep);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-harbor-deep);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-harbor-steel);
+  border-radius: 3px;
+}
+
+/* Header hide/show */
+.header {
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+.header--hidden {
+  transform: translateY(-100%);
+}
