@@ -3,7 +3,7 @@ export const siteConfig = {
   tagline: 'Scaffold. Structure. Ship.',
   description: 'The Rust DDD framework that brings Rails-like productivity to production-grade backends. Zero boilerplate, clean architecture, AI-ready.',
   url: 'https://harbor-framework.dev',
-  github: 'https://github.com/sergio-gurillo/harbor',
+  github: 'https://github.com/Guuri11/harbor',
 
   logo: {
     src: '/images/logo.svg',
@@ -14,6 +14,6 @@ export const siteConfig = {
 
   nav: [
     { label: 'Docs', href: '/docs' },
-    { label: 'GitHub', href: 'https://github.com/sergio-gurillo/harbor', external: true },
+    { label: 'GitHub', href: 'https://github.com/Guuri11/harbor', external: true },
   ],
 } as const;
