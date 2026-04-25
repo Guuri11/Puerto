@@ -1,6 +1,6 @@
 [package]
 name = "harbor-framework"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Harbor — Rust full-stack DDD framework CLI. Scaffolds Clean Architecture projects with auto-wired DI, SQLx support, and zero manual wiring."
