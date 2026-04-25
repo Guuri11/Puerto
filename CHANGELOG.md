@@ -1,3 +1,19 @@
+## [0.3.0] - 2026-04-25
+
+### 🚀 Features
+
+- Add `harbor generate snippets [--ide zed|vscode]` command — writes TextMate-format snippet files for Zed (`.zed/snippets/rust.json`) and VS Code (`.vscode/harbor.code-snippets`), compatible with nvim+LuaSnip
+- `harbor new` now automatically writes snippet files to both IDEs on project creation
+- 23 Harbor-adapted snippets covering all DDD layers: domain model, errors, repository trait, use case trait/impl, persistence entity/repo, tokio test, sqlx integration test, Object Mother, and more
+
+### 🐛 Bug Fixes
+
+- Fix `cargo fmt` violation in `scaffold.rs` (`apply_db_to_new_project` method chain formatting)
+
+### 📚 Documentation
+
+- Add IDE Snippets section to `/docs` page with snippet inventory, IDE setup instructions, and regeneration commands
+
 ## [0.2.0] - 2026-04-25
 
 ### 🚀 Features
