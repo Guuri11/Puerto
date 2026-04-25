@@ -400,10 +400,7 @@ pub fn run(name: &str, base: &Path, db: bool) -> Result<(), Box<dyn std::error::
 
 /// Write the extra files that `harbor new --db` adds on top of the base template.
 pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let project_name = base
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("myapp");
+    let project_name = base.file_name().and_then(|n| n.to_str()).unwrap_or("myapp");
     let db_name = project_name.replace('-', "_");
 
     // docker-compose.yml
