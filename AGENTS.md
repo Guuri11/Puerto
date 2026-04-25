@@ -82,7 +82,9 @@ Presentation → Infrastructure → Application → Domain
 harbor new                                 # Interactive: prompts for name + db support
 harbor new --name <name>                   # Skip name prompt
 harbor new --db                            # Skip db prompt (enables SQLx/Postgres)
-harbor new --name <name> --db              # Fully non-interactive (CI-friendly)
+harbor new --name <name> --db              # Fully non-interactive, with database
+harbor new --name <name> --no-db           # Fully non-interactive, no database
+harbor new --name <name> --no-db --destination /tmp/projects  # Control output directory
 
 harbor generate scaffold <Name>            # Add a new DDD entity (InMemory repository)
 harbor generate scaffold <Name> --db       # Add a new DDD entity (SQLx/Postgres repository)

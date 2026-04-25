@@ -1,4 +1,5 @@
 pub mod domain {
+  pub mod logger;
   pub mod greeting {
     pub mod errors;
     pub mod model;

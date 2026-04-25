@@ -225,6 +225,8 @@ pub fn generate_bootstrap_content(entities: &[crate::harbor_toml::Entity]) -> St
             ));
         }
     }
+    out.push_str("use infrastructure::logger::TracingLogger;\n");
+    out.push_str("use business::domain::logger::LoggerTrait;\n");
     if has_db {
         out.push_str("use sqlx::PgPool;\n");
     }
@@ -251,11 +253,15 @@ pub fn generate_bootstrap_content(entities: &[crate::harbor_toml::Entity]) -> St
             "    let database_url = std::env::var(\"DATABASE_URL\").expect(\"DATABASE_URL must be set\");\n",
         );
         out.push_str(
-            "    let pool = infrastructure::db::create_postgres_pool(&database_url).await;\n\n",
+            "    let pool = infrastructure::db::create_postgres_pool(&database_url)\n        .await\n        .expect(\"Failed to connect to database\");\n",
+        );
+        out.push_str(
+            "    infrastructure::db::run_migrations(&pool)\n        .await\n        .expect(\"Failed to run migrations\");\n\n",
         );
     } else {
         out.push_str("pub fn build_app() -> Route {\n");
     }
+    out.push_str("    let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger);\n\n");
 
     // Wire each entity
     for entity in entities {
@@ -263,7 +269,7 @@ pub fn generate_bootstrap_content(entities: &[crate::harbor_toml::Entity]) -> St
         let snake = pascal_to_snake(pascal);
         let uc_count = entity.use_cases.len();
         let repo_type = if entity.db {
-            format!("Pg{pascal}Repository {{ pool: pool.clone() }}")
+            format!("Pg{pascal}Repository::new(pool.clone())")
         } else {
             format!("InMemory{pascal}Repository")
         };
@@ -282,7 +288,7 @@ pub fn generate_bootstrap_content(entities: &[crate::harbor_toml::Entity]) -> St
                 format!("{snake}_repo")
             };
             out.push_str(&format!(
-                "    let {uc} = Arc::new({uc_pascal}UseCaseImpl {{ repository: {repo_expr} }});\n"
+                "    let {uc} = Arc::new({uc_pascal}UseCaseImpl {{ repository: {repo_expr}, logger: Arc::clone(&logger) }});\n"
             ));
         }
 
@@ -394,11 +400,32 @@ pub fn run(name: &str, base: &Path, db: bool) -> Result<(), Box<dyn std::error::
 
 /// Write the extra files that `harbor new --db` adds on top of the base template.
 pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    // .env.example
+    let project_name = base
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("myapp");
+    let db_name = project_name.replace('-', "_");
+
+    // docker-compose.yml
+    write(
+        &base.join("docker-compose.yml"),
+        &docker_compose_content(project_name, &db_name),
+    )?;
+
+    // .env (real dev defaults, gitignored)
+    write(
+        &base.join(".env"),
+        &format!("DATABASE_URL=postgres://devuser:password@localhost:5432/{db_name}\n"),
+    )?;
+
+    // .env.example (committed, same format)
     write(
         &base.join(".env.example"),
-        "DATABASE_URL=postgres://user:password@localhost/dbname\n",
+        &format!("DATABASE_URL=postgres://devuser:password@localhost:5432/{db_name}\n"),
     )?;
+
+    // .gitignore — add .env entry (create or append)
+    add_env_to_gitignore(base)?;
 
     // .cargo/config.toml — SQLX_OFFLINE so CI compiles without a live DB
     write(
@@ -415,9 +442,51 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
     // Patch infrastructure/Cargo.toml to add sqlx
     patch_infra_cargo_toml(base)?;
 
-    // Patch Makefile setup target to also install sqlx-cli
+    // Patch Makefile: setup target + docker/sqlx targets
     patch_makefile_setup_for_db(base)?;
+    add_db_makefile_targets(base)?;
 
+    Ok(())
+}
+
+fn docker_compose_content(project_name: &str, db_name: &str) -> String {
+    format!(
+        "services:\n  postgres:\n    image: postgres:16\n    container_name: {project_name}-postgres\n    ports:\n      - \"5432:5432\"\n    environment:\n      POSTGRES_USER: devuser\n      POSTGRES_PASSWORD: password\n      POSTGRES_DB: {db_name}\n    volumes:\n      - postgres-data:/var/lib/postgresql/data\n    restart: unless-stopped\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U devuser -d {db_name}\"]\n      interval: 5s\n      timeout: 5s\n      retries: 5\n\nvolumes:\n  postgres-data:\n"
+    )
+}
+
+fn add_env_to_gitignore(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join(".gitignore");
+    if path.exists() {
+        let mut src = fs::read_to_string(&path)?;
+        if !src.contains(".env") {
+            if !src.ends_with('\n') {
+                src.push('\n');
+            }
+            src.push_str(".env\n");
+            fs::write(&path, src)?;
+        }
+    } else {
+        write(&path, "/target\n.env\n/.sqlx\n")?;
+    }
+    Ok(())
+}
+
+fn add_db_makefile_targets(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("Makefile");
+    if !path.exists() {
+        return Ok(());
+    }
+    let src = fs::read_to_string(&path)?;
+    if src.contains("docker/up") {
+        return Ok(()); // idempotent
+    }
+    let mut patched = src;
+    if !patched.ends_with('\n') {
+        patched.push('\n');
+    }
+    patched.push_str(DB_MAKEFILE_TARGETS);
+    fs::write(&path, patched)?;
     Ok(())
 }
 
@@ -450,7 +519,10 @@ fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>>
         src.push('\n');
     }
     src.push_str(
-        "\n[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\"]\n",
+        "\n[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\"]\n",
+    );
+    src.push_str(
+        "\n[dev-dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\", \"test-utils\"]\n",
     );
     fs::write(&path, src)?;
     Ok(())
@@ -638,9 +710,16 @@ fn write_files(
     Ok(())
 }
 
+// ── Makefile DB targets ───────────────────────────────────────────────────────
+
+const DB_MAKEFILE_TARGETS: &str = "\ndocker/up: ## Start development containers\n\tdocker compose up -d\n\ndocker/down: ## Stop development containers\n\tdocker compose down\n\nsqlx/migrate: ## Run pending database migrations\n\tsqlx migrate run --source infrastructure/migrations\n\nsqlx/prepare: ## Regenerate SQLx offline cache (requires live DB)\n\tSQLX_OFFLINE=false cargo sqlx prepare --workspace\n\nsqlx/online: ## Switch SQLx to ONLINE mode\n\t@printf '[env]\\nSQLX_OFFLINE = \"false\"\\n' > .cargo/config.toml\n\nsqlx/offline: ## Switch SQLx to OFFLINE mode\n\t@printf '[env]\\nSQLX_OFFLINE = \"true\"\\n' > .cargo/config.toml\n";
+
 // ── Templates ─────────────────────────────────────────────────────────────────
 
-const MODEL: &str = r#"use super::errors::{Pascal}Error;
+const MODEL: &str = r#"use chrono::NaiveDateTime;
+use uuid::Uuid;
+
+use super::errors::{Pascal}Error;
 
 #[derive(Debug, Clone)]
 pub struct {Pascal}Props {
@@ -649,6 +728,11 @@ pub struct {Pascal}Props {
 
 #[derive(Debug, Clone)]
 pub struct {Pascal} {
+    pub id: Uuid,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+    pub deleted: bool,
+    pub deleted_at: Option<NaiveDateTime>,
     pub name: String,
 }
 
@@ -657,7 +741,15 @@ impl {Pascal} {
         if props.name.trim().is_empty() {
             return Err({Pascal}Error::ValidationError("name_empty".into()));
         }
-        Ok(Self { name: props.name })
+        let now = chrono::Utc::now().naive_utc();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            name: props.name,
+        })
     }
 
     pub fn from_repository(data: {Pascal}) -> Self {
@@ -708,18 +800,20 @@ pub enum {Pascal}Error {
 "#;
 
 const REPOSITORY: &str = r#"use async_trait::async_trait;
+use uuid::Uuid;
 
 use super::{errors::{Pascal}Error, model::{Pascal}};
 
 #[async_trait]
 pub trait {Pascal}RepositoryTrait: Send + Sync {
-    async fn find_by_id(&self, id: &str) -> Result<Option<{Pascal}>, {Pascal}Error>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<{Pascal}>, {Pascal}Error>;
     async fn save(&self, entity: &{Pascal}) -> Result<(), {Pascal}Error>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
+    use uuid::Uuid;
 
     use super::*;
 
@@ -728,7 +822,7 @@ pub mod mocks {
 
         #[async_trait]
         impl {Pascal}RepositoryTrait for {Pascal}Repository {
-            async fn find_by_id(&self, id: &str) -> Result<Option<{Pascal}>, {Pascal}Error>;
+            async fn find_by_id(&self, id: Uuid) -> Result<Option<{Pascal}>, {Pascal}Error>;
             async fn save(&self, entity: &{Pascal}) -> Result<(), {Pascal}Error>;
         }
     }
@@ -760,16 +854,20 @@ use crate::domain::{snake}::{
     repository::{Pascal}RepositoryTrait,
     use_cases::create_{snake}::{Create{Pascal}Params, Create{Pascal}UseCaseTrait},
 };
+use crate::domain::logger::LoggerTrait;
 
 pub struct Create{Pascal}UseCaseImpl {
     pub repository: Arc<dyn {Pascal}RepositoryTrait>,
+    pub logger: Arc<dyn LoggerTrait>,
 }
 
 #[async_trait]
 impl Create{Pascal}UseCaseTrait for Create{Pascal}UseCaseImpl {
     async fn execute(&self, params: Create{Pascal}Params) -> Result<{Pascal}, {Pascal}Error> {
+        self.logger.info(&format!("Creating {snake}: {}", params.name));
         let entity = {Pascal}::new({Pascal}Props { name: params.name })?;
         self.repository.save(&entity).await?;
+        self.logger.info(&format!("{pascal} created: {}", entity.name));
         Ok(entity)
     }
 }
@@ -778,6 +876,13 @@ impl Create{Pascal}UseCaseTrait for Create{Pascal}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{snake}::repository::mocks::Mock{Pascal}Repository;
+    use crate::domain::logger::mocks::MockLogger;
+
+    fn silent_logger() -> MockLogger {
+        let mut mock = MockLogger::new();
+        mock.expect_info().returning(|_| ());
+        mock
+    }
 
     #[tokio::test]
     async fn should_create_{snake}_when_name_is_valid() {
@@ -786,6 +891,7 @@ mod tests {
         mock_repo.expect_save().returning(|_| Ok(()));
         let use_case = Create{Pascal}UseCaseImpl {
             repository: Arc::new(mock_repo),
+            logger: Arc::new(silent_logger()),
         };
 
         // Act
@@ -804,6 +910,7 @@ mod tests {
         let mock_repo = Mock{Pascal}Repository::new();
         let use_case = Create{Pascal}UseCaseImpl {
             repository: Arc::new(mock_repo),
+            logger: Arc::new(silent_logger()),
         };
 
         // Act
@@ -822,6 +929,7 @@ mod tests {
 "#;
 
 const INFRA_REPOSITORY: &str = r#"use async_trait::async_trait;
+use uuid::Uuid;
 
 use business::domain::{snake}::{
     errors::{Pascal}Error,
@@ -833,7 +941,7 @@ pub struct InMemory{Pascal}Repository;
 
 #[async_trait]
 impl {Pascal}RepositoryTrait for InMemory{Pascal}Repository {
-    async fn find_by_id(&self, _id: &str) -> Result<Option<{Pascal}>, {Pascal}Error> {
+    async fn find_by_id(&self, _id: Uuid) -> Result<Option<{Pascal}>, {Pascal}Error> {
         Ok(None)
     }
 
@@ -845,15 +953,18 @@ impl {Pascal}RepositoryTrait for InMemory{Pascal}Repository {
 
 const DTO: &str = r#"use business::domain::{snake}::model::{Pascal};
 use poem_openapi::Object;
+use uuid::Uuid;
 
 #[derive(Debug, Object)]
 pub struct {Pascal}Dto {
+    pub id: Uuid,
     pub name: String,
 }
 
 impl {Pascal}Dto {
     pub fn from_domain(entity: &{Pascal}) -> Self {
         Self {
+            id: entity.id,
             name: entity.name.clone(),
         }
     }
@@ -952,14 +1063,20 @@ impl {Pascal}Api {
 
 // ── SQLx templates ────────────────────────────────────────────────────────────
 
-const INFRA_ENTITY: &str = r#"use sqlx::FromRow;
+const INFRA_ENTITY: &str = r#"use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use uuid::Uuid;
 
 use business::domain::{snake}::{errors::{Pascal}Error, model::{Pascal}};
 
-#[derive(FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct {Pascal}Db {
     pub id: Uuid,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+    pub deleted: bool,
+    pub deleted_at: Option<NaiveDateTime>,
     pub name: String,
 }
 
@@ -968,6 +1085,11 @@ impl TryFrom<{Pascal}Db> for {Pascal} {
 
     fn try_from(row: {Pascal}Db) -> Result<Self, Self::Error> {
         Ok(Self::from_repository({Pascal} {
+            id: row.id,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            deleted: row.deleted,
+            deleted_at: row.deleted_at,
             name: row.name,
         }))
     }
@@ -976,7 +1098,11 @@ impl TryFrom<{Pascal}Db> for {Pascal} {
 impl From<&{Pascal}> for {Pascal}Db {
     fn from(entity: &{Pascal}) -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id: entity.id,
+            created_at: entity.created_at,
+            updated_at: entity.updated_at,
+            deleted: entity.deleted,
+            deleted_at: entity.deleted_at,
             name: entity.name.clone(),
         }
     }
@@ -985,6 +1111,7 @@ impl From<&{Pascal}> for {Pascal}Db {
 
 const INFRA_DB_REPOSITORY: &str = r#"use async_trait::async_trait;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 use business::domain::{snake}::{
     errors::{Pascal}Error,
@@ -998,13 +1125,20 @@ pub struct Pg{Pascal}Repository {
     pub pool: PgPool,
 }
 
+impl Pg{Pascal}Repository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
 #[async_trait]
 impl {Pascal}RepositoryTrait for Pg{Pascal}Repository {
-    async fn find_by_id(&self, id: &str) -> Result<Option<{Pascal}>, {Pascal}Error> {
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<{Pascal}>, {Pascal}Error> {
         let row = sqlx::query_as!(
             {Pascal}Db,
-            "SELECT id, name FROM {snake}s WHERE id = $1",
-            id.parse::<uuid::Uuid>().ok()
+            "SELECT id, created_at, updated_at, deleted, deleted_at, name
+             FROM {snake}s WHERE id = $1 AND deleted = false",
+            id
         )
         .fetch_optional(&self.pool)
         .await
@@ -1016,9 +1150,15 @@ impl {Pascal}RepositoryTrait for Pg{Pascal}Repository {
     async fn save(&self, entity: &{Pascal}) -> Result<(), {Pascal}Error> {
         let db = {Pascal}Db::from(entity);
         sqlx::query!(
-            "INSERT INTO {snake}s (id, name) VALUES ($1, $2)
-             ON CONFLICT (id) DO UPDATE SET name = $2",
+            "INSERT INTO {snake}s (id, created_at, updated_at, deleted, deleted_at, name)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (id) DO UPDATE
+             SET updated_at = $3, deleted = $4, deleted_at = $5, name = $6",
             db.id,
+            db.created_at,
+            db.updated_at,
+            db.deleted,
+            db.deleted_at,
             db.name
         )
         .execute(&self.pool)
@@ -1027,16 +1167,101 @@ impl {Pascal}RepositoryTrait for Pg{Pascal}Repository {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use business::domain::{snake}::model::{Pascal}Props;
+
+    async fn seed(pool: &PgPool, name: &str) -> {Pascal} {
+        let entity = {Pascal}::new({Pascal}Props { name: name.to_string() }).unwrap();
+        Pg{Pascal}Repository::new(pool.clone())
+            .save(&entity)
+            .await
+            .unwrap();
+        entity
+    }
+
+    #[sqlx::test(migrations = "migrations")]
+    async fn should_persist_and_retrieve_by_id(pool: PgPool) {
+        // Arrange
+        let entity = seed(&pool, "example").await;
+
+        // Act
+        let found = Pg{Pascal}Repository::new(pool)
+            .find_by_id(entity.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Assert
+        assert_eq!(found.id, entity.id);
+        assert_eq!(found.name, entity.name);
+        assert!(!found.deleted);
+    }
+
+    #[sqlx::test(migrations = "migrations")]
+    async fn should_return_none_for_nonexistent_id(pool: PgPool) {
+        // Act
+        let result = Pg{Pascal}Repository::new(pool)
+            .find_by_id(Uuid::new_v4())
+            .await
+            .unwrap();
+
+        // Assert
+        assert!(result.is_none());
+    }
+
+    #[sqlx::test(migrations = "migrations")]
+    async fn should_update_entity_on_save_conflict(pool: PgPool) {
+        // Arrange
+        let mut entity = seed(&pool, "original").await;
+        entity.name = "updated".to_string();
+        entity.updated_at = chrono::Utc::now().naive_utc();
+
+        // Act
+        Pg{Pascal}Repository::new(pool.clone())
+            .save(&entity)
+            .await
+            .unwrap();
+
+        // Assert
+        let found = Pg{Pascal}Repository::new(pool)
+            .find_by_id(entity.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.name, "updated");
+    }
+}
 "#;
 
 const DB_RS: &str = r#"use sqlx::{PgPool, postgres::PgPoolOptions};
+use std::time::Duration;
+use thiserror::Error;
 
-pub async fn create_postgres_pool(database_url: &str) -> PgPool {
+#[derive(Debug, Error)]
+pub enum DatabaseError {
+    #[error("database.connection_error")]
+    ConnectionError,
+    #[error("database.migration_error")]
+    MigrationError,
+}
+
+pub async fn create_postgres_pool(database_url: &str) -> Result<PgPool, DatabaseError> {
     PgPoolOptions::new()
         .max_connections(5)
+        .acquire_timeout(Duration::from_secs(30))
         .connect(database_url)
         .await
-        .expect("Failed to connect to database")
+        .map_err(|_| DatabaseError::ConnectionError)
+}
+
+pub async fn run_migrations(pool: &PgPool) -> Result<(), DatabaseError> {
+    sqlx::migrate!("migrations")
+        .run(pool)
+        .await
+        .map_err(|_| DatabaseError::MigrationError)
 }
 "#;
 
@@ -1067,14 +1292,17 @@ use crate::domain::{snake}::{
     repository::{Pascal}RepositoryTrait,
     use_cases::{uc}::{{uc_pascal}Params, {uc_pascal}UseCaseTrait},
 };
+use crate::domain::logger::LoggerTrait;
 
 pub struct {uc_pascal}UseCaseImpl {
     pub repository: Arc<dyn {Pascal}RepositoryTrait>,
+    pub logger: Arc<dyn LoggerTrait>,
 }
 
 #[async_trait]
 impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
     async fn execute(&self, params: {uc_pascal}Params) -> Result<{Pascal}, {Pascal}Error> {
+        self.logger.info(&format!("Executing {uc}: {:?}", params));
         todo!()
     }
 }
@@ -1083,13 +1311,17 @@ impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{snake}::repository::mocks::Mock{Pascal}Repository;
+    use crate::domain::logger::mocks::MockLogger;
 
     #[tokio::test]
     async fn should_{uc}_when_valid() {
         // Arrange
         let mock_repo = Mock{Pascal}Repository::new();
+        let mut mock_logger = MockLogger::new();
+        mock_logger.expect_info().returning(|_| ());
         let use_case = {uc_pascal}UseCaseImpl {
             repository: Arc::new(mock_repo),
+            logger: Arc::new(mock_logger),
         };
 
         // Act

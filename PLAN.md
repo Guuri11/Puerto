@@ -419,7 +419,211 @@ db = true          # NEW: controls InMemory vs Pg repository in bootstrap
 
 ---
 
-## Phase 5 — Full-stack (frontend)
+## Phase 5 — Logger abstraction ✅ DONE
+
+Add a `LoggerTrait` domain port so every generated use case can log without coupling to a concrete logging library. Follows the same Ports & Adapters pattern as repositories.
+
+### 5.0 — Logger trait + infrastructure impl ✅
+
+**Goal:** every `harbor new` project ships with a working logger, wired automatically into every use case.
+
+---
+
+#### Domain port
+
+**File:** `business/src/domain/logger.rs`
+
+```rust
+pub trait LoggerTrait: Send + Sync {
+    fn info(&self, message: &str);
+    fn warn(&self, message: &str);
+    fn error(&self, message: &str);
+    fn debug(&self, message: &str);
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+    use super::*;
+
+    mock! {
+        pub Logger {}
+        impl LoggerTrait for Logger {
+            fn info(&self, message: &str);
+            fn warn(&self, message: &str);
+            fn error(&self, message: &str);
+            fn debug(&self, message: &str);
+        }
+    }
+}
+```
+
+`business/src/lib.rs` — add at top level:
+```rust
+pub mod logger;
+```
+
+---
+
+#### Infrastructure adapter
+
+**File:** `infrastructure/src/logger.rs`
+
+```rust
+use business::logger::LoggerTrait;
+
+pub struct TracingLogger;
+
+impl LoggerTrait for TracingLogger {
+    fn info(&self, message: &str)  { tracing::info!("{}", message); }
+    fn warn(&self, message: &str)  { tracing::warn!("{}", message); }
+    fn error(&self, message: &str) { tracing::error!("{}", message); }
+    fn debug(&self, message: &str) { tracing::debug!("{}", message); }
+}
+```
+
+`infrastructure/src/lib.rs` — add:
+```rust
+pub mod logger;
+```
+
+`infrastructure/Cargo.toml` — add dependency:
+```toml
+tracing = "0.1"
+```
+
+---
+
+#### Presentation / bootstrap
+
+`presentation/Cargo.toml` — add:
+```toml
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+```
+
+`presentation/src/main.rs` — initialize tracing before `build_app()`:
+```rust
+tracing_subscriber::fmt()
+    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    .init();
+```
+
+`presentation/src/generated/bootstrap.rs` — create logger once, clone into every use case:
+```rust
+use std::sync::Arc;
+use infrastructure::logger::TracingLogger;
+
+let logger = Arc::new(TracingLogger);
+
+// use case wiring (example):
+let greeting_use_case = Arc::new(GetGreetingUseCaseImpl {
+    repository: Arc::new(InMemoryGreetingRepository::new()),
+    logger: Arc::clone(&logger),
+});
+```
+
+---
+
+#### Greeting use case (template update)
+
+`business/src/application/greeting/get_greeting.rs`:
+```rust
+pub struct GetGreetingUseCaseImpl {
+    pub repository: Arc<dyn GreetingRepositoryTrait>,
+    pub logger: Arc<dyn LoggerTrait>,
+}
+
+impl GetGreetingUseCaseTrait for GetGreetingUseCaseImpl {
+    async fn execute(&self, params: GetGreetingParams) -> Result<Greeting, GreetingError> {
+        self.logger.info(&format!("Getting greeting for: {}", params.name));
+        // ...
+        self.logger.info(&format!("Greeting created: {}", greeting.message));
+        Ok(greeting)
+    }
+}
+```
+
+Tests use `MockLogger` from `business::logger::mocks`.
+
+---
+
+#### Scaffold generator update (`crates/cli/src/scaffold.rs`)
+
+The `UC_IMPL` template constant must include the logger field and log calls. Generated use case impls follow this shape:
+
+```rust
+pub struct {uc_pascal}UseCaseImpl {
+    pub repository: Arc<dyn {Pascal}RepositoryTrait>,
+    pub logger: Arc<dyn LoggerTrait>,
+}
+
+impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
+    async fn execute(&self, params: {uc_pascal}Params) -> Result<{Pascal}, {Pascal}Error> {
+        self.logger.info(&format!("Executing {uc}: {:?}", params));
+        // ...
+        Ok(result)
+    }
+}
+```
+
+`generate_bootstrap_content()` must add:
+- `use infrastructure::logger::TracingLogger;`
+- `let logger = Arc::new(TracingLogger);`
+- `logger: Arc::clone(&logger)` in every use case struct init
+
+---
+
+#### Files changed in template
+
+| File | Change |
+|------|--------|
+| `business/src/domain/logger.rs` | NEW — `LoggerTrait` + mockall mock |
+| `business/src/lib.rs` | Add `pub mod logger;` |
+| `business/src/application/greeting/get_greeting.rs` | Add `logger` field + log calls + mock in tests |
+| `infrastructure/src/logger.rs` | NEW — `TracingLogger` |
+| `infrastructure/src/lib.rs` | Add `pub mod logger;` |
+| `infrastructure/Cargo.toml` | Add `tracing = "0.1"` |
+| `presentation/src/main.rs.liquid` | Add `tracing_subscriber` init |
+| `presentation/Cargo.toml` | Add `tracing-subscriber` |
+| `presentation/src/generated/bootstrap.rs` | Wire `TracingLogger` into all use cases |
+
+#### Files changed in Harbor CLI
+
+| File | Change |
+|------|--------|
+| `crates/cli/src/scaffold.rs` | `UC_IMPL` template: add `logger` field + log calls |
+| `crates/cli/src/scaffold.rs` | `generate_bootstrap_content()`: wire `TracingLogger` |
+
+---
+
+#### Test scenarios
+
+- `harbor new` — generated project compiles with logger wired (`make test/full`)
+- `harbor generate scaffold <Name>` — generated use case impl has `logger` field
+- `harbor generate use-case <Entity> <action>` — generated impl has `logger` field
+- `bootstrap.rs` contains `TracingLogger` import and `logger` wired into every use case
+- Mock logger works in unit tests (no real tracing calls)
+
+---
+
+## Phase 6 — VS Code snippets
+
+Add `crates/cli/template/.vscode/` with Harbor-adapted snippets so every `harbor new` project ships with ready-to-use code snippets aligned to Harbor conventions.
+
+Snippets cover all DDD layers: domain model, errors, repository trait, use case traits (create/get-all/get-by-id/update/delete), use case impls with logger, infrastructure repository, presentation routes, and test helpers.
+
+**Key adaptations from raw snippets:**
+- Trait suffix: `LoggerTrait`, `${Entity}RepositoryTrait`, `${uc_pascal}UseCaseTrait`
+- Logger: `Arc<dyn LoggerTrait>` (requires Phase 5 to be done first)
+- Mock location: mocks imported from `repository.rs` module, not defined inline per test
+- Error codes: machine-readable identifiers (`"entity.not_found"`)
+- Module paths: match Harbor's inline `lib.rs` declaration style (no `mod.rs`)
+
+Spec per snippet TBD — implement one at a time after Phase 5 is complete.
+
+---
+
+## Phase 7 — Full-stack (frontend)
 
 TBD. Options to evaluate:
 - Server-side rendering with a Rust template engine (Askama / Tera)

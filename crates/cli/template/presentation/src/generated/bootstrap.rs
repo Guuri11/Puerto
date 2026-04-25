@@ -4,6 +4,8 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 
 use infrastructure::greeting::repository::InMemoryGreetingRepository;
+use infrastructure::logger::TracingLogger;
+use business::domain::logger::LoggerTrait;
 
 use poem::Route;
 use poem_openapi::OpenApiService;
@@ -11,7 +13,12 @@ use poem_openapi::OpenApiService;
 use crate::api::greeting::routes::GreetingApi;
 
 pub fn build_app() -> Route {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository) });
+    let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger);
+
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository),
+        logger: Arc::clone(&logger),
+    });
     let greeting_api = GreetingApi { get_greeting };
 
     let api_service = OpenApiService::new(

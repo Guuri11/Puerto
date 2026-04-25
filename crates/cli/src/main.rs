@@ -25,8 +25,14 @@ enum Commands {
         #[arg(long)]
         name: Option<String>,
         /// Include database support (SQLx + Postgres) (skips interactive prompt)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "no_db")]
         db: bool,
+        /// Explicitly skip database support without prompting
+        #[arg(long, conflicts_with = "db")]
+        no_db: bool,
+        /// Directory where the project will be created (defaults to current directory)
+        #[arg(long)]
+        destination: Option<PathBuf>,
     },
     /// Code generators for existing Harbor projects
     Generate {
@@ -72,7 +78,10 @@ fn extract_template() -> Result<tempfile::TempDir, Box<dyn std::error::Error>> {
 }
 
 /// Core project generation. `name = None` lets cargo-generate prompt interactively.
-fn generate_new_project(name: Option<String>) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn generate_new_project(
+    name: Option<String>,
+    destination: Option<PathBuf>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let tmp = extract_template()?;
 
     let args = GenerateArgs {
@@ -81,6 +90,7 @@ fn generate_new_project(name: Option<String>) -> Result<PathBuf, Box<dyn std::er
             ..Default::default()
         },
         name: name.clone(),
+        destination,
         no_workspace: true,
         // Suppress cargo-generate's [1/N] Skipped/Done progress output
         quiet: true,
@@ -92,11 +102,17 @@ fn generate_new_project(name: Option<String>) -> Result<PathBuf, Box<dyn std::er
     Ok(output)
 }
 
-/// Interactive `harbor new`: prompts for any missing values.
-fn new_project(name: Option<String>, db: bool) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    // If --db not given, ask interactively (only when running with a TTY)
+/// Runs `harbor new`. Prompts for any values not provided as flags.
+fn new_project(
+    name: Option<String>,
+    db: bool,
+    no_db: bool,
+    destination: Option<PathBuf>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let resolved_db = if db {
         true
+    } else if no_db {
+        false
     } else if dialoguer::console::user_attended() {
         dialoguer::Confirm::new()
             .with_prompt("Include database support (SQLx + Postgres)?")
@@ -108,7 +124,7 @@ fn new_project(name: Option<String>, db: bool) -> Result<PathBuf, Box<dyn std::e
 
     eprintln!("Constructing project skeleton...");
 
-    let output = generate_new_project(name)?;
+    let output = generate_new_project(name, destination)?;
 
     if resolved_db {
         scaffold::apply_db_to_new_project(&output)?;
@@ -121,7 +137,12 @@ fn main() {
     let cli = Cli::parse();
 
     let result: Result<(), Box<dyn std::error::Error>> = match cli.command {
-        Commands::New { name, db } => new_project(name, db).map(|path| {
+        Commands::New {
+            name,
+            db,
+            no_db,
+            destination,
+        } => new_project(name, db, no_db, destination).map(|path| {
             let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             println!("├── business/        (domain logic)");
             println!("├── infrastructure/  (adapters)");
@@ -226,6 +247,8 @@ mod tests {
 
         let output = new_project_non_interactive(Some("db-project".into()), true, &dir).unwrap();
 
+        assert!(output.join("docker-compose.yml").exists());
+        assert!(output.join(".env").exists());
         assert!(output.join(".env.example").exists());
         assert!(output.join(".cargo/config.toml").exists());
         assert!(output.join("infrastructure/migrations").is_dir());
@@ -888,6 +911,64 @@ mod tests {
         let output = generate_db_project("db-app", &dir).unwrap();
         let content = fs::read_to_string(output.join(".env.example")).unwrap();
         assert!(content.contains("DATABASE_URL"));
+        assert!(content.contains("db_app")); // project name embedded
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn db_project_has_env_file_with_project_db_name() {
+        let dir = temp_dir("db_env_file");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("my-api", &dir).unwrap();
+        let content = fs::read_to_string(output.join(".env")).unwrap();
+        assert!(content.contains("DATABASE_URL"));
+        assert!(content.contains("my_api")); // hyphens → underscores
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn db_project_has_docker_compose_with_project_name() {
+        let dir = temp_dir("db_docker_compose");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("my-api", &dir).unwrap();
+        let content = fs::read_to_string(output.join("docker-compose.yml")).unwrap();
+        assert!(content.contains("postgres:16"));
+        assert!(content.contains("my-api-postgres")); // container name
+        assert!(content.contains("my_api")); // db name
+        assert!(content.contains("5432"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn db_project_has_gitignore_with_env() {
+        let dir = temp_dir("db_gitignore");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("db-app", &dir).unwrap();
+        let gitignore_path = output.join(".gitignore");
+        // either cargo-generate created it (and we appended .env) or we created it
+        if gitignore_path.exists() {
+            let content = fs::read_to_string(&gitignore_path).unwrap();
+            assert!(content.contains(".env"));
+        }
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn db_project_makefile_has_docker_and_sqlx_targets() {
+        let dir = temp_dir("db_makefile_targets");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("db-app", &dir).unwrap();
+        let content = fs::read_to_string(output.join("Makefile")).unwrap();
+        assert!(content.contains("docker/up"));
+        assert!(content.contains("docker/down"));
+        assert!(content.contains("sqlx/migrate"));
+        assert!(content.contains("sqlx/prepare"));
+        assert!(content.contains("sqlx/online"));
+        assert!(content.contains("sqlx/offline"));
         cleanup(&dir);
     }
 
@@ -1069,6 +1150,102 @@ mod tests {
 
         let lib = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
         assert_eq!(lib.matches("pub mod delete_product;").count(), 2); // domain + application
+
+        cleanup(&dir);
+    }
+
+    // ── Phase 5: logger ───────────────────────────────────────────────────────
+
+    #[test]
+    fn new_project_has_domain_logger_file() {
+        let dir = temp_dir("logger_domain_file");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = generate_project("logger-test", &dir).unwrap();
+
+        assert!(output.join("business/src/domain/logger.rs").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn new_project_has_infrastructure_logger_file() {
+        let dir = temp_dir("logger_infra_file");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = generate_project("logger-test", &dir).unwrap();
+
+        assert!(output.join("infrastructure/src/logger.rs").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn new_project_bootstrap_wires_tracing_logger() {
+        let dir = temp_dir("logger_bootstrap");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = generate_project("logger-test", &dir).unwrap();
+
+        let content =
+            fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(content.contains("TracingLogger"));
+        assert!(content.contains("let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger)"));
+        assert!(content.contains("Arc::clone(&logger)"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_use_case_impl_has_logger_field() {
+        let dir = temp_dir("logger_scaffold_impl");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        scaffold::run("Product", &dir, false).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("business/src/application/product/create_product.rs"))
+                .unwrap();
+        assert!(content.contains("pub logger: Arc<dyn LoggerTrait>"));
+        assert!(content.contains("use crate::domain::logger::LoggerTrait"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn use_case_generator_impl_has_logger_field() {
+        let dir = temp_dir("logger_uc_impl");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_use_case_stubs(&dir);
+        scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("business/src/application/product/delete_product.rs"))
+                .unwrap();
+        assert!(content.contains("pub logger: Arc<dyn LoggerTrait>"));
+        assert!(content.contains("use crate::domain::logger::LoggerTrait"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_bootstrap_wires_logger_for_all_entities() {
+        let dir = temp_dir("logger_bootstrap_scaffold");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs(&dir);
+        scaffold::run("Product", &dir, false).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(content.contains("TracingLogger"));
+        assert!(content.contains("let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger)"));
+        // Both use cases receive the logger
+        assert_eq!(content.matches("Arc::clone(&logger)").count(), 2);
 
         cleanup(&dir);
     }
