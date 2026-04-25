@@ -19,6 +19,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <a href="#use-case" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Add Use Case</a>
           <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Database (SQLx)</a>
           <a href="#architecture" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Architecture</a>
+          <a href="#snippets" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">IDE Snippets</a>
         </nav>
       </aside>
 
@@ -177,6 +178,154 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 <span class="text-harbor-mist/40">→ depends on</span>
                 <span class="text-harbor-mist/60">nothing (std + thiserror only)</span>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- IDE Snippets -->
+        <section id="snippets" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-harbor-ice">IDE Snippets</h2>
+          <p class="mt-3 font-sans text-harbor-mist">
+            Every <code class="font-mono text-xs text-harbor-teal">harbor new</code> project ships with 23 Harbor-adapted Rust snippets for Zed, VS Code, and nvim+LuaSnip. No configuration needed — files are written automatically and loaded by your editor from the project root.
+          </p>
+
+          <!-- IDE setup -->
+          <div class="mt-6 space-y-3">
+            <div class="rounded-md border border-harbor-teal/20 bg-harbor-navy p-4">
+              <p class="font-mono text-sm font-semibold text-harbor-teal">Zed</p>
+              <p class="mt-1 font-sans text-sm text-harbor-mist">
+                Snippets are written to <code class="font-mono text-xs text-harbor-teal">.zed/snippets/rust.json</code>. Zed loads project-local snippets automatically — no further setup.
+              </p>
+            </div>
+            <div class="rounded-md border border-harbor-steel/30 bg-harbor-navy p-4">
+              <p class="font-mono text-sm font-semibold text-harbor-ice">VS Code</p>
+              <p class="mt-1 font-sans text-sm text-harbor-mist">
+                Snippets are written to <code class="font-mono text-xs text-harbor-mist">.vscode/harbor.code-snippets</code>. VS Code picks up workspace snippet files automatically.
+              </p>
+            </div>
+            <div class="rounded-md border border-harbor-steel/30 bg-harbor-navy p-4">
+              <p class="font-mono text-sm font-semibold text-harbor-ice">nvim + LuaSnip</p>
+              <p class="mt-1 font-sans text-sm text-harbor-mist">
+                The VS Code file uses TextMate format, which LuaSnip can load directly. Add to your config:
+              </p>
+              <div class="mt-3 rounded bg-harbor-deep px-4 py-3">
+                <code class="font-mono text-xs text-harbor-mist/80">{"require(\"luasnip.loaders.from_vscode\").lazy_load({ paths = {\"./.vscode\"} })"}</code>
+              </div>
+            </div>
+          </div>
+
+          <!-- Snippet table -->
+          <p class="mt-8 font-sans text-sm font-semibold text-harbor-ice">Available snippets</p>
+          <div class="mt-3 space-y-6">
+            <!-- Domain -->
+            <div>
+              <div class="mb-2 flex items-center gap-2">
+                <span class="font-mono text-xs font-bold text-harbor-teal uppercase tracking-widest">Domain</span>
+                <div class="h-px flex-1 bg-harbor-steel/30"></div>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-teal">domain-model</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">Entity struct + Props + new(props) + from_repository()</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-teal">domain-errors</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">thiserror enum with machine-readable error codes</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-teal">repository-trait</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">RepositoryTrait + mockall mock in pub mod mocks</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-teal">domain-use-case</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">Params struct + UseCaseTrait</span>
+                </div>
+              </div>
+            </div>
+            <!-- Application -->
+            <div>
+              <div class="mb-2 flex items-center gap-2">
+                <span class="font-mono text-xs font-bold text-harbor-rust uppercase tracking-widest">Application</span>
+                <div class="h-px flex-1 bg-harbor-steel/30"></div>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-rust">app-use-case</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">UseCaseImpl with LoggerTrait injection + unit tests included</span>
+                </div>
+              </div>
+            </div>
+            <!-- Infrastructure -->
+            <div>
+              <div class="mb-2 flex items-center gap-2">
+                <span class="font-mono text-xs font-bold text-harbor-indigo uppercase tracking-widest">Infrastructure</span>
+                <div class="h-px flex-1 bg-harbor-steel/30"></div>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-indigo">persistence-entity</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">DB row struct (FromRow) + TryFrom/From conversions</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-indigo">persistence-repo</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">PgEntityRepository — find_by_id + save with SQLx macros</span>
+                </div>
+              </div>
+            </div>
+            <!-- Tests -->
+            <div>
+              <div class="mb-2 flex items-center gap-2">
+                <span class="font-mono text-xs font-bold text-harbor-mist/60 uppercase tracking-widest">Tests</span>
+                <div class="h-px flex-1 bg-harbor-steel/30"></div>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-mist/80">should-do-test</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">#[tokio::test] with Arrange / Act / Assert comments</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-mist/80">sqlx-test</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">#[sqlx::test(migrations = "migrations")] — real Postgres pool</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-mist/80">sqlx-repo-test-module</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">Full integration test module for PgEntityRepository</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-harbor-mist/80">object-mother</code>
+                  <span class="font-sans text-xs text-harbor-mist/70">Object Mother builder: random(), with_name(), build()</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="mt-3 font-sans text-xs text-harbor-mist/40 text-right">+ 9 more: lib.rs blocks, poem DTOs, response enums, error mappers, API struct</p>
+
+          <!-- Regenerate command -->
+          <p class="mt-8 font-sans text-sm font-semibold text-harbor-ice">Switching IDE or regenerating</p>
+          <p class="mt-2 font-sans text-sm text-harbor-mist">
+            Run <code class="font-mono text-xs text-harbor-teal">harbor generate snippets</code> from your project root at any time to write both IDE files. Use <code class="font-mono text-xs text-harbor-rust">--ide</code> to target a specific editor:
+          </p>
+          <div class="mt-3 space-y-2">
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate snippets</code>
+              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate snippets" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate snippets --ide zed</code>
+              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate snippets --ide zed" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate snippets --ide vscode</code>
+              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate snippets --ide vscode" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
             </div>
           </div>
         </section>

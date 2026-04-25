@@ -91,6 +91,9 @@ harbor generate scaffold <Name> --db       # Add a new DDD entity (SQLx/Postgres
 harbor generate use-case <Entity> <action> # Add a use case to an existing entity
 harbor generate migration <name>           # Create a new SQLx migration file
 harbor generate bootstrap                  # Regenerate bootstrap.rs from harbor.toml
+harbor generate snippets                   # Write IDE snippet files (Zed + VS Code)
+harbor generate snippets --ide zed         # Zed only  (.zed/snippets/rust.json)
+harbor generate snippets --ide vscode      # VS Code only (.vscode/harbor.code-snippets)
 ```
 
 ## Make Commands

@@ -606,20 +606,102 @@ impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
 
 ---
 
-## Phase 6 — VS Code snippets
+## Phase 6 — IDE Snippets
 
-Add `crates/cli/template/.vscode/` with Harbor-adapted snippets so every `harbor new` project ships with ready-to-use code snippets aligned to Harbor conventions.
+Every `harbor new` project ships with snippet files for **Zed** and **VS Code** (VS Code format is also compatible with nvim+LuaSnip). Both files share the same JSON content — Zed and VS Code use the same TextMate snippet format.
 
-Snippets cover all DDD layers: domain model, errors, repository trait, use case traits (create/get-all/get-by-id/update/delete), use case impls with logger, infrastructure repository, presentation routes, and test helpers.
+### 6.0 Snippet files in `harbor new`
 
-**Key adaptations from raw snippets:**
-- Trait suffix: `LoggerTrait`, `${Entity}RepositoryTrait`, `${uc_pascal}UseCaseTrait`
-- Logger: `Arc<dyn LoggerTrait>` (requires Phase 5 to be done first)
-- Mock location: mocks imported from `repository.rs` module, not defined inline per test
-- Error codes: machine-readable identifiers (`"entity.not_found"`)
-- Module paths: match Harbor's inline `lib.rs` declaration style (no `mod.rs`)
+`harbor new` writes two files after cargo-generate completes:
 
-Spec per snippet TBD — implement one at a time after Phase 5 is complete.
+```
+.zed/snippets/rust.json           # Zed project-local snippets — auto-loaded by Zed
+.vscode/harbor.code-snippets      # VS Code workspace snippets — auto-loaded; LuaSnip-compatible
+```
+
+Written by `snippets::apply(base, None)` called from `new_project()` after cargo-generate.
+
+**Zed note:** project snippets at `.zed/snippets/` are loaded automatically — no copying needed.
+**LuaSnip note:** add `require("luasnip.loaders.from_vscode").lazy_load({ paths = { "./.vscode" } })` to init.
+
+---
+
+### 6.1 `harbor generate snippets [--ide <ide>]`
+
+Adds or regenerates snippet files in an existing Harbor project.
+
+**Command signature:**
+```
+harbor generate snippets                 # writes both Zed + VS Code
+harbor generate snippets --ide zed       # .zed/snippets/rust.json only
+harbor generate snippets --ide vscode    # .vscode/harbor.code-snippets only
+```
+
+**Behavior:**
+- Overwrites existing files (idempotent)
+- `--ide` values: `zed`, `vscode` (error on unknown value)
+- Prints file path(s) written + IDE-specific setup note
+
+---
+
+### Snippet inventory
+
+| Prefix | Layer | Description |
+|--------|-------|-------------|
+| `lib-domain-entity` | lib.rs | Inline domain entity block |
+| `lib-application-entity` | lib.rs | Inline application entity block |
+| `domain-model` | domain | Struct + Props + new(props) + from_repository() |
+| `domain-errors` | domain | thiserror enum with machine-readable codes |
+| `repository-trait` | domain | RepositoryTrait + Send+Sync + mockall mock |
+| `domain-use-case` | domain | Params + UseCaseTrait |
+| `app-use-case` | application | UseCaseImpl + LoggerTrait + unit tests |
+| `lib-infra-entity` | infra lib.rs | Infrastructure entity block (InMemory) |
+| `lib-infra-entity-db` | infra lib.rs | Infrastructure entity block (SQLx) |
+| `persistence-entity` | infrastructure | EntityDb struct + TryFrom/From conversions |
+| `persistence-repo` | infrastructure | PgEntityRepository + find_by_id + save |
+| `lib-presentation-entity` | api.rs | Presentation entity module decls |
+| `poem-dto` | presentation | EntityDto (Object) + from_domain() |
+| `poem-request-dto` | presentation | Request DTO struct |
+| `poem-response-enum` | presentation | ApiResponse enum + from_status() |
+| `poem-error-mapper` | presentation | IntoErrorResponse impl |
+| `poem-api-struct` | presentation | EntityApi struct + POST endpoint |
+| `poem-endpoint` | presentation | Single #[oai] endpoint handler |
+| `cfg-test` | test | #[cfg(test)] mod tests block |
+| `should-do-test` | test | #[tokio::test] with AAA pattern |
+| `object-mother` | test | Object Mother builder pattern |
+| `sqlx-test` | test | #[sqlx::test(migrations="migrations")] single test |
+| `sqlx-repo-test-module` | test | Full #[cfg(test)] for PgEntityRepository |
+
+**Harbor adaptations vs ant_backend:**
+- `LoggerTrait` (not `Logger`) — already has `Send + Sync`
+- Mocks in `repository.rs pub mod mocks` (not separate file)
+- `from_repository(data: Entity) -> Self` (not individual fields)
+- No `SecurityService`/JWT, no events, no UoW, no SSE handlers
+- `EntityError::RepositoryError` terminal (no `From<RepositoryError>`)
+- SQL params escaped as `\$1` in snippet JSON to avoid tab-stop conflict
+
+---
+
+### 6.2 SQLx integration tests in `--db` scaffold (already implemented)
+
+`harbor generate scaffold <Name> --db` generates `infrastructure/src/<entity>/repository.rs`
+with a `#[cfg(test)] mod integration_tests` block containing three `#[sqlx::test]` tests:
+- `should_persist_and_retrieve_by_id`
+- `should_return_none_for_nonexistent_id`
+- `should_update_entity_on_save_conflict`
+
+Migrations path: `"migrations"` (relative to infrastructure crate root = `infrastructure/migrations/`).
+
+---
+
+### Test scenarios
+
+- `harbor new` → `.zed/snippets/rust.json` exists with valid JSON
+- `harbor new` → `.vscode/harbor.code-snippets` exists with valid JSON
+- `harbor generate snippets` → overwrites both files (idempotent)
+- `harbor generate snippets --ide zed` → only `.zed/snippets/rust.json` created
+- `harbor generate snippets --ide vscode` → only `.vscode/harbor.code-snippets` created
+- `harbor generate snippets --ide unknown` → error message
 
 ---
 

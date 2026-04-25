@@ -1,5 +1,6 @@
 mod harbor_toml;
 mod scaffold;
+mod snippets;
 
 use cargo_generate::{GenerateArgs, TemplatePath, generate};
 use clap::{Parser, Subcommand};
@@ -64,6 +65,12 @@ enum GenerateAction {
     Migration {
         /// Migration name in snake_case (e.g. add_products_table)
         name: String,
+    },
+    /// Write IDE snippet files (.zed/snippets/rust.json, .vscode/harbor.code-snippets)
+    Snippets {
+        /// Target IDE: zed or vscode (default: both)
+        #[arg(long)]
+        ide: Option<String>,
     },
 }
 
@@ -130,6 +137,8 @@ fn new_project(
         scaffold::apply_db_to_new_project(&output)?;
     }
 
+    snippets::apply(&output, None)?;
+
     Ok(output)
 }
 
@@ -174,6 +183,12 @@ fn main() {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             scaffold::run_migration(&name, &cwd, None)
         }
+        Commands::Generate {
+            action: GenerateAction::Snippets { ide },
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            snippets::run(&cwd, ide.as_deref())
+        }
     };
 
     if let Err(e) = result {
@@ -188,6 +203,7 @@ fn main() {
 mod tests {
     use super::*;
     use cargo_generate::Vcs;
+    use serde_json;
     use std::fs;
     use std::path::Path;
 
@@ -1246,6 +1262,115 @@ mod tests {
         assert!(content.contains("let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger)"));
         // Both use cases receive the logger
         assert_eq!(content.matches("Arc::clone(&logger)").count(), 2);
+
+        cleanup(&dir);
+    }
+
+    // ── Phase 6: IDE snippets ─────────────────────────────────────────────────
+
+    #[test]
+    fn new_project_creates_zed_snippet_file() {
+        let dir = temp_dir("snippets_zed_new");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("snip-test".into()), false, &dir).unwrap();
+        snippets::apply(&output, None).unwrap();
+
+        assert!(output.join(".zed/snippets/rust.json").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn new_project_creates_vscode_snippet_file() {
+        let dir = temp_dir("snippets_vscode_new");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("snip-test".into()), false, &dir).unwrap();
+        snippets::apply(&output, None).unwrap();
+
+        assert!(output.join(".vscode/harbor.code-snippets").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn snippet_files_contain_valid_json() {
+        let dir = temp_dir("snippets_valid_json");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        snippets::apply(&dir, None).unwrap();
+
+        let zed = fs::read_to_string(dir.join(".zed/snippets/rust.json")).unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&zed).is_ok(),
+            "zed snippet JSON invalid"
+        );
+
+        let vscode = fs::read_to_string(dir.join(".vscode/harbor.code-snippets")).unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&vscode).is_ok(),
+            "vscode snippet JSON invalid"
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_snippets_ide_zed_creates_only_zed_file() {
+        let dir = temp_dir("snippets_ide_zed");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        snippets::run(&dir, Some("zed")).unwrap();
+
+        assert!(dir.join(".zed/snippets/rust.json").exists());
+        assert!(!dir.join(".vscode/harbor.code-snippets").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_snippets_ide_vscode_creates_only_vscode_file() {
+        let dir = temp_dir("snippets_ide_vscode");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        snippets::run(&dir, Some("vscode")).unwrap();
+
+        assert!(!dir.join(".zed/snippets/rust.json").exists());
+        assert!(dir.join(".vscode/harbor.code-snippets").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_snippets_is_idempotent() {
+        let dir = temp_dir("snippets_idempotent");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        snippets::run(&dir, None).unwrap();
+        snippets::run(&dir, None).unwrap(); // second run must not error
+
+        assert!(dir.join(".zed/snippets/rust.json").exists());
+        assert!(dir.join(".vscode/harbor.code-snippets").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_snippets_unknown_ide_returns_error() {
+        let dir = temp_dir("snippets_unknown_ide");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let result = snippets::run(&dir, Some("neovim"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unknown IDE"));
 
         cleanup(&dir);
     }
