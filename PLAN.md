@@ -705,7 +705,70 @@ Migrations path: `"migrations"` (relative to infrastructure crate root = `infras
 
 ---
 
-## Phase 7 — Full-stack (frontend)
+## Phase 7 — Project-level metadata & DX improvements
+
+### 7.0 `[project] db = true` in harbor.toml ✅ DONE
+
+Track project-level database support in `harbor.toml` so tools and future generators can read whether the project was created with `--db` without inspecting generated files.
+
+**Schema addition:**
+```toml
+[project]
+name = "my-app"
+db = true          # present only when harbor new --db was used
+```
+
+**Rules:**
+- `harbor new --db` sets `project.db = true` via `apply_db_to_new_project`
+- `harbor new` (no db) omits the field entirely (serialised with `skip_serializing_if`)
+- `harbor generate scaffold <Name>` can read this flag in the future to default `--db` behaviour
+- `harbor generate scaffold <Name> --db` errors when `project.db` is absent (future enforcement)
+
+**Files changed:**
+- `crates/cli/src/harbor_toml.rs` — add `db: bool` to `Project` struct
+- `crates/cli/src/scaffold.rs` — `apply_db_to_new_project` sets `project.db = true`
+
+**Test scenarios:**
+- `harbor new --db` → `harbor.toml` contains `db = true` under `[project]`
+- `harbor new` (no db) → `harbor.toml` does not contain `db = true`
+
+---
+
+### 7.1 Review logging in ant_backend for presentation layer
+
+Investigate how `ant_backend` handles logging at the presentation / HTTP handler level:
+- Does it log request/response metadata (path, status, latency)?
+- Is there a middleware or `poem` hook that logs per-request?
+- Should Harbor wire `tower-http` `TraceLayer` or a poem equivalent automatically?
+
+Goal: decide whether Harbor-generated `main.rs` / `bootstrap.rs` should include HTTP-level request logging out of the box.
+
+---
+
+### 7.2 Spring Boot-like startup banner
+
+Print a Harbor ASCII banner on startup, similar to Spring Boot's banner:
+
+```
+  _   _             _
+ | | | | __ _ _ __| |__   ___  _ __
+ | |_| |/ _` | '__| '_ \ / _ \| '__|
+ |  _  | (_| | |  | |_) | (_) | |
+ |_| |_|\__,_|_|  |_.__/ \___/|_|
+
+ :: Harbor ::  (v0.3.0)
+```
+
+Printed to stdout before `build_app()` is called, controlled by `HARBOR_BANNER=false` env var to suppress in tests.
+
+Options to evaluate:
+- Static string in `main.rs.liquid` template
+- Read version from `CARGO_PKG_VERSION` at compile time
+- Optional: color via `colored` crate (adds dependency — may not be worth it)
+
+---
+
+## Phase 8 — Full-stack (frontend)
 
 TBD. Options to evaluate:
 - Server-side rendering with a Rust template engine (Askama / Tera)

@@ -443,6 +443,11 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
     patch_makefile_setup_for_db(base)?;
     add_db_makefile_targets(base)?;
 
+    // Mark the project as db-enabled in harbor.toml
+    let mut config = crate::harbor_toml::read(base)?;
+    config.project.db = true;
+    crate::harbor_toml::write(base, &config)?;
+
     Ok(())
 }
 

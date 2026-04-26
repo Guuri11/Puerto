@@ -14,6 +14,9 @@ pub struct HarborConfig {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Project {
     pub name: String,
+    /// true when the project was created with `harbor new --db`
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub db: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -1033,6 +1033,30 @@ mod tests {
         cleanup(&dir);
     }
 
+    #[test]
+    fn db_project_harbor_toml_has_project_db_true() {
+        let dir = temp_dir("db_proj_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_db_project("db-app", &dir).unwrap();
+        let config = harbor_toml::read(&output).unwrap();
+        assert!(config.project.db, "project.db should be true for --db projects");
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn no_db_project_harbor_toml_omits_project_db() {
+        let dir = temp_dir("no_db_proj_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("plain-app", &dir).unwrap();
+        let config = harbor_toml::read(&output).unwrap();
+        assert!(!config.project.db, "project.db should be false for non-db projects");
+        let content = fs::read_to_string(output.join("harbor.toml")).unwrap();
+        assert!(!content.contains("db = true"), "harbor.toml should not contain db = true for non-db projects");
+        cleanup(&dir);
+    }
+
     // ── harbor generate scaffold --db ─────────────────────────────────────────
 
     fn setup_db_harbor_stubs(base: &Path) {
