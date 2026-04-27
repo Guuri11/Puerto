@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use business::{
     application::greeting::get_greeting::GetGreetingUseCaseImpl,
-    domain::greeting::use_cases::get_greeting::{GetGreetingParams, GetGreetingUseCaseTrait},
+    domain::{
+        greeting::use_cases::get_greeting::{GetGreetingParams, GetGreetingUseCaseTrait},
+        logger::LoggerTrait,
+    },
 };
 use poem_openapi::{OpenApi, param::Path};
 
@@ -10,6 +13,7 @@ use crate::api::{error::IntoErrorResponse, greeting::{dto::GreetingDto, response
 
 pub struct GreetingApi {
     pub get_greeting: Arc<GetGreetingUseCaseImpl>,
+    pub logger: Arc<dyn LoggerTrait>,
 }
 
 #[OpenApi]
@@ -23,6 +27,7 @@ impl GreetingApi {
             )),
             Err(err) => {
                 let (status, error) = err.into_error_response();
+                self.logger.warn(&format!("get_greeting error: {}", error.0.message));
                 GetGreetingResponse::from_status(status, error)
             }
         }

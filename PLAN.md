@@ -188,6 +188,80 @@ infrastructure/migrations/<timestamp>_<name>.sql
 
 ---
 
+### 2.5 `harbor generate scaffold <Name> --crud` ✅ DONE
+
+Generates a complete CRUD entity across all layers instead of a single `create_<name>` use case.
+
+**Command signature:**
+```
+harbor generate scaffold <Name> --crud
+harbor generate scaffold <Name> --crud --db
+```
+
+Without `--crud` the command behaves as in 2.1 / 4.1. With `--crud`:
+- Generates 5 use case traits + impls (create, get, list, update, delete)
+- Repository trait includes `find_all` in addition to `find_by_id` + `save`
+- Presentation layer has all 5 HTTP endpoints (POST, GET ×2, PUT, DELETE)
+- Compatible with `--db`: generates `PgEntityRepository` with full CRUD SQL
+
+**Files created (delta over base scaffold):**
+
+```
+business/src/domain/<entity>/use_cases/
+  create_<entity>.rs    # Params + CreateUseCaseTrait
+  get_<entity>.rs       # Params (id) + GetUseCaseTrait
+  list_<entity>.rs      # Params (unit) + ListUseCaseTrait
+  update_<entity>.rs    # Params (id + name) + UpdateUseCaseTrait
+  delete_<entity>.rs    # Params (id) + DeleteUseCaseTrait
+
+business/src/application/<entity>/
+  create_<entity>.rs    # UseCaseImpl + unit tests (AAA)
+  get_<entity>.rs
+  list_<entity>.rs
+  update_<entity>.rs
+  delete_<entity>.rs
+
+infrastructure/src/<entity>/
+  repository.rs         # InMemory (--crud) or PgPool (--crud --db)
+  entity.rs             # only with --db
+
+presentation/src/api/<entity>/
+  dto.rs                # <Entity>Dto + Create<Entity>Request + Update<Entity>Request
+  responses.rs          # Create/Get/List/Update/Delete<Entity>Response
+  error_mapper.rs
+  routes.rs             # <Entity>Api with POST /entities, GET /entities, GET /entities/:id,
+                        #   PUT /entities/:id, DELETE /entities/:id
+```
+
+**Repository trait (CRUD):**
+```rust
+async fn find_by_id(&self, id: Uuid) -> Result<Option<Entity>, EntityError>;
+async fn find_all(&self) -> Result<Vec<Entity>, EntityError>;
+async fn save(&self, entity: &Entity) -> Result<(), EntityError>;
+```
+
+**SQLx repository (`--crud --db`):**
+- `find_all` → `SELECT ... WHERE deleted = false ORDER BY created_at DESC`
+- `find_by_id` → `SELECT ... WHERE id = $1 AND deleted = false`
+- `save` → upsert with `ON CONFLICT (id) DO UPDATE`
+- Includes `#[cfg(test)] mod integration_tests` with three `#[sqlx::test]` tests
+
+**Auto-patches (same as base scaffold):**
+- `business/src/lib.rs` — all 5 use case modules declared inline
+- `infrastructure/src/lib.rs`, `presentation/src/api.rs`, `harbor.toml`
+- `presentation/src/generated/bootstrap.rs` — all 5 use case impls wired
+
+**Test scenarios:**
+- Creates all 5 domain use case files
+- Creates all 5 application use case files
+- Repository trait contains `find_all`, `find_by_id`, `save`
+- Routes file contains POST, GET, PUT, DELETE methods and all 5 use case fields
+- `business/src/lib.rs` patched with all 5 use case modules
+- `bootstrap.rs` wires all 5 `UseCaseImpl` structs
+- Without `--crud`: behaviour identical to 2.1 / 4.1 (no regression)
+
+---
+
 ## Phase 3 — Auto-patching lib.rs ✅ DONE
 
 `harbor generate scaffold` automatically updates:
@@ -734,18 +808,63 @@ db = true          # present only when harbor new --db was used
 
 ---
 
-### 7.1 Review logging in ant_backend for presentation layer
+### 7.1 HTTP-level request logging via poem Tracing middleware ✅ DONE
 
-Investigate how `ant_backend` handles logging at the presentation / HTTP handler level:
-- Does it log request/response metadata (path, status, latency)?
-- Is there a middleware or `poem` hook that logs per-request?
-- Should Harbor wire `tower-http` `TraceLayer` or a poem equivalent automatically?
+Every generated project logs HTTP requests automatically via poem's built-in `Tracing` middleware — no user configuration needed.
 
-Goal: decide whether Harbor-generated `main.rs` / `bootstrap.rs` should include HTTP-level request logging out of the box.
+**Invariant:** ALL generated code logs through `LoggerTrait` (never `tracing::` directly). The middleware is the only exception: it uses `tracing::` internally and is wired once in `bootstrap.rs`.
+
+**Changes to `bootstrap.rs` generation (`generate_bootstrap_content`):**
+- `build_app()` is always `pub async fn` (regardless of db flag)
+- Return type is `impl poem::Endpoint` (not `Route`) — required for `.with(Tracing)` to type-check
+- Route wiring ends with `.with(Tracing)`:
+  ```rust
+  Route::new().nest("/api", api_service).nest("/", ui).with(Tracing)
+  ```
+- Each repo binding is annotated as `Arc<dyn {Pascal}RepositoryTrait>` to satisfy trait-object coercion
+- Imports `use poem::middleware::Tracing;`
+
+**Changes to template `bootstrap.rs`:**
+- Same as above for the initial `Greeting` entity
+
+**Changes to generated use case impls (scaffold generator):**
+- `CREATE_USE_CASE_IMPL`: `warn` on `ValidationError`, `error` on repo error
+- `GET_USE_CASE_IMPL`: `warn` on `NotFound`, `error` on repo error
+- `LIST_USE_CASE_IMPL`: `error` on repo error
+- `UPDATE_USE_CASE_IMPL`: `warn` on `NotFound` + `ValidationError`, `error` on repo errors
+- `DELETE_USE_CASE_IMPL`: `warn` on `NotFound`, `error` on repo errors (unused `model::` import removed)
+
+**Changes to generated infrastructure repos:**
+- `INFRA_REPOSITORY` / `CRUD_INFRA_REPOSITORY`: `debug` log on each operation
+- `INFRA_DB_REPOSITORY` / `CRUD_INFRA_DB_REPOSITORY`: `error` log on DB errors via `map_err`
+
+**Changes to generated routes (presentation):**
+- `{Pascal}Api` struct gains `pub logger: Arc<dyn LoggerTrait>` field
+- Each endpoint handler calls `self.logger.warn(...)` on error before returning
+
+**`main.rs.liquid`:** calls `.run(generated::bootstrap::build_app().await)` (with `.await`)
+
+**Cargo.toml changes:**
+- `presentation/Cargo.toml.liquid`: `poem-openapi` gains `uuid` feature; adds `uuid = { version = "1", features = ["v4"] }`
+- `infrastructure/Cargo.toml.liquid`: `uuid` gains `serde` feature; `chrono` gains `serde` feature
+
+**What the logs look like at runtime (RUST_LOG=info):**
+```
+INFO request{remote_addr=127.0.0.1 method=POST uri=/api/products}: infrastructure::logger: Creating product: Widget
+INFO request{remote_addr=127.0.0.1 method=POST uri=/api/products}: infrastructure::logger: Product created: Widget
+INFO request{remote_addr=127.0.0.1 method=POST uri=/api/products}: poem::middleware::tracing_mw: response status=201 Created duration=56ms
+```
+
+App logs appear nested inside the request span — every log line automatically carries request context.
+
+**Test scenarios:**
+- `scaffold_bootstrap_wires_logger_for_all_entities` — verifies `Arc::clone(&logger)` count (3 per entity)
+- `make test/full` — generated project compiles with middleware wired
+- Demo project (`harbor-demo`) verified end-to-end: POST/GET products (SQLx), GET orders (InMemory)
 
 ---
 
-### 7.2 Spring Boot-like startup banner
+### 7.2 Spring Boot-like startup banner ✅ DONE
 
 Print a Harbor ASCII banner on startup, similar to Spring Boot's banner:
 

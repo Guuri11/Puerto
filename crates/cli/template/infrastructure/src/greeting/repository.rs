@@ -1,13 +1,25 @@
-use async_trait::async_trait;
-use business::domain::greeting::{errors::GreetingError, model::Greeting, repository::GreetingRepositoryTrait};
+use std::sync::Arc;
 
-/// In-memory greeting repository (replace with a real DB adapter when needed)
-pub struct InMemoryGreetingRepository;
+use async_trait::async_trait;
+use business::domain::{
+    greeting::{errors::GreetingError, model::Greeting, repository::GreetingRepositoryTrait},
+    logger::LoggerTrait,
+};
+
+pub struct InMemoryGreetingRepository {
+    logger: Arc<dyn LoggerTrait>,
+}
+
+impl InMemoryGreetingRepository {
+    pub fn new(logger: Arc<dyn LoggerTrait>) -> Self {
+        Self { logger }
+    }
+}
 
 #[async_trait]
 impl GreetingRepositoryTrait for InMemoryGreetingRepository {
-    async fn find_by_name(&self, _name: &str) -> Result<Option<Greeting>, GreetingError> {
-        // No cache — always let the domain generate the greeting
+    async fn find_by_name(&self, name: &str) -> Result<Option<Greeting>, GreetingError> {
+        self.logger.debug(&format!("find_by_name: {name}"));
         Ok(None)
     }
 }

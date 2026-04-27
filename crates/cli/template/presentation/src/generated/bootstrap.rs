@@ -7,19 +7,19 @@ use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use infrastructure::logger::TracingLogger;
 use business::domain::logger::LoggerTrait;
 
-use poem::Route;
+use poem::{EndpointExt, Route, middleware::Tracing};
 use poem_openapi::OpenApiService;
 
 use crate::api::greeting::routes::GreetingApi;
 
-pub fn build_app() -> Route {
+pub async fn build_app() -> impl poem::Endpoint {
     let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger);
 
     let get_greeting = Arc::new(GetGreetingUseCaseImpl {
-        repository: Arc::new(InMemoryGreetingRepository),
+        repository: Arc::new(InMemoryGreetingRepository::new(Arc::clone(&logger))),
         logger: Arc::clone(&logger),
     });
-    let greeting_api = GreetingApi { get_greeting };
+    let greeting_api = GreetingApi { get_greeting, logger: Arc::clone(&logger) };
 
     let api_service = OpenApiService::new(
         greeting_api,
@@ -29,5 +29,5 @@ pub fn build_app() -> Route {
     .server("http://localhost:8080/api");
     let ui = api_service.swagger_ui();
 
-    Route::new().nest("/api", api_service).nest("/", ui)
+    Route::new().nest("/api", api_service).nest("/", ui).with(Tracing)
 }

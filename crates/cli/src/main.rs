@@ -3,7 +3,8 @@ mod scaffold;
 mod snippets;
 
 use cargo_generate::{GenerateArgs, TemplatePath, generate};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 use include_dir::{Dir, include_dir};
 use std::path::PathBuf;
 
@@ -40,6 +41,13 @@ enum Commands {
         #[command(subcommand)]
         action: GenerateAction,
     },
+    /// List entities and use cases defined in harbor.toml
+    List,
+    /// Print shell completion script
+    Completions {
+        /// Shell to generate completions for (bash, zsh, fish, powershell)
+        shell: Shell,
+    },
 }
 
 #[derive(Subcommand)]
@@ -51,6 +59,9 @@ enum GenerateAction {
         /// Generate a SQLx (Postgres) repository instead of InMemory
         #[arg(long)]
         db: bool,
+        /// Generate full CRUD use cases (create, get, list, update, delete)
+        #[arg(long)]
+        crud: bool,
     },
     /// Add a use case to an existing entity
     UseCase {
@@ -142,6 +153,37 @@ fn new_project(
     Ok(output)
 }
 
+fn require_harbor_project(cwd: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    if !cwd.join("harbor.toml").exists() {
+        return Err(
+            "harbor.toml not found — run this command from the root of a Harbor project".into(),
+        );
+    }
+    Ok(())
+}
+
+fn run_list(cwd: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    require_harbor_project(cwd)?;
+    let config = harbor_toml::read(cwd)?;
+    println!("Project: {}", config.project.name);
+    if config.project.db {
+        println!("Database: enabled");
+    }
+    println!();
+    if config.entity.is_empty() {
+        println!("No entities defined.");
+        return Ok(());
+    }
+    for entity in &config.entity {
+        let repo_kind = if entity.db { "SQLx" } else { "InMemory" };
+        println!("  {} [{}]", entity.name, repo_kind);
+        for uc in &entity.use_cases {
+            println!("    · {uc}");
+        }
+    }
+    Ok(())
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -157,37 +199,55 @@ fn main() {
             println!("├── infrastructure/  (adapters)");
             println!("├── presentation/    (openapi routes)");
             println!("└── Cargo.toml");
-            println!("✓ Project '{project_name}' initialized successfully.");
+            println!("✓ Project '{project_name}' created.\n");
+            println!("Next steps:");
+            println!("  cd {project_name}");
+            println!("  cargo run -p {project_name}");
+            println!();
+            println!("API docs available at  http://localhost:8080");
+            println!("Add an entity with:    harbor generate scaffold <Name> --crud");
         }),
         Commands::Generate {
-            action: GenerateAction::Scaffold { name, db },
+            action: GenerateAction::Scaffold { name, db, crud },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            scaffold::run(&name, &cwd, db)
+            require_harbor_project(&cwd).and_then(|_| scaffold::run(&name, &cwd, db, crud))
         }
         Commands::Generate {
             action: GenerateAction::UseCase { entity, action },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            scaffold::run_use_case(&entity, &action, &cwd)
+            require_harbor_project(&cwd)
+                .and_then(|_| scaffold::run_use_case(&entity, &action, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Bootstrap,
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            scaffold::regenerate_bootstrap(&cwd).map(|_| println!("✓ bootstrap.rs regenerated."))
+            require_harbor_project(&cwd).and_then(|_| {
+                scaffold::regenerate_bootstrap(&cwd)
+                    .map(|_| println!("✓ bootstrap.rs regenerated."))
+            })
         }
         Commands::Generate {
             action: GenerateAction::Migration { name },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            scaffold::run_migration(&name, &cwd, None)
+            require_harbor_project(&cwd).and_then(|_| scaffold::run_migration(&name, &cwd, None))
         }
         Commands::Generate {
             action: GenerateAction::Snippets { ide },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            snippets::run(&cwd, ide.as_deref())
+            require_harbor_project(&cwd).and_then(|_| snippets::run(&cwd, ide.as_deref()))
+        }
+        Commands::List => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            run_list(&cwd)
+        }
+        Commands::Completions { shell } => {
+            clap_complete::generate(shell, &mut Cli::command(), "harbor", &mut std::io::stdout());
+            Ok(())
         }
     };
 
@@ -470,7 +530,7 @@ mod tests {
         let dir = temp_dir("scaffold_single_word");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         // Domain
         assert!(dir.join("business/src/domain/product/model.rs").exists());
@@ -514,7 +574,7 @@ mod tests {
         let dir = temp_dir("scaffold_multi_word");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("OrderItem", &dir, false).unwrap();
+        scaffold::run("OrderItem", &dir, false, false).unwrap();
 
         assert!(dir.join("business/src/domain/order_item/model.rs").exists());
         assert!(
@@ -542,7 +602,7 @@ mod tests {
         let dir = temp_dir("scaffold_lowercase");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("product", &dir, false).unwrap();
+        scaffold::run("product", &dir, false, false).unwrap();
 
         assert!(dir.join("business/src/domain/product/model.rs").exists());
         assert!(
@@ -558,7 +618,7 @@ mod tests {
         let dir = temp_dir("scaffold_model_content");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
         assert!(content.contains("pub struct ProductProps"));
@@ -574,7 +634,7 @@ mod tests {
         let dir = temp_dir("scaffold_errors_content");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         let content =
             fs::read_to_string(dir.join("business/src/domain/product/errors.rs")).unwrap();
@@ -590,7 +650,7 @@ mod tests {
         let dir = temp_dir("scaffold_impl_content");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         let content =
             fs::read_to_string(dir.join("business/src/application/product/create_product.rs"))
@@ -640,7 +700,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
         // domain block now contains product
@@ -662,7 +722,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         let content = fs::read_to_string(dir.join("infrastructure/src/lib.rs")).unwrap();
         assert!(content.contains("pub mod product {"));
@@ -679,7 +739,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         let content = fs::read_to_string(dir.join("presentation/src/api.rs")).unwrap();
         assert!(content.contains("pub mod product;"));
@@ -696,7 +756,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         // harbor.toml now contains both entities
         let toml = fs::read_to_string(dir.join("harbor.toml")).unwrap();
@@ -1040,7 +1100,10 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let output = generate_db_project("db-app", &dir).unwrap();
         let config = harbor_toml::read(&output).unwrap();
-        assert!(config.project.db, "project.db should be true for --db projects");
+        assert!(
+            config.project.db,
+            "project.db should be true for --db projects"
+        );
         cleanup(&dir);
     }
 
@@ -1051,9 +1114,15 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let output = generate_project("plain-app", &dir).unwrap();
         let config = harbor_toml::read(&output).unwrap();
-        assert!(!config.project.db, "project.db should be false for non-db projects");
+        assert!(
+            !config.project.db,
+            "project.db should be false for non-db projects"
+        );
         let content = fs::read_to_string(output.join("harbor.toml")).unwrap();
-        assert!(!content.contains("db = true"), "harbor.toml should not contain db = true for non-db projects");
+        assert!(
+            !content.contains("db = true"),
+            "harbor.toml should not contain db = true for non-db projects"
+        );
         cleanup(&dir);
     }
 
@@ -1071,7 +1140,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_db_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, true).unwrap();
+        scaffold::run("Product", &dir, true, false).unwrap();
         assert!(dir.join("infrastructure/src/product/entity.rs").exists());
         cleanup(&dir);
     }
@@ -1082,7 +1151,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_db_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, true).unwrap();
+        scaffold::run("Product", &dir, true, false).unwrap();
         let content =
             fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
         assert!(content.contains("PgPool"));
@@ -1097,7 +1166,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_db_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, true).unwrap();
+        scaffold::run("Product", &dir, true, false).unwrap();
         let content = fs::read_to_string(dir.join("harbor.toml")).unwrap();
         assert!(content.contains("db = true"));
         cleanup(&dir);
@@ -1109,7 +1178,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_db_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, true).unwrap();
+        scaffold::run("Product", &dir, true, false).unwrap();
         let content =
             fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
         assert!(content.contains("PgProductRepository"));
@@ -1125,7 +1194,7 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
         let content =
             fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
         assert!(content.contains("InMemoryProductRepository"));
@@ -1244,7 +1313,7 @@ mod tests {
         let dir = temp_dir("logger_scaffold_impl");
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         let content =
             fs::read_to_string(dir.join("business/src/application/product/create_product.rs"))
@@ -1278,14 +1347,14 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(&dir).unwrap();
         setup_harbor_stubs(&dir);
-        scaffold::run("Product", &dir, false).unwrap();
+        scaffold::run("Product", &dir, false, false).unwrap();
 
         let content =
             fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
         assert!(content.contains("TracingLogger"));
         assert!(content.contains("let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger)"));
-        // Both use cases receive the logger
-        assert_eq!(content.matches("Arc::clone(&logger)").count(), 2);
+        // 3 clones per entity (repo, use case, api struct) × 2 entities (Greeting + Product)
+        assert_eq!(content.matches("Arc::clone(&logger)").count(), 6);
 
         cleanup(&dir);
     }
@@ -1395,6 +1464,209 @@ mod tests {
         let result = snippets::run(&dir, Some("neovim"));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("unknown IDE"));
+
+        cleanup(&dir);
+    }
+
+    // ── harbor generate scaffold --crud ──────────────────────────────────────
+
+    fn setup_harbor_stubs_for_crud(base: &Path) {
+        setup_harbor_stubs(base);
+    }
+
+    #[test]
+    fn scaffold_crud_creates_all_domain_use_case_files() {
+        let dir = temp_dir("scaffold_crud_domain_uc");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs_for_crud(&dir);
+        scaffold::run("Product", &dir, false, true).unwrap();
+
+        assert!(
+            dir.join("business/src/domain/product/use_cases/create_product.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/domain/product/use_cases/get_product.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/domain/product/use_cases/list_product.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/domain/product/use_cases/update_product.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/domain/product/use_cases/delete_product.rs")
+                .exists()
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_crud_creates_all_application_use_case_files() {
+        let dir = temp_dir("scaffold_crud_app_uc");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs_for_crud(&dir);
+        scaffold::run("Product", &dir, false, true).unwrap();
+
+        assert!(
+            dir.join("business/src/application/product/create_product.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/application/product/get_product.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/application/product/list_product.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/application/product/update_product.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/application/product/delete_product.rs")
+                .exists()
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_crud_repository_has_find_all() {
+        let dir = temp_dir("scaffold_crud_repo");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs_for_crud(&dir);
+        scaffold::run("Product", &dir, false, true).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("business/src/domain/product/repository.rs")).unwrap();
+        assert!(content.contains("async fn find_all"));
+        assert!(content.contains("async fn find_by_id"));
+        assert!(content.contains("async fn save"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_crud_routes_has_all_http_methods() {
+        let dir = temp_dir("scaffold_crud_routes");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs_for_crud(&dir);
+        scaffold::run("Product", &dir, false, true).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("presentation/src/api/product/routes.rs")).unwrap();
+        assert!(content.contains("method = \"post\""));
+        assert!(content.contains("method = \"get\""));
+        assert!(content.contains("method = \"put\""));
+        assert!(content.contains("method = \"delete\""));
+        assert!(content.contains("pub struct ProductApi"));
+        assert!(content.contains("pub create_product"));
+        assert!(content.contains("pub get_product"));
+        assert!(content.contains("pub list_product"));
+        assert!(content.contains("pub update_product"));
+        assert!(content.contains("pub delete_product"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_crud_patches_business_lib_with_all_use_cases() {
+        let dir = temp_dir("scaffold_crud_lib");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs_for_crud(&dir);
+        scaffold::run("Product", &dir, false, true).unwrap();
+
+        let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+        assert!(content.contains("pub mod create_product;"));
+        assert!(content.contains("pub mod get_product;"));
+        assert!(content.contains("pub mod list_product;"));
+        assert!(content.contains("pub mod update_product;"));
+        assert!(content.contains("pub mod delete_product;"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_crud_bootstrap_wires_all_use_cases() {
+        let dir = temp_dir("scaffold_crud_bootstrap");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs_for_crud(&dir);
+        fs::create_dir_all(dir.join("presentation/src/generated")).unwrap();
+        fs::write(
+            dir.join("presentation/src/generated/bootstrap.rs"),
+            "// placeholder\n",
+        )
+        .unwrap();
+        scaffold::run("Product", &dir, false, true).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(content.contains("CreateProductUseCaseImpl"));
+        assert!(content.contains("GetProductUseCaseImpl"));
+        assert!(content.contains("ListProductUseCaseImpl"));
+        assert!(content.contains("UpdateProductUseCaseImpl"));
+        assert!(content.contains("DeleteProductUseCaseImpl"));
+
+        cleanup(&dir);
+    }
+
+    // ── harbor list ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn list_fails_outside_harbor_project() {
+        let dir = temp_dir("list_no_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let result = run_list(&dir);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("harbor.toml not found"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn list_succeeds_inside_harbor_project() {
+        let dir = temp_dir("list_with_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = generate_project("list-app", &dir).unwrap();
+        // should not error — project has a harbor.toml with Greeting entity
+        run_list(&output).unwrap();
+
+        cleanup(&dir);
+    }
+
+    // ── require_harbor_project ────────────────────────────────────────────────
+
+    #[test]
+    fn generate_scaffold_fails_outside_harbor_project() {
+        let dir = temp_dir("gen_no_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let result = require_harbor_project(&dir);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("harbor.toml not found")
+        );
 
         cleanup(&dir);
     }

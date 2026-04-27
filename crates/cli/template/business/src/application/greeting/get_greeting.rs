@@ -21,10 +21,15 @@ impl GetGreetingUseCaseTrait for GetGreetingUseCaseImpl {
         self.logger.info(&format!("Getting greeting for: {}", params.name));
 
         if params.name.trim().is_empty() {
-            return Err(GreetingError::ValidationError("name_empty".into()));
+            let err = GreetingError::ValidationError("name_empty".into());
+            self.logger.warn(&err.to_string());
+            return Err(err);
         }
 
-        let result = match self.repository.find_by_name(&params.name).await? {
+        let result = match self.repository.find_by_name(&params.name).await.map_err(|e| {
+            self.logger.error(&e.to_string());
+            e
+        })? {
             Some(greeting) => greeting,
             None => Greeting::new(&params.name)?,
         };
@@ -40,9 +45,12 @@ mod tests {
     use crate::domain::greeting::repository::mocks::MockGreetingRepository;
     use crate::domain::logger::mocks::MockLogger;
 
-    fn logger_expecting_info(times: usize) -> MockLogger {
+    fn silent_logger() -> MockLogger {
         let mut mock = MockLogger::new();
-        mock.expect_info().times(times).returning(|_| ());
+        mock.expect_info().returning(|_| ());
+        mock.expect_warn().returning(|_| ());
+        mock.expect_error().returning(|_| ());
+        mock.expect_debug().returning(|_| ());
         mock
     }
 
@@ -56,7 +64,7 @@ mod tests {
 
         let use_case = GetGreetingUseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(logger_expecting_info(2)),
+            logger: Arc::new(silent_logger()),
         };
 
         // Act
@@ -77,7 +85,7 @@ mod tests {
         let mock_repo = MockGreetingRepository::new();
         let use_case = GetGreetingUseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(logger_expecting_info(1)),
+            logger: Arc::new(silent_logger()),
         };
 
         // Act
@@ -107,7 +115,7 @@ mod tests {
 
         let use_case = GetGreetingUseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(logger_expecting_info(2)),
+            logger: Arc::new(silent_logger()),
         };
 
         // Act
