@@ -1,3 +1,28 @@
+## [0.4.0] - 2026-04-27
+
+### 🚀 Features
+
+- Generated projects now print a Harbor ASCII banner on startup (set `HARBOR_BANNER=false` to suppress)
+- HTTP request logging via poem's `Tracing` middleware — every request/response is traced automatically
+- `InMemoryRepository` receives the project logger; repository-level operations are now logged at `debug`
+- `GreetingApi` (and all generated `*Api` structs) receive the logger; errors are logged at `warn`
+- `uuid` and `chrono` template dependencies now include `serde` features for JSON serialisation out of the box
+- `poem-openapi` template dependency now includes `uuid` feature for typed UUID path/query params
+
+### 💥 Breaking
+
+- `InMemoryGreetingRepository` is no longer a unit struct — constructor is now `InMemoryGreetingRepository::new(logger: Arc<dyn LoggerTrait>)`. Update `bootstrap.rs` in existing projects (or run `harbor generate bootstrap`).
+- `GreetingApi` (and all scaffolded `*Api` structs) now require a `logger: Arc<dyn LoggerTrait>` field. Update `bootstrap.rs` in existing projects.
+- `build_app()` in `generated/bootstrap.rs` is now `async` and returns `impl poem::Endpoint` (was `Route`). Update `main.rs` to `generated::bootstrap::build_app().await`.
+
+### 🐛 Bug Fixes
+
+- `harbor new --db` now correctly writes `project.db = true` to `harbor.toml` — was silently omitted, causing `harbor generate scaffold --db` to not detect db mode correctly
+
+### ⚙️ Miscellaneous Tasks
+
+- Test coverage: add `db_project_harbor_toml_has_project_db_true` and `no_db_project_harbor_toml_omits_project_db` structural tests
+
 ## [0.3.0] - 2026-04-25
 
 ### 🚀 Features
