@@ -218,6 +218,27 @@ pub fn generate_bootstrap_content(entities: &[crate::harbor_toml::Entity]) -> St
     );
     out.push_str("use std::sync::Arc;\n\n");
 
+    if entities.is_empty() {
+        out.push_str("use infrastructure::logger::TracingLogger;\n");
+        out.push_str("use business::domain::logger::LoggerTrait;\n\n");
+        out.push_str("use poem::{EndpointExt, Route, middleware::Tracing};\n");
+        out.push_str("use poem_openapi::OpenApiService;\n\n");
+        out.push_str("pub async fn build_app() -> impl poem::Endpoint {\n");
+        out.push_str("    let _logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger);\n\n");
+        out.push_str("    let api_service = OpenApiService::new(\n");
+        out.push_str("        (),\n");
+        out.push_str("        env!(\"CARGO_PKG_NAME\"),\n");
+        out.push_str("        env!(\"CARGO_PKG_VERSION\"),\n");
+        out.push_str("    )\n");
+        out.push_str("    .server(\"http://localhost:8080/api\");\n");
+        out.push_str("    let ui = api_service.swagger_ui();\n\n");
+        out.push_str(
+            "    Route::new().nest(\"/api\", api_service).nest(\"/\", ui).with(Tracing)\n",
+        );
+        out.push_str("}\n");
+        return out;
+    }
+
     // Use case impl imports
     for entity in entities {
         let snake = pascal_to_snake(&entity.name);
@@ -444,6 +465,57 @@ pub fn run(
     } else {
         println!("✓ Done. Run `harbor generate bootstrap` to wire DI.");
     }
+
+    Ok(())
+}
+
+/// CLI entry point for Phase 7.4: reads `project.db` from `harbor.toml`, always full CRUD.
+/// `sqlx_bin` overrides the sqlx binary path (pass `None` in production, `Some("/bin/true")` in tests).
+pub fn run_scaffold(
+    name: &str,
+    base: &Path,
+    sqlx_bin: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::harbor_toml::read(base)?;
+    let db = config.project.db;
+    run(name, base, db, true)?;
+    if db {
+        let snake = pascal_to_snake(&to_pascal_case(name));
+        run_migration(&format!("create_{snake}_table"), base, sqlx_bin)?;
+    }
+    Ok(())
+}
+
+/// Strip the Greeting demo entity from a freshly generated project (`harbor new --no-demo`).
+/// Removes greeting files, rewrites the four affected source files, clears harbor.toml entities,
+/// and regenerates bootstrap.rs with an empty API.
+pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    // Remove greeting directories and the sibling declaration file.
+    let _ = fs::remove_dir_all(base.join("business/src/domain/greeting"));
+    let _ = fs::remove_dir_all(base.join("business/src/application/greeting"));
+    let _ = fs::remove_dir_all(base.join("infrastructure/src/greeting"));
+    let _ = fs::remove_dir_all(base.join("presentation/src/api/greeting"));
+    let _ = fs::remove_file(base.join("presentation/src/api/greeting.rs"));
+
+    // Minimal business lib.rs: keep domain::logger, empty application block.
+    fs::write(
+        base.join("business/src/lib.rs"),
+        "pub mod domain {\n    pub mod logger;\n}\npub mod application {\n}\n",
+    )?;
+
+    // Minimal infrastructure lib.rs: logger only.
+    fs::write(base.join("infrastructure/src/lib.rs"), "pub mod logger;\n")?;
+
+    // Minimal presentation api.rs: error only.
+    fs::write(base.join("presentation/src/api.rs"), "pub mod error;\n")?;
+
+    // Clear entities in harbor.toml.
+    let mut config = crate::harbor_toml::read(base)?;
+    config.entity.clear();
+    crate::harbor_toml::write(base, &config)?;
+
+    // Regenerate bootstrap.rs with no entities.
+    regenerate_bootstrap(base)?;
 
     Ok(())
 }

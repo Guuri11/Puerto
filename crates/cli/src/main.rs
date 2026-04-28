@@ -32,6 +32,9 @@ enum Commands {
         /// Explicitly skip database support without prompting
         #[arg(long, conflicts_with = "db")]
         no_db: bool,
+        /// Skip the Greeting demo entity (creates an empty project)
+        #[arg(long)]
+        no_demo: bool,
         /// Directory where the project will be created (defaults to current directory)
         #[arg(long)]
         destination: Option<PathBuf>,
@@ -52,16 +55,10 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum GenerateAction {
-    /// Scaffold all DDD layers for a new entity
+    /// Scaffold all DDD layers for a new entity (db and CRUD inferred from harbor.toml)
     Scaffold {
         /// Entity name in PascalCase (e.g. Product, OrderItem)
         name: String,
-        /// Generate a SQLx (Postgres) repository instead of InMemory
-        #[arg(long)]
-        db: bool,
-        /// Generate full CRUD use cases (create, get, list, update, delete)
-        #[arg(long)]
-        crud: bool,
     },
     /// Add a use case to an existing entity
     UseCase {
@@ -125,6 +122,7 @@ fn new_project(
     name: Option<String>,
     db: bool,
     no_db: bool,
+    no_demo: bool,
     destination: Option<PathBuf>,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let resolved_db = if db {
@@ -140,12 +138,27 @@ fn new_project(
         false
     };
 
+    let resolved_no_demo = if no_demo {
+        true
+    } else if dialoguer::console::user_attended() {
+        !dialoguer::Confirm::new()
+            .with_prompt("Include Greeting demo entity?")
+            .default(true)
+            .interact()?
+    } else {
+        false
+    };
+
     eprintln!("Constructing project skeleton...");
 
     let output = generate_new_project(name, destination)?;
 
     if resolved_db {
         scaffold::apply_db_to_new_project(&output)?;
+    }
+
+    if resolved_no_demo {
+        scaffold::apply_no_demo(&output)?;
     }
 
     snippets::apply(&output, None)?;
@@ -192,8 +205,9 @@ fn main() {
             name,
             db,
             no_db,
+            no_demo,
             destination,
-        } => new_project(name, db, no_db, destination).map(|path| {
+        } => new_project(name, db, no_db, no_demo, destination).map(|path| {
             let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             println!("├── business/        (domain logic)");
             println!("├── infrastructure/  (adapters)");
@@ -205,13 +219,13 @@ fn main() {
             println!("  cargo run -p {project_name}");
             println!();
             println!("API docs available at  http://localhost:8080");
-            println!("Add an entity with:    harbor generate scaffold <Name> --crud");
+            println!("Add an entity with:    harbor generate scaffold <Name>");
         }),
         Commands::Generate {
-            action: GenerateAction::Scaffold { name, db, crud },
+            action: GenerateAction::Scaffold { name },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            require_harbor_project(&cwd).and_then(|_| scaffold::run(&name, &cwd, db, crud))
+            require_harbor_project(&cwd).and_then(|_| scaffold::run_scaffold(&name, &cwd, None))
         }
         Commands::Generate {
             action: GenerateAction::UseCase { entity, action },
@@ -1666,6 +1680,287 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("harbor.toml not found")
+        );
+
+        cleanup(&dir);
+    }
+
+    // ── Phase 7.3: harbor new --no-demo ──────────────────────────────────────
+
+    #[test]
+    fn no_demo_has_no_greeting_files() {
+        let dir = temp_dir("no_demo_files");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+        scaffold::apply_no_demo(&output).unwrap();
+
+        assert!(!output.join("business/src/domain/greeting").exists());
+        assert!(!output.join("business/src/application/greeting").exists());
+        assert!(!output.join("infrastructure/src/greeting").exists());
+        assert!(!output.join("presentation/src/api/greeting").exists());
+        assert!(!output.join("presentation/src/api/greeting.rs").exists());
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn no_demo_harbor_toml_has_no_entity_block() {
+        let dir = temp_dir("no_demo_toml");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+        scaffold::apply_no_demo(&output).unwrap();
+
+        let content = fs::read_to_string(output.join("harbor.toml")).unwrap();
+        assert!(
+            !content.contains("[[entity]]"),
+            "harbor.toml should have no entity blocks"
+        );
+        assert!(
+            !content.contains("Greeting"),
+            "harbor.toml should not mention Greeting"
+        );
+        assert!(
+            content.contains("[project]"),
+            "harbor.toml should still have [project]"
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn no_demo_lib_files_have_no_greeting_modules() {
+        let dir = temp_dir("no_demo_lib");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+        scaffold::apply_no_demo(&output).unwrap();
+
+        let biz_lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+        assert!(
+            !biz_lib.contains("greeting"),
+            "business lib.rs should not reference greeting"
+        );
+        assert!(
+            biz_lib.contains("pub mod logger"),
+            "business lib.rs should retain logger"
+        );
+
+        let infra_lib = fs::read_to_string(output.join("infrastructure/src/lib.rs")).unwrap();
+        assert!(
+            !infra_lib.contains("greeting"),
+            "infra lib.rs should not reference greeting"
+        );
+        assert!(
+            infra_lib.contains("pub mod logger"),
+            "infra lib.rs should retain logger"
+        );
+
+        let api_rs = fs::read_to_string(output.join("presentation/src/api.rs")).unwrap();
+        assert!(
+            !api_rs.contains("greeting"),
+            "api.rs should not reference greeting"
+        );
+        assert!(
+            api_rs.contains("pub mod error"),
+            "api.rs should retain error module"
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn no_demo_bootstrap_has_no_greeting() {
+        let dir = temp_dir("no_demo_bootstrap");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+        scaffold::apply_no_demo(&output).unwrap();
+
+        let content =
+            fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(
+            !content.contains("Greeting"),
+            "bootstrap.rs should have no Greeting reference"
+        );
+        assert!(
+            !content.contains("greeting"),
+            "bootstrap.rs should have no greeting reference"
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn default_project_still_has_greeting_files() {
+        let dir = temp_dir("with_demo");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("demo-app".into()), false, &dir).unwrap();
+
+        assert!(
+            output
+                .join("business/src/domain/greeting/model.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("presentation/src/api/greeting/routes.rs")
+                .exists()
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn no_demo_then_scaffold_generates_new_entity() {
+        let dir = temp_dir("no_demo_then_scaffold");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+        scaffold::apply_no_demo(&output).unwrap();
+        scaffold::run_scaffold("Player", &output, None).unwrap();
+
+        // New entity files exist
+        assert!(output.join("business/src/domain/player/model.rs").exists());
+        assert!(
+            output
+                .join("presentation/src/api/player/routes.rs")
+                .exists()
+        );
+        // Greeting still absent
+        assert!(!output.join("business/src/domain/greeting").exists());
+
+        cleanup(&dir);
+    }
+
+    // ── Phase 7.4: scaffold infers db + always CRUD ───────────────────────────
+
+    fn setup_harbor_stubs_with_project_db(base: &Path) {
+        fs::create_dir_all(base.join("business/src")).unwrap();
+        fs::write(
+            base.join("business/src/lib.rs"),
+            "pub mod domain {\n  pub mod greeting {\n    pub mod errors;\n    pub mod model;\n    pub mod repository;\n    pub mod use_cases {\n      pub mod get_greeting;\n    }\n  }\n}\npub mod application {\n  pub mod greeting {\n    pub mod get_greeting;\n  }\n}\n",
+        ).unwrap();
+        fs::create_dir_all(base.join("infrastructure/src")).unwrap();
+        fs::write(
+            base.join("infrastructure/src/lib.rs"),
+            "pub mod greeting {\n    pub mod repository;\n}\n",
+        )
+        .unwrap();
+        fs::create_dir_all(base.join("presentation/src")).unwrap();
+        fs::write(
+            base.join("presentation/src/api.rs"),
+            "pub mod error;\npub mod greeting;\n",
+        )
+        .unwrap();
+        fs::write(
+            base.join("harbor.toml"),
+            "[project]\nname = \"test-app\"\ndb = true\n\n[[entity]]\nname = \"Greeting\"\nuse_cases = [\"get_greeting\"]\n",
+        ).unwrap();
+    }
+
+    #[test]
+    fn scaffold_7_4_infers_db_from_project_toml() {
+        let dir = temp_dir("scaffold_74_infer_db");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs_with_project_db(&dir);
+        fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+        scaffold::run_scaffold("Team", &dir, Some("/bin/true")).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("infrastructure/src/team/repository.rs")).unwrap();
+        assert!(content.contains("PgTeamRepository"));
+        assert!(!content.contains("InMemoryTeamRepository"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_7_4_non_db_project_uses_inmemory() {
+        let dir = temp_dir("scaffold_74_no_db");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs(&dir); // project.db = false (field absent)
+        scaffold::run_scaffold("Team", &dir, None).unwrap();
+
+        let content =
+            fs::read_to_string(dir.join("infrastructure/src/team/repository.rs")).unwrap();
+        assert!(content.contains("InMemoryTeamRepository"));
+        assert!(!content.contains("PgTeamRepository"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_7_4_always_generates_5_use_cases() {
+        let dir = temp_dir("scaffold_74_5_uc");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs(&dir);
+        scaffold::run_scaffold("Team", &dir, None).unwrap();
+
+        assert!(
+            dir.join("business/src/domain/team/use_cases/create_team.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/domain/team/use_cases/get_team.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/domain/team/use_cases/list_team.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/domain/team/use_cases/update_team.rs")
+                .exists()
+        );
+        assert!(
+            dir.join("business/src/domain/team/use_cases/delete_team.rs")
+                .exists()
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_7_4_db_project_auto_creates_migration() {
+        let dir = temp_dir("scaffold_74_migration");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // Set up a db project but WITHOUT pre-creating infrastructure/migrations/
+        // — run_scaffold should create it via run_migration
+        setup_harbor_stubs_with_project_db(&dir);
+        scaffold::run_scaffold("Team", &dir, Some("/bin/true")).unwrap();
+
+        assert!(
+            dir.join("infrastructure/migrations").is_dir(),
+            "run_migration should create infrastructure/migrations/ when project.db = true"
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn scaffold_7_4_non_db_project_does_not_create_migrations_dir() {
+        let dir = temp_dir("scaffold_74_no_migration");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        setup_harbor_stubs(&dir); // project.db = false
+        scaffold::run_scaffold("Team", &dir, None).unwrap();
+
+        assert!(
+            !dir.join("infrastructure/migrations").exists(),
+            "run_migration should NOT be called when project.db = false"
         );
 
         cleanup(&dir);

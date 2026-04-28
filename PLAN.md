@@ -887,6 +887,97 @@ Options to evaluate:
 
 ---
 
+### 7.3 `harbor new --no-demo` — skip the Greeting demo entity ✅ DONE
+
+By default `harbor new` includes a `Greeting` entity to show the project structure in action. With `--no-demo` the project is created empty — no entities, no demo code.
+
+**Command signature:**
+```
+harbor new                              # prompts for db + demo
+harbor new --name my-app --no-demo
+harbor new --name my-app --db --no-demo
+```
+
+**Behavior:**
+- Without `--no-demo` and in a TTY → prompts: `Include Greeting demo entity? [Y/n]`
+- Without `--no-demo` and non-interactive → includes demo (default)
+- With `--no-demo`: project is minimal — no entity files, empty `harbor.toml` (just `[project]`), empty module declarations, minimal `bootstrap.rs`
+
+**What changes when `--no-demo` is set:**
+
+Files omitted:
+```
+business/src/domain/greeting/
+business/src/application/greeting/
+infrastructure/src/greeting/
+presentation/src/api/greeting/
+presentation/src/api/greeting.rs
+```
+
+Files generated differently:
+- `harbor.toml` — no `[[entity]]` block
+- `business/src/lib.rs` — empty `domain {}` and `application {}` blocks
+- `infrastructure/src/lib.rs` — no entity module
+- `presentation/src/api.rs` — empty (or just `// Add entities with: harbor generate scaffold <Name>`)
+- `presentation/src/generated/bootstrap.rs` — minimal: empty OpenApiService, no use case wiring
+
+**Implementation approach:**
+- Add `--no-demo` flag to `NewArgs` in `main.rs`
+- Pass `include_demo = !no_demo` as a cargo-generate template variable
+- Use `[conditional.'!include_demo'] ignore = [...]` in `cargo-generate.toml` to skip greeting files
+- Make `lib.rs`, `api.rs`, and `bootstrap.rs` liquid templates with `{% if include_demo %}` guards
+
+**Test scenarios:**
+- `harbor new --no-demo` → no greeting files exist
+- `harbor new --no-demo` → `harbor.toml` has no `[[entity]]` block
+- `harbor new --no-demo` → generated project compiles clean
+- `harbor new` (no flag) → greeting files present (no regression)
+- `harbor new --no-demo` followed by `harbor generate scaffold Player --crud` → compiles clean
+
+---
+
+### 7.4 `harbor generate scaffold <Name>` — infer db and crud from context ✅ DONE
+
+**Problem:** the current CLI asks the user to declare things Harbor already knows.
+- `--db` is redundant: `harbor.toml` already has `[project] db = true`
+- `--crud` is redundant: `scaffold` semantically means full CRUD. Single use cases already have `harbor generate use-case`
+
+**Redesign:**
+
+```bash
+# Before (noisy)
+harbor generate scaffold Team --crud --db
+
+# After (inferred)
+harbor generate scaffold Team
+```
+
+**New behavior:**
+- `db` → auto-detected from `harbor.toml` `[project] db`
+  - `project.db = true` → generates `PgTeamRepository`
+  - no db → generates `InMemoryTeamRepository`
+- `crud` → always full CRUD (create, get, list, update, delete)
+  - for a single use case, use `harbor generate use-case <Entity> <action>` (unchanged)
+
+**Breaking change:** removes `--crud` and `--db` flags from `harbor generate scaffold`.
+
+**Migration:** any existing scripts using `harbor generate scaffold <Name> --crud --db` should drop both flags. Behavior is identical.
+
+**Also fix:** `harbor generate scaffold` with db should auto-create the migration (bug from Phase 4.1 — `run_migration()` was never called from `run()`).
+
+**Updated command signature:**
+```bash
+harbor generate scaffold <Name>    # CRUD + db inferred from harbor.toml
+```
+
+**Test scenarios:**
+- `harbor generate scaffold Team` in db project → `PgTeamRepository`, 5 use cases, migration created
+- `harbor generate scaffold Team` in non-db project → `InMemoryTeamRepository`, 5 use cases
+- `--crud` and `--db` flags removed — passing them is an error
+- Migration auto-created when project has db
+
+---
+
 ## Phase 8 — Full-stack (frontend)
 
 TBD. Options to evaluate:
