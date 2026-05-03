@@ -16,6 +16,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <a href="#installation" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Installation</a>
           <a href="#new-project" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">New Project</a>
           <a href="#scaffold" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Generate Scaffold</a>
+          <a href="#layer-generators" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Layer Generators</a>
           <a href="#use-case" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Add Use Case</a>
           <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Database (SQLx)</a>
           <a href="#architecture" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Architecture</a>
@@ -112,6 +113,53 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <div class="flex gap-2"><span class="text-harbor-indigo font-mono">infrastructure/</span><span>repository (InMemory or Pg — inferred from harbor.toml)</span></div>
             <div class="flex gap-2"><span class="text-harbor-rust font-mono">presentation/</span><span>routes.rs, dto.rs, responses.rs, error_mapper.rs</span></div>
           </div>
+        </section>
+
+        <!-- Layer Generators -->
+        <section id="layer-generators" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Layer Generators</h2>
+          <p class="mt-3 font-sans text-harbor-mist">
+            Generate one DDD layer at a time. Ideal for AI-assisted development — keeping each agent focused on a single layer prevents context drift and makes compiler errors immediately actionable.
+          </p>
+          <div class="mt-5 space-y-3">
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate domain Product</code>
+              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate domain Product" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate application Product</code>
+              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate application Product" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-indigo bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate repository Product</code>
+              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate repository Product" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-rust bg-harbor-navy px-5 py-4">
+              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
+              <code class="font-mono text-sm text-harbor-ice">harbor generate presentation Product</code>
+              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate presentation Product" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="mt-6 space-y-2 font-sans text-sm text-harbor-mist">
+            <div class="flex gap-2"><span class="text-harbor-teal font-mono flex-none">domain</span><span>model, errors, repository trait, 5 use case traits, <span class="text-harbor-indigo font-mono">ProductMother</span> (Object Mother) — registers entity in harbor.toml</span></div>
+            <div class="flex gap-2"><span class="text-harbor-teal font-mono flex-none">application</span><span>5 use case implementations with unit tests</span></div>
+            <div class="flex gap-2"><span class="text-harbor-indigo font-mono flex-none">repository</span><span>InMemory or Pg adapter — inferred from <span class="font-mono text-xs text-harbor-rust">harbor.toml</span></span></div>
+            <div class="flex gap-2"><span class="text-harbor-rust font-mono flex-none">presentation</span><span>routes, dto, responses, error mapper — regenerates <span class="font-mono text-xs">bootstrap.rs</span></span></div>
+          </div>
+          <p class="mt-5 font-sans text-sm text-harbor-mist">
+            Each command validates the prior step completed and prints a <span class="font-mono text-xs text-harbor-teal">Next:</span> hint. Use <code class="font-mono text-xs text-harbor-ice">harbor generate scaffold</code> when you want all layers at once.
+          </p>
         </section>
 
         <!-- Use Case -->

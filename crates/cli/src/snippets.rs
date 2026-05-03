@@ -633,6 +633,69 @@ pub const SNIPPETS_JSON: &str = r##"{
 }
 "##;
 
+pub const SQL_SNIPPETS_JSON: &str = r##"{
+  "Harbor — Create table": {
+    "prefix": "migration-create-table",
+    "scope": "sql",
+    "body": [
+      "CREATE TABLE ${1:entities} (",
+      "    id UUID PRIMARY KEY,",
+      "    name TEXT NOT NULL,",
+      "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),",
+      "    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),",
+      "    deleted BOOLEAN NOT NULL DEFAULT FALSE,",
+      "    deleted_at TIMESTAMPTZ",
+      ");",
+      "$0"
+    ],
+    "description": "CREATE TABLE with Harbor standard columns (id, name, timestamps, soft-delete)."
+  },
+  "Harbor — Add column": {
+    "prefix": "migration-add-column",
+    "scope": "sql",
+    "body": [
+      "ALTER TABLE ${1:entities} ADD COLUMN ${2:column_name} ${3:TEXT} NOT NULL${4: DEFAULT ''};",
+      "$0"
+    ],
+    "description": "ALTER TABLE ADD COLUMN."
+  },
+  "Harbor — Insert": {
+    "prefix": "sql-insert",
+    "scope": "sql",
+    "body": [
+      "INSERT INTO ${1:entities} (id, name, created_at, updated_at, deleted, deleted_at)",
+      "VALUES (\\$1, \\$2, \\$3, \\$4, \\$5, \\$6)",
+      "ON CONFLICT (id) DO UPDATE",
+      "    SET name = \\$2, updated_at = \\$4;",
+      "$0"
+    ],
+    "description": "INSERT with Harbor standard columns + upsert."
+  },
+  "Harbor — Update": {
+    "prefix": "sql-update",
+    "scope": "sql",
+    "body": [
+      "UPDATE ${1:entities}",
+      "SET ${2:name} = \\$2, updated_at = NOW()",
+      "WHERE id = \\$1 AND deleted = false;",
+      "$0"
+    ],
+    "description": "UPDATE with Harbor soft-delete guard."
+  },
+  "Harbor — Soft delete": {
+    "prefix": "sql-soft-delete",
+    "scope": "sql",
+    "body": [
+      "UPDATE ${1:entities}",
+      "SET deleted = true, deleted_at = NOW(), updated_at = NOW()",
+      "WHERE id = \\$1 AND deleted = false;",
+      "$0"
+    ],
+    "description": "Soft delete by id — sets deleted = true and deleted_at."
+  }
+}
+"##;
+
 // ── Writers ───────────────────────────────────────────────────────────────────
 
 fn write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
@@ -650,11 +713,20 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
 
     if write_zed {
         write_file(&base.join(".zed/snippets/rust.json"), SNIPPETS_JSON)?;
-        println!("✓ .zed/snippets/rust.json  (Zed — loaded automatically from project root)");
+        write_file(&base.join(".zed/snippets/sql.json"), SQL_SNIPPETS_JSON)?;
+        println!(
+            "✓ .zed/snippets/rust.json + sql.json  (Zed — loaded automatically from project root)"
+        );
     }
     if write_vscode {
         write_file(&base.join(".vscode/harbor.code-snippets"), SNIPPETS_JSON)?;
-        println!("✓ .vscode/harbor.code-snippets  (VS Code — loaded automatically)");
+        write_file(
+            &base.join(".vscode/harbor.sql.code-snippets"),
+            SQL_SNIPPETS_JSON,
+        )?;
+        println!(
+            "✓ .vscode/harbor.code-snippets + harbor.sql.code-snippets  (VS Code — loaded automatically)"
+        );
         println!(
             "  nvim+LuaSnip: require(\"luasnip.loaders.from_vscode\").lazy_load({{ paths = {{ \"./.vscode\" }} }})"
         );

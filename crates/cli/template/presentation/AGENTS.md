@@ -69,7 +69,9 @@ impl GetEntityResponse {
 
 ## Adding a New Entity Endpoint
 
-1. Create `presentation/src/api/<entity>/` with all 4 files
-2. Add `pub mod <entity>;` to `presentation/src/api/mod.rs`
-3. Instantiate the use case + API struct in `main.rs`
-4. Add the API to the `OpenApiService`
+Run `harbor generate presentation <Name>` to scaffold this layer and automatically regenerate `bootstrap.rs`. It requires the entity to already exist in `harbor.toml` (added by `harbor generate domain`).
+
+Manual steps if not using the CLI:
+1. Create `presentation/src/api/<entity>/` with all 4 files + `<entity>.rs` module declaration
+2. Add `pub mod <entity>;` to `presentation/src/api.rs`
+3. Run `harbor generate bootstrap` to re-wire DI

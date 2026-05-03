@@ -1,33 +1,65 @@
-.PHONY: help run build install test test/full lint check format setup
+.PHONY: help run build install setup test test/full lint check format format/fix audit audit/fix
+
+CARGO := cargo
+
+GREEN  := \033[1;32m
+YELLOW := \033[1;33m
+CYAN   := \033[1;36m
+RED    := \033[1;31m
+NC     := \033[0m
 
 help: ## Show available commands
-	@grep -E '^[a-zA-Z/]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "${CYAN}Available targets:${NC}"
+	@echo ""
+	@grep -E '^[a-zA-Z/]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  ${YELLOW}%-20s${NC} %s\n", $$1, $$2}'
+	@echo ""
 
 run: ## Run harbor CLI interactively (harbor new)
-	cargo run --bin harbor -- new
+	@echo "${GREEN}Running harbor CLI...${NC}"
+	$(CARGO) run --bin harbor -- new
 
 build: ## Build harbor binary (release) → target/release/harbor
-	cargo build --release --bin harbor
+	@echo "${GREEN}Building harbor...${NC}"
+	$(CARGO) build --release --bin harbor
 	@echo "Binary: $(shell pwd)/target/release/harbor"
 
-install: ## Install harbor to ~/.cargo/bin (makes it available system-wide)
-	cargo install --path crates/cli
+install: ## Install harbor to ~/.cargo/bin
+	@echo "${GREEN}Installing harbor...${NC}"
+	$(CARGO) install --path crates/cli
 
 setup: ## Install required dev tools (run once after cloning)
-	cargo install cargo-nextest --locked
+	@echo "${CYAN}Setting up development environment...${NC}"
+	$(CARGO) install cargo-nextest --locked
 
-test: ## Fast structural tests (requires: make setup)
-	cargo nextest run --workspace
+test: ## Fast structural tests
+	@echo "${YELLOW}Running structural tests...${NC}"
+	$(CARGO) nextest run --workspace
 
 test/full: ## Slow test: generates a real project, compiles it, runs its internal tests
-	cargo nextest run --workspace --run-ignored all
+	@echo "${YELLOW}Running full integration tests (~20s)...${NC}"
+	$(CARGO) nextest run --workspace --run-ignored all
 
 lint: ## Run clippy with -D warnings
-	cargo clippy --workspace -- -D warnings
+	@echo "${CYAN}Linting code...${NC}"
+	$(CARGO) clippy --workspace -- -D warnings
 
-check: ## cargo check (fast compile check, no binary)
-	cargo check --workspace
+check: ## Fast compile check (no binary)
+	@echo "${CYAN}Checking code...${NC}"
+	$(CARGO) check --workspace
 
-format: ## Format all code with rustfmt
-	cargo fmt --all
+format: ## Check code formatting
+	@echo "${CYAN}Checking code formatting...${NC}"
+	$(CARGO) fmt --all -- --check
 
+format/fix: ## Fix code formatting
+	@echo "${CYAN}Fixing code formatting...${NC}"
+	$(CARGO) fmt --all
+
+audit: ## Run security audit on dependencies
+	@echo "${CYAN}Running security audit...${NC}"
+	$(CARGO) audit
+
+audit/fix: ## Preview security fixes (dry-run)
+	@echo "${CYAN}Previewing security fixes (dry-run)...${NC}"
+	$(CARGO) audit fix --dry-run

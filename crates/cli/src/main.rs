@@ -80,6 +80,26 @@ enum GenerateAction {
         #[arg(long)]
         ide: Option<String>,
     },
+    /// Scaffold only the domain layer for a new entity (domain-first workflow)
+    Domain {
+        /// Entity name in PascalCase (e.g. Product, OrderItem)
+        name: String,
+    },
+    /// Scaffold only the application layer for an existing entity
+    Application {
+        /// Entity name in PascalCase (e.g. Product)
+        name: String,
+    },
+    /// Scaffold only the repository (infrastructure) layer for an existing entity
+    Repository {
+        /// Entity name in PascalCase (e.g. Product)
+        name: String,
+    },
+    /// Scaffold only the presentation layer for an existing entity (regenerates bootstrap.rs)
+    Presentation {
+        /// Entity name in PascalCase (e.g. Product)
+        name: String,
+    },
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -247,13 +267,41 @@ fn main() {
             action: GenerateAction::Migration { name },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            require_harbor_project(&cwd).and_then(|_| scaffold::run_migration(&name, &cwd, None))
+            require_harbor_project(&cwd)
+                .and_then(|_| scaffold::run_migration(&name, &cwd, None, None))
         }
         Commands::Generate {
             action: GenerateAction::Snippets { ide },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             require_harbor_project(&cwd).and_then(|_| snippets::run(&cwd, ide.as_deref()))
+        }
+        Commands::Generate {
+            action: GenerateAction::Domain { name },
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            require_harbor_project(&cwd).and_then(|_| scaffold::run_generate_domain(&name, &cwd))
+        }
+        Commands::Generate {
+            action: GenerateAction::Application { name },
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            require_harbor_project(&cwd)
+                .and_then(|_| scaffold::run_generate_application(&name, &cwd))
+        }
+        Commands::Generate {
+            action: GenerateAction::Repository { name },
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            require_harbor_project(&cwd)
+                .and_then(|_| scaffold::run_generate_repository(&name, &cwd, None))
+        }
+        Commands::Generate {
+            action: GenerateAction::Presentation { name },
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            require_harbor_project(&cwd)
+                .and_then(|_| scaffold::run_generate_presentation(&name, &cwd))
         }
         Commands::List => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
@@ -1053,12 +1101,15 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let output = generate_db_project("db-app", &dir).unwrap();
         let content = fs::read_to_string(output.join("Makefile")).unwrap();
-        assert!(content.contains("docker/up"));
-        assert!(content.contains("docker/down"));
+        assert!(content.contains("docker-compose/up"));
+        assert!(content.contains("docker-compose/down"));
         assert!(content.contains("sqlx/migrate"));
         assert!(content.contains("sqlx/prepare"));
+        assert!(content.contains("sqlx/check"));
         assert!(content.contains("sqlx/online"));
         assert!(content.contains("sqlx/offline"));
+        assert!(content.contains("reset-db"));
+        assert!(content.contains("test/infrastructure"));
         cleanup(&dir);
     }
 
@@ -1225,8 +1276,12 @@ mod tests {
         cleanup(&dir);
         fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
 
-        let result =
-            scaffold::run_migration("add_products_table", &dir, Some("nonexistent_sqlx_bin"));
+        let result = scaffold::run_migration(
+            "add_products_table",
+            &dir,
+            Some("nonexistent_sqlx_bin"),
+            None,
+        );
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(
@@ -1249,7 +1304,7 @@ mod tests {
         // infrastructure/migrations does NOT exist — should be created automatically
 
         // /bin/true acts as a stub sqlx: passes the existence check, returns exit 0
-        let _ = scaffold::run_migration("add_products_table", &dir, Some("/bin/true"));
+        let _ = scaffold::run_migration("add_products_table", &dir, Some("/bin/true"), None);
 
         assert!(
             dir.join("infrastructure/migrations").exists(),
@@ -1421,6 +1476,18 @@ mod tests {
         assert!(
             serde_json::from_str::<serde_json::Value>(&vscode).is_ok(),
             "vscode snippet JSON invalid"
+        );
+
+        let zed_sql = fs::read_to_string(dir.join(".zed/snippets/sql.json")).unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&zed_sql).is_ok(),
+            "zed sql snippet JSON invalid"
+        );
+
+        let vscode_sql = fs::read_to_string(dir.join(".vscode/harbor.sql.code-snippets")).unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&vscode_sql).is_ok(),
+            "vscode sql snippet JSON invalid"
         );
 
         cleanup(&dir);
@@ -1632,6 +1699,210 @@ mod tests {
         assert!(content.contains("ListProductUseCaseImpl"));
         assert!(content.contains("UpdateProductUseCaseImpl"));
         assert!(content.contains("DeleteProductUseCaseImpl"));
+
+        cleanup(&dir);
+    }
+
+    // ── harbor generate domain / application / repository / presentation ─────
+
+    #[test]
+    fn generate_domain_creates_domain_files_and_mother() {
+        let dir = temp_dir("gen_domain");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("myapp", &dir).unwrap();
+
+        scaffold::run_generate_domain("Widget", &output).unwrap();
+
+        assert!(output.join("business/src/domain/widget/model.rs").exists());
+        assert!(output.join("business/src/domain/widget/errors.rs").exists());
+        assert!(
+            output
+                .join("business/src/domain/widget/repository.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("business/src/domain/widget/use_cases/create_widget.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("business/src/domain/widget/use_cases/delete_widget.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("business/src/tests/mothers/widget_mother.rs")
+                .exists()
+        );
+
+        let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+        assert!(lib.contains("pub mod widget"));
+        assert!(lib.contains("pub mod widget_mother;"));
+
+        let toml = fs::read_to_string(output.join("harbor.toml")).unwrap();
+        assert!(toml.contains("Widget"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_application_creates_use_case_impls() {
+        let dir = temp_dir("gen_application");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("myapp", &dir).unwrap();
+
+        scaffold::run_generate_domain("Widget", &output).unwrap();
+        scaffold::run_generate_application("Widget", &output).unwrap();
+
+        assert!(
+            output
+                .join("business/src/application/widget/create_widget.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("business/src/application/widget/get_widget.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("business/src/application/widget/list_widget.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("business/src/application/widget/update_widget.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("business/src/application/widget/delete_widget.rs")
+                .exists()
+        );
+
+        let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+        assert!(lib.contains("pub mod create_widget;"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_application_errors_without_prior_domain() {
+        let dir = temp_dir("gen_app_no_domain");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("myapp", &dir).unwrap();
+
+        let result = scaffold::run_generate_application("Ghost", &output);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("not found in harbor.toml")
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_repository_creates_infra_files() {
+        let dir = temp_dir("gen_repository");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("myapp", &dir).unwrap();
+
+        scaffold::run_generate_domain("Widget", &output).unwrap();
+        scaffold::run_generate_repository("Widget", &output, None).unwrap();
+
+        assert!(
+            output
+                .join("infrastructure/src/widget/repository.rs")
+                .exists()
+        );
+        let repo =
+            fs::read_to_string(output.join("infrastructure/src/widget/repository.rs")).unwrap();
+        assert!(repo.contains("InMemoryWidgetRepository"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_presentation_creates_all_files_and_regenerates_bootstrap() {
+        let dir = temp_dir("gen_presentation");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("myapp", &dir).unwrap();
+
+        scaffold::run_generate_domain("Widget", &output).unwrap();
+        scaffold::run_generate_repository("Widget", &output, None).unwrap();
+        scaffold::run_generate_presentation("Widget", &output).unwrap();
+
+        assert!(output.join("presentation/src/api/widget.rs").exists());
+        assert!(
+            output
+                .join("presentation/src/api/widget/routes.rs")
+                .exists()
+        );
+        assert!(output.join("presentation/src/api/widget/dto.rs").exists());
+        assert!(
+            output
+                .join("presentation/src/api/widget/responses.rs")
+                .exists()
+        );
+        assert!(
+            output
+                .join("presentation/src/api/widget/error_mapper.rs")
+                .exists()
+        );
+
+        let bootstrap =
+            fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+        assert!(bootstrap.contains("WidgetApi"));
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_presentation_errors_without_prior_domain() {
+        let dir = temp_dir("gen_pres_no_domain");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("myapp", &dir).unwrap();
+
+        let result = scaffold::run_generate_presentation("Ghost", &output);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("not found in harbor.toml")
+        );
+
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn generate_scaffold_includes_object_mother() {
+        let dir = temp_dir("scaffold_with_mother");
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("myapp", &dir).unwrap();
+
+        scaffold::run("Widget", &output, false, true).unwrap();
+
+        assert!(
+            output
+                .join("business/src/tests/mothers/widget_mother.rs")
+                .exists()
+        );
+        let mother =
+            fs::read_to_string(output.join("business/src/tests/mothers/widget_mother.rs")).unwrap();
+        assert!(mother.contains("WidgetMother"));
+        assert!(mother.contains("pub fn random()"));
 
         cleanup(&dir);
     }

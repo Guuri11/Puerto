@@ -86,8 +86,11 @@ harbor new --name <name> --db              # Fully non-interactive, with databas
 harbor new --name <name> --no-db           # Fully non-interactive, no database
 harbor new --name <name> --no-db --destination /tmp/projects  # Control output directory
 
-harbor generate scaffold <Name>            # Add a new DDD entity (InMemory repository)
-harbor generate scaffold <Name> --db       # Add a new DDD entity (SQLx/Postgres repository)
+harbor generate scaffold <Name>            # Add a new DDD entity — all layers at once (infers db from harbor.toml)
+harbor generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
+harbor generate application <Name>         # Application layer only: use case impls
+harbor generate repository <Name>          # Infrastructure layer only: InMemory or Pg repo (inferred from harbor.toml)
+harbor generate presentation <Name>        # Presentation layer only: routes, dto, responses + regenerates bootstrap
 harbor generate use-case <Entity> <action> # Add a use case to an existing entity
 harbor generate migration <name>           # Create a new SQLx migration file
 harbor generate bootstrap                  # Regenerate bootstrap.rs from harbor.toml

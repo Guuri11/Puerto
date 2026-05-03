@@ -43,6 +43,8 @@ When replacing the in-memory adapter with SQLx:
 
 ## Adding a New Entity Adapter
 
+Run `harbor generate repository <Name>` to scaffold this layer in isolation. It reads `project.db` from `harbor.toml` to decide InMemory vs Pg — no flag needed.
+
+Manual steps if not using the CLI:
 1. Create `infrastructure/src/<entity>/repository.rs` implementing the domain trait
-2. Create `infrastructure/src/<entity>/mod.rs` with `pub mod repository;`
-3. Add `pub mod <entity>;` to `infrastructure/src/lib.rs`
+2. Add the entity module to `infrastructure/src/lib.rs`

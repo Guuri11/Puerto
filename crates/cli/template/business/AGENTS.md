@@ -51,7 +51,25 @@ pub mod mocks { ... }
 
 ## Adding a New Entity
 
-1. Create `business/src/domain/<entity>/` with `model.rs`, `errors.rs`, `repository.rs`, `use_cases/mod.rs`
-2. Add `pub mod <entity>;` to `business/src/domain/mod.rs`
-3. Create `business/src/application/<entity>/` with use case files
-4. Add `pub mod <entity>;` to `business/src/application/mod.rs`
+Run `harbor generate domain <Name>` to scaffold the domain layer in isolation, or `harbor generate scaffold <Name>` to do all layers at once.
+
+**Layer-by-layer (recommended for AI-assisted development):**
+```bash
+harbor generate domain <Name>          # domain + Object Mother → Next: application
+harbor generate application <Name>     # use case impls        → Next: repository
+harbor generate repository <Name>      # infra adapter         → Next: presentation
+harbor generate presentation <Name>    # HTTP layer + bootstrap wired
+```
+Each command validates that the prior step completed (entity must be in `harbor.toml`).
+
+## Object Mother
+
+Every entity gets a test fixture in `business/src/tests/mothers/<entity>_mother.rs`:
+
+```rust
+let widget = WidgetMother::random();
+let invalid = WidgetMother::new().with_empty_name().build_props();
+let batch   = WidgetMother::random_vec(5);
+```
+
+The `tests::mothers` block in `lib.rs` is patched automatically by `harbor generate domain` and `harbor generate scaffold`.

@@ -680,7 +680,7 @@ impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
 
 ---
 
-## Phase 6 — IDE Snippets
+## Phase 6 — IDE Snippets ✅ DONE
 
 Every `harbor new` project ships with snippet files for **Zed** and **VS Code** (VS Code format is also compatible with nvim+LuaSnip). Both files share the same JSON content — Zed and VS Code use the same TextMate snippet format.
 
@@ -978,7 +978,85 @@ harbor generate scaffold <Name>    # CRUD + db inferred from harbor.toml
 
 ---
 
-## Phase 8 — Full-stack (frontend)
+## Phase 8 — Layer-by-layer generators ✅ DONE
+
+Four focused generators that let users (and AI agents) work on one DDD layer at a time. Keeps model context tight — instead of scaffolding all layers at once, each command has a single responsibility.
+
+### Commands
+
+```bash
+harbor generate domain <Name>           # domain layer + Object Mother
+harbor generate application <Name>      # application layer (validates entity in harbor.toml)
+harbor generate repository <Name>       # infrastructure layer (validates entity in harbor.toml)
+harbor generate presentation <Name>     # presentation layer + bootstrap regeneration
+```
+
+`harbor generate scaffold` remains the all-in-one shortcut.
+
+### Files generated per command
+
+**`harbor generate domain <Name>`**
+```
+business/src/domain/<snake>/model.rs
+business/src/domain/<snake>/errors.rs
+business/src/domain/<snake>/repository.rs        # CRUD trait + mockall mock
+business/src/domain/<snake>/use_cases/create_<snake>.rs
+business/src/domain/<snake>/use_cases/get_<snake>.rs
+business/src/domain/<snake>/use_cases/list_<snake>.rs
+business/src/domain/<snake>/use_cases/update_<snake>.rs
+business/src/domain/<snake>/use_cases/delete_<snake>.rs
+business/src/tests/mothers/<snake>_mother.rs     # Object Mother
+```
+Auto-patches: `business/src/lib.rs` (domain block + `tests::mothers` block), `harbor.toml`.
+
+**`harbor generate application <Name>`**
+```
+business/src/application/<snake>/create_<snake>.rs
+business/src/application/<snake>/get_<snake>.rs
+business/src/application/<snake>/list_<snake>.rs
+business/src/application/<snake>/update_<snake>.rs
+business/src/application/<snake>/delete_<snake>.rs
+```
+Auto-patches: `business/src/lib.rs` (application block).
+
+**`harbor generate repository <Name>`**
+```
+infrastructure/src/<snake>/repository.rs         # InMemory or Pg (reads project.db)
+infrastructure/src/<snake>/entity.rs             # only when db = true
+infrastructure/migrations/<ts>_create_<snake>_table.sql  # only when db = true
+```
+Auto-patches: `infrastructure/src/lib.rs`.
+
+**`harbor generate presentation <Name>`**
+```
+presentation/src/api/<snake>.rs
+presentation/src/api/<snake>/routes.rs
+presentation/src/api/<snake>/dto.rs
+presentation/src/api/<snake>/responses.rs
+presentation/src/api/<snake>/error_mapper.rs
+```
+Auto-patches: `presentation/src/api.rs`. Regenerates `bootstrap.rs`.
+
+### Object Mother (also added to `harbor generate scaffold`)
+
+Every entity now gets `business/src/tests/mothers/<snake>_mother.rs`:
+```rust
+let w  = WidgetMother::random();
+let ws = WidgetMother::random_vec(5);
+let p  = WidgetMother::new().with_empty_name().build_props();
+```
+
+### Validation
+- `generate application/repository/presentation`: error if entity not in `harbor.toml` — hint: run `harbor generate domain <Name>` first
+- `generate domain`: error if entity already in `harbor.toml`
+- After each command: print `Next: harbor generate <next-layer> <Name>` hint
+
+### Idempotency
+All patching functions (`patch_business_lib_domain_crud`, `patch_business_lib_application_crud`, `patch_infra_lib`, `patch_api_rs`, `patch_mothers_lib`) are now idempotent — safe to re-run.
+
+---
+
+## Phase 9 — Full-stack (frontend)
 
 TBD. Options to evaluate:
 - Server-side rendering with a Rust template engine (Askama / Tera)

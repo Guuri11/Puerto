@@ -141,27 +141,53 @@ fn patch_business_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-fn patch_business_lib_crud(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn patch_business_lib_domain_crud(
+    base: &Path,
+    snake: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("business/src/lib.rs");
     let src = fs::read_to_string(&path)?;
-
+    if src.contains(&format!("pub mod {snake} {{\n        pub mod errors;")) {
+        return Ok(());
+    }
     let domain_mod = format!(
         "\n    pub mod {snake} {{\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases {{\n            pub mod create_{snake};\n            pub mod get_{snake};\n            pub mod list_{snake};\n            pub mod update_{snake};\n            pub mod delete_{snake};\n        }}\n    }}\n"
     );
-    let after_domain = insert_before_block_end(&src, "domain", &domain_mod)?;
+    let patched = insert_before_block_end(&src, "domain", &domain_mod)?;
+    fs::write(&path, patched)?;
+    Ok(())
+}
 
+fn patch_business_lib_application_crud(
+    base: &Path,
+    snake: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("business/src/lib.rs");
+    let src = fs::read_to_string(&path)?;
+    if src.contains(&format!("pub mod create_{snake};")) {
+        return Ok(());
+    }
     let app_mod = format!(
         "\n    pub mod {snake} {{\n        pub mod create_{snake};\n        pub mod get_{snake};\n        pub mod list_{snake};\n        pub mod update_{snake};\n        pub mod delete_{snake};\n    }}\n"
     );
-    let after_app = insert_before_block_end(&after_domain, "application", &app_mod)?;
+    let patched = insert_before_block_end(&src, "application", &app_mod)?;
+    fs::write(&path, patched)?;
+    Ok(())
+}
 
-    fs::write(&path, after_app)?;
+fn patch_business_lib_crud(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
+    patch_business_lib_domain_crud(base, snake)?;
+    patch_business_lib_application_crud(base, snake)?;
     Ok(())
 }
 
 fn patch_infra_lib(base: &Path, snake: &str, db: bool) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("infrastructure/src/lib.rs");
     let mut src = fs::read_to_string(&path)?;
+
+    if src.contains(&format!("pub mod {snake} {{")) {
+        return Ok(());
+    }
 
     if !src.ends_with('\n') {
         src.push('\n');
@@ -188,10 +214,15 @@ fn patch_api_rs(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Erro
     let path = base.join("presentation/src/api.rs");
     let mut src = fs::read_to_string(&path)?;
 
+    let mod_line = format!("pub mod {snake};\n");
+    if src.contains(&mod_line) {
+        return Ok(());
+    }
+
     if !src.ends_with('\n') {
         src.push('\n');
     }
-    src.push_str(&format!("pub mod {snake};\n"));
+    src.push_str(&mod_line);
 
     fs::write(&path, src)?;
     Ok(())
@@ -413,6 +444,301 @@ fn apply_uc(template: &str, pascal: &str, snake: &str, uc_pascal: &str, uc: &str
         .replace("{uc}", uc)
 }
 
+// ── Layer-specific file writers ───────────────────────────────────────────────
+
+fn write_domain_files(
+    pascal: &str,
+    snake: &str,
+    base: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    write(
+        &base.join(format!("business/src/domain/{snake}/model.rs")),
+        &apply(MODEL, pascal, snake),
+    )?;
+    write(
+        &base.join(format!("business/src/domain/{snake}/errors.rs")),
+        &apply(ERRORS, pascal, snake),
+    )?;
+    write(
+        &base.join(format!("business/src/domain/{snake}/repository.rs")),
+        &apply(CRUD_REPOSITORY, pascal, snake),
+    )?;
+    write(
+        &base.join(format!(
+            "business/src/domain/{snake}/use_cases/create_{snake}.rs"
+        )),
+        &apply(USE_CASE_TRAIT, pascal, snake),
+    )?;
+    write(
+        &base.join(format!(
+            "business/src/domain/{snake}/use_cases/get_{snake}.rs"
+        )),
+        &apply(GET_USE_CASE_TRAIT, pascal, snake),
+    )?;
+    write(
+        &base.join(format!(
+            "business/src/domain/{snake}/use_cases/list_{snake}.rs"
+        )),
+        &apply(LIST_USE_CASE_TRAIT, pascal, snake),
+    )?;
+    write(
+        &base.join(format!(
+            "business/src/domain/{snake}/use_cases/update_{snake}.rs"
+        )),
+        &apply(UPDATE_USE_CASE_TRAIT, pascal, snake),
+    )?;
+    write(
+        &base.join(format!(
+            "business/src/domain/{snake}/use_cases/delete_{snake}.rs"
+        )),
+        &apply(DELETE_USE_CASE_TRAIT, pascal, snake),
+    )?;
+    Ok(())
+}
+
+fn write_application_files(
+    pascal: &str,
+    snake: &str,
+    base: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    write(
+        &base.join(format!(
+            "business/src/application/{snake}/create_{snake}.rs"
+        )),
+        &apply(USE_CASE_IMPL, pascal, snake),
+    )?;
+    write(
+        &base.join(format!("business/src/application/{snake}/get_{snake}.rs")),
+        &apply(GET_USE_CASE_IMPL, pascal, snake),
+    )?;
+    write(
+        &base.join(format!("business/src/application/{snake}/list_{snake}.rs")),
+        &apply(LIST_USE_CASE_IMPL, pascal, snake),
+    )?;
+    write(
+        &base.join(format!(
+            "business/src/application/{snake}/update_{snake}.rs"
+        )),
+        &apply(UPDATE_USE_CASE_IMPL, pascal, snake),
+    )?;
+    write(
+        &base.join(format!(
+            "business/src/application/{snake}/delete_{snake}.rs"
+        )),
+        &apply(DELETE_USE_CASE_IMPL, pascal, snake),
+    )?;
+    Ok(())
+}
+
+fn write_repository_files(
+    pascal: &str,
+    snake: &str,
+    base: &Path,
+    db: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if db {
+        write(
+            &base.join(format!("infrastructure/src/{snake}/entity.rs")),
+            &apply(INFRA_ENTITY, pascal, snake),
+        )?;
+        write(
+            &base.join(format!("infrastructure/src/{snake}/repository.rs")),
+            &apply(CRUD_INFRA_DB_REPOSITORY, pascal, snake),
+        )?;
+    } else {
+        write(
+            &base.join(format!("infrastructure/src/{snake}/repository.rs")),
+            &apply(CRUD_INFRA_REPOSITORY, pascal, snake),
+        )?;
+    }
+    Ok(())
+}
+
+fn write_presentation_files(
+    pascal: &str,
+    snake: &str,
+    base: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    write(
+        &base.join(format!("presentation/src/api/{snake}.rs")),
+        "pub mod dto;\npub mod error_mapper;\npub mod responses;\npub mod routes;\n",
+    )?;
+    write(
+        &base.join(format!("presentation/src/api/{snake}/dto.rs")),
+        &apply(CRUD_DTO, pascal, snake),
+    )?;
+    write(
+        &base.join(format!("presentation/src/api/{snake}/responses.rs")),
+        &apply(CRUD_RESPONSES, pascal, snake),
+    )?;
+    write(
+        &base.join(format!("presentation/src/api/{snake}/error_mapper.rs")),
+        &apply(ERROR_MAPPER, pascal, snake),
+    )?;
+    write(
+        &base.join(format!("presentation/src/api/{snake}/routes.rs")),
+        &apply(CRUD_ROUTES, pascal, snake),
+    )?;
+    Ok(())
+}
+
+fn write_mother(pascal: &str, snake: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    write(
+        &base.join(format!("business/src/tests/mothers/{snake}_mother.rs")),
+        &apply(OBJECT_MOTHER, pascal, snake),
+    )?;
+    Ok(())
+}
+
+fn patch_mothers_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("business/src/lib.rs");
+    let src = fs::read_to_string(&path)?;
+
+    if src.contains(&format!("pub mod {snake}_mother;")) {
+        return Ok(());
+    }
+
+    let new_mod = format!("\n        pub mod {snake}_mother;\n");
+
+    if let Ok(patched) = patch_lib_block(&src, &["tests", "mothers"], &new_mod) {
+        fs::write(&path, patched)?;
+        return Ok(());
+    }
+
+    let mut content = src;
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push_str(&format!(
+        "\n#[cfg(test)]\npub mod tests {{\n    pub mod mothers {{\n        pub mod {snake}_mother;\n    }}\n}}\n"
+    ));
+    fs::write(&path, content)?;
+    Ok(())
+}
+
+// ── Layer-specific public entry points ────────────────────────────────────────
+
+pub fn run_generate_domain(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::harbor_toml::read(base)?;
+    let pascal = to_pascal_case(name);
+    let snake = pascal_to_snake(&pascal);
+
+    if config.entity.iter().any(|e| e.name == pascal) {
+        return Err(format!(
+            "{pascal} is already in harbor.toml. Use `harbor generate use-case` to add a use case."
+        )
+        .into());
+    }
+
+    write_domain_files(&pascal, &snake, base)?;
+    write_mother(&pascal, &snake, base)?;
+    patch_business_lib_domain_crud(base, &snake)?;
+    patch_mothers_lib(base, &snake)?;
+
+    let use_cases = vec![
+        format!("create_{snake}"),
+        format!("get_{snake}"),
+        format!("list_{snake}"),
+        format!("update_{snake}"),
+        format!("delete_{snake}"),
+    ];
+    crate::harbor_toml::add_entity(base, &pascal, use_cases, config.project.db)?;
+
+    println!("✓ business/domain/    — model, errors, repository trait, 5 use case traits");
+    println!("✓ business/tests/     — {pascal}Mother (Object Mother)");
+    println!("✓ harbor.toml         — {pascal} registered");
+    println!();
+    println!("  Next: harbor generate application {pascal}");
+    Ok(())
+}
+
+pub fn run_generate_application(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::harbor_toml::read(base)?;
+    let pascal = to_pascal_case(name);
+    let snake = pascal_to_snake(&pascal);
+
+    if !config.entity.iter().any(|e| e.name == pascal) {
+        return Err(format!(
+            "{pascal} not found in harbor.toml. Run `harbor generate domain {pascal}` first."
+        )
+        .into());
+    }
+
+    write_application_files(&pascal, &snake, base)?;
+    patch_business_lib_application_crud(base, &snake)?;
+
+    println!("✓ business/application/ — 5 use case impls (create, get, list, update, delete)");
+    println!();
+    println!("  Next: harbor generate repository {pascal}");
+    Ok(())
+}
+
+pub fn run_generate_repository(
+    name: &str,
+    base: &Path,
+    sqlx_bin: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::harbor_toml::read(base)?;
+    let pascal = to_pascal_case(name);
+    let snake = pascal_to_snake(&pascal);
+
+    if !config.entity.iter().any(|e| e.name == pascal) {
+        return Err(format!(
+            "{pascal} not found in harbor.toml. Run `harbor generate domain {pascal}` first."
+        )
+        .into());
+    }
+
+    let db = config.project.db;
+    write_repository_files(&pascal, &snake, base, db)?;
+    patch_infra_lib(base, &snake, db)?;
+
+    if db {
+        run_migration(
+            &format!("create_{snake}_table"),
+            base,
+            sqlx_bin,
+            Some(&create_table_sql(&snake)),
+        )?;
+    }
+
+    let repo_label = if db {
+        format!("Pg{pascal}Repository")
+    } else {
+        format!("InMemory{pascal}Repository")
+    };
+    println!("✓ infrastructure/      — {repo_label}");
+    println!();
+    println!("  Next: harbor generate presentation {pascal}");
+    Ok(())
+}
+
+pub fn run_generate_presentation(
+    name: &str,
+    base: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::harbor_toml::read(base)?;
+    let pascal = to_pascal_case(name);
+    let snake = pascal_to_snake(&pascal);
+
+    if !config.entity.iter().any(|e| e.name == pascal) {
+        return Err(format!(
+            "{pascal} not found in harbor.toml. Run `harbor generate domain {pascal}` first."
+        )
+        .into());
+    }
+
+    write_presentation_files(&pascal, &snake, base)?;
+    patch_api_rs(base, &snake)?;
+    regenerate_bootstrap(base)?;
+
+    println!("✓ presentation/        — routes, dto, responses, error_mapper");
+    println!("✓ bootstrap.rs         — regenerated");
+    println!();
+    println!("  All layers wired. Run `make run` to start.");
+    Ok(())
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 pub fn run(
@@ -430,6 +756,10 @@ pub fn run(
         write_files(&pascal, &snake, base, db)?;
     }
     try_patch_libs(&snake, base, db, crud);
+
+    // Object Mother — best effort
+    let _ = write_mother(&pascal, &snake, base);
+    let _ = patch_mothers_lib(base, &snake);
 
     let use_cases = if crud {
         vec![
@@ -481,7 +811,13 @@ pub fn run_scaffold(
     run(name, base, db, true)?;
     if db {
         let snake = pascal_to_snake(&to_pascal_case(name));
-        run_migration(&format!("create_{snake}_table"), base, sqlx_bin)?;
+        let migration_sql = create_table_sql(&snake);
+        run_migration(
+            &format!("create_{snake}_table"),
+            base,
+            sqlx_bin,
+            Some(&migration_sql),
+        )?;
     }
     Ok(())
 }
@@ -602,7 +938,7 @@ fn add_db_makefile_targets(base: &Path) -> Result<(), Box<dyn std::error::Error>
         return Ok(());
     }
     let src = fs::read_to_string(&path)?;
-    if src.contains("docker/up") {
+    if src.contains("docker-compose/up") {
         return Ok(()); // idempotent
     }
     let mut patched = src;
@@ -620,14 +956,14 @@ fn patch_makefile_setup_for_db(base: &Path) -> Result<(), Box<dyn std::error::Er
         return Ok(()); // no Makefile — nothing to patch
     }
     let src = fs::read_to_string(&path)?;
-    let sqlx_line = "\tcargo install sqlx-cli --no-default-features --features postgres --locked\n";
+    let sqlx_line =
+        "\t$(CARGO) install sqlx-cli --no-default-features --features postgres --locked\n";
     if src.contains("sqlx-cli") {
         return Ok(()); // idempotent
     }
-    // Append sqlx-cli install after the nextest install line inside setup target
     let patched = src.replace(
-        "\tcargo install cargo-nextest --locked\n",
-        &format!("\tcargo install cargo-nextest --locked\n{sqlx_line}"),
+        "\t$(CARGO) install cargo-nextest --locked\n",
+        &format!("\t$(CARGO) install cargo-nextest --locked\n{sqlx_line}"),
     );
     fs::write(&path, patched)?;
     Ok(())
@@ -680,14 +1016,25 @@ pub fn run_use_case(
     Ok(())
 }
 
+fn create_table_sql(snake: &str) -> String {
+    format!(
+        "CREATE TABLE {snake}s (\n    id UUID PRIMARY KEY,\n    name TEXT NOT NULL,\n    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    deleted BOOLEAN NOT NULL DEFAULT FALSE,\n    deleted_at TIMESTAMPTZ\n);\n"
+    )
+}
+
 /// Add a new SQLx migration file.
 ///
 /// `sqlx_bin` overrides the binary name/path — used in tests to pass a stub binary.
 /// Pass `None` to use the default `"sqlx"` from `$PATH`.
+///
+/// `content` overrides the body written into the migration file. Pass `None` to leave
+/// a generic placeholder (used by `harbor generate migration`). Pass `Some(sql)` to
+/// write a pre-filled schema (used by `harbor generate scaffold --db`).
 pub fn run_migration(
     name: &str,
     base: &Path,
     sqlx_bin: Option<&str>,
+    content: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let bin = sqlx_bin.unwrap_or("sqlx");
 
@@ -731,7 +1078,7 @@ pub fn run_migration(
         return Err(format!("sqlx migrate add failed (exit {:?})", status.code()).into());
     }
 
-    // Find the newly created file and prepend the Harbor header.
+    // Find the newly created file and write Harbor header + body.
     if let Some(entry) = fs::read_dir(&migrations_dir)?
         .flatten()
         .filter(|e| {
@@ -742,15 +1089,19 @@ pub fn run_migration(
         .max_by_key(|e| e.file_name())
     {
         let path = entry.path();
-        let existing = fs::read_to_string(&path).unwrap_or_default();
         let header = format!(
             "-- Harbor migration: {normalised}\n-- Run `make sqlx/prepare` after editing this file.\n\n"
         );
-        fs::write(&path, format!("{header}{existing}"))?;
+        let body = content.unwrap_or("-- Add migration script here\n");
+        fs::write(&path, format!("{header}{body}"))?;
     }
 
     println!("✓ Migration '{normalised}' created in infrastructure/migrations/");
-    println!("  Edit the file, then run: make sqlx/migrate");
+    if content.is_some() {
+        println!("  Schema pre-filled — run: make sqlx/migrate");
+    } else {
+        println!("  Edit the file, then run: make sqlx/migrate");
+    }
 
     Ok(())
 }
@@ -951,13 +1302,126 @@ fn write_files_crud(
     Ok(())
 }
 
+// ── Object Mother template ────────────────────────────────────────────────────
+
+const OBJECT_MOTHER: &str = r#"use crate::domain::{snake}::model::{Pascal};
+use crate::domain::{snake}::model::{Pascal}Props;
+
+pub struct {Pascal}Mother {
+    name: Option<String>,
+}
+
+impl {Pascal}Mother {
+    pub fn new() -> Self {
+        Self { name: None }
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
+        self
+    }
+
+    pub fn with_empty_name(mut self) -> Self {
+        self.name = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> {Pascal} {
+        {Pascal}::new({Pascal}Props {
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+        })
+        .expect("{Pascal}Mother: failed to build valid {Pascal}")
+    }
+
+    pub fn build_props(self) -> {Pascal}Props {
+        {Pascal}Props {
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+        }
+    }
+
+    pub fn random() -> {Pascal} {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<{Pascal}> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+"#;
+
 // ── Makefile DB targets ───────────────────────────────────────────────────────
 
-const DB_MAKEFILE_TARGETS: &str = "\ndocker/up: ## Start development containers\n\tdocker compose up -d\n\ndocker/down: ## Stop development containers\n\tdocker compose down\n\nsqlx/migrate: ## Run pending database migrations\n\tsqlx migrate run --source infrastructure/migrations\n\nsqlx/prepare: ## Regenerate SQLx offline cache (requires live DB)\n\tSQLX_OFFLINE=false cargo sqlx prepare --workspace\n\nsqlx/online: ## Switch SQLx to ONLINE mode\n\t@printf '[env]\\nSQLX_OFFLINE = \"false\"\\n' > .cargo/config.toml\n\nsqlx/offline: ## Switch SQLx to OFFLINE mode\n\t@printf '[env]\\nSQLX_OFFLINE = \"true\"\\n' > .cargo/config.toml\n";
+const DB_MAKEFILE_TARGETS: &str = r#"
+.PHONY: db-up db-down docker-compose/up docker-compose/down reset-db \
+        test/infrastructure \
+        sqlx/online sqlx/offline sqlx/migrate sqlx/prepare sqlx/check \
+        generate/migration
+
+DOCKER         := docker
+DOCKER_COMPOSE := docker compose
+
+db-up: docker-compose/up ## Start database containers
+
+db-down: docker-compose/down ## Stop database containers
+
+docker-compose/up: ## Start all containers
+	@echo "${CYAN}Starting containers...${NC}"
+	$(DOCKER_COMPOSE) up -d
+
+docker-compose/down: ## Stop all containers
+	@echo "${CYAN}Stopping containers...${NC}"
+	$(DOCKER_COMPOSE) down
+
+reset-db: ## Wipe database and re-run migrations (DESTRUCTIVE)
+	@printf "${RED}This destroys ALL database data. Type DESTROY to confirm: ${NC}"; \
+	read CONFIRM; \
+	if [ "$$CONFIRM" != "DESTROY" ]; then \
+		echo "${GREEN}Cancelled${NC}"; \
+		exit 1; \
+	fi; \
+	echo "${CYAN}Stopping containers and removing volumes...${NC}"; \
+	$(DOCKER_COMPOSE) down -v; \
+	echo "${CYAN}Restarting containers...${NC}"; \
+	$(DOCKER_COMPOSE) up -d; \
+	echo "${GREEN}Running migrations...${NC}"; \
+	sqlx migrate run --source infrastructure/migrations
+
+test/infrastructure: docker-compose/up ## Run infrastructure tests (requires live DB)
+	@echo "${YELLOW}Running infrastructure tests...${NC}"
+	$(CARGO) nextest run -p infrastructure
+
+sqlx/online: ## Switch SQLx to ONLINE mode (check against live DB)
+	@printf '[env]\nSQLX_OFFLINE = "false"\n' > .cargo/config.toml
+	@echo "${GREEN}SQLx ONLINE mode${NC}"
+
+sqlx/offline: ## Switch SQLx to OFFLINE mode (use saved cache)
+	@printf '[env]\nSQLX_OFFLINE = "true"\n' > .cargo/config.toml
+	@echo "${GREEN}SQLx OFFLINE mode${NC}"
+
+sqlx/migrate: docker-compose/up ## Run pending database migrations
+	@echo "${GREEN}Running migrations...${NC}"
+	sqlx migrate run --source infrastructure/migrations
+
+sqlx/prepare: docker-compose/up ## Regenerate SQLx offline cache (requires live DB)
+	@echo "${GREEN}Preparing SQLx cache...${NC}"
+	SQLX_OFFLINE=false $(CARGO) sqlx prepare --workspace
+
+sqlx/check: docker-compose/up ## Verify SQLx cache matches current queries
+	@echo "${GREEN}Checking SQLx cache...${NC}"
+	SQLX_OFFLINE=false $(CARGO) sqlx prepare --workspace --check
+
+generate/migration: ## Create a new SQLx migration — make generate/migration NAME=add_users
+	@if [ -z "$$NAME" ]; then \
+		echo "${RED}Error: provide name — make generate/migration NAME=add_users_table${NC}"; \
+		exit 1; \
+	fi
+	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
+	harbor generate migration $$NAME
+"#;
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 
-const MODEL: &str = r#"use chrono::NaiveDateTime;
+const MODEL: &str = r#"use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use super::errors::{Pascal}Error;
@@ -970,10 +1434,10 @@ pub struct {Pascal}Props {
 #[derive(Debug, Clone)]
 pub struct {Pascal} {
     pub id: Uuid,
-    pub created_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub deleted: bool,
-    pub deleted_at: Option<NaiveDateTime>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub name: String,
 }
 
@@ -982,7 +1446,7 @@ impl {Pascal} {
         if props.name.trim().is_empty() {
             return Err({Pascal}Error::ValidationError("name_empty".into()));
         }
-        let now = chrono::Utc::now().naive_utc();
+        let now = chrono::Utc::now();
         Ok(Self {
             id: Uuid::new_v4(),
             created_at: now,
@@ -1331,7 +1795,7 @@ impl {Pascal}Api {
 
 // ── SQLx templates ────────────────────────────────────────────────────────────
 
-const INFRA_ENTITY: &str = r#"use chrono::NaiveDateTime;
+const INFRA_ENTITY: &str = r#"use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -1341,10 +1805,10 @@ use business::domain::{snake}::{errors::{Pascal}Error, model::{Pascal}};
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct {Pascal}Db {
     pub id: Uuid,
-    pub created_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub deleted: bool,
-    pub deleted_at: Option<NaiveDateTime>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub name: String,
 }
 
@@ -1472,7 +1936,7 @@ mod integration_tests {
         entity
     }
 
-    #[sqlx::test(migrations = "../migrations")]
+    #[sqlx::test(migrations = "./migrations")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
         let entity = seed(&pool, "example").await;
@@ -1486,7 +1950,7 @@ mod integration_tests {
         assert!(!found.deleted);
     }
 
-    #[sqlx::test(migrations = "../migrations")]
+    #[sqlx::test(migrations = "./migrations")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
         let result = test_repo(pool).find_by_id(Uuid::new_v4()).await.unwrap();
@@ -1495,12 +1959,12 @@ mod integration_tests {
         assert!(result.is_none());
     }
 
-    #[sqlx::test(migrations = "../migrations")]
+    #[sqlx::test(migrations = "./migrations")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
         let mut entity = seed(&pool, "original").await;
         entity.name = "updated".to_string();
-        entity.updated_at = chrono::Utc::now().naive_utc();
+        entity.updated_at = chrono::Utc::now();
 
         // Act
         test_repo(pool.clone()).save(&entity).await.unwrap();
@@ -1728,7 +2192,7 @@ mod integration_tests {
         entity
     }
 
-    #[sqlx::test(migrations = "../migrations")]
+    #[sqlx::test(migrations = "./migrations")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
         let entity = seed(&pool, "example").await;
@@ -1742,7 +2206,7 @@ mod integration_tests {
         assert!(!found.deleted);
     }
 
-    #[sqlx::test(migrations = "../migrations")]
+    #[sqlx::test(migrations = "./migrations")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
         let result = test_repo(pool).find_by_id(Uuid::new_v4()).await.unwrap();
@@ -1751,12 +2215,12 @@ mod integration_tests {
         assert!(result.is_none());
     }
 
-    #[sqlx::test(migrations = "../migrations")]
+    #[sqlx::test(migrations = "./migrations")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
         let mut entity = seed(&pool, "original").await;
         entity.name = "updated".to_string();
-        entity.updated_at = chrono::Utc::now().naive_utc();
+        entity.updated_at = chrono::Utc::now();
 
         // Act
         test_repo(pool.clone()).save(&entity).await.unwrap();
@@ -1766,7 +2230,7 @@ mod integration_tests {
         assert_eq!(found.name, "updated");
     }
 
-    #[sqlx::test(migrations = "../migrations")]
+    #[sqlx::test(migrations = "./migrations")]
     async fn should_list_all_{snake}s_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool, "first").await;
@@ -2069,7 +2533,7 @@ impl Update{Pascal}UseCaseTrait for Update{Pascal}UseCaseImpl {
             return Err(err);
         }
         entity.name = params.name;
-        entity.updated_at = chrono::Utc::now().naive_utc();
+        entity.updated_at = chrono::Utc::now();
         self.repository.save(&entity).await.map_err(|e| {
             self.logger.error(&e.to_string());
             e
@@ -2213,7 +2677,7 @@ impl Delete{Pascal}UseCaseTrait for Delete{Pascal}UseCaseImpl {
                 self.logger.warn(&err.to_string());
                 err
             })?;
-        let now = chrono::Utc::now().naive_utc();
+        let now = chrono::Utc::now();
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
