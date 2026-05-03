@@ -17,7 +17,7 @@ include = [
 ]
 
 [[bin]]
-name = "harbor"
+name = "puerto"
 path = "src/main.rs"
 
 [dependencies]
