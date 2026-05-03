@@ -29,6 +29,6 @@ jobs:
         run: make test/full
 
       - name: Publish to crates.io
-        run: cargo publish -p harbor-framework
+        run: cargo publish -p puerto
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

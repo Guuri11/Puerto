@@ -1,12 +1,12 @@
 [package]
-name = "harbor-framework"
-version = "0.6.0"
+name = "puerto"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Harbor — Rust full-stack DDD framework CLI. Scaffolds Clean Architecture projects with auto-wired DI, SQLx support, and zero manual wiring."
+description = "Puerto — Rust full-stack DDD framework CLI. Scaffolds Clean Architecture projects with auto-wired DI, SQLx support, and zero manual wiring. Formerly harbor-framework."
 license = "MIT"
-repository = "https://github.com/Guuri11/harbor"
-homepage = "https://github.com/Guuri11/harbor"
+repository = "https://github.com/Guuri11/Puerto"
+homepage = "https://github.com/Guuri11/Puerto"
 keywords = ["ddd", "scaffold", "framework", "clean-architecture", "code-generator"]
 categories = ["command-line-utilities", "development-tools"]
 include = [

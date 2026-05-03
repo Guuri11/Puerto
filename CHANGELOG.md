@@ -1,3 +1,30 @@
+## [0.7.0] - 2026-05-03
+
+### 💥 Rebranding — `harbor-framework` → `puerto`
+
+This release marks the rename of the crate from `harbor-framework` to `puerto`.
+
+The name Harbor was taken by many existing tools, making SEO and discoverability difficult. **Puerto** (Spanish for *port*) keeps the original nautical metaphor, is easy to pronounce in English, and has a unique presence on crates.io.
+
+**What changed:**
+- Crate name on crates.io: `harbor-framework` → `puerto`
+- GitHub repo: `Guuri11/harbor` → `Guuri11/Puerto`
+- Everything else is identical — CLI commands, generated project structure, `harbor.toml` schema
+
+**Migrating:**
+```toml
+# Cargo.toml
+[dependencies]
+# before
+harbor-framework = "0.6"
+# after
+puerto = "0.7"
+```
+
+The `harbor-framework` crate on crates.io is now deprecated. No further versions will be published under that name.
+
+---
+
 ## [0.6.0] - 2026-05-03
 
 ### 🚀 Features

@@ -913,21 +913,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "harbor-framework"
-version = "0.6.0"
-dependencies = [
- "cargo-generate",
- "clap",
- "clap_complete",
- "dialoguer 0.11.0",
- "include_dir",
- "serde",
- "serde_json",
- "tempfile",
- "toml 0.8.23",
-]
-
-[[package]]
 name = "hash32"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1650,6 +1635,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a6efc566849d3d9d737c5cb06cc50e48950ebe3d3f9d70631490fff3a07b139"
 dependencies = [
  "parking_lot",
+]
+
+[[package]]
+name = "puerto"
+version = "0.7.0"
+dependencies = [
+ "cargo-generate",
+ "clap",
+ "clap_complete",
+ "dialoguer 0.11.0",
+ "include_dir",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 0.8.23",
 ]
 
 [[package]]
