@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 80" fill="none">
   <!--
-    Harbor — full logo (icon + wordmark)
+    Puerto — full logo (icon + wordmark)
     Dark background variant
   -->
 
@@ -48,7 +48,7 @@
     font-weight="700"
     letter-spacing="-0.5"
     fill="#F1F5F9"
-  >harbor</text>
+  >puerto</text>
 
   <!-- Accent dot -->
   <circle cx="380" cy="49" r="4" fill="#F97316"/>

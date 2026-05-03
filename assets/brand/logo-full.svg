@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 80" fill="none">
   <!--
-    Harbor — full logo (icon + wordmark)
+    Puerto — full logo (icon + wordmark)
     Light background variant (transparent bg, dark text)
     For dark background variant, swap text fill to #F1F5F9
   -->
@@ -41,7 +41,7 @@
   </g>
 
   <!-- ── Wordmark ── -->
-  <!-- "harbor" in monospace, dark navy -->
+  <!-- "puerto" in monospace, dark navy -->
   <text
     x="94"
     y="52"
@@ -50,7 +50,7 @@
     font-weight="700"
     letter-spacing="-0.5"
     fill="#0D1B2A"
-  >harbor</text>
+  >puerto</text>
 
   <!-- Subtle accent dot after name (teal) -->
   <circle cx="380" cy="49" r="4" fill="#F97316"/>

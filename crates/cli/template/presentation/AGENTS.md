@@ -69,9 +69,9 @@ impl GetEntityResponse {
 
 ## Adding a New Entity Endpoint
 
-Run `harbor generate presentation <Name>` to scaffold this layer and automatically regenerate `bootstrap.rs`. It requires the entity to already exist in `harbor.toml` (added by `harbor generate domain`).
+Run `puerto generate presentation <Name>` to scaffold this layer and automatically regenerate `bootstrap.rs`. It requires the entity to already exist in `puerto.toml` (added by `puerto generate domain`).
 
 Manual steps if not using the CLI:
 1. Create `presentation/src/api/<entity>/` with all 4 files + `<entity>.rs` module declaration
 2. Add `pub mod <entity>;` to `presentation/src/api.rs`
-3. Run `harbor generate bootstrap` to re-wire DI
+3. Run `puerto generate bootstrap` to re-wire DI

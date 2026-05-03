@@ -15,7 +15,7 @@ impl Greeting {
 
         Ok(Self {
             name: name.to_string(),
-            message: format!("Hello, {}! Greetings from Harbor.", name),
+            message: format!("Hello, {}! Greetings from Puerto.", name),
         })
     }
 }

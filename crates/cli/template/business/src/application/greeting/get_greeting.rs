@@ -18,7 +18,8 @@ pub struct GetGreetingUseCaseImpl {
 #[async_trait]
 impl GetGreetingUseCaseTrait for GetGreetingUseCaseImpl {
     async fn execute(&self, params: GetGreetingParams) -> Result<Greeting, GreetingError> {
-        self.logger.info(&format!("Getting greeting for: {}", params.name));
+        self.logger
+            .info(&format!("Getting greeting for: {}", params.name));
 
         if params.name.trim().is_empty() {
             let err = GreetingError::ValidationError("name_empty".into());
@@ -26,15 +27,20 @@ impl GetGreetingUseCaseTrait for GetGreetingUseCaseImpl {
             return Err(err);
         }
 
-        let result = match self.repository.find_by_name(&params.name).await.map_err(|e| {
-            self.logger.error(&e.to_string());
-            e
-        })? {
+        let result = match self
+            .repository
+            .find_by_name(&params.name)
+            .await
+            .map_err(|e| {
+                self.logger.error(&e.to_string());
+                e
+            })? {
             Some(greeting) => greeting,
             None => Greeting::new(&params.name)?,
         };
 
-        self.logger.info(&format!("Greeting created: {}", result.message));
+        self.logger
+            .info(&format!("Greeting created: {}", result.message));
         Ok(result)
     }
 }
@@ -58,9 +64,7 @@ mod tests {
     async fn should_return_greeting_for_valid_name() {
         // Arrange
         let mut mock_repo = MockGreetingRepository::new();
-        mock_repo
-            .expect_find_by_name()
-            .returning(|_| Ok(None));
+        mock_repo.expect_find_by_name().returning(|_| Ok(None));
 
         let use_case = GetGreetingUseCaseImpl {
             repository: Arc::new(mock_repo),
@@ -69,7 +73,9 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(GetGreetingParams { name: "World".into() })
+            .execute(GetGreetingParams {
+                name: "World".into(),
+            })
             .await;
 
         // Assert
@@ -105,7 +111,7 @@ mod tests {
     async fn should_return_cached_greeting_when_found_in_repository() {
         // Arrange
         let cached = Greeting {
-            name: "Harbor".into(),
+            name: "Puerto".into(),
             message: "Hello from cache!".into(),
         };
         let mut mock_repo = MockGreetingRepository::new();
@@ -120,7 +126,9 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(GetGreetingParams { name: "Harbor".into() })
+            .execute(GetGreetingParams {
+                name: "Puerto".into(),
+            })
             .await;
 
         // Assert

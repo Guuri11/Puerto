@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 // ── Snippet JSON ──────────────────────────────────────────────────────────────
 //
 // Same content written to both .zed/snippets/rust.json and
-// .vscode/harbor.code-snippets — Zed and VS Code share the TextMate format.
+// .vscode/puerto.code-snippets — Zed and VS Code share the TextMate format.
 //
 // Escape notes inside the JSON body strings:
 //   \"  → literal double-quote (JSON escape)
@@ -634,7 +634,7 @@ pub const SNIPPETS_JSON: &str = r##"{
 "##;
 
 pub const SQL_SNIPPETS_JSON: &str = r##"{
-  "Harbor — Create table": {
+  "Puerto — Create table": {
     "prefix": "migration-create-table",
     "scope": "sql",
     "body": [
@@ -648,9 +648,9 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
       ");",
       "$0"
     ],
-    "description": "CREATE TABLE with Harbor standard columns (id, name, timestamps, soft-delete)."
+    "description": "CREATE TABLE with Puerto standard columns (id, name, timestamps, soft-delete)."
   },
-  "Harbor — Add column": {
+  "Puerto — Add column": {
     "prefix": "migration-add-column",
     "scope": "sql",
     "body": [
@@ -659,7 +659,7 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
     ],
     "description": "ALTER TABLE ADD COLUMN."
   },
-  "Harbor — Insert": {
+  "Puerto — Insert": {
     "prefix": "sql-insert",
     "scope": "sql",
     "body": [
@@ -669,9 +669,9 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
       "    SET name = \\$2, updated_at = \\$4;",
       "$0"
     ],
-    "description": "INSERT with Harbor standard columns + upsert."
+    "description": "INSERT with Puerto standard columns + upsert."
   },
-  "Harbor — Update": {
+  "Puerto — Update": {
     "prefix": "sql-update",
     "scope": "sql",
     "body": [
@@ -680,9 +680,9 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
       "WHERE id = \\$1 AND deleted = false;",
       "$0"
     ],
-    "description": "UPDATE with Harbor soft-delete guard."
+    "description": "UPDATE with Puerto soft-delete guard."
   },
-  "Harbor — Soft delete": {
+  "Puerto — Soft delete": {
     "prefix": "sql-soft-delete",
     "scope": "sql",
     "body": [
@@ -719,13 +719,13 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
         );
     }
     if write_vscode {
-        write_file(&base.join(".vscode/harbor.code-snippets"), SNIPPETS_JSON)?;
+        write_file(&base.join(".vscode/puerto.code-snippets"), SNIPPETS_JSON)?;
         write_file(
-            &base.join(".vscode/harbor.sql.code-snippets"),
+            &base.join(".vscode/puerto.sql.code-snippets"),
             SQL_SNIPPETS_JSON,
         )?;
         println!(
-            "✓ .vscode/harbor.code-snippets + harbor.sql.code-snippets  (VS Code — loaded automatically)"
+            "✓ .vscode/puerto.code-snippets + puerto.sql.code-snippets  (VS Code — loaded automatically)"
         );
         println!(
             "  nvim+LuaSnip: require(\"luasnip.loaders.from_vscode\").lazy_load({{ paths = {{ \"./.vscode\" }} }})"
@@ -735,7 +735,7 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-/// `harbor generate snippets [--ide <ide>]`
+/// `puerto generate snippets [--ide <ide>]`
 pub fn run(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(i) = ide {
         if !matches!(i, "zed" | "vscode") {

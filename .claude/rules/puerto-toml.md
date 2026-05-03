@@ -1,4 +1,4 @@
-# harbor.toml — Schema & Identifier Derivation
+# puerto.toml — Schema & Identifier Derivation
 
 ## Schema
 
@@ -16,7 +16,7 @@ db = true                # optional — omit for InMemory, set true for SQLx/Pos
 - `name` is canonical PascalCase — all other identifiers derived from it
 - `use_cases` entries are snake_case action names — match the file/module name exactly
 - `db = true` → generates `PgEntityRepository` + `entity.rs`; absent/false → `InMemoryEntityRepository`
-- Managed by Harbor CLI — do not add entities manually unless also running `harbor generate bootstrap`
+- Managed by Puerto CLI — do not add entities manually unless also running `puerto generate bootstrap`
 
 ---
 
@@ -24,18 +24,18 @@ db = true                # optional — omit for InMemory, set true for SQLx/Pos
 
 Given `name = "OrderItem"` and `use_cases = ["create_order_item"]`:
 
-| Identifier | Value | Used in |
-|------------|-------|---------|
-| `pascal` | `OrderItem` | Struct names, impl names |
-| `snake` | `order_item` | File names, module names, variable names |
-| `uc` | `create_order_item` | Use case field name, file name |
-| `uc_pascal` | `CreateOrderItem` | Use case type prefix |
-| `UseCaseTrait` | `CreateOrderItemUseCaseTrait` | Domain trait |
-| `UseCaseImpl` | `CreateOrderItemUseCaseImpl` | Application impl struct |
-| `UseCaseParams` | `CreateOrderItemParams` | Input params struct |
-| `RepositoryTrait` | `OrderItemRepositoryTrait` | Domain repository trait |
-| `InMemoryRepo` | `InMemoryOrderItemRepository` | Infrastructure impl |
-| `ApiStruct` | `OrderItemApi` | Presentation routes struct |
+| Identifier        | Value                         | Used in                                  |
+| ----------------- | ----------------------------- | ---------------------------------------- |
+| `pascal`          | `OrderItem`                   | Struct names, impl names                 |
+| `snake`           | `order_item`                  | File names, module names, variable names |
+| `uc`              | `create_order_item`           | Use case field name, file name           |
+| `uc_pascal`       | `CreateOrderItem`             | Use case type prefix                     |
+| `UseCaseTrait`    | `CreateOrderItemUseCaseTrait` | Domain trait                             |
+| `UseCaseImpl`     | `CreateOrderItemUseCaseImpl`  | Application impl struct                  |
+| `UseCaseParams`   | `CreateOrderItemParams`       | Input params struct                      |
+| `RepositoryTrait` | `OrderItemRepositoryTrait`    | Domain repository trait                  |
+| `InMemoryRepo`    | `InMemoryOrderItemRepository` | Infrastructure impl                      |
+| `ApiStruct`       | `OrderItemApi`                | Presentation routes struct               |
 
 ### Derivation rules
 
@@ -47,10 +47,12 @@ uc_pascal = PascalCase(uc)                         // "CreateOrderItem"
 ```
 
 `PascalCase` splits on `_` and `-`, capitalises each word, joins:
+
 - `"order_item"` → `"OrderItem"`
 - `"create-product"` → `"CreateProduct"`
 
 `pascal_to_snake` inserts `_` before each uppercase letter (except first), lowercases all:
+
 - `"OrderItem"` → `"order_item"`
 - `"Product"` → `"product"`
 
@@ -87,7 +89,7 @@ presentation/src/api/product/error_mapper.rs
 1. Import use case impls: `use business::application::{snake}::{uc}::{uc_pascal}UseCaseImpl;`
 2. Import repo:
    - `db = false` → `use infrastructure::{snake}::repository::InMemory{pascal}Repository;`
-   - `db = true`  → `use infrastructure::{snake}::repository::Pg{pascal}Repository;`
+   - `db = true` → `use infrastructure::{snake}::repository::Pg{pascal}Repository;`
 3. Import API struct: `use crate::api::{snake}::routes::{pascal}Api;`
 4. Function signature:
    - **No db entities** → `pub fn build_app() -> Route` (sync)
@@ -101,13 +103,13 @@ presentation/src/api/product/error_mapper.rs
 
 ---
 
-## CLI Commands That Touch harbor.toml
+## CLI Commands That Touch puerto.toml
 
-| Command | Effect |
-|---------|--------|
-| `harbor new [--name] [--db]` | Creates harbor.toml from template with initial Greeting entity |
-| `harbor generate scaffold <Name>` | Appends `[[entity]]` block (`db` omitted), regenerates bootstrap.rs |
-| `harbor generate scaffold <Name> --db` | Appends `[[entity]]` block with `db = true`, regenerates bootstrap.rs |
-| `harbor generate bootstrap` | Reads harbor.toml, regenerates bootstrap.rs (no other changes) |
-| `harbor generate use-case <Entity> <action>` | Appends action to entity's `use_cases`, regenerates bootstrap.rs |
-| `harbor generate migration <name>` | Creates migration file — does not touch harbor.toml |
+| Command                                      | Effect                                                                |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| `puerto new [--name] [--db]`                 | Creates puerto.toml from template with initial Greeting entity        |
+| `puerto generate scaffold <Name>`            | Appends `[[entity]]` block (`db` omitted), regenerates bootstrap.rs   |
+| `puerto generate scaffold <Name> --db`       | Appends `[[entity]]` block with `db = true`, regenerates bootstrap.rs |
+| `puerto generate bootstrap`                  | Reads puerto.toml, regenerates bootstrap.rs (no other changes)        |
+| `puerto generate use-case <Entity> <action>` | Appends action to entity's `use_cases`, regenerates bootstrap.rs      |
+| `puerto generate migration <name>`           | Creates migration file — does not touch puerto.toml                   |

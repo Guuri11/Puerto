@@ -69,7 +69,7 @@ pub mod domain {
 }
 ```
 
-`harbor generate use-case` patches lib.rs automatically.
+`puerto generate use-case` patches lib.rs automatically.
 
 ### Model constructor pattern
 
@@ -178,31 +178,32 @@ Tests live inside each file in `#[cfg(test)] mod tests { ... }`.
 
 **Adapters for external systems. No business logic.**
 
-### InMemory (default — `harbor generate scaffold <Name>`)
+### InMemory (default — `puerto generate scaffold <Name>`)
 
 ```
 infrastructure/src/<entity>/
   repository.rs    # InMemory<Entity>Repository — implements domain repository trait
 ```
 
-### SQLx/Postgres (`harbor generate scaffold <Name> --db`)
+### SQLx/Postgres (`puerto generate scaffold <Name> --db`)
 
 ```
 infrastructure/src/<entity>/
   entity.rs        # <Entity>Db struct (#[derive(FromRow)]) + TryFrom + From conversions
   repository.rs    # Pg<Entity>Repository { pool: PgPool } — implements domain repository trait
 infrastructure/src/
-  db.rs            # create_postgres_pool() — created once by harbor new --db
+  db.rs            # create_postgres_pool() — created once by puerto new --db
 infrastructure/migrations/
-  <ts>_<name>.sql  # created by harbor generate migration <name>
+  <ts>_<name>.sql  # created by puerto generate migration <name>
 ```
 
 **Rules:**
+
 - `from_repository()` is the **only** entry point from persistence to domain — never call `Entity::new()` inside a repository
 - `TryFrom<EntityDb> for Entity` handles row → domain conversion (can fail)
 - `From<&Entity> for EntityDb` handles domain → row conversion (infallible)
 - `db.rs` is shared across all entities — never duplicated per entity
-- `entity.rs` and `db.rs` are only present when `db = true` in harbor.toml
+- `entity.rs` and `db.rs` are only present when `db = true` in puerto.toml
 
 ---
 
@@ -217,7 +218,7 @@ presentation/src/
   main.rs                  # 5-line entry point — calls generated::bootstrap::build_app()
   generated.rs             # pub mod bootstrap; — static, never changes
   generated/
-    bootstrap.rs           # AUTO-GENERATED from harbor.toml — never hand-edit
+    bootstrap.rs           # AUTO-GENERATED from puerto.toml — never hand-edit
   api.rs                   # pub mod error; pub mod <entity>; ...
   api/
     error.rs               # Shared ErrorResponse + IntoErrorResponse trait
@@ -241,13 +242,14 @@ pub mod responses;
 pub mod routes;
 ```
 
-`harbor generate scaffold` creates this file automatically. Do not omit it — without it Rust cannot resolve the sub-modules.
+`puerto generate scaffold` creates this file automatically. Do not omit it — without it Rust cannot resolve the sub-modules.
 
 ### `presentation/src/generated/bootstrap.rs`
 
-**Never edit by hand.** Regenerated from `harbor.toml` by:
-- `harbor generate scaffold <Name>` (automatic)
-- `harbor generate bootstrap` (manual)
+**Never edit by hand.** Regenerated from `puerto.toml` by:
+
+- `puerto generate scaffold <Name>` (automatic)
+- `puerto generate bootstrap` (manual)
 
 Contains all DI wiring: repo instantiation, use case wiring, `OpenApiService` setup, route registration.
 
@@ -279,7 +281,7 @@ impl EntityApi {
 }
 ```
 
-`EntityApi` fields are wired automatically by `harbor generate scaffold` into `generated/bootstrap.rs`.
+`EntityApi` fields are wired automatically by `puerto generate scaffold` into `generated/bootstrap.rs`.
 
 ---
 

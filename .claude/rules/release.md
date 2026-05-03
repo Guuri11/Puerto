@@ -16,9 +16,9 @@
 All commits must follow **Conventional Commits**:
 
 ```
-feat: add harbor generate migration command
+feat: add puerto generate migration command
 fix: bootstrap overwrites entity block on second run
-docs: update harbor-toml derivation table
+docs: update puerto-toml derivation table
 chore: upgrade cargo-generate to 0.23
 refactor: extract patch_lib_block into own module
 test: add idempotency test for use-case generator
@@ -32,16 +32,17 @@ test: add idempotency test for use-case generator
 
 ## Versioning
 
-Harbor follows **SemVer**. The public API is not just the CLI flags — it includes:
+Puerto follows **SemVer**. The public API is not just the CLI flags — it includes:
+
 - The generated project structure (file paths, module layout)
-- `harbor.toml` schema
+- `puerto.toml` schema
 - The bootstrap.rs generation contract
 
-| Bump | When |
-|------|------|
-| `patch` 0.1.**x** | Bug fix in generation, typo in template, bootstrap fix. No change to generated shape. |
-| `minor` 0.**x**.0 | New command, new flag, new files generated, additive harbor.toml field. Backward-compatible. |
-| `major` **x**.0.0 | Generated file layout change, module rename, harbor.toml incompatible schema change, command removed. |
+| Bump              | When                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `patch` 0.1.**x** | Bug fix in generation, typo in template, bootstrap fix. No change to generated shape.                 |
+| `minor` 0.**x**.0 | New command, new flag, new files generated, additive puerto.toml field. Backward-compatible.          |
+| `major` **x**.0.0 | Generated file layout change, module rename, puerto.toml incompatible schema change, command removed. |
 
 **While on `0.x.y`**: minor bumps may include breaking changes — this is the convention for pre-1.0 crates. Document all breaking changes in `CHANGELOG.md` under `### Breaking`.
 
@@ -56,20 +57,27 @@ git cliff --unreleased --prepend CHANGELOG.md
 ```
 
 Structure:
+
 ```markdown
 ## [Unreleased]
 
 ## [0.2.0] - 2026-05-01
+
 ### Added
+
 ### Fixed
+
 ### Changed
+
 ### Breaking
-### Migration Guide   ← required for any breaking change
+
+### Migration Guide ← required for any breaking change
 ```
 
 The `## Migration Guide` section is **required** for any release that changes:
+
 - Generated file layout
-- harbor.toml schema
+- puerto.toml schema
 - Module names visible in generated code
 
 ---
@@ -77,6 +85,7 @@ The `## Migration Guide` section is **required** for any release that changes:
 ## Release Process
 
 Automated via **release-plz**. When commits land on `main`, release-plz opens a release PR with:
+
 - `Cargo.toml` version bumped
 - `CHANGELOG.md` updated
 
@@ -97,13 +106,13 @@ make test/full
 make lint
 make format
 cargo package --list          # confirm template files are included
-cargo publish --dry-run -p harbor-framework
+cargo publish --dry-run -p puerto-framework
 
 # 4. Tag and publish
 git add -A && git commit -m "chore: release v0.x.y"
 git tag v0.x.y
 git push && git push --tags
-cargo publish -p harbor-framework
+cargo publish -p puerto-framework
 ```
 
 ---
@@ -129,6 +138,7 @@ Every release — automated or manual — must pass:
 Two GitHub Actions workflows:
 
 **`ci.yml`** — runs on every push and PR:
+
 ```
 make test
 make lint
@@ -136,9 +146,10 @@ cargo fmt --check
 ```
 
 **`release.yml`** — runs on `v*` tag push:
+
 ```
 make test/full
-cargo publish -p harbor-framework
+cargo publish -p puerto-framework
 ```
 
 Binary distribution via **cargo-dist** is not set up yet — future work.
@@ -148,22 +159,23 @@ Binary distribution via **cargo-dist** is not set up yet — future work.
 ## Breaking Changes Policy
 
 1. **One-cycle deprecation**: deprecate in `minor`, remove in next `minor`. Print a runtime warning for one release:
+
    ```rust
-   eprintln!("warning: harbor.toml field X is deprecated — use Y instead (see CHANGELOG)");
+   eprintln!("warning: puerto.toml field X is deprecated — use Y instead (see CHANGELOG)");
    ```
 
 2. **Migration guide**: every breaking release must include a `## Migration Guide` section in `CHANGELOG.md` explaining exactly what changed and how to migrate an existing project.
 
-3. **harbor.toml contract**: the schema is the most fragile public contract. If it changes incompatibly, add `schema_version` to the file so Harbor can detect and migrate old projects.
+3. **puerto.toml contract**: the schema is the most fragile public contract. If it changes incompatibly, add `schema_version` to the file so Puerto can detect and migrate old projects.
 
-4. **Generated code**: never silently change generated file contents in a patch release. A patch only fixes bugs — it never reorganises what `harbor generate` writes to disk.
+4. **Generated code**: never silently change generated file contents in a patch release. A patch only fixes bugs — it never reorganises what `puerto generate` writes to disk.
 
 ---
 
 ## Rust / crates.io Specifics
 
 - **MSRV**: declare `rust-version` in `Cargo.toml`. Test against it in CI with `rustup run <version> cargo check`.
-- **Template inclusion**: Harbor embeds its template via `include_dir`. Verify with `cargo package --list` that the embedded bytes are present.
+- **Template inclusion**: Puerto embeds its template via `include_dir`. Verify with `cargo package --list` that the embedded bytes are present.
 - **Yanking**: use `cargo yank --version X.Y.Z` for broken releases. Never yank a version that working projects depend on.
 - **`publish = false`**: set on any workspace member that should not reach crates.io.
-- **Cargo.lock**: committed — Harbor is a binary tool, lockfile must be committed.
+- **Cargo.lock**: committed — Puerto is a binary tool, lockfile must be committed.

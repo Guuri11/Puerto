@@ -74,7 +74,7 @@ generate/entity: ## Scaffold a new DDD entity — make generate/entity NAME=Prod
 		exit 1; \
 	fi
 	@echo "${GREEN}Scaffolding entity '$$NAME'...${NC}"
-	harbor generate scaffold $$NAME
+	puerto generate scaffold $$NAME
 
 generate/use-case: ## Add a use case to an entity — make generate/use-case ENTITY=Product ACTION=delete_product
 	@if [ -z "$$ENTITY" ] || [ -z "$$ACTION" ]; then \
@@ -82,8 +82,8 @@ generate/use-case: ## Add a use case to an entity — make generate/use-case ENT
 		exit 1; \
 	fi
 	@echo "${GREEN}Adding use case '$$ACTION' to '$$ENTITY'...${NC}"
-	harbor generate use-case $$ENTITY $$ACTION
+	puerto generate use-case $$ENTITY $$ACTION
 
-generate/bootstrap: ## Regenerate bootstrap.rs from harbor.toml
+generate/bootstrap: ## Regenerate bootstrap.rs from puerto.toml
 	@echo "${GREEN}Regenerating bootstrap.rs...${NC}"
-	harbor generate bootstrap
+	puerto generate bootstrap

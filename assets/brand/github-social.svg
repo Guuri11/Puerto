@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" fill="none">
   <!--
-    Harbor — GitHub Social Preview
+    Puerto — GitHub Social Preview
     1280×640px · Dark theme
     Convert to PNG for GitHub: npx sharp-cli input.svg -o social-preview.png -f png -w 1280 -h 640
     Or: rsvg-convert -w 1280 -h 640 github-social.svg > github-social.png
@@ -28,7 +28,7 @@
   <!-- ── Background ── -->
   <rect width="1280" height="640" fill="url(#bg)"/>
 
-  <!-- Subtle horizontal scanlines (water/harbor atmosphere) -->
+  <!-- Subtle horizontal scanlines (water/puerto atmosphere) -->
   <rect x="0" y="480" width="1280" height="1" fill="#0891B2" opacity="0.06"/>
   <rect x="0" y="500" width="1280" height="1" fill="#0891B2" opacity="0.04"/>
   <rect x="0" y="520" width="1280" height="1" fill="#0891B2" opacity="0.03"/>
@@ -98,7 +98,7 @@
     <path d="M6 57 Q19 55 32 57 Q45 59 58 57" stroke="#0891B2" stroke-width="1" stroke-linecap="round" fill="none" opacity="0.5"/>
   </g>
 
-  <!-- ── Wordmark: "harbor" ── -->
+  <!-- ── Wordmark: "puerto" ── -->
   <text
     x="640"
     y="415"
@@ -108,7 +108,7 @@
     font-weight="700"
     letter-spacing="-2"
     fill="#F1F5F9"
-  >harbor</text>
+  >puerto</text>
 
   <!-- Orange accent dot (matches logo-full) -->
   <circle cx="888" cy="403" r="8" fill="#F97316"/>

@@ -1,8 +1,9 @@
-# Harbor — Roadmap
+# Puerto — Roadmap
 
-Harbor is a Rust full-stack framework built around DDD + Clean Architecture (Hexagonal / Ports & Adapters), inspired by the developer experience of Laravel and Ruby on Rails.
+Puerto is a Rust full-stack framework built around DDD + Clean Architecture (Hexagonal / Ports & Adapters), inspired by the developer experience of Laravel and Ruby on Rails.
 
 **Core principles:**
+
 1. Delightful coding experience
 2. AI-ready — Rust compiler's tight feedback loop makes LLM-generated code immediately verifiable
 3. Convention over configuration
@@ -11,11 +12,11 @@ Harbor is a Rust full-stack framework built around DDD + Clean Architecture (Hex
 
 ## Current state ✅
 
-`harbor new <name>` scaffolds a workspace with three crates mirroring DDD layers, plus a `harbor.toml` and auto-generated DI bootstrap:
+`puerto new <name>` scaffolds a workspace with three crates mirroring DDD layers, plus a `puerto.toml` and auto-generated DI bootstrap:
 
 ```
 <name>/
-├── harbor.toml                    # Source of truth for entities + use cases
+├── puerto.toml                    # Source of truth for entities + use cases
 ├── business/
 │   └── src/
 │       ├── domain/greeting/
@@ -34,7 +35,7 @@ Harbor is a Rust full-stack framework built around DDD + Clean Architecture (Hex
         ├── main.rs                # 5-line entry point — never changes
         ├── generated.rs           # pub mod bootstrap; — never changes
         ├── generated/
-        │   └── bootstrap.rs       # AUTO-GENERATED from harbor.toml
+        │   └── bootstrap.rs       # AUTO-GENERATED from puerto.toml
         └── api/greeting/
             ├── greeting.rs        # pub mod dto/routes/responses/error_mapper
             ├── routes.rs
@@ -43,42 +44,46 @@ Harbor is a Rust full-stack framework built around DDD + Clean Architecture (Hex
             └── error_mapper.rs
 ```
 
-`harbor generate scaffold <Name>` creates all DDD files, patches `lib.rs` files, updates `harbor.toml`, and regenerates `bootstrap.rs` — zero manual wiring.
+`puerto generate scaffold <Name>` creates all DDD files, patches `lib.rs` files, updates `puerto.toml`, and regenerates `bootstrap.rs` — zero manual wiring.
 
 ---
 
 ## Phase 2 — Generators
 
-### 2.0 `harbor new` — interactive project creation ✅ DONE
+### 2.0 `puerto new` — interactive project creation ✅ DONE
 
 **Command signature:**
+
 ```
-harbor new [--name <name>] [--db]
+puerto new [--name <name>] [--db]
 ```
 
 **Behavior:**
+
 - If `--name` is not provided → prompt: `Project name:`
 - If `--db` is not provided → prompt: `Include database support (SQLx + Postgres)? [y/N]`
 - If both flags are provided → no prompts, fully scriptable (CI-friendly)
 - Flags and prompts are independent: any combination works
 
 **Examples:**
+
 ```bash
-harbor new                          # prompts for both name and db
-harbor new --name my-app            # prompts only for db
-harbor new --db                     # prompts only for name
-harbor new --name my-app --db       # no prompts, creates db project
+puerto new                          # prompts for both name and db
+puerto new --name my-app            # prompts only for db
+puerto new --db                     # prompts only for name
+puerto new --name my-app --db       # no prompts, creates db project
 ```
 
 **Test scenarios:**
+
 - Non-interactive: `--name` flag passed to cargo-generate, project name appears in Cargo.toml
 - Non-interactive: `--db` flag skips db prompt, db files created
 - Non-interactive: both flags, fully silent (no stdin required)
-- Interactive path is validated manually (`harbor new` with TTY)
+- Interactive path is validated manually (`puerto new` with TTY)
 
 ---
 
-### 2.1 `harbor generate scaffold <Name>` ✅ DONE
+### 2.1 `puerto generate scaffold <Name>` ✅ DONE
 
 Creates all files for a new DDD entity across every layer:
 
@@ -105,55 +110,62 @@ presentation/src/api/<name>/
   error_mapper.rs
 ```
 
-Auto-patches: `business/src/lib.rs`, `infrastructure/src/lib.rs`, `presentation/src/api.rs`, `harbor.toml`, `presentation/src/generated/bootstrap.rs`.
+Auto-patches: `business/src/lib.rs`, `infrastructure/src/lib.rs`, `presentation/src/api.rs`, `puerto.toml`, `presentation/src/generated/bootstrap.rs`.
 
 ---
 
-### 2.2 `harbor generate use-case <Entity> <action>` ✅ DONE
+### 2.2 `puerto generate use-case <Entity> <action>` ✅ DONE
 
 Adds a single use case (trait + impl + unit tests) for an existing entity.
 
 **Spec:**
 
 **Files created:**
+
 ```
 business/src/domain/<entity>/use_cases/<action>.rs   # Params struct + UseCaseTrait
 business/src/application/<entity>/<action>.rs         # UseCaseImpl + unit tests
 ```
 
 **Auto-patches:**
+
 - `business/src/domain/<entity>/use_cases.rs` — append `pub mod <action>;`
-- `harbor.toml` — append `<action>` to the entity's `use_cases` array
+- `puerto.toml` — append `<action>` to the entity's `use_cases` array
 - `presentation/src/generated/bootstrap.rs` — regenerated
 
 **Behavior:**
-- `<Entity>` must be PascalCase; error if not found in `harbor.toml`
+
+- `<Entity>` must be PascalCase; error if not found in `puerto.toml`
 - `<action>` must be snake_case
 - Generated `UseCaseImpl` struct has one field: `repository: Arc<dyn <Entity>RepositoryTrait>`
 - Tests follow AAA pattern with `Mock<Entity>Repository`
 - Running twice for same entity+action is a no-op (idempotent)
 
 **Test scenarios to cover:**
+
 - Creates both files with correct content
 - Patches `use_cases.rs` without removing existing entries
-- Updates `harbor.toml` entity's use_cases array
+- Updates `puerto.toml` entity's use_cases array
 - Regenerates bootstrap with new use case wired
 - PascalCase normalisation (`orderItem` → `OrderItem`)
-- Error when entity not in harbor.toml
+- Error when entity not in puerto.toml
 
 ---
 
-### 2.3 `harbor generate migration <name>` ✅ DONE
+### 2.3 `puerto generate migration <name>` ✅ DONE
 
-Wraps `sqlx migrate add` with Harbor conventions.
+Wraps `sqlx migrate add` with Puerto conventions.
 
 **Command signature:**
+
 ```
-harbor generate migration <name>
+puerto generate migration <name>
 ```
+
 - `<name>` must be snake_case (validated; error + hint if not)
 
 **Pre-flight checks:**
+
 1. `sqlx` binary found in `$PATH` — if not, print:
    ```
    error: sqlx CLI not found
@@ -163,42 +175,48 @@ harbor generate migration <name>
 2. `infrastructure/migrations/` directory is created automatically if it doesn't exist — no error, no manual step needed.
 
 **Files created:**
+
 ```
 infrastructure/migrations/<timestamp>_<name>.sql
 ```
+
 - `<timestamp>` = output of `sqlx migrate add` (managed by sqlx)
-- File body is created by `sqlx migrate add` — harbor adds a comment header after creation:
+- File body is created by `sqlx migrate add` — puerto adds a comment header after creation:
   ```sql
-  -- Harbor migration: <name>
+  -- Puerto migration: <name>
   -- Run `make sqlx/prepare` after editing this file.
   ```
 
-**No lib.rs patches.** No harbor.toml changes.
+**No lib.rs patches.** No puerto.toml changes.
 
 **Behavior:**
+
 - Creates `infrastructure/migrations/` if it doesn't exist
 - Delegates to `sqlx migrate add <name> --source infrastructure/migrations`
 - After creation, prepends comment header to the generated file
 - `<name>` normalised: spaces → underscores, lowercased
 
 **Test scenarios:**
+
 - Errors with install instructions when sqlx CLI is absent
 - Creates `infrastructure/migrations/` automatically when it doesn't exist
 - Normalises name with spaces to underscores
 
 ---
 
-### 2.5 `harbor generate scaffold <Name> --crud` ✅ DONE
+### 2.5 `puerto generate scaffold <Name> --crud` ✅ DONE
 
 Generates a complete CRUD entity across all layers instead of a single `create_<name>` use case.
 
 **Command signature:**
+
 ```
-harbor generate scaffold <Name> --crud
-harbor generate scaffold <Name> --crud --db
+puerto generate scaffold <Name> --crud
+puerto generate scaffold <Name> --crud --db
 ```
 
 Without `--crud` the command behaves as in 2.1 / 4.1. With `--crud`:
+
 - Generates 5 use case traits + impls (create, get, list, update, delete)
 - Repository trait includes `find_all` in addition to `find_by_id` + `save`
 - Presentation layer has all 5 HTTP endpoints (POST, GET ×2, PUT, DELETE)
@@ -234,6 +252,7 @@ presentation/src/api/<entity>/
 ```
 
 **Repository trait (CRUD):**
+
 ```rust
 async fn find_by_id(&self, id: Uuid) -> Result<Option<Entity>, EntityError>;
 async fn find_all(&self) -> Result<Vec<Entity>, EntityError>;
@@ -241,17 +260,20 @@ async fn save(&self, entity: &Entity) -> Result<(), EntityError>;
 ```
 
 **SQLx repository (`--crud --db`):**
+
 - `find_all` → `SELECT ... WHERE deleted = false ORDER BY created_at DESC`
 - `find_by_id` → `SELECT ... WHERE id = $1 AND deleted = false`
 - `save` → upsert with `ON CONFLICT (id) DO UPDATE`
 - Includes `#[cfg(test)] mod integration_tests` with three `#[sqlx::test]` tests
 
 **Auto-patches (same as base scaffold):**
+
 - `business/src/lib.rs` — all 5 use case modules declared inline
-- `infrastructure/src/lib.rs`, `presentation/src/api.rs`, `harbor.toml`
+- `infrastructure/src/lib.rs`, `presentation/src/api.rs`, `puerto.toml`
 - `presentation/src/generated/bootstrap.rs` — all 5 use case impls wired
 
 **Test scenarios:**
+
 - Creates all 5 domain use case files
 - Creates all 5 application use case files
 - Repository trait contains `find_all`, `find_by_id`, `save`
@@ -264,20 +286,21 @@ async fn save(&self, entity: &Entity) -> Result<(), EntityError>;
 
 ## Phase 3 — Auto-patching lib.rs ✅ DONE
 
-`harbor generate scaffold` automatically updates:
+`puerto generate scaffold` automatically updates:
+
 - `business/src/lib.rs` — inline `domain { }` and `application { }` blocks
 - `infrastructure/src/lib.rs` — appends new module block
 - `presentation/src/api.rs` — appends `pub mod <name>;`
-- `harbor.toml` — appends `[[entity]]` block
+- `puerto.toml` — appends `[[entity]]` block
 - `presentation/src/generated/bootstrap.rs` — full regeneration
 
 ---
 
 ## Phase 4 — Database layer (SQLx) ✅ DONE
 
-### 4.0 `harbor new --db` — project template with database support ✅
+### 4.0 `puerto new --db` — project template with database support ✅
 
-Extends the base `harbor new` with database plumbing baked into the generated project.
+Extends the base `puerto new` with database plumbing baked into the generated project.
 
 **Additional files vs. base template:**
 
@@ -290,6 +313,7 @@ infrastructure/Cargo.toml             # adds sqlx = { ..., features = ["postgres
 ```
 
 **`infrastructure/src/db.rs` template:**
+
 ```rust
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
@@ -310,6 +334,7 @@ pub async fn run_migrations(pool: &PgPool) {
 ```
 
 **Makefile additions (merged into generated Makefile):**
+
 ```makefile
 db/up:
     docker compose up -d db
@@ -331,12 +356,14 @@ setup:
 ```
 
 **`presentation/src/generated/bootstrap.rs` template change:**
+
 - When any entity has `db = true`: `pub async fn build_app() -> Route` — creates pool internally from `DATABASE_URL`
 - When no db entities: `pub fn build_app() -> Route` (sync, unchanged)
 - `main.rs` stays 5 lines in both cases; the `.await` difference is handled inside `build_app`
 
 **Test scenarios:**
-- `harbor new --db` generates all additional files
+
+- `puerto new --db` generates all additional files
 - `.cargo/config.toml` contains `SQLX_OFFLINE = "true"`
 - `infrastructure/migrations/` directory exists
 - `infrastructure/src/db.rs` exists with correct content
@@ -344,17 +371,19 @@ setup:
 
 ---
 
-### 4.1 `harbor generate scaffold <Name> --db` — entity with SQLx repository ✅
+### 4.1 `puerto generate scaffold <Name> --db` — entity with SQLx repository ✅
 
 **Command signature:**
+
 ```
-harbor generate scaffold <Name> --db
+puerto generate scaffold <Name> --db
 ```
 
 Without `--db` the command behaves as today (Phase 2.1). With `--db`:
+
 - Instead of `InMemoryEntityRepository`, generates a `PgEntityRepository` backed by SQLx
 - Adds `entity.rs` (DB row struct + conversions)
-- Runs `harbor generate migration create_<snake>_table` automatically
+- Runs `puerto generate migration create_<snake>_table` automatically
 
 **Files created (delta over base scaffold):**
 
@@ -374,6 +403,7 @@ infrastructure/migrations/
 ```
 
 **`infrastructure/src/<entity>/entity.rs` template:**
+
 ```rust
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -407,6 +437,7 @@ impl From<&{pascal}> for {pascal}Db {
 ```
 
 **`infrastructure/src/<entity>/repository.rs` template (SQLx):**
+
 ```rust
 use async_trait::async_trait;
 use sqlx::PgPool;
@@ -454,16 +485,19 @@ impl {pascal}RepositoryTrait for Pg{pascal}Repository {
 ```
 
 **`presentation/src/generated/bootstrap.rs` regeneration change (with `--db` entities):**
+
 - Imports `Pg{pascal}Repository` instead of `InMemory{pascal}Repository`
 - `build_app(pool: PgPool)` receives pool, clones it per entity repo
 
 **Auto-patches:**
-- All patches from base scaffold (lib.rs files, api.rs, harbor.toml)
-- `harbor.toml` entity block gets `db = true` flag
+
+- All patches from base scaffold (lib.rs files, api.rs, puerto.toml)
+- `puerto.toml` entity block gets `db = true` flag
 - Runs `sqlx migrate add create_{snake}_table --source infrastructure/migrations` as subprocess
 - Regenerates `bootstrap.rs` with SQLx wiring
 
-**`harbor.toml` schema addition:**
+**`puerto.toml` schema addition:**
+
 ```toml
 [[entity]]
 name = "Product"
@@ -472,24 +506,26 @@ db = true          # NEW: controls InMemory vs Pg repository in bootstrap
 ```
 
 **Behavior:**
+
 - Existing entities without `db = true` continue to use `InMemoryEntityRepository`
 - `bootstrap.rs` mixes InMemory and Pg repos correctly (each entity independent)
-- Error if `infrastructure/migrations/` does not exist — hint: use `harbor new --db` or create it manually
+- Error if `infrastructure/migrations/` does not exist — hint: use `puerto new --db` or create it manually
 - Error if sqlx CLI not in `$PATH` — same install instructions as 2.3
 
 **Test scenarios:**
+
 - With `--db`: creates `entity.rs`, `repository.rs` contains `PgPool`, no `InMemory`
 - Without `--db`: creates `repository.rs` contains `InMemoryProductRepository` (existing behaviour)
-- `harbor.toml` gets `db = true` when `--db` passed
+- `puerto.toml` gets `db = true` when `--db` passed
 - `bootstrap.rs` uses `Pg{pascal}Repository` for db entities, `InMemory` for others
 - Error when sqlx not installed and `--db` passed
 - Error when `infrastructure/migrations/` not found and `--db` passed
 
 ---
 
-### 4.2 `harbor generate use-case <Entity> <action>` with db entities — unchanged ✅
+### 4.2 `puerto generate use-case <Entity> <action>` with db entities — unchanged ✅
 
-`harbor generate use-case` does not change in Phase 4. The use case trait + impl are database-agnostic. Bootstrap regeneration already handles the correct repo type via `db` flag in `harbor.toml`.
+`puerto generate use-case` does not change in Phase 4. The use case trait + impl are database-agnostic. Bootstrap regeneration already handles the correct repo type via `db` flag in `puerto.toml`.
 
 ---
 
@@ -499,7 +535,7 @@ Add a `LoggerTrait` domain port so every generated use case can log without coup
 
 ### 5.0 — Logger trait + infrastructure impl ✅
 
-**Goal:** every `harbor new` project ships with a working logger, wired automatically into every use case.
+**Goal:** every `puerto new` project ships with a working logger, wired automatically into every use case.
 
 ---
 
@@ -533,6 +569,7 @@ pub mod mocks {
 ```
 
 `business/src/lib.rs` — add at top level:
+
 ```rust
 pub mod logger;
 ```
@@ -557,11 +594,13 @@ impl LoggerTrait for TracingLogger {
 ```
 
 `infrastructure/src/lib.rs` — add:
+
 ```rust
 pub mod logger;
 ```
 
 `infrastructure/Cargo.toml` — add dependency:
+
 ```toml
 tracing = "0.1"
 ```
@@ -571,11 +610,13 @@ tracing = "0.1"
 #### Presentation / bootstrap
 
 `presentation/Cargo.toml` — add:
+
 ```toml
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```
 
 `presentation/src/main.rs` — initialize tracing before `build_app()`:
+
 ```rust
 tracing_subscriber::fmt()
     .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -583,6 +624,7 @@ tracing_subscriber::fmt()
 ```
 
 `presentation/src/generated/bootstrap.rs` — create logger once, clone into every use case:
+
 ```rust
 use std::sync::Arc;
 use infrastructure::logger::TracingLogger;
@@ -601,6 +643,7 @@ let greeting_use_case = Arc::new(GetGreetingUseCaseImpl {
 #### Greeting use case (template update)
 
 `business/src/application/greeting/get_greeting.rs`:
+
 ```rust
 pub struct GetGreetingUseCaseImpl {
     pub repository: Arc<dyn GreetingRepositoryTrait>,
@@ -641,6 +684,7 @@ impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
 ```
 
 `generate_bootstrap_content()` must add:
+
 - `use infrastructure::logger::TracingLogger;`
 - `let logger = Arc::new(TracingLogger);`
 - `logger: Arc::clone(&logger)` in every use case struct init
@@ -649,32 +693,32 @@ impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
 
 #### Files changed in template
 
-| File | Change |
-|------|--------|
-| `business/src/domain/logger.rs` | NEW — `LoggerTrait` + mockall mock |
-| `business/src/lib.rs` | Add `pub mod logger;` |
+| File                                                | Change                                         |
+| --------------------------------------------------- | ---------------------------------------------- |
+| `business/src/domain/logger.rs`                     | NEW — `LoggerTrait` + mockall mock             |
+| `business/src/lib.rs`                               | Add `pub mod logger;`                          |
 | `business/src/application/greeting/get_greeting.rs` | Add `logger` field + log calls + mock in tests |
-| `infrastructure/src/logger.rs` | NEW — `TracingLogger` |
-| `infrastructure/src/lib.rs` | Add `pub mod logger;` |
-| `infrastructure/Cargo.toml` | Add `tracing = "0.1"` |
-| `presentation/src/main.rs.liquid` | Add `tracing_subscriber` init |
-| `presentation/Cargo.toml` | Add `tracing-subscriber` |
-| `presentation/src/generated/bootstrap.rs` | Wire `TracingLogger` into all use cases |
+| `infrastructure/src/logger.rs`                      | NEW — `TracingLogger`                          |
+| `infrastructure/src/lib.rs`                         | Add `pub mod logger;`                          |
+| `infrastructure/Cargo.toml`                         | Add `tracing = "0.1"`                          |
+| `presentation/src/main.rs.liquid`                   | Add `tracing_subscriber` init                  |
+| `presentation/Cargo.toml`                           | Add `tracing-subscriber`                       |
+| `presentation/src/generated/bootstrap.rs`           | Wire `TracingLogger` into all use cases        |
 
-#### Files changed in Harbor CLI
+#### Files changed in Puerto CLI
 
-| File | Change |
-|------|--------|
-| `crates/cli/src/scaffold.rs` | `UC_IMPL` template: add `logger` field + log calls |
+| File                         | Change                                               |
+| ---------------------------- | ---------------------------------------------------- |
+| `crates/cli/src/scaffold.rs` | `UC_IMPL` template: add `logger` field + log calls   |
 | `crates/cli/src/scaffold.rs` | `generate_bootstrap_content()`: wire `TracingLogger` |
 
 ---
 
 #### Test scenarios
 
-- `harbor new` — generated project compiles with logger wired (`make test/full`)
-- `harbor generate scaffold <Name>` — generated use case impl has `logger` field
-- `harbor generate use-case <Entity> <action>` — generated impl has `logger` field
+- `puerto new` — generated project compiles with logger wired (`make test/full`)
+- `puerto generate scaffold <Name>` — generated use case impl has `logger` field
+- `puerto generate use-case <Entity> <action>` — generated impl has `logger` field
 - `bootstrap.rs` contains `TracingLogger` import and `logger` wired into every use case
 - Mock logger works in unit tests (no real tracing calls)
 
@@ -682,15 +726,15 @@ impl {uc_pascal}UseCaseTrait for {uc_pascal}UseCaseImpl {
 
 ## Phase 6 — IDE Snippets ✅ DONE
 
-Every `harbor new` project ships with snippet files for **Zed** and **VS Code** (VS Code format is also compatible with nvim+LuaSnip). Both files share the same JSON content — Zed and VS Code use the same TextMate snippet format.
+Every `puerto new` project ships with snippet files for **Zed** and **VS Code** (VS Code format is also compatible with nvim+LuaSnip). Both files share the same JSON content — Zed and VS Code use the same TextMate snippet format.
 
-### 6.0 Snippet files in `harbor new`
+### 6.0 Snippet files in `puerto new`
 
-`harbor new` writes two files after cargo-generate completes:
+`puerto new` writes two files after cargo-generate completes:
 
 ```
 .zed/snippets/rust.json           # Zed project-local snippets — auto-loaded by Zed
-.vscode/harbor.code-snippets      # VS Code workspace snippets — auto-loaded; LuaSnip-compatible
+.vscode/puerto.code-snippets      # VS Code workspace snippets — auto-loaded; LuaSnip-compatible
 ```
 
 Written by `snippets::apply(base, None)` called from `new_project()` after cargo-generate.
@@ -700,18 +744,20 @@ Written by `snippets::apply(base, None)` called from `new_project()` after cargo
 
 ---
 
-### 6.1 `harbor generate snippets [--ide <ide>]`
+### 6.1 `puerto generate snippets [--ide <ide>]`
 
-Adds or regenerates snippet files in an existing Harbor project.
+Adds or regenerates snippet files in an existing Puerto project.
 
 **Command signature:**
+
 ```
-harbor generate snippets                 # writes both Zed + VS Code
-harbor generate snippets --ide zed       # .zed/snippets/rust.json only
-harbor generate snippets --ide vscode    # .vscode/harbor.code-snippets only
+puerto generate snippets                 # writes both Zed + VS Code
+puerto generate snippets --ide zed       # .zed/snippets/rust.json only
+puerto generate snippets --ide vscode    # .vscode/puerto.code-snippets only
 ```
 
 **Behavior:**
+
 - Overwrites existing files (idempotent)
 - `--ide` values: `zed`, `vscode` (error on unknown value)
 - Prints file path(s) written + IDE-specific setup note
@@ -720,33 +766,34 @@ harbor generate snippets --ide vscode    # .vscode/harbor.code-snippets only
 
 ### Snippet inventory
 
-| Prefix | Layer | Description |
-|--------|-------|-------------|
-| `lib-domain-entity` | lib.rs | Inline domain entity block |
-| `lib-application-entity` | lib.rs | Inline application entity block |
-| `domain-model` | domain | Struct + Props + new(props) + from_repository() |
-| `domain-errors` | domain | thiserror enum with machine-readable codes |
-| `repository-trait` | domain | RepositoryTrait + Send+Sync + mockall mock |
-| `domain-use-case` | domain | Params + UseCaseTrait |
-| `app-use-case` | application | UseCaseImpl + LoggerTrait + unit tests |
-| `lib-infra-entity` | infra lib.rs | Infrastructure entity block (InMemory) |
-| `lib-infra-entity-db` | infra lib.rs | Infrastructure entity block (SQLx) |
-| `persistence-entity` | infrastructure | EntityDb struct + TryFrom/From conversions |
-| `persistence-repo` | infrastructure | PgEntityRepository + find_by_id + save |
-| `lib-presentation-entity` | api.rs | Presentation entity module decls |
-| `poem-dto` | presentation | EntityDto (Object) + from_domain() |
-| `poem-request-dto` | presentation | Request DTO struct |
-| `poem-response-enum` | presentation | ApiResponse enum + from_status() |
-| `poem-error-mapper` | presentation | IntoErrorResponse impl |
-| `poem-api-struct` | presentation | EntityApi struct + POST endpoint |
-| `poem-endpoint` | presentation | Single #[oai] endpoint handler |
-| `cfg-test` | test | #[cfg(test)] mod tests block |
-| `should-do-test` | test | #[tokio::test] with AAA pattern |
-| `object-mother` | test | Object Mother builder pattern |
-| `sqlx-test` | test | #[sqlx::test(migrations="migrations")] single test |
-| `sqlx-repo-test-module` | test | Full #[cfg(test)] for PgEntityRepository |
+| Prefix                    | Layer          | Description                                        |
+| ------------------------- | -------------- | -------------------------------------------------- |
+| `lib-domain-entity`       | lib.rs         | Inline domain entity block                         |
+| `lib-application-entity`  | lib.rs         | Inline application entity block                    |
+| `domain-model`            | domain         | Struct + Props + new(props) + from_repository()    |
+| `domain-errors`           | domain         | thiserror enum with machine-readable codes         |
+| `repository-trait`        | domain         | RepositoryTrait + Send+Sync + mockall mock         |
+| `domain-use-case`         | domain         | Params + UseCaseTrait                              |
+| `app-use-case`            | application    | UseCaseImpl + LoggerTrait + unit tests             |
+| `lib-infra-entity`        | infra lib.rs   | Infrastructure entity block (InMemory)             |
+| `lib-infra-entity-db`     | infra lib.rs   | Infrastructure entity block (SQLx)                 |
+| `persistence-entity`      | infrastructure | EntityDb struct + TryFrom/From conversions         |
+| `persistence-repo`        | infrastructure | PgEntityRepository + find_by_id + save             |
+| `lib-presentation-entity` | api.rs         | Presentation entity module decls                   |
+| `poem-dto`                | presentation   | EntityDto (Object) + from_domain()                 |
+| `poem-request-dto`        | presentation   | Request DTO struct                                 |
+| `poem-response-enum`      | presentation   | ApiResponse enum + from_status()                   |
+| `poem-error-mapper`       | presentation   | IntoErrorResponse impl                             |
+| `poem-api-struct`         | presentation   | EntityApi struct + POST endpoint                   |
+| `poem-endpoint`           | presentation   | Single #[oai] endpoint handler                     |
+| `cfg-test`                | test           | #[cfg(test)] mod tests block                       |
+| `should-do-test`          | test           | #[tokio::test] with AAA pattern                    |
+| `object-mother`           | test           | Object Mother builder pattern                      |
+| `sqlx-test`               | test           | #[sqlx::test(migrations="migrations")] single test |
+| `sqlx-repo-test-module`   | test           | Full #[cfg(test)] for PgEntityRepository           |
 
-**Harbor adaptations vs ant_backend:**
+**Puerto adaptations vs ant_backend:**
+
 - `LoggerTrait` (not `Logger`) — already has `Send + Sync`
 - Mocks in `repository.rs pub mod mocks` (not separate file)
 - `from_repository(data: Entity) -> Self` (not individual fields)
@@ -758,8 +805,9 @@ harbor generate snippets --ide vscode    # .vscode/harbor.code-snippets only
 
 ### 6.2 SQLx integration tests in `--db` scaffold (already implemented)
 
-`harbor generate scaffold <Name> --db` generates `infrastructure/src/<entity>/repository.rs`
+`puerto generate scaffold <Name> --db` generates `infrastructure/src/<entity>/repository.rs`
 with a `#[cfg(test)] mod integration_tests` block containing three `#[sqlx::test]` tests:
+
 - `should_persist_and_retrieve_by_id`
 - `should_return_none_for_nonexistent_id`
 - `should_update_entity_on_save_conflict`
@@ -770,41 +818,45 @@ Migrations path: `"migrations"` (relative to infrastructure crate root = `infras
 
 ### Test scenarios
 
-- `harbor new` → `.zed/snippets/rust.json` exists with valid JSON
-- `harbor new` → `.vscode/harbor.code-snippets` exists with valid JSON
-- `harbor generate snippets` → overwrites both files (idempotent)
-- `harbor generate snippets --ide zed` → only `.zed/snippets/rust.json` created
-- `harbor generate snippets --ide vscode` → only `.vscode/harbor.code-snippets` created
-- `harbor generate snippets --ide unknown` → error message
+- `puerto new` → `.zed/snippets/rust.json` exists with valid JSON
+- `puerto new` → `.vscode/puerto.code-snippets` exists with valid JSON
+- `puerto generate snippets` → overwrites both files (idempotent)
+- `puerto generate snippets --ide zed` → only `.zed/snippets/rust.json` created
+- `puerto generate snippets --ide vscode` → only `.vscode/puerto.code-snippets` created
+- `puerto generate snippets --ide unknown` → error message
 
 ---
 
 ## Phase 7 — Project-level metadata & DX improvements
 
-### 7.0 `[project] db = true` in harbor.toml ✅ DONE
+### 7.0 `[project] db = true` in puerto.toml ✅ DONE
 
-Track project-level database support in `harbor.toml` so tools and future generators can read whether the project was created with `--db` without inspecting generated files.
+Track project-level database support in `puerto.toml` so tools and future generators can read whether the project was created with `--db` without inspecting generated files.
 
 **Schema addition:**
+
 ```toml
 [project]
 name = "my-app"
-db = true          # present only when harbor new --db was used
+db = true          # present only when puerto new --db was used
 ```
 
 **Rules:**
-- `harbor new --db` sets `project.db = true` via `apply_db_to_new_project`
-- `harbor new` (no db) omits the field entirely (serialised with `skip_serializing_if`)
-- `harbor generate scaffold <Name>` can read this flag in the future to default `--db` behaviour
-- `harbor generate scaffold <Name> --db` errors when `project.db` is absent (future enforcement)
+
+- `puerto new --db` sets `project.db = true` via `apply_db_to_new_project`
+- `puerto new` (no db) omits the field entirely (serialised with `skip_serializing_if`)
+- `puerto generate scaffold <Name>` can read this flag in the future to default `--db` behaviour
+- `puerto generate scaffold <Name> --db` errors when `project.db` is absent (future enforcement)
 
 **Files changed:**
-- `crates/cli/src/harbor_toml.rs` — add `db: bool` to `Project` struct
+
+- `crates/cli/src/puerto_toml.rs` — add `db: bool` to `Project` struct
 - `crates/cli/src/scaffold.rs` — `apply_db_to_new_project` sets `project.db = true`
 
 **Test scenarios:**
-- `harbor new --db` → `harbor.toml` contains `db = true` under `[project]`
-- `harbor new` (no db) → `harbor.toml` does not contain `db = true`
+
+- `puerto new --db` → `puerto.toml` contains `db = true` under `[project]`
+- `puerto new` (no db) → `puerto.toml` does not contain `db = true`
 
 ---
 
@@ -815,6 +867,7 @@ Every generated project logs HTTP requests automatically via poem's built-in `Tr
 **Invariant:** ALL generated code logs through `LoggerTrait` (never `tracing::` directly). The middleware is the only exception: it uses `tracing::` internally and is wired once in `bootstrap.rs`.
 
 **Changes to `bootstrap.rs` generation (`generate_bootstrap_content`):**
+
 - `build_app()` is always `pub async fn` (regardless of db flag)
 - Return type is `impl poem::Endpoint` (not `Route`) — required for `.with(Tracing)` to type-check
 - Route wiring ends with `.with(Tracing)`:
@@ -825,9 +878,11 @@ Every generated project logs HTTP requests automatically via poem's built-in `Tr
 - Imports `use poem::middleware::Tracing;`
 
 **Changes to template `bootstrap.rs`:**
+
 - Same as above for the initial `Greeting` entity
 
 **Changes to generated use case impls (scaffold generator):**
+
 - `CREATE_USE_CASE_IMPL`: `warn` on `ValidationError`, `error` on repo error
 - `GET_USE_CASE_IMPL`: `warn` on `NotFound`, `error` on repo error
 - `LIST_USE_CASE_IMPL`: `error` on repo error
@@ -835,20 +890,24 @@ Every generated project logs HTTP requests automatically via poem's built-in `Tr
 - `DELETE_USE_CASE_IMPL`: `warn` on `NotFound`, `error` on repo errors (unused `model::` import removed)
 
 **Changes to generated infrastructure repos:**
+
 - `INFRA_REPOSITORY` / `CRUD_INFRA_REPOSITORY`: `debug` log on each operation
 - `INFRA_DB_REPOSITORY` / `CRUD_INFRA_DB_REPOSITORY`: `error` log on DB errors via `map_err`
 
 **Changes to generated routes (presentation):**
+
 - `{Pascal}Api` struct gains `pub logger: Arc<dyn LoggerTrait>` field
 - Each endpoint handler calls `self.logger.warn(...)` on error before returning
 
 **`main.rs.liquid`:** calls `.run(generated::bootstrap::build_app().await)` (with `.await`)
 
 **Cargo.toml changes:**
+
 - `presentation/Cargo.toml.liquid`: `poem-openapi` gains `uuid` feature; adds `uuid = { version = "1", features = ["v4"] }`
 - `infrastructure/Cargo.toml.liquid`: `uuid` gains `serde` feature; `chrono` gains `serde` feature
 
 **What the logs look like at runtime (RUST_LOG=info):**
+
 ```
 INFO request{remote_addr=127.0.0.1 method=POST uri=/api/products}: infrastructure::logger: Creating product: Widget
 INFO request{remote_addr=127.0.0.1 method=POST uri=/api/products}: infrastructure::logger: Product created: Widget
@@ -858,15 +917,16 @@ INFO request{remote_addr=127.0.0.1 method=POST uri=/api/products}: poem::middlew
 App logs appear nested inside the request span — every log line automatically carries request context.
 
 **Test scenarios:**
+
 - `scaffold_bootstrap_wires_logger_for_all_entities` — verifies `Arc::clone(&logger)` count (3 per entity)
 - `make test/full` — generated project compiles with middleware wired
-- Demo project (`harbor-demo`) verified end-to-end: POST/GET products (SQLx), GET orders (InMemory)
+- Demo project (`puerto-demo`) verified end-to-end: POST/GET products (SQLx), GET orders (InMemory)
 
 ---
 
 ### 7.2 Spring Boot-like startup banner ✅ DONE
 
-Print a Harbor ASCII banner on startup, similar to Spring Boot's banner:
+Print a Puerto ASCII banner on startup, similar to Spring Boot's banner:
 
 ```
   _   _             _
@@ -875,37 +935,41 @@ Print a Harbor ASCII banner on startup, similar to Spring Boot's banner:
  |  _  | (_| | |  | |_) | (_) | |
  |_| |_|\__,_|_|  |_.__/ \___/|_|
 
- :: Harbor ::  (v0.3.0)
+ :: Puerto ::  (v0.3.0)
 ```
 
 Printed to stdout before `build_app()` is called, controlled by `HARBOR_BANNER=false` env var to suppress in tests.
 
 Options to evaluate:
+
 - Static string in `main.rs.liquid` template
 - Read version from `CARGO_PKG_VERSION` at compile time
 - Optional: color via `colored` crate (adds dependency — may not be worth it)
 
 ---
 
-### 7.3 `harbor new --no-demo` — skip the Greeting demo entity ✅ DONE
+### 7.3 `puerto new --no-demo` — skip the Greeting demo entity ✅ DONE
 
-By default `harbor new` includes a `Greeting` entity to show the project structure in action. With `--no-demo` the project is created empty — no entities, no demo code.
+By default `puerto new` includes a `Greeting` entity to show the project structure in action. With `--no-demo` the project is created empty — no entities, no demo code.
 
 **Command signature:**
+
 ```
-harbor new                              # prompts for db + demo
-harbor new --name my-app --no-demo
-harbor new --name my-app --db --no-demo
+puerto new                              # prompts for db + demo
+puerto new --name my-app --no-demo
+puerto new --name my-app --db --no-demo
 ```
 
 **Behavior:**
+
 - Without `--no-demo` and in a TTY → prompts: `Include Greeting demo entity? [Y/n]`
 - Without `--no-demo` and non-interactive → includes demo (default)
-- With `--no-demo`: project is minimal — no entity files, empty `harbor.toml` (just `[project]`), empty module declarations, minimal `bootstrap.rs`
+- With `--no-demo`: project is minimal — no entity files, empty `puerto.toml` (just `[project]`), empty module declarations, minimal `bootstrap.rs`
 
 **What changes when `--no-demo` is set:**
 
 Files omitted:
+
 ```
 business/src/domain/greeting/
 business/src/application/greeting/
@@ -915,64 +979,71 @@ presentation/src/api/greeting.rs
 ```
 
 Files generated differently:
-- `harbor.toml` — no `[[entity]]` block
+
+- `puerto.toml` — no `[[entity]]` block
 - `business/src/lib.rs` — empty `domain {}` and `application {}` blocks
 - `infrastructure/src/lib.rs` — no entity module
-- `presentation/src/api.rs` — empty (or just `// Add entities with: harbor generate scaffold <Name>`)
+- `presentation/src/api.rs` — empty (or just `// Add entities with: puerto generate scaffold <Name>`)
 - `presentation/src/generated/bootstrap.rs` — minimal: empty OpenApiService, no use case wiring
 
 **Implementation approach:**
+
 - Add `--no-demo` flag to `NewArgs` in `main.rs`
 - Pass `include_demo = !no_demo` as a cargo-generate template variable
 - Use `[conditional.'!include_demo'] ignore = [...]` in `cargo-generate.toml` to skip greeting files
 - Make `lib.rs`, `api.rs`, and `bootstrap.rs` liquid templates with `{% if include_demo %}` guards
 
 **Test scenarios:**
-- `harbor new --no-demo` → no greeting files exist
-- `harbor new --no-demo` → `harbor.toml` has no `[[entity]]` block
-- `harbor new --no-demo` → generated project compiles clean
-- `harbor new` (no flag) → greeting files present (no regression)
-- `harbor new --no-demo` followed by `harbor generate scaffold Player --crud` → compiles clean
+
+- `puerto new --no-demo` → no greeting files exist
+- `puerto new --no-demo` → `puerto.toml` has no `[[entity]]` block
+- `puerto new --no-demo` → generated project compiles clean
+- `puerto new` (no flag) → greeting files present (no regression)
+- `puerto new --no-demo` followed by `puerto generate scaffold Player --crud` → compiles clean
 
 ---
 
-### 7.4 `harbor generate scaffold <Name>` — infer db and crud from context ✅ DONE
+### 7.4 `puerto generate scaffold <Name>` — infer db and crud from context ✅ DONE
 
-**Problem:** the current CLI asks the user to declare things Harbor already knows.
-- `--db` is redundant: `harbor.toml` already has `[project] db = true`
-- `--crud` is redundant: `scaffold` semantically means full CRUD. Single use cases already have `harbor generate use-case`
+**Problem:** the current CLI asks the user to declare things Puerto already knows.
+
+- `--db` is redundant: `puerto.toml` already has `[project] db = true`
+- `--crud` is redundant: `scaffold` semantically means full CRUD. Single use cases already have `puerto generate use-case`
 
 **Redesign:**
 
 ```bash
 # Before (noisy)
-harbor generate scaffold Team --crud --db
+puerto generate scaffold Team --crud --db
 
 # After (inferred)
-harbor generate scaffold Team
+puerto generate scaffold Team
 ```
 
 **New behavior:**
-- `db` → auto-detected from `harbor.toml` `[project] db`
+
+- `db` → auto-detected from `puerto.toml` `[project] db`
   - `project.db = true` → generates `PgTeamRepository`
   - no db → generates `InMemoryTeamRepository`
 - `crud` → always full CRUD (create, get, list, update, delete)
-  - for a single use case, use `harbor generate use-case <Entity> <action>` (unchanged)
+  - for a single use case, use `puerto generate use-case <Entity> <action>` (unchanged)
 
-**Breaking change:** removes `--crud` and `--db` flags from `harbor generate scaffold`.
+**Breaking change:** removes `--crud` and `--db` flags from `puerto generate scaffold`.
 
-**Migration:** any existing scripts using `harbor generate scaffold <Name> --crud --db` should drop both flags. Behavior is identical.
+**Migration:** any existing scripts using `puerto generate scaffold <Name> --crud --db` should drop both flags. Behavior is identical.
 
-**Also fix:** `harbor generate scaffold` with db should auto-create the migration (bug from Phase 4.1 — `run_migration()` was never called from `run()`).
+**Also fix:** `puerto generate scaffold` with db should auto-create the migration (bug from Phase 4.1 — `run_migration()` was never called from `run()`).
 
 **Updated command signature:**
+
 ```bash
-harbor generate scaffold <Name>    # CRUD + db inferred from harbor.toml
+puerto generate scaffold <Name>    # CRUD + db inferred from puerto.toml
 ```
 
 **Test scenarios:**
-- `harbor generate scaffold Team` in db project → `PgTeamRepository`, 5 use cases, migration created
-- `harbor generate scaffold Team` in non-db project → `InMemoryTeamRepository`, 5 use cases
+
+- `puerto generate scaffold Team` in db project → `PgTeamRepository`, 5 use cases, migration created
+- `puerto generate scaffold Team` in non-db project → `InMemoryTeamRepository`, 5 use cases
 - `--crud` and `--db` flags removed — passing them is an error
 - Migration auto-created when project has db
 
@@ -985,17 +1056,18 @@ Four focused generators that let users (and AI agents) work on one DDD layer at 
 ### Commands
 
 ```bash
-harbor generate domain <Name>           # domain layer + Object Mother
-harbor generate application <Name>      # application layer (validates entity in harbor.toml)
-harbor generate repository <Name>       # infrastructure layer (validates entity in harbor.toml)
-harbor generate presentation <Name>     # presentation layer + bootstrap regeneration
+puerto generate domain <Name>           # domain layer + Object Mother
+puerto generate application <Name>      # application layer (validates entity in puerto.toml)
+puerto generate repository <Name>       # infrastructure layer (validates entity in puerto.toml)
+puerto generate presentation <Name>     # presentation layer + bootstrap regeneration
 ```
 
-`harbor generate scaffold` remains the all-in-one shortcut.
+`puerto generate scaffold` remains the all-in-one shortcut.
 
 ### Files generated per command
 
-**`harbor generate domain <Name>`**
+**`puerto generate domain <Name>`**
+
 ```
 business/src/domain/<snake>/model.rs
 business/src/domain/<snake>/errors.rs
@@ -1007,9 +1079,11 @@ business/src/domain/<snake>/use_cases/update_<snake>.rs
 business/src/domain/<snake>/use_cases/delete_<snake>.rs
 business/src/tests/mothers/<snake>_mother.rs     # Object Mother
 ```
-Auto-patches: `business/src/lib.rs` (domain block + `tests::mothers` block), `harbor.toml`.
 
-**`harbor generate application <Name>`**
+Auto-patches: `business/src/lib.rs` (domain block + `tests::mothers` block), `puerto.toml`.
+
+**`puerto generate application <Name>`**
+
 ```
 business/src/application/<snake>/create_<snake>.rs
 business/src/application/<snake>/get_<snake>.rs
@@ -1017,17 +1091,21 @@ business/src/application/<snake>/list_<snake>.rs
 business/src/application/<snake>/update_<snake>.rs
 business/src/application/<snake>/delete_<snake>.rs
 ```
+
 Auto-patches: `business/src/lib.rs` (application block).
 
-**`harbor generate repository <Name>`**
+**`puerto generate repository <Name>`**
+
 ```
 infrastructure/src/<snake>/repository.rs         # InMemory or Pg (reads project.db)
 infrastructure/src/<snake>/entity.rs             # only when db = true
 infrastructure/migrations/<ts>_create_<snake>_table.sql  # only when db = true
 ```
+
 Auto-patches: `infrastructure/src/lib.rs`.
 
-**`harbor generate presentation <Name>`**
+**`puerto generate presentation <Name>`**
+
 ```
 presentation/src/api/<snake>.rs
 presentation/src/api/<snake>/routes.rs
@@ -1035,11 +1113,13 @@ presentation/src/api/<snake>/dto.rs
 presentation/src/api/<snake>/responses.rs
 presentation/src/api/<snake>/error_mapper.rs
 ```
+
 Auto-patches: `presentation/src/api.rs`. Regenerates `bootstrap.rs`.
 
-### Object Mother (also added to `harbor generate scaffold`)
+### Object Mother (also added to `puerto generate scaffold`)
 
 Every entity now gets `business/src/tests/mothers/<snake>_mother.rs`:
+
 ```rust
 let w  = WidgetMother::random();
 let ws = WidgetMother::random_vec(5);
@@ -1047,11 +1127,13 @@ let p  = WidgetMother::new().with_empty_name().build_props();
 ```
 
 ### Validation
-- `generate application/repository/presentation`: error if entity not in `harbor.toml` — hint: run `harbor generate domain <Name>` first
-- `generate domain`: error if entity already in `harbor.toml`
-- After each command: print `Next: harbor generate <next-layer> <Name>` hint
+
+- `generate application/repository/presentation`: error if entity not in `puerto.toml` — hint: run `puerto generate domain <Name>` first
+- `generate domain`: error if entity already in `puerto.toml`
+- After each command: print `Next: puerto generate <next-layer> <Name>` hint
 
 ### Idempotency
+
 All patching functions (`patch_business_lib_domain_crud`, `patch_business_lib_application_crud`, `patch_infra_lib`, `patch_api_rs`, `patch_mothers_lib`) are now idempotent — safe to re-run.
 
 ---
@@ -1059,6 +1141,7 @@ All patching functions (`patch_business_lib_domain_crud`, `patch_business_lib_ap
 ## Phase 9 — Full-stack (frontend)
 
 TBD. Options to evaluate:
+
 - Server-side rendering with a Rust template engine (Askama / Tera)
 - HTMX + Askama for reactive UIs without JS build step
 - API-only + separate frontend (Leptos / Dioxus)

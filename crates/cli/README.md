@@ -1,38 +1,38 @@
-# Harbor
+# Puerto
 
-Harbor is a Rust CLI that scaffolds full-stack DDD projects following Clean Architecture (Hexagonal / Ports & Adapters). It generates a 3-crate workspace with auto-wired dependency injection, zero manual wiring.
+Puerto is a Rust CLI that scaffolds full-stack DDD projects following Clean Architecture (Hexagonal / Ports & Adapters). It generates a 3-crate workspace with auto-wired dependency injection, zero manual wiring.
 
 ## Install
 
 ```bash
-cargo install harbor-framework
+cargo install puerto-framework
 ```
 
 ## Quick start
 
 ```bash
-harbor new                          # interactive: prompts for name and db support
-harbor new --name my-app            # skip name prompt
-harbor new --name my-app --db       # fully non-interactive, includes SQLx/Postgres
+puerto new                          # interactive: prompts for name and db support
+puerto new --name my-app            # skip name prompt
+puerto new --name my-app --db       # fully non-interactive, includes SQLx/Postgres
 ```
 
 ## Commands
 
 ```bash
-harbor new [--name <name>] [--db]
+puerto new [--name <name>] [--db]
 
-harbor generate scaffold <Name>            # add a DDD entity (InMemory repository)
-harbor generate scaffold <Name> --db       # add a DDD entity (SQLx/Postgres repository)
-harbor generate use-case <Entity> <action> # add a use case to an existing entity
-harbor generate migration <name>           # create a SQLx migration file
-harbor generate bootstrap                  # regenerate bootstrap.rs from harbor.toml
+puerto generate scaffold <Name>            # add a DDD entity (InMemory repository)
+puerto generate scaffold <Name> --db       # add a DDD entity (SQLx/Postgres repository)
+puerto generate use-case <Entity> <action> # add a use case to an existing entity
+puerto generate migration <name>           # create a SQLx migration file
+puerto generate bootstrap                  # regenerate bootstrap.rs from puerto.toml
 ```
 
 ## Generated project structure
 
 ```
 my-app/
-├── harbor.toml                    # source of truth for entities + use cases
+├── puerto.toml                    # source of truth for entities + use cases
 ├── business/                      # domain + application layer (pure Rust)
 │   └── src/
 │       ├── domain/<entity>/

@@ -1,9 +1,9 @@
 [package]
 name = "puerto"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 rust-version = "1.85"
-description = "Puerto — Rust full-stack DDD framework CLI. Scaffolds Clean Architecture projects with auto-wired DI, SQLx support, and zero manual wiring. Formerly harbor-framework."
+description = "Puerto — Rust full-stack DDD framework CLI. Scaffolds Clean Architecture projects with auto-wired DI, SQLx support, and zero manual wiring. Formerly puerto-framework."
 license = "MIT"
 repository = "https://github.com/Guuri11/Puerto"
 homepage = "https://github.com/Guuri11/Puerto"

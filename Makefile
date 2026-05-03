@@ -15,17 +15,17 @@ help: ## Show available commands
 	@grep -E '^[a-zA-Z/]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  ${YELLOW}%-20s${NC} %s\n", $$1, $$2}'
 	@echo ""
 
-run: ## Run harbor CLI interactively (harbor new)
-	@echo "${GREEN}Running harbor CLI...${NC}"
-	$(CARGO) run --bin harbor -- new
+run: ## Run puerto CLI interactively (puerto new)
+	@echo "${GREEN}Running puerto CLI...${NC}"
+	$(CARGO) run --bin puerto -- new
 
-build: ## Build harbor binary (release) → target/release/harbor
-	@echo "${GREEN}Building harbor...${NC}"
-	$(CARGO) build --release --bin harbor
-	@echo "Binary: $(shell pwd)/target/release/harbor"
+build: ## Build puerto binary (release) → target/release/puerto
+	@echo "${GREEN}Building puerto...${NC}"
+	$(CARGO) build --release --bin puerto
+	@echo "Binary: $(shell pwd)/target/release/puerto"
 
-install: ## Install harbor to ~/.cargo/bin
-	@echo "${GREEN}Installing harbor...${NC}"
+install: ## Install puerto to ~/.cargo/bin
+	@echo "${GREEN}Installing puerto...${NC}"
 	$(CARGO) install --path crates/cli
 
 setup: ## Install required dev tools (run once after cloning)

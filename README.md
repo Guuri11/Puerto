@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/github-social.svg" alt="Harbor — Scaffold. Structure. Ship." width="100%"/>
+  <img src="assets/brand/github-social.svg" alt="Puerto — Scaffold. Structure. Ship." width="100%"/>
 </p>
 
 <p align="center">
@@ -19,15 +19,15 @@ A Rust full-stack framework that brings the **delightful developer experience** 
 
 ### 1. Delightful Coding Experience
 
-Getting started should take seconds, not hours. `harbor new my-app` gives you a production-ready workspace with the right structure, dependencies, and conventions already in place. No boilerplate, no decision fatigue.
+Getting started should take seconds, not hours. `puerto new my-app` gives you a production-ready workspace with the right structure, dependencies, and conventions already in place. No boilerplate, no decision fatigue.
 
 ### 2. Truly AI-Ready
 
-Harbor is built for the age of AI-assisted development. Rust's strict compiler acts as an **instant feedback loop** — when an AI agent generates wrong code, the compiler catches it with a precise, actionable error. No silent failures, no runtime surprises. The stronger the types, the smarter the agent.
+Puerto is built for the age of AI-assisted development. Rust's strict compiler acts as an **instant feedback loop** — when an AI agent generates wrong code, the compiler catches it with a precise, actionable error. No silent failures, no runtime surprises. The stronger the types, the smarter the agent.
 
 ### 3. Convention over Configuration
 
-Harbor makes the right choices for you. Directory layout, error patterns, dependency injection, testing conventions — all standardized. When every Harbor project looks the same, AI agents and human developers can navigate any codebase from day one.
+Puerto makes the right choices for you. Directory layout, error patterns, dependency injection, testing conventions — all standardized. When every Puerto project looks the same, AI agents and human developers can navigate any codebase from day one.
 
 ---
 
@@ -35,7 +35,7 @@ Harbor makes the right choices for you. Directory layout, error patterns, depend
 
 MVC is a great starting point, but it doesn't scale well. As applications grow, business logic leaks into controllers and models, making code harder to test and reason about.
 
-Harbor generates projects around **Domain-Driven Design** and **Clean Architecture**:
+Puerto generates projects around **Domain-Driven Design** and **Clean Architecture**:
 
 - **Domain** is pure Rust — no framework dependencies, no infrastructure concerns. Business rules live here.
 - **Application** orchestrates the domain — use cases are explicit, testable units of behavior.
@@ -48,7 +48,7 @@ The result: a codebase where business logic is isolated, always testable, and ne
 
 ## Architecture
 
-Every Harbor project is a Cargo workspace with three crates:
+Every Puerto project is a Cargo workspace with three crates:
 
 ```
 my-app/
@@ -75,11 +75,11 @@ The domain depends on nothing. Everything else depends on the domain.
 ## Getting Started
 
 ```bash
-# Install Harbor
-cargo install harbor-framework
+# Install Puerto
+cargo install puerto-framework
 
 # Scaffold a new project
-harbor new my-app
+puerto new my-app
 
 # Enter the project and run
 cd my-app
@@ -94,23 +94,23 @@ curl http://localhost:8080/api/greetings/World
 
 ---
 
-## Project Structure (Harbor itself)
+## Project Structure (Puerto itself)
 
-Harbor is also a Cargo workspace:
+Puerto is also a Cargo workspace:
 
 ```
-harbor/
+puerto/
 └── crates/
-    └── cli/                # The harbor binary (cargo-generate wrapper)
+    └── cli/                # The puerto binary (cargo-generate wrapper)
         ├── src/            # CLI source
         └── template/       # The "basic" project template (edit directly here)
 ```
 
-| Command | Description |
-|---|---|
-| `make run` | Run the harbor CLI |
-| `make test` | Fast structural tests |
+| Command          | Description                                                |
+| ---------------- | ---------------------------------------------------------- |
+| `make run`       | Run the puerto CLI                                         |
+| `make test`      | Fast structural tests                                      |
 | `make test/full` | Full test: generates a project + compiles + runs its tests |
-| `make lint` | Clippy with `-D warnings` |
-| `make format` | rustfmt |
-| `make check` | cargo check |
+| `make lint`      | Clippy with `-D warnings`                                  |
+| `make format`    | rustfmt                                                    |
+| `make check`     | cargo check                                                |

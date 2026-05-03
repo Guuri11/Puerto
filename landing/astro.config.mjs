@@ -1,10 +1,10 @@
 // @ts-check
-import { defineConfig } from 'astro/config';
-import tailwindcss from '@tailwindcss/vite';
-import sitemap from '@astrojs/sitemap';
+import { defineConfig } from "astro/config";
+import tailwindcss from "@tailwindcss/vite";
+import sitemap from "@astrojs/sitemap";
 
 export default defineConfig({
-  site: 'https://harbor-framework.dev',
+  site: "https://puerto-rs.vercel.app",
   vite: {
     plugins: [tailwindcss()],
   },

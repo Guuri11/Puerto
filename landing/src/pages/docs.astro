@@ -12,30 +12,30 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
       <!-- Sidebar -->
       <aside class="hidden lg:block">
         <nav class="sticky top-28 space-y-1" aria-label="Documentation navigation">
-          <p class="mb-3 font-mono text-xs font-semibold uppercase tracking-widest text-harbor-mist/50">Getting Started</p>
-          <a href="#installation" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Installation</a>
-          <a href="#new-project" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">New Project</a>
-          <a href="#scaffold" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Generate Scaffold</a>
-          <a href="#layer-generators" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Layer Generators</a>
-          <a href="#use-case" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Add Use Case</a>
-          <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Database (SQLx)</a>
-          <a href="#architecture" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">Architecture</a>
-          <a href="#snippets" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-harbor-mist transition-colors hover:bg-harbor-navy hover:text-harbor-ice">IDE Snippets</a>
+          <p class="mb-3 font-mono text-xs font-semibold uppercase tracking-widest text-puerto-mist/50">Getting Started</p>
+          <a href="#installation" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Installation</a>
+          <a href="#new-project" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">New Project</a>
+          <a href="#scaffold" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Generate Scaffold</a>
+          <a href="#layer-generators" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Layer Generators</a>
+          <a href="#use-case" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Add Use Case</a>
+          <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Database (SQLx)</a>
+          <a href="#architecture" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Architecture</a>
+          <a href="#snippets" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">IDE Snippets</a>
         </nav>
       </aside>
 
       <!-- Content -->
-      <article class="prose-harbor min-w-0">
-        <h1 class="font-mono text-4xl font-bold text-harbor-ice lg:text-5xl">Getting Started</h1>
-        <p class="mt-4 font-sans text-lg text-harbor-mist">
+      <article class="prose-puerto min-w-0">
+        <h1 class="font-mono text-4xl font-bold text-puerto-ice lg:text-5xl">Getting Started</h1>
+        <p class="mt-4 font-sans text-lg text-puerto-mist">
           Puerto is a CLI tool that scaffolds production-ready Rust backends with Domain-Driven Design architecture. From install to running API in under a minute.
         </p>
 
         <!-- Prerequisites -->
-        <div class="mt-8 rounded-md border border-harbor-teal/30 bg-harbor-teal/5 px-5 py-4">
-          <p class="font-mono text-sm font-semibold text-harbor-teal">Prerequisites</p>
-          <ul class="mt-2 space-y-1 font-sans text-sm text-harbor-mist">
-            <li>Rust stable (1.85+) — <a href="https://rustup.rs" target="_blank" rel="noopener noreferrer" class="text-harbor-teal hover:underline">install via rustup</a></li>
+        <div class="mt-8 rounded-md border border-puerto-teal/30 bg-puerto-teal/5 px-5 py-4">
+          <p class="font-mono text-sm font-semibold text-puerto-teal">Prerequisites</p>
+          <ul class="mt-2 space-y-1 font-sans text-sm text-puerto-mist">
+            <li>Rust stable (1.85+) — <a href="https://rustup.rs" target="_blank" rel="noopener noreferrer" class="text-puerto-teal hover:underline">install via rustup</a></li>
             <li>Cargo (included with Rust)</li>
             <li>Optional: PostgreSQL + SQLx CLI for database projects</li>
           </ul>
@@ -43,135 +43,135 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
 
         <!-- Installation -->
         <section id="installation" class="mt-16 scroll-mt-28">
-          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Installation</h2>
-          <p class="mt-3 font-sans text-harbor-mist">Install the Harbor CLI from crates.io:</p>
-          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
-            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-            <code class="font-mono text-sm text-harbor-ice">cargo install puerto</code>
-            <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="cargo install puerto" aria-label="Copy">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Installation</h2>
+          <p class="mt-3 font-sans text-puerto-mist">Install the Puerto CLI from crates.io:</p>
+          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+            <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+            <code class="font-mono text-sm text-puerto-ice">cargo install puerto</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="cargo install puerto" aria-label="Copy">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
-          <p class="mt-4 font-sans text-sm text-harbor-mist">Verify the installation:</p>
-          <div class="code-block mt-2 flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
-            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-            <code class="font-mono text-sm text-harbor-ice">harbor --version</code>
+          <p class="mt-4 font-sans text-sm text-puerto-mist">Verify the installation:</p>
+          <div class="code-block mt-2 flex items-center gap-3 rounded-md border border-puerto-steel/40 bg-puerto-navy px-5 py-4">
+            <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+            <code class="font-mono text-sm text-puerto-ice">puerto --version</code>
           </div>
         </section>
 
         <!-- New Project -->
         <section id="new-project" class="mt-16 scroll-mt-28">
-          <h2 class="font-mono text-2xl font-bold text-harbor-ice">New Project</h2>
-          <p class="mt-3 font-sans text-harbor-mist">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">New Project</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
             Create a new Puerto workspace. The interactive wizard asks for your project name, whether you need database support, and whether to include the Greeting demo entity.
           </p>
-          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
-            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-            <code class="font-mono text-sm text-harbor-ice">harbor new my-app</code>
-            <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor new my-app" aria-label="Copy">
+          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+            <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+            <code class="font-mono text-sm text-puerto-ice">puerto new my-app</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto new my-app" aria-label="Copy">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
-          <p class="mt-4 font-sans text-sm text-harbor-mist">For non-interactive use (CI/scripts):</p>
-          <div class="code-block mt-2 flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
-            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-            <code class="font-mono text-sm text-harbor-ice">harbor new --name my-app --db --no-demo</code>
+          <p class="mt-4 font-sans text-sm text-puerto-mist">For non-interactive use (CI/scripts):</p>
+          <div class="code-block mt-2 flex items-center gap-3 rounded-md border border-puerto-steel/40 bg-puerto-navy px-5 py-4">
+            <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+            <code class="font-mono text-sm text-puerto-ice">puerto new --name my-app --db --no-demo</code>
           </div>
 
-          <p class="mt-6 font-sans text-sm font-semibold text-harbor-ice">Generated structure:</p>
-          <div class="mt-3 rounded-md border border-harbor-steel/40 bg-harbor-navy p-5 font-mono text-sm leading-relaxed">
-            <div class="text-harbor-mist/60">my-app/</div>
-            <div class="pl-4"><span class="text-harbor-teal">business/</span><span class="text-harbor-mist/40 ml-3">← domain + application</span></div>
-            <div class="pl-8 text-harbor-mist/50">src/domain/greeting/</div>
-            <div class="pl-8 text-harbor-mist/50">src/application/greeting/</div>
-            <div class="pl-4 mt-1"><span class="text-harbor-indigo">infrastructure/</span><span class="text-harbor-mist/40 ml-3">← adapters</span></div>
-            <div class="pl-8 text-harbor-mist/50">src/greeting/repository.rs</div>
-            <div class="pl-4 mt-1"><span class="text-harbor-rust">presentation/</span><span class="text-harbor-mist/40 ml-3">← http api</span></div>
-            <div class="pl-8 text-harbor-mist/50">src/api/greeting/routes.rs</div>
-            <div class="pl-4 mt-1 text-harbor-mist/50">harbor.toml</div>
-            <div class="pl-4 text-harbor-mist/50">Cargo.toml</div>
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">Generated structure:</p>
+          <div class="mt-3 rounded-md border border-puerto-steel/40 bg-puerto-navy p-5 font-mono text-sm leading-relaxed">
+            <div class="text-puerto-mist/60">my-app/</div>
+            <div class="pl-4"><span class="text-puerto-teal">business/</span><span class="text-puerto-mist/40 ml-3">← domain + application</span></div>
+            <div class="pl-8 text-puerto-mist/50">src/domain/greeting/</div>
+            <div class="pl-8 text-puerto-mist/50">src/application/greeting/</div>
+            <div class="pl-4 mt-1"><span class="text-puerto-indigo">infrastructure/</span><span class="text-puerto-mist/40 ml-3">← adapters</span></div>
+            <div class="pl-8 text-puerto-mist/50">src/greeting/repository.rs</div>
+            <div class="pl-4 mt-1"><span class="text-puerto-rust">presentation/</span><span class="text-puerto-mist/40 ml-3">← http api</span></div>
+            <div class="pl-8 text-puerto-mist/50">src/api/greeting/routes.rs</div>
+            <div class="pl-4 mt-1 text-puerto-mist/50">puerto.toml</div>
+            <div class="pl-4 text-puerto-mist/50">Cargo.toml</div>
           </div>
         </section>
 
         <!-- Scaffold -->
         <section id="scaffold" class="mt-16 scroll-mt-28">
-          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Generate Scaffold</h2>
-          <p class="mt-3 font-sans text-harbor-mist">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Generate Scaffold</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
             Scaffold a complete DDD entity across all layers. Puerto creates the domain model, repository trait, use cases, infrastructure adapter, and presentation routes — wired together automatically.
           </p>
-          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
-            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-            <code class="font-mono text-sm text-harbor-ice">harbor generate scaffold User</code>
-            <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate scaffold User" aria-label="Copy">
+          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+            <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+            <code class="font-mono text-sm text-puerto-ice">puerto generate scaffold User</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate scaffold User" aria-label="Copy">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
 
-          <p class="mt-6 font-sans text-sm font-semibold text-harbor-ice">What gets created:</p>
-          <div class="mt-3 space-y-2 font-sans text-sm text-harbor-mist">
-            <div class="flex gap-2"><span class="text-harbor-teal font-mono">business/</span><span>model.rs, errors.rs, repository.rs (trait + mockall mock), 5 use cases (create, get, list, update, delete)</span></div>
-            <div class="flex gap-2"><span class="text-harbor-indigo font-mono">infrastructure/</span><span>repository (InMemory or Pg — inferred from harbor.toml)</span></div>
-            <div class="flex gap-2"><span class="text-harbor-rust font-mono">presentation/</span><span>routes.rs, dto.rs, responses.rs, error_mapper.rs</span></div>
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">What gets created:</p>
+          <div class="mt-3 space-y-2 font-sans text-sm text-puerto-mist">
+            <div class="flex gap-2"><span class="text-puerto-teal font-mono">business/</span><span>model.rs, errors.rs, repository.rs (trait + mockall mock), 5 use cases (create, get, list, update, delete)</span></div>
+            <div class="flex gap-2"><span class="text-puerto-indigo font-mono">infrastructure/</span><span>repository (InMemory or Pg — inferred from puerto.toml)</span></div>
+            <div class="flex gap-2"><span class="text-puerto-rust font-mono">presentation/</span><span>routes.rs, dto.rs, responses.rs, error_mapper.rs</span></div>
           </div>
         </section>
 
         <!-- Layer Generators -->
         <section id="layer-generators" class="mt-16 scroll-mt-28">
-          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Layer Generators</h2>
-          <p class="mt-3 font-sans text-harbor-mist">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Layer Generators</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
             Generate one DDD layer at a time. Ideal for AI-assisted development — keeping each agent focused on a single layer prevents context drift and makes compiler errors immediately actionable.
           </p>
           <div class="mt-5 space-y-3">
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate domain Product</code>
-              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate domain Product" aria-label="Copy">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate domain Product</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate domain Product" aria-label="Copy">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
             </div>
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate application Product</code>
-              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate application Product" aria-label="Copy">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate application Product</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate application Product" aria-label="Copy">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
             </div>
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-indigo bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate repository Product</code>
-              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate repository Product" aria-label="Copy">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-indigo bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate repository Product</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate repository Product" aria-label="Copy">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
             </div>
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-rust bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate presentation Product</code>
-              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate presentation Product" aria-label="Copy">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-rust bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate presentation Product</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate presentation Product" aria-label="Copy">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
             </div>
           </div>
-          <div class="mt-6 space-y-2 font-sans text-sm text-harbor-mist">
-            <div class="flex gap-2"><span class="text-harbor-teal font-mono flex-none">domain</span><span>model, errors, repository trait, 5 use case traits, <span class="text-harbor-indigo font-mono">ProductMother</span> (Object Mother) — registers entity in harbor.toml</span></div>
-            <div class="flex gap-2"><span class="text-harbor-teal font-mono flex-none">application</span><span>5 use case implementations with unit tests</span></div>
-            <div class="flex gap-2"><span class="text-harbor-indigo font-mono flex-none">repository</span><span>InMemory or Pg adapter — inferred from <span class="font-mono text-xs text-harbor-rust">harbor.toml</span></span></div>
-            <div class="flex gap-2"><span class="text-harbor-rust font-mono flex-none">presentation</span><span>routes, dto, responses, error mapper — regenerates <span class="font-mono text-xs">bootstrap.rs</span></span></div>
+          <div class="mt-6 space-y-2 font-sans text-sm text-puerto-mist">
+            <div class="flex gap-2"><span class="text-puerto-teal font-mono flex-none">domain</span><span>model, errors, repository trait, 5 use case traits, <span class="text-puerto-indigo font-mono">ProductMother</span> (Object Mother) — registers entity in puerto.toml</span></div>
+            <div class="flex gap-2"><span class="text-puerto-teal font-mono flex-none">application</span><span>5 use case implementations with unit tests</span></div>
+            <div class="flex gap-2"><span class="text-puerto-indigo font-mono flex-none">repository</span><span>InMemory or Pg adapter — inferred from <span class="font-mono text-xs text-puerto-rust">puerto.toml</span></span></div>
+            <div class="flex gap-2"><span class="text-puerto-rust font-mono flex-none">presentation</span><span>routes, dto, responses, error mapper — regenerates <span class="font-mono text-xs">bootstrap.rs</span></span></div>
           </div>
-          <p class="mt-5 font-sans text-sm text-harbor-mist">
-            Each command validates the prior step completed and prints a <span class="font-mono text-xs text-harbor-teal">Next:</span> hint. Use <code class="font-mono text-xs text-harbor-ice">harbor generate scaffold</code> when you want all layers at once.
+          <p class="mt-5 font-sans text-sm text-puerto-mist">
+            Each command validates the prior step completed and prints a <span class="font-mono text-xs text-puerto-teal">Next:</span> hint. Use <code class="font-mono text-xs text-puerto-ice">puerto generate scaffold</code> when you want all layers at once.
           </p>
         </section>
 
         <!-- Use Case -->
         <section id="use-case" class="mt-16 scroll-mt-28">
-          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Add a Use Case</h2>
-          <p class="mt-3 font-sans text-harbor-mist">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Add a Use Case</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
             Add a single use case to an existing entity. Puerto generates the trait, implementation, and unit tests.
           </p>
-          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
-            <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-            <code class="font-mono text-sm text-harbor-ice">harbor generate use-case User create</code>
-            <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate use-case User create" aria-label="Copy">
+          <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+            <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+            <code class="font-mono text-sm text-puerto-ice">puerto generate use-case User create</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate use-case User create" aria-label="Copy">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
@@ -179,52 +179,52 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
 
         <!-- Database -->
         <section id="database" class="mt-16 scroll-mt-28">
-          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Database (SQLx)</h2>
-          <p class="mt-3 font-sans text-harbor-mist">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Database (SQLx)</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
             Puerto has first-class SQLx + Postgres support. Enable it when creating a project — Puerto infers the choice for every subsequent scaffold automatically.
           </p>
           <div class="mt-4 space-y-3">
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-indigo bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor new --name my-app --db</code>
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-indigo bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto new --name my-app --db</code>
             </div>
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-indigo bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate scaffold User</code>
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-indigo bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate scaffold User</code>
             </div>
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate migration create_users_table</code>
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate migration create_users_table</code>
             </div>
           </div>
-          <p class="mt-4 font-sans text-sm text-harbor-mist">
-            Harbor reads <code class="font-mono text-xs text-harbor-rust">harbor.toml</code> to decide: db projects get a <code class="font-mono text-xs text-harbor-mist">PgUserRepository</code> with a connection pool and auto-created migration; non-db projects get <code class="font-mono text-xs text-harbor-mist">InMemoryUserRepository</code>. No flag needed on every scaffold.
+          <p class="mt-4 font-sans text-sm text-puerto-mist">
+            Puerto reads <code class="font-mono text-xs text-puerto-rust">puerto.toml</code> to decide: db projects get a <code class="font-mono text-xs text-puerto-mist">PgUserRepository</code> with a connection pool and auto-created migration; non-db projects get <code class="font-mono text-xs text-puerto-mist">InMemoryUserRepository</code>. No flag needed on every scaffold.
           </p>
         </section>
 
         <!-- Architecture -->
         <section id="architecture" class="mt-16 scroll-mt-28">
-          <h2 class="font-mono text-2xl font-bold text-harbor-ice">Architecture</h2>
-          <p class="mt-3 font-sans text-harbor-mist">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Architecture</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
             Puerto enforces a strict dependency rule: dependencies only point inward. The domain layer has zero external dependencies.
           </p>
-          <div class="mt-6 rounded-md border border-harbor-steel/40 bg-harbor-navy p-6 font-mono text-sm">
-            <div class="text-harbor-mist/50 text-xs mb-4">dependency flow (inward only)</div>
+          <div class="mt-6 rounded-md border border-puerto-steel/40 bg-puerto-navy p-6 font-mono text-sm">
+            <div class="text-puerto-mist/50 text-xs mb-4">dependency flow (inward only)</div>
             <div class="space-y-2">
               <div class="flex items-center gap-3">
-                <span class="w-36 text-harbor-rust">presentation/</span>
-                <span class="text-harbor-mist/40">→ depends on</span>
-                <span class="text-harbor-indigo">infrastructure/</span>
+                <span class="w-36 text-puerto-rust">presentation/</span>
+                <span class="text-puerto-mist/40">→ depends on</span>
+                <span class="text-puerto-indigo">infrastructure/</span>
               </div>
               <div class="flex items-center gap-3">
-                <span class="w-36 text-harbor-indigo">infrastructure/</span>
-                <span class="text-harbor-mist/40">→ depends on</span>
-                <span class="text-harbor-teal">business/</span>
+                <span class="w-36 text-puerto-indigo">infrastructure/</span>
+                <span class="text-puerto-mist/40">→ depends on</span>
+                <span class="text-puerto-teal">business/</span>
               </div>
               <div class="flex items-center gap-3">
-                <span class="w-36 text-harbor-teal">business/</span>
-                <span class="text-harbor-mist/40">→ depends on</span>
-                <span class="text-harbor-mist/60">nothing (std + thiserror only)</span>
+                <span class="w-36 text-puerto-teal">business/</span>
+                <span class="text-puerto-mist/40">→ depends on</span>
+                <span class="text-puerto-mist/60">nothing (std + thiserror only)</span>
               </div>
             </div>
           </div>
@@ -232,146 +232,146 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
 
         <!-- IDE Snippets -->
         <section id="snippets" class="mt-16 scroll-mt-28">
-          <h2 class="font-mono text-2xl font-bold text-harbor-ice">IDE Snippets</h2>
-          <p class="mt-3 font-sans text-harbor-mist">
-            Every <code class="font-mono text-xs text-harbor-teal">harbor new</code> project ships with 23 Harbor-adapted Rust snippets for Zed, VS Code, and nvim+LuaSnip. No configuration needed — files are written automatically and loaded by your editor from the project root.
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">IDE Snippets</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
+            Every <code class="font-mono text-xs text-puerto-teal">puerto new</code> project ships with 23 Puerto-adapted Rust snippets for Zed, VS Code, and nvim+LuaSnip. No configuration needed — files are written automatically and loaded by your editor from the project root.
           </p>
 
           <!-- IDE setup -->
           <div class="mt-6 space-y-3">
-            <div class="rounded-md border border-harbor-teal/20 bg-harbor-navy p-4">
-              <p class="font-mono text-sm font-semibold text-harbor-teal">Zed</p>
-              <p class="mt-1 font-sans text-sm text-harbor-mist">
-                Snippets are written to <code class="font-mono text-xs text-harbor-teal">.zed/snippets/rust.json</code>. Zed loads project-local snippets automatically — no further setup.
+            <div class="rounded-md border border-puerto-teal/20 bg-puerto-navy p-4">
+              <p class="font-mono text-sm font-semibold text-puerto-teal">Zed</p>
+              <p class="mt-1 font-sans text-sm text-puerto-mist">
+                Snippets are written to <code class="font-mono text-xs text-puerto-teal">.zed/snippets/rust.json</code>. Zed loads project-local snippets automatically — no further setup.
               </p>
             </div>
-            <div class="rounded-md border border-harbor-steel/30 bg-harbor-navy p-4">
-              <p class="font-mono text-sm font-semibold text-harbor-ice">VS Code</p>
-              <p class="mt-1 font-sans text-sm text-harbor-mist">
-                Snippets are written to <code class="font-mono text-xs text-harbor-mist">.vscode/harbor.code-snippets</code>. VS Code picks up workspace snippet files automatically.
+            <div class="rounded-md border border-puerto-steel/30 bg-puerto-navy p-4">
+              <p class="font-mono text-sm font-semibold text-puerto-ice">VS Code</p>
+              <p class="mt-1 font-sans text-sm text-puerto-mist">
+                Snippets are written to <code class="font-mono text-xs text-puerto-mist">.vscode/puerto.code-snippets</code>. VS Code picks up workspace snippet files automatically.
               </p>
             </div>
-            <div class="rounded-md border border-harbor-steel/30 bg-harbor-navy p-4">
-              <p class="font-mono text-sm font-semibold text-harbor-ice">nvim + LuaSnip</p>
-              <p class="mt-1 font-sans text-sm text-harbor-mist">
+            <div class="rounded-md border border-puerto-steel/30 bg-puerto-navy p-4">
+              <p class="font-mono text-sm font-semibold text-puerto-ice">nvim + LuaSnip</p>
+              <p class="mt-1 font-sans text-sm text-puerto-mist">
                 The VS Code file uses TextMate format, which LuaSnip can load directly. Add to your config:
               </p>
-              <div class="mt-3 rounded bg-harbor-deep px-4 py-3">
-                <code class="font-mono text-xs text-harbor-mist/80">{"require(\"luasnip.loaders.from_vscode\").lazy_load({ paths = {\"./.vscode\"} })"}</code>
+              <div class="mt-3 rounded bg-puerto-deep px-4 py-3">
+                <code class="font-mono text-xs text-puerto-mist/80">{"require(\"luasnip.loaders.from_vscode\").lazy_load({ paths = {\"./.vscode\"} })"}</code>
               </div>
             </div>
           </div>
 
           <!-- Snippet table -->
-          <p class="mt-8 font-sans text-sm font-semibold text-harbor-ice">Available snippets</p>
+          <p class="mt-8 font-sans text-sm font-semibold text-puerto-ice">Available snippets</p>
           <div class="mt-3 space-y-6">
             <!-- Domain -->
             <div>
               <div class="mb-2 flex items-center gap-2">
-                <span class="font-mono text-xs font-bold text-harbor-teal uppercase tracking-widest">Domain</span>
-                <div class="h-px flex-1 bg-harbor-steel/30"></div>
+                <span class="font-mono text-xs font-bold text-puerto-teal uppercase tracking-widest">Domain</span>
+                <div class="h-px flex-1 bg-puerto-steel/30"></div>
               </div>
               <div class="space-y-1.5">
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-teal">domain-model</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">Entity struct + Props + new(props) + from_repository()</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">domain-model</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Entity struct + Props + new(props) + from_repository()</span>
                 </div>
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-teal">domain-errors</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">thiserror enum with machine-readable error codes</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">domain-errors</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">thiserror enum with machine-readable error codes</span>
                 </div>
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-teal">repository-trait</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">RepositoryTrait + mockall mock in pub mod mocks</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">repository-trait</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">RepositoryTrait + mockall mock in pub mod mocks</span>
                 </div>
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-teal">domain-use-case</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">Params struct + UseCaseTrait</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">domain-use-case</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Params struct + UseCaseTrait</span>
                 </div>
               </div>
             </div>
             <!-- Application -->
             <div>
               <div class="mb-2 flex items-center gap-2">
-                <span class="font-mono text-xs font-bold text-harbor-rust uppercase tracking-widest">Application</span>
-                <div class="h-px flex-1 bg-harbor-steel/30"></div>
+                <span class="font-mono text-xs font-bold text-puerto-rust uppercase tracking-widest">Application</span>
+                <div class="h-px flex-1 bg-puerto-steel/30"></div>
               </div>
               <div class="space-y-1.5">
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-rust">app-use-case</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">UseCaseImpl with LoggerTrait injection + unit tests included</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-rust">app-use-case</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">UseCaseImpl with LoggerTrait injection + unit tests included</span>
                 </div>
               </div>
             </div>
             <!-- Infrastructure -->
             <div>
               <div class="mb-2 flex items-center gap-2">
-                <span class="font-mono text-xs font-bold text-harbor-indigo uppercase tracking-widest">Infrastructure</span>
-                <div class="h-px flex-1 bg-harbor-steel/30"></div>
+                <span class="font-mono text-xs font-bold text-puerto-indigo uppercase tracking-widest">Infrastructure</span>
+                <div class="h-px flex-1 bg-puerto-steel/30"></div>
               </div>
               <div class="space-y-1.5">
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-indigo">persistence-entity</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">DB row struct (FromRow) + TryFrom/From conversions</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-indigo">persistence-entity</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">DB row struct (FromRow) + TryFrom/From conversions</span>
                 </div>
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-indigo">persistence-repo</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">PgEntityRepository — find_by_id + save with SQLx macros</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-indigo">persistence-repo</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">PgEntityRepository — find_by_id + save with SQLx macros</span>
                 </div>
               </div>
             </div>
             <!-- Tests -->
             <div>
               <div class="mb-2 flex items-center gap-2">
-                <span class="font-mono text-xs font-bold text-harbor-mist/60 uppercase tracking-widest">Tests</span>
-                <div class="h-px flex-1 bg-harbor-steel/30"></div>
+                <span class="font-mono text-xs font-bold text-puerto-mist/60 uppercase tracking-widest">Tests</span>
+                <div class="h-px flex-1 bg-puerto-steel/30"></div>
               </div>
               <div class="space-y-1.5">
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-mist/80">should-do-test</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">#[tokio::test] with Arrange / Act / Assert comments</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-mist/80">should-do-test</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">#[tokio::test] with Arrange / Act / Assert comments</span>
                 </div>
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-mist/80">sqlx-test</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">#[sqlx::test(migrations = "migrations")] — real Postgres pool</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-mist/80">sqlx-test</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">#[sqlx::test(migrations = "migrations")] — real Postgres pool</span>
                 </div>
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-mist/80">sqlx-repo-test-module</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">Full integration test module for PgEntityRepository</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-mist/80">sqlx-repo-test-module</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Full integration test module for PgEntityRepository</span>
                 </div>
-                <div class="flex items-start gap-3 rounded border border-harbor-steel/20 bg-harbor-navy px-4 py-2">
-                  <code class="w-44 flex-none font-mono text-xs text-harbor-mist/80">object-mother</code>
-                  <span class="font-sans text-xs text-harbor-mist/70">Object Mother builder: random(), with_name(), build()</span>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-mist/80">object-mother</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Object Mother builder: random(), with_name(), build()</span>
                 </div>
               </div>
             </div>
           </div>
-          <p class="mt-3 font-sans text-xs text-harbor-mist/40 text-right">+ 9 more: lib.rs blocks, poem DTOs, response enums, error mappers, API struct</p>
+          <p class="mt-3 font-sans text-xs text-puerto-mist/40 text-right">+ 9 more: lib.rs blocks, poem DTOs, response enums, error mappers, API struct</p>
 
           <!-- Regenerate command -->
-          <p class="mt-8 font-sans text-sm font-semibold text-harbor-ice">Switching IDE or regenerating</p>
-          <p class="mt-2 font-sans text-sm text-harbor-mist">
-            Run <code class="font-mono text-xs text-harbor-teal">harbor generate snippets</code> from your project root at any time to write both IDE files. Use <code class="font-mono text-xs text-harbor-rust">--ide</code> to target a specific editor:
+          <p class="mt-8 font-sans text-sm font-semibold text-puerto-ice">Switching IDE or regenerating</p>
+          <p class="mt-2 font-sans text-sm text-puerto-mist">
+            Run <code class="font-mono text-xs text-puerto-teal">puerto generate snippets</code> from your project root at any time to write both IDE files. Use <code class="font-mono text-xs text-puerto-rust">--ide</code> to target a specific editor:
           </p>
           <div class="mt-3 space-y-2">
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 border-l-4 border-l-harbor-teal bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate snippets</code>
-              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate snippets" aria-label="Copy">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate snippets</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate snippets" aria-label="Copy">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
             </div>
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate snippets --ide zed</code>
-              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate snippets --ide zed" aria-label="Copy">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate snippets --ide zed</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate snippets --ide zed" aria-label="Copy">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
             </div>
-            <div class="code-block flex items-center gap-3 rounded-md border border-harbor-steel/40 bg-harbor-navy px-5 py-4">
-              <span class="font-mono text-sm text-harbor-teal select-none">$</span>
-              <code class="font-mono text-sm text-harbor-ice">harbor generate snippets --ide vscode</code>
-              <button class="copy-btn ml-auto cursor-pointer text-harbor-mist hover:text-harbor-ice" data-copy="harbor generate snippets --ide vscode" aria-label="Copy">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate snippets --ide vscode</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate snippets --ide vscode" aria-label="Copy">
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
             </div>
@@ -379,12 +379,12 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
         </section>
 
         <!-- Next steps -->
-        <div class="mt-16 rounded-lg border border-harbor-steel/40 bg-harbor-navy p-6">
-          <p class="font-mono text-sm font-semibold text-harbor-ice">What's next?</p>
-          <ul class="mt-3 space-y-2 font-sans text-sm text-harbor-mist">
-            <li>→ <a href="https://github.com/Guuri11/Puerto" target="_blank" rel="noopener noreferrer" class="text-harbor-teal hover:underline">Read the full README on GitHub</a></li>
-            <li>→ <a href="https://github.com/Guuri11/Puerto/blob/main/PLAN.md" target="_blank" rel="noopener noreferrer" class="text-harbor-teal hover:underline">See the roadmap (PLAN.md)</a></li>
-            <li>→ <a href="https://github.com/Guuri11/Puerto/issues" target="_blank" rel="noopener noreferrer" class="text-harbor-teal hover:underline">Report an issue or request a feature</a></li>
+        <div class="mt-16 rounded-lg border border-puerto-steel/40 bg-puerto-navy p-6">
+          <p class="font-mono text-sm font-semibold text-puerto-ice">What's next?</p>
+          <ul class="mt-3 space-y-2 font-sans text-sm text-puerto-mist">
+            <li>→ <a href="https://github.com/Guuri11/Puerto" target="_blank" rel="noopener noreferrer" class="text-puerto-teal hover:underline">Read the full README on GitHub</a></li>
+            <li>→ <a href="https://github.com/Guuri11/Puerto/blob/main/PLAN.md" target="_blank" rel="noopener noreferrer" class="text-puerto-teal hover:underline">See the roadmap (PLAN.md)</a></li>
+            <li>→ <a href="https://github.com/Guuri11/Puerto/issues" target="_blank" rel="noopener noreferrer" class="text-puerto-teal hover:underline">Report an issue or request a feature</a></li>
           </ul>
         </div>
       </article>
@@ -399,7 +399,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
       const text = btn.dataset.copy ?? '';
       await navigator.clipboard.writeText(text);
       const original = btn.innerHTML;
-      btn.innerHTML = `<svg class="h-4 w-4 text-harbor-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`;
+      btn.innerHTML = `<svg class="h-4 w-4 text-puerto-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>`;
       setTimeout(() => { btn.innerHTML = original; }, 1500);
     });
   });
@@ -411,9 +411,9 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
   const observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
-        links.forEach((l) => l.classList.remove('bg-harbor-navy', 'text-harbor-ice'));
+        links.forEach((l) => l.classList.remove('bg-puerto-navy', 'text-puerto-ice'));
         const active = document.querySelector<HTMLAnchorElement>(`.doc-link[href="#${entry.target.id}"]`);
-        active?.classList.add('bg-harbor-navy', 'text-harbor-ice');
+        active?.classList.add('bg-puerto-navy', 'text-puerto-ice');
       }
     });
   }, { rootMargin: '-30% 0px -60% 0px' });

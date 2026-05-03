@@ -51,16 +51,16 @@ pub mod mocks { ... }
 
 ## Adding a New Entity
 
-Run `harbor generate domain <Name>` to scaffold the domain layer in isolation, or `harbor generate scaffold <Name>` to do all layers at once.
+Run `puerto generate domain <Name>` to scaffold the domain layer in isolation, or `puerto generate scaffold <Name>` to do all layers at once.
 
 **Layer-by-layer (recommended for AI-assisted development):**
 ```bash
-harbor generate domain <Name>          # domain + Object Mother → Next: application
-harbor generate application <Name>     # use case impls        → Next: repository
-harbor generate repository <Name>      # infra adapter         → Next: presentation
-harbor generate presentation <Name>    # HTTP layer + bootstrap wired
+puerto generate domain <Name>          # domain + Object Mother → Next: application
+puerto generate application <Name>     # use case impls        → Next: repository
+puerto generate repository <Name>      # infra adapter         → Next: presentation
+puerto generate presentation <Name>    # HTTP layer + bootstrap wired
 ```
-Each command validates that the prior step completed (entity must be in `harbor.toml`).
+Each command validates that the prior step completed (entity must be in `puerto.toml`).
 
 ## Object Mother
 
@@ -72,4 +72,4 @@ let invalid = WidgetMother::new().with_empty_name().build_props();
 let batch   = WidgetMother::random_vec(5);
 ```
 
-The `tests::mothers` block in `lib.rs` is patched automatically by `harbor generate domain` and `harbor generate scaffold`.
+The `tests::mothers` block in `lib.rs` is patched automatically by `puerto generate domain` and `puerto generate scaffold`.

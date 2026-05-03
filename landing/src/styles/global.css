@@ -1,31 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  /* Harbor color palette */
-  --color-harbor-deep: #0D1B2A;
-  --color-harbor-navy: #1E3A5F;
-  --color-harbor-steel: #2D5986;
-  --color-harbor-teal: #0891B2;
-  --color-harbor-indigo: #6366F1;
-  --color-harbor-indigo-light: #818CF8;
-  --color-harbor-rust: #F97316;
-  --color-harbor-ice: #F1F5F9;
-  --color-harbor-mist: #94A3B8;
+  /* Puerto color palette */
+  --color-puerto-deep: #0d1b2a;
+  --color-puerto-navy: #1e3a5f;
+  --color-puerto-steel: #2d5986;
+  --color-puerto-teal: #0891b2;
+  --color-puerto-indigo: #6366f1;
+  --color-puerto-indigo-light: #818cf8;
+  --color-puerto-rust: #f97316;
+  --color-puerto-ice: #f1f5f9;
+  --color-puerto-mist: #94a3b8;
 
   /* Semantic aliases */
-  --color-bg: #0D1B2A;
-  --color-bg-alt: #1E3A5F;
-  --color-border: #2D5986;
-  --color-primary: #0891B2;
-  --color-secondary: #6366F1;
-  --color-accent: #F97316;
-  --color-text: #F1F5F9;
-  --color-text-muted: #94A3B8;
+  --color-bg: #0d1b2a;
+  --color-bg-alt: #1e3a5f;
+  --color-border: #2d5986;
+  --color-primary: #0891b2;
+  --color-secondary: #6366f1;
+  --color-accent: #f97316;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
 
   /* Typography */
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
 
   /* Spacing */
   --spacing-section: 7rem;
@@ -40,7 +40,9 @@
 }
 
 /* Base */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -59,12 +61,21 @@ body {
 }
 
 /* Body text uses IBM Plex Sans */
-p, li, blockquote, label, input, textarea, select {
+p,
+li,
+blockquote,
+label,
+input,
+textarea,
+select {
   font-family: var(--font-sans);
 }
 
 /* Code blocks */
-pre, code, kbd, .mono {
+pre,
+code,
+kbd,
+.mono {
   font-family: var(--font-mono);
 }
 
@@ -77,7 +88,7 @@ pre, code, kbd, .mono {
 /* Selection */
 ::selection {
   background: var(--color-primary);
-  color: var(--color-harbor-deep);
+  color: var(--color-puerto-deep);
 }
 
 /* Scrollbar */
@@ -85,10 +96,10 @@ pre, code, kbd, .mono {
   width: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-harbor-deep);
+  background: var(--color-puerto-deep);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-harbor-steel);
+  background: var(--color-puerto-steel);
   border-radius: 3px;
 }
 
