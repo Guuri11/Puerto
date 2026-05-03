@@ -2,7 +2,7 @@ export const siteConfig = {
   name: 'Puerto',
   tagline: 'Scaffold. Structure. Ship.',
   description: 'The Rust DDD framework that brings Rails-like productivity to production-grade backends. Zero boilerplate, clean architecture, AI-ready.',
-  url: 'https://puerto-framework.dev',
+  url: 'https://puertovercel.app',
   github: 'https://github.com/Guuri11/Puerto',
 
   logo: {
