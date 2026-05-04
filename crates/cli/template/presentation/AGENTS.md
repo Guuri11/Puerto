@@ -22,6 +22,7 @@ presentation/src/
 
 - **API First**: update `routes.rs` + `dto.rs` **before** any implementation. Never change an endpoint without updating the contract first.
 - **DTOs never expose domain models** — always map via `EntityDto::from_domain(&entity)`.
+- When `entity.fields` is defined, DTOs include typed fields from `puerto.toml` (request structs map to Params, response structs map from the domain model).
 - **Every `ApiResponse` enum** needs a `from_status(StatusCode, Json<ErrorResponse>) -> Self` helper.
 - All error responses use `ErrorResponse { name: String, message: String }` from `api/error.rs`. The `name` field is the machine-readable code for i18n.
 - **Dependencies wired manually in `main.rs`** — no DI framework.

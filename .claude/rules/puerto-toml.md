@@ -8,15 +8,96 @@ name = "my-app"          # project name (hyphen-separated, matches Cargo binary 
 
 [[entity]]
 name = "Product"         # PascalCase entity name
-use_cases = ["create_product", "delete_product"]  # snake_case action names
+use_cases = ["create_product", "list_products"]  # snake_case action names
 db = true                # optional — omit for InMemory, set true for SQLx/Postgres
+
+[[entity.fields]]
+name = "name"            # snake_case field name
+type = "String"          # Rust type from the type registry
+
+[[entity.fields]]
+name = "price"
+type = "i64"
+
+[[entity.fields]]
+name = "sku"
+type = "String"
+unique = true            # generates unique DB constraint
+
+[[entity.fields]]
+name = "description"
+type = "Option<String>"  # nullable field
+
+[[entity.fields]]
+name = "tags"
+type = "Vec<String>"     # array field
 ```
 
 - One `[[entity]]` block per DDD entity
 - `name` is canonical PascalCase — all other identifiers derived from it
 - `use_cases` entries are snake_case action names — match the file/module name exactly
 - `db = true` → generates `PgEntityRepository` + `entity.rs`; absent/false → `InMemoryEntityRepository`
+- `[[entity.fields]]` is an optional list of typed fields. If absent or empty, entities default to `name: String` (backward compatible)
+- Field `name` must be valid snake_case (lowercase letters, digits, underscores; cannot start with a digit)
+- Field `type` must match the type registry — run `puerto validate` to check
+- Field `unique = true` generates a unique DB constraint (SQL only). Cannot be combined with `Option<T>` (warned by `puerto validate`)
 - Managed by Puerto CLI — do not add entities manually unless also running `puerto generate bootstrap`
+
+### CLI Field Syntax
+
+```bash
+puerto generate scaffold Product name:String price:i64! sku:String
+```
+
+- Fields are passed as trailing arguments in `name:Type` format
+- Append `!` after the type to mark the field as `unique = true` (e.g., `sku:String!`)
+- Parsed by `parse_field_arg()` in `puerto_toml.rs`
+- Validated against the type registry before scaffold proceeds
+
+---
+
+## Type Registry
+
+| Rust Type | SQL Type | OpenAPI | Default (tests) |
+|-----------|----------|---------|------------------|
+| `String` | `TEXT` | `string` | `"example"` |
+| `i64` | `BIGINT` | `integer(int64)` | `42` |
+| `bool` | `BOOLEAN` | `boolean` | `true` |
+| `f64` | `DOUBLE` | `number(double)` | `1.5` |
+| `Uuid` | `UUID` | `string(uuid)` | `Uuid::new_v4()` |
+| `DateTime<Utc>` | `TIMESTAMPTZ` | `string(date-time)` | `Utc::now()` |
+| `Option<String>` | `TEXT` (nullable) | `string?` | `None` |
+| `Option<i64>` | `BIGINT` (nullable) | `integer(int64)?` | `None` |
+| `Option<bool>` | `BOOLEAN` (nullable) | `boolean?` | `None` |
+| `Option<f64>` | `DOUBLE` (nullable) | `number(double)?` | `None` |
+| `Option<Uuid>` | `UUID` (nullable) | `string(uuid)?` | `None` |
+| `Option<DateTime<Utc>>` | `TIMESTAMPTZ` (nullable) | `string(date-time)?` | `None` |
+| `Vec<String>` | `TEXT[]` | `array[string]` | `vec![]` |
+| `Vec<i64>` | `BIGINT[]` | `array[integer]` | `vec![]` |
+| `HashMap<String, String>` | `JSONB` | `object` | `HashMap::new()` |
+
+### System Fields (always present)
+
+Every entity automatically includes these fields — do **not** add them to `entity.fields`:
+
+```rust
+pub id: Uuid,
+pub created_at: DateTime<Utc>,
+pub updated_at: DateTime<Utc>,
+pub deleted: bool,
+pub deleted_at: Option<DateTime<Utc>>,
+```
+
+### Type Resolution
+
+`resolve_type(field_type: &str) -> Result<&TypeMapping, Error>` in `generators/types.rs`:
+- Looks up the type string in the registry
+- Returns `TypeMapping` with `rust_type`, `sql_type`, `sql_nullable`, `openapi_type`, `openapi_format`, `default_expr`, `needs_import`
+- Unknown types produce a descriptive error listing all valid types
+
+`validate_fields(fields: &[Field]) -> Result<(), Vec<String>>` validates all fields at once.
+
+`collect_imports(fields: &[Field]) -> Vec<&'static str>` returns the set of crate imports needed for a given field list.
 
 ---
 
@@ -110,6 +191,8 @@ presentation/src/api/product/error_mapper.rs
 | `puerto new [--name] [--db]`                 | Creates puerto.toml from template with initial Greeting entity        |
 | `puerto generate scaffold <Name>`            | Appends `[[entity]]` block (`db` omitted), regenerates bootstrap.rs   |
 | `puerto generate scaffold <Name> --db`       | Appends `[[entity]]` block with `db = true`, regenerates bootstrap.rs |
+| `puerto generate scaffold <Name> name:Type`  | Appends `[[entity]]` block with `[[entity.fields]]`, regenerates       |
 | `puerto generate bootstrap`                  | Reads puerto.toml, regenerates bootstrap.rs (no other changes)        |
 | `puerto generate use-case <Entity> <action>` | Appends action to entity's `use_cases`, regenerates bootstrap.rs      |
 | `puerto generate migration <name>`           | Creates migration file — does not touch puerto.toml                   |
+| `puerto validate`                            | Validates puerto.toml: entity names, field names, field types, duplicates |

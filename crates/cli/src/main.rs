@@ -48,6 +48,8 @@ enum Commands {
     },
     /// List entities and use cases defined in puerto.toml
     List,
+    /// Validate puerto.toml (field types, names, entity consistency)
+    Validate,
     /// Print shell completion script
     Completions {
         /// Shell to generate completions for (bash, zsh, fish, powershell)
@@ -61,6 +63,9 @@ enum GenerateAction {
     Scaffold {
         /// Entity name in PascalCase (e.g. Product, OrderItem)
         name: String,
+        /// Entity fields in name:Type format (e.g. title:String price:i64)
+        #[arg(raw = true)]
+        fields: Vec<String>,
     },
     /// Add a use case to an existing entity
     UseCase {
@@ -131,11 +136,26 @@ fn main() {
             println!("Add an entity with:    puerto generate scaffold <Name>");
         }),
         Commands::Generate {
-            action: GenerateAction::Scaffold { name },
+            action: GenerateAction::Scaffold { name, fields },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
+            let parsed_fields: Vec<crate::puerto_toml::Field> = match fields
+                .iter()
+                .map(|s| crate::puerto_toml::parse_field_arg(s))
+                .collect::<Result<_, _>>()
+            {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if let Err(e) = crate::generators::types::validate_fields(&parsed_fields) {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
             commands::list::require_puerto_project(&cwd)
-                .and_then(|_| scaffold::run_scaffold(&name, &cwd, None))
+                .and_then(|_| scaffold::run_scaffold(&name, &cwd, None, &parsed_fields))
         }
         Commands::Generate {
             action: GenerateAction::UseCase { entity, action },
@@ -198,6 +218,10 @@ fn main() {
         Commands::List => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             commands::list::run_list(&cwd)
+        }
+        Commands::Validate => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            commands::validate::run_validate(&cwd)
         }
         Commands::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "puerto", &mut std::io::stdout());

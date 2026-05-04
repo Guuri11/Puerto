@@ -4,3 +4,21 @@ name = "{{project-name}}"
 [[entity]]
 name = "Greeting"
 use_cases = ["get_greeting"]
+
+# Define typed fields on your entities:
+# [[entity]]
+# name = "Product"
+# use_cases = ["create_product", "list_products"]
+#
+# [[entity.fields]]
+# name = "name"
+# type = "String"
+#
+# [[entity.fields]]
+# name = "price"
+# type = "i64"
+#
+# [[entity.fields]]
+# name = "sku"
+# type = "String"
+# unique = true

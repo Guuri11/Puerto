@@ -24,6 +24,7 @@ business/src/
 ## Critical Rules
 
 - **Two constructors**: `new(props)` validates and returns `Result<Self, Error>`. `from_repository(data)` bypasses validation — only infrastructure calls this.
+- **Typed fields**: when `entity.fields` is defined in `puerto.toml`, generated structs include custom fields (Props, Params, DTOs, DB rows). When empty, defaults to `name: String`.
 - **Use case file structure**: exactly `Params struct` + `Trait`. The `Impl` struct lives in the **application layer**.
 - **Dependencies injected as `Arc<dyn Trait>`** — never concrete types.
 - **No `unwrap()`/`expect()`** outside of tests.
@@ -71,5 +72,23 @@ let widget = WidgetMother::random();
 let invalid = WidgetMother::new().with_empty_name().build_props();
 let batch   = WidgetMother::random_vec(5);
 ```
+
+When `entity.fields` is defined, the Mother generates builder methods for each custom field:
+
+```rust
+// For a Product entity with fields: name, price, sku
+let product = ProductMother::new()
+    .with_name("Widget")
+    .with_price(999)
+    .build();
+let invalid = ProductMother::new()
+    .with_empty_name()
+    .build_props();
+```
+
+- `String` fields get `.with_<field>(value)` and `.with_empty_<field>()`
+- `Option<T>` fields get `.with_<field>(value)` only
+- Numeric/bool/Uuid/DateTime fields get `.with_<field>(value)`
+- `Vec<T>` fields get `.with_<field>(values)`
 
 The `tests::mothers` block in `lib.rs` is patched automatically by `puerto generate domain` and `puerto generate scaffold`.

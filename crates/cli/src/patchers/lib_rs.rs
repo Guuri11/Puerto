@@ -137,7 +137,11 @@ pub fn patch_business_lib_crud(base: &Path, snake: &str) -> Result<(), Box<dyn s
     Ok(())
 }
 
-pub fn patch_infra_lib(base: &Path, snake: &str, db: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn patch_infra_lib(
+    base: &Path,
+    snake: &str,
+    db: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("infrastructure/src/lib.rs");
     let mut src = fs::read_to_string(&path)?;
 

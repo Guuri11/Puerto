@@ -13,8 +13,11 @@ Puerto is a Rust CLI tool that scaffolds full-stack DDD projects. It uses `cargo
 crates/
   cli/              — The puerto binary
     src/main.rs     — CLI definition, GenerateArgs setup, test suite
-    src/scaffold.rs — File writer, lib.rs patcher, bootstrap generator
-    src/puerto_toml.rs — puerto.toml serde structs + read/write/add_entity
+    src/commands/   — Command handlers (scaffold, domain, validate, etc.)
+    src/generators/ — Dynamic code generators (domain, application, infrastructure, presentation, types)
+    src/patchers/   — lib.rs patcher, bootstrap generator
+    src/puerto_toml.rs — puerto.toml serde structs + read/write/add_entity + field parser
+    src/tests.rs    — Structural test suite
     template/       — The "basic" DDD template (edit directly here)
       Cargo.toml          — Workspace manifest (workspace only, no [package])
       cargo-generate.toml — Template config (controls which files get substitution)
@@ -38,12 +41,33 @@ Every generated project has a `puerto.toml` at the root:
 name = "my-app"
 
 [[entity]]
-name = "Greeting"           # PascalCase
-use_cases = ["get_greeting"] # snake_case action names
+name = "Greeting"             # PascalCase
+use_cases = ["get_greeting"]   # snake_case action names
 
 [[entity]]
 name = "Product"
-use_cases = ["create_product"]
+use_cases = ["create_product", "list_products"]
+
+[[entity.fields]]
+name = "name"                  # snake_case field name
+type = "String"                # Rust type from the type registry
+
+[[entity.fields]]
+name = "price"
+type = "i64"
+
+[[entity.fields]]
+name = "sku"
+type = "String"
+unique = true                  # generates unique DB constraint
+
+[[entity.fields]]
+name = "description"
+type = "Option<String>"        # nullable field
+
+[[entity.fields]]
+name = "tags"
+type = "Vec<String>"           # array field
 ```
 
 **Rules:**
@@ -52,8 +76,25 @@ use_cases = ["create_product"]
 - `presentation/src/generated/bootstrap.rs` is regenerated from puerto.toml on every scaffold run
 - **Never hand-edit `generated/bootstrap.rs`** — run `puerto generate bootstrap` instead
 - All derived identifiers come from `name` (PascalCase) and `use_cases` entries (snake_case)
+- If `entity.fields` is empty or absent, entities default to `name: String` (backward compatible)
+- Field types must match the type registry — run `puerto validate` to check
 
-See `.claude/rules/puerto-toml.md` for the full derivation table.
+### Type Registry
+
+| Rust Type | SQL Type | OpenAPI | Default (tests) |
+|-----------|----------|---------|------------------|
+| `String` | `TEXT` | `string` | `"example"` |
+| `i64` | `BIGINT` | `integer(int64)` | `42` |
+| `bool` | `BOOLEAN` | `boolean` | `true` |
+| `f64` | `DOUBLE` | `number(double)` | `1.5` |
+| `Uuid` | `UUID` | `string(uuid)` | `Uuid::new_v4()` |
+| `DateTime<Utc>` | `TIMESTAMPTZ` | `string(date-time)` | `Utc::now()` |
+| `Option<T>` | nullable SQL | `T?` | `None` |
+| `Vec<String>` | `TEXT[]` | `array[string]` | `vec![]` |
+| `Vec<i64>` | `BIGINT[]` | `array[integer]` | `vec![]` |
+| `HashMap<String, String>` | `JSONB` | `object` | `HashMap::new()` |
+
+See `.claude/rules/puerto-toml.md` for the full derivation table and field rules.
 
 ## Generated Project Architecture
 
@@ -88,6 +129,7 @@ puerto new --name <name> --no-db           # Fully non-interactive, no database
 puerto new --name <name> --no-db --destination /tmp/projects  # Control output directory
 
 puerto generate scaffold <Name>            # Add a new DDD entity — all layers at once (infers db from puerto.toml)
+puerto generate scaffold <Name> name:String price:i64!  # Scaffold with typed fields (! = unique)
 puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
 puerto generate application <Name>         # Application layer only: use case impls
 puerto generate repository <Name>          # Infrastructure layer only: InMemory or Pg repo (inferred from puerto.toml)
@@ -98,6 +140,7 @@ puerto generate bootstrap                  # Regenerate bootstrap.rs from puerto
 puerto generate snippets                   # Write IDE snippet files (Zed + VS Code)
 puerto generate snippets --ide zed         # Zed only  (.zed/snippets/rust.json)
 puerto generate snippets --ide vscode      # VS Code only (.vscode/puerto.code-snippets)
+puerto validate                            # Validate puerto.toml (field types, names, entity consistency)
 ```
 
 ## Make Commands

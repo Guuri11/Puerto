@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::generators::bootstrap::regenerate_bootstrap;
 use crate::generators::naming::{apply, pascal_to_snake, to_pascal_case, write_file};
 use crate::patchers::api_rs::patch_api_rs;
+use crate::puerto_toml::Field;
 
 pub(crate) const DTO: &str = r#"use business::domain::{snake}::model::{Pascal};
 use poem_openapi::Object;
@@ -25,36 +26,6 @@ impl {Pascal}Dto {
 
 #[derive(Debug, Object)]
 pub struct Create{Pascal}Request {
-    pub name: String,
-}
-"#;
-
-const CRUD_DTO: &str = r#"use business::domain::{snake}::model::{Pascal};
-use poem_openapi::Object;
-use uuid::Uuid;
-
-#[derive(Debug, Object)]
-pub struct {Pascal}Dto {
-    pub id: Uuid,
-    pub name: String,
-}
-
-impl {Pascal}Dto {
-    pub fn from_domain(entity: &{Pascal}) -> Self {
-        Self {
-            id: entity.id,
-            name: entity.name.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Object)]
-pub struct Create{Pascal}Request {
-    pub name: String,
-}
-
-#[derive(Debug, Object)]
-pub struct Update{Pascal}Request {
     pub name: String,
 }
 "#;
@@ -258,7 +229,128 @@ impl {Pascal}Api {
 }
 "#;
 
-const CRUD_ROUTES: &str = r#"use std::sync::Arc;
+// ── Dynamic generators ────────────────────────────────────────────────────────
+
+fn effective_fields(fields: &[Field]) -> Vec<Field> {
+    if fields.is_empty() {
+        vec![Field {
+            name: "name".into(),
+            field_type: "String".into(),
+            unique: false,
+        }]
+    } else {
+        fields.to_vec()
+    }
+}
+
+fn field_needs_clone(field_type: &str) -> bool {
+    matches!(
+        field_type,
+        "String" | "Option<String>" | "Vec<String>" | "Vec<i64>" | "HashMap<String, String>"
+    )
+}
+
+pub fn generate_crud_dto(pascal: &str, snake: &str, fields: &[Field]) -> String {
+    let eff = effective_fields(fields);
+
+    let dto_fields: String = eff
+        .iter()
+        .map(|f| format!("    pub {}: {},", f.name, f.field_type))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let dto_from_fields: String = eff
+        .iter()
+        .map(|f| {
+            if field_needs_clone(&f.field_type) {
+                format!("            {}: entity.{}.clone(),", f.name, f.name)
+            } else {
+                format!("            {}: entity.{},", f.name, f.name)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let request_fields: String = eff
+        .iter()
+        .filter(|f| f.field_type != "Uuid")
+        .map(|f| format!("    pub {}: {},", f.name, f.field_type))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let template = r#"use business::domain::{snake}::model::{Pascal};
+use poem_openapi::Object;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+pub struct {Pascal}Dto {
+    pub id: Uuid,
+{dto_fields}
+}
+
+impl {Pascal}Dto {
+    pub fn from_domain(entity: &{Pascal}) -> Self {
+        Self {
+            id: entity.id,
+{dto_from_fields}
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+pub struct Create{Pascal}Request {
+{request_fields}
+}
+
+#[derive(Debug, Object)]
+pub struct Update{Pascal}Request {
+{request_fields}
+}
+"#;
+
+    template
+        .replace("{Pascal}", pascal)
+        .replace("{snake}", snake)
+        .replace("{dto_fields}", &dto_fields)
+        .replace("{dto_from_fields}", &dto_from_fields)
+        .replace("{request_fields}", &request_fields)
+}
+
+fn create_params_mapping(eff: &[Field]) -> String {
+    eff.iter()
+        .filter(|f| f.field_type != "Uuid")
+        .map(|f| {
+            if field_needs_clone(&f.field_type) {
+                format!("                {}: body.{}.clone(),", f.name, f.name)
+            } else {
+                format!("                {}: body.{},", f.name, f.name)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn update_params_mapping(eff: &[Field]) -> String {
+    let mut lines = vec!["                id: id.0,".to_string()];
+    for f in eff.iter().filter(|f| f.field_type != "Uuid") {
+        if field_needs_clone(&f.field_type) {
+            lines.push(format!(
+                "                {}: body.{}.clone(),",
+                f.name, f.name
+            ));
+        } else {
+            lines.push(format!("                {}: body.{},", f.name, f.name));
+        }
+    }
+    lines.join("\n")
+}
+
+pub fn generate_crud_routes(pascal: &str, snake: &str, fields: &[Field]) -> String {
+    let eff = effective_fields(fields);
+    let create_params = create_params_mapping(&eff);
+    let update_params = update_params_mapping(&eff);
+
+    let template = r#"use std::sync::Arc;
 
 use business::{
     application::{snake}::{
@@ -305,7 +397,9 @@ impl {Pascal}Api {
     async fn create(&self, body: Json<Create{Pascal}Request>) -> Create{Pascal}Response {
         match self
             .create_{snake}
-            .execute(Create{Pascal}Params { name: body.name.clone() })
+            .execute(Create{Pascal}Params {
+{create_params}
+            })
             .await
         {
             Ok(entity) => Create{Pascal}Response::Created(Json({Pascal}Dto::from_domain(&entity))),
@@ -355,8 +449,7 @@ impl {Pascal}Api {
         match self
             .update_{snake}
             .execute(Update{Pascal}Params {
-                id: id.0,
-                name: body.name.clone(),
+{update_params}
             })
             .await
         {
@@ -388,10 +481,18 @@ impl {Pascal}Api {
 }
 "#;
 
+    template
+        .replace("{Pascal}", pascal)
+        .replace("{snake}", snake)
+        .replace("{create_params}", &create_params)
+        .replace("{update_params}", &update_params)
+}
+
 pub fn write_presentation_files(
     pascal: &str,
     snake: &str,
     base: &Path,
+    fields: &[Field],
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(format!("presentation/src/api/{snake}.rs")),
@@ -399,7 +500,7 @@ pub fn write_presentation_files(
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/dto.rs")),
-        &apply(CRUD_DTO, pascal, snake),
+        &generate_crud_dto(pascal, snake, fields),
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/responses.rs")),
@@ -411,7 +512,7 @@ pub fn write_presentation_files(
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/routes.rs")),
-        &apply(CRUD_ROUTES, pascal, snake),
+        &generate_crud_routes(pascal, snake, fields),
     )?;
     Ok(())
 }
@@ -431,7 +532,14 @@ pub fn run_generate_presentation(
         .into());
     }
 
-    write_presentation_files(&pascal, &snake, base)?;
+    let fields = config
+        .entity
+        .iter()
+        .find(|e| e.name == pascal)
+        .map(|e| e.fields.clone())
+        .unwrap_or_default();
+
+    write_presentation_files(&pascal, &snake, base, &fields)?;
     patch_api_rs(base, &snake)?;
     regenerate_bootstrap(base)?;
 
@@ -441,4 +549,3 @@ pub fn run_generate_presentation(
     println!("  All layers wired. Run `make run` to start.");
     Ok(())
 }
-

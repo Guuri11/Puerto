@@ -76,7 +76,7 @@ The domain depends on nothing. Everything else depends on the domain.
 
 ```bash
 # Install Puerto
-cargo install puerto-framework
+cargo install puerto
 
 # Scaffold a new project
 puerto new my-app
@@ -84,6 +84,28 @@ puerto new my-app
 # Enter the project and run
 cd my-app
 cargo run
+```
+
+Visit `http://localhost:8080` for the Swagger UI, or call the API directly:
+
+```bash
+curl http://localhost:8080/api/greetings/World
+```
+
+### Entity Fields
+
+Scaffold entities with typed fields — the type system flows from `puerto.toml` through all layers:
+
+```bash
+puerto generate scaffold Product name:String price:i64! sku:String
+```
+
+This creates a `Product` entity with custom fields in `puerto.toml`, and generates typed structs in every DDD layer (domain model, DTOs, repository rows, SQL migrations). Supported types include `String`, `i64`, `bool`, `f64`, `Uuid`, `DateTime<Utc>`, `Option<T>`, `Vec<T>`, and `HashMap<String, String>`. Append `!` to mark a field as unique (e.g., `sku:String!`).
+
+Validate your `puerto.toml` at any time:
+
+```bash
+puerto validate
 ```
 
 Visit `http://localhost:8080` for the Swagger UI, or call the API directly:

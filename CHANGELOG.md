@@ -1,3 +1,20 @@
+## [0.8.0] - 2026-05-04
+
+### 🚀 Features
+
+- **Entity fields in `puerto.toml`** — define typed fields on entities via `[[entity.fields]]` blocks. Generated model structs, Props, Params, DTOs, repository rows, and SQL migrations all derive from the field list automatically
+- **Type registry** — 13 Rust types supported out of the box: `String`, `i64`, `bool`, `f64`, `Uuid`, `DateTime<Utc>`, `Option<T>`, `Vec<T>`, `HashMap<String, String>`, and their nullable/array variants. Each type maps to SQL column types, OpenAPI formats, and default test values
+- **Scaffold with fields** — `puerto generate scaffold Product name:String price:i64! sku:String` passes typed fields via CLI. Fields are persisted to `puerto.toml` and used across all layers
+- **`puerto validate`** — new command that validates `puerto.toml`: entity names (PascalCase), field names (snake_case), field types (against the type registry), duplicate entities/fields, and warns about `Option` + `unique` combinations
+- **Dynamic generators** — all layer generators now produce typed code from the field list. When `fields` is empty, the previous `name: String` default is preserved for backward compatibility
+- **Field-aware Object Mother** — `ProductMother` generates builder methods for each custom field (`with_price()`, `with_empty_name()`, etc.) instead of just `with_name()`
+
+### 🚜 Refactor
+
+- Replaced string-constant generators with dynamic functions across all layers (`generate_model()`, `generate_mother()`, `generate_crud_dto()`, `generate_crud_routes()`, `generate_infra_entity()`, `generate_crud_infra_db_repository()`)
+- Added `generators/types.rs` module with `TypeMapping` registry, `resolve_type()`, `validate_fields()`, `collect_imports()`
+- Added `commands/validate.rs` module with full puerto.toml validation
+
 ## [0.7.2] - 2026-05-04
 
 ### Changed

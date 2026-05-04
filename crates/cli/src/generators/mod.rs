@@ -7,4 +7,5 @@ pub mod naming;
 pub mod presentation;
 pub mod project;
 pub mod scaffold;
+pub mod types;
 pub mod use_case;

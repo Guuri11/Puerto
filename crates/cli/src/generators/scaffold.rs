@@ -2,22 +2,23 @@ use std::path::Path;
 
 use crate::generators::{
     application::{USE_CASE_IMPL, write_application_files},
-    domain::{ERRORS, MODEL, USE_CASE_TRAIT, write_domain_files, write_mother, patch_mothers_lib},
-    infrastructure::{
-        INFRA_DB_REPOSITORY, INFRA_ENTITY, INFRA_REPOSITORY, write_repository_files,
+    domain::{
+        ERRORS, USE_CASE_TRAIT, generate_model, patch_mothers_lib, write_domain_files, write_mother,
     },
+    infrastructure::{INFRA_DB_REPOSITORY, INFRA_ENTITY, INFRA_REPOSITORY, write_repository_files},
     migration::run_migration,
     naming::{apply, pascal_to_snake, to_pascal_case, write_file},
     presentation::{DTO, ERROR_MAPPER, RESPONSES, ROUTES, write_presentation_files},
 };
 use crate::patchers::lib_rs::try_patch_libs;
+use crate::puerto_toml::Field;
 
 // Non-CRUD repository trait (find_by_id + save only — no find_all).
 // Used by the single-use-case path (`puerto generate scaffold` legacy / tests).
 const REPOSITORY: &str = r#"use async_trait::async_trait;
 use uuid::Uuid;
 
-use super::{errors:{Pascal}Error, model:{Pascal}};
+use super::{errors::{Pascal}Error, model::{Pascal}};
 
 #[async_trait]
 pub trait {Pascal}RepositoryTrait: Send + Sync {
@@ -54,7 +55,7 @@ fn write_files(
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(format!("business/src/domain/{snake}/model.rs")),
-        &apply(MODEL, pascal, snake),
+        &generate_model(pascal, snake, &[]),
     )?;
     write_file(
         &base.join(format!("business/src/domain/{snake}/errors.rs")),
@@ -121,11 +122,12 @@ fn write_files_crud(
     snake: &str,
     base: &Path,
     db: bool,
+    fields: &[Field],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    write_domain_files(pascal, snake, base)?;
-    write_application_files(pascal, snake, base)?;
-    write_repository_files(pascal, snake, base, db)?;
-    write_presentation_files(pascal, snake, base)?;
+    write_domain_files(pascal, snake, base, fields)?;
+    write_application_files(pascal, snake, base, fields)?;
+    write_repository_files(pascal, snake, base, db, fields)?;
+    write_presentation_files(pascal, snake, base, fields)?;
     Ok(())
 }
 
@@ -138,18 +140,19 @@ pub fn run(
     base: &Path,
     db: bool,
     crud: bool,
+    fields: &[Field],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pascal = to_pascal_case(name);
     let snake = pascal_to_snake(&pascal);
 
     if crud {
-        write_files_crud(&pascal, &snake, base, db)?;
+        write_files_crud(&pascal, &snake, base, db, fields)?;
     } else {
         write_files(&pascal, &snake, base, db)?;
     }
     try_patch_libs(&snake, base, db, crud);
 
-    let _ = write_mother(&pascal, &snake, base);
+    let _ = write_mother(&pascal, &snake, base, fields);
     let _ = patch_mothers_lib(base, &snake);
 
     let use_cases = if crud {
@@ -164,9 +167,10 @@ pub fn run(
         vec![format!("create_{snake}")]
     };
 
-    let bootstrapped = crate::puerto_toml::add_entity(base, &pascal, use_cases, db)
-        .and_then(|_| crate::generators::bootstrap::regenerate_bootstrap(base))
-        .is_ok();
+    let bootstrapped =
+        crate::puerto_toml::add_entity(base, &pascal, use_cases, db, fields.to_vec())
+            .and_then(|_| crate::generators::bootstrap::regenerate_bootstrap(base))
+            .is_ok();
 
     let repo_name = if db {
         format!("Pg{pascal}Repository")
@@ -193,17 +197,30 @@ pub fn run(
 /// CLI entry point for `puerto generate scaffold <Name>`.
 /// Reads `project.db` from `puerto.toml`, always generates full CRUD.
 /// `sqlx_bin` overrides the sqlx binary path (pass `None` in production, `Some("/bin/true")` in tests).
+/// `cli_fields` are fields passed from the CLI (e.g. `title:String price:i64`).
 pub fn run_scaffold(
     name: &str,
     base: &Path,
     sqlx_bin: Option<&str>,
+    cli_fields: &[Field],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     let db = config.project.db;
-    run(name, base, db, true)?;
+    let pascal = to_pascal_case(name);
+    let fields = if !cli_fields.is_empty() {
+        cli_fields.to_vec()
+    } else {
+        config
+            .entity
+            .iter()
+            .find(|e| e.name == pascal)
+            .map(|e| e.fields.clone())
+            .unwrap_or_default()
+    };
+    run(name, base, db, true, &fields)?;
     if db {
-        let snake = pascal_to_snake(&to_pascal_case(name));
-        let migration_sql = crate::generators::infrastructure::create_table_sql(&snake);
+        let snake = pascal_to_snake(&pascal);
+        let migration_sql = crate::generators::infrastructure::create_table_sql(&snake, &fields);
         run_migration(
             &format!("create_{snake}_table"),
             base,

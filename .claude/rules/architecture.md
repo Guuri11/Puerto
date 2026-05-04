@@ -85,6 +85,42 @@ impl Entity {
 }
 ```
 
+When `entity.fields` is defined in `puerto.toml`, the generated structs include custom fields:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct ProductProps {
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Product {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    // Custom fields from puerto.toml
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+```
+
+When `entity.fields` is empty or absent (backward compatible), entities default to a single `name: String` field.
+
+### Validation in `new()`
+
+- `String` fields are validated with `.trim().is_empty()` → `ValidationError("{field}_empty")`
+- `Option<String>` fields are not validated (may be `None`)
+- Numeric and other types pass through without domain validation
+
 ### Use case file structure
 
 Each file in `domain/<entity>/use_cases/` contains **exactly** three things:
@@ -103,6 +139,29 @@ pub trait CreateEntityUseCaseTrait: Send + Sync {
 ```
 
 The `Impl` struct lives in the **application layer**, not here.
+
+When `entity.fields` is defined in `puerto.toml`, `CreateEntityParams` includes all custom fields (minus system fields like `id`, `created_at`, etc.):
+
+```rust
+pub struct CreateProductParams {
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+
+pub struct UpdateProductParams {
+    pub id: Uuid,
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+```
+
+Custom use cases (added via `puerto generate use-case`) also support typed fields — their Params are defined manually when creating the use case.
 
 ### Repository trait (port)
 
@@ -209,6 +268,27 @@ infrastructure/migrations/
 - `db.rs` is shared across all entities — never duplicated per entity
 - `entity.rs` and `db.rs` are only present when `db = true` in puerto.toml
 
+**When `entity.fields` is defined**, `<Entity>Db` includes all custom columns alongside system columns:
+
+```rust
+#[derive(Debug, sqlx::FromRow)]
+pub struct ProductDb {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    // Custom columns from puerto.toml
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+```
+
+SQL type mappings come from the type registry (see `puerto-toml.md`).
+
 ---
 
 ## Presentation Layer
@@ -256,6 +336,33 @@ pub mod routes;
 - `puerto generate bootstrap` (manual)
 
 Contains all DI wiring: repo instantiation, use case wiring, `OpenApiService` setup, route registration.
+
+### DTOs with typed fields
+
+When `entity.fields` is defined, `dto.rs` generates typed request/response structs that map to the entity's custom fields:
+
+```rust
+// CreateProductRequest maps to CreateProductParams
+#[derive(Debug, Deserialize)]
+pub struct CreateProductRequest {
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+
+// ProductDto maps from the domain model for responses
+#[derive(Debug, Serialize)]
+pub struct ProductDto {
+    pub id: String,
+    pub name: String,
+    pub price: i64,
+    // ...
+}
+```
+
+Each OpenAPI type derives from the type registry mapping (e.g., `i64` → `integer(int64)`, `Uuid` → `string(uuid)`).
 
 ### Rules
 

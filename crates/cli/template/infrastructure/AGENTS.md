@@ -36,10 +36,12 @@ impl EntityRepositoryTrait for InMemoryEntityRepository {
 When replacing the in-memory adapter with SQLx:
 
 1. Add `sqlx` to `infrastructure/Cargo.toml`
-2. Create `infrastructure/src/<entity>/entity.rs` — flat `#[derive(sqlx::FromRow)]` struct
+2. Create `infrastructure/src/<entity>/entity.rs` — flat `#[derive(sqlx::FromRow)]` struct with system fields + custom fields from `puerto.toml`
 3. Implement conversions: `TryFrom<EntityDb> for Entity` + `From<&Entity> for EntityDb`
 4. Replace `InMemoryRepository` with the SQLx implementation
 5. Run migrations: `sqlx migrate run`
+
+**Typed fields**: When `entity.fields` is defined, `EntityDb` includes all custom columns alongside system fields (`id`, `created_at`, `updated_at`, `deleted`, `deleted_at`). SQL column types are mapped from the type registry (see `puerto.toml`).
 
 ## Adding a New Entity Adapter
 

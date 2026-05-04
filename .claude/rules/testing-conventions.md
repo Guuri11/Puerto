@@ -77,11 +77,43 @@ impl GreetingMother {
         Self::new().build()
     }
 
-    pub fn random_vec(n: usize) -> Vec<Greeting> {
+    pub fn random_vec(n:usize) -> Vec<Greeting> {
         (0..n).map(|_| Self::random()).collect()
     }
 }
 ```
+
+### Typed Fields (puerto.toml entity.fields)
+
+When `entity.fields` is defined in `puerto.toml`, the Object Mother generates builder methods for **each custom field** automatically:
+
+```rust
+pub struct ProductMother {
+    name: Option<String>,
+    price: Option<i64>,
+    sku: Option<String>,
+    description: Option<Option<String>>,
+    tags: Option<Vec<String>>,
+}
+
+impl ProductMother {
+    pub fn new() -> Self {
+        Self { name: None, price: None, sku: None, description: None, tags: None }
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self { self.name = Some(name.to_string()); self }
+    pub fn with_price(mut self, price: i64) -> Self { self.price = Some(price); self }
+    pub fn with_sku(mut self, sku: &str) -> Self { self.sku = Some(sku.to_string()); self }
+    pub fn with_empty_name(mut self) -> Self { self.name = Some("".to_string()); self }
+    // ...
+}
+```
+
+- `String` fields get `.with_<field>(value)` and `.with_empty_<field>()`
+- `Option<T>` fields get `.with_<field>(value)` only (no empty variant)
+- Numeric/bool/Uuid/DateTime fields get `.with_<field>(value)`
+- `Vec<T>` fields get `.with_<field>(values)`
+- Default values come from the type registry (e.g., `i64` defaults to `42`, `String` to `"example"`)
 
 ---
 
