@@ -1,0 +1,1905 @@
+use crate::commands::list::{require_puerto_project, run_list};
+use crate::commands::new::extract_template;
+use crate::{puerto_toml, scaffold, snippets};
+use cargo_generate::{GenerateArgs, TemplatePath, Vcs, generate};
+use serde_json;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+fn temp_dir(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("puerto_test_{name}"))
+}
+
+fn cleanup(path: &Path) {
+    let _ = fs::remove_dir_all(path);
+}
+
+fn generate_project(
+    name: &str,
+    destination: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let tmp = extract_template()?;
+
+    let args = GenerateArgs {
+        template_path: TemplatePath {
+            path: Some(tmp.path().to_string_lossy().into_owned()),
+            ..Default::default()
+        },
+        name: Some(name.to_string()),
+        destination: Some(destination.to_path_buf()),
+        vcs: Some(Vcs::None),
+        no_workspace: true,
+        ..Default::default()
+    };
+
+    let output_dir = generate(args)?;
+    drop(tmp);
+    Ok(output_dir)
+}
+
+// ── puerto new (non-interactive / flag-driven) ────────────────────────────
+
+#[test]
+fn new_name_flag_sets_project_name() {
+    let dir = temp_dir("new_name_flag");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output =
+        new_project_non_interactive(Some("explicit-name".into()), false, &dir).unwrap();
+
+    let content = fs::read_to_string(output.join("presentation/Cargo.toml")).unwrap();
+    assert!(content.contains("name = \"explicit-name\""));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn new_db_flag_creates_db_files() {
+    let dir = temp_dir("new_db_flag");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("db-project".into()), true, &dir).unwrap();
+
+    assert!(output.join("docker-compose.yml").exists());
+    assert!(output.join(".env").exists());
+    assert!(output.join(".env.example").exists());
+    assert!(output.join(".cargo/config.toml").exists());
+    assert!(output.join("infrastructure/migrations").is_dir());
+    assert!(output.join("infrastructure/src/db.rs").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn new_without_db_flag_has_no_db_files() {
+    let dir = temp_dir("new_no_db");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output =
+        new_project_non_interactive(Some("plain-project".into()), false, &dir).unwrap();
+
+    assert!(!output.join(".env.example").exists());
+    assert!(!output.join(".cargo/config.toml").exists());
+    assert!(!output.join("infrastructure/src/db.rs").exists());
+
+    cleanup(&dir);
+}
+
+// ── puerto new ────────────────────────────────────────────────────────────
+
+#[test]
+fn creates_project_structure() {
+    let dir = temp_dir("cg_structure");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("test-app", &dir).unwrap();
+
+    assert!(output.join("Cargo.toml").exists());
+    assert!(output.join("business/src/lib.rs").exists());
+    assert!(output.join("infrastructure/src/lib.rs").exists());
+    assert!(output.join("presentation/src/main.rs").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn presentation_cargo_toml_has_project_name() {
+    let dir = temp_dir("cg_cargo");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("my-puerto-app", &dir).unwrap();
+
+    let content = fs::read_to_string(output.join("presentation/Cargo.toml")).unwrap();
+    assert!(content.contains("name = \"my-puerto-app\""));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn main_rs_is_minimal_entry_point() {
+    let dir = temp_dir("cg_main");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("cool-project", &dir).unwrap();
+
+    let content = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
+    assert!(content.contains("generated::bootstrap::build_app"));
+    assert!(content.contains("mod generated"));
+    assert!(!content.contains("{{project-name}}"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn bootstrap_rs_wires_ddd_layers() {
+    let dir = temp_dir("cg_bootstrap");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("api-test", &dir).unwrap();
+
+    let content =
+        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(content.contains("GetGreetingUseCaseImpl"));
+    assert!(content.contains("InMemoryGreetingRepository"));
+    assert!(content.contains("GreetingApi"));
+    assert!(content.contains("OpenApiService"));
+    assert!(content.contains("8080"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn ddd_layers_exist() {
+    let dir = temp_dir("cg_ddd");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("ddd-app", &dir).unwrap();
+
+    assert!(output.join("business/src/domain/greeting/model.rs").exists());
+    assert!(output.join("business/src/domain/greeting/errors.rs").exists());
+    assert!(output.join("business/src/domain/greeting/repository.rs").exists());
+    assert!(
+        output
+            .join("business/src/domain/greeting/use_cases/get_greeting.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("business/src/application/greeting/get_greeting.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("infrastructure/src/greeting/repository.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("presentation/src/api/greeting/routes.rs")
+            .exists()
+    );
+    assert!(output.join("presentation/src/api/greeting/dto.rs").exists());
+    assert!(
+        output
+            .join("presentation/src/api/greeting/error_mapper.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("presentation/src/api/greeting/responses.rs")
+            .exists()
+    );
+    assert!(output.join("puerto.toml").exists());
+    assert!(output.join("presentation/src/generated.rs").exists());
+    assert!(
+        output
+            .join("presentation/src/generated/bootstrap.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn puerto_toml_has_project_name_and_greeting_entity() {
+    let dir = temp_dir("cg_puerto_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("my-app", &dir).unwrap();
+
+    let content = fs::read_to_string(output.join("puerto.toml")).unwrap();
+    assert!(content.contains("name = \"my-app\""));
+    assert!(content.contains("name = \"Greeting\""));
+    assert!(content.contains("get_greeting"));
+
+    cleanup(&dir);
+}
+
+#[test]
+#[ignore = "slow: compiles and tests a full generated project"]
+fn generated_project_compiles_and_tests_pass() {
+    let dir = temp_dir("cg_compile");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("compile-test", &dir).unwrap();
+
+    let result = std::process::Command::new("cargo")
+        .args(["test", "--workspace"])
+        .current_dir(&output)
+        .output()
+        .expect("failed to run cargo test");
+
+    if !result.status.success() {
+        eprintln!("stdout:\n{}", String::from_utf8_lossy(&result.stdout));
+        eprintln!("stderr:\n{}", String::from_utf8_lossy(&result.stderr));
+        panic!("cargo test failed in generated project");
+    }
+
+    cleanup(&dir);
+}
+
+// ── puerto generate scaffold ──────────────────────────────────────────────
+
+#[test]
+fn scaffold_creates_all_files_for_single_word_entity() {
+    let dir = temp_dir("scaffold_single_word");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    assert!(dir.join("business/src/domain/product/model.rs").exists());
+    assert!(dir.join("business/src/domain/product/errors.rs").exists());
+    assert!(dir.join("business/src/domain/product/repository.rs").exists());
+    assert!(
+        dir.join("business/src/domain/product/use_cases/create_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/application/product/create_product.rs")
+            .exists()
+    );
+    assert!(dir.join("infrastructure/src/product/repository.rs").exists());
+    assert!(dir.join("presentation/src/api/product.rs").exists());
+    assert!(dir.join("presentation/src/api/product/dto.rs").exists());
+    assert!(dir.join("presentation/src/api/product/responses.rs").exists());
+    assert!(
+        dir.join("presentation/src/api/product/error_mapper.rs")
+            .exists()
+    );
+    assert!(dir.join("presentation/src/api/product/routes.rs").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_creates_all_files_for_multi_word_entity() {
+    let dir = temp_dir("scaffold_multi_word");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    scaffold::run("OrderItem", &dir, false, false).unwrap();
+
+    assert!(dir.join("business/src/domain/order_item/model.rs").exists());
+    assert!(
+        dir.join("business/src/domain/order_item/use_cases/create_order_item.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/application/order_item/create_order_item.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("infrastructure/src/order_item/repository.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("presentation/src/api/order_item/routes.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_normalizes_lowercase_input() {
+    let dir = temp_dir("scaffold_lowercase");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    scaffold::run("product", &dir, false, false).unwrap();
+
+    assert!(dir.join("business/src/domain/product/model.rs").exists());
+    assert!(
+        dir.join("business/src/application/product/create_product.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_substitutes_pascal_name_in_model() {
+    let dir = temp_dir("scaffold_model_content");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
+    assert!(content.contains("pub struct ProductProps"));
+    assert!(content.contains("pub struct Product {"));
+    assert!(content.contains("ProductError::ValidationError"));
+    assert!(content.contains("product.validation_error.name_empty"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_substitutes_pascal_name_in_errors() {
+    let dir = temp_dir("scaffold_errors_content");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("business/src/domain/product/errors.rs")).unwrap();
+    assert!(content.contains("pub enum ProductError"));
+    assert!(content.contains("product.not_found"));
+    assert!(content.contains("product.repository_error"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_substitutes_pascal_name_in_use_case_impl() {
+    let dir = temp_dir("scaffold_impl_content");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("business/src/application/product/create_product.rs"))
+            .unwrap();
+    assert!(!content.contains("Create{Pascal}UseCaseImpl"));
+    assert!(content.contains("CreateProductUseCaseImpl"));
+    assert!(content.contains("ProductRepositoryTrait"));
+    assert!(content.contains("product.validation_error.name_empty"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_crud_impls_import_model_struct_in_tests() {
+    let dir = temp_dir("scaffold_model_import");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    scaffold::run("Product", &dir, false, true).unwrap();
+
+    for uc in &["get_product", "list_product", "update_product", "delete_product"] {
+        let path = dir.join(format!("business/src/application/product/{uc}.rs"));
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(
+            content.contains("model::{Product, ProductProps}"),
+            "{uc}.rs test block missing `model::{{Product, ProductProps}}` import"
+        );
+    }
+
+    cleanup(&dir);
+}
+
+// ── lib.rs auto-patching ──────────────────────────────────────────────────
+
+fn setup_puerto_stubs(base: &Path) {
+    fs::create_dir_all(base.join("business/src")).unwrap();
+    fs::write(
+        base.join("business/src/lib.rs"),
+        "pub mod domain {\n  pub mod greeting {\n    pub mod errors;\n    pub mod model;\n    pub mod repository;\n    pub mod use_cases {\n      pub mod get_greeting;\n    }\n  }\n}\npub mod application {\n  pub mod greeting {\n    pub mod get_greeting;\n  }\n}\n",
+    )
+    .unwrap();
+
+    fs::create_dir_all(base.join("infrastructure/src")).unwrap();
+    fs::write(
+        base.join("infrastructure/src/lib.rs"),
+        "pub mod greeting {\n    pub mod repository;\n}\n",
+    )
+    .unwrap();
+
+    fs::create_dir_all(base.join("presentation/src")).unwrap();
+    fs::write(
+        base.join("presentation/src/api.rs"),
+        "pub mod error;\npub mod greeting;\n",
+    )
+    .unwrap();
+
+    fs::write(
+        base.join("puerto.toml"),
+        "[project]\nname = \"test-app\"\n\n[[entity]]\nname = \"Greeting\"\nuse_cases = [\"get_greeting\"]\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn scaffold_patches_business_lib_rs() {
+    let dir = temp_dir("scaffold_patch_business");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+    assert!(content.contains("pub mod product {"));
+    assert!(content.contains("pub mod errors;"));
+    assert!(content.contains("pub mod use_cases {"));
+    assert!(!content.contains("pub mod use_cases;")); // never the bare form
+    assert!(content.contains("pub mod create_product;"));
+    assert!(content.contains("pub mod greeting {"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_patches_infra_lib_rs() {
+    let dir = temp_dir("scaffold_patch_infra");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let content = fs::read_to_string(dir.join("infrastructure/src/lib.rs")).unwrap();
+    assert!(content.contains("pub mod product {"));
+    assert!(content.contains("pub mod repository;"));
+    assert!(content.contains("pub mod greeting {"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_patches_api_rs() {
+    let dir = temp_dir("scaffold_patch_api");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let content = fs::read_to_string(dir.join("presentation/src/api.rs")).unwrap();
+    assert!(content.contains("pub mod product;"));
+    assert!(content.contains("pub mod error;"));
+    assert!(content.contains("pub mod greeting;"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_updates_puerto_toml_and_regenerates_bootstrap() {
+    let dir = temp_dir("scaffold_bootstrap");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let toml = fs::read_to_string(dir.join("puerto.toml")).unwrap();
+    assert!(toml.contains("name = \"Product\""));
+    assert!(toml.contains("create_product"));
+    assert!(toml.contains("name = \"Greeting\"")); // original still present
+
+    let bootstrap =
+        fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(bootstrap.contains("CreateProductUseCaseImpl"));
+    assert!(bootstrap.contains("InMemoryProductRepository"));
+    assert!(bootstrap.contains("ProductApi"));
+    assert!(bootstrap.contains("GetGreetingUseCaseImpl"));
+    assert!(bootstrap.contains("InMemoryGreetingRepository"));
+    assert!(bootstrap.contains("GreetingApi"));
+
+    cleanup(&dir);
+}
+
+// ── puerto generate use-case ──────────────────────────────────────────────
+
+fn setup_use_case_stubs(base: &Path) {
+    fs::write(
+        base.join("puerto.toml"),
+        "[project]\nname = \"test-app\"\n\n[[entity]]\nname = \"Product\"\nuse_cases = [\"create_product\"]\n",
+    )
+    .unwrap();
+
+    fs::create_dir_all(base.join("business/src/domain/product")).unwrap();
+    fs::write(
+        base.join("business/src/lib.rs"),
+        "pub mod domain {\n    pub mod product {\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases {\n            pub mod create_product;\n        }\n    }\n}\npub mod application {\n    pub mod product {\n        pub mod create_product;\n    }\n}\n",
+    )
+    .unwrap();
+
+    fs::create_dir_all(base.join("business/src/application/product")).unwrap();
+}
+
+#[test]
+fn use_case_creates_trait_file() {
+    let dir = temp_dir("uc_trait");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    assert!(
+        dir.join("business/src/domain/product/use_cases/delete_product.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_creates_impl_file() {
+    let dir = temp_dir("uc_impl");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    assert!(
+        dir.join("business/src/application/product/delete_product.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_trait_file_has_correct_content() {
+    let dir = temp_dir("uc_trait_content");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("business/src/domain/product/use_cases/delete_product.rs"))
+            .unwrap();
+    assert!(content.contains("DeleteProductParams"));
+    assert!(content.contains("DeleteProductUseCaseTrait"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_impl_file_has_correct_content() {
+    let dir = temp_dir("uc_impl_content");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("business/src/application/product/delete_product.rs"))
+            .unwrap();
+    assert!(content.contains("DeleteProductUseCaseImpl"));
+    assert!(content.contains("ProductRepositoryTrait"));
+    assert!(content.contains("DeleteProductUseCaseTrait"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_patches_business_lib_rs() {
+    let dir = temp_dir("uc_patch_lib");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+    assert!(content.contains("pub mod delete_product;"));
+    assert!(content.contains("pub mod create_product;")); // existing preserved
+    assert_eq!(content.matches("pub mod delete_product;").count(), 2); // domain + application
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_updates_puerto_toml() {
+    let dir = temp_dir("uc_puerto_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    let content = fs::read_to_string(dir.join("puerto.toml")).unwrap();
+    assert!(content.contains("delete_product"));
+    assert!(content.contains("create_product")); // existing preserved
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_regenerates_bootstrap() {
+    let dir = temp_dir("uc_bootstrap");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(content.contains("DeleteProductUseCaseImpl"));
+    assert!(content.contains("CreateProductUseCaseImpl"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_normalizes_entity_casing() {
+    let dir = temp_dir("uc_normalize");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("product", "delete_product", &dir).unwrap();
+
+    assert!(
+        dir.join("business/src/domain/product/use_cases/delete_product.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_errors_when_entity_not_in_puerto_toml() {
+    let dir = temp_dir("uc_missing_entity");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+
+    let result = scaffold::run_use_case("NonExistent", "do_something", &dir);
+    assert!(result.is_err());
+
+    cleanup(&dir);
+}
+
+// ── puerto new --db ───────────────────────────────────────────────────────
+
+fn new_project_non_interactive(
+    name: Option<String>,
+    db: bool,
+    destination: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let tmp = extract_template()?;
+    let args = GenerateArgs {
+        template_path: TemplatePath {
+            path: Some(tmp.path().to_string_lossy().into_owned()),
+            ..Default::default()
+        },
+        name: name.clone(),
+        destination: Some(destination.to_path_buf()),
+        vcs: Some(Vcs::None),
+        no_workspace: true,
+        ..Default::default()
+    };
+    let output = generate(args)?;
+    drop(tmp);
+    if db {
+        scaffold::apply_db_to_new_project(&output)?;
+    }
+    Ok(output)
+}
+
+fn generate_db_project(
+    name: &str,
+    destination: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let output = generate_project(name, destination)?;
+    scaffold::apply_db_to_new_project(&output)?;
+    Ok(output)
+}
+
+#[test]
+fn db_project_has_env_example() {
+    let dir = temp_dir("db_env");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    let content = fs::read_to_string(output.join(".env.example")).unwrap();
+    assert!(content.contains("DATABASE_URL"));
+    assert!(content.contains("db_app"));
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_has_env_file_with_project_db_name() {
+    let dir = temp_dir("db_env_file");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("my-api", &dir).unwrap();
+    let content = fs::read_to_string(output.join(".env")).unwrap();
+    assert!(content.contains("DATABASE_URL"));
+    assert!(content.contains("my_api"));
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_has_docker_compose_with_project_name() {
+    let dir = temp_dir("db_docker_compose");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("my-api", &dir).unwrap();
+    let content = fs::read_to_string(output.join("docker-compose.yml")).unwrap();
+    assert!(content.contains("postgres:16"));
+    assert!(content.contains("my-api-postgres"));
+    assert!(content.contains("my_api"));
+    assert!(content.contains("5432"));
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_has_gitignore_with_env() {
+    let dir = temp_dir("db_gitignore");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    let gitignore_path = output.join(".gitignore");
+    if gitignore_path.exists() {
+        let content = fs::read_to_string(&gitignore_path).unwrap();
+        assert!(content.contains(".env"));
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_makefile_has_docker_and_sqlx_targets() {
+    let dir = temp_dir("db_makefile_targets");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    let content = fs::read_to_string(output.join("Makefile")).unwrap();
+    assert!(content.contains("docker-compose/up"));
+    assert!(content.contains("docker-compose/down"));
+    assert!(content.contains("sqlx/migrate"));
+    assert!(content.contains("sqlx/prepare"));
+    assert!(content.contains("sqlx/check"));
+    assert!(content.contains("sqlx/online"));
+    assert!(content.contains("sqlx/offline"));
+    assert!(content.contains("reset-db"));
+    assert!(content.contains("test/infrastructure"));
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_has_cargo_config_with_sqlx_offline() {
+    let dir = temp_dir("db_cargo_config");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    let content = fs::read_to_string(output.join(".cargo/config.toml")).unwrap();
+    assert!(content.contains("SQLX_OFFLINE"));
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_has_migrations_dir() {
+    let dir = temp_dir("db_migrations");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    assert!(output.join("infrastructure/migrations").is_dir());
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_has_db_rs_with_pool_function() {
+    let dir = temp_dir("db_db_rs");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    let content = fs::read_to_string(output.join("infrastructure/src/db.rs")).unwrap();
+    assert!(content.contains("create_postgres_pool"));
+    assert!(content.contains("PgPool"));
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_infrastructure_cargo_has_sqlx() {
+    let dir = temp_dir("db_infra_cargo");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    let content = fs::read_to_string(output.join("infrastructure/Cargo.toml")).unwrap();
+    assert!(content.contains("sqlx"));
+    assert!(content.contains("postgres"));
+    cleanup(&dir);
+}
+
+#[test]
+fn db_project_puerto_toml_has_project_db_true() {
+    let dir = temp_dir("db_proj_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    let config = puerto_toml::read(&output).unwrap();
+    assert!(
+        config.project.db,
+        "project.db should be true for --db projects"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn no_db_project_puerto_toml_omits_project_db() {
+    let dir = temp_dir("no_db_proj_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("plain-app", &dir).unwrap();
+    let config = puerto_toml::read(&output).unwrap();
+    assert!(
+        !config.project.db,
+        "project.db should be false for non-db projects"
+    );
+    let content = fs::read_to_string(output.join("puerto.toml")).unwrap();
+    assert!(
+        !content.contains("db = true"),
+        "puerto.toml should not contain db = true for non-db projects"
+    );
+    cleanup(&dir);
+}
+
+// ── puerto generate scaffold --db ─────────────────────────────────────────
+
+fn setup_db_puerto_stubs(base: &Path) {
+    setup_puerto_stubs(base);
+    fs::create_dir_all(base.join("infrastructure/migrations")).unwrap();
+}
+
+#[test]
+fn scaffold_db_creates_entity_rs() {
+    let dir = temp_dir("scaffold_db_entity");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_db_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, true, false).unwrap();
+    assert!(dir.join("infrastructure/src/product/entity.rs").exists());
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_db_repository_uses_pgpool() {
+    let dir = temp_dir("scaffold_db_repo");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_db_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, true, false).unwrap();
+    let content =
+        fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
+    assert!(content.contains("PgPool"));
+    assert!(content.contains("PgProductRepository"));
+    assert!(!content.contains("InMemoryProductRepository"));
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_db_puerto_toml_has_db_true() {
+    let dir = temp_dir("scaffold_db_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_db_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, true, false).unwrap();
+    let content = fs::read_to_string(dir.join("puerto.toml")).unwrap();
+    assert!(content.contains("db = true"));
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_db_bootstrap_uses_pg_repo() {
+    let dir = temp_dir("scaffold_db_bootstrap");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_db_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, true, false).unwrap();
+    let content =
+        fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(content.contains("PgProductRepository"));
+    assert!(!content.contains("InMemoryProductRepository"));
+    assert!(content.contains("InMemoryGreetingRepository"));
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_without_db_still_uses_inmemory() {
+    let dir = temp_dir("scaffold_no_db");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, false, false).unwrap();
+    let content =
+        fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
+    assert!(content.contains("InMemoryProductRepository"));
+    assert!(!content.contains("PgPool"));
+    assert!(!dir.join("infrastructure/src/product/entity.rs").exists());
+    cleanup(&dir);
+}
+
+// ── puerto generate migration ─────────────────────────────────────────────
+
+#[test]
+fn migration_errors_when_sqlx_not_in_path() {
+    let dir = temp_dir("migration_no_sqlx");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+
+    let result = scaffold::run_migration(
+        "add_products_table",
+        &dir,
+        Some("nonexistent_sqlx_bin"),
+        None,
+    );
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("sqlx CLI not found"),
+        "expected 'sqlx CLI not found' in: {msg}"
+    );
+    assert!(
+        msg.contains("cargo install sqlx-cli"),
+        "expected install hint in: {msg}"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn migration_creates_migrations_dir_when_missing() {
+    let dir = temp_dir("migration_no_dir");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let _ = scaffold::run_migration("add_products_table", &dir, Some("/bin/true"), None);
+
+    assert!(
+        dir.join("infrastructure/migrations").exists(),
+        "expected infrastructure/migrations to be created automatically"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_is_idempotent() {
+    let dir = temp_dir("uc_idempotent");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    let toml = fs::read_to_string(dir.join("puerto.toml")).unwrap();
+    assert_eq!(toml.matches("delete_product").count(), 1);
+
+    let lib = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+    assert_eq!(lib.matches("pub mod delete_product;").count(), 2);
+
+    cleanup(&dir);
+}
+
+// ── Phase 5: logger ───────────────────────────────────────────────────────
+
+#[test]
+fn new_project_has_domain_logger_file() {
+    let dir = temp_dir("logger_domain_file");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("logger-test", &dir).unwrap();
+
+    assert!(output.join("business/src/domain/logger.rs").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn new_project_has_infrastructure_logger_file() {
+    let dir = temp_dir("logger_infra_file");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("logger-test", &dir).unwrap();
+
+    assert!(output.join("infrastructure/src/logger.rs").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn new_project_bootstrap_wires_tracing_logger() {
+    let dir = temp_dir("logger_bootstrap");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("logger-test", &dir).unwrap();
+
+    let content =
+        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(content.contains("TracingLogger"));
+    assert!(content.contains("let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger)"));
+    assert!(content.contains("Arc::clone(&logger)"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_use_case_impl_has_logger_field() {
+    let dir = temp_dir("logger_scaffold_impl");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("business/src/application/product/create_product.rs"))
+            .unwrap();
+    assert!(content.contains("pub logger: Arc<dyn LoggerTrait>"));
+    assert!(content.contains("use crate::domain::logger::LoggerTrait"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_generator_impl_has_logger_field() {
+    let dir = temp_dir("logger_uc_impl");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("business/src/application/product/delete_product.rs"))
+            .unwrap();
+    assert!(content.contains("pub logger: Arc<dyn LoggerTrait>"));
+    assert!(content.contains("use crate::domain::logger::LoggerTrait"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_bootstrap_wires_logger_for_all_entities() {
+    let dir = temp_dir("logger_bootstrap_scaffold");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, false, false).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(content.contains("TracingLogger"));
+    assert!(content.contains("let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger)"));
+    assert_eq!(content.matches("Arc::clone(&logger)").count(), 6);
+
+    cleanup(&dir);
+}
+
+// ── Phase 6: IDE snippets ─────────────────────────────────────────────────
+
+#[test]
+fn new_project_creates_zed_snippet_file() {
+    let dir = temp_dir("snippets_zed_new");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("snip-test".into()), false, &dir).unwrap();
+    snippets::apply(&output, None).unwrap();
+
+    assert!(output.join(".zed/snippets/rust.json").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn new_project_creates_vscode_snippet_file() {
+    let dir = temp_dir("snippets_vscode_new");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("snip-test".into()), false, &dir).unwrap();
+    snippets::apply(&output, None).unwrap();
+
+    assert!(output.join(".vscode/puerto.code-snippets").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn snippet_files_contain_valid_json() {
+    let dir = temp_dir("snippets_valid_json");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    snippets::apply(&dir, None).unwrap();
+
+    let zed = fs::read_to_string(dir.join(".zed/snippets/rust.json")).unwrap();
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&zed).is_ok(),
+        "zed snippet JSON invalid"
+    );
+
+    let vscode = fs::read_to_string(dir.join(".vscode/puerto.code-snippets")).unwrap();
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&vscode).is_ok(),
+        "vscode snippet JSON invalid"
+    );
+
+    let zed_sql = fs::read_to_string(dir.join(".zed/snippets/sql.json")).unwrap();
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&zed_sql).is_ok(),
+        "zed sql snippet JSON invalid"
+    );
+
+    let vscode_sql = fs::read_to_string(dir.join(".vscode/puerto.sql.code-snippets")).unwrap();
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&vscode_sql).is_ok(),
+        "vscode sql snippet JSON invalid"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_snippets_ide_zed_creates_only_zed_file() {
+    let dir = temp_dir("snippets_ide_zed");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    snippets::run(&dir, Some("zed")).unwrap();
+
+    assert!(dir.join(".zed/snippets/rust.json").exists());
+    assert!(!dir.join(".vscode/puerto.code-snippets").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_snippets_ide_vscode_creates_only_vscode_file() {
+    let dir = temp_dir("snippets_ide_vscode");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    snippets::run(&dir, Some("vscode")).unwrap();
+
+    assert!(!dir.join(".zed/snippets/rust.json").exists());
+    assert!(dir.join(".vscode/puerto.code-snippets").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_snippets_is_idempotent() {
+    let dir = temp_dir("snippets_idempotent");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    snippets::run(&dir, None).unwrap();
+    snippets::run(&dir, None).unwrap();
+
+    assert!(dir.join(".zed/snippets/rust.json").exists());
+    assert!(dir.join(".vscode/puerto.code-snippets").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_snippets_unknown_ide_returns_error() {
+    let dir = temp_dir("snippets_unknown_ide");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let result = snippets::run(&dir, Some("neovim"));
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("unknown IDE"));
+
+    cleanup(&dir);
+}
+
+// ── puerto generate scaffold --crud ──────────────────────────────────────
+
+fn setup_puerto_stubs_for_crud(base: &Path) {
+    setup_puerto_stubs(base);
+}
+
+#[test]
+fn scaffold_crud_creates_all_domain_use_case_files() {
+    let dir = temp_dir("scaffold_crud_domain_uc");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_for_crud(&dir);
+    scaffold::run("Product", &dir, false, true).unwrap();
+
+    assert!(
+        dir.join("business/src/domain/product/use_cases/create_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/domain/product/use_cases/get_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/domain/product/use_cases/list_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/domain/product/use_cases/update_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/domain/product/use_cases/delete_product.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_crud_creates_all_application_use_case_files() {
+    let dir = temp_dir("scaffold_crud_app_uc");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_for_crud(&dir);
+    scaffold::run("Product", &dir, false, true).unwrap();
+
+    assert!(
+        dir.join("business/src/application/product/create_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/application/product/get_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/application/product/list_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/application/product/update_product.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/application/product/delete_product.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_crud_repository_has_find_all() {
+    let dir = temp_dir("scaffold_crud_repo");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_for_crud(&dir);
+    scaffold::run("Product", &dir, false, true).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("business/src/domain/product/repository.rs")).unwrap();
+    assert!(content.contains("async fn find_all"));
+    assert!(content.contains("async fn find_by_id"));
+    assert!(content.contains("async fn save"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_crud_routes_has_all_http_methods() {
+    let dir = temp_dir("scaffold_crud_routes");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_for_crud(&dir);
+    scaffold::run("Product", &dir, false, true).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("presentation/src/api/product/routes.rs")).unwrap();
+    assert!(content.contains("method = \"post\""));
+    assert!(content.contains("method = \"get\""));
+    assert!(content.contains("method = \"put\""));
+    assert!(content.contains("method = \"delete\""));
+    assert!(content.contains("pub struct ProductApi"));
+    assert!(content.contains("pub create_product"));
+    assert!(content.contains("pub get_product"));
+    assert!(content.contains("pub list_product"));
+    assert!(content.contains("pub update_product"));
+    assert!(content.contains("pub delete_product"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_crud_patches_business_lib_with_all_use_cases() {
+    let dir = temp_dir("scaffold_crud_lib");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_for_crud(&dir);
+    scaffold::run("Product", &dir, false, true).unwrap();
+
+    let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+
+    // Verify domain use_cases block exists
+    assert!(content.contains("pub mod use_cases {"));
+    assert!(content.contains("pub mod create_product;"));
+    assert!(content.contains("pub mod get_product;"));
+    assert!(content.contains("pub mod list_product;"));
+    assert!(content.contains("pub mod update_product;"));
+    assert!(content.contains("pub mod delete_product;"));
+
+    // Regression: verify modules appear inside the application block, not only in domain.
+    // A location-agnostic contains() check passes even when the idempotency guard fires too
+    // early and leaves the application block empty.
+    let app_start = content.find("pub mod application {").expect("application block missing");
+    let app_block = &content[app_start..];
+    assert!(
+        app_block.contains("pub mod product {"),
+        "application block missing pub mod product"
+    );
+    let product_in_app = app_block.find("pub mod product {").unwrap();
+    let product_block = &app_block[product_in_app..];
+    assert!(product_block.contains("pub mod create_product;"), "application.product missing create_product");
+    assert!(product_block.contains("pub mod get_product;"), "application.product missing get_product");
+    assert!(product_block.contains("pub mod list_product;"), "application.product missing list_product");
+    assert!(product_block.contains("pub mod update_product;"), "application.product missing update_product");
+    assert!(product_block.contains("pub mod delete_product;"), "application.product missing delete_product");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_crud_bootstrap_wires_all_use_cases() {
+    let dir = temp_dir("scaffold_crud_bootstrap");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_for_crud(&dir);
+    fs::create_dir_all(dir.join("presentation/src/generated")).unwrap();
+    fs::write(
+        dir.join("presentation/src/generated/bootstrap.rs"),
+        "// placeholder\n",
+    )
+    .unwrap();
+    scaffold::run("Product", &dir, false, true).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(content.contains("CreateProductUseCaseImpl"));
+    assert!(content.contains("GetProductUseCaseImpl"));
+    assert!(content.contains("ListProductUseCaseImpl"));
+    assert!(content.contains("UpdateProductUseCaseImpl"));
+    assert!(content.contains("DeleteProductUseCaseImpl"));
+
+    cleanup(&dir);
+}
+
+// ── puerto generate domain / application / repository / presentation ─────
+
+#[test]
+fn generate_domain_creates_domain_files_and_mother() {
+    let dir = temp_dir("gen_domain");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+
+    scaffold::run_generate_domain("Widget", &output).unwrap();
+
+    assert!(output.join("business/src/domain/widget/model.rs").exists());
+    assert!(output.join("business/src/domain/widget/errors.rs").exists());
+    assert!(
+        output
+            .join("business/src/domain/widget/repository.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("business/src/domain/widget/use_cases/create_widget.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("business/src/domain/widget/use_cases/delete_widget.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("business/src/tests/mothers/widget_mother.rs")
+            .exists()
+    );
+
+    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    assert!(lib.contains("pub mod widget"));
+    assert!(lib.contains("pub mod widget_mother;"));
+
+    let toml = fs::read_to_string(output.join("puerto.toml")).unwrap();
+    assert!(toml.contains("Widget"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_application_creates_use_case_impls() {
+    let dir = temp_dir("gen_application");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+
+    scaffold::run_generate_domain("Widget", &output).unwrap();
+    scaffold::run_generate_application("Widget", &output).unwrap();
+
+    assert!(
+        output
+            .join("business/src/application/widget/create_widget.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("business/src/application/widget/get_widget.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("business/src/application/widget/list_widget.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("business/src/application/widget/update_widget.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("business/src/application/widget/delete_widget.rs")
+            .exists()
+    );
+
+    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    assert!(lib.contains("pub mod create_widget;"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_application_errors_without_prior_domain() {
+    let dir = temp_dir("gen_app_no_domain");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+
+    let result = scaffold::run_generate_application("Ghost", &output);
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("not found in puerto.toml")
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_repository_creates_infra_files() {
+    let dir = temp_dir("gen_repository");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+
+    scaffold::run_generate_domain("Widget", &output).unwrap();
+    scaffold::run_generate_repository("Widget", &output, None).unwrap();
+
+    assert!(
+        output
+            .join("infrastructure/src/widget/repository.rs")
+            .exists()
+    );
+    let repo =
+        fs::read_to_string(output.join("infrastructure/src/widget/repository.rs")).unwrap();
+    assert!(repo.contains("InMemoryWidgetRepository"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_presentation_creates_all_files_and_regenerates_bootstrap() {
+    let dir = temp_dir("gen_presentation");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+
+    scaffold::run_generate_domain("Widget", &output).unwrap();
+    scaffold::run_generate_repository("Widget", &output, None).unwrap();
+    scaffold::run_generate_presentation("Widget", &output).unwrap();
+
+    assert!(output.join("presentation/src/api/widget.rs").exists());
+    assert!(
+        output
+            .join("presentation/src/api/widget/routes.rs")
+            .exists()
+    );
+    assert!(output.join("presentation/src/api/widget/dto.rs").exists());
+    assert!(
+        output
+            .join("presentation/src/api/widget/responses.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("presentation/src/api/widget/error_mapper.rs")
+            .exists()
+    );
+
+    let bootstrap =
+        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(bootstrap.contains("WidgetApi"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_presentation_errors_without_prior_domain() {
+    let dir = temp_dir("gen_pres_no_domain");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+
+    let result = scaffold::run_generate_presentation("Ghost", &output);
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("not found in puerto.toml")
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_scaffold_includes_object_mother() {
+    let dir = temp_dir("scaffold_with_mother");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+
+    scaffold::run("Widget", &output, false, true).unwrap();
+
+    assert!(
+        output
+            .join("business/src/tests/mothers/widget_mother.rs")
+            .exists()
+    );
+    let mother =
+        fs::read_to_string(output.join("business/src/tests/mothers/widget_mother.rs")).unwrap();
+    assert!(mother.contains("WidgetMother"));
+    assert!(mother.contains("pub fn random()"));
+
+    cleanup(&dir);
+}
+
+// ── puerto list ──────────────────────────────────────────────────────────
+
+#[test]
+fn list_fails_outside_puerto_project() {
+    let dir = temp_dir("list_no_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let result = run_list(&dir);
+    assert!(result.is_err());
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("puerto.toml not found"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn list_succeeds_inside_puerto_project() {
+    let dir = temp_dir("list_with_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("list-app", &dir).unwrap();
+    run_list(&output).unwrap();
+
+    cleanup(&dir);
+}
+
+// ── require_puerto_project ────────────────────────────────────────────────
+
+#[test]
+fn generate_scaffold_fails_outside_puerto_project() {
+    let dir = temp_dir("gen_no_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let result = require_puerto_project(&dir);
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("puerto.toml not found")
+    );
+
+    cleanup(&dir);
+}
+
+// ── Phase 7.3: puerto new --no-demo ──────────────────────────────────────
+
+#[test]
+fn no_demo_has_no_greeting_files() {
+    let dir = temp_dir("no_demo_files");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+    scaffold::apply_no_demo(&output).unwrap();
+
+    assert!(!output.join("business/src/domain/greeting").exists());
+    assert!(!output.join("business/src/application/greeting").exists());
+    assert!(!output.join("infrastructure/src/greeting").exists());
+    assert!(!output.join("presentation/src/api/greeting").exists());
+    assert!(!output.join("presentation/src/api/greeting.rs").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn no_demo_puerto_toml_has_no_entity_block() {
+    let dir = temp_dir("no_demo_toml");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+    scaffold::apply_no_demo(&output).unwrap();
+
+    let content = fs::read_to_string(output.join("puerto.toml")).unwrap();
+    assert!(
+        !content.contains("[[entity]]"),
+        "puerto.toml should have no entity blocks"
+    );
+    assert!(
+        !content.contains("Greeting"),
+        "puerto.toml should not mention Greeting"
+    );
+    assert!(
+        content.contains("[project]"),
+        "puerto.toml should still have [project]"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn no_demo_lib_files_have_no_greeting_modules() {
+    let dir = temp_dir("no_demo_lib");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+    scaffold::apply_no_demo(&output).unwrap();
+
+    let biz_lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    assert!(
+        !biz_lib.contains("greeting"),
+        "business lib.rs should not reference greeting"
+    );
+    assert!(
+        biz_lib.contains("pub mod logger"),
+        "business lib.rs should retain logger"
+    );
+
+    let infra_lib = fs::read_to_string(output.join("infrastructure/src/lib.rs")).unwrap();
+    assert!(
+        !infra_lib.contains("greeting"),
+        "infra lib.rs should not reference greeting"
+    );
+    assert!(
+        infra_lib.contains("pub mod logger"),
+        "infra lib.rs should retain logger"
+    );
+
+    let api_rs = fs::read_to_string(output.join("presentation/src/api.rs")).unwrap();
+    assert!(
+        !api_rs.contains("greeting"),
+        "api.rs should not reference greeting"
+    );
+    assert!(
+        api_rs.contains("pub mod error"),
+        "api.rs should retain error module"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn no_demo_bootstrap_has_no_greeting() {
+    let dir = temp_dir("no_demo_bootstrap");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+    scaffold::apply_no_demo(&output).unwrap();
+
+    let content =
+        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(
+        !content.contains("Greeting"),
+        "bootstrap.rs should have no Greeting reference"
+    );
+    assert!(
+        !content.contains("greeting"),
+        "bootstrap.rs should have no greeting reference"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn default_project_still_has_greeting_files() {
+    let dir = temp_dir("with_demo");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("demo-app".into()), false, &dir).unwrap();
+
+    assert!(
+        output
+            .join("business/src/domain/greeting/model.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("presentation/src/api/greeting/routes.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn no_demo_then_scaffold_generates_new_entity() {
+    let dir = temp_dir("no_demo_then_scaffold");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
+    scaffold::apply_no_demo(&output).unwrap();
+    scaffold::run_scaffold("Player", &output, None).unwrap();
+
+    assert!(output.join("business/src/domain/player/model.rs").exists());
+    assert!(
+        output
+            .join("presentation/src/api/player/routes.rs")
+            .exists()
+    );
+    assert!(!output.join("business/src/domain/greeting").exists());
+
+    cleanup(&dir);
+}
+
+// ── Phase 7.4: scaffold infers db + always CRUD ───────────────────────────
+
+fn setup_puerto_stubs_with_project_db(base: &Path) {
+    fs::create_dir_all(base.join("business/src")).unwrap();
+    fs::write(
+        base.join("business/src/lib.rs"),
+        "pub mod domain {\n  pub mod greeting {\n    pub mod errors;\n    pub mod model;\n    pub mod repository;\n    pub mod use_cases {\n      pub mod get_greeting;\n    }\n  }\n}\npub mod application {\n  pub mod greeting {\n    pub mod get_greeting;\n  }\n}\n",
+    ).unwrap();
+    fs::create_dir_all(base.join("infrastructure/src")).unwrap();
+    fs::write(
+        base.join("infrastructure/src/lib.rs"),
+        "pub mod greeting {\n    pub mod repository;\n}\n",
+    )
+    .unwrap();
+    fs::create_dir_all(base.join("presentation/src")).unwrap();
+    fs::write(
+        base.join("presentation/src/api.rs"),
+        "pub mod error;\npub mod greeting;\n",
+    )
+    .unwrap();
+    fs::write(
+        base.join("puerto.toml"),
+        "[project]\nname = \"test-app\"\ndb = true\n\n[[entity]]\nname = \"Greeting\"\nuse_cases = [\"get_greeting\"]\n",
+    ).unwrap();
+}
+
+#[test]
+fn scaffold_7_4_infers_db_from_project_toml() {
+    let dir = temp_dir("scaffold_74_infer_db");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_with_project_db(&dir);
+    fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+    scaffold::run_scaffold("Team", &dir, Some("/bin/true")).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("infrastructure/src/team/repository.rs")).unwrap();
+    assert!(content.contains("PgTeamRepository"));
+    assert!(!content.contains("InMemoryTeamRepository"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_7_4_non_db_project_uses_inmemory() {
+    let dir = temp_dir("scaffold_74_no_db");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run_scaffold("Team", &dir, None).unwrap();
+
+    let content =
+        fs::read_to_string(dir.join("infrastructure/src/team/repository.rs")).unwrap();
+    assert!(content.contains("InMemoryTeamRepository"));
+    assert!(!content.contains("PgTeamRepository"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_7_4_always_generates_5_use_cases() {
+    let dir = temp_dir("scaffold_74_5_uc");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run_scaffold("Team", &dir, None).unwrap();
+
+    assert!(
+        dir.join("business/src/domain/team/use_cases/create_team.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/domain/team/use_cases/get_team.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/domain/team/use_cases/list_team.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/domain/team/use_cases/update_team.rs")
+            .exists()
+    );
+    assert!(
+        dir.join("business/src/domain/team/use_cases/delete_team.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_7_4_db_project_auto_creates_migration() {
+    let dir = temp_dir("scaffold_74_migration");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_with_project_db(&dir);
+    scaffold::run_scaffold("Team", &dir, Some("/bin/true")).unwrap();
+
+    assert!(
+        dir.join("infrastructure/migrations").is_dir(),
+        "run_migration should create infrastructure/migrations/ when project.db = true"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_7_4_non_db_project_does_not_create_migrations_dir() {
+    let dir = temp_dir("scaffold_74_no_migration");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+    scaffold::run_scaffold("Team", &dir, None).unwrap();
+
+    assert!(
+        !dir.join("infrastructure/migrations").exists(),
+        "run_migration should NOT be called when project.db = false"
+    );
+
+    cleanup(&dir);
+}
