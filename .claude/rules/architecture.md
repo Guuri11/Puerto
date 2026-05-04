@@ -138,8 +138,12 @@ pub enum EntityError {
     ValidationError(String),   // "name_empty", "email_invalid", etc.
     #[error("entity.not_found")]
     NotFound,
+    #[error("entity.duplicate")]
+    Duplicate,
     #[error("entity.repository_error")]
     RepositoryError,
+    #[error("entity.unknown")]
+    Unknown,
 }
 ```
 
@@ -292,4 +296,3 @@ impl EntityApi {
 - **`SCREAMING_SNAKE_CASE`** — constants
 - **Never** `unwrap()` or `expect()` outside of tests
 - Trait naming: `*RepositoryTrait`, `*UseCaseTrait`
-- `From<RepositoryError> for EntityError` to keep use cases clean

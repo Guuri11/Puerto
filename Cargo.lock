@@ -1639,7 +1639,7 @@ dependencies = [
 
 [[package]]
 name = "puerto"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "cargo-generate",
  "clap",

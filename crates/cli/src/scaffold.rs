@@ -1499,8 +1499,12 @@ pub enum {Pascal}Error {
     ValidationError(String),
     #[error("{snake}.not_found")]
     NotFound,
+    #[error("{snake}.duplicate")]
+    Duplicate,
     #[error("{snake}.repository_error")]
     RepositoryError,
+    #[error("{snake}.unknown")]
+    Unknown,
 }
 "#;
 
@@ -1713,6 +1717,8 @@ pub enum Create{Pascal}Response {
     Created(Json<{Pascal}Dto>),
     #[oai(status = 400)]
     BadRequest(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
     #[oai(status = 500)]
     InternalError(Json<ErrorResponse>),
 }
@@ -1721,6 +1727,7 @@ impl Create{Pascal}Response {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::BAD_REQUEST => Self::BadRequest(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
             _ => Self::InternalError(error),
         }
     }
@@ -1738,7 +1745,9 @@ impl IntoErrorResponse for {Pascal}Error {
         let (status, message) = match &self {
             {Pascal}Error::ValidationError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             {Pascal}Error::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            {Pascal}Error::Duplicate => (StatusCode::CONFLICT, self.to_string()),
             {Pascal}Error::RepositoryError => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            {Pascal}Error::Unknown => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };
 
         (
@@ -1905,6 +1914,11 @@ impl {Pascal}RepositoryTrait for Pg{Pascal}Repository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
+            if let Some(db_err) = e.as_database_error() {
+                if db_err.code().map_or(false, |c| c == "23505") {
+                    return {Pascal}Error::Duplicate;
+                }
+            }
             self.logger.error(&format!("save error: {e}"));
             {Pascal}Error::RepositoryError
         })?;
@@ -2161,6 +2175,11 @@ impl {Pascal}RepositoryTrait for Pg{Pascal}Repository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
+            if let Some(db_err) = e.as_database_error() {
+                if db_err.code().map_or(false, |c| c == "23505") {
+                    return {Pascal}Error::Duplicate;
+                }
+            }
             self.logger.error(&format!("save error: {e}"));
             {Pascal}Error::RepositoryError
         })?;
@@ -2794,6 +2813,8 @@ pub enum Create{Pascal}Response {
     Created(Json<{Pascal}Dto>),
     #[oai(status = 400)]
     BadRequest(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
     #[oai(status = 500)]
     InternalError(Json<ErrorResponse>),
 }
@@ -2802,6 +2823,7 @@ impl Create{Pascal}Response {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::BAD_REQUEST => Self::BadRequest(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
             _ => Self::InternalError(error),
         }
     }
@@ -2848,6 +2870,8 @@ pub enum Update{Pascal}Response {
     BadRequest(Json<ErrorResponse>),
     #[oai(status = 404)]
     NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
     #[oai(status = 500)]
     InternalError(Json<ErrorResponse>),
 }
@@ -2857,6 +2881,7 @@ impl Update{Pascal}Response {
         match status {
             StatusCode::BAD_REQUEST => Self::BadRequest(error),
             StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
             _ => Self::InternalError(error),
         }
     }
