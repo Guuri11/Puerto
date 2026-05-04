@@ -1,3 +1,9 @@
+## [0.7.2] - 2026-05-04
+
+### Changed
+
+- Refactor: split `main.rs` and `scaffold.rs` into dedicated modules (`commands`, `generators`, `patchers`, `tests`)
+
 ## [0.7.0] - 2026-05-03
 
 ### 💥 Rebranding — `puerto-framework` → `puerto`
