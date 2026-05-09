@@ -194,6 +194,57 @@ pub fn patch_business_lib_use_case(
     Ok(())
 }
 
+/// Adds `pub mod shared;` inside the `domain` block of `business/src/lib.rs`.
+pub fn patch_business_lib_shared(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("business/src/lib.rs");
+    let src = fs::read_to_string(&path)?;
+    if src.contains("pub mod shared;") {
+        return Ok(());
+    }
+    let content = "\n    pub mod shared;\n";
+    let patched = insert_before_block_end(&src, "domain", content)?;
+    fs::write(&path, patched)?;
+    Ok(())
+}
+
+pub fn patch_business_lib_value_objects(
+    base: &Path,
+    snake: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("business/src/lib.rs");
+    let src = fs::read_to_string(&path)?;
+
+    // Check within this entity's block specifically — a previous entity may already
+    // have `pub mod value_objects;` which would cause a false-positive global check.
+    let entity_marker = format!("pub mod {snake} {{");
+    if let Some(start) = src.find(&entity_marker) {
+        let rest = &src[start..];
+        let mut depth = 0usize;
+        let mut block_end = rest.len();
+        for (i, ch) in rest.char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        block_end = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if rest[..block_end].contains("pub mod value_objects;") {
+            return Ok(());
+        }
+    }
+
+    let content = "\n        pub mod value_objects;\n".to_string();
+    let patched = patch_lib_block(&src, &["domain", snake], &content)?;
+    fs::write(&path, patched)?;
+    Ok(())
+}
+
 pub fn try_patch_libs(snake: &str, base: &Path, db: bool, crud: bool) -> bool {
     let business_ok = if crud {
         patch_business_lib_crud(base, snake).is_ok()

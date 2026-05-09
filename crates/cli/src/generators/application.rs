@@ -1,9 +1,12 @@
 use std::path::Path;
 
 use crate::generators::naming::{apply, pascal_to_snake, to_pascal_case, write_file};
-use crate::generators::types::resolve_type;
+use crate::generators::types::{
+    field_vo_constructor, is_enum_vo, is_option_vo, is_value_object, is_vec_vo, resolve_type,
+    vo_import_path,
+};
 use crate::patchers::lib_rs::patch_business_lib_application_crud;
-use crate::puerto_toml::Field;
+use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 fn effective_fields(fields: &[Field]) -> Vec<Field> {
     if fields.is_empty() {
@@ -11,6 +14,9 @@ fn effective_fields(fields: &[Field]) -> Vec<Field> {
             name: "name".into(),
             field_type: "String".into(),
             unique: false,
+            value_object: None,
+            value_object_kind: None,
+            enum_variants: None,
         }]
     } else {
         fields.to_vec()
@@ -20,38 +26,34 @@ fn effective_fields(fields: &[Field]) -> Vec<Field> {
 fn test_props_lines(eff: &[Field], string_override: &str) -> String {
     eff.iter()
         .map(|f| {
-            let mapping = resolve_type(&f.field_type).unwrap();
-            let value = if f.field_type == "String" {
-                format!("\"{}\".to_string()", string_override)
-            } else {
-                mapping.default_expr.to_string()
-            };
-            format!("            {}: {},", f.name, value)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn test_create_params_lines(eff: &[Field]) -> String {
-    eff.iter()
-        .filter(|f| f.field_type != "Uuid")
-        .map(|f| {
-            let mapping = resolve_type(&f.field_type).unwrap();
-            format!("            {}: {},", f.name, mapping.default_expr)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn test_create_params_lines_with_empty(eff: &[Field], empty_field: &str) -> String {
-    eff.iter()
-        .filter(|f| f.field_type != "Uuid")
-        .map(|f| {
-            if f.name == empty_field {
-                format!("            {}: \"\".to_string(),", f.name)
+            if is_option_vo(f) {
+                format!("            {}: None,", f.name)
+            } else if is_vec_vo(f) {
+                format!("            {}: vec![],", f.name)
+            } else if is_enum_vo(f) {
+                let vo = f.value_object.as_deref().unwrap();
+                let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
+                format!("            {}: {}::{},", f.name, vo, first_variant)
+            } else if is_value_object(f) {
+                let mapping = resolve_type(&f.field_type).unwrap();
+                let vo = f.value_object.as_deref().unwrap();
+                let value = if f.field_type == "String" {
+                    format!("\"{}\".to_string()", string_override)
+                } else {
+                    mapping.default_expr.to_string()
+                };
+                format!(
+                    "            {}: {}::new({}).expect(\"valid {}\"),",
+                    f.name, vo, value, vo
+                )
             } else {
                 let mapping = resolve_type(&f.field_type).unwrap();
-                format!("            {}: {},", f.name, mapping.default_expr)
+                let value = if f.field_type == "String" {
+                    format!("\"{}\".to_string()", string_override)
+                } else {
+                    mapping.default_expr.to_string()
+                };
+                format!("            {}: {},", f.name, value)
             }
         })
         .collect::<Vec<_>>()
@@ -94,7 +96,65 @@ fn test_update_params_lines_with_empty(eff: &[Field], empty_field: &str) -> Stri
     lines.join("\n")
 }
 
-pub fn generate_create_use_case_impl(pascal: &str, snake: &str, fields: &[Field]) -> String {
+fn test_create_params_lines_vo(eff: &[Field]) -> String {
+    // CreateParams always uses primitive types — VOs are constructed inside the use case impl.
+    eff.iter()
+        .filter(|f| f.field_type != "Uuid")
+        .map(|f| {
+            let mapping = resolve_type(&f.field_type).unwrap();
+            let value = if f.field_type == "String" {
+                "\"example\".to_string()".to_string()
+            } else {
+                mapping.default_expr.to_string()
+            };
+            format!("            {}: {},", f.name, value)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn test_create_params_lines_with_empty_vo(eff: &[Field], empty_field: &str) -> String {
+    // CreateParams always uses primitive types — use primitive values for all fields.
+    eff.iter()
+        .filter(|f| f.field_type != "Uuid")
+        .map(|f| {
+            if f.name == empty_field {
+                format!("            {}: \"\".to_string(),", f.name)
+            } else {
+                let mapping = resolve_type(&f.field_type).unwrap();
+                let value = if f.field_type == "String" {
+                    "\"example\".to_string()".to_string()
+                } else {
+                    mapping.default_expr.to_string()
+                };
+                format!("            {}: {},", f.name, value)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn build_test_vo_imports(eff: &[Field], snake: &str, shared_vos: &[ValueObjectDefinition]) -> String {
+    let mut imports: Vec<String> = vec![];
+    for f in eff.iter().filter(|f| is_value_object(f)) {
+        let stmt = format!("    use {};", vo_import_path(f, snake, shared_vos));
+        if !imports.contains(&stmt) {
+            imports.push(stmt);
+        }
+    }
+    if imports.is_empty() {
+        String::new()
+    } else {
+        format!("\n{}", imports.join("\n"))
+    }
+}
+
+pub fn generate_create_use_case_impl(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
     let eff = effective_fields(fields);
 
     let mut extra_imports: Vec<String> = vec![];
@@ -109,10 +169,34 @@ pub fn generate_create_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
         }
     }
 
+    let vo_fields: Vec<&Field> = eff.iter().filter(|f| is_value_object(f)).collect();
+    if !vo_fields.is_empty() {
+        for vf in &vo_fields {
+            let stmt = format!("use {};", vo_import_path(vf, snake, shared_vos));
+            if !extra_imports.contains(&stmt) {
+                extra_imports.push(stmt);
+            }
+        }
+    }
+
+    // Props fields: VO fields use local variable, primitives use params.field
     let props_fields: Vec<String> = eff
         .iter()
         .filter(|f| f.field_type != "Uuid")
-        .map(|f| format!("            {}: params.{},", f.name, f.name))
+        .map(|f| {
+            if is_value_object(f) {
+                format!("            {}: {},", f.name, f.name)
+            } else {
+                format!("            {}: params.{},", f.name, f.name)
+            }
+        })
+        .collect();
+
+    // VO construction lines before Entity::new()
+    let vo_constructions: Vec<String> = eff
+        .iter()
+        .filter(|f| f.field_type != "Uuid" && is_value_object(f))
+        .map(|f| field_vo_constructor(f, "params.", pascal, shared_vos))
         .collect();
 
     let log_ident = format!("params.{}", eff[0].name);
@@ -124,6 +208,11 @@ pub fn generate_create_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
     };
 
     let props_fields_str = props_fields.join("\n");
+    let vo_constructions_str = if vo_constructions.is_empty() {
+        String::new()
+    } else {
+        vo_constructions.join("\n") + "\n"
+    };
 
     let mut s = String::new();
     s.push_str("use std::sync::Arc;\n\nuse async_trait::async_trait;");
@@ -133,28 +222,48 @@ pub fn generate_create_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
         "        self.logger.info(&format!(\"Creating {snake}: {}\"));\n",
         log_ident
     ));
+    s.push_str(&vo_constructions_str);
     s.push_str(&format!("        let entity = {pascal}::new({pascal}Props {{\n{props_fields}\n        }}).map_err(|e| {{\n            self.logger.warn(&e.to_string());\n            e\n        }})?;\n        self.repository.save(&entity).await.map_err(|e| {{\n            self.logger.error(&e.to_string());\n            e\n        }})?;\n        self.logger.info(&format!(\"{pascal} created\"));\n        Ok(entity)\n    }}\n}}\n", pascal=pascal, props_fields=props_fields_str));
 
-    let string_fields: Vec<&Field> = eff.iter().filter(|f| f.field_type == "String").collect();
-    let first_string_field: Option<&Field> = string_fields.first().copied();
-    let valid_test_name =
-        if eff.len() == 1 && eff[0].name == "name" && eff[0].field_type == "String" {
-            format!("should_create_{snake}_when_name_is_valid")
-        } else {
-            format!("should_create_{snake}_when_fields_are_valid")
-        };
+    // Only test empty strings for primitive String fields (not VO fields)
+    let primitive_string_fields: Vec<&Field> = eff
+        .iter()
+        .filter(|f| f.field_type == "String" && !is_value_object(f))
+        .collect();
+    let first_string_field: Option<&Field> = primitive_string_fields.first().copied();
+    let valid_test_name = if eff.len() == 1
+        && eff[0].name == "name"
+        && eff[0].field_type == "String"
+        && !is_value_object(&eff[0])
+    {
+        format!("should_create_{snake}_when_name_is_valid")
+    } else {
+        format!("should_create_{snake}_when_fields_are_valid")
+    };
+
+    // For valid assertion, check VO .value() for first VO String, primitive for non-VO
     let valid_assertion = if let Some(f) = first_string_field {
         format!(
             "\n        assert_eq!(result.unwrap().{}, \"example\");",
             f.name
         )
+    } else if let Some(f) = eff
+        .iter()
+        .find(|f| is_value_object(f) && f.field_type == "String")
+    {
+        format!(
+            "\n        assert_eq!(result.unwrap().{}.value(), \"example\");",
+            f.name
+        )
     } else {
         "\n        assert!(result.is_ok());".to_string()
     };
-    let valid_params = test_create_params_lines(&eff);
+
+    // Valid params: for VO fields, wrap in VoName::new(...).expect(...)
+    let valid_params = test_create_params_lines_vo(&eff);
     let mut empty_tests: Vec<String> = vec![];
-    for sf in &string_fields {
-        let empty_params = test_create_params_lines_with_empty(&eff, &sf.name);
+    for sf in &primitive_string_fields {
+        let empty_params = test_create_params_lines_with_empty_vo(&eff, &sf.name);
         let test_name = format!("should_return_error_when_{}_is_empty", sf.name);
         empty_tests.push(format!(
             "    #[tokio::test]
@@ -187,10 +296,64 @@ pub fn generate_create_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
             field = sf.name,
         ));
     }
+
+    // Add VO empty tests for VO String fields — test through use case so the entity-level error is asserted
+    let vo_string_fields: Vec<&Field> = eff
+        .iter()
+        .filter(|f| is_value_object(f) && f.field_type == "String")
+        .collect();
+    for vf in &vo_string_fields {
+        let vo = vf.value_object.as_deref().unwrap();
+        let vo_snake = pascal_to_snake(vo);
+        let test_name = format!("should_return_error_when_{}_is_empty", vf.name);
+        let empty_params = test_create_params_lines_with_empty_vo(&eff, &vf.name);
+        empty_tests.push(format!(
+            "    #[tokio::test]
+    async fn {test_name}() {{
+        // Arrange
+        let mock_repo = Mock{pascal}Repository::new();
+        let use_case = Create{pascal}UseCaseImpl {{
+            repository: Arc::new(mock_repo),
+            logger: Arc::new(silent_logger()),
+        }};
+
+        // Act
+        let result = use_case
+            .execute(Create{pascal}Params {{
+{empty_params}
+            }})
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            \"{snake}.invalid_{vo_snake}\"
+        );
+    }}",
+            test_name = test_name,
+            pascal = pascal,
+            empty_params = empty_params,
+            snake = snake,
+            vo_snake = vo_snake,
+        ));
+    }
+
     let empty_tests_str = if empty_tests.is_empty() {
         String::new()
     } else {
         format!("\n\n{}", empty_tests.join("\n\n"))
+    };
+
+    // Add VO imports to test module if needed
+    let test_vo_imports: Vec<String> = vo_fields
+        .iter()
+        .map(|f| format!("    use {};", vo_import_path(f, snake, shared_vos)))
+        .collect();
+    let test_vo_imports_str = if test_vo_imports.is_empty() {
+        String::new()
+    } else {
+        format!("\n{}", test_vo_imports.join("\n"))
     };
 
     s.push_str(&format!(
@@ -199,7 +362,7 @@ pub fn generate_create_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
 mod tests {{
     use super::*;
     use crate::domain::{snake}::repository::mocks::Mock{pascal}Repository;
-    use crate::domain::logger::mocks::MockLogger;
+    use crate::domain::logger::mocks::MockLogger;{test_vo_imports}
 
     fn silent_logger() -> MockLogger {{
         let mut mock = MockLogger::new();
@@ -238,11 +401,17 @@ mod tests {{
         valid_params = valid_params,
         valid_assertion = valid_assertion,
         empty_tests = empty_tests_str,
+        test_vo_imports = test_vo_imports_str,
     ));
     s
 }
 
-pub fn generate_update_use_case_impl(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_update_use_case_impl(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
     let eff = effective_fields(fields);
 
     let mut extra_imports: Vec<String> = vec![];
@@ -257,9 +426,20 @@ pub fn generate_update_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
         }
     }
 
+    let vo_fields_update: Vec<&Field> = eff
+        .iter()
+        .filter(|f| is_value_object(f) && f.field_type != "Uuid")
+        .collect();
+    for vf in &vo_fields_update {
+        let stmt = format!("use {};", vo_import_path(vf, snake, shared_vos));
+        if !extra_imports.contains(&stmt) {
+            extra_imports.push(stmt);
+        }
+    }
+
     let validations: Vec<String> = eff
         .iter()
-        .filter(|f| f.field_type == "String")
+        .filter(|f| f.field_type == "String" && !is_value_object(f))
         .map(|f| {
             format!(
                 "        if params.{}.trim().is_empty() {{\n            let err = {}Error::ValidationError(\"{}_empty\".into());\n            self.logger.warn(&err.to_string());\n            return Err(err);\n        }}",
@@ -268,10 +448,23 @@ pub fn generate_update_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
         })
         .collect();
 
+    // For VO fields, construct VOs before assignment; for primitives, assign directly
+    let vo_constructions: Vec<String> = eff
+        .iter()
+        .filter(|f| f.field_type != "Uuid" && is_value_object(f))
+        .map(|f| field_vo_constructor(f, "params.", pascal, shared_vos))
+        .collect();
+
     let assignments: Vec<String> = eff
         .iter()
         .filter(|f| f.field_type != "Uuid")
-        .map(|f| format!("        entity.{} = params.{};", f.name, f.name))
+        .map(|f| {
+            if is_value_object(f) {
+                format!("        entity.{} = {};", f.name, f.name)
+            } else {
+                format!("        entity.{} = params.{};", f.name, f.name)
+            }
+        })
         .collect();
 
     let imports_str = if extra_imports.is_empty() {
@@ -286,6 +479,12 @@ pub fn generate_update_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
         validations.join("\n") + "\n"
     };
 
+    let vo_constructions_str = if vo_constructions.is_empty() {
+        String::new()
+    } else {
+        vo_constructions.join("\n") + "\n"
+    };
+
     let assignments_str = if assignments.is_empty() {
         String::new()
     } else {
@@ -298,11 +497,18 @@ pub fn generate_update_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
     s.push_str(&format!("\n\nuse crate::domain::{snake}::{{\n    errors::{pascal}Error,\n    model::{pascal},\n    repository::{pascal}RepositoryTrait,\n    use_cases::update_{snake}::{{Update{pascal}Params, Update{pascal}UseCaseTrait}},\n}};\nuse crate::domain::logger::LoggerTrait;\n\npub struct Update{pascal}UseCaseImpl {{\n    pub repository: Arc<dyn {pascal}RepositoryTrait>,\n    pub logger: Arc<dyn LoggerTrait>,\n}}\n\n#[async_trait]\nimpl Update{pascal}UseCaseTrait for Update{pascal}UseCaseImpl {{\n    async fn execute(&self, params: Update{pascal}Params) -> Result<{pascal}, {pascal}Error> {{\n", snake=snake, pascal=pascal));
     s.push_str(&format!("        self.logger.info(&format!(\"Updating {snake}: {{}}\", params.id));\n        let mut entity = self\n            .repository\n            .find_by_id(params.id)\n            .await\n            .map_err(|e| {{\n                self.logger.error(&e.to_string());\n                e\n            }})?\n            .ok_or_else(|| {{\n                let err = {pascal}Error::NotFound;\n                self.logger.warn(&err.to_string());\n                err\n            }})?;\n", snake=snake, pascal=pascal));
     s.push_str(&validations_str);
+    s.push_str(&vo_constructions_str);
     s.push_str(&assignments_str);
     s.push_str("\n        entity.updated_at = chrono::Utc::now();\n        self.repository.save(&entity).await.map_err(|e| {\n            self.logger.error(&e.to_string());\n            e\n        })?;\n        Ok(entity)\n    }\n}\n");
 
-    let string_fields: Vec<&Field> = eff.iter().filter(|f| f.field_type == "String").collect();
-    let first_string_field: Option<&Field> = string_fields.first().copied();
+    let primitive_string_fields: Vec<&Field> = eff
+        .iter()
+        .filter(|f| f.field_type == "String" && !is_value_object(f))
+        .collect();
+    let vo_string_fields_update: Vec<&Field> = eff
+        .iter()
+        .filter(|f| f.field_type == "String" && is_value_object(f) && !is_enum_vo(f))
+        .collect();
     let original_props = test_props_lines(&eff, "original");
     let update_params = test_update_params_lines(&eff);
     let not_found_update_params = {
@@ -319,8 +525,10 @@ pub fn generate_update_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
         lines.join("\n")
     };
 
+    let test_vo_imports_update = build_test_vo_imports(&eff, snake, shared_vos);
+
     let mut empty_update_tests: Vec<String> = vec![];
-    for sf in &string_fields {
+    for sf in &primitive_string_fields {
         let empty_params = test_update_params_lines_with_empty(&eff, &sf.name);
         let test_name = format!("should_return_error_when_{}_is_empty", sf.name);
         empty_update_tests.push(format!(
@@ -362,17 +570,70 @@ pub fn generate_update_use_case_impl(pascal: &str, snake: &str, fields: &[Field]
             field = sf.name,
         ));
     }
+    for vf in &vo_string_fields_update {
+        let vo = vf.value_object.as_deref().unwrap();
+        let vo_snake = pascal_to_snake(vo);
+        let test_name = format!("should_return_error_when_{}_is_empty", vf.name);
+        let empty_params = test_update_params_lines_with_empty(&eff, &vf.name);
+        empty_update_tests.push(format!(
+            "    #[tokio::test]
+    async fn {test_name}() {{
+        // Arrange
+        let entity = {pascal}::new({pascal}Props {{
+{original_props}
+        }}).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = Mock{pascal}Repository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = Update{pascal}UseCaseImpl {{
+            repository: Arc::new(mock_repo),
+            logger: Arc::new(silent_logger()),
+        }};
+
+        // Act
+        let result = use_case
+            .execute(Update{pascal}Params {{
+{empty_params}
+            }})
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            \"{snake}.invalid_{vo_snake}\"
+        );
+    }}",
+            test_name = test_name,
+            pascal = pascal,
+            original_props = original_props,
+            empty_params = empty_params,
+            snake = snake,
+            vo_snake = vo_snake,
+        ));
+    }
     let empty_tests_str = if empty_update_tests.is_empty() {
         String::new()
     } else {
         format!("\n\n{}", empty_update_tests.join("\n\n"))
     };
 
-    let valid_assertion = if let Some(f) = first_string_field {
-        format!("assert_eq!(result.unwrap().{}, \"updated\");", f.name)
-    } else {
-        "assert!(result.is_ok());".to_string()
-    };
+    let valid_assertion =
+        if let Some(f) = primitive_string_fields.first().copied() {
+            format!("assert_eq!(result.unwrap().{}, \"updated\");", f.name)
+        } else if let Some(f) = eff
+            .iter()
+            .find(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
+        {
+            format!(
+                "assert_eq!(result.unwrap().{}.value(), \"updated\");",
+                f.name
+            )
+        } else {
+            "assert!(result.is_ok());".to_string()
+        };
 
     s.push_str(&format!(
         "
@@ -384,7 +645,7 @@ mod tests {{
         repository::mocks::Mock{pascal}Repository,
     }};
     use crate::domain::logger::mocks::MockLogger;
-    use uuid::Uuid;
+    use uuid::Uuid;{test_vo_imports_update}
 
     fn silent_logger() -> MockLogger {{
         let mut mock = MockLogger::new();
@@ -457,53 +718,78 @@ mod tests {{
     s
 }
 
-pub fn generate_get_use_case_impl(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_get_use_case_impl(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
     let eff = effective_fields(fields);
 
     let props_fields = test_props_lines(&eff, "example");
-    let first_string_field: Option<&Field> = eff.iter().find(|f| f.field_type == "String");
-    let found_assertion = if let Some(f) = first_string_field {
-        format!(
-            "\n        assert_eq!(result.unwrap().{}, \"example\");",
-            f.name
-        )
-    } else {
-        "\n        assert!(result.is_ok());".to_string()
-    };
+    let test_vo_imports = build_test_vo_imports(&eff, snake, shared_vos);
+    let found_assertion =
+        if let Some(f) = eff.iter().find(|f| f.field_type == "String" && !is_value_object(f)) {
+            format!("\n        assert_eq!(result.unwrap().{}, \"example\");", f.name)
+        } else if let Some(f) = eff
+            .iter()
+            .find(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
+        {
+            format!(
+                "\n        assert_eq!(result.unwrap().{}.value(), \"example\");",
+                f.name
+            )
+        } else {
+            "\n        assert!(result.is_ok());".to_string()
+        };
 
     let mut s = String::new();
     s.push_str("use std::sync::Arc;\n\nuse async_trait::async_trait;\n");
     s.push_str(&format!("\nuse crate::domain::{snake}::{{\n    errors::{pascal}Error,\n    model::{pascal},\n    repository::{pascal}RepositoryTrait,\n    use_cases::get_{snake}::{{Get{pascal}Params, Get{pascal}UseCaseTrait}},\n}};\nuse crate::domain::logger::LoggerTrait;\n\npub struct Get{pascal}UseCaseImpl {{\n    pub repository: Arc<dyn {pascal}RepositoryTrait>,\n    pub logger: Arc<dyn LoggerTrait>,\n}}\n\n#[async_trait]\nimpl Get{pascal}UseCaseTrait for Get{pascal}UseCaseImpl {{\n    async fn execute(&self, params: Get{pascal}Params) -> Result<{pascal}, {pascal}Error> {{\n", snake=snake, pascal=pascal));
     s.push_str(&format!(
-        "        self.logger.info(&format!(\"Getting {snake}: {{}}\", params.id));\n        let result = self.repository.find_by_id(params.id).await.map_err(|e| {{\n            self.logger.error(&e.to_string());\n            e\n        }})?;\n        result.ok_or_else(|| {{\n            let err = {pascal}Error::NotFound;\n            self.logger.warn(&err.to_string());\n            err\n        }})\n    }}\n}}\n\n#[cfg(test)]\nmod tests {{\n    use super::*;\n    use crate::domain::{snake}::{{\n        model::{{{pascal}, {pascal}Props}},\n        repository::mocks::Mock{pascal}Repository,\n    }};\n    use crate::domain::logger::mocks::MockLogger;\n    use uuid::Uuid;\n\n    fn silent_logger() -> MockLogger {{\n        let mut mock = MockLogger::new();\n        mock.expect_info().returning(|_| ());\n        mock.expect_warn().returning(|_| ());\n        mock.expect_error().returning(|_| ());\n        mock.expect_debug().returning(|_| ());\n        mock\n    }}\n\n    #[tokio::test]\n    async fn should_return_{snake}_when_id_exists() {{\n        let entity = {pascal}::new({pascal}Props {{\n{props_fields}\n        }}).unwrap();\n        let entity_id = entity.id;\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo\n            .expect_find_by_id()\n            .returning(move |_| Ok(Some(entity.clone())));\n        let use_case = Get{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case.execute(Get{pascal}Params {{ id: entity_id }}).await;\n\n        assert!(result.is_ok());{found_assertion}\n    }}\n\n    #[tokio::test]\n    async fn should_return_not_found_when_id_does_not_exist() {{\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo.expect_find_by_id().returning(|_| Ok(None));\n        let use_case = Get{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case\n            .execute(Get{pascal}Params {{ id: Uuid::new_v4() }})\n            .await;\n\n        assert!(result.is_err());\n        assert_eq!(result.unwrap_err().to_string(), \"{snake}.not_found\");\n    }}\n}}\n",
-        snake=snake, pascal=pascal, props_fields=props_fields, found_assertion=found_assertion));
+        "        self.logger.info(&format!(\"Getting {snake}: {{}}\", params.id));\n        let result = self.repository.find_by_id(params.id).await.map_err(|e| {{\n            self.logger.error(&e.to_string());\n            e\n        }})?;\n        result.ok_or_else(|| {{\n            let err = {pascal}Error::NotFound;\n            self.logger.warn(&err.to_string());\n            err\n        }})\n    }}\n}}\n\n#[cfg(test)]\nmod tests {{\n    use super::*;\n    use crate::domain::{snake}::{{\n        model::{{{pascal}, {pascal}Props}},\n        repository::mocks::Mock{pascal}Repository,\n    }};\n    use crate::domain::logger::mocks::MockLogger;\n    use uuid::Uuid;{test_vo_imports}\n\n    fn silent_logger() -> MockLogger {{\n        let mut mock = MockLogger::new();\n        mock.expect_info().returning(|_| ());\n        mock.expect_warn().returning(|_| ());\n        mock.expect_error().returning(|_| ());\n        mock.expect_debug().returning(|_| ());\n        mock\n    }}\n\n    #[tokio::test]\n    async fn should_return_{snake}_when_id_exists() {{\n        let entity = {pascal}::new({pascal}Props {{\n{props_fields}\n        }}).unwrap();\n        let entity_id = entity.id;\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo\n            .expect_find_by_id()\n            .returning(move |_| Ok(Some(entity.clone())));\n        let use_case = Get{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case.execute(Get{pascal}Params {{ id: entity_id }}).await;\n\n        assert!(result.is_ok());{found_assertion}\n    }}\n\n    #[tokio::test]\n    async fn should_return_not_found_when_id_does_not_exist() {{\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo.expect_find_by_id().returning(|_| Ok(None));\n        let use_case = Get{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case\n            .execute(Get{pascal}Params {{ id: Uuid::new_v4() }})\n            .await;\n\n        assert!(result.is_err());\n        assert_eq!(result.unwrap_err().to_string(), \"{snake}.not_found\");\n    }}\n}}\n",
+        snake=snake, pascal=pascal, props_fields=props_fields, found_assertion=found_assertion,
+        test_vo_imports=test_vo_imports));
     s
 }
 
-pub fn generate_list_use_case_impl(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_list_use_case_impl(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
     let eff = effective_fields(fields);
 
     let first_props = test_props_lines(&eff, "first");
     let second_props = test_props_lines(&eff, "second");
+    let test_vo_imports = build_test_vo_imports(&eff, snake, shared_vos);
 
     let mut s = String::new();
     s.push_str("use std::sync::Arc;\n\nuse async_trait::async_trait;\n");
-    s.push_str(&format!("\nuse crate::domain::{snake}::{{\n    errors::{pascal}Error,\n    model::{pascal},\n    repository::{pascal}RepositoryTrait,\n    use_cases::list_{snake}::{{List{pascal}Params, List{pascal}UseCaseTrait}},\n}};\nuse crate::domain::logger::LoggerTrait;\n\npub struct List{pascal}UseCaseImpl {{\n    pub repository: Arc<dyn {pascal}RepositoryTrait>,\n    pub logger: Arc<dyn LoggerTrait>,\n}}\n\n#[async_trait]\nimpl List{pascal}UseCaseTrait for List{pascal}UseCaseImpl {{\n    async fn execute(&self, _params: List{pascal}Params) -> Result<Vec<{pascal}>, {pascal}Error> {{\n        self.logger.info(\"Listing {snake}s\");\n        self.repository.find_all().await.map_err(|e| {{\n            self.logger.error(&e.to_string());\n            e\n        }})\n    }}\n}}\n\n#[cfg(test)]\nmod tests {{\n    use super::*;\n    use crate::domain::{snake}::{{\n        model::{{{pascal}, {pascal}Props}},\n        repository::mocks::Mock{pascal}Repository,\n    }};\n    use crate::domain::logger::mocks::MockLogger;\n\n    fn silent_logger() -> MockLogger {{\n        let mut mock = MockLogger::new();\n        mock.expect_info().returning(|_| ());\n        mock.expect_warn().returning(|_| ());\n        mock.expect_error().returning(|_| ());\n        mock.expect_debug().returning(|_| ());\n        mock\n    }}\n\n    #[tokio::test]\n    async fn should_return_all_{snake}s() {{\n        let entities = vec![\n            {pascal}::new({pascal}Props {{\n{first_props}\n        }}).unwrap(),\n            {pascal}::new({pascal}Props {{\n{second_props}\n        }}).unwrap(),\n        ];\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo\n            .expect_find_all()\n            .returning(move || Ok(entities.clone()));\n        let use_case = List{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case.execute(List{pascal}Params).await;\n\n        assert!(result.is_ok());\n        assert_eq!(result.unwrap().len(), 2);\n    }}\n\n    #[tokio::test]\n    async fn should_return_empty_list_when_no_{snake}s_exist() {{\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo.expect_find_all().returning(|| Ok(vec![]));\n        let use_case = List{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case.execute(List{pascal}Params).await;\n\n        assert!(result.is_ok());\n        assert!(result.unwrap().is_empty());\n    }}\n}}\n",
-        snake=snake, pascal=pascal, first_props=first_props, second_props=second_props));
+    s.push_str(&format!("\nuse crate::domain::{snake}::{{\n    errors::{pascal}Error,\n    model::{pascal},\n    repository::{pascal}RepositoryTrait,\n    use_cases::list_{snake}::{{List{pascal}Params, List{pascal}UseCaseTrait}},\n}};\nuse crate::domain::logger::LoggerTrait;\n\npub struct List{pascal}UseCaseImpl {{\n    pub repository: Arc<dyn {pascal}RepositoryTrait>,\n    pub logger: Arc<dyn LoggerTrait>,\n}}\n\n#[async_trait]\nimpl List{pascal}UseCaseTrait for List{pascal}UseCaseImpl {{\n    async fn execute(&self, _params: List{pascal}Params) -> Result<Vec<{pascal}>, {pascal}Error> {{\n        self.logger.info(\"Listing {snake}s\");\n        self.repository.find_all().await.map_err(|e| {{\n            self.logger.error(&e.to_string());\n            e\n        }})\n    }}\n}}\n\n#[cfg(test)]\nmod tests {{\n    use super::*;\n    use crate::domain::{snake}::{{\n        model::{{{pascal}, {pascal}Props}},\n        repository::mocks::Mock{pascal}Repository,\n    }};\n    use crate::domain::logger::mocks::MockLogger;{test_vo_imports}\n\n    fn silent_logger() -> MockLogger {{\n        let mut mock = MockLogger::new();\n        mock.expect_info().returning(|_| ());\n        mock.expect_warn().returning(|_| ());\n        mock.expect_error().returning(|_| ());\n        mock.expect_debug().returning(|_| ());\n        mock\n    }}\n\n    #[tokio::test]\n    async fn should_return_all_{snake}s() {{\n        let entities = vec![\n            {pascal}::new({pascal}Props {{\n{first_props}\n        }}).unwrap(),\n            {pascal}::new({pascal}Props {{\n{second_props}\n        }}).unwrap(),\n        ];\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo\n            .expect_find_all()\n            .returning(move || Ok(entities.clone()));\n        let use_case = List{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case.execute(List{pascal}Params).await;\n\n        assert!(result.is_ok());\n        assert_eq!(result.unwrap().len(), 2);\n    }}\n\n    #[tokio::test]\n    async fn should_return_empty_list_when_no_{snake}s_exist() {{\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo.expect_find_all().returning(|| Ok(vec![]));\n        let use_case = List{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case.execute(List{pascal}Params).await;\n\n        assert!(result.is_ok());\n        assert!(result.unwrap().is_empty());\n    }}\n}}\n",
+        snake=snake, pascal=pascal, first_props=first_props, second_props=second_props,
+        test_vo_imports=test_vo_imports));
     s
 }
 
-pub fn generate_delete_use_case_impl(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_delete_use_case_impl(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
     let eff = effective_fields(fields);
 
     let props_fields = test_props_lines(&eff, "example");
+    let test_vo_imports = build_test_vo_imports(&eff, snake, shared_vos);
 
     let mut s = String::new();
     s.push_str("use std::sync::Arc;\n\nuse async_trait::async_trait;\n");
     s.push_str(&format!("\nuse crate::domain::{snake}::{{\n    errors::{pascal}Error,\n    repository::{pascal}RepositoryTrait,\n    use_cases::delete_{snake}::{{Delete{pascal}Params, Delete{pascal}UseCaseTrait}},\n}};\nuse crate::domain::logger::LoggerTrait;\n\npub struct Delete{pascal}UseCaseImpl {{\n    pub repository: Arc<dyn {pascal}RepositoryTrait>,\n    pub logger: Arc<dyn LoggerTrait>,\n}}\n\n#[async_trait]\nimpl Delete{pascal}UseCaseTrait for Delete{pascal}UseCaseImpl {{\n    async fn execute(&self, params: Delete{pascal}Params) -> Result<(), {pascal}Error> {{\n", snake=snake, pascal=pascal));
     s.push_str(&format!(
-        "        self.logger.info(&format!(\"Deleting {snake}: {{}}\", params.id));\n        let mut entity = self\n            .repository\n            .find_by_id(params.id)\n            .await\n            .map_err(|e| {{\n                self.logger.error(&e.to_string());\n                e\n            }})?\n            .ok_or_else(|| {{\n                let err = {pascal}Error::NotFound;\n                self.logger.warn(&err.to_string());\n                err\n            }})?;\n        let now = chrono::Utc::now();\n        entity.deleted = true;\n        entity.deleted_at = Some(now);\n        entity.updated_at = now;\n        self.repository.save(&entity).await.map_err(|e| {{\n            self.logger.error(&e.to_string());\n            e\n        }})?;\n        Ok(())\n    }}\n}}\n\n#[cfg(test)]\nmod tests {{\n    use super::*;\n    use crate::domain::{snake}::{{\n        model::{{{pascal}, {pascal}Props}},\n        repository::mocks::Mock{pascal}Repository,\n    }};\n    use crate::domain::logger::mocks::MockLogger;\n    use uuid::Uuid;\n\n    fn silent_logger() -> MockLogger {{\n        let mut mock = MockLogger::new();\n        mock.expect_info().returning(|_| ());\n        mock.expect_warn().returning(|_| ());\n        mock.expect_error().returning(|_| ());\n        mock.expect_debug().returning(|_| ());\n        mock\n    }}\n\n    #[tokio::test]\n    async fn should_soft_delete_{snake}_when_id_exists() {{\n        let entity = {pascal}::new({pascal}Props {{\n{props_fields}\n        }}).unwrap();\n        let entity_id = entity.id;\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo\n            .expect_find_by_id()\n            .returning(move |_| Ok(Some(entity.clone())));\n        mock_repo.expect_save().returning(|_| Ok(()));\n        let use_case = Delete{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case\n            .execute(Delete{pascal}Params {{ id: entity_id }})\n            .await;\n\n        assert!(result.is_ok());\n    }}\n\n    #[tokio::test]\n    async fn should_return_not_found_when_{snake}_does_not_exist() {{\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo.expect_find_by_id().returning(|_| Ok(None));\n        let use_case = Delete{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case\n            .execute(Delete{pascal}Params {{ id: Uuid::new_v4() }})\n            .await;\n\n        assert!(result.is_err());\n        assert_eq!(result.unwrap_err().to_string(), \"{snake}.not_found\");\n    }}\n}}\n",
-        snake=snake, pascal=pascal, props_fields=props_fields));
+        "        self.logger.info(&format!(\"Deleting {snake}: {{}}\", params.id));\n        let mut entity = self\n            .repository\n            .find_by_id(params.id)\n            .await\n            .map_err(|e| {{\n                self.logger.error(&e.to_string());\n                e\n            }})?\n            .ok_or_else(|| {{\n                let err = {pascal}Error::NotFound;\n                self.logger.warn(&err.to_string());\n                err\n            }})?;\n        let now = chrono::Utc::now();\n        entity.deleted = true;\n        entity.deleted_at = Some(now);\n        entity.updated_at = now;\n        self.repository.save(&entity).await.map_err(|e| {{\n            self.logger.error(&e.to_string());\n            e\n        }})?;\n        Ok(())\n    }}\n}}\n\n#[cfg(test)]\nmod tests {{\n    use super::*;\n    use crate::domain::{snake}::{{\n        model::{{{pascal}, {pascal}Props}},\n        repository::mocks::Mock{pascal}Repository,\n    }};\n    use crate::domain::logger::mocks::MockLogger;\n    use uuid::Uuid;{test_vo_imports}\n\n    fn silent_logger() -> MockLogger {{\n        let mut mock = MockLogger::new();\n        mock.expect_info().returning(|_| ());\n        mock.expect_warn().returning(|_| ());\n        mock.expect_error().returning(|_| ());\n        mock.expect_debug().returning(|_| ());\n        mock\n    }}\n\n    #[tokio::test]\n    async fn should_soft_delete_{snake}_when_id_exists() {{\n        let entity = {pascal}::new({pascal}Props {{\n{props_fields}\n        }}).unwrap();\n        let entity_id = entity.id;\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo\n            .expect_find_by_id()\n            .returning(move |_| Ok(Some(entity.clone())));\n        mock_repo.expect_save().returning(|_| Ok(()));\n        let use_case = Delete{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case\n            .execute(Delete{pascal}Params {{ id: entity_id }})\n            .await;\n\n        assert!(result.is_ok());\n    }}\n\n    #[tokio::test]\n    async fn should_return_not_found_when_{snake}_does_not_exist() {{\n        let mut mock_repo = Mock{pascal}Repository::new();\n        mock_repo.expect_find_by_id().returning(|_| Ok(None));\n        let use_case = Delete{pascal}UseCaseImpl {{\n            repository: Arc::new(mock_repo),\n            logger: Arc::new(silent_logger()),\n        }};\n\n        let result = use_case\n            .execute(Delete{pascal}Params {{ id: Uuid::new_v4() }})\n            .await;\n\n        assert!(result.is_err());\n        assert_eq!(result.unwrap_err().to_string(), \"{snake}.not_found\");\n    }}\n}}\n",
+        snake=snake, pascal=pascal, props_fields=props_fields, test_vo_imports=test_vo_imports));
     s
 }
 
@@ -1052,11 +1338,12 @@ pub fn write_application_files(
     snake: &str,
     base: &Path,
     fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let create_impl = if fields.is_empty() {
         apply(USE_CASE_IMPL, pascal, snake)
     } else {
-        generate_create_use_case_impl(pascal, snake, fields)
+        generate_create_use_case_impl(pascal, snake, fields, shared_vos)
     };
     write_file(
         &base.join(format!(
@@ -1067,7 +1354,7 @@ pub fn write_application_files(
     let get_impl = if fields.is_empty() {
         apply(GET_USE_CASE_IMPL, pascal, snake)
     } else {
-        generate_get_use_case_impl(pascal, snake, fields)
+        generate_get_use_case_impl(pascal, snake, fields, shared_vos)
     };
     write_file(
         &base.join(format!("business/src/application/{snake}/get_{snake}.rs")),
@@ -1076,7 +1363,7 @@ pub fn write_application_files(
     let list_impl = if fields.is_empty() {
         apply(LIST_USE_CASE_IMPL, pascal, snake)
     } else {
-        generate_list_use_case_impl(pascal, snake, fields)
+        generate_list_use_case_impl(pascal, snake, fields, shared_vos)
     };
     write_file(
         &base.join(format!("business/src/application/{snake}/list_{snake}.rs")),
@@ -1085,7 +1372,7 @@ pub fn write_application_files(
     let update_impl = if fields.is_empty() {
         apply(UPDATE_USE_CASE_IMPL, pascal, snake)
     } else {
-        generate_update_use_case_impl(pascal, snake, fields)
+        generate_update_use_case_impl(pascal, snake, fields, shared_vos)
     };
     write_file(
         &base.join(format!(
@@ -1096,7 +1383,7 @@ pub fn write_application_files(
     let delete_impl = if fields.is_empty() {
         apply(DELETE_USE_CASE_IMPL, pascal, snake)
     } else {
-        generate_delete_use_case_impl(pascal, snake, fields)
+        generate_delete_use_case_impl(pascal, snake, fields, shared_vos)
     };
     write_file(
         &base.join(format!(
@@ -1125,8 +1412,9 @@ pub fn run_generate_application(name: &str, base: &Path) -> Result<(), Box<dyn s
         .find(|e| e.name == pascal)
         .map(|e| e.fields.clone())
         .unwrap_or_default();
+    let shared_vos = config.value_object.clone();
 
-    write_application_files(&pascal, &snake, base, &fields)?;
+    write_application_files(&pascal, &snake, base, &fields, &shared_vos)?;
     patch_business_lib_application_crud(base, &snake)?;
 
     println!("✓ business/application/ — 5 use case impls (create, get, list, update, delete)");

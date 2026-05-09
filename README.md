@@ -97,10 +97,28 @@ curl http://localhost:8080/api/greetings/World
 Scaffold entities with typed fields — the type system flows from `puerto.toml` through all layers:
 
 ```bash
-puerto generate scaffold Product name:String price:i64! sku:String
+puerto generate scaffold Product -- name:String price:i64! sku:String
 ```
 
 This creates a `Product` entity with custom fields in `puerto.toml`, and generates typed structs in every DDD layer (domain model, DTOs, repository rows, SQL migrations). Supported types include `String`, `i64`, `bool`, `f64`, `Uuid`, `DateTime<Utc>`, `Option<T>`, `Vec<T>`, and `HashMap<String, String>`. Append `!` to mark a field as unique (e.g., `sku:String!`).
+
+### Value Objects
+
+Wrap primitive fields in strongly-typed Value Objects — generated across all layers automatically:
+
+```bash
+# Regular VO
+puerto generate scaffold Order -- amount:Amount:f64 status:Status:enum:Pending/Confirmed/Cancelled
+
+# Nullable / array VOs
+puerto generate scaffold User -- email:Email:String nickname:Nick:opt:String tags:Tag:vec:String
+
+# Shared VOs — declared once, reusable across entities
+puerto generate value-object Email String
+puerto generate scaffold User -- email:Email   # type inferred from the shared VO declaration
+```
+
+Each VO generates a domain struct with private inner value, `new()` returning `Result`, and `value()` / `as_str()` accessors. Enum VOs generate `from_str()` / `as_str()` pattern. Infrastructure and presentation layers use primitives; VOs are constructed and extracted at the boundary automatically.
 
 Validate your `puerto.toml` at any time:
 

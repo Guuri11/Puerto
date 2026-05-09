@@ -73,7 +73,7 @@ generate/migration: ## Create a new SQLx migration — make generate/migration N
 
 fn docker_compose_content(project_name: &str, db_name: &str) -> String {
     format!(
-        "services:\n  postgres:\n    image: postgres:16\n    container_name: {project_name}-postgres\n    ports:\n      - \"5432:5432\"\n    environment:\n      POSTGRES_USER: devuser\n      POSTGRES_PASSWORD: password\n      POSTGRES_DB: {db_name}\n    volumes:\n      - postgres-data:/var/lib/postgresql/data\n    restart: unless-stopped\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U devuser -d {db_name}\"]\n      interval: 5s\n      timeout: 5s\n      retries: 5\n\nvolumes:\n  postgres-data:\n"
+        "services:\n  postgres:\n    image: postgres:16\n    container_name: {project_name}-postgres\n    ports:\n      - \"${{DB_HOST_PORT:-5432}}:5432\"\n    environment:\n      POSTGRES_USER: devuser\n      POSTGRES_PASSWORD: password\n      POSTGRES_DB: {db_name}\n    volumes:\n      - postgres-data:/var/lib/postgresql/data\n    restart: unless-stopped\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U devuser -d {db_name}\"]\n      interval: 5s\n      timeout: 5s\n      retries: 5\n\nvolumes:\n  postgres-data:\n"
     )
 }
 
@@ -147,6 +147,15 @@ fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+/// Write the base `.env` and `.env.example` for every new project (db or not).
+pub fn apply_base_env(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let content = "SERVICE_PORT=8080\nENV=development\nRUST_LOG=info\nCORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173\n";
+    write_file(&base.join(".env"), content)?;
+    write_file(&base.join(".env.example"), content)?;
+    add_env_to_gitignore(base)?;
+    Ok(())
+}
+
 /// Write the extra files that `puerto new --db` adds on top of the base template.
 pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let project_name = base.file_name().and_then(|n| n.to_str()).unwrap_or("myapp");
@@ -158,20 +167,25 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
         &docker_compose_content(project_name, &db_name),
     )?;
 
-    // .env (real dev defaults, gitignored)
-    write_file(
-        &base.join(".env"),
-        &format!("DATABASE_URL=postgres://devuser:password@localhost:5432/{db_name}\n"),
-    )?;
-
-    // .env.example (committed, same format)
-    write_file(
-        &base.join(".env.example"),
-        &format!("DATABASE_URL=postgres://devuser:password@localhost:5432/{db_name}\n"),
-    )?;
-
-    // .gitignore — add .env entry (create or append)
-    add_env_to_gitignore(base)?;
+    // Append DB vars to .env and .env.example (apply_base_env already created them)
+    let db_vars = format!(
+        "\n# Database\nDB_HOST_PORT=5432\nDATABASE_URL=postgres://devuser:password@localhost:5432/{db_name}\n"
+    );
+    for file in &[".env", ".env.example"] {
+        let path = base.join(file);
+        let mut content = if path.exists() {
+            fs::read_to_string(&path)?
+        } else {
+            String::new()
+        };
+        if !content.contains("DATABASE_URL") {
+            if !content.ends_with('\n') && !content.is_empty() {
+                content.push('\n');
+            }
+            content.push_str(&db_vars);
+            fs::write(&path, content)?;
+        }
+    }
 
     // .cargo/config.toml — SQLX_OFFLINE so CI compiles without a live DB
     write_file(

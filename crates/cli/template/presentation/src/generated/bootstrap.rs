@@ -7,7 +7,7 @@ use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use infrastructure::logger::TracingLogger;
 use business::domain::logger::LoggerTrait;
 
-use poem::{EndpointExt, Route, middleware::Tracing};
+use poem::{EndpointExt, Route, middleware::{Cors, Tracing}};
 use poem_openapi::OpenApiService;
 
 use crate::api::greeting::routes::GreetingApi;
@@ -21,13 +21,20 @@ pub async fn build_app() -> impl poem::Endpoint {
     });
     let greeting_api = GreetingApi { get_greeting, logger: Arc::clone(&logger) };
 
+    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
         greeting_api,
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
     )
-    .server("http://localhost:8080/api");
+    .server(format!("http://localhost:{port}/api"));
     let ui = api_service.swagger_ui();
 
-    Route::new().nest("/api", api_service).nest("/", ui).with(Tracing)
+    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
+    let mut cors = Cors::new();
+    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        cors = cors.allow_origin(origin);
+    }
+
+    Route::new().nest("/api", api_service).nest("/", ui).with(Tracing).with(cors)
 }

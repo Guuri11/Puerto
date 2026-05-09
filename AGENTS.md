@@ -128,8 +128,14 @@ puerto new --name <name> --db              # Fully non-interactive, with databas
 puerto new --name <name> --no-db           # Fully non-interactive, no database
 puerto new --name <name> --no-db --destination /tmp/projects  # Control output directory
 
-puerto generate scaffold <Name>            # Add a new DDD entity — all layers at once (infers db from puerto.toml)
-puerto generate scaffold <Name> name:String price:i64!  # Scaffold with typed fields (! = unique)
+puerto generate scaffold <Name>                                          # Add a new DDD entity — all layers at once (infers db from puerto.toml)
+puerto generate scaffold <Name> -- name:String price:i64!               # Primitive fields (! = unique)
+puerto generate scaffold <Name> -- desc:opt:String tags:vec:String       # Option / Vec primitives
+puerto generate scaffold <Name> -- name:Name:String age:Age:i64         # VO fields
+puerto generate scaffold <Name> -- status:Status:enum:Active/Inactive   # Enum VO
+puerto generate scaffold <Name> -- mid:MiddleName:opt:String            # Option VO
+puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
+puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String)
 puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
 puerto generate application <Name>         # Application layer only: use case impls
 puerto generate repository <Name>          # Infrastructure layer only: InMemory or Pg repo (inferred from puerto.toml)

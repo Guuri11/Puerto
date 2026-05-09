@@ -107,6 +107,13 @@ enum GenerateAction {
         /// Entity name in PascalCase (e.g. Product)
         name: String,
     },
+    /// Declare a shared value object in puerto.toml (reusable across entities)
+    ValueObject {
+        /// Value object name in PascalCase (e.g. Email, Money)
+        name: String,
+        /// Inner primitive type: String, i64, bool, f64, Uuid, DateTime
+        inner_type: String,
+    },
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -139,7 +146,7 @@ fn main() {
             action: GenerateAction::Scaffold { name, fields },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            let parsed_fields: Vec<crate::puerto_toml::Field> = match fields
+            let mut parsed_fields: Vec<crate::puerto_toml::Field> = match fields
                 .iter()
                 .map(|s| crate::puerto_toml::parse_field_arg(s))
                 .collect::<Result<_, _>>()
@@ -150,6 +157,12 @@ fn main() {
                     std::process::exit(1);
                 }
             };
+            if let Ok(config) = crate::puerto_toml::read(&cwd) {
+                parsed_fields = crate::puerto_toml::apply_shared_vo_inference(
+                    parsed_fields,
+                    &config.value_object,
+                );
+            }
             if let Err(e) = crate::generators::types::validate_fields(&parsed_fields) {
                 eprintln!("Error: {e}");
                 std::process::exit(1);
@@ -214,6 +227,19 @@ fn main() {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_presentation(&name, &cwd))
+        }
+        Commands::Generate {
+            action: GenerateAction::ValueObject { name, inner_type },
+        } => {
+            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let expanded = match inner_type.as_str() {
+                "DateTime" => "DateTime<Utc>".to_string(),
+                t => t.to_string(),
+            };
+            commands::list::require_puerto_project(&cwd).and_then(|_| {
+                crate::puerto_toml::add_value_object(&cwd, &name, &expanded)
+                    .map(|_| println!("✓ Shared value object '{name}' added to puerto.toml"))
+            })
         }
         Commands::List => {
             let cwd = std::env::current_dir().expect("cannot read current directory");

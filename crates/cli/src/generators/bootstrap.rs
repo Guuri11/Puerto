@@ -15,19 +15,31 @@ pub fn generate_bootstrap_content(entities: &[crate::puerto_toml::Entity]) -> St
     if entities.is_empty() {
         out.push_str("use infrastructure::logger::TracingLogger;\n");
         out.push_str("use business::domain::logger::LoggerTrait;\n\n");
-        out.push_str("use poem::{EndpointExt, Route, middleware::Tracing};\n");
+        out.push_str("use poem::{EndpointExt, Route, middleware::{Cors, Tracing}};\n");
         out.push_str("use poem_openapi::OpenApiService;\n\n");
         out.push_str("pub async fn build_app() -> impl poem::Endpoint {\n");
         out.push_str("    let _logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger);\n\n");
+        out.push_str(
+            "    let port = std::env::var(\"SERVICE_PORT\").unwrap_or_else(|_| \"8080\".to_string());\n",
+        );
         out.push_str("    let api_service = OpenApiService::new(\n");
         out.push_str("        (),\n");
         out.push_str("        env!(\"CARGO_PKG_NAME\"),\n");
         out.push_str("        env!(\"CARGO_PKG_VERSION\"),\n");
         out.push_str("    )\n");
-        out.push_str("    .server(\"http://localhost:8080/api\");\n");
+        out.push_str("    .server(format!(\"http://localhost:{port}/api\"));\n");
         out.push_str("    let ui = api_service.swagger_ui();\n\n");
         out.push_str(
-            "    Route::new().nest(\"/api\", api_service).nest(\"/\", ui).with(Tracing)\n",
+            "    let cors_origins = std::env::var(\"CORS_ALLOWED_ORIGINS\").unwrap_or_default();\n",
+        );
+        out.push_str("    let mut cors = Cors::new();\n");
+        out.push_str(
+            "    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {\n",
+        );
+        out.push_str("        cors = cors.allow_origin(origin);\n");
+        out.push_str("    }\n\n");
+        out.push_str(
+            "    Route::new().nest(\"/api\", api_service).nest(\"/\", ui).with(Tracing).with(cors)\n",
         );
         out.push_str("}\n");
         return out;
@@ -69,7 +81,7 @@ pub fn generate_bootstrap_content(entities: &[crate::puerto_toml::Entity]) -> St
     out.push_str("use business::domain::logger::LoggerTrait;\n");
     out.push('\n');
 
-    out.push_str("use poem::{EndpointExt, Route, middleware::Tracing};\n");
+    out.push_str("use poem::{EndpointExt, Route, middleware::{Cors, Tracing}};\n");
     out.push_str("use poem_openapi::OpenApiService;\n\n");
 
     // API imports
@@ -85,8 +97,6 @@ pub fn generate_bootstrap_content(entities: &[crate::puerto_toml::Entity]) -> St
     // build_app signature: async when any entity needs a pool
     if has_db {
         out.push_str("pub async fn build_app() -> impl poem::Endpoint {\n");
-        // (always async — main.rs calls build_app().await in both cases)
-        out.push_str("    dotenvy::dotenv().ok();\n");
         out.push_str(
             "    let database_url = std::env::var(\"DATABASE_URL\").expect(\"DATABASE_URL must be set\");\n",
         );
@@ -150,14 +160,28 @@ pub fn generate_bootstrap_content(entities: &[crate::puerto_toml::Entity]) -> St
         format!("({apis})")
     };
 
+    out.push_str(
+        "    let port = std::env::var(\"SERVICE_PORT\").unwrap_or_else(|_| \"8080\".to_string());\n",
+    );
     out.push_str("    let api_service = OpenApiService::new(\n");
     out.push_str(&format!("        {api_args},\n"));
     out.push_str("        env!(\"CARGO_PKG_NAME\"),\n");
     out.push_str("        env!(\"CARGO_PKG_VERSION\"),\n");
     out.push_str("    )\n");
-    out.push_str("    .server(\"http://localhost:8080/api\");\n");
+    out.push_str("    .server(format!(\"http://localhost:{port}/api\"));\n");
     out.push_str("    let ui = api_service.swagger_ui();\n\n");
-    out.push_str("    Route::new().nest(\"/api\", api_service).nest(\"/\", ui).with(Tracing)\n");
+    out.push_str(
+        "    let cors_origins = std::env::var(\"CORS_ALLOWED_ORIGINS\").unwrap_or_default();\n",
+    );
+    out.push_str("    let mut cors = Cors::new();\n");
+    out.push_str(
+        "    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {\n",
+    );
+    out.push_str("        cors = cors.allow_origin(origin);\n");
+    out.push_str("    }\n\n");
+    out.push_str(
+        "    Route::new().nest(\"/api\", api_service).nest(\"/\", ui).with(Tracing).with(cors)\n",
+    );
     out.push_str("}\n");
 
     out

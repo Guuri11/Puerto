@@ -64,6 +64,8 @@ pub fn new_project(
 
     let output = generate_new_project(name, destination)?;
 
+    crate::generators::project::apply_base_env(&output)?;
+
     if resolved_db {
         crate::generators::project::apply_db_to_new_project(&output)?;
     }

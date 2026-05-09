@@ -316,7 +316,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
         <section id="snippets" class="mt-16 scroll-mt-28">
           <h2 class="font-mono text-2xl font-bold text-puerto-ice">IDE Snippets</h2>
           <p class="mt-3 font-sans text-puerto-mist">
-            Every <code class="font-mono text-xs text-puerto-teal">puerto new</code> project ships with 23 Puerto-adapted Rust snippets for Zed, VS Code, and nvim+LuaSnip. No configuration needed — files are written automatically and loaded by your editor from the project root.
+            Every <code class="font-mono text-xs text-puerto-teal">puerto new</code> project ships with 28 Puerto-adapted Rust snippets for Zed, VS Code, and nvim+LuaSnip. No configuration needed — files are written automatically and loaded by your editor from the project root.
           </p>
 
           <!-- IDE setup -->
@@ -369,6 +369,35 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">domain-use-case</code>
                   <span class="font-sans text-xs text-puerto-mist/70">Params struct + UseCaseTrait</span>
+                </div>
+              </div>
+            </div>
+            <!-- Value Objects -->
+            <div>
+              <div class="mb-2 flex items-center gap-2">
+                <span class="font-mono text-xs font-bold text-puerto-teal/70 uppercase tracking-widest">Value Objects</span>
+                <div class="h-px flex-1 bg-puerto-steel/30"></div>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">vo-string</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">String VO — private field, trim + empty validation, value() → &amp;str</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">vo-numeric</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Numeric VO (i64 / f64) — tuple struct, pass-through, value() by copy</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">vo-enum</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Enum VO — from_str() / as_str() pattern with variant tab stops</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">vo-option-construct</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Option&lt;VO&gt; construction — params.field.map(Vo::new).transpose()?</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-teal">vo-vec-construct</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Vec&lt;VO&gt; construction — map + collect::&lt;Result&lt;Vec&lt;_&gt;, _&gt;&gt;()?</span>
                 </div>
               </div>
             </div>

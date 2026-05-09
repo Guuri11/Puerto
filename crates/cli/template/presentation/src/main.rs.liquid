@@ -37,6 +37,8 @@ const BANNER: &str = r#"
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
+    dotenvy::dotenv().ok();
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
@@ -46,7 +48,12 @@ async fn main() -> Result<(), std::io::Error> {
         println!("    v{}\n", env!("CARGO_PKG_VERSION"));
     }
 
-    Server::new(TcpListener::bind("0.0.0.0:8080"))
+    let port = std::env::var("SERVICE_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(8080);
+
+    Server::new(TcpListener::bind(format!("0.0.0.0:{port}")))
         .run(generated::bootstrap::build_app().await)
         .await
 }

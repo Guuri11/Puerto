@@ -1,4 +1,4 @@
-use crate::puerto_toml::Field;
+use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -181,6 +181,202 @@ pub fn collect_imports(fields: &[Field]) -> Vec<&'static str> {
     imports
 }
 
+#[allow(dead_code)]
+pub fn is_value_object(field: &Field) -> bool {
+    field.value_object.is_some()
+}
+
+#[allow(dead_code)]
+pub fn is_option_vo(field: &Field) -> bool {
+    field.value_object.is_some() && field.field_type.starts_with("Option<")
+}
+
+#[allow(dead_code)]
+pub fn is_vec_vo(field: &Field) -> bool {
+    field.value_object.is_some() && field.field_type.starts_with("Vec<")
+}
+
+#[allow(dead_code)]
+pub fn is_enum_vo(field: &Field) -> bool {
+    field.value_object_kind.as_deref() == Some("enum")
+}
+
+#[allow(dead_code)]
+pub fn is_shared_vo(field: &Field, shared_vos: &[ValueObjectDefinition]) -> bool {
+    field
+        .value_object
+        .as_deref()
+        .is_some_and(|vo| shared_vos.iter().any(|d| d.name == vo))
+}
+
+#[allow(dead_code)]
+pub fn vo_import_path(field: &Field, snake: &str, shared_vos: &[ValueObjectDefinition]) -> String {
+    if is_shared_vo(field, shared_vos) {
+        format!(
+            "crate::domain::shared::value_objects::{}",
+            field.value_object.as_deref().unwrap()
+        )
+    } else {
+        format!(
+            "crate::domain::{}::value_objects::{}",
+            snake,
+            field.value_object.as_deref().unwrap()
+        )
+    }
+}
+
+#[allow(dead_code)]
+pub fn vo_error_import_path(_shared_vos: &[ValueObjectDefinition]) -> String {
+    "crate::domain::shared::errors".to_string()
+}
+
+#[allow(dead_code)]
+pub fn vo_name(field: &Field) -> Option<&str> {
+    field.value_object.as_deref()
+}
+
+#[allow(dead_code)]
+pub fn vo_inner_type(field: &Field) -> String {
+    if field.field_type.starts_with("Option<") {
+        field.field_type[7..field.field_type.len() - 1].to_string()
+    } else if field.field_type.starts_with("Vec<") {
+        field.field_type[4..field.field_type.len() - 1].to_string()
+    } else {
+        field.field_type.clone()
+    }
+}
+
+#[allow(dead_code)]
+pub fn field_rust_type(field: &Field) -> String {
+    match &field.value_object {
+        Some(vo) => {
+            if field.field_type.starts_with("Option<") {
+                format!("Option<{}>", vo)
+            } else if field.field_type.starts_with("Vec<") {
+                format!("Vec<{}>", vo)
+            } else {
+                vo.clone()
+            }
+        }
+        None => field.field_type.clone(),
+    }
+}
+
+#[allow(dead_code)]
+pub fn field_value_accessor(field: &Field, prefix: &str) -> String {
+    if is_enum_vo(field) {
+        format!("{}.{}.as_str().to_string()", prefix, field.name)
+    } else if is_option_vo(field) {
+        let inner = vo_inner_type(field);
+        if inner == "String" {
+            format!(
+                "{}.{}.as_ref().map(|v| v.value().to_string())",
+                prefix, field.name
+            )
+        } else {
+            format!("{}.{}.map(|v| v.value())", prefix, field.name)
+        }
+    } else if is_vec_vo(field) {
+        let inner = vo_inner_type(field);
+        if inner == "String" {
+            format!(
+                "{}.{}.iter().map(|v| v.value().to_string()).collect::<Vec<_>>()",
+                prefix, field.name
+            )
+        } else {
+            format!(
+                "{}.{}.iter().map(|v| v.value()).collect::<Vec<_>>()",
+                prefix, field.name
+            )
+        }
+    } else if is_value_object(field) {
+        match field.field_type.as_str() {
+            "String" => format!("{}.{}.value().to_string()", prefix, field.name),
+            _ => format!("{}.{}.value()", prefix, field.name),
+        }
+    } else if field_needs_clone(&field.field_type) {
+        format!("{}.{}.clone()", prefix, field.name)
+    } else {
+        format!("{}.{}", prefix, field.name)
+    }
+}
+
+#[allow(dead_code)]
+pub fn field_vo_constructor(
+    field: &Field,
+    param_prefix: &str,
+    pascal: &str,
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
+    if field.value_object.is_none() && !is_enum_vo(field) {
+        return String::new();
+    }
+    let is_shared = is_shared_vo(field, shared_vos);
+    let error_variant = format!("Invalid{}", field.value_object.as_deref().unwrap_or(""));
+    if is_enum_vo(field) {
+        let vo = field.value_object.as_deref().unwrap();
+        if is_shared {
+            format!(
+                "let {} = {}::from_str(&{}{}).map_err(|_| {}Error::{})?;",
+                field.name, vo, param_prefix, field.name, pascal, error_variant
+            )
+        } else {
+            format!(
+                "let {} = {}::from_str(&{}{})?;",
+                field.name, vo, param_prefix, field.name
+            )
+        }
+    } else if is_option_vo(field) {
+        let vo = field.value_object.as_deref().unwrap();
+        if is_shared {
+            format!(
+                "let {} = {}{}.map({}::new).transpose().map_err(|_| {}Error::{})?;",
+                field.name, param_prefix, field.name, vo, pascal, error_variant
+            )
+        } else {
+            format!(
+                "let {} = {}{}.map({}::new).transpose()?;",
+                field.name, param_prefix, field.name, vo
+            )
+        }
+    } else if is_vec_vo(field) {
+        let vo = field.value_object.as_deref().unwrap();
+        if is_shared {
+            format!(
+                "let {}: Vec<{}> = {}{}.into_iter().map({}::new).collect::<Result<Vec<_>,_>>().map_err(|_| {}Error::{})?;",
+                field.name, vo, param_prefix, field.name, vo, pascal, error_variant
+            )
+        } else {
+            format!(
+                "let {}: Vec<{}> = {}{}.into_iter().map({}::new).collect::<Result<Vec<_>,_>>()?;",
+                field.name, vo, param_prefix, field.name, vo
+            )
+        }
+    } else if is_value_object(field) {
+        let vo = field.value_object.as_deref().unwrap();
+        if is_shared {
+            format!(
+                "let {} = {}::new({}{}).map_err(|_| {}Error::{})?;",
+                field.name, vo, param_prefix, field.name, pascal, error_variant
+            )
+        } else {
+            format!(
+                "let {} = {}::new({}{})?;",
+                field.name, vo, param_prefix, field.name
+            )
+        }
+    } else {
+        String::new()
+    }
+}
+
+fn field_needs_clone(field_type: &str) -> bool {
+    matches!(
+        field_type,
+        "String" | "Option<String>" | "Vec<String>" | "Vec<i64>" | "HashMap<String, String>"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,11 +440,17 @@ mod tests {
                 name: "name".into(),
                 field_type: "String".into(),
                 unique: false,
+                value_object: None,
+                value_object_kind: None,
+                enum_variants: None,
             },
             Field {
                 name: "price".into(),
                 field_type: "i64".into(),
                 unique: false,
+                value_object: None,
+                value_object_kind: None,
+                enum_variants: None,
             },
         ];
         assert!(validate_fields(&fields).is_ok());
@@ -262,11 +464,17 @@ mod tests {
                 name: "name".into(),
                 field_type: "String".into(),
                 unique: false,
+                value_object: None,
+                value_object_kind: None,
+                enum_variants: None,
             },
             Field {
                 name: "bad".into(),
                 field_type: "UnknownType".into(),
                 unique: false,
+                value_object: None,
+                value_object_kind: None,
+                enum_variants: None,
             },
         ];
         let err = validate_fields(&fields).unwrap_err();
@@ -281,11 +489,17 @@ mod tests {
                 name: "id".into(),
                 field_type: "Uuid".into(),
                 unique: false,
+                value_object: None,
+                value_object_kind: None,
+                enum_variants: None,
             },
             Field {
                 name: "other_id".into(),
                 field_type: "Uuid".into(),
                 unique: false,
+                value_object: None,
+                value_object_kind: None,
+                enum_variants: None,
             },
         ];
         let imports = collect_imports(&fields);

@@ -1,9 +1,15 @@
 use std::{fs, path::Path};
 
 use crate::generators::naming::{apply, pascal_to_snake, to_pascal_case, write_file};
-use crate::generators::types::resolve_type;
-use crate::patchers::lib_rs::{patch_business_lib_domain_crud, patch_lib_block};
-use crate::puerto_toml::Field;
+use crate::generators::types::{
+    field_rust_type, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
+    resolve_type, vo_import_path, vo_inner_type,
+};
+use crate::patchers::lib_rs::{
+    patch_business_lib_domain_crud, patch_business_lib_shared, patch_business_lib_value_objects,
+    patch_lib_block,
+};
+use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 fn effective_fields(fields: &[Field]) -> Vec<Field> {
     if fields.is_empty() {
@@ -11,13 +17,21 @@ fn effective_fields(fields: &[Field]) -> Vec<Field> {
             name: "name".into(),
             field_type: "String".into(),
             unique: false,
+            value_object: None,
+            value_object_kind: None,
+            enum_variants: None,
         }]
     } else {
         fields.to_vec()
     }
 }
 
-pub fn generate_model(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_model(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
     let eff = effective_fields(fields);
 
     let mut extra_imports: Vec<String> = vec![];
@@ -32,9 +46,30 @@ pub fn generate_model(pascal: &str, snake: &str, fields: &[Field]) -> String {
         }
     }
 
+    let vo_fields: Vec<&Field> = eff.iter().filter(|f| is_value_object(f)).collect();
+    for f in &vo_fields {
+        let stmt = if is_shared_vo(f, shared_vos) {
+            format!(
+                "use crate::domain::shared::value_objects::{};",
+                f.value_object.as_deref().unwrap()
+            )
+        } else {
+            format!(
+                "use super::value_objects::{};",
+                f.value_object.as_deref().unwrap()
+            )
+        };
+        if !extra_imports.contains(&stmt) {
+            extra_imports.push(stmt);
+        }
+    }
+
     let props_lines: Vec<String> = eff
         .iter()
-        .map(|f| format!("    pub {}: {},", f.name, f.field_type))
+        .map(|f| {
+            let rust_type = field_rust_type(f);
+            format!("    pub {}: {},", f.name, rust_type)
+        })
         .collect();
 
     let mut entity_lines = vec![
@@ -45,12 +80,14 @@ pub fn generate_model(pascal: &str, snake: &str, fields: &[Field]) -> String {
         "    pub deleted_at: Option<DateTime<Utc>>,".to_string(),
     ];
     for f in &eff {
-        entity_lines.push(format!("    pub {}: {},", f.name, f.field_type));
+        let rust_type = field_rust_type(f);
+        entity_lines.push(format!("    pub {}: {},", f.name, rust_type));
     }
 
+    // Only validate primitive String fields (not VO fields — those are validated in VO::new())
     let validations: Vec<String> = eff
         .iter()
-        .filter(|f| f.field_type == "String")
+        .filter(|f| f.field_type == "String" && !is_value_object(f))
         .map(|f| {
             format!(
                 "        if props.{}.trim().is_empty() {{\n            return Err({}Error::ValidationError(\"{}_empty\".into()));\n        }}",
@@ -64,28 +101,53 @@ pub fn generate_model(pascal: &str, snake: &str, fields: &[Field]) -> String {
         .map(|f| format!("            {}: props.{},", f.name, f.name))
         .collect();
 
-    let required_string_fields: Vec<&Field> =
-        eff.iter().filter(|f| f.field_type == "String").collect();
-
     let valid_props_lines: Vec<String> = eff
         .iter()
         .map(|f| {
-            let mapping = resolve_type(&f.field_type).unwrap();
-            format!("            {}: {},", f.name, mapping.default_expr)
+            if is_option_vo(f) {
+                format!("            {}: None,", f.name)
+            } else if is_vec_vo(f) {
+                format!("            {}: vec![],", f.name)
+            } else if is_enum_vo(f) {
+                let vo = f.value_object.as_deref().unwrap();
+                let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
+                format!("            {}: {}::{},", f.name, vo, first_variant)
+            } else if is_value_object(f) {
+                let mapping = resolve_type(&f.field_type).unwrap();
+                let vo = f.value_object.as_deref().unwrap();
+                format!(
+                    "            {}: {}::new({}).expect(\"valid {}\"),",
+                    f.name, vo, mapping.default_expr, vo
+                )
+            } else {
+                let mapping = resolve_type(&f.field_type).unwrap();
+                format!("            {}: {},", f.name, mapping.default_expr)
+            }
         })
         .collect();
 
-    let valid_test_name =
-        if eff.len() == 1 && eff[0].name == "name" && eff[0].field_type == "String" {
-            format!("should_create_{}_when_name_is_valid", snake)
-        } else {
-            format!("should_create_{}_when_fields_are_valid", snake)
-        };
+    let required_string_fields: Vec<&Field> = eff
+        .iter()
+        .filter(|f| f.field_type == "String" && !is_value_object(f))
+        .collect();
 
-    let valid_assertion = if !eff.is_empty() && eff[0].field_type == "String" {
+    let valid_test_name = if eff.len() == 1
+        && eff[0].name == "name"
+        && eff[0].field_type == "String"
+        && !is_value_object(&eff[0])
+    {
+        format!("should_create_{}_when_name_is_valid", snake)
+    } else {
+        format!("should_create_{}_when_fields_are_valid", snake)
+    };
+
+    let valid_assertion = if let Some(f) = eff
+        .iter()
+        .find(|f| f.field_type == "String" && !is_value_object(f))
+    {
         format!(
             "\n        assert_eq!(result.unwrap().{}, \"example\");",
-            eff[0].name
+            f.name
         )
     } else if !eff.is_empty() {
         "\n        assert!(result.is_ok());".to_string()
@@ -102,6 +164,17 @@ pub fn generate_model(pascal: &str, snake: &str, fields: &[Field]) -> String {
             .map(|f| {
                 if f.name == field_name {
                     format!("            {}: \"\".into(),", f.name)
+                } else if is_enum_vo(f) {
+                    let vo = f.value_object.as_deref().unwrap();
+                    let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
+                    format!("            {}: {}::{},", f.name, vo, first_variant)
+                } else if is_value_object(f) {
+                    let mapping = resolve_type(&f.field_type).unwrap();
+                    let vo = f.value_object.as_deref().unwrap();
+                    format!(
+                        "            {}: {}::new({}).expect(\"valid {}\"),",
+                        f.name, vo, mapping.default_expr, vo
+                    )
                 } else {
                     let mapping = resolve_type(&f.field_type).unwrap();
                     format!("            {}: {},", f.name, mapping.default_expr)
@@ -132,6 +205,17 @@ pub fn generate_model(pascal: &str, snake: &str, fields: &[Field]) -> String {
             .map(|f| {
                 if f.name == field_name {
                     format!("            {}: \"   \".into(),", f.name)
+                } else if is_enum_vo(f) {
+                    let vo = f.value_object.as_deref().unwrap();
+                    let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
+                    format!("            {}: {}::{},", f.name, vo, first_variant)
+                } else if is_value_object(f) {
+                    let mapping = resolve_type(&f.field_type).unwrap();
+                    let vo = f.value_object.as_deref().unwrap();
+                    format!(
+                        "            {}: {}::new({}).expect(\"valid {}\"),",
+                        f.name, vo, mapping.default_expr, vo
+                    )
                 } else {
                     let mapping = resolve_type(&f.field_type).unwrap();
                     format!("            {}: {},", f.name, mapping.default_expr)
@@ -151,6 +235,57 @@ pub fn generate_model(pascal: &str, snake: &str, fields: &[Field]) -> String {
             pascal = pascal,
             field = field_name,
             props = ws_props.join("\n"),
+        ));
+    }
+
+    let vo_string_fields: Vec<&Field> = eff
+        .iter()
+        .filter(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
+        .collect();
+
+    for vf in &vo_string_fields {
+        let vo = vf.value_object.as_deref().unwrap();
+        let snake_vo = pascal_to_snake(vo);
+        let error_str = if is_shared_vo(vf, shared_vos) {
+            format!("shared.value_object.{}.invalid", snake_vo)
+        } else {
+            format!("{}.invalid_{}", snake, snake_vo)
+        };
+
+        validation_tests.push(format!(
+            "    #[test]
+    fn should_reject_{snake}_when_{snake_vo}_is_empty() {{
+        let result = {vo}::new(\"\".to_string());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            \"{error_str}\"
+        );
+    }}"
+        ));
+    }
+
+    let enum_vo_fields: Vec<&Field> = eff.iter().filter(|f| is_enum_vo(f)).collect();
+
+    for vf in &enum_vo_fields {
+        let vo = vf.value_object.as_deref().unwrap();
+        let snake_vo = pascal_to_snake(vo);
+        let error_str = if is_shared_vo(vf, shared_vos) {
+            format!("shared.value_object.{}.invalid", snake_vo)
+        } else {
+            format!("{}.invalid_{}", snake, snake_vo)
+        };
+
+        validation_tests.push(format!(
+            "    #[test]
+    fn should_reject_{snake}_when_{snake_vo}_is_invalid() {{
+        let result = {vo}::from_str(\"InvalidVariant\");
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            \"{error_str}\"
+        );
+    }}"
         ));
     }
 
@@ -235,7 +370,12 @@ mod tests {{
     )
 }
 
-pub fn generate_mother(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_mother(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
     let eff = effective_fields(fields);
 
     let mut mother_imports: Vec<String> = vec![];
@@ -250,27 +390,63 @@ pub fn generate_mother(pascal: &str, snake: &str, fields: &[Field]) -> String {
         }
     }
 
-    let required_string_fields: Vec<&Field> =
-        eff.iter().filter(|f| f.field_type == "String").collect();
+    // Add VO imports if any
+    let vo_fields: Vec<&Field> = eff.iter().filter(|f| is_value_object(f)).collect();
+    for vf in &vo_fields {
+        let import_path = vo_import_path(vf, snake, shared_vos);
+        let stmt = format!("use {};", import_path);
+        if !mother_imports.contains(&stmt) {
+            mother_imports.push(stmt);
+        }
+    }
+
+    let required_string_fields: Vec<&Field> = eff
+        .iter()
+        .filter(|f| f.field_type == "String" && !is_value_object(f))
+        .collect();
 
     let mother_fields: Vec<String> = eff
         .iter()
         .map(|f| {
-            let storage_type = mother_storage_type(&f.field_type);
-            format!("    {}: Option<{}>,", f.name, storage_type)
+            if is_vec_vo(f) {
+                let vo = f.value_object.as_deref().unwrap();
+                format!("    {}: Option<Vec<{}>>,", f.name, vo)
+            } else if is_value_object(f) {
+                let vo = f.value_object.as_deref().unwrap();
+                format!("    {}: Option<{}>,", f.name, vo)
+            } else {
+                let storage_type = mother_storage_type(&f.field_type);
+                format!("    {}: Option<{}>,", f.name, storage_type)
+            }
         })
         .collect();
 
     let with_methods: Vec<String> = eff
         .iter()
         .map(|f| {
-            let (param_type, conversion) = mother_with_param(&f.field_type, &f.name);
-            format!(
-                "    pub fn with_{field}(mut self, {field}: {param_type}) -> Self {{\n        self.{field} = Some({conversion});\n        self\n    }}",
-                field = f.name,
-                param_type = param_type,
-                conversion = conversion,
-            )
+            if is_vec_vo(f) {
+                let vo = f.value_object.as_deref().unwrap();
+                format!(
+                    "    pub fn with_{field}(mut self, {field}: Vec<{vo}>) -> Self {{\n        self.{field} = Some({field});\n        self\n    }}",
+                    field = f.name,
+                    vo = vo,
+                )
+            } else if is_value_object(f) {
+                let vo = f.value_object.as_deref().unwrap();
+                format!(
+                    "    pub fn with_{field}(mut self, {field}: {vo}) -> Self {{\n        self.{field} = Some({field});\n        self\n    }}",
+                    field = f.name,
+                    vo = vo,
+                )
+            } else {
+                let (param_type, conversion) = mother_with_param(&f.field_type, &f.name);
+                format!(
+                    "    pub fn with_{field}(mut self, {field}: {param_type}) -> Self {{\n        self.{field} = Some({conversion});\n        self\n    }}",
+                    field = f.name,
+                    param_type = param_type,
+                    conversion = conversion,
+                )
+            }
         })
         .collect();
 
@@ -287,10 +463,54 @@ pub fn generate_mother(pascal: &str, snake: &str, fields: &[Field]) -> String {
     let build_assignments: Vec<String> = eff
         .iter()
         .map(|f| {
-            let mapping = resolve_type(&f.field_type).unwrap();
-            if is_option_type(&f.field_type) {
+            if is_option_vo(f) {
+                format!("            {}: self.{},", f.name, f.name)
+            } else if is_vec_vo(f) {
+                format!("            {}: self.{}.unwrap_or_default(),", f.name, f.name)
+            } else if is_enum_vo(f) {
+                let vo = f.value_object.as_deref().unwrap();
+                let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
+                format!(
+                    "            {}: self.{}.unwrap_or_else(|| {}::{}),",
+                    f.name, f.name, vo, first_variant
+                )
+            } else if is_value_object(f) {
+                let vo = f.value_object.as_deref().unwrap();
+                let mapping = resolve_type(&f.field_type).unwrap();
+                match mapping.rust_type {
+                    "String" => format!(
+                        "            {}: self.{}.unwrap_or_else(|| {}::new(\"example\".to_string()).expect(\"valid {}\")),",
+                        f.name, f.name, vo, vo
+                    ),
+                    "i64" => format!(
+                        "            {}: self.{}.unwrap_or_else(|| {}::new(42).expect(\"valid {}\")),",
+                        f.name, f.name, vo, vo
+                    ),
+                    "bool" => format!(
+                        "            {}: self.{}.unwrap_or_else(|| {}::new(true).expect(\"valid {}\")),",
+                        f.name, f.name, vo, vo
+                    ),
+                    "f64" => format!(
+                        "            {}: self.{}.unwrap_or_else(|| {}::new(1.5).expect(\"valid {}\")),",
+                        f.name, f.name, vo, vo
+                    ),
+                    "Uuid" => format!(
+                        "            {}: self.{}.unwrap_or_else(|| {}::new(Uuid::new_v4()).expect(\"valid {}\")),",
+                        f.name, f.name, vo, vo
+                    ),
+                    "DateTime<Utc>" => format!(
+                        "            {}: self.{}.unwrap_or_else(|| {}::new(Utc::now()).expect(\"valid {}\")),",
+                        f.name, f.name, vo, vo
+                    ),
+                    _ => format!(
+                        "            {}: self.{}.unwrap_or_default(),",
+                        f.name, f.name
+                    ),
+                }
+            } else if is_option_type(&f.field_type) {
                 format!("            {}: self.{},", f.name, f.name)
             } else {
+                let mapping = resolve_type(&f.field_type).unwrap();
                 match mapping.rust_type {
                     "String" => format!(
                         "            {}: self.{}.unwrap_or_else(|| \"example\".to_string()),",
@@ -431,6 +651,221 @@ fn mother_with_param(field_type: &str, field_name: &str) -> (String, String) {
             _ => (field_type.to_string(), field_name.to_string()),
         }
     }
+}
+
+pub fn generate_value_objects(
+    pascal: &str,
+    _snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
+    let eff = effective_fields(fields);
+    let vo_fields: Vec<&Field> = eff
+        .iter()
+        .filter(|f| is_value_object(f) && !is_shared_vo(f, shared_vos))
+        .collect();
+
+    if vo_fields.is_empty() {
+        return String::new();
+    }
+
+    // Collect file-level imports once (deduplicated)
+    let mut file_imports: Vec<String> = vec![format!("use super::errors::{}Error;", pascal)];
+    for f in &vo_fields {
+        if is_enum_vo(f) {
+            continue;
+        }
+        let inner = vo_inner_type(f);
+        let imp = match inner.as_str() {
+            "Uuid" => Some("use uuid::Uuid;".to_string()),
+            "DateTime<Utc>" => Some("use chrono::{DateTime, Utc};".to_string()),
+            _ => None,
+        };
+        if let Some(i) = imp {
+            if !file_imports.contains(&i) {
+                file_imports.push(i);
+            }
+        }
+    }
+
+    let mut vo_structs: Vec<String> = vec![];
+    for f in &vo_fields {
+        let vo = f.value_object.as_deref().unwrap();
+
+        if is_enum_vo(f) {
+            let variants = f.enum_variants.as_deref().unwrap();
+            let variant_lines: Vec<String> =
+                variants.iter().map(|v| format!("    {},", v)).collect();
+            let from_str_arms: Vec<String> = variants
+                .iter()
+                .map(|v| format!("            \"{}\" => Ok(Self::{}),", v, v))
+                .collect();
+            let as_str_arms: Vec<String> = variants
+                .iter()
+                .map(|v| format!("            Self::{} => \"{}\",", v, v))
+                .collect();
+            let unknown_arm = format!("            _ => Err({pascal}Error::Invalid{vo}),");
+            vo_structs.push(format!(
+                r#"#[derive(Debug, Clone, PartialEq)]
+pub enum {vo} {{
+{variant_lines}
+}}
+
+impl {vo} {{
+    pub fn from_str(s: &str) -> Result<Self, {pascal}Error> {{
+        match s {{
+{from_str_arms}
+{unknown_arm}
+        }}
+    }}
+
+    pub fn as_str(&self) -> &'static str {{
+        match self {{
+{as_str_arms}
+        }}
+    }}
+}}"#,
+                pascal = pascal,
+                vo = vo,
+                variant_lines = variant_lines.join("\n"),
+                from_str_arms = from_str_arms.join("\n"),
+                unknown_arm = unknown_arm,
+                as_str_arms = as_str_arms.join("\n"),
+            ));
+            continue;
+        }
+
+        let inner_type = vo_inner_type(f);
+        let struct_code = match inner_type.as_str() {
+            "String" => format!(
+                r#"#[derive(Debug, Clone, PartialEq)]
+pub struct {vo} {{
+    value: String,
+}}
+
+impl {vo} {{
+    pub fn new(value: String) -> Result<Self, {pascal}Error> {{
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {{
+            return Err({pascal}Error::Invalid{vo});
+        }}
+        Ok(Self {{ value: trimmed }})
+    }}
+
+    pub fn value(&self) -> &str {{
+        &self.value
+    }}
+}}"#,
+                pascal = pascal,
+                vo = vo,
+            ),
+            "i64" | "f64" | "bool" => {
+                let ret_type = inner_type.clone();
+                format!(
+                    r#"#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct {vo}({ret_type});
+
+impl {vo} {{
+    pub fn new(value: {ret_type}) -> Result<Self, {pascal}Error> {{
+        Ok(Self(value))
+    }}
+
+    pub fn value(&self) -> {ret_type} {{
+        self.0
+    }}
+}}"#,
+                    pascal = pascal,
+                    vo = vo,
+                    ret_type = ret_type,
+                )
+            }
+            "Uuid" => format!(
+                r#"#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct {vo}(Uuid);
+
+impl {vo} {{
+    pub fn new(value: Uuid) -> Result<Self, {pascal}Error> {{
+        Ok(Self(value))
+    }}
+
+    pub fn value(&self) -> Uuid {{
+        self.0
+    }}
+}}"#,
+                pascal = pascal,
+                vo = vo,
+            ),
+            "DateTime<Utc>" => format!(
+                r#"#[derive(Debug, Clone, PartialEq)]
+pub struct {vo}(DateTime<Utc>);
+
+impl {vo} {{
+    pub fn new(value: DateTime<Utc>) -> Result<Self, {pascal}Error> {{
+        Ok(Self(value))
+    }}
+
+    pub fn value(&self) -> DateTime<Utc> {{
+        self.0
+    }}
+}}"#,
+                pascal = pascal,
+                vo = vo,
+            ),
+            _ => continue,
+        };
+        vo_structs.push(struct_code);
+    }
+
+    format!("{}\n\n{}", file_imports.join("\n"), vo_structs.join("\n\n"))
+}
+
+pub fn generate_errors(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    _shared_vos: &[ValueObjectDefinition],
+) -> String {
+    let eff = effective_fields(fields);
+    let vo_fields: Vec<&Field> = eff.iter().filter(|f| is_value_object(f)).collect();
+
+    let mut vo_variants: Vec<String> = vec![];
+    for f in &vo_fields {
+        let vo = f.value_object.as_deref().unwrap();
+        vo_variants.push(format!(
+            "    #[error(\"{snake}.invalid_{vo_snake}\")]\n    Invalid{vo},",
+            snake = snake,
+            vo_snake = pascal_to_snake(vo),
+            vo = vo,
+        ));
+    }
+
+    let vo_variants_str = if vo_variants.is_empty() {
+        String::new()
+    } else {
+        vo_variants.join("\n") + "\n"
+    };
+
+    format!(
+        r#"use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum {pascal}Error {{
+    #[error("{snake}.validation_error.{{0}}")]
+    ValidationError(String),
+    #[error("{snake}.not_found")]
+    NotFound,
+    #[error("{snake}.duplicate")]
+    Duplicate,
+    #[error("{snake}.repository_error")]
+    RepositoryError,
+    #[error("{snake}.unknown")]
+    Unknown,
+{vo_variants}}}
+"#,
+        pascal = pascal,
+        snake = snake,
+        vo_variants = vo_variants_str,
+    )
 }
 
 pub(crate) const ERRORS: &str = r#"use thiserror::Error;
@@ -663,20 +1098,225 @@ pub trait Update{pascal}UseCaseTrait: Send + Sync {{
     )
 }
 
+pub fn generate_shared_value_objects(vos: &[ValueObjectDefinition]) -> String {
+    if vos.is_empty() {
+        return String::new();
+    }
+
+    let mut vo_structs: Vec<String> = vec![];
+    for vo_def in vos {
+        let vo = &vo_def.name;
+        let inner = &vo_def.inner_type;
+        let struct_code = match inner.as_str() {
+            "String" => format!(
+                r#"use super::errors::{vo}Error;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct {vo} {{
+    value: String,
+}}
+
+impl {vo} {{
+    pub fn new(value: String) -> Result<Self, {vo}Error> {{
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {{
+            return Err({vo}Error::Invalid);
+        }}
+        Ok(Self {{ value: trimmed }})
+    }}
+
+    pub fn value(&self) -> &str {{
+        &self.value
+    }}
+}}"#,
+                vo = vo,
+            ),
+            "i64" | "f64" | "bool" => {
+                let copy_trait = "Copy";
+                format!(
+                    r#"use super::errors::{vo}Error;
+
+#[derive(Debug, Clone, {copy_trait}, PartialEq)]
+pub struct {vo}({inner});
+
+impl {vo} {{
+    pub fn new(value: {inner}) -> Result<Self, {vo}Error> {{
+        Ok(Self(value))
+    }}
+
+    pub fn value(&self) -> {inner} {{
+        self.0
+    }}
+}}"#,
+                    vo = vo,
+                    inner = inner,
+                    copy_trait = copy_trait,
+                )
+            }
+            "Uuid" => format!(
+                r#"use super::errors::{vo}Error;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct {vo}(Uuid);
+
+impl {vo} {{
+    pub fn new(value: Uuid) -> Result<Self, {vo}Error> {{
+        Ok(Self(value))
+    }}
+
+    pub fn value(&self) -> Uuid {{
+        self.0
+    }}
+}}"#,
+                vo = vo,
+            ),
+            "DateTime<Utc>" => format!(
+                r#"use super::errors::{vo}Error;
+use chrono::{{DateTime, Utc}};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct {vo}(DateTime<Utc>);
+
+impl {vo} {{
+    pub fn new(value: DateTime<Utc>) -> Result<Self, {vo}Error> {{
+        Ok(Self(value))
+    }}
+
+    pub fn value(&self) -> DateTime<Utc> {{
+        self.0
+    }}
+}}"#,
+                vo = vo,
+            ),
+            _ => continue,
+        };
+        vo_structs.push(struct_code);
+    }
+
+    vo_structs.join("\n\n")
+}
+
+#[allow(dead_code)]
+pub fn generate_shared_errors(vos: &[ValueObjectDefinition]) -> String {
+    if vos.is_empty() {
+        return String::new();
+    }
+
+    let mut error_variants: Vec<String> = vec![];
+    for vo_def in vos {
+        let vo = &vo_def.name;
+        let vo_snake = pascal_to_snake(vo);
+        error_variants.push(format!(
+            "    #[error(\"shared.value_object.{}.invalid\")]\n    Invalid,",
+            vo_snake
+        ));
+    }
+
+    let variants_str = error_variants.join("\n");
+
+    format!(
+        r#"use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum {vo}Error {{
+{variants}
+}}"#,
+        vo = if vos.len() == 1 {
+            vos[0].name.clone()
+        } else {
+            "Shared".to_string()
+        },
+        variants = variants_str,
+    )
+}
+
+pub fn generate_shared_errors_combined(vos: &[ValueObjectDefinition]) -> String {
+    if vos.is_empty() {
+        return String::new();
+    }
+
+    let mut error_defs: Vec<String> = vec![];
+    for vo_def in vos {
+        let vo = &vo_def.name;
+        let vo_snake = pascal_to_snake(vo);
+        error_defs.push(format!(
+            r#"#[derive(Debug, Error)]
+pub enum {vo}Error {{
+    #[error("shared.value_object.{}.invalid")]
+    Invalid,
+}}"#,
+            vo_snake
+        ));
+    }
+
+    format!("use thiserror::Error;\n\n{}", error_defs.join("\n\n"))
+}
+
+pub fn write_shared_vo_files(
+    base: &Path,
+    shared_vos: &[ValueObjectDefinition],
+) -> Result<(), Box<dyn std::error::Error>> {
+    if shared_vos.is_empty() {
+        return Ok(());
+    }
+
+    let shared_dir = base.join("business/src/domain/shared");
+    fs::create_dir_all(&shared_dir)?;
+
+    write_file(
+        &shared_dir.join("value_objects.rs"),
+        &generate_shared_value_objects(shared_vos),
+    )?;
+
+    write_file(
+        &shared_dir.join("errors.rs"),
+        &generate_shared_errors_combined(shared_vos),
+    )?;
+
+    write_file(
+        &shared_dir.join("mod.rs"),
+        "pub mod errors;\npub mod value_objects;\n",
+    )?;
+
+    Ok(())
+}
+
 pub fn write_domain_files(
     pascal: &str,
     snake: &str,
     base: &Path,
     fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(format!("business/src/domain/{snake}/model.rs")),
-        &generate_model(pascal, snake, fields),
+        &generate_model(pascal, snake, fields, shared_vos),
     )?;
+
+    let has_vo = effective_fields(fields).iter().any(is_value_object);
+    let has_local_vo = effective_fields(fields)
+        .iter()
+        .any(|f| is_value_object(f) && !is_shared_vo(f, shared_vos));
+
+    let errors_content = if has_vo {
+        generate_errors(pascal, snake, fields, shared_vos)
+    } else {
+        apply(ERRORS, pascal, snake)
+    };
     write_file(
         &base.join(format!("business/src/domain/{snake}/errors.rs")),
-        &apply(ERRORS, pascal, snake),
+        &errors_content,
     )?;
+
+    if has_local_vo {
+        let vo_content = generate_value_objects(pascal, snake, fields, shared_vos);
+        write_file(
+            &base.join(format!("business/src/domain/{snake}/value_objects.rs")),
+            &vo_content,
+        )?;
+    }
+
     write_file(
         &base.join(format!("business/src/domain/{snake}/repository.rs")),
         &apply(CRUD_REPOSITORY, pascal, snake),
@@ -729,10 +1369,11 @@ pub fn write_mother(
     snake: &str,
     base: &Path,
     fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(format!("business/src/tests/mothers/{snake}_mother.rs")),
-        &generate_mother(pascal, snake, fields),
+        &generate_mother(pascal, snake, fields, shared_vos),
     )?;
     Ok(())
 }
@@ -782,9 +1423,25 @@ pub fn run_generate_domain(name: &str, base: &Path) -> Result<(), Box<dyn std::e
         .map(|e| e.fields.clone())
         .unwrap_or_default();
 
-    write_domain_files(&pascal, &snake, base, &fields)?;
-    write_mother(&pascal, &snake, base, &fields)?;
+    let shared_vos = config.value_object.clone();
+
+    write_domain_files(&pascal, &snake, base, &fields, &shared_vos)?;
+    write_mother(&pascal, &snake, base, &fields, &shared_vos)?;
     patch_business_lib_domain_crud(base, &snake)?;
+
+    let has_vo = fields.iter().any(is_value_object);
+    let has_local_vo = fields
+        .iter()
+        .any(|f| is_value_object(f) && !is_shared_vo(f, &shared_vos));
+    if has_local_vo {
+        patch_business_lib_value_objects(base, &snake)?;
+    }
+
+    if !shared_vos.is_empty() {
+        write_shared_vo_files(base, &shared_vos)?;
+        patch_business_lib_shared(base)?;
+    }
+
     patch_mothers_lib(base, &snake)?;
 
     let use_cases = vec![
@@ -796,7 +1453,20 @@ pub fn run_generate_domain(name: &str, base: &Path) -> Result<(), Box<dyn std::e
     ];
     crate::puerto_toml::add_entity(base, &pascal, use_cases, config.project.db, vec![])?;
 
-    println!("✓ business/domain/    — model, errors, repository trait, 5 use case traits");
+    if has_local_vo {
+        println!(
+            "✓ business/domain/    — model, errors, value_objects, repository trait, 5 use case traits"
+        );
+    } else if has_vo {
+        println!(
+            "✓ business/domain/    — model, errors (shared VOs), repository trait, 5 use case traits"
+        );
+    } else {
+        println!("✓ business/domain/    — model, errors, repository trait, 5 use case traits");
+    }
+    if !shared_vos.is_empty() {
+        println!("✓ business/domain/shared/ — shared value objects + errors");
+    }
     println!("✓ business/tests/     — {pascal}Mother (Object Mother)");
     println!("✓ puerto.toml         — {pascal} registered");
     println!();

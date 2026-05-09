@@ -2,8 +2,67 @@ use std::path::Path;
 
 use crate::generators::bootstrap::regenerate_bootstrap;
 use crate::generators::naming::{apply, pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::types::{
+    is_enum_vo, is_option_vo, is_value_object, is_vec_vo, vo_inner_type,
+};
 use crate::patchers::api_rs::patch_api_rs;
 use crate::puerto_toml::Field;
+
+pub fn generate_crud_error_mapper(pascal: &str, snake: &str, fields: &[Field]) -> String {
+    let eff = effective_fields(fields);
+    let vo_fields: Vec<&Field> = eff.iter().filter(|f| is_value_object(f)).collect();
+
+    let vo_arms: String = vo_fields
+        .iter()
+        .map(|f| {
+            let vo = f.value_object.as_deref().unwrap();
+            format!(
+                "            {pascal}Error::Invalid{vo} => (StatusCode::BAD_REQUEST, self.to_string()),",
+                pascal = pascal,
+                vo = vo,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let vo_arms_block = if vo_arms.is_empty() {
+        String::new()
+    } else {
+        format!("\n{}", vo_arms)
+    };
+
+    format!(
+        r#"use business::domain::{snake}::errors::{pascal}Error;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+
+use crate::api::error::{{ErrorResponse, IntoErrorResponse}};
+
+impl IntoErrorResponse for {pascal}Error {{
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {{
+        let (status, message) = match &self {{
+            {pascal}Error::ValidationError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
+            {pascal}Error::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            {pascal}Error::Duplicate => (StatusCode::CONFLICT, self.to_string()),
+            {pascal}Error::RepositoryError => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            {pascal}Error::Unknown => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),{vo_arms_block}
+        }};
+
+        (
+            status,
+            Json(ErrorResponse {{
+                name: "{snake}_error".into(),
+                message,
+            }}),
+        )
+    }}
+}}
+"#,
+        pascal = pascal,
+        snake = snake,
+        vo_arms_block = vo_arms_block,
+    )
+}
 
 pub(crate) const DTO: &str = r#"use business::domain::{snake}::model::{Pascal};
 use poem_openapi::Object;
@@ -237,6 +296,9 @@ fn effective_fields(fields: &[Field]) -> Vec<Field> {
             name: "name".into(),
             field_type: "String".into(),
             unique: false,
+            value_object: None,
+            value_object_kind: None,
+            enum_variants: None,
         }]
     } else {
         fields.to_vec()
@@ -262,7 +324,31 @@ pub fn generate_crud_dto(pascal: &str, snake: &str, fields: &[Field]) -> String 
     let dto_from_fields: String = eff
         .iter()
         .map(|f| {
-            if field_needs_clone(&f.field_type) {
+            if is_enum_vo(f) {
+                format!("            {}: entity.{}.as_str().to_string(),", f.name, f.name)
+            } else if is_option_vo(f) {
+                let inner = vo_inner_type(f);
+                if inner == "String" {
+                    format!("            {}: entity.{}.as_ref().map(|v| v.value().to_string()),", f.name, f.name)
+                } else {
+                    format!("            {}: entity.{}.map(|v| v.value()),", f.name, f.name)
+                }
+            } else if is_vec_vo(f) {
+                let inner = vo_inner_type(f);
+                if inner == "String" {
+                    format!("            {}: entity.{}.iter().map(|v| v.value().to_string()).collect::<Vec<_>>(),", f.name, f.name)
+                } else {
+                    format!("            {}: entity.{}.iter().map(|v| v.value()).collect::<Vec<_>>(),", f.name, f.name)
+                }
+            } else if is_value_object(f) {
+                match f.field_type.as_str() {
+                    "String" => format!(
+                        "            {}: entity.{}.value().to_string(),",
+                        f.name, f.name
+                    ),
+                    _ => format!("            {}: entity.{}.value(),", f.name, f.name),
+                }
+            } else if field_needs_clone(&f.field_type) {
                 format!("            {}: entity.{}.clone(),", f.name, f.name)
             } else {
                 format!("            {}: entity.{},", f.name, f.name)
@@ -508,7 +594,7 @@ pub fn write_presentation_files(
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/error_mapper.rs")),
-        &apply(ERROR_MAPPER, pascal, snake),
+        &generate_crud_error_mapper(pascal, snake, fields),
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/routes.rs")),

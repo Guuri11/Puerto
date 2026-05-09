@@ -638,6 +638,93 @@ pub const SNIPPETS_JSON: &str = r##"{
       "}"
     ],
     "description": "Full #[cfg(test)] integration test module for PgEntityRepository with seed helper."
+  },
+  "Domain — value_objects.rs: String VO": {
+    "prefix": "vo-string",
+    "body": [
+      "#[derive(Debug, Clone, PartialEq)]",
+      "pub struct ${1:Name} {",
+      "\tvalue: String,",
+      "}",
+      "",
+      "impl ${1:Name} {",
+      "\tpub fn new(value: String) -> Result<Self, ${2:Entity}Error> {",
+      "\t\tlet trimmed = value.trim().to_string();",
+      "\t\tif trimmed.is_empty() {",
+      "\t\t\treturn Err(${2:Entity}Error::Invalid${1:Name});",
+      "\t\t}",
+      "\t\tOk(Self { value: trimmed })",
+      "\t}",
+      "",
+      "\tpub fn value(&self) -> &str {",
+      "\t\t&self.value",
+      "\t}",
+      "}",
+      "$0"
+    ],
+    "description": "String Value Object: private field, trim + empty validation, value() → &str."
+  },
+  "Domain — value_objects.rs: Numeric VO": {
+    "prefix": "vo-numeric",
+    "body": [
+      "#[derive(Debug, Clone, Copy, PartialEq)]",
+      "pub struct ${1:Name}(${2:i64});",
+      "",
+      "impl ${1:Name} {",
+      "\tpub fn new(value: ${2:i64}) -> Result<Self, ${3:Entity}Error> {",
+      "\t\tOk(Self(value))",
+      "\t}",
+      "",
+      "\tpub fn value(&self) -> ${2:i64} {",
+      "\t\tself.0",
+      "\t}",
+      "}",
+      "$0"
+    ],
+    "description": "Numeric Value Object (i64 / f64): tuple struct, pass-through new(), value() by copy."
+  },
+  "Domain — value_objects.rs: Enum VO": {
+    "prefix": "vo-enum",
+    "body": [
+      "#[derive(Debug, Clone, PartialEq)]",
+      "pub enum ${1:Name} {",
+      "\t${2:Variant1},",
+      "\t${3:Variant2},",
+      "\t$0",
+      "}",
+      "",
+      "impl ${1:Name} {",
+      "\tpub fn from_str(s: &str) -> Result<Self, ${4:Entity}Error> {",
+      "\t\tmatch s {",
+      "\t\t\t\"${2:Variant1}\" => Ok(Self::${2:Variant1}),",
+      "\t\t\t\"${3:Variant2}\" => Ok(Self::${3:Variant2}),",
+      "\t\t\t_ => Err(${4:Entity}Error::Invalid${1:Name}),",
+      "\t\t}",
+      "\t}",
+      "",
+      "\tpub fn as_str(&self) -> &str {",
+      "\t\tmatch self {",
+      "\t\t\tSelf::${2:Variant1} => \"${2:Variant1}\",",
+      "\t\t\tSelf::${3:Variant2} => \"${3:Variant2}\",",
+      "\t\t}",
+      "\t}",
+      "}"
+    ],
+    "description": "Enum Value Object: from_str() for construction, as_str() for extraction."
+  },
+  "Application — Option<VO> construction": {
+    "prefix": "vo-option-construct",
+    "body": [
+      "let ${1:field} = params.${1:field}.map(${2:VoName}::new).transpose()?;"
+    ],
+    "description": "Construct Option<VO> from Option<primitive>: map + transpose."
+  },
+  "Application — Vec<VO> construction": {
+    "prefix": "vo-vec-construct",
+    "body": [
+      "let ${1:field} = params.${1:field}.into_iter().map(${2:VoName}::new).collect::<Result<Vec<_>, _>>()?;"
+    ],
+    "description": "Construct Vec<VO> from Vec<primitive>: map + collect into Result."
   }
 }
 "##;

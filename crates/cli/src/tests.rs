@@ -1,6 +1,7 @@
 use crate::commands::list::{require_puerto_project, run_list};
 use crate::commands::new::extract_template;
 use crate::commands::validate;
+use crate::puerto_toml::ValueObjectDefinition;
 use crate::{puerto_toml, scaffold, snippets};
 use cargo_generate::{GenerateArgs, TemplatePath, Vcs, generate};
 use serde_json;
@@ -263,7 +264,7 @@ fn scaffold_creates_all_files_for_single_word_entity() {
     let dir = temp_dir("scaffold_single_word");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     assert!(dir.join("business/src/domain/product/model.rs").exists());
     assert!(dir.join("business/src/domain/product/errors.rs").exists());
@@ -303,7 +304,7 @@ fn scaffold_creates_all_files_for_multi_word_entity() {
     let dir = temp_dir("scaffold_multi_word");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("OrderItem", &dir, false, false, &[]).unwrap();
+    scaffold::run("OrderItem", &dir, false, false, &[], &[]).unwrap();
 
     assert!(dir.join("business/src/domain/order_item/model.rs").exists());
     assert!(
@@ -331,7 +332,7 @@ fn scaffold_normalizes_lowercase_input() {
     let dir = temp_dir("scaffold_lowercase");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("product", &dir, false, false, &[]).unwrap();
+    scaffold::run("product", &dir, false, false, &[], &[]).unwrap();
 
     assert!(dir.join("business/src/domain/product/model.rs").exists());
     assert!(
@@ -347,7 +348,7 @@ fn scaffold_substitutes_pascal_name_in_model() {
     let dir = temp_dir("scaffold_model_content");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
     assert!(content.contains("pub struct ProductProps"));
@@ -363,7 +364,7 @@ fn scaffold_substitutes_pascal_name_in_errors() {
     let dir = temp_dir("scaffold_errors_content");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/domain/product/errors.rs")).unwrap();
     assert!(content.contains("pub enum ProductError"));
@@ -378,7 +379,7 @@ fn scaffold_substitutes_pascal_name_in_use_case_impl() {
     let dir = temp_dir("scaffold_impl_content");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content =
         fs::read_to_string(dir.join("business/src/application/product/create_product.rs")).unwrap();
@@ -395,7 +396,7 @@ fn scaffold_crud_impls_import_model_struct_in_tests() {
     let dir = temp_dir("scaffold_model_import");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("Product", &dir, false, true, &[]).unwrap();
+    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     for uc in &[
         "get_product",
@@ -451,7 +452,7 @@ fn scaffold_patches_business_lib_rs() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
     assert!(content.contains("pub mod product {"));
@@ -470,7 +471,7 @@ fn scaffold_patches_infra_lib_rs() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("infrastructure/src/lib.rs")).unwrap();
     assert!(content.contains("pub mod product {"));
@@ -486,7 +487,7 @@ fn scaffold_patches_api_rs() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("presentation/src/api.rs")).unwrap();
     assert!(content.contains("pub mod product;"));
@@ -502,7 +503,7 @@ fn scaffold_updates_puerto_toml_and_regenerates_bootstrap() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let toml = fs::read_to_string(dir.join("puerto.toml")).unwrap();
     assert!(toml.contains("name = \"Product\""));
@@ -879,7 +880,7 @@ fn scaffold_db_creates_entity_rs() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_db_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, true, false, &[]).unwrap();
+    scaffold::run("Product", &dir, true, false, &[], &[]).unwrap();
     assert!(dir.join("infrastructure/src/product/entity.rs").exists());
     cleanup(&dir);
 }
@@ -890,7 +891,7 @@ fn scaffold_db_repository_uses_pgpool() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_db_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, true, false, &[]).unwrap();
+    scaffold::run("Product", &dir, true, false, &[], &[]).unwrap();
     let content = fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
     assert!(content.contains("PgPool"));
     assert!(content.contains("PgProductRepository"));
@@ -904,7 +905,7 @@ fn scaffold_db_puerto_toml_has_db_true() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_db_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, true, false, &[]).unwrap();
+    scaffold::run("Product", &dir, true, false, &[], &[]).unwrap();
     let content = fs::read_to_string(dir.join("puerto.toml")).unwrap();
     assert!(content.contains("db = true"));
     cleanup(&dir);
@@ -916,7 +917,7 @@ fn scaffold_db_bootstrap_uses_pg_repo() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_db_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, true, false, &[]).unwrap();
+    scaffold::run("Product", &dir, true, false, &[], &[]).unwrap();
     let content = fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
     assert!(content.contains("PgProductRepository"));
     assert!(!content.contains("InMemoryProductRepository"));
@@ -930,7 +931,7 @@ fn scaffold_without_db_still_uses_inmemory() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
     let content = fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
     assert!(content.contains("InMemoryProductRepository"));
     assert!(!content.contains("PgPool"));
@@ -1050,7 +1051,7 @@ fn scaffold_use_case_impl_has_logger_field() {
     let dir = temp_dir("logger_scaffold_impl");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content =
         fs::read_to_string(dir.join("business/src/application/product/create_product.rs")).unwrap();
@@ -1082,7 +1083,7 @@ fn scaffold_bootstrap_wires_logger_for_all_entities() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
     assert!(content.contains("TracingLogger"));
@@ -1213,6 +1214,31 @@ fn generate_snippets_unknown_ide_returns_error() {
     cleanup(&dir);
 }
 
+#[test]
+fn snippets_json_contains_vo_prefixes() {
+    let json: serde_json::Value =
+        serde_json::from_str(snippets::SNIPPETS_JSON).expect("SNIPPETS_JSON must be valid JSON");
+    let prefixes: Vec<&str> = json
+        .as_object()
+        .unwrap()
+        .values()
+        .filter_map(|v| v.get("prefix")?.as_str())
+        .collect();
+
+    for expected in &[
+        "vo-string",
+        "vo-numeric",
+        "vo-enum",
+        "vo-option-construct",
+        "vo-vec-construct",
+    ] {
+        assert!(
+            prefixes.contains(expected),
+            "SNIPPETS_JSON missing prefix '{expected}'"
+        );
+    }
+}
+
 // ── puerto generate scaffold --crud ──────────────────────────────────────
 
 fn setup_puerto_stubs_for_crud(base: &Path) {
@@ -1225,7 +1251,7 @@ fn scaffold_crud_creates_all_domain_use_case_files() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs_for_crud(&dir);
-    scaffold::run("Product", &dir, false, true, &[]).unwrap();
+    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     assert!(
         dir.join("business/src/domain/product/use_cases/create_product.rs")
@@ -1257,7 +1283,7 @@ fn scaffold_crud_creates_all_application_use_case_files() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs_for_crud(&dir);
-    scaffold::run("Product", &dir, false, true, &[]).unwrap();
+    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     assert!(
         dir.join("business/src/application/product/create_product.rs")
@@ -1289,7 +1315,7 @@ fn scaffold_crud_repository_has_find_all() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs_for_crud(&dir);
-    scaffold::run("Product", &dir, false, true, &[]).unwrap();
+    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     let content =
         fs::read_to_string(dir.join("business/src/domain/product/repository.rs")).unwrap();
@@ -1306,7 +1332,7 @@ fn scaffold_crud_routes_has_all_http_methods() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs_for_crud(&dir);
-    scaffold::run("Product", &dir, false, true, &[]).unwrap();
+    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("presentation/src/api/product/routes.rs")).unwrap();
     assert!(content.contains("method = \"post\""));
@@ -1329,7 +1355,7 @@ fn scaffold_crud_patches_business_lib_with_all_use_cases() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs_for_crud(&dir);
-    scaffold::run("Product", &dir, false, true, &[]).unwrap();
+    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
 
@@ -1390,7 +1416,7 @@ fn scaffold_crud_bootstrap_wires_all_use_cases() {
         "// placeholder\n",
     )
     .unwrap();
-    scaffold::run("Product", &dir, false, true, &[]).unwrap();
+    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
     assert!(content.contains("CreateProductUseCaseImpl"));
@@ -1590,7 +1616,7 @@ fn generate_scaffold_includes_object_mother() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
 
-    scaffold::run("Widget", &output, false, true, &[]).unwrap();
+    scaffold::run("Widget", &output, false, true, &[], &[]).unwrap();
 
     assert!(
         output
@@ -2029,11 +2055,13 @@ name = "my-app"
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         puerto_toml::Field {
             name: "quantity".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     puerto_toml::add_entity(
@@ -2092,7 +2120,7 @@ fn type_registry_rejects_unknown() {
 fn generate_model_backward_compat_no_fields() {
     use crate::generators::domain::generate_model;
 
-    let result = generate_model("Product", "product", &[]);
+    let result = generate_model("Product", "product", &[], &[]);
     assert!(result.contains("pub struct ProductProps"));
     assert!(result.contains("pub name: String,"));
     assert!(result.contains("pub struct Product"));
@@ -2115,19 +2143,22 @@ fn generate_model_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "description".into(),
             field_type: "Option<String>".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_model("Product", "product", &fields);
+    let result = generate_model("Product", "product", &fields, &[]);
 
     assert!(result.contains("pub struct ProductProps"));
     assert!(result.contains("pub title: String,"));
@@ -2162,8 +2193,9 @@ fn generate_model_with_uuid_field() {
         name: "category_id".into(),
         field_type: "Uuid".into(),
         unique: false,
+        ..Default::default()
     }];
-    let result = generate_model("Item", "item", &fields);
+    let result = generate_model("Item", "item", &fields, &[]);
 
     assert!(result.contains("use uuid::Uuid;"));
     assert!(result.contains("pub category_id: Uuid,"));
@@ -2179,8 +2211,9 @@ fn generate_model_with_hashmap_field() {
         name: "metadata".into(),
         field_type: "HashMap<String, String>".into(),
         unique: false,
+        ..Default::default()
     }];
-    let result = generate_model("Config", "config", &fields);
+    let result = generate_model("Config", "config", &fields, &[]);
 
     assert!(result.contains("use std::collections::HashMap;"));
     assert!(result.contains("pub metadata: HashMap<String, String>,"));
@@ -2196,19 +2229,22 @@ fn generate_model_multiple_string_fields_has_validations() {
             name: "name".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "sku".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_model("Product", "product", &fields);
+    let result = generate_model("Product", "product", &fields, &[]);
 
     assert!(result.contains("if props.name.trim().is_empty()"));
     assert!(result.contains("name_empty"));
@@ -2226,7 +2262,7 @@ fn generate_model_multiple_string_fields_has_validations() {
 fn generate_mother_backward_compat_no_fields() {
     use crate::generators::domain::generate_mother;
 
-    let result = generate_mother("Product", "product", &[]);
+    let result = generate_mother("Product", "product", &[], &[]);
     assert!(result.contains("pub struct ProductMother"));
     assert!(result.contains("name: Option<String>,"));
     assert!(result.contains("pub fn with_name(mut self, name: &str) -> Self"));
@@ -2247,19 +2283,22 @@ fn generate_mother_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "description".into(),
             field_type: "Option<String>".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_mother("Product", "product", &fields);
+    let result = generate_mother("Product", "product", &fields, &[]);
 
     assert!(result.contains("title: Option<String>,"));
     assert!(result.contains("price: Option<i64>,"));
@@ -2283,7 +2322,7 @@ fn scaffold_with_empty_fields_produces_backward_compat_model() {
     let dir = temp_dir("scaffold_empty_fields");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    scaffold::run("Product", &dir, false, false, &[]).unwrap();
+    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
     assert!(content.contains("pub struct ProductProps"));
@@ -2306,7 +2345,7 @@ fn scaffold_crud_with_empty_fields_produces_backward_compat_model() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, true, &[]).unwrap();
+    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
     assert!(content.contains("pub struct ProductProps"));
@@ -2332,16 +2371,19 @@ fn generate_create_use_case_trait_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "description".into(),
             field_type: "Option<String>".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     let result = generate_create_use_case_trait("Product", "product", &fields);
@@ -2378,11 +2420,13 @@ fn generate_update_use_case_trait_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     let result = generate_update_use_case_trait("Product", "product", &fields);
@@ -2404,11 +2448,13 @@ fn generate_update_use_case_trait_uuid_fields_excluded() {
             name: "category_id".into(),
             field_type: "Uuid".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "name".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     let result = generate_update_use_case_trait("Item", "item", &fields);
@@ -2432,14 +2478,16 @@ fn generate_create_use_case_impl_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_create_use_case_impl("Product", "product", &fields);
+    let result = generate_create_use_case_impl("Product", "product", &fields, &[]);
 
     assert!(result.contains("CreateProductUseCaseImpl"));
     assert!(result.contains("CreateProductParams"));
@@ -2459,14 +2507,16 @@ fn generate_update_use_case_impl_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_update_use_case_impl("Product", "product", &fields);
+    let result = generate_update_use_case_impl("Product", "product", &fields, &[]);
 
     assert!(result.contains("UpdateProductUseCaseImpl"));
     assert!(result.contains("UpdateProductParams"));
@@ -2490,14 +2540,16 @@ fn generate_update_use_case_impl_excludes_uuid_fields() {
             name: "category_id".into(),
             field_type: "Uuid".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "name".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_update_use_case_impl("Item", "item", &fields);
+    let result = generate_update_use_case_impl("Item", "item", &fields, &[]);
 
     assert!(result.contains("entity.name = params.name;"));
     assert!(
@@ -2569,15 +2621,23 @@ fn write_application_files_with_fields_generates_dynamic_impls() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         crate::puerto_toml::Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    crate::generators::application::write_application_files("Product", "product", &dir, &fields)
-        .unwrap();
+    crate::generators::application::write_application_files(
+        "Product",
+        "product",
+        &dir,
+        &fields,
+        &[],
+    )
+    .unwrap();
 
     let create_content =
         fs::read_to_string(dir.join("business/src/application/product/create_product.rs")).unwrap();
@@ -2604,14 +2664,16 @@ fn generate_get_use_case_impl_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_get_use_case_impl("Product", "product", &fields);
+    let result = generate_get_use_case_impl("Product", "product", &fields, &[]);
 
     assert!(result.contains("GetProductUseCaseImpl"));
     assert!(result.contains("GetProductParams"));
@@ -2627,7 +2689,7 @@ fn generate_get_use_case_impl_with_custom_fields() {
 fn generate_get_use_case_impl_backward_compat_no_fields() {
     use crate::generators::application::generate_get_use_case_impl;
 
-    let result = generate_get_use_case_impl("Product", "product", &[]);
+    let result = generate_get_use_case_impl("Product", "product", &[], &[]);
 
     assert!(result.contains("GetProductUseCaseImpl"));
     assert!(result.contains("Product::new(ProductProps"));
@@ -2645,14 +2707,16 @@ fn generate_list_use_case_impl_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_list_use_case_impl("Product", "product", &fields);
+    let result = generate_list_use_case_impl("Product", "product", &fields, &[]);
 
     assert!(result.contains("ListProductUseCaseImpl"));
     assert!(result.contains("Product::new(ProductProps"));
@@ -2674,14 +2738,16 @@ fn generate_delete_use_case_impl_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_delete_use_case_impl("Product", "product", &fields);
+    let result = generate_delete_use_case_impl("Product", "product", &fields, &[]);
 
     assert!(result.contains("DeleteProductUseCaseImpl"));
     assert!(result.contains("Product::new(ProductProps"));
@@ -2702,14 +2768,16 @@ fn generate_create_use_case_impl_with_custom_fields_has_tests() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_create_use_case_impl("Product", "product", &fields);
+    let result = generate_create_use_case_impl("Product", "product", &fields, &[]);
 
     assert!(result.contains("#[cfg(test)]"));
     assert!(result.contains("should_create_product_when_fields_are_valid"));
@@ -2730,14 +2798,16 @@ fn generate_update_use_case_impl_with_custom_fields_has_tests() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_update_use_case_impl("Product", "product", &fields);
+    let result = generate_update_use_case_impl("Product", "product", &fields, &[]);
 
     assert!(result.contains("#[cfg(test)]"));
     assert!(result.contains("should_update_product_when_params_are_valid"));
@@ -2763,15 +2833,23 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         crate::puerto_toml::Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    crate::generators::application::write_application_files("Product", "product", &dir, &fields)
-        .unwrap();
+    crate::generators::application::write_application_files(
+        "Product",
+        "product",
+        &dir,
+        &fields,
+        &[],
+    )
+    .unwrap();
 
     let get_content =
         fs::read_to_string(dir.join("business/src/application/product/get_product.rs")).unwrap();
@@ -2801,7 +2879,7 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
 fn generate_infra_entity_backward_compat() {
     use crate::generators::infrastructure::generate_infra_entity;
 
-    let result = generate_infra_entity("Product", "product", &[]);
+    let result = generate_infra_entity("Product", "product", &[], &[]);
 
     assert!(result.contains("pub struct ProductDb"));
     assert!(result.contains("pub id: Uuid"));
@@ -2822,19 +2900,22 @@ fn generate_infra_entity_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "active".into(),
             field_type: "Option<bool>".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_infra_entity("Product", "product", &fields);
+    let result = generate_infra_entity("Product", "product", &fields, &[]);
 
     assert!(result.contains("pub struct ProductDb"));
     assert!(result.contains("pub title: String"));
@@ -2871,21 +2952,25 @@ fn create_table_sql_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "description".into(),
             field_type: "Option<String>".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "tags".into(),
             field_type: "Vec<String>".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     let result = create_table_sql("product", &fields);
@@ -2902,7 +2987,7 @@ fn create_table_sql_with_custom_fields() {
 fn generate_crud_infra_db_repository_backward_compat() {
     use crate::generators::infrastructure::generate_crud_infra_db_repository;
 
-    let result = generate_crud_infra_db_repository("Product", "product", &[]);
+    let result = generate_crud_infra_db_repository("Product", "product", &[], &[]);
 
     assert!(result.contains("pub struct PgProductRepository"));
     assert!(result.contains("async fn find_all"));
@@ -2925,14 +3010,16 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
-    let result = generate_crud_infra_db_repository("Product", "product", &fields);
+    let result = generate_crud_infra_db_repository("Product", "product", &fields, &[]);
 
     assert!(result.contains("id, created_at, updated_at, deleted, deleted_at, title, price"));
     assert!(result.contains("$1, $2, $3, $4, $5, $6, $7"));
@@ -2973,16 +3060,19 @@ fn generate_crud_dto_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "description".into(),
             field_type: "Option<String>".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     let result = generate_crud_dto("Product", "product", &fields);
@@ -3009,11 +3099,13 @@ fn generate_crud_routes_with_custom_fields() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     let result = generate_crud_routes("Product", "product", &fields);
@@ -3039,15 +3131,22 @@ fn write_repository_files_with_fields_generates_dynamic_entity_and_repo() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         crate::puerto_toml::Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     crate::generators::infrastructure::write_repository_files(
-        "Product", "product", &dir, true, &fields,
+        "Product",
+        "product",
+        &dir,
+        true,
+        &fields,
+        &[],
     )
     .unwrap();
 
@@ -3074,11 +3173,13 @@ fn write_presentation_files_with_fields_generates_dynamic_dto_and_routes() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         crate::puerto_toml::Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     crate::generators::presentation::write_presentation_files("Product", "product", &dir, &fields)
@@ -3115,25 +3216,130 @@ fn parse_field_arg_with_unique() {
 }
 
 #[test]
-fn parse_field_arg_complex_type() {
-    let field = puerto_toml::parse_field_arg("description:Option<String>").unwrap();
+fn parse_field_arg_option_primitive() {
+    let field = puerto_toml::parse_field_arg("description:opt:String").unwrap();
     assert_eq!(field.name, "description");
     assert_eq!(field.field_type, "Option<String>");
+    assert!(!field.unique);
+    assert!(field.value_object.is_none());
+}
+
+#[test]
+fn parse_field_arg_vec_primitive() {
+    let field = puerto_toml::parse_field_arg("tags:vec:String").unwrap();
+    assert_eq!(field.name, "tags");
+    assert_eq!(field.field_type, "Vec<String>");
+    assert!(field.value_object.is_none());
+}
+
+#[test]
+fn parse_field_arg_map_shorthand() {
+    let field = puerto_toml::parse_field_arg("metadata:map").unwrap();
+    assert_eq!(field.name, "metadata");
+    assert_eq!(field.field_type, "HashMap<String, String>");
+}
+
+#[test]
+fn parse_field_arg_datetime_shorthand() {
+    let field = puerto_toml::parse_field_arg("created_at:DateTime").unwrap();
+    assert_eq!(field.name, "created_at");
+    assert_eq!(field.field_type, "DateTime<Utc>");
+}
+
+#[test]
+fn parse_field_arg_string_vo() {
+    let field = puerto_toml::parse_field_arg("name:Name:String").unwrap();
+    assert_eq!(field.name, "name");
+    assert_eq!(field.field_type, "String");
+    assert_eq!(field.value_object, Some("Name".to_string()));
     assert!(!field.unique);
 }
 
 #[test]
-fn parse_field_arg_vec_type() {
-    let field = puerto_toml::parse_field_arg("tags:Vec<String>").unwrap();
-    assert_eq!(field.name, "tags");
-    assert_eq!(field.field_type, "Vec<String>");
+fn parse_field_arg_numeric_vo() {
+    let field = puerto_toml::parse_field_arg("age:Age:i64").unwrap();
+    assert_eq!(field.name, "age");
+    assert_eq!(field.field_type, "i64");
+    assert_eq!(field.value_object, Some("Age".to_string()));
 }
 
 #[test]
-fn parse_field_arg_hashmap_type() {
-    let field = puerto_toml::parse_field_arg("metadata:HashMap<String, String>").unwrap();
-    assert_eq!(field.name, "metadata");
-    assert_eq!(field.field_type, "HashMap<String, String>");
+fn parse_field_arg_float_vo() {
+    let field = puerto_toml::parse_field_arg("height:Height:f64").unwrap();
+    assert_eq!(field.name, "height");
+    assert_eq!(field.field_type, "f64");
+    assert_eq!(field.value_object, Some("Height".to_string()));
+}
+
+#[test]
+fn parse_field_arg_unique_vo() {
+    let field = puerto_toml::parse_field_arg("sku:Sku:String!").unwrap();
+    assert_eq!(field.name, "sku");
+    assert_eq!(field.field_type, "String");
+    assert_eq!(field.value_object, Some("Sku".to_string()));
+    assert!(field.unique);
+}
+
+#[test]
+fn parse_field_arg_option_vo() {
+    let field = puerto_toml::parse_field_arg("middle_name:MiddleName:opt:String").unwrap();
+    assert_eq!(field.name, "middle_name");
+    assert_eq!(field.field_type, "Option<String>");
+    assert_eq!(field.value_object, Some("MiddleName".to_string()));
+    assert!(field.value_object_kind.is_none());
+}
+
+#[test]
+fn parse_field_arg_vec_vo() {
+    let field = puerto_toml::parse_field_arg("tags:Tag:vec:String").unwrap();
+    assert_eq!(field.name, "tags");
+    assert_eq!(field.field_type, "Vec<String>");
+    assert_eq!(field.value_object, Some("Tag".to_string()));
+}
+
+#[test]
+fn parse_field_arg_enum_vo() {
+    let field = puerto_toml::parse_field_arg("status:Status:enum:Pending/Confirmed/Cancelled").unwrap();
+    assert_eq!(field.name, "status");
+    assert_eq!(field.field_type, "String");
+    assert_eq!(field.value_object, Some("Status".to_string()));
+    assert_eq!(field.value_object_kind, Some("enum".to_string()));
+    assert_eq!(
+        field.enum_variants,
+        Some(vec!["Pending".to_string(), "Confirmed".to_string(), "Cancelled".to_string()])
+    );
+}
+
+#[test]
+fn parse_field_arg_vo_with_datetime_shorthand() {
+    let field = puerto_toml::parse_field_arg("occurred:OccurredAt:DateTime").unwrap();
+    assert_eq!(field.field_type, "DateTime<Utc>");
+    assert_eq!(field.value_object, Some("OccurredAt".to_string()));
+}
+
+#[test]
+fn parse_field_arg_option_vo_with_datetime_shorthand() {
+    let field = puerto_toml::parse_field_arg("scheduled:ScheduledAt:opt:DateTime").unwrap();
+    assert_eq!(field.field_type, "Option<DateTime<Utc>>");
+    assert_eq!(field.value_object, Some("ScheduledAt".to_string()));
+}
+
+#[test]
+fn parse_field_arg_rejects_unknown_keyword() {
+    let err = puerto_toml::parse_field_arg("tags:unknown:String").unwrap_err();
+    assert!(err.contains("not a known keyword") || err.contains("PascalCase VO name"));
+}
+
+#[test]
+fn parse_field_arg_rejects_empty_enum_variants() {
+    let err = puerto_toml::parse_field_arg("status:Status:enum:").unwrap_err();
+    assert!(err.contains("Enum variants cannot be empty") || err.contains("PascalCase"));
+}
+
+#[test]
+fn parse_field_arg_rejects_lowercase_vo_name() {
+    let err = puerto_toml::parse_field_arg("name:myName:String").unwrap_err();
+    assert!(err.contains("PascalCase") || err.contains("not a known keyword"));
 }
 
 #[test]
@@ -3196,11 +3402,13 @@ fn validate_cli_fields_against_type_registry() {
             name: "title".into(),
             field_type: "String".into(),
             unique: false,
+            ..Default::default()
         },
         puerto_toml::Field {
             name: "price".into(),
             field_type: "i64".into(),
             unique: false,
+            ..Default::default()
         },
     ];
     assert!(crate::generators::types::validate_fields(&fields).is_ok());
@@ -3212,6 +3420,7 @@ fn validate_cli_fields_rejects_unknown_type() {
         name: "title".into(),
         field_type: "UnknownType".into(),
         unique: false,
+        ..Default::default()
     }];
     assert!(crate::generators::types::validate_fields(&fields).is_err());
 }
@@ -3471,4 +3680,564 @@ type = "String"
     );
 
     cleanup(&dir);
+}
+
+// ── Phase 3.10: Shared VO tests ───────────────────────────────────────────────
+
+#[test]
+fn is_shared_vo_detection() {
+    use crate::generators::types::is_shared_vo;
+    use crate::puerto_toml::{Field, ValueObjectDefinition};
+
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+
+    let email_field = Field {
+        name: "email".into(),
+        field_type: "String".into(),
+        value_object: Some("Email".to_string()),
+        ..Default::default()
+    };
+    let local_field = Field {
+        name: "name".into(),
+        field_type: "String".into(),
+        value_object: Some("Name".to_string()),
+        ..Default::default()
+    };
+    let primitive_field = Field {
+        name: "age".into(),
+        field_type: "i64".into(),
+        ..Default::default()
+    };
+
+    assert!(is_shared_vo(&email_field, &shared_vos));
+    assert!(!is_shared_vo(&local_field, &shared_vos));
+    assert!(!is_shared_vo(&primitive_field, &shared_vos));
+}
+
+#[test]
+fn generate_shared_value_objects_string() {
+    use crate::generators::domain::generate_shared_value_objects;
+    use crate::puerto_toml::ValueObjectDefinition;
+
+    let vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+
+    let result = generate_shared_value_objects(&vos);
+    assert!(result.contains("pub struct Email"));
+    assert!(result.contains("fn new(value: String)"));
+    assert!(result.contains("fn value(&self) -> &str"));
+    assert!(result.contains("EmailError::Invalid"));
+    assert!(result.contains("trimmed.is_empty()"));
+}
+
+#[test]
+fn generate_shared_value_objects_numeric() {
+    use crate::generators::domain::generate_shared_value_objects;
+    use crate::puerto_toml::ValueObjectDefinition;
+
+    let vos = vec![ValueObjectDefinition {
+        name: "Amount".to_string(),
+        inner_type: "i64".to_string(),
+    }];
+
+    let result = generate_shared_value_objects(&vos);
+    assert!(result.contains("pub struct Amount(i64)"));
+    assert!(result.contains("fn new(value: i64)"));
+    assert!(result.contains("fn value(&self) -> i64"));
+}
+
+#[test]
+fn generate_shared_errors_combined_output() {
+    use crate::generators::domain::generate_shared_errors_combined;
+    use crate::puerto_toml::ValueObjectDefinition;
+
+    let vos = vec![
+        ValueObjectDefinition {
+            name: "Email".to_string(),
+            inner_type: "String".to_string(),
+        },
+        ValueObjectDefinition {
+            name: "Money".to_string(),
+            inner_type: "i64".to_string(),
+        },
+    ];
+
+    let result = generate_shared_errors_combined(&vos);
+    assert!(result.contains("pub enum EmailError"));
+    assert!(result.contains("pub enum MoneyError"));
+    assert!(result.contains("shared.value_object.email.invalid"));
+    assert!(result.contains("shared.value_object.money.invalid"));
+}
+
+#[test]
+fn generate_model_with_shared_vo_imports() {
+    use crate::generators::domain::generate_model;
+    use crate::puerto_toml::{Field, ValueObjectDefinition};
+
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+
+    let fields = vec![Field {
+        name: "email".into(),
+        field_type: "String".into(),
+        value_object: Some("Email".to_string()),
+        ..Default::default()
+    }];
+
+    let result = generate_model("User", "user", &fields, &shared_vos);
+    assert!(result.contains("use crate::domain::shared::value_objects::Email"));
+    assert!(result.contains("pub email: Email"));
+}
+
+#[test]
+fn generate_model_local_vo_uses_local_import() {
+    use crate::generators::domain::generate_model;
+    use crate::puerto_toml::{Field, ValueObjectDefinition};
+
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+
+    let fields = vec![Field {
+        name: "name".into(),
+        field_type: "String".into(),
+        value_object: Some("Name".to_string()),
+        ..Default::default()
+    }];
+
+    let result = generate_model("User", "user", &fields, &shared_vos);
+    assert!(result.contains("use super::value_objects::Name"));
+    assert!(!result.contains("shared::value_objects::Name"));
+}
+
+#[test]
+fn generate_create_use_case_shared_vo() {
+    use crate::generators::application::generate_create_use_case_impl;
+    use crate::puerto_toml::{Field, ValueObjectDefinition};
+
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+
+    let fields = vec![Field {
+        name: "email".into(),
+        field_type: "String".into(),
+        value_object: Some("Email".to_string()),
+        ..Default::default()
+    }];
+
+    let result = generate_create_use_case_impl("User", "user", &fields, &shared_vos);
+    assert!(result.contains("use crate::domain::shared::value_objects::Email"));
+    assert!(result.contains(".map_err(|_| UserError::InvalidEmail)?"));
+}
+
+#[test]
+fn generate_infra_entity_shared_vo_import_path() {
+    use crate::generators::infrastructure::generate_infra_entity;
+    use crate::puerto_toml::{Field, ValueObjectDefinition};
+
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+
+    let fields = vec![Field {
+        name: "email".into(),
+        field_type: "String".into(),
+        value_object: Some("Email".to_string()),
+        ..Default::default()
+    }];
+
+    let result = generate_infra_entity("User", "user", &fields, &shared_vos);
+    assert!(result.contains("use business::domain::shared::value_objects::Email"));
+    assert!(!result.contains("use business::domain::user::value_objects::Email"));
+}
+
+#[test]
+fn generate_infra_entity_shared_vo_try_from_map_err() {
+    use crate::generators::infrastructure::generate_infra_entity;
+    use crate::puerto_toml::{Field, ValueObjectDefinition};
+
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+
+    let fields = vec![Field {
+        name: "email".into(),
+        field_type: "String".into(),
+        value_object: Some("Email".to_string()),
+        ..Default::default()
+    }];
+
+    let result = generate_infra_entity("User", "user", &fields, &shared_vos);
+    assert!(result.contains(".map_err(|_| UserError::InvalidEmail)?"));
+}
+
+#[test]
+fn generate_infra_entity_local_vo_uses_plain_question_mark() {
+    use crate::generators::infrastructure::generate_infra_entity;
+    use crate::puerto_toml::{Field, ValueObjectDefinition};
+
+    let shared_vos: Vec<ValueObjectDefinition> = vec![];
+
+    let fields = vec![Field {
+        name: "name".into(),
+        field_type: "String".into(),
+        value_object: Some("Name".to_string()),
+        ..Default::default()
+    }];
+
+    let result = generate_infra_entity("Product", "product", &fields, &shared_vos);
+    assert!(result.contains("Name::new(row.name)?"));
+    assert!(!result.contains(".map_err"));
+}
+
+#[test]
+fn patch_business_lib_shared_adds_mod_declaration() {
+    use crate::patchers::lib_rs::patch_business_lib_shared;
+
+    let dir = temp_dir("patch_lib_shared");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("business/src")).unwrap();
+
+    let lib_content = r#"pub mod domain {
+    pub mod greeting {
+        pub mod model;
+    }
+}
+pub mod application {
+}
+"#;
+    fs::write(dir.join("business/src/lib.rs"), lib_content).unwrap();
+
+    patch_business_lib_shared(&dir).unwrap();
+
+    let result = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+    assert!(result.contains("pub mod shared;"));
+
+    // Idempotent
+    patch_business_lib_shared(&dir).unwrap();
+    let count = result.matches("pub mod shared;").count();
+    assert_eq!(count, 1);
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_with_shared_vo_writes_shared_files() {
+    let dir = temp_dir("scaffold_shared_vo");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    fs::write(
+        dir.join("puerto.toml"),
+        r#"[project]
+name = "my-app"
+
+[[value_object]]
+name = "Email"
+inner_type = "String"
+"#,
+    )
+    .unwrap();
+
+    scaffold::run(
+        "User",
+        &dir,
+        false,
+        true,
+        &[puerto_toml::Field {
+            name: "email".into(),
+            field_type: "String".into(),
+            value_object: Some("Email".to_string()),
+            ..Default::default()
+        }],
+        &[crate::puerto_toml::ValueObjectDefinition {
+            name: "Email".to_string(),
+            inner_type: "String".to_string(),
+        }],
+    )
+    .unwrap();
+
+    assert!(
+        dir.join("business/src/domain/shared/value_objects.rs")
+            .exists()
+    );
+    assert!(dir.join("business/src/domain/shared/errors.rs").exists());
+    assert!(dir.join("business/src/domain/shared/mod.rs").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
+    let dir = temp_dir("scaffold_shared_vo_no_local");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    fs::write(
+        dir.join("puerto.toml"),
+        "[project]\nname = \"my-app\"\n",
+    )
+    .unwrap();
+
+    scaffold::run(
+        "Customer",
+        &dir,
+        false,
+        true,
+        &[puerto_toml::Field {
+            name: "email".into(),
+            field_type: "String".into(),
+            value_object: Some("Email".to_string()),
+            ..Default::default()
+        }],
+        &[ValueObjectDefinition {
+            name: "Email".to_string(),
+            inner_type: "String".to_string(),
+        }],
+    )
+    .unwrap();
+
+    // No local value_objects.rs should exist — all VOs are shared
+    assert!(
+        !dir.join("business/src/domain/customer/value_objects.rs")
+            .exists(),
+        "local value_objects.rs must not be created when all VOs are shared"
+    );
+    // Shared files must still be written
+    assert!(dir
+        .join("business/src/domain/shared/value_objects.rs")
+        .exists());
+
+    cleanup(&dir);
+}
+
+// ── puerto generate value-object ─────────────────────────────────────────────
+
+#[test]
+fn value_object_adds_entry_to_puerto_toml() {
+    let dir = temp_dir("vo_add_entry");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("puerto.toml"),
+        "[project]\nname = \"my-app\"\n",
+    )
+    .unwrap();
+
+    puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
+
+    let config = puerto_toml::read(&dir).unwrap();
+    assert_eq!(config.value_object.len(), 1);
+    assert_eq!(config.value_object[0].name, "Email");
+    assert_eq!(config.value_object[0].inner_type, "String");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn value_object_add_is_idempotent() {
+    let dir = temp_dir("vo_idempotent");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("puerto.toml"),
+        "[project]\nname = \"my-app\"\n",
+    )
+    .unwrap();
+
+    puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
+    puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
+
+    let config = puerto_toml::read(&dir).unwrap();
+    assert_eq!(config.value_object.len(), 1, "duplicate entry added");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn value_object_multiple_entries_preserved() {
+    let dir = temp_dir("vo_multiple");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("puerto.toml"),
+        "[project]\nname = \"my-app\"\n",
+    )
+    .unwrap();
+
+    puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
+    puerto_toml::add_value_object(&dir, "Money", "i64").unwrap();
+
+    let config = puerto_toml::read(&dir).unwrap();
+    assert_eq!(config.value_object.len(), 2);
+    assert_eq!(config.value_object[0].name, "Email");
+    assert_eq!(config.value_object[1].name, "Money");
+
+    cleanup(&dir);
+}
+
+// ── Shared VO type inference ───────────────────────────────────────────────
+
+#[test]
+fn infer_shared_vo_string_type_from_name() {
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+    let fields = vec![puerto_toml::Field {
+        name: "email".to_string(),
+        field_type: "Email".to_string(),
+        ..Default::default()
+    }];
+    let result = puerto_toml::apply_shared_vo_inference(fields, &shared_vos);
+    assert_eq!(result[0].field_type, "String");
+    assert_eq!(result[0].value_object, Some("Email".to_string()));
+    assert!(result[0].value_object_kind.is_none());
+    assert!(!result[0].unique);
+}
+
+#[test]
+fn infer_shared_vo_numeric_type_from_name() {
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Money".to_string(),
+        inner_type: "i64".to_string(),
+    }];
+    let fields = vec![puerto_toml::Field {
+        name: "price".to_string(),
+        field_type: "Money".to_string(),
+        ..Default::default()
+    }];
+    let result = puerto_toml::apply_shared_vo_inference(fields, &shared_vos);
+    assert_eq!(result[0].field_type, "i64");
+    assert_eq!(result[0].value_object, Some("Money".to_string()));
+}
+
+#[test]
+fn infer_shared_vo_preserves_unique_flag() {
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+    let fields = vec![puerto_toml::Field {
+        name: "email".to_string(),
+        field_type: "Email".to_string(),
+        unique: true,
+        ..Default::default()
+    }];
+    let result = puerto_toml::apply_shared_vo_inference(fields, &shared_vos);
+    assert_eq!(result[0].field_type, "String");
+    assert_eq!(result[0].value_object, Some("Email".to_string()));
+    assert!(result[0].unique);
+}
+
+#[test]
+fn infer_shared_vo_leaves_explicit_vo_field_unchanged() {
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+    let fields = vec![puerto_toml::Field {
+        name: "email".to_string(),
+        field_type: "String".to_string(),
+        value_object: Some("Email".to_string()),
+        ..Default::default()
+    }];
+    let result = puerto_toml::apply_shared_vo_inference(fields, &shared_vos);
+    assert_eq!(result[0].field_type, "String");
+    assert_eq!(result[0].value_object, Some("Email".to_string()));
+}
+
+#[test]
+fn infer_shared_vo_leaves_primitive_field_unchanged() {
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+    let fields = vec![puerto_toml::Field {
+        name: "title".to_string(),
+        field_type: "String".to_string(),
+        ..Default::default()
+    }];
+    let result = puerto_toml::apply_shared_vo_inference(fields, &shared_vos);
+    assert_eq!(result[0].field_type, "String");
+    assert!(result[0].value_object.is_none());
+}
+
+#[test]
+fn infer_shared_vo_with_empty_registry_is_identity() {
+    let fields = vec![puerto_toml::Field {
+        name: "email".to_string(),
+        field_type: "Email".to_string(),
+        ..Default::default()
+    }];
+    let result = puerto_toml::apply_shared_vo_inference(fields, &[]);
+    assert_eq!(result[0].field_type, "Email");
+    assert!(result[0].value_object.is_none());
+}
+
+#[test]
+fn infer_shared_vo_only_matches_registered_vo_names() {
+    let shared_vos = vec![ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+    let fields = vec![puerto_toml::Field {
+        name: "phone".to_string(),
+        field_type: "Phone".to_string(),
+        ..Default::default()
+    }];
+    let result = puerto_toml::apply_shared_vo_inference(fields, &shared_vos);
+    // Phone not in shared VOs — field_type left as-is (will fail type validation)
+    assert_eq!(result[0].field_type, "Phone");
+    assert!(result[0].value_object.is_none());
+}
+
+#[test]
+fn infer_shared_vo_handles_multiple_fields() {
+    let shared_vos = vec![
+        ValueObjectDefinition {
+            name: "Email".to_string(),
+            inner_type: "String".to_string(),
+        },
+        ValueObjectDefinition {
+            name: "Money".to_string(),
+            inner_type: "i64".to_string(),
+        },
+    ];
+    let fields = vec![
+        puerto_toml::Field {
+            name: "email".to_string(),
+            field_type: "Email".to_string(),
+            ..Default::default()
+        },
+        puerto_toml::Field {
+            name: "price".to_string(),
+            field_type: "Money".to_string(),
+            ..Default::default()
+        },
+        puerto_toml::Field {
+            name: "active".to_string(),
+            field_type: "bool".to_string(),
+            ..Default::default()
+        },
+    ];
+    let result = puerto_toml::apply_shared_vo_inference(fields, &shared_vos);
+    assert_eq!(result[0].field_type, "String");
+    assert_eq!(result[0].value_object, Some("Email".to_string()));
+    assert_eq!(result[1].field_type, "i64");
+    assert_eq!(result[1].value_object, Some("Money".to_string()));
+    assert_eq!(result[2].field_type, "bool");
+    assert!(result[2].value_object.is_none());
 }

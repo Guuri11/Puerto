@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::generators::types::{is_shared_vo, is_value_object};
 use crate::generators::{
     application::{USE_CASE_IMPL, write_application_files},
     domain::{
@@ -10,8 +11,10 @@ use crate::generators::{
     naming::{apply, pascal_to_snake, to_pascal_case, write_file},
     presentation::{DTO, ERROR_MAPPER, RESPONSES, ROUTES, write_presentation_files},
 };
-use crate::patchers::lib_rs::try_patch_libs;
-use crate::puerto_toml::Field;
+use crate::patchers::lib_rs::{
+    patch_business_lib_shared, patch_business_lib_value_objects, try_patch_libs,
+};
+use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 // Non-CRUD repository trait (find_by_id + save only — no find_all).
 // Used by the single-use-case path (`puerto generate scaffold` legacy / tests).
@@ -55,7 +58,7 @@ fn write_files(
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(format!("business/src/domain/{snake}/model.rs")),
-        &generate_model(pascal, snake, &[]),
+        &generate_model(pascal, snake, &[], &[]),
     )?;
     write_file(
         &base.join(format!("business/src/domain/{snake}/errors.rs")),
@@ -123,10 +126,11 @@ fn write_files_crud(
     base: &Path,
     db: bool,
     fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    write_domain_files(pascal, snake, base, fields)?;
-    write_application_files(pascal, snake, base, fields)?;
-    write_repository_files(pascal, snake, base, db, fields)?;
+    write_domain_files(pascal, snake, base, fields, shared_vos)?;
+    write_application_files(pascal, snake, base, fields, shared_vos)?;
+    write_repository_files(pascal, snake, base, db, fields, shared_vos)?;
     write_presentation_files(pascal, snake, base, fields)?;
     Ok(())
 }
@@ -141,18 +145,33 @@ pub fn run(
     db: bool,
     crud: bool,
     fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pascal = to_pascal_case(name);
     let snake = pascal_to_snake(&pascal);
 
     if crud {
-        write_files_crud(&pascal, &snake, base, db, fields)?;
+        write_files_crud(&pascal, &snake, base, db, fields, shared_vos)?;
     } else {
         write_files(&pascal, &snake, base, db)?;
     }
     try_patch_libs(&snake, base, db, crud);
 
-    let _ = write_mother(&pascal, &snake, base, fields);
+    if !fields.is_empty()
+        && fields
+            .iter()
+            .any(|f| is_value_object(f) && !is_shared_vo(f, shared_vos))
+    {
+        let _ = patch_business_lib_value_objects(base, &snake);
+    }
+
+    if !shared_vos.is_empty() {
+        use crate::generators::domain::write_shared_vo_files;
+        let _ = write_shared_vo_files(base, shared_vos);
+        let _ = patch_business_lib_shared(base);
+    }
+
+    let _ = write_mother(&pascal, &snake, base, fields, shared_vos);
     let _ = patch_mothers_lib(base, &snake);
 
     let use_cases = if crud {
@@ -206,6 +225,7 @@ pub fn run_scaffold(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     let db = config.project.db;
+    let shared_vos = config.value_object.clone();
     let pascal = to_pascal_case(name);
     let fields = if !cli_fields.is_empty() {
         cli_fields.to_vec()
@@ -217,7 +237,7 @@ pub fn run_scaffold(
             .map(|e| e.fields.clone())
             .unwrap_or_default()
     };
-    run(name, base, db, true, &fields)?;
+    run(name, base, db, true, &fields, &shared_vos)?;
     if db {
         let snake = pascal_to_snake(&pascal);
         let migration_sql = crate::generators::infrastructure::create_table_sql(&snake, &fields);
