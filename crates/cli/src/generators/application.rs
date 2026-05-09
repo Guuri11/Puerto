@@ -134,7 +134,11 @@ fn test_create_params_lines_with_empty_vo(eff: &[Field], empty_field: &str) -> S
         .join("\n")
 }
 
-fn build_test_vo_imports(eff: &[Field], snake: &str, shared_vos: &[ValueObjectDefinition]) -> String {
+fn build_test_vo_imports(
+    eff: &[Field],
+    snake: &str,
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
     let mut imports: Vec<String> = vec![];
     for f in eff.iter().filter(|f| is_value_object(f)) {
         let stmt = format!("    use {};", vo_import_path(f, snake, shared_vos));
@@ -620,20 +624,19 @@ pub fn generate_update_use_case_impl(
         format!("\n\n{}", empty_update_tests.join("\n\n"))
     };
 
-    let valid_assertion =
-        if let Some(f) = primitive_string_fields.first().copied() {
-            format!("assert_eq!(result.unwrap().{}, \"updated\");", f.name)
-        } else if let Some(f) = eff
-            .iter()
-            .find(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
-        {
-            format!(
-                "assert_eq!(result.unwrap().{}.value(), \"updated\");",
-                f.name
-            )
-        } else {
-            "assert!(result.is_ok());".to_string()
-        };
+    let valid_assertion = if let Some(f) = primitive_string_fields.first().copied() {
+        format!("assert_eq!(result.unwrap().{}, \"updated\");", f.name)
+    } else if let Some(f) = eff
+        .iter()
+        .find(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
+    {
+        format!(
+            "assert_eq!(result.unwrap().{}.value(), \"updated\");",
+            f.name
+        )
+    } else {
+        "assert!(result.is_ok());".to_string()
+    };
 
     s.push_str(&format!(
         "
@@ -728,20 +731,25 @@ pub fn generate_get_use_case_impl(
 
     let props_fields = test_props_lines(&eff, "example");
     let test_vo_imports = build_test_vo_imports(&eff, snake, shared_vos);
-    let found_assertion =
-        if let Some(f) = eff.iter().find(|f| f.field_type == "String" && !is_value_object(f)) {
-            format!("\n        assert_eq!(result.unwrap().{}, \"example\");", f.name)
-        } else if let Some(f) = eff
-            .iter()
-            .find(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
-        {
-            format!(
-                "\n        assert_eq!(result.unwrap().{}.value(), \"example\");",
-                f.name
-            )
-        } else {
-            "\n        assert!(result.is_ok());".to_string()
-        };
+    let found_assertion = if let Some(f) = eff
+        .iter()
+        .find(|f| f.field_type == "String" && !is_value_object(f))
+    {
+        format!(
+            "\n        assert_eq!(result.unwrap().{}, \"example\");",
+            f.name
+        )
+    } else if let Some(f) = eff
+        .iter()
+        .find(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
+    {
+        format!(
+            "\n        assert_eq!(result.unwrap().{}.value(), \"example\");",
+            f.name
+        )
+    } else {
+        "\n        assert!(result.is_ok());".to_string()
+    };
 
     let mut s = String::new();
     s.push_str("use std::sync::Arc;\n\nuse async_trait::async_trait;\n");

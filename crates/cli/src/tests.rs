@@ -3299,14 +3299,19 @@ fn parse_field_arg_vec_vo() {
 
 #[test]
 fn parse_field_arg_enum_vo() {
-    let field = puerto_toml::parse_field_arg("status:Status:enum:Pending/Confirmed/Cancelled").unwrap();
+    let field =
+        puerto_toml::parse_field_arg("status:Status:enum:Pending/Confirmed/Cancelled").unwrap();
     assert_eq!(field.name, "status");
     assert_eq!(field.field_type, "String");
     assert_eq!(field.value_object, Some("Status".to_string()));
     assert_eq!(field.value_object_kind, Some("enum".to_string()));
     assert_eq!(
         field.enum_variants,
-        Some(vec!["Pending".to_string(), "Confirmed".to_string(), "Cancelled".to_string()])
+        Some(vec![
+            "Pending".to_string(),
+            "Confirmed".to_string(),
+            "Cancelled".to_string()
+        ])
     );
 }
 
@@ -3985,11 +3990,7 @@ fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    fs::write(
-        dir.join("puerto.toml"),
-        "[project]\nname = \"my-app\"\n",
-    )
-    .unwrap();
+    fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
 
     scaffold::run(
         "Customer",
@@ -4016,9 +4017,10 @@ fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
         "local value_objects.rs must not be created when all VOs are shared"
     );
     // Shared files must still be written
-    assert!(dir
-        .join("business/src/domain/shared/value_objects.rs")
-        .exists());
+    assert!(
+        dir.join("business/src/domain/shared/value_objects.rs")
+            .exists()
+    );
 
     cleanup(&dir);
 }
@@ -4030,11 +4032,7 @@ fn value_object_adds_entry_to_puerto_toml() {
     let dir = temp_dir("vo_add_entry");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("puerto.toml"),
-        "[project]\nname = \"my-app\"\n",
-    )
-    .unwrap();
+    fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
 
     puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
 
@@ -4051,11 +4049,7 @@ fn value_object_add_is_idempotent() {
     let dir = temp_dir("vo_idempotent");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("puerto.toml"),
-        "[project]\nname = \"my-app\"\n",
-    )
-    .unwrap();
+    fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
 
     puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
     puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
@@ -4071,11 +4065,7 @@ fn value_object_multiple_entries_preserved() {
     let dir = temp_dir("vo_multiple");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(
-        dir.join("puerto.toml"),
-        "[project]\nname = \"my-app\"\n",
-    )
-    .unwrap();
+    fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
 
     puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
     puerto_toml::add_value_object(&dir, "Money", "i64").unwrap();

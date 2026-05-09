@@ -381,7 +381,11 @@ fn db_bindings_str(eff: &[Field]) -> String {
     lines.join("\n")
 }
 
-fn seed_fn_str(pascal: &str, eff: &[Field], shared_vos: &[crate::puerto_toml::ValueObjectDefinition]) -> String {
+fn seed_fn_str(
+    pascal: &str,
+    eff: &[Field],
+    shared_vos: &[crate::puerto_toml::ValueObjectDefinition],
+) -> String {
     let props_lines: String = eff
         .iter()
         .map(|f| {
@@ -428,8 +432,13 @@ fn update_test_str(eff: &[Field]) -> String {
         .iter()
         .find(|f| f.field_type == "String" && !is_value_object(f))
         .or_else(|| {
-            eff.iter()
-                .find(|f| f.field_type == "String" && is_value_object(f) && !is_enum_vo(f) && !is_option_vo(f) && !is_vec_vo(f))
+            eff.iter().find(|f| {
+                f.field_type == "String"
+                    && is_value_object(f)
+                    && !is_enum_vo(f)
+                    && !is_option_vo(f)
+                    && !is_vec_vo(f)
+            })
         });
     if let Some(sf) = sf {
         if is_value_object(sf) {
@@ -614,7 +623,12 @@ impl From<&{Pascal}> for {Pascal}Db {
         .replace("{vo_imports}", &vo_imports_str)
 }
 
-pub fn generate_crud_infra_db_repository(pascal: &str, snake: &str, fields: &[Field], shared_vos: &[crate::puerto_toml::ValueObjectDefinition]) -> String {
+pub fn generate_crud_infra_db_repository(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[crate::puerto_toml::ValueObjectDefinition],
+) -> String {
     let eff = effective_fields(fields);
     let n = 5 + eff.len();
 
@@ -628,12 +642,18 @@ pub fn generate_crud_infra_db_repository(pascal: &str, snake: &str, fields: &[Fi
 
     // VO imports needed in the integration test module (for seed/update helpers)
     let mut vo_test_imports_vec: Vec<String> = vec![];
-    for f in eff.iter().filter(|f| is_value_object(f) && !is_option_vo(f) && !is_vec_vo(f) && !is_enum_vo(f)) {
+    for f in eff
+        .iter()
+        .filter(|f| is_value_object(f) && !is_option_vo(f) && !is_vec_vo(f) && !is_enum_vo(f))
+    {
         let vo = f.value_object.as_deref().unwrap();
         let stmt = if is_shared_vo(f, shared_vos) {
             format!("    use business::domain::shared::value_objects::{};", vo)
         } else {
-            format!("    use business::domain::{}::value_objects::{};", snake, vo)
+            format!(
+                "    use business::domain::{}::value_objects::{};",
+                snake, vo
+            )
         };
         if !vo_test_imports_vec.contains(&stmt) {
             vo_test_imports_vec.push(stmt);
