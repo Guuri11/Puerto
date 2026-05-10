@@ -63,7 +63,9 @@ enum GenerateAction {
     Scaffold {
         /// Entity name in PascalCase (e.g. Product, OrderItem)
         name: String,
-        /// Entity fields in name:Type format (e.g. title:String price:i64)
+        /// Fields after -- separator. Primitives: title:String price:i64! desc:opt:String tags:vec:String
+        /// Value Objects: name:Name:String age:Age:i64 status:Status:enum:Active/Inactive mid:Mid:opt:String
+        /// Shared VO (type inferred from puerto.toml): email:Email
         #[arg(raw = true)]
         fields: Vec<String>,
     },

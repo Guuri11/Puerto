@@ -17,6 +17,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <a href="#new-project" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">New Project</a>
           <a href="#scaffold" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Generate Scaffold</a>
           <a href="#entity-fields" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Entity Fields</a>
+          <a href="#value-objects" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Value Objects</a>
           <a href="#layer-generators" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Layer Generators</a>
           <a href="#use-case" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Add Use Case</a>
           <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Database (SQLx)</a>
@@ -126,13 +127,13 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <p class="mt-5 font-sans text-sm font-semibold text-puerto-ice">From the CLI:</p>
           <div class="mt-2 code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
             <span class="font-mono text-sm text-puerto-teal select-none">$</span>
-            <code class="font-mono text-sm text-puerto-ice">puerto generate scaffold Product name:String price:i64! sku:String</code>
-            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate scaffold Product name:String price:i64! sku:String" aria-label="Copy">
+            <code class="font-mono text-sm text-puerto-ice">puerto generate scaffold Product -- name:String price:i64! sku:String</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate scaffold Product -- name:String price:i64! sku:String" aria-label="Copy">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
           <p class="mt-3 font-sans text-sm text-puerto-mist">
-            Append <code class="font-mono text-xs text-puerto-teal">!</code> after a type to mark it as unique (e.g., <code class="font-mono text-xs text-puerto-ice">sku:String!</code> generates a unique DB constraint). Fields are persisted to <code class="font-mono text-xs text-puerto-rust">puerto.toml</code> and used by all generators.
+            Fields go after <code class="font-mono text-xs text-puerto-teal">--</code> (required separator). Append <code class="font-mono text-xs text-puerto-teal">!</code> after a type to mark it as unique (e.g., <code class="font-mono text-xs text-puerto-ice">sku:String!</code> generates a unique DB constraint). Fields are persisted to <code class="font-mono text-xs text-puerto-rust">puerto.toml</code> and used by all generators.
           </p>
 
           <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">Or edit puerto.toml directly:</p>
@@ -194,6 +195,76 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           </div>
           <p class="mt-3 font-sans text-sm text-puerto-mist">
             Checks entity names (PascalCase), field names (snake_case), field types (against the type registry), duplicate entities and fields, and warns about <code class="font-mono text-xs text-puerto-ice">Option&lt;T&gt;</code> fields marked <code class="font-mono text-xs text-puerto-ice">unique</code>.
+          </p>
+        </section>
+
+        <!-- Value Objects -->
+        <section id="value-objects" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Value Objects</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
+            Wrap primitive fields in strongly-typed Value Objects. Puerto generates the VO structs, error variants, and all layer conversions automatically — domain, application, infrastructure, and presentation.
+          </p>
+
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">Field syntax</p>
+          <div class="mt-3 overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-puerto-steel/30">
+                  <th class="py-2 pr-6 text-left font-mono text-xs text-puerto-mist/60 uppercase tracking-wider">Format</th>
+                  <th class="py-2 text-left font-mono text-xs text-puerto-mist/60 uppercase tracking-wider">Result</th>
+                </tr>
+              </thead>
+              <tbody class="font-sans text-puerto-mist">
+                <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">name:Name:String</td><td class="text-xs">String VO wrapping a primitive</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">age:Age:i64</td><td class="text-xs">Numeric VO (i64 / f64), pass-through</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">mid:Mid:opt:String</td><td class="text-xs"><code class="text-puerto-teal">Option&lt;Mid&gt;</code> — nullable VO</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">tags:Tag:vec:String</td><td class="text-xs"><code class="text-puerto-teal">Vec&lt;Tag&gt;</code> — array VO</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">status:Status:enum:A/B/C</td><td class="text-xs">Enum VO — <code class="text-puerto-teal">from_str()</code> / <code class="text-puerto-teal">as_str()</code></td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">sku:Sku:String!</td><td class="text-xs">Unique VO (DB constraint)</td></tr>
+                <tr><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">email:Email</td><td class="text-xs">Shared VO — type inferred from <code class="font-mono text-xs text-puerto-rust">puerto.toml</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">Example</p>
+          <div class="mt-2 code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+            <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+            <code class="font-mono text-sm text-puerto-ice">puerto generate scaffold Order -- amount:Amount:f64 status:Status:enum:Pending/Confirmed/Cancelled</code>
+          </div>
+
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">What gets generated</p>
+          <div class="mt-3 space-y-2 font-sans text-sm text-puerto-mist">
+            <div class="flex gap-2"><span class="text-puerto-teal font-mono flex-none">domain/</span><span><code class="font-mono text-xs">value_objects.rs</code> with VO structs, <code class="font-mono text-xs">Invalid*</code> error variants, model using VO types</span></div>
+            <div class="flex gap-2"><span class="text-puerto-teal font-mono flex-none">application/</span><span>params use primitives; use case impl constructs VOs before calling <code class="font-mono text-xs">Entity::new()</code></span></div>
+            <div class="flex gap-2"><span class="text-puerto-indigo font-mono flex-none">infrastructure/</span><span>DB row uses primitives; <code class="font-mono text-xs">TryFrom</code> reconstructs VOs, <code class="font-mono text-xs">From</code> extracts them</span></div>
+            <div class="flex gap-2"><span class="text-puerto-rust font-mono flex-none">presentation/</span><span>DTO uses primitives; <code class="font-mono text-xs">from_domain()</code> calls <code class="font-mono text-xs">.value()</code> / <code class="font-mono text-xs">.as_str()</code></span></div>
+          </div>
+
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">Shared Value Objects</p>
+          <p class="mt-2 font-sans text-sm text-puerto-mist">Declare reusable VOs once — any entity can reference them by name and the type is inferred automatically:</p>
+          <div class="mt-3 space-y-2">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate value-object Email String</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate value-object Email String" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate scaffold User -- email:Email name:Name:String</code>
+              <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate scaffold User -- email:Email name:Name:String" aria-label="Copy">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+            </div>
+          </div>
+          <p class="mt-3 font-sans text-sm text-puerto-mist">
+            Shared VOs are declared in <code class="font-mono text-xs text-puerto-rust">puerto.toml</code> as <code class="font-mono text-xs text-puerto-ice">[[value_object]]</code> entries and generated at <code class="font-mono text-xs text-puerto-teal">business/src/domain/shared/value_objects.rs</code>. Their import path switches to <code class="font-mono text-xs text-puerto-ice">crate::domain::shared::value_objects</code> automatically.
+          </p>
+
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">Validation</p>
+          <p class="mt-2 font-sans text-sm text-puerto-mist">
+            <code class="font-mono text-xs text-puerto-teal">puerto validate</code> checks VO names (PascalCase), inner types (allowed primitives), enum variants (PascalCase, non-empty), and rejects <code class="font-mono text-xs text-puerto-ice">unique</code> on <code class="font-mono text-xs text-puerto-ice">Option&lt;T&gt;</code> or <code class="font-mono text-xs text-puerto-ice">Vec&lt;T&gt;</code> VOs.
           </p>
         </section>
 
