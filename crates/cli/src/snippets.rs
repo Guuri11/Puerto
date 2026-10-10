@@ -37,7 +37,7 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Domain — model.rs": {
     "prefix": "domain-model",
     "body": [
-      "use chrono::NaiveDateTime;",
+      "use chrono::{DateTime, Utc};",
       "use uuid::Uuid;",
       "",
       "use super::errors::${1:Entity}Error;",
@@ -51,10 +51,10 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[derive(Debug, Clone)]",
       "pub struct ${1:Entity} {",
       "\tpub id: Uuid,",
-      "\tpub created_at: NaiveDateTime,",
-      "\tpub updated_at: NaiveDateTime,",
+      "\tpub created_at: DateTime<Utc>,",
+      "\tpub updated_at: DateTime<Utc>,",
       "\tpub deleted: bool,",
-      "\tpub deleted_at: Option<NaiveDateTime>,",
+      "\tpub deleted_at: Option<DateTime<Utc>>,",
       "\tpub name: String,",
       "}",
       "",
@@ -63,7 +63,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tif props.name.trim().is_empty() {",
       "\t\t\treturn Err(${1:Entity}Error::ValidationError(\"name_empty\".into()));",
       "\t\t}",
-      "\t\tlet now = chrono::Utc::now().naive_utc();",
+      "\t\tlet now = Utc::now();",
       "\t\tOk(Self {",
       "\t\t\tid: Uuid::new_v4(),",
       "\t\t\tcreated_at: now,",
@@ -112,6 +112,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "",
       "#[async_trait]",
       "pub trait ${1:Entity}RepositoryTrait: Send + Sync {",
+      "\tasync fn find_all(&self) -> Result<Vec<${1:Entity}>, ${1:Entity}Error>;",
       "\tasync fn find_by_id(&self, id: Uuid) -> Result<Option<${1:Entity}>, ${1:Entity}Error>;",
       "\tasync fn save(&self, entity: &${1:Entity}) -> Result<(), ${1:Entity}Error>;",
       "}",
@@ -127,13 +128,14 @@ pub const SNIPPETS_JSON: &str = r##"{
       "",
       "\t\t#[async_trait]",
       "\t\timpl ${1:Entity}RepositoryTrait for ${1:Entity}Repository {",
+      "\t\t\tasync fn find_all(&self) -> Result<Vec<${1:Entity}>, ${1:Entity}Error>;",
       "\t\t\tasync fn find_by_id(&self, id: Uuid) -> Result<Option<${1:Entity}>, ${1:Entity}Error>;",
       "\t\t\tasync fn save(&self, entity: &${1:Entity}) -> Result<(), ${1:Entity}Error>;",
       "\t\t}",
       "\t}",
       "}"
     ],
-    "description": "Repository port trait + mockall mock in pub mod mocks."
+    "description": "Repository port trait (find_all, find_by_id, save) + mockall mock in pub mod mocks."
   },
   "Domain — use_cases/<action>.rs": {
     "prefix": "domain-use-case",
@@ -177,8 +179,12 @@ pub const SNIPPETS_JSON: &str = r##"{
       "impl ${4:Action}${2:Entity}UseCaseTrait for ${4:Action}${2:Entity}UseCaseImpl {",
       "\tasync fn execute(&self, params: ${4:Action}${2:Entity}Params) -> Result<${2:Entity}, ${2:Entity}Error> {",
       "\t\ttracing::info!(\"${3:action}: start\");",
-      "\t\tlet entity = ${2:Entity}::new(${2:Entity}Props { name: params.name })?;",
-      "\t\tself.repository.save(&entity).await?;",
+      "\t\tlet entity = ${2:Entity}::new(${2:Entity}Props { name: params.name })",
+      "\t\t\t.inspect_err(|e| tracing::warn!(error = %e, \"${3:action}: rejected\"))?;",
+      "\t\tself.repository",
+      "\t\t\t.save(&entity)",
+      "\t\t\t.await",
+      "\t\t\t.inspect_err(|e| tracing::error!(error = %e, \"${3:action}: repository failed\"))?;",
       "\t\ttracing::info!(id = %entity.id, \"${3:action}: done\");",
       "\t\tOk(entity)",
       "\t}",
@@ -209,7 +215,32 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t}",
       "}"
     ],
-    "description": "Use case impl with repository injection, tracing logs + unit tests."
+    "description": "Use case impl: repository injection, tracing start/done logs + unit test."
+  },
+  "Test — use case error path": {
+    "prefix": "app-use-case-error-test",
+    "body": [
+      "#[tokio::test]",
+      "async fn should_return_repository_error_when_${1:entity}_cannot_be_saved() {",
+      "\t// Arrange",
+      "\tlet mut mock_repo = Mock${2:Entity}Repository::new();",
+      "\tmock_repo",
+      "\t\t.expect_save()",
+      "\t\t.returning(|_| Err(${2:Entity}Error::RepositoryError));",
+      "\tlet use_case = ${4:Action}${2:Entity}UseCaseImpl {",
+      "\t\trepository: Arc::new(mock_repo),",
+      "\t};",
+      "",
+      "\t// Act",
+      "\tlet result = use_case",
+      "\t\t.execute(${4:Action}${2:Entity}Params { name: \"example\".into() })",
+      "\t\t.await;",
+      "",
+      "\t// Assert",
+      "\tassert_eq!(result.unwrap_err().to_string(), \"${1:entity}.repository_error\");",
+      "}"
+    ],
+    "description": "Use case test for the failure path: the mocked repository errors, the code propagates."
   },
   "Infrastructure — lib.rs entity block (InMemory)": {
     "prefix": "lib-infra-entity",
@@ -219,6 +250,48 @@ pub const SNIPPETS_JSON: &str = r##"{
       "}"
     ],
     "description": "Infrastructure entity block for infrastructure/src/lib.rs (InMemory)."
+  },
+  "Infrastructure — repository.rs (in-memory)": {
+    "prefix": "inmemory-repo",
+    "body": [
+      "use async_trait::async_trait;",
+      "use uuid::Uuid;",
+      "",
+      "use business::domain::${1:entity}::{",
+      "\terrors::${2:Entity}Error,",
+      "\tmodel::${2:Entity},",
+      "\trepository::${2:Entity}RepositoryTrait,",
+      "};",
+      "",
+      "/// A stand-in that stores nothing — replace it with a real adapter.",
+      "#[derive(Default)]",
+      "pub struct InMemory${2:Entity}Repository;",
+      "",
+      "impl InMemory${2:Entity}Repository {",
+      "\tpub fn new() -> Self {",
+      "\t\tSelf",
+      "\t}",
+      "}",
+      "",
+      "#[async_trait]",
+      "impl ${2:Entity}RepositoryTrait for InMemory${2:Entity}Repository {",
+      "\tasync fn find_all(&self) -> Result<Vec<${2:Entity}>, ${2:Entity}Error> {",
+      "\t\ttracing::debug!(\"find_all\");",
+      "\t\tOk(vec![])",
+      "\t}",
+      "",
+      "\tasync fn find_by_id(&self, id: Uuid) -> Result<Option<${2:Entity}>, ${2:Entity}Error> {",
+      "\t\ttracing::debug!(%id, \"find_by_id\");",
+      "\t\tOk(None)",
+      "\t}",
+      "",
+      "\tasync fn save(&self, entity: &${2:Entity}) -> Result<(), ${2:Entity}Error> {",
+      "\t\ttracing::debug!(id = %entity.id, \"save\");",
+      "\t\tOk(())",
+      "\t}",
+      "}"
+    ],
+    "description": "In-memory repository adapter (the default without --db): find_all, find_by_id, save."
   },
   "Infrastructure — lib.rs entity block (SQLx)": {
     "prefix": "lib-infra-entity-db",
@@ -233,7 +306,7 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Infrastructure — entity.rs (DB row struct)": {
     "prefix": "persistence-entity",
     "body": [
-      "use chrono::NaiveDateTime;",
+      "use chrono::{DateTime, Utc};",
       "use serde::{Deserialize, Serialize};",
       "use sqlx::FromRow;",
       "use uuid::Uuid;",
@@ -243,10 +316,10 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]",
       "pub struct ${2:Entity}Db {",
       "\tpub id: Uuid,",
-      "\tpub created_at: NaiveDateTime,",
-      "\tpub updated_at: NaiveDateTime,",
+      "\tpub created_at: DateTime<Utc>,",
+      "\tpub updated_at: DateTime<Utc>,",
       "\tpub deleted: bool,",
-      "\tpub deleted_at: Option<NaiveDateTime>,",
+      "\tpub deleted_at: Option<DateTime<Utc>>,",
       "\tpub name: String,",
       "\t$0",
       "}",
@@ -308,19 +381,39 @@ pub const SNIPPETS_JSON: &str = r##"{
       "",
       "#[async_trait]",
       "impl ${2:Entity}RepositoryTrait for Pg${2:Entity}Repository {",
+      "\tasync fn find_all(&self) -> Result<Vec<${2:Entity}>, ${2:Entity}Error> {",
+      "\t\ttracing::debug!(\"find_all\");",
+      "\t\tlet rows = sqlx::query_as!(",
+      "\t\t\t${2:Entity}Db,",
+      "\t\t\t\"SELECT id, created_at, updated_at, deleted, deleted_at, name FROM ${1:entity}s WHERE deleted = false ORDER BY created_at DESC\"",
+      "\t\t)",
+      "\t\t.fetch_all(&self.pool)",
+      "\t\t.await",
+      "\t\t.map_err(|e| {",
+      "\t\t\ttracing::error!(error = %e, \"find_all failed\");",
+      "\t\t\t${2:Entity}Error::RepositoryError",
+      "\t\t})?;",
+      "\t\trows.into_iter().map(|r| r.try_into()).collect()",
+      "\t}",
+      "",
       "\tasync fn find_by_id(&self, id: Uuid) -> Result<Option<${2:Entity}>, ${2:Entity}Error> {",
-      "\t\tlet row = sqlx::query_as!(${2:Entity}Db,",
+      "\t\ttracing::debug!(%id, \"find_by_id\");",
+      "\t\tlet row = sqlx::query_as!(",
+      "\t\t\t${2:Entity}Db,",
       "\t\t\t\"SELECT id, created_at, updated_at, deleted, deleted_at, name FROM ${1:entity}s WHERE id = \\$1 AND deleted = false\",",
       "\t\t\tid",
       "\t\t)",
       "\t\t.fetch_optional(&self.pool)",
       "\t\t.await",
-      "\t\t.map_err(|_| ${2:Entity}Error::RepositoryError)?;",
-      "",
+      "\t\t.map_err(|e| {",
+      "\t\t\ttracing::error!(error = %e, \"find_by_id failed\");",
+      "\t\t\t${2:Entity}Error::RepositoryError",
+      "\t\t})?;",
       "\t\trow.map(|r| r.try_into()).transpose()",
       "\t}",
       "",
       "\tasync fn save(&self, entity: &${2:Entity}) -> Result<(), ${2:Entity}Error> {",
+      "\t\ttracing::debug!(id = %entity.id, \"save\");",
       "\t\tlet db = ${2:Entity}Db::from(entity);",
       "\t\tsqlx::query!(",
       "\t\t\t\"INSERT INTO ${1:entity}s (id, created_at, updated_at, deleted, deleted_at, name) VALUES (\\$1, \\$2, \\$3, \\$4, \\$5, \\$6) ON CONFLICT (id) DO UPDATE SET updated_at = \\$3, deleted = \\$4, deleted_at = \\$5, name = \\$6\",",
@@ -328,13 +421,22 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\t)",
       "\t\t.execute(&self.pool)",
       "\t\t.await",
-      "\t\t.map_err(|_| ${2:Entity}Error::RepositoryError)?;",
+      "\t\t.map_err(|e| {",
+      "\t\t\t// 23505 = unique_violation: a `unique` column already taken.",
+      "\t\t\tif let Some(db_err) = e.as_database_error()",
+      "\t\t\t\t&& db_err.code().is_some_and(|c| c == \"23505\")",
+      "\t\t\t{",
+      "\t\t\t\treturn ${2:Entity}Error::Duplicate;",
+      "\t\t\t}",
+      "\t\t\ttracing::error!(error = %e, \"save failed\");",
+      "\t\t\t${2:Entity}Error::RepositoryError",
+      "\t\t})?;",
       "\t\tOk(())",
       "\t}",
       "}",
       "$0"
     ],
-    "description": "PgEntityRepository: find_by_id + save with SQLx query macros."
+    "description": "PgEntityRepository: find_all, find_by_id, save with SQLx macros, tracing logs and 23505 → Duplicate."
   },
   "Presentation — api/<entity>.rs module decls": {
     "prefix": "lib-presentation-entity",
@@ -354,6 +456,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use uuid::Uuid;",
       "",
       "#[derive(Debug, Object)]",
+      "#[oai(rename_all = \"camelCase\")]",
       "pub struct ${2:Entity}Dto {",
       "\tpub id: Uuid,",
       "\tpub name: String,",
@@ -369,18 +472,19 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t}",
       "}"
     ],
-    "description": "OpenAPI response DTO with from_domain() mapping."
+    "description": "OpenAPI response DTO (camelCase JSON) with from_domain() mapping."
   },
   "Presentation — dto.rs request DTO": {
     "prefix": "poem-request-dto",
     "body": [
       "#[derive(Debug, Object)]",
+      "#[oai(rename_all = \"camelCase\")]",
       "pub struct ${1:Action}${2:Entity}Request {",
       "\tpub name: String,",
       "\t$0",
       "}"
     ],
-    "description": "OpenAPI request DTO struct."
+    "description": "OpenAPI request DTO struct (camelCase JSON)."
   },
   "Presentation — responses.rs ApiResponse enum": {
     "prefix": "poem-response-enum",
@@ -440,6 +544,21 @@ pub const SNIPPETS_JSON: &str = r##"{
     ],
     "description": "IntoErrorResponse impl: exhaustive status mapping, the error code in `name` (validation → 422)."
   },
+  "Test — error mapper arm": {
+    "prefix": "poem-error-mapper-test",
+    "body": [
+      "#[test]",
+      "fn should_map_${1:not_found}_to_${2:404}_with_its_code() {",
+      "\t// Act",
+      "\tlet (status, Json(body)) = ${3:Entity}Error::${4:NotFound}.into_error_response();",
+      "",
+      "\t// Assert",
+      "\tassert_eq!(status, StatusCode::${5:NOT_FOUND});",
+      "\tassert_eq!(body.name, \"${6:entity}.${1:not_found}\");",
+      "}"
+    ],
+    "description": "One test per error-mapper arm: status and machine-readable code (ADR-0007)."
+  },
   "Presentation — routes.rs Api struct + endpoint": {
     "prefix": "poem-api-struct",
     "body": [
@@ -452,6 +571,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use poem_openapi::{OpenApi, payload::Json};",
       "",
       "use crate::api::error::IntoErrorResponse;",
+      "use crate::api::tags::ApiTags;",
       "use crate::api::${1:entity}::dto::{${4:Action}${2:Entity}Request, ${2:Entity}Dto};",
       "use crate::api::${1:entity}::responses::${4:Action}${2:Entity}Response;",
       "",
@@ -462,30 +582,32 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[OpenApi]",
       "impl ${2:Entity}Api {",
       "\t/// ${4:Action} a ${2:Entity}",
-      "\t#[oai(path = \"/${1:entity}s\", method = \"post\")]",
+      "\t#[oai(path = \"/${1:entity}s\", method = \"post\", tag = \"ApiTags::${2:Entity}\")]",
       "\tasync fn ${3:action}(&self, body: Json<${4:Action}${2:Entity}Request>) -> ${4:Action}${2:Entity}Response {",
       "\t\tmatch self.${3:action}.execute(${4:Action}${2:Entity}Params { name: body.name.clone() }).await {",
       "\t\t\tOk(entity) => ${4:Action}${2:Entity}Response::Created(Json(${2:Entity}Dto::from_domain(&entity))),",
       "\t\t\tErr(err) => {",
       "\t\t\t\tlet (status, error) = err.into_error_response();",
+      "\t\t\t\ttracing::warn!(code = %error.0.name, \"${3:action} failed\");",
       "\t\t\t\t${4:Action}${2:Entity}Response::from_status(status, error)",
       "\t\t\t}",
       "\t\t}",
       "\t}",
       "}"
     ],
-    "description": "Poem OpenAPI Api struct with use case field and POST endpoint."
+    "description": "Poem OpenAPI Api struct with use case field and POST endpoint (tagged, logs failures)."
   },
   "Presentation — single endpoint handler": {
     "prefix": "poem-endpoint",
     "body": [
       "/// ${1:description}",
-      "#[oai(path = \"/${2:entity}s\", method = \"${3:post}\")]",
+      "#[oai(path = \"/${2:entity}s\", method = \"${3:post}\", tag = \"ApiTags::${6:Entity}\")]",
       "async fn ${4:action}(&self, body: Json<${5:Action}${6:Entity}Request>) -> ${5:Action}${6:Entity}Response {",
       "\tmatch self.${4:action}.execute(${5:Action}${6:Entity}Params { name: body.name.clone() }).await {",
       "\t\tOk(entity) => ${5:Action}${6:Entity}Response::Created(Json(${6:Entity}Dto::from_domain(&entity))),",
       "\t\tErr(err) => {",
       "\t\t\tlet (status, error) = err.into_error_response();",
+      "\t\t\ttracing::warn!(code = %error.0.name, \"${4:action} failed\");",
       "\t\t\t${5:Action}${6:Entity}Response::from_status(status, error)",
       "\t\t}",
       "\t}",
@@ -493,13 +615,30 @@ pub const SNIPPETS_JSON: &str = r##"{
     ],
     "description": "#[oai] endpoint handler: execute → map response."
   },
+  "Presentation — GET by id endpoint": {
+    "prefix": "poem-endpoint-get",
+    "body": [
+      "/// Get a ${1:Entity} by ID",
+      "#[oai(path = \"/${2:entity}s/:id\", method = \"get\", tag = \"ApiTags::${1:Entity}\")]",
+      "async fn get_by_id(&self, id: Path<Uuid>) -> Get${1:Entity}Response {",
+      "\tmatch self.get_${2:entity}.execute(Get${1:Entity}Params { id: id.0 }).await {",
+      "\t\tOk(entity) => Get${1:Entity}Response::Ok(Json(${1:Entity}Dto::from_domain(&entity))),",
+      "\t\tErr(err) => {",
+      "\t\t\tlet (status, error) = err.into_error_response();",
+      "\t\t\ttracing::warn!(code = %error.0.name, \"get_${2:entity} failed\");",
+      "\t\t\tGet${1:Entity}Response::from_status(status, error)",
+      "\t\t}",
+      "\t}",
+      "}"
+    ],
+    "description": "GET /entities/:id endpoint with Path<Uuid> → 200 or mapped error."
+  },
   "Test — cfg(test) block": {
     "prefix": "cfg-test",
     "body": [
       "#[cfg(test)]",
       "mod tests {",
       "\tuse super::*;",
-      "\tuse std::sync::Arc;",
       "",
       "\t$0",
       "}"
@@ -524,24 +663,14 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Test — Object Mother": {
     "prefix": "object-mother",
     "body": [
-      "pub struct ${1:Entity}Mother;",
+      "use crate::domain::${1:entity}::model::{${2:Entity}, ${2:Entity}Props};",
       "",
-      "impl ${1:Entity}Mother {",
-      "\tpub fn random() -> ${1:Entity} {",
-      "\t\tSelf::builder().build()",
-      "\t}",
-      "",
-      "\tpub fn builder() -> ${1:Entity}Builder {",
-      "\t\t${1:Entity}Builder::new()",
-      "\t}",
-      "}",
-      "",
-      "pub struct ${1:Entity}Builder {",
+      "pub struct ${2:Entity}Mother {",
       "\tname: Option<String>,",
       "\t$0",
       "}",
       "",
-      "impl ${1:Entity}Builder {",
+      "impl ${2:Entity}Mother {",
       "\tpub fn new() -> Self {",
       "\t\tSelf { name: None }",
       "\t}",
@@ -551,26 +680,42 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tself",
       "\t}",
       "",
-      "\tpub fn build(self) -> ${1:Entity} {",
-      "\t\t${1:Entity}::new(${1:Entity}Props {",
+      "\tpub fn with_empty_name(mut self) -> Self {",
+      "\t\tself.name = Some(String::new());",
+      "\t\tself",
+      "\t}",
+      "",
+      "\tpub fn build(self) -> ${2:Entity} {",
+      "\t\t${2:Entity}::new(self.build_props()).expect(\"${2:Entity}Mother: failed to build valid ${2:Entity}\")",
+      "\t}",
+      "",
+      "\tpub fn build_props(self) -> ${2:Entity}Props {",
+      "\t\t${2:Entity}Props {",
       "\t\t\tname: self.name.unwrap_or_else(|| \"example\".to_string()),",
-      "\t\t})",
-      "\t\t.expect(\"${1:Entity}Mother: failed to build valid ${1:Entity}\")",
+      "\t\t}",
+      "\t}",
+      "",
+      "\tpub fn random() -> ${2:Entity} {",
+      "\t\tSelf::new().build()",
+      "\t}",
+      "",
+      "\tpub fn random_vec(n: usize) -> Vec<${2:Entity}> {",
+      "\t\t(0..n).map(|_| Self::random()).collect()",
       "\t}",
       "}",
       "",
-      "impl Default for ${1:Entity}Builder {",
+      "impl Default for ${2:Entity}Mother {",
       "\tfn default() -> Self {",
       "\t\tSelf::new()",
       "\t}",
       "}"
     ],
-    "description": "Object Mother with builder pattern: random(), with_name(), build()."
+    "description": "Object Mother: new().with_<field>().build(), build_props(), random(), random_vec(n)."
   },
   "Test — SQLx integration test": {
     "prefix": "sqlx-test",
     "body": [
-      "#[sqlx::test(migrations = \"migrations\")]",
+      "#[sqlx::test(migrations = \"./migrations\")]",
       "async fn should_${1:expected}_when_${2:condition}(pool: PgPool) {",
       "\t// Arrange",
       "\tlet repo = Pg${3:Entity}Repository::new(pool.clone());",
@@ -597,7 +742,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tentity",
       "\t}",
       "",
-      "\t#[sqlx::test(migrations = \"migrations\")]",
+      "\t#[sqlx::test(migrations = \"./migrations\")]",
       "\tasync fn should_persist_and_retrieve_by_id(pool: PgPool) {",
       "\t\t// Arrange",
       "\t\tlet entity = seed(&pool, \"example\").await;",
@@ -614,7 +759,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tassert_eq!(found.name, entity.name);",
       "\t}",
       "",
-      "\t#[sqlx::test(migrations = \"migrations\")]",
+      "\t#[sqlx::test(migrations = \"./migrations\")]",
       "\tasync fn should_return_none_for_nonexistent_id(pool: PgPool) {",
       "\t\t// Act",
       "\t\tlet result = Pg${2:Entity}Repository::new(pool)",
@@ -720,8 +865,7 @@ pub const SNIPPETS_JSON: &str = r##"{
     ],
     "description": "Construct Vec<VO> from Vec<primitive>: map + collect into Result."
   }
-}
-"##;
+}"##;
 
 pub const SQL_SNIPPETS_JSON: &str = r##"{
   "Puerto — Create table": {
@@ -749,6 +893,16 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
     ],
     "description": "ALTER TABLE ADD COLUMN."
   },
+  "Puerto — Unique index (partial)": {
+    "prefix": "migration-unique-index",
+    "scope": "sql",
+    "body": [
+      "-- Partial: soft-deleted rows must not keep their value taken (ADR-0003).",
+      "CREATE UNIQUE INDEX ${1:entities}_${2:column}_key ON ${1:entities} (${2:column}) WHERE deleted = false;",
+      "$0"
+    ],
+    "description": "Named partial unique index, ignoring soft-deleted rows."
+  },
   "Puerto — Insert": {
     "prefix": "sql-insert",
     "scope": "sql",
@@ -760,6 +914,18 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
       "$0"
     ],
     "description": "INSERT with Puerto standard columns + upsert."
+  },
+  "Puerto — Select active rows": {
+    "prefix": "sql-select-active",
+    "scope": "sql",
+    "body": [
+      "SELECT id, created_at, updated_at, deleted, deleted_at, ${2:name}",
+      "FROM ${1:entities}",
+      "WHERE deleted = false",
+      "ORDER BY created_at DESC;",
+      "$0"
+    ],
+    "description": "Select live (not soft-deleted) rows."
   },
   "Puerto — Update": {
     "prefix": "sql-update",
@@ -783,8 +949,7 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
     ],
     "description": "Soft delete by id — sets deleted = true and deleted_at."
   }
-}
-"##;
+}"##;
 
 // ── Writers ───────────────────────────────────────────────────────────────────
 

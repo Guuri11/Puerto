@@ -1217,6 +1217,9 @@ has an ADR in `docs/adr/`.
   extracting `timestamp_from_unix_secs` so the clock logic is testable, and exact-output tests for
   the patchers. Final run: 335 mutants, **332 caught, 0 survivors**, 3 unviable.
 
+- **Snippets verified** (0.10.1): fixed to match the generated code, six added, and two compile
+  scenarios build an entity from snippets alone (`snippets_compose_…`, `postgres_snippets_…`).
+
 ### Test scenarios
 
 Structural: no logger in any generated file (CLI + `--no-demo`); mapper names the code, maps to
