@@ -2,6 +2,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::validation::is_pascal_case;
+
 // ── Config types ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -132,7 +134,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
                     unique,
                     ..Default::default()
                 }),
-                vo_name if is_valid_vo_name(vo_name) => Ok(Field {
+                vo_name if is_pascal_case(vo_name) => Ok(Field {
                     name,
                     field_type: expand_type(third),
                     unique,
@@ -150,7 +152,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
             let modifier = parts[2];
             let rest = parts[3];
 
-            if !is_valid_vo_name(vo_name) {
+            if !is_pascal_case(vo_name) {
                 return Err(format!(
                     "invalid value object name '{}'. Must be PascalCase (starts with uppercase, alphanumeric)",
                     vo_name
@@ -182,7 +184,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
                     let variants: Vec<String> =
                         rest.split('/').map(|v| v.trim().to_string()).collect();
                     for variant in &variants {
-                        if !is_valid_vo_name(variant) {
+                        if !is_pascal_case(variant) {
                             return Err(format!(
                                 "invalid enum variant '{}'. Must be PascalCase (starts with uppercase, alphanumeric)",
                                 variant
@@ -219,10 +221,6 @@ fn expand_type(t: &str) -> String {
         "map" => "HashMap<String, String>".to_string(),
         other => other.to_string(),
     }
-}
-
-fn is_valid_vo_name(name: &str) -> bool {
-    crate::validation::is_pascal_case(name)
 }
 
 // ── I/O helpers ───────────────────────────────────────────────────────────────

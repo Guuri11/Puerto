@@ -5,19 +5,13 @@ use crate::generators::migration::run_migration;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::render;
 use crate::generators::types::{
-    is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo, resolve_type, vo_inner_type,
+    field_value_accessor, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
+    resolve_type,
 };
 use crate::patchers::lib_rs::patch_infra_lib;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 // ── SQL helpers ───────────────────────────────────────────────────────────────
-
-fn field_needs_clone(field_type: &str) -> bool {
-    matches!(
-        field_type,
-        "String" | "Option<String>" | "Vec<String>" | "Vec<i64>" | "HashMap<String, String>"
-    )
-}
 
 fn sql_ddl_col(name: &str, field_type: &str) -> String {
     let mapping = resolve_type(field_type).unwrap();
@@ -286,33 +280,11 @@ pub fn generate_infra_entity(
     let from_fields_str: String = eff
         .iter()
         .map(|f| {
-            if is_enum_vo(f) {
-                format!("            {}: entity.{}.as_str().to_string(),", f.name, f.name)
-            } else if is_option_vo(f) {
-                let inner = vo_inner_type(f);
-                if inner == "String" {
-                    format!("            {}: entity.{}.as_ref().map(|v| v.value().to_string()),", f.name, f.name)
-                } else {
-                    format!("            {}: entity.{}.map(|v| v.value()),", f.name, f.name)
-                }
-            } else if is_vec_vo(f) {
-                let inner = vo_inner_type(f);
-                if inner == "String" {
-                    format!("            {}: entity.{}.iter().map(|v| v.value().to_string()).collect(),", f.name, f.name)
-                } else {
-                    format!("            {}: entity.{}.iter().map(|v| v.value()).collect(),", f.name, f.name)
-                }
-            } else if is_value_object(f) {
-                match f.field_type.as_str() {
-                    "String" => format!("            {}: entity.{}.value().to_string(),", f.name, f.name),
-                    _ => format!("            {}: entity.{}.value(),", f.name, f.name),
-                }
-            } else if f.field_type == MAP_TYPE {
-                format!("            {}: Json(entity.{}.clone()),", f.name, f.name)
-            } else if field_needs_clone(&f.field_type) {
-                format!("            {}: entity.{}.clone(),", f.name, f.name)
+            let value = field_value_accessor(f, "entity");
+            if f.field_type == MAP_TYPE {
+                format!("            {}: Json({value}),", f.name)
             } else {
-                format!("            {}: entity.{},", f.name, f.name)
+                format!("            {}: {value},", f.name)
             }
         })
         .collect::<Vec<_>>()

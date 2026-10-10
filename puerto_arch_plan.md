@@ -44,7 +44,7 @@ T-02 and T-03 before they shipped. Consider doing it first, watching it fail, th
 | ~~T-06~~ | **P1** ✅ | `generate domain` can never receive typed fields (dead branch) | `generators/domain.rs` |
 | ~~T-07~~ | **P1** ✅ | CI does not run `make test/full`; no compile matrix | `.github/workflows/ci.yml`, `tests.rs` |
 | ~~T-08~~ | **P1** ✅ | `bootstrap.rs` wires entities whose code does not exist | `generators/consistency.rs`, `generators/bootstrap.rs`, `commands/validate.rs` |
-| T-09 | **P2** | VO accessor logic triplicated across three layers | `types.rs`, `infrastructure.rs`, `presentation.rs` |
+| ~~T-09~~ | **P2** ✅ | VO accessor logic triplicated across three layers | `types.rs`, `infrastructure.rs`, `presentation.rs` |
 | T-10 | **P2** | Finish the Tera migration — templates receive pre-rendered Rust | all generators + `templates/` |
 | T-11 | **P2** | Errors swallowed (`let _ =`, ignored `bool`, `.expect()` panics) | `generators/scaffold.rs` + all |
 | ~~T-12~~ | **P2** ✅ | Validation gaps: system-field collisions, Rust keywords | `validation.rs`, `commands/validate.rs`, `puerto_toml.rs` |
@@ -461,9 +461,10 @@ precisely how T-01 happened.
   — asserting the emitted expression string, cheap and fast
 
 **Acceptance**
-- [ ] `grep -rn "fn field_needs_clone" crates/cli/src` returns one hit
-- [ ] Infrastructure and presentation call the shared helper
-- [ ] Matrix unit test in `types.rs`
+- [x] `grep -rn "fn field_needs_clone" crates/cli/src` returns one hit
+- [x] Infrastructure and presentation call the shared helper (`types::field_value_accessor`)
+- [x] Matrix unit test in `types.rs`; `is_valid_vo_name` folded into `validation::is_pascal_case`
+- Mutation run: 340 mutants, 337 caught, 0 survivors, 3 unviable
 
 ---
 

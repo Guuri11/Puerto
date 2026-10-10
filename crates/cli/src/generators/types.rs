@@ -254,6 +254,49 @@ pub fn field_rust_type(field: &Field) -> String {
     }
 }
 
+/// Whether reading a primitive field out of a borrowed struct needs `.clone()` — every registry
+/// type that is not `Copy`.
+pub fn field_needs_clone(field_type: &str) -> bool {
+    matches!(
+        field_type,
+        "String" | "Option<String>" | "Vec<String>" | "Vec<i64>" | "HashMap<String, String>"
+    )
+}
+
+/// The expression that reads `field` out of `owner` (a borrowed domain entity) as the primitive
+/// the persistence row and the DTO hold: `.value()` / `.as_str()` for value objects, mapped over
+/// `Option` / `Vec`, `.clone()` for non-`Copy` primitives. The single home of this decision tree —
+/// `entity.rs` and `dto.rs` both call it.
+pub fn field_value_accessor(field: &Field, owner: &str) -> String {
+    let access = format!("{owner}.{}", field.name);
+    let string_inner = vo_inner_type(field) == "String";
+    if is_enum_vo(field) {
+        format!("{access}.as_str().to_string()")
+    } else if is_option_vo(field) {
+        if string_inner {
+            format!("{access}.as_ref().map(|v| v.value().to_string())")
+        } else {
+            format!("{access}.map(|v| v.value())")
+        }
+    } else if is_vec_vo(field) {
+        if string_inner {
+            format!("{access}.iter().map(|v| v.value().to_string()).collect::<Vec<_>>()")
+        } else {
+            format!("{access}.iter().map(|v| v.value()).collect::<Vec<_>>()")
+        }
+    } else if is_value_object(field) {
+        if string_inner {
+            format!("{access}.value().to_string()")
+        } else {
+            format!("{access}.value()")
+        }
+    } else if field_needs_clone(&field.field_type) {
+        format!("{access}.clone()")
+    } else {
+        access
+    }
+}
+
 pub fn field_vo_constructor(
     field: &Field,
     param_prefix: &str,
@@ -488,5 +531,103 @@ mod tests {
             field_vo_constructor(&field("Option<String>", None), "params.", "Product", &[]),
             ""
         );
+    }
+
+    fn enum_field() -> crate::puerto_toml::Field {
+        crate::puerto_toml::Field {
+            value_object_kind: Some("enum".into()),
+            enum_variants: Some(vec!["Active".into()]),
+            ..field("String", Some("Status"))
+        }
+    }
+
+    #[test]
+    fn should_clone_only_the_heap_backed_primitives() {
+        for ty in [
+            "String",
+            "Option<String>",
+            "Vec<String>",
+            "Vec<i64>",
+            "HashMap<String, String>",
+        ] {
+            assert!(field_needs_clone(ty), "{ty} is not Copy");
+        }
+        for ty in [
+            "i64",
+            "bool",
+            "f64",
+            "Uuid",
+            "DateTime<Utc>",
+            "Option<i64>",
+            "Option<bool>",
+            "Option<f64>",
+            "Option<DateTime<Utc>>",
+        ] {
+            assert!(!field_needs_clone(ty), "{ty} is Copy");
+        }
+    }
+
+    #[test]
+    fn should_read_the_primitive_out_of_every_value_object_shape() {
+        // {plain VO, Option<VO>, Vec<VO>, primitive} × {String, i64, Uuid, DateTime}: the one place
+        // that decides how a domain field becomes a primitive (entity.rs `From`, dto.rs `from_domain`).
+        let cases: &[(&str, Option<&str>, &str)] = &[
+            ("String", Some("V"), "entity.x.value().to_string()"),
+            ("i64", Some("V"), "entity.x.value()"),
+            ("Uuid", Some("V"), "entity.x.value()"),
+            ("DateTime<Utc>", Some("V"), "entity.x.value()"),
+            (
+                "Option<String>",
+                Some("V"),
+                "entity.x.as_ref().map(|v| v.value().to_string())",
+            ),
+            ("Option<i64>", Some("V"), "entity.x.map(|v| v.value())"),
+            ("Option<Uuid>", Some("V"), "entity.x.map(|v| v.value())"),
+            (
+                "Option<DateTime<Utc>>",
+                Some("V"),
+                "entity.x.map(|v| v.value())",
+            ),
+            (
+                "Vec<String>",
+                Some("V"),
+                "entity.x.iter().map(|v| v.value().to_string()).collect::<Vec<_>>()",
+            ),
+            (
+                "Vec<i64>",
+                Some("V"),
+                "entity.x.iter().map(|v| v.value()).collect::<Vec<_>>()",
+            ),
+            (
+                "Vec<Uuid>",
+                Some("V"),
+                "entity.x.iter().map(|v| v.value()).collect::<Vec<_>>()",
+            ),
+            (
+                "Vec<DateTime<Utc>>",
+                Some("V"),
+                "entity.x.iter().map(|v| v.value()).collect::<Vec<_>>()",
+            ),
+            ("String", None, "entity.x.clone()"),
+            ("i64", None, "entity.x"),
+            ("Uuid", None, "entity.x"),
+            ("DateTime<Utc>", None, "entity.x"),
+            ("Option<String>", None, "entity.x.clone()"),
+            ("Option<i64>", None, "entity.x"),
+            ("Vec<String>", None, "entity.x.clone()"),
+            ("HashMap<String, String>", None, "entity.x.clone()"),
+        ];
+        for (ty, vo, expected) in cases {
+            assert_eq!(
+                field_value_accessor(&field(ty, *vo), "entity"),
+                *expected,
+                "{ty} / {vo:?}"
+            );
+        }
+        assert_eq!(
+            field_value_accessor(&enum_field(), "entity"),
+            "entity.x.as_str().to_string()"
+        );
+        assert_eq!(field_value_accessor(&field("i64", None), "body"), "body.x");
     }
 }
