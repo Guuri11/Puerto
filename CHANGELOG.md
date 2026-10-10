@@ -1,3 +1,77 @@
+## [0.10.0] - 2026-10-10
+
+An end-to-end review generated real projects with every option — `--db` against a live Postgres
+included — and found output that did not compile or did not pass the project's own `make lint`.
+This release fixes all of it, then adopts the conventions of a hand-written 60k-LOC backend built
+on the same architecture (`document-api`). The compile matrix now runs clippy `-D warnings` in every
+generated project and has a Postgres scenario (`make test/db`). 0.9.1 and 0.9.2 were tagged but never
+reached crates.io; their changes ship here.
+
+### 🐛 Fixed
+
+- **A fresh `puerto new` failed its own `make lint`** — ~57 clippy errors in a project with value
+  objects (`map_err` that returns its input, redundant field names, argument-less `format!`, an
+  inherent `from_str` on enum VOs, unused test imports, Mothers without `Default`)
+- **`generate use-case` on a scaffolded entity broke compilation** (bootstrap wired a field
+  `routes.rs` did not have) and **silently replaced** a working implementation with a `todo!()`
+  stub when the action already existed — including the CRUD ones
+- **`--db` projects:** `HashMap` columns did not compile (now `sqlx::types::Json`); Pg repository
+  tests missed imports, compared nanosecond timestamps with microsecond ones and seeded `unique`
+  fields with constants; two scaffolds in the same second produced the same migration version;
+  a field named `desc`/`order`/`user` broke the migration
+- **Entity whose only `String` field is an enum VO:** its create test did not compile
+- **Create use case logged the literal text `params.x`** instead of a value
+- `puerto new` suggested `cargo run -p <name>` (the package is `presentation`)
+- `.sqlx/` was git-ignored while builds run with `SQLX_OFFLINE=true`
+- The AI rules shipped in every project described `mod.rs` files — the one thing the module
+  convention forbids — and were not loaded by Claude Code (no root `CLAUDE.md`)
+
+### 🚀 Features
+
+- **Health and shutdown:** `GET /health` (liveness), `GET /health/ready` (readiness — `503` until
+  the database answers), graceful shutdown on SIGTERM / Ctrl-C
+- **Agent rules:** every project ships a root `AGENTS.md` + `CLAUDE.md` — architecture, commands,
+  conventions, one commit per piece, risk tiers for human review — kept in sync by tests
+- **Pinned toolchain:** `rust-toolchain.toml` (1.95.0), edition 2024, resolver 3
+- **Validation at the command that writes:** `generate value-object` (name, type, duplicates),
+  `generate use-case` (snake_case, existing actions), duplicate field names, SQL reserved words in
+  `--db` projects, project names in `puerto new --name`
+- `generate migration` writes the file itself (no `sqlx` CLI needed) and is refused without `--db`
+- `make test/db` (Postgres scenario) and `make test/mutation` (cargo-mutants: 335 mutants, 0
+  survivors)
+- `docs/adr/` — ten Architecture Decision Records
+
+### Breaking
+
+Generated code changes shape:
+
+- **No logger port.** `LoggerTrait`, `TracingLogger`, `business::domain::logger`, every `logger`
+  field and `silent_logger()` mock are gone; code logs with `tracing` macros. Repository
+  constructors take no logger (`InMemoryXRepository::new()`, `PgXRepository::new(pool)`)
+- **Error contract.** `ErrorResponse.name` is the error code (`product.not_found`) — it was a
+  generic `product_error` with the code in `message`. Domain validation and invalid value objects
+  answer **422** (was 400); response enums carry `UnprocessableEntity` instead of `BadRequest`
+- **Enum value objects implement `FromStr`** instead of an inherent `from_str`
+- **Unique indexes are partial** (`WHERE deleted = false`)
+- Entity names `Tracing` and `Db` are rejected; `generate use-case` is no longer idempotent (a
+  second run is refused)
+
+### Migration Guide
+
+No project generated with an earlier Puerto is known to be in use. For one that is:
+
+1. Delete `business/src/domain/logger.rs` and `infrastructure/src/logger.rs` and their `pub mod`
+   lines; remove `logger` fields and arguments; replace `self.logger.info(&x)` with
+   `tracing::info!(…)`; add `tracing = "0.1"` to `business` and `presentation`.
+2. Run `puerto generate bootstrap`.
+3. In each `error_mapper.rs`, build bodies with `ErrorResponse::from_code(self.to_string())` and map
+   `ValidationError` / `Invalid*` to `StatusCode::UNPROCESSABLE_ENTITY`; in `responses.rs` replace
+   the `400 BadRequest` variant with `422 UnprocessableEntity`. Tell API clients that the code is
+   now in `name`.
+4. Replace `Vo::from_str(&x)` with `x.parse::<Vo>()` (or import `std::str::FromStr`).
+5. Recreate unique indexes as partial: `DROP INDEX t_f_key; CREATE UNIQUE INDEX t_f_key ON t (f)
+   WHERE deleted = false;`
+
 ## [0.9.2] - 2026-08-15
 
 Two rounds of work: making generated projects actually compile, and making the CLI honour what the
