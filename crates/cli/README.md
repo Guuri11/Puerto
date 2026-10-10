@@ -1,82 +1,55 @@
 # Puerto
 
-Puerto is a Rust CLI that scaffolds full-stack DDD projects following Clean Architecture (Hexagonal / Ports & Adapters). It generates a 3-crate workspace with auto-wired dependency injection, zero manual wiring.
+Puerto is a Rust CLI that scaffolds DDD backends following Clean Architecture (Hexagonal / Ports &
+Adapters): a 3-crate workspace with a poem-openapi REST API, dependency injection generated from a
+manifest, and tests for every layer. Website and docs: <https://puertovercel.app>.
 
 ## Install
 
 ```bash
-cargo install puerto-framework
+cargo install puerto --locked
 ```
+
+`--locked` builds with the dependency versions Puerto was tested with; without it, cargo may pick
+newer transitive dependencies that require a newer Rust than yours.
 
 ## Quick start
 
 ```bash
-puerto new                          # interactive: prompts for name and db support
-puerto new --name my-app            # skip name prompt
-puerto new --name my-app --db       # fully non-interactive, includes SQLx/Postgres
+puerto new                                  # interactive: name, database, demo entity
+puerto new --name my-app --db               # non-interactive, with SQLx/Postgres
+cd my-app
+puerto generate scaffold Product -- title:String price:i64 sku:String!
+make run                                    # http://localhost:8080 — Swagger UI
 ```
 
 ## Commands
 
 ```bash
-puerto new [--name <name>] [--db]
-
-puerto generate scaffold <Name>            # add a DDD entity (InMemory repository)
-puerto generate scaffold <Name> --db       # add a DDD entity (SQLx/Postgres repository)
-puerto generate use-case <Entity> <action> # add a use case to an existing entity
-puerto generate migration <name>           # create a SQLx migration file
-puerto generate bootstrap                  # regenerate bootstrap.rs from puerto.toml
+puerto generate scaffold <Name> [--force] -- <fields>   # an entity across every layer
+puerto generate use-case <Entity> <action>              # one more use case (snake_case)
+puerto generate value-object <Name> <type>              # a shared value object
+puerto generate domain|application|repository|presentation <Name>   # one layer at a time
+puerto generate migration <name>                        # SQL migration (--db projects)
+puerto generate bootstrap                               # rewire DI from puerto.toml
+puerto generate snippets [--ide zed|vscode]             # IDE snippets
+puerto validate                                         # check puerto.toml against the code
 ```
 
-## Generated project structure
+Field syntax: `name:String`, `price:i64!` (unique), `note:opt:String`, `tags:vec:String`,
+`name:Name:String` (value object), `status:Status:enum:Active/Archived`, `email:Email` (shared VO).
 
-```
-my-app/
-├── puerto.toml                    # source of truth for entities + use cases
-├── business/                      # domain + application layer (pure Rust)
-│   └── src/
-│       ├── domain/<entity>/
-│       │   ├── model.rs
-│       │   ├── errors.rs
-│       │   ├── repository.rs      # trait (port) + mockall mock
-│       │   └── use_cases/
-│       └── application/<entity>/
-│           └── <use_case>.rs      # use case impl + unit tests
-├── infrastructure/                # adapters (InMemory or SQLx/Postgres)
-│   └── src/<entity>/
-│       └── repository.rs
-└── presentation/                  # poem-openapi REST API
-    └── src/
-        ├── main.rs                # 5-line entry point — never changes
-        ├── generated/
-        │   └── bootstrap.rs       # auto-generated DI wiring
-        └── api/<entity>/
-            ├── routes.rs
-            ├── dto.rs
-            ├── responses.rs
-            └── error_mapper.rs
-```
+## What every generated project gets
 
-## Architecture
-
-Dependency rule (inward only):
-
-```
-Presentation → Infrastructure → Application → Domain
-```
-
-- **Domain** — pure Rust, no external dependencies beyond `std` / `async-trait` / `thiserror`
-- **Application** — use case implementations, imports domain only
-- **Infrastructure** — adapters (InMemory or SQLx); imports domain
-- **Presentation** — poem-openapi REST API; imports all layers via auto-generated DI
-
-## Tech stack
-
-- [poem-openapi](https://github.com/poem-web/poem) — REST API + OpenAPI/Swagger
-- [sqlx](https://github.com/launchbadge/sqlx) — async Postgres (optional, `--db`)
-- [tokio](https://tokio.rs) — async runtime
-- [thiserror](https://github.com/dtolnay/thiserror) — domain errors
-- [mockall](https://github.com/asomers/mockall) — repository mocks for unit tests
+- `business` (domain + application), `infrastructure` (in-memory or Postgres adapters),
+  `presentation` (REST API) — dependencies point inward only
+- `puerto.toml` as the source of truth; `presentation/src/generated/bootstrap.rs` wired from it
+- Unit tests per use case, Object Mothers, `mockall` mocks; Postgres integration tests with `--db`
+- `GET /health`, `GET /health/ready` (pings the database), graceful shutdown on SIGTERM
+- Error bodies with a machine-readable code in `name` (`product.not_found`); validation is `422`
+- Logging through `tracing`; a pinned toolchain (`rust-toolchain.toml`), edition 2024
+- `AGENTS.md` + `CLAUDE.md` instructions for coding agents
+- A `make lint` (clippy `-D warnings`) that passes out of the box
 
 ## License
 

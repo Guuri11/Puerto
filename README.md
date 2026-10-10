@@ -75,15 +75,15 @@ The domain depends on nothing. Everything else depends on the domain.
 ## Getting Started
 
 ```bash
-# Install Puerto
-cargo install puerto
+# Install Puerto (--locked: build with the tested dependency versions)
+cargo install puerto --locked
 
 # Scaffold a new project
-puerto new my-app
+puerto new --name my-app
 
 # Enter the project and run
 cd my-app
-cargo run
+make run
 ```
 
 Visit `http://localhost:8080` for the Swagger UI, or call the API directly:

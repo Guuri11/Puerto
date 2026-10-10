@@ -52,8 +52,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <p class="mt-3 font-sans text-puerto-mist">Install the Puerto CLI from crates.io:</p>
           <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
             <span class="font-mono text-sm text-puerto-teal select-none">$</span>
-            <code class="font-mono text-sm text-puerto-ice">cargo install puerto</code>
-            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="cargo install puerto" aria-label="Copy">
+            <code class="font-mono text-sm text-puerto-ice">cargo install puerto --locked</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="cargo install puerto --locked" aria-label="Copy">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
@@ -498,7 +498,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">repository-trait</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">RepositoryTrait + mockall mock in pub mod mocks</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">RepositoryTrait (find_all, find_by_id, save) + mockall mock</span>
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">domain-use-case</code>
@@ -546,6 +546,10 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                   <code class="w-44 flex-none font-mono text-xs text-puerto-rust">app-use-case</code>
                   <span class="font-sans text-xs text-puerto-mist/70">UseCaseImpl with repository injection, tracing logs + unit tests</span>
                 </div>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-rust">app-use-case-error-test</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Failure-path test: the mocked repository errors, the code propagates</span>
+                </div>
               </div>
             </div>
             <!-- Infrastructure -->
@@ -556,12 +560,50 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
               </div>
               <div class="space-y-1.5">
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-indigo">inmemory-repo</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">In-memory repository — the default adapter without --db</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-indigo">persistence-entity</code>
                   <span class="font-sans text-xs text-puerto-mist/70">DB row struct (FromRow) + TryFrom/From conversions</span>
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-indigo">persistence-repo</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">PgEntityRepository — find_by_id + save with SQLx macros</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">PgEntityRepository — SQLx macros, tracing logs, 23505 → Duplicate</span>
+                </div>
+              </div>
+            </div>
+            <!-- Presentation -->
+            <div>
+              <div class="mb-2 flex items-center gap-2">
+                <span class="font-mono text-xs font-bold text-puerto-rust/80 uppercase tracking-widest">Presentation</span>
+                <div class="h-px flex-1 bg-puerto-steel/30"></div>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-rust">poem-endpoint-get</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">GET /entities/:id — Path&lt;Uuid&gt; → 200 or mapped error</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-rust">poem-error-mapper-test</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">One test per error-mapper arm: status + code in name</span>
+                </div>
+              </div>
+            </div>
+            <!-- SQL -->
+            <div>
+              <div class="mb-2 flex items-center gap-2">
+                <span class="font-mono text-xs font-bold text-puerto-indigo/70 uppercase tracking-widest">SQL</span>
+                <div class="h-px flex-1 bg-puerto-steel/30"></div>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-indigo">migration-unique-index</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">Partial unique index — ignores soft-deleted rows</span>
+                </div>
+                <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
+                  <code class="w-44 flex-none font-mono text-xs text-puerto-indigo">sql-select-active</code>
+                  <span class="font-sans text-xs text-puerto-mist/70">SELECT … WHERE deleted = false</span>
                 </div>
               </div>
             </div>
@@ -578,7 +620,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-mist/80">sqlx-test</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">#[sqlx::test(migrations = "migrations")] — real Postgres pool</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">#[sqlx::test(migrations = "./migrations")] — throwaway Postgres database</span>
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-mist/80">sqlx-repo-test-module</code>
@@ -586,12 +628,15 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-mist/80">object-mother</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">Object Mother builder: random(), with_name(), build()</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">Object Mother: new().with_name().build(), build_props(), random_vec(n)</span>
                 </div>
               </div>
             </div>
           </div>
-          <p class="mt-3 font-sans text-xs text-puerto-mist/40 text-right">+ 9 more: lib.rs blocks, poem DTOs, response enums, error mappers, API struct</p>
+          <p class="mt-3 font-sans text-xs text-puerto-mist/40 text-right">+ 17 more: lib.rs blocks, DTOs, response enums, error mapper, API struct, endpoints, SQL</p>
+          <p class="mt-2 font-sans text-xs text-puerto-mist/60">
+            Every snippet is checked by Puerto's own test suite: an entity is built from snippets alone — in-memory and against Postgres — and must pass clippy <code class="font-mono text-puerto-teal">-D warnings</code> and its tests.
+          </p>
 
           <!-- Regenerate command -->
           <p class="mt-8 font-sans text-sm font-semibold text-puerto-ice">Switching IDE or regenerating</p>
