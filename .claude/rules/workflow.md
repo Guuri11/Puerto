@@ -32,8 +32,9 @@ If the spec is missing any of these, write them before proceeding.
 
 #### 2. Write Failing Tests — RED
 
-Tests for Puerto CLI live in `crates/cli/src/tests.rs` as `#[test]` functions (declared from
-`main.rs` as `#[cfg(test)] mod tests;`).
+Tests for Puerto CLI live in `crates/cli/src/tests/`, one module per area (`scaffolding.rs`,
+`manifest_validation.rs`, `compile_matrix.rs`, …), as `#[test]` functions. `crates/cli/src/tests.rs`
+declares the modules and re-imports the helpers they share.
 
 Structural tests (file existence, content assertions):
 
@@ -223,7 +224,7 @@ make format
 | File                                     | Purpose                                                     |
 | ---------------------------------------- | ----------------------------------------------------------- |
 | `crates/cli/src/main.rs`                 | CLI definition + dispatch                                   |
-| `crates/cli/src/tests.rs`                | Test suite (structural + `#[ignore]` compile matrix)        |
+| `crates/cli/src/tests/`                  | Test suite, one module per area (structural + `#[ignore]` compile matrix) |
 | `crates/cli/src/generators/`             | Per-layer generators, bootstrap, overwrite/drift guards     |
 | `crates/cli/src/templates/`              | `.tera` templates rendered by the generators                |
 | `crates/cli/src/patchers/`               | `lib.rs` / `api.rs` patchers                                |

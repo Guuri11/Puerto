@@ -50,7 +50,7 @@ T-02 and T-03 before they shipped. Consider doing it first, watching it fail, th
 | ~~T-12~~ | **P2** ✅ | Validation gaps: system-field collisions, Rust keywords | `validation.rs`, `commands/validate.rs`, `puerto_toml.rs` |
 | T-13 | **P2** | Naive pluralization for table names (`categorys`) | `generators/infrastructure.rs` |
 | ~~T-14~~ | **P2** ✅ | Documentation drift (flags, syntax, file paths) | `AGENTS.md`, `.claude/rules/*` |
-| T-15 | **P2** | `make lint` misses test targets | `Makefile`, `tests.rs` |
+| ~~T-15~~ | **P2** ✅ | `make lint` misses test targets | `Makefile`, `tests.rs` |
 | T-16 | P3 | No `puerto destroy` | new command |
 | T-17 | P3 | No atomicity / `--dry-run` on generation | `generators/scaffold.rs` |
 | T-18 | P3 | Add snapshot tests for generated output | `tests.rs` |
@@ -621,8 +621,9 @@ warning: this import is redundant
 while you are in there.
 
 **Acceptance**
-- [ ] `make lint` clean with `--all-targets`
-- [ ] CI enforces it
+- [x] `make lint` clean with `--all-targets`
+- [x] CI enforces it (CI runs `make lint`)
+- [x] `tests.rs` split into `tests/` modules by area; same 316 test names before and after
 
 ---
 

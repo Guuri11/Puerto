@@ -19,7 +19,8 @@ crates/
     src/patchers/   — lib.rs / api.rs / routes.rs patchers
     src/puerto_toml.rs — puerto.toml serde structs + read/write/add_entity + field parser
     src/validation.rs  — Name predicates shared by the field parser and `puerto validate`
-    src/tests.rs    — Test suite: structural + `#[ignore]` compile matrix (`make test/full`)
+    src/tests.rs    — Test root: shared helpers + one module per area in src/tests/
+    src/tests/      — Structural tests + `#[ignore]` compile matrix (`make test/full`)
     template/       — The "basic" DDD template (edit directly here)
       Cargo.toml          — Workspace manifest (workspace only, no [package]; edition 2024, resolver 3)
       cargo-generate.toml — Template config (controls which files get substitution)
@@ -182,7 +183,7 @@ make test          # Fast structural tests (verifies generated file structure)
 make test/full     # Slow: generates real projects, runs their `clippy --all-targets -D warnings` + tests
 make test/db       # Slow: a generated --db project against a throwaway Postgres (Docker + sqlx-cli)
 make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
-make lint          # cargo clippy --workspace -- -D warnings
+make lint          # cargo clippy --workspace --all-targets -- -D warnings
 make check         # cargo check --workspace
 make format        # cargo fmt --all -- --check
 make format/fix    # cargo fmt --all

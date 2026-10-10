@@ -57,7 +57,7 @@ test/mutation: ## Slow: mutation testing on Puerto's pure logic (see .cargo/muta
 
 lint: ## Run clippy with -D warnings
 	@echo "${CYAN}Linting code...${NC}"
-	$(CARGO) clippy --workspace -- -D warnings
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
 
 check: ## Fast compile check (no binary)
 	@echo "${CYAN}Checking code...${NC}"
