@@ -1,3 +1,30 @@
+## [0.10.1] - 2026-10-10
+
+### 🐛 Fixed
+
+- **IDE snippets had drifted from the generated code**, with nothing tying them to it:
+  `NaiveDateTime` where projects use `DateTime<Utc>` (`domain-model`, `persistence-entity`), DTOs
+  without camelCase, a Pg repository that swallowed errors and never mapped `23505` → `Duplicate`,
+  endpoints without tags or failure logs, an Object Mother with a different API, a `cfg-test` block
+  whose `Arc` import failed `make lint`, a repository trait without `find_all`
+
+### 🚀 Features
+
+- **New snippets:** `inmemory-repo`, `poem-endpoint-get`, `app-use-case-error-test`,
+  `poem-error-mapper-test`, `migration-unique-index` (partial), `sql-select-active`
+- **Snippets are compiled in Puerto's test suite:** an entity is built from snippets alone and must
+  pass clippy `-D warnings` and its tests — in memory (`make test/full`) and against Postgres,
+  migration and integration tests included (`make test/db`)
+
+### 📚 Docs
+
+- **The crates.io README told people to `cargo install puerto-framework`** — the crate's old name —
+  and documented a `scaffold --db` flag that does not exist. Rewritten for 0.10.
+- **Install with `cargo install puerto --locked`** (README, crate README, website). Without
+  `--locked`, cargo resolves the newest transitive dependencies, and `kstring 2.0.5` (via
+  cargo-generate → liquid) now requires Rust 1.96 — so a plain `cargo install puerto` fails on 1.95.
+- `puerto new my-app` examples corrected to `puerto new --name my-app`.
+
 ## [0.10.0] - 2026-10-10
 
 An end-to-end review generated real projects with every option — `--db` against a live Postgres
