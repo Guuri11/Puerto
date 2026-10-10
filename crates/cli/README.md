@@ -2,7 +2,7 @@
 
 Puerto is a Rust CLI that scaffolds DDD backends following Clean Architecture (Hexagonal / Ports &
 Adapters): a 3-crate workspace with a poem-openapi REST API, dependency injection generated from a
-manifest, and tests for every layer. Website and docs: <https://puertovercel.app>.
+manifest, and tests for every layer. Website and docs: <https://puerto-rs.vercel.app>.
 
 ## Install
 
