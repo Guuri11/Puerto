@@ -1,7 +1,15 @@
 mod api;
 mod generated;
+mod health;
+
+use std::time::Duration;
 
 use poem::{Server, listener::TcpListener};
+
+/// How long in-flight requests get to finish once a shutdown signal arrives. Keep it below the
+/// orchestrator's kill timeout (`docker stop` waits 10s by default) so requests drain instead of
+/// being cut.
+const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(8);
 
 const BANNER: &str = r#"
     ***********   ++++++++++++   =============
@@ -54,6 +62,36 @@ async fn main() -> Result<(), std::io::Error> {
         .unwrap_or(8080);
 
     Server::new(TcpListener::bind(format!("0.0.0.0:{port}")))
-        .run(generated::bootstrap::build_app().await)
+        .run_with_graceful_shutdown(
+            generated::bootstrap::build_app().await,
+            shutdown_signal(),
+            Some(SHUTDOWN_DEADLINE),
+        )
         .await
+}
+
+/// Resolves on Ctrl-C or SIGTERM — what `docker stop` and Kubernetes send. The listener then stops
+/// accepting and in-flight requests get `SHUTDOWN_DEADLINE` to finish.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+    tracing::info!("shutdown signal received, draining in-flight requests");
 }

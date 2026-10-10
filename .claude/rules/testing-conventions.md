@@ -250,7 +250,7 @@ business/src/
         └── get_greeting.rs       # Use case tests (mocks + AAA)
 ```
 
-Integration tests (full project compile + test) live in `crates/cli/src/tests.rs` as `#[ignore]` tests run via `make test/full`.
+Integration tests (full project clippy + compile + test) live in `crates/cli/src/tests.rs` as `#[ignore]` tests run via `make test/full` (and `make test/db` for the Postgres scenario).
 
 ---
 

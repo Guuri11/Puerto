@@ -6,8 +6,8 @@ use poem_openapi::{ApiResponse, payload::Json};
 pub enum GetGreetingResponse {
     #[oai(status = 200)]
     Ok(Json<GreetingDto>),
-    #[oai(status = 400)]
-    BadRequest(Json<ErrorResponse>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -19,7 +19,7 @@ pub enum GetGreetingResponse {
 impl GetGreetingResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
-            StatusCode::BAD_REQUEST => Self::BadRequest(error),
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
             StatusCode::FORBIDDEN => Self::Forbidden(error),
             _ => Self::InternalError(error),

@@ -9,28 +9,20 @@ use crate::domain::{{ snake }}::{
     repository::{{ pascal }}RepositoryTrait,
     use_cases::create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
 };
-use crate::domain::logger::LoggerTrait;
 
 pub struct Create{{ pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
-    pub logger: Arc<dyn LoggerTrait>,
 }
 
 #[async_trait]
 impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
     async fn execute(&self, params: Create{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
-        self.logger.info(&format!("Creating {{ snake }}: {{ log_ident }}"));
+        tracing::info!("create_{{ snake }}: start");
 {% if vo_constructions %}{{ vo_constructions }}{% endif %}        let entity = {{ pascal }}::new({{ pascal }}Props {
 {{ props_fields }}
-        }).map_err(|e| {
-            self.logger.warn(&e.to_string());
-            e
-        })?;
-        self.repository.save(&entity).await.map_err(|e| {
-            self.logger.error(&e.to_string());
-            e
-        })?;
-        self.logger.info(&format!("{{ pascal }} created"));
+        }).inspect_err(|e| tracing::warn!(error = %e, "create_{{ snake }}: rejected"))?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_{{ snake }}: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_{{ snake }}: done");
         Ok(entity)
     }
 }
@@ -39,16 +31,7 @@ impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
-    use crate::domain::logger::mocks::MockLogger;
-
-    fn silent_logger() -> MockLogger {
-        let mut mock = MockLogger::new();
-        mock.expect_info().returning(|_| ());
-        mock.expect_warn().returning(|_| ());
-        mock.expect_error().returning(|_| ());
-        mock.expect_debug().returning(|_| ());
-        mock
-    }
+{{ test_imports }}
 
     #[tokio::test]
     async fn {{ valid_test_name }}() {
@@ -57,7 +40,6 @@ mod tests {
         mock_repo.expect_save().returning(|_| Ok(()));
         let use_case = Create{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         // Act
@@ -77,7 +59,6 @@ mod tests {
         let mock_repo = Mock{{ pascal }}Repository::new();
         let use_case = Create{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         // Act

@@ -198,6 +198,9 @@ pub fn run(
 
     let bootstrapped =
         crate::puerto_toml::add_entity(base, &pascal, use_cases, db, fields.to_vec())
+            .and_then(|_| {
+                crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)
+            })
             .and_then(|_| crate::generators::bootstrap::regenerate_bootstrap(base))
             .is_ok();
 
@@ -225,14 +228,12 @@ pub fn run(
 
 /// CLI entry point for `puerto generate scaffold <Name>`.
 /// Reads `project.db` from `puerto.toml`, always generates full CRUD.
-/// `sqlx_bin` overrides the sqlx binary path (pass `None` in production, `Some("/bin/true")` in tests).
 /// `cli_fields` are fields passed from the CLI (e.g. `title:String price:i64`).
 ///
 /// Refuses to overwrite an already-generated entity unless `--force`; see `conflict.rs`.
 pub fn run_scaffold(
     name: &str,
     base: &Path,
-    sqlx_bin: Option<&str>,
     cli_fields: &[Field],
     overwrite: OverwritePolicy,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -254,6 +255,12 @@ pub fn run_scaffold(
     // Checked before the first byte is written — a half-overwritten project is worse than a
     // refused command.
     crate::validation::validate_entity_name(&pascal)?;
+    crate::validation::validate_unique_field_names(&fields)?;
+    if db {
+        for f in &fields {
+            crate::validation::validate_sql_field_name(&f.name)?;
+        }
+    }
     let vo_conflicts = crate::validation::validate_vo_coherence(&fields, &shared_vos);
     if !vo_conflicts.is_empty() {
         return Err(vo_conflicts.join("\n  ").into());
@@ -264,12 +271,34 @@ pub fn run_scaffold(
     if db {
         let snake = pascal_to_snake(&pascal);
         let migration_sql = crate::generators::infrastructure::create_table_sql(&snake, &fields);
-        run_migration(
-            &format!("create_{snake}_table"),
-            base,
-            sqlx_bin,
-            Some(&migration_sql),
-        )?;
+        run_migration(&format!("create_{snake}_table"), base, Some(&migration_sql))?;
     }
+    Ok(())
+}
+
+/// CLI entry point for `puerto generate value-object <Name> <type>`.
+///
+/// Validated here, at the command that writes it: an invalid declaration used to land in
+/// puerto.toml and only surface later, in `puerto validate` or as uncompilable generated code.
+pub fn run_value_object(
+    name: &str,
+    inner_type: &str,
+    base: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let inner_type = match inner_type {
+        "DateTime" => "DateTime<Utc>",
+        t => t,
+    };
+    crate::validation::validate_vo_name(name)?;
+    crate::validation::validate_shared_vo_inner_type(inner_type)?;
+
+    let config = crate::puerto_toml::read(base)?;
+    if config.value_object.iter().any(|vo| vo.name == name) {
+        return Err(
+            format!("shared value object '{name}' is already declared in puerto.toml").into(),
+        );
+    }
+    crate::puerto_toml::add_value_object(base, name, inner_type)?;
+    println!("✓ Shared value object '{name}' added to puerto.toml");
     Ok(())
 }

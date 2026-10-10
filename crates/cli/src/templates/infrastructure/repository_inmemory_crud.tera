@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -8,32 +6,32 @@ use business::domain::{{ snake }}::{
     model::{{ pascal }},
     repository::{{ pascal }}RepositoryTrait,
 };
-use business::domain::logger::LoggerTrait;
 
-pub struct InMemory{{ pascal }}Repository {
-    logger: Arc<dyn LoggerTrait>,
-}
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// Postgres repositories).
+#[derive(Default)]
+pub struct InMemory{{ pascal }}Repository;
 
 impl InMemory{{ pascal }}Repository {
-    pub fn new(logger: Arc<dyn LoggerTrait>) -> Self {
-        Self { logger }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
     async fn find_all(&self) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error> {
-        self.logger.debug("find_all");
+        tracing::debug!("find_all");
         Ok(vec![])
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<{{ pascal }}>, {{ pascal }}Error> {
-        self.logger.debug(&format!("find_by_id: {id}"));
+        tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
     async fn save(&self, entity: &{{ pascal }}) -> Result<(), {{ pascal }}Error> {
-        self.logger.debug(&format!("save: {}", entity.id));
+        tracing::debug!(id = %entity.id, "save");
         Ok(())
     }
 }

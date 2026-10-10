@@ -33,3 +33,9 @@ impl {{ pascal }}Mother {
         (0..n).map(|_| Self::random()).collect()
     }
 }
+
+impl Default for {{ pascal }}Mother {
+    fn default() -> Self {
+        Self::new()
+    }
+}

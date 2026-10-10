@@ -122,7 +122,8 @@ cargo publish -p puerto-framework
 Every release — automated or manual — must pass:
 
 - [ ] `make test` — structural tests pass
-- [ ] `make test/full` — generated project compiles and internal tests pass ← **most important gate**
+- [ ] `make test/full` — generated projects lint clean and internal tests pass ← **most important gate**
+- [ ] `make test/db` — the `--db` scenario against Postgres
 - [ ] `make lint` — zero clippy warnings
 - [ ] `make format` — no formatting diff
 - [ ] `cargo package --list` — template files present in package

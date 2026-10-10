@@ -6,20 +6,24 @@ This crate contains **pure Rust business logic**. It has no dependency on any we
 
 ```
 business/src/
+├── lib.rs                    # The whole module tree, as nested `pub mod {}` blocks — no `mod.rs`
 ├── domain/
+│   ├── shared/               # Shared value objects (`[[value_object]]` in puerto.toml), if any
 │   └── <entity>/
 │       ├── model.rs          # Entity + Props + constructors
-│       ├── errors.rs         # EntityError enum (thiserror)
-│       ├── repository.rs     # Repository trait (port) + mock
-│       ├── use_cases/
-│       │   ├── <action>.rs   # Params struct + Trait
-│       │   └── mod.rs
-│       └── mod.rs
-└── application/
-    └── <entity>/
-        ├── <action>.rs       # UseCaseImpl + tests
-        └── mod.rs
+│       ├── value_objects.rs  # Value objects of this entity, if any
+│       ├── errors.rs         # EntityError enum (thiserror, machine-readable codes)
+│       ├── repository.rs     # Repository trait (port) + mockall mock
+│       └── use_cases/
+│           └── <action>.rs   # Params struct + UseCaseTrait (declared in lib.rs)
+├── application/
+│   └── <entity>/
+│       └── <action>.rs       # UseCaseImpl + its tests
+└── tests/mothers/            # Object Mothers (test fixtures)
 ```
+
+Adding a use case is one line in `lib.rs` (under both `domain::<entity>::use_cases` and
+`application::<entity>`) plus its two files — `puerto generate use-case` does both.
 
 ## Critical Rules
 
@@ -28,6 +32,10 @@ business/src/
 - **Use case file structure**: exactly `Params struct` + `Trait`. The `Impl` struct lives in the **application layer**.
 - **Dependencies injected as `Arc<dyn Trait>`** — never concrete types.
 - **No `unwrap()`/`expect()`** outside of tests.
+- **Logging with `tracing` directly** (`tracing::info!(id = %params.id, "get_product: start")`) —
+  there is no logger port to inject or mock. Log start and end of a use case; never the payload.
+- **Value objects**: private inner value, `new()` returning `Result`; enum value objects implement
+  `std::str::FromStr` (`"Active".parse::<Status>()`) and `as_str()`.
 - **Error codes are machine-readable**: `"entity.not_found"`, `"entity.validation_error.name_empty"` — never human sentences.
 
 ## Tests

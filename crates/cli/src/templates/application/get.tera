@@ -8,24 +8,19 @@ use crate::domain::{{ snake }}::{
     repository::{{ pascal }}RepositoryTrait,
     use_cases::get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
 };
-use crate::domain::logger::LoggerTrait;
 
 pub struct Get{{ pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
-    pub logger: Arc<dyn LoggerTrait>,
 }
 
 #[async_trait]
 impl Get{{ pascal }}UseCaseTrait for Get{{ pascal }}UseCaseImpl {
     async fn execute(&self, params: Get{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
-        self.logger.info(&format!("Getting {{ snake }}: {}", params.id));
-        let result = self.repository.find_by_id(params.id).await.map_err(|e| {
-            self.logger.error(&e.to_string());
-            e
-        })?;
+        tracing::info!(id = %params.id, "get_{{ snake }}: start");
+        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_{{ snake }}: repository failed"))?;
         result.ok_or_else(|| {
             let err = {{ pascal }}Error::NotFound;
-            self.logger.warn(&err.to_string());
+            tracing::warn!(error = %err, "get_{{ snake }}: rejected");
             err
         })
     }
@@ -38,17 +33,7 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
-    use crate::domain::logger::mocks::MockLogger;
-    use uuid::Uuid;
-{{ test_vo_imports }}
-    fn silent_logger() -> MockLogger {
-        let mut mock = MockLogger::new();
-        mock.expect_info().returning(|_| ());
-        mock.expect_warn().returning(|_| ());
-        mock.expect_error().returning(|_| ());
-        mock.expect_debug().returning(|_| ());
-        mock
-    }
+{{ test_imports }}
 
     #[tokio::test]
     async fn should_return_{{ snake }}_when_id_exists() {
@@ -62,7 +47,6 @@ mod tests {
             .returning(move |_| Ok(Some(entity.clone())));
         let use_case = Get{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         let result = use_case.execute(Get{{ pascal }}Params { id: entity_id }).await;
@@ -76,7 +60,6 @@ mod tests {
         mock_repo.expect_find_by_id().returning(|_| Ok(None));
         let use_case = Get{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         let result = use_case

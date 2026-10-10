@@ -153,6 +153,7 @@ fn parse_cli_fields(
         parsed = puerto_toml::apply_shared_vo_inference(parsed, &config.value_object);
     }
     generators::types::validate_fields(&parsed)?;
+    validation::validate_unique_field_names(&parsed)?;
     Ok(parsed)
 }
 
@@ -177,7 +178,7 @@ fn main() {
             println!("✓ Project '{project_name}' created.\n");
             println!("Next steps:");
             println!("  cd {project_name}");
-            println!("  cargo run -p {project_name}");
+            println!("  make run");
             println!();
             println!("API docs available at  http://localhost:8080");
             println!("Add an entity with:    puerto generate scaffold <Name>");
@@ -198,7 +199,7 @@ fn main() {
             };
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
-                .and_then(|parsed| scaffold::run_scaffold(&name, &cwd, None, &parsed, policy))
+                .and_then(|parsed| scaffold::run_scaffold(&name, &cwd, &parsed, policy))
         }
         Commands::Generate {
             action: GenerateAction::UseCase { entity, action },
@@ -219,7 +220,7 @@ fn main() {
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             commands::list::require_puerto_project(&cwd)
-                .and_then(|_| scaffold::run_migration(&name, &cwd, None, None))
+                .and_then(|_| scaffold::run_generate_migration(&name, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Snippets { ide },
@@ -248,7 +249,7 @@ fn main() {
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
             commands::list::require_puerto_project(&cwd)
-                .and_then(|_| scaffold::run_generate_repository(&name, &cwd, None))
+                .and_then(|_| scaffold::run_generate_repository(&name, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Presentation { name },
@@ -261,14 +262,8 @@ fn main() {
             action: GenerateAction::ValueObject { name, inner_type },
         } => {
             let cwd = std::env::current_dir().expect("cannot read current directory");
-            let expanded = match inner_type.as_str() {
-                "DateTime" => "DateTime<Utc>".to_string(),
-                t => t.to_string(),
-            };
-            commands::list::require_puerto_project(&cwd).and_then(|_| {
-                crate::puerto_toml::add_value_object(&cwd, &name, &expanded)
-                    .map(|_| println!("✓ Shared value object '{name}' added to puerto.toml"))
-            })
+            commands::list::require_puerto_project(&cwd)
+                .and_then(|_| scaffold::run_value_object(&name, &inner_type, &cwd))
         }
         Commands::List => {
             let cwd = std::env::current_dir().expect("cannot read current directory");

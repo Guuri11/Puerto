@@ -74,17 +74,48 @@ Improve structure without changing behavior. Run `make test` after every change.
 
 ```bash
 make test        # All structural tests pass
-make test/full   # Generated project compiles + internal tests pass (~20s)
+make test/full   # Generated projects lint clean (clippy -D warnings) + internal tests pass
+make test/db     # When touching --db generation: same, against a throwaway Postgres
 make lint        # Zero clippy warnings
 make format      # Code formatted
 ```
 
-#### 6. Update Docs — Only If Needed
+#### 6. Commit — one piece, one commit
+
+Commit each fix or feature on its own, as soon as its tests and lint are green, before starting
+the next — Conventional Commits, `!` when generated output changes shape (`release.md`). A rule
+like "small steps" that is tied to nothing checkable does not get followed (it didn't: one review
+session accumulated twenty fixes in a single uncommitted tree); one commit per piece is visible in
+`git log`.
+
+#### 7. Update Docs — Only If Needed
 
 - **PLAN.md**: mark phase done (✅), fix stale text
 - **AGENTS.md**: update if new commands or rules added
 - **`rules/`**: update if architecture, naming, or workflow changed
 - **Do not** update docs to describe what the code does — that's what the code is for
+- **ADR** (`docs/adr/`): when a change rests on a design decision that is not visible in the code
+  — a trade-off, a convention chosen over an alternative, a measured result — write it down there.
+  The next session then inherits the reason instead of re-deriving it or reverting it
+
+### Risk tiers — where a human reads the diff
+
+The gate (`make test`, `make test/full`, `make lint`) gives confidence in most changes. It cannot
+see design mistakes or silent breakage, so human reading goes where Puerto does **not forgive**
+a mistake:
+
+- **Tier 1 — read the whole diff before committing, even with a green gate.** Anything that changes
+  what lands in a user's project or a public contract: `crates/cli/src/templates/`,
+  `crates/cli/template/`, the `puerto.toml` schema and its parser, `bootstrap.rs` generation,
+  migration SQL, and the patchers that rewrite user files (`lib.rs`, `api.rs`, `routes.rs`). A
+  defect here ships to every project generated afterwards, and some of it (a migration, an
+  overwritten file) cannot be undone by fixing Puerto.
+- **Tier 2 — the gate is enough.** CLI messages, docs, snippets, test-only code, refactors fully
+  covered by the compile matrix.
+
+A change touching both is Tier 1. Before closing a Tier 1 piece in pure logic (`validation.rs`,
+`migration.rs`, `types.rs`, the patchers), run `make test/mutation` and look at the survivors —
+and at the mutant **count**: zero survivors out of zero mutants proves nothing.
 
 ---
 
@@ -229,6 +260,9 @@ make format
 - [ ] All tests pass: `make test` + `make test/full`
 - [ ] Lint clean: `make lint`
 - [ ] Formatted: `make format`
+- [ ] Tier 1 change (templates, schema, bootstrap, migrations, patchers): diff read in full
+- [ ] One commit for this piece — not accumulated with the next
+- [ ] Design decision with no trace in the code → ADR in `docs/adr/`
 - [ ] Docs updated only where behavior actually changed
 
 ### Generated project changes

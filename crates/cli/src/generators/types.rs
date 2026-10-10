@@ -1,18 +1,20 @@
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct TypeMapping {
     pub rust_type: &'static str,
     pub sql_type: &'static str,
     pub sql_nullable: bool,
+    // The OpenAPI schema is derived by poem from the Rust type; these two record what it derives,
+    // so the registry stays the one table describing a type across Rust, SQL and the API docs.
+    #[allow(dead_code)]
     pub openapi_type: &'static str,
+    #[allow(dead_code)]
     pub openapi_format: Option<&'static str>,
     pub default_expr: &'static str,
     pub needs_import: Option<&'static str>,
 }
 
-#[allow(dead_code)]
 const TYPE_REGISTRY: &[TypeMapping] = &[
     TypeMapping {
         rust_type: "String",
@@ -142,7 +144,6 @@ const TYPE_REGISTRY: &[TypeMapping] = &[
     },
 ];
 
-#[allow(dead_code)]
 pub fn resolve_type(field_type: &str) -> Result<&'static TypeMapping, String> {
     TYPE_REGISTRY
         .iter()
@@ -157,7 +158,6 @@ pub fn resolve_type(field_type: &str) -> Result<&'static TypeMapping, String> {
         })
 }
 
-#[allow(dead_code)]
 pub fn validate_fields(fields: &[Field]) -> Result<(), String> {
     for field in fields {
         resolve_type(&field.field_type)?;
@@ -165,43 +165,22 @@ pub fn validate_fields(fields: &[Field]) -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)]
-pub fn collect_imports(fields: &[Field]) -> Vec<&'static str> {
-    let mut imports: Vec<&'static str> = vec![];
-    for field in fields {
-        if let Some(imp) = resolve_type(&field.field_type)
-            .ok()
-            .and_then(|m| m.needs_import)
-        {
-            if !imports.contains(&imp) {
-                imports.push(imp);
-            }
-        }
-    }
-    imports
-}
-
-#[allow(dead_code)]
 pub fn is_value_object(field: &Field) -> bool {
     field.value_object.is_some()
 }
 
-#[allow(dead_code)]
 pub fn is_option_vo(field: &Field) -> bool {
     field.value_object.is_some() && field.field_type.starts_with("Option<")
 }
 
-#[allow(dead_code)]
 pub fn is_vec_vo(field: &Field) -> bool {
     field.value_object.is_some() && field.field_type.starts_with("Vec<")
 }
 
-#[allow(dead_code)]
 pub fn is_enum_vo(field: &Field) -> bool {
     field.value_object_kind.as_deref() == Some("enum")
 }
 
-#[allow(dead_code)]
 pub fn is_shared_vo(field: &Field, shared_vos: &[ValueObjectDefinition]) -> bool {
     field
         .value_object
@@ -209,7 +188,32 @@ pub fn is_shared_vo(field: &Field, shared_vos: &[ValueObjectDefinition]) -> bool
         .is_some_and(|vo| shared_vos.iter().any(|d| d.name == vo))
 }
 
-#[allow(dead_code)]
+/// The import a **value literal** of this field needs — as opposed to `needs_import`, which is what
+/// naming the field's *type* needs.
+///
+/// Test Props/Params literals and Object Mother defaults write `Utc::now()`, `Uuid::new_v4()` or
+/// `HashMap::new()`, never the type itself, so a `DateTime<Utc>` field needs `chrono::Utc` only —
+/// importing `chrono::{DateTime, Utc}` there was an `unused_imports` warning (an error under the
+/// generated project's `make lint`). `Option<…>` / `Vec<…>` literals are `None` / `vec![]`, and
+/// enum VOs a variant path: none needs a primitive import.
+pub fn literal_import(field: &Field) -> Option<&'static str> {
+    if is_enum_vo(field) {
+        return None;
+    }
+    match field.field_type.as_str() {
+        "DateTime<Utc>" => Some("chrono::Utc"),
+        "Uuid" => Some("uuid::Uuid"),
+        "HashMap<String, String>" => Some("std::collections::HashMap"),
+        _ => None,
+    }
+}
+
+/// Whether a literal of this field names its value object (`Name::new(…)`, `Status::Active`).
+/// `Option<VO>` / `Vec<VO>` literals are `None` / `vec![]` and do not.
+pub fn literal_names_vo(field: &Field) -> bool {
+    is_value_object(field) && !is_option_vo(field) && !is_vec_vo(field)
+}
+
 pub fn vo_import_path(field: &Field, snake: &str, shared_vos: &[ValueObjectDefinition]) -> String {
     if is_shared_vo(field, shared_vos) {
         format!(
@@ -225,17 +229,6 @@ pub fn vo_import_path(field: &Field, snake: &str, shared_vos: &[ValueObjectDefin
     }
 }
 
-#[allow(dead_code)]
-pub fn vo_error_import_path(_shared_vos: &[ValueObjectDefinition]) -> String {
-    "crate::domain::shared::errors".to_string()
-}
-
-#[allow(dead_code)]
-pub fn vo_name(field: &Field) -> Option<&str> {
-    field.value_object.as_deref()
-}
-
-#[allow(dead_code)]
 pub fn vo_inner_type(field: &Field) -> String {
     if field.field_type.starts_with("Option<") {
         field.field_type[7..field.field_type.len() - 1].to_string()
@@ -246,7 +239,6 @@ pub fn vo_inner_type(field: &Field) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub fn field_rust_type(field: &Field) -> String {
     match &field.value_object {
         Some(vo) => {
@@ -262,53 +254,14 @@ pub fn field_rust_type(field: &Field) -> String {
     }
 }
 
-#[allow(dead_code)]
-pub fn field_value_accessor(field: &Field, prefix: &str) -> String {
-    if is_enum_vo(field) {
-        format!("{}.{}.as_str().to_string()", prefix, field.name)
-    } else if is_option_vo(field) {
-        let inner = vo_inner_type(field);
-        if inner == "String" {
-            format!(
-                "{}.{}.as_ref().map(|v| v.value().to_string())",
-                prefix, field.name
-            )
-        } else {
-            format!("{}.{}.map(|v| v.value())", prefix, field.name)
-        }
-    } else if is_vec_vo(field) {
-        let inner = vo_inner_type(field);
-        if inner == "String" {
-            format!(
-                "{}.{}.iter().map(|v| v.value().to_string()).collect::<Vec<_>>()",
-                prefix, field.name
-            )
-        } else {
-            format!(
-                "{}.{}.iter().map(|v| v.value()).collect::<Vec<_>>()",
-                prefix, field.name
-            )
-        }
-    } else if is_value_object(field) {
-        match field.field_type.as_str() {
-            "String" => format!("{}.{}.value().to_string()", prefix, field.name),
-            _ => format!("{}.{}.value()", prefix, field.name),
-        }
-    } else if field_needs_clone(&field.field_type) {
-        format!("{}.{}.clone()", prefix, field.name)
-    } else {
-        format!("{}.{}", prefix, field.name)
-    }
-}
-
-#[allow(dead_code)]
 pub fn field_vo_constructor(
     field: &Field,
     param_prefix: &str,
     pascal: &str,
     shared_vos: &[ValueObjectDefinition],
 ) -> String {
-    if field.value_object.is_none() && !is_enum_vo(field) {
+    // Every branch below names the VO — an enum VO included, whose `value_object` holds its name.
+    if field.value_object.is_none() {
         return String::new();
     }
     let is_shared = is_shared_vo(field, shared_vos);
@@ -317,13 +270,13 @@ pub fn field_vo_constructor(
         let vo = field.value_object.as_deref().unwrap();
         if is_shared {
             format!(
-                "let {} = {}::from_str(&{}{}).map_err(|_| {}Error::{})?;",
-                field.name, vo, param_prefix, field.name, pascal, error_variant
+                "let {} = {}{}.parse::<{}>().map_err(|_| {}Error::{})?;",
+                field.name, param_prefix, field.name, vo, pascal, error_variant
             )
         } else {
             format!(
-                "let {} = {}::from_str(&{}{})?;",
-                field.name, vo, param_prefix, field.name
+                "let {} = {}{}.parse::<{}>()?;",
+                field.name, param_prefix, field.name, vo
             )
         }
     } else if is_option_vo(field) {
@@ -368,13 +321,6 @@ pub fn field_vo_constructor(
     } else {
         String::new()
     }
-}
-
-fn field_needs_clone(field_type: &str) -> bool {
-    matches!(
-        field_type,
-        "String" | "Option<String>" | "Vec<String>" | "Vec<i64>" | "HashMap<String, String>"
-    )
 }
 
 #[cfg(test)]
@@ -481,28 +427,66 @@ mod tests {
         assert!(err.contains("unsupported field type 'UnknownType'"));
     }
 
+    fn field(field_type: &str, vo: Option<&str>) -> crate::puerto_toml::Field {
+        crate::puerto_toml::Field {
+            name: "x".into(),
+            field_type: field_type.into(),
+            value_object: vo.map(Into::into),
+            ..Default::default()
+        }
+    }
+
     #[test]
-    fn collect_imports_deduplicates() {
-        use crate::puerto_toml::Field;
-        let fields = vec![
-            Field {
-                name: "id".into(),
-                field_type: "Uuid".into(),
-                unique: false,
-                value_object: None,
-                value_object_kind: None,
-                enum_variants: None,
-            },
-            Field {
-                name: "other_id".into(),
-                field_type: "Uuid".into(),
-                unique: false,
-                value_object: None,
-                value_object_kind: None,
-                enum_variants: None,
-            },
-        ];
-        let imports = collect_imports(&fields);
-        assert_eq!(imports.len(), 1);
+    fn should_tell_option_and_vec_value_objects_apart() {
+        assert!(is_option_vo(&field("Option<String>", Some("Mid"))));
+        assert!(!is_option_vo(&field("String", Some("Name"))));
+        assert!(is_vec_vo(&field("Vec<String>", Some("Tag"))));
+        assert!(!is_vec_vo(&field("String", Some("Name"))));
+    }
+
+    #[test]
+    fn should_unwrap_the_inner_type_of_option_and_vec() {
+        assert_eq!(
+            vo_inner_type(&field("Option<String>", Some("Mid"))),
+            "String"
+        );
+        assert_eq!(vo_inner_type(&field("Vec<i64>", Some("Score"))), "i64");
+        assert_eq!(vo_inner_type(&field("Uuid", Some("Ref"))), "Uuid");
+    }
+
+    #[test]
+    fn should_import_only_what_a_value_literal_names() {
+        assert_eq!(
+            literal_import(&field("DateTime<Utc>", None)),
+            Some("chrono::Utc")
+        );
+        assert_eq!(literal_import(&field("Uuid", None)), Some("uuid::Uuid"));
+        assert_eq!(
+            literal_import(&field("HashMap<String, String>", None)),
+            Some("std::collections::HashMap")
+        );
+        // `None` / `vec![]` literals name no type.
+        assert_eq!(literal_import(&field("Option<DateTime<Utc>>", None)), None);
+        assert_eq!(literal_import(&field("String", None)), None);
+    }
+
+    #[test]
+    fn should_name_the_vo_only_in_plain_and_enum_literals() {
+        assert!(literal_names_vo(&field("String", Some("Name"))));
+        assert!(!literal_names_vo(&field("Option<String>", Some("Mid"))));
+        assert!(!literal_names_vo(&field("Vec<String>", Some("Tag"))));
+        assert!(!literal_names_vo(&field("String", None)));
+    }
+
+    #[test]
+    fn should_construct_nothing_for_a_primitive_field() {
+        assert_eq!(
+            field_vo_constructor(&field("String", None), "params.", "Product", &[]),
+            ""
+        );
+        assert_eq!(
+            field_vo_constructor(&field("Option<String>", None), "params.", "Product", &[]),
+            ""
+        );
     }
 }

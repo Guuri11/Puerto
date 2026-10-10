@@ -29,6 +29,22 @@ pub fn generate_new_project(
     Ok(output)
 }
 
+/// A project name becomes the directory, the binary and the Postgres database name. cargo-generate
+/// silently rewrites anything else (`"Bad Name"` → `bad-name`), so the project would not be called
+/// what the user typed.
+pub fn validate_project_name(name: &str) -> Result<(), String> {
+    let mut chars = name.chars();
+    let valid = matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
+    if !valid {
+        return Err(format!(
+            "invalid project name '{name}'. Use lowercase letters, digits, '-' and '_', starting \
+             with a letter (e.g. 'my-app')"
+        ));
+    }
+    Ok(())
+}
+
 pub fn new_project(
     name: Option<String>,
     db: bool,
@@ -36,6 +52,10 @@ pub fn new_project(
     no_demo: bool,
     destination: Option<PathBuf>,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Some(name) = &name {
+        validate_project_name(name)?;
+    }
+
     let resolved_db = if db {
         true
     } else if no_db {

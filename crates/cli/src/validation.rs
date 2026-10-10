@@ -24,18 +24,132 @@ pub const RUST_KEYWORDS: &[&str] = &[
     "macro", "override", "priv", "try", "typeof", "unsized", "virtual", "yield",
 ];
 
+/// PostgreSQL reserved key words (the "reserved" and "reserved (can be function or type)"
+/// categories of the PostgreSQL key word table). Field names become unquoted column names in the
+/// generated migration and queries, where any of these is a syntax error — `desc TEXT` broke
+/// `sqlx migrate run`. Checked only in `--db` projects.
+pub const SQL_RESERVED_WORDS: &[&str] = &[
+    "all",
+    "analyse",
+    "analyze",
+    "and",
+    "any",
+    "array",
+    "as",
+    "asc",
+    "asymmetric",
+    "authorization",
+    "binary",
+    "both",
+    "case",
+    "cast",
+    "check",
+    "collate",
+    "collation",
+    "column",
+    "concurrently",
+    "constraint",
+    "create",
+    "cross",
+    "current_catalog",
+    "current_date",
+    "current_role",
+    "current_schema",
+    "current_time",
+    "current_timestamp",
+    "current_user",
+    "default",
+    "deferrable",
+    "desc",
+    "distinct",
+    "do",
+    "else",
+    "end",
+    "except",
+    "false",
+    "fetch",
+    "for",
+    "foreign",
+    "freeze",
+    "from",
+    "full",
+    "grant",
+    "group",
+    "having",
+    "ilike",
+    "in",
+    "initially",
+    "inner",
+    "intersect",
+    "into",
+    "is",
+    "isnull",
+    "join",
+    "lateral",
+    "leading",
+    "left",
+    "like",
+    "limit",
+    "localtime",
+    "localtimestamp",
+    "natural",
+    "not",
+    "notnull",
+    "null",
+    "offset",
+    "on",
+    "only",
+    "or",
+    "order",
+    "outer",
+    "overlaps",
+    "placing",
+    "primary",
+    "references",
+    "returning",
+    "right",
+    "select",
+    "session_user",
+    "similar",
+    "some",
+    "symmetric",
+    "system_user",
+    "table",
+    "tablesample",
+    "then",
+    "to",
+    "trailing",
+    "true",
+    "union",
+    "unique",
+    "user",
+    "using",
+    "variadic",
+    "verbose",
+    "when",
+    "where",
+    "window",
+    "with",
+];
+
+/// Inner types a shared `[[value_object]]` may wrap.
+pub const SHARED_VO_ALLOWED_INNER_TYPES: &[&str] =
+    &["String", "i64", "bool", "f64", "Uuid", "DateTime<Utc>"];
+
 /// Type names in scope in generated code. An entity named after one of these produces a struct
 /// that shadows it in the same file.
 const RESERVED_TYPE_NAMES: &[&str] = &[
     "Self", "String", "Option", "Vec", "Box", "Result", "HashMap", "Uuid", "DateTime", "Utc",
-    "Arc", "Error", "Logger",
+    "Arc", "Error",
 ];
 
 /// Module names the generated project already occupies. Entity names become module names
 /// (`business/src/domain/{snake}/`, `presentation/src/api/{snake}/`).
 const RESERVED_MODULE_NAMES: &[&str] = &[
-    "shared",    // business/src/domain/shared — shared value objects
-    "logger",    // business/src/domain/logger.rs
+    "shared",  // business/src/domain/shared — shared value objects
+    "tracing", // infrastructure declares entity modules at its crate root: `tracing::` would
+    // then be ambiguous with the crate every generated layer logs through (E0659)
+    "db",        // infrastructure/src/db.rs (`--db` projects)
     "tags",      // presentation/src/api/tags.rs
     "error",     // presentation/src/api/error.rs
     "generated", // presentation/src/generated
@@ -88,6 +202,60 @@ pub fn validate_field_name(name: &str) -> Result<(), String> {
     if RUST_KEYWORDS.contains(&name) {
         return Err(format!(
             "field name '{name}' is a Rust keyword and cannot be a struct field. Pick another name"
+        ));
+    }
+    Ok(())
+}
+
+/// A field name that is also a PostgreSQL reserved word — only an error in a `--db` project.
+pub fn validate_sql_field_name(name: &str) -> Result<(), String> {
+    if SQL_RESERVED_WORDS.contains(&name) {
+        return Err(format!(
+            "field name '{name}' is a reserved SQL keyword and cannot be a column name. Pick \
+             another name (e.g. '{name}_value')"
+        ));
+    }
+    Ok(())
+}
+
+/// Two fields with the same name are one struct field defined twice (E0124).
+pub fn validate_unique_field_names(fields: &[Field]) -> Result<(), String> {
+    let mut seen: Vec<&str> = vec![];
+    for f in fields {
+        if seen.contains(&f.name.as_str()) {
+            return Err(format!(
+                "duplicate field name '{}' — every field must be distinct",
+                f.name
+            ));
+        }
+        seen.push(&f.name);
+    }
+    Ok(())
+}
+
+/// A use case action becomes a file and module name, and is PascalCased into type names.
+pub fn validate_use_case_name(action: &str) -> Result<(), String> {
+    if !is_valid_field_name(action) {
+        return Err(format!(
+            "invalid use case name '{action}'. Must be snake_case (lowercase letters, digits and \
+             underscores, starting with a lowercase letter), e.g. 'archive_product'"
+        ));
+    }
+    if RUST_KEYWORDS.contains(&action) {
+        return Err(format!(
+            "use case name '{action}' is a Rust keyword. Pick another name"
+        ));
+    }
+    Ok(())
+}
+
+/// The inner type of a shared `[[value_object]]`.
+pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
+    if !SHARED_VO_ALLOWED_INNER_TYPES.contains(&inner_type) {
+        return Err(format!(
+            "inner type '{inner_type}' is not allowed for a shared value object (allowed: {}; \
+             'DateTime' is accepted as shorthand)",
+            SHARED_VO_ALLOWED_INNER_TYPES.join(", ")
         ));
     }
     Ok(())
@@ -263,7 +431,8 @@ mod tests {
     fn rejects_entity_names_that_collide_with_generated_code() {
         assert!(validate_entity_name("Error").is_err());
         assert!(validate_entity_name("String").is_err());
-        assert!(validate_entity_name("Logger").is_err());
+        assert!(validate_entity_name("Tracing").is_err()); // module would shadow `tracing`
+        assert!(validate_entity_name("Db").is_err()); // infrastructure/src/db.rs
         assert!(validate_entity_name("Type").is_err()); // module would be `type`
         assert!(validate_entity_name("Product").is_ok());
     }
@@ -310,5 +479,59 @@ mod tests {
             },
         ];
         assert!(validate_vo_coherence(&fields, &[]).is_empty());
+    }
+
+    #[test]
+    fn rejects_a_field_that_uses_a_shared_vo_with_another_inner_type() {
+        let shared = vec![ValueObjectDefinition {
+            name: "Email".into(),
+            inner_type: "String".into(),
+        }];
+        let fields = vec![Field {
+            name: "email".into(),
+            field_type: "i64".into(),
+            value_object: Some("Email".into()),
+            ..Default::default()
+        }];
+
+        let errors = validate_vo_coherence(&fields, &shared);
+
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("Email"));
+    }
+
+    #[test]
+    fn accepts_a_field_that_uses_a_shared_vo_with_its_inner_type() {
+        let shared = vec![ValueObjectDefinition {
+            name: "Email".into(),
+            inner_type: "String".into(),
+        }];
+        let fields = vec![Field {
+            name: "email".into(),
+            field_type: "String".into(),
+            value_object: Some("Email".into()),
+            ..Default::default()
+        }];
+
+        assert!(validate_vo_coherence(&fields, &shared).is_empty());
+    }
+
+    #[test]
+    fn accepts_an_enum_vo_named_like_a_shared_vo() {
+        // Enum VOs are always `String`-typed in the manifest; their shape lives in the variants.
+        let shared = vec![ValueObjectDefinition {
+            name: "Status".into(),
+            inner_type: "i64".into(),
+        }];
+        let fields = vec![Field {
+            name: "status".into(),
+            field_type: "String".into(),
+            value_object: Some("Status".into()),
+            value_object_kind: Some("enum".into()),
+            enum_variants: Some(vec!["Active".into()]),
+            ..Default::default()
+        }];
+
+        assert!(validate_vo_coherence(&fields, &shared).is_empty());
     }
 }

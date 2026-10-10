@@ -16,22 +16,27 @@ crates/
     src/commands/   — Command handlers (new, list, validate)
     src/generators/ — Per-layer generators + bootstrap, conflict (overwrite guard), consistency (drift)
     src/templates/  — .tera templates the generators render (embedded via include_dir)
-    src/patchers/   — lib.rs / api.rs patchers
+    src/patchers/   — lib.rs / api.rs / routes.rs patchers
     src/puerto_toml.rs — puerto.toml serde structs + read/write/add_entity + field parser
     src/validation.rs  — Name predicates shared by the field parser and `puerto validate`
     src/tests.rs    — Test suite: structural + `#[ignore]` compile matrix (`make test/full`)
     template/       — The "basic" DDD template (edit directly here)
-      Cargo.toml          — Workspace manifest (workspace only, no [package])
+      Cargo.toml          — Workspace manifest (workspace only, no [package]; edition 2024, resolver 3)
       cargo-generate.toml — Template config (controls which files get substitution)
+      rust-toolchain.toml — Pins the toolchain the matrix lints with (ADR-0009)
+      AGENTS.md, CLAUDE.md — Agent rules shipped to every project (ADR-0010; tested)
       puerto.toml         — Source of truth for entities ({{project-name}} substituted)
       business/           — Domain + Application crate
       infrastructure/     — Adapters crate
       presentation/       — REST API crate
         src/
-          main.rs.liquid        — Minimal entry point (never changes after puerto new)
+          main.rs.liquid        — Entry point: tracing subscriber, server, graceful shutdown
+          health.rs             — /health (liveness) + /health/ready (readiness) — ADR-0008
           generated.rs          — pub mod bootstrap; (static, never changes)
           generated/
-            bootstrap.rs        — AUTO-GENERATED, full DI wiring
+            bootstrap.rs        — AUTO-GENERATED, full DI wiring (the template copy is tested to
+                                  match the generator byte for byte)
+docs/adr/           — Architecture Decision Records: the *why* behind conventions (start here)
 ```
 
 ## puerto.toml — Source of Truth
@@ -48,7 +53,7 @@ use_cases = ["get_greeting"]   # snake_case action names
 
 [[entity]]
 name = "Product"
-use_cases = ["create_product", "list_products"]
+use_cases = ["create_product", "list_product"]
 
 [[entity.fields]]
 name = "name"                  # snake_case field name
@@ -61,7 +66,7 @@ type = "i64"
 [[entity.fields]]
 name = "sku"
 type = "String"
-unique = true                  # CREATE UNIQUE INDEX products_sku_key (SQL projects only)
+unique = true                  # CREATE UNIQUE INDEX products_sku_key … WHERE deleted = false (SQL only)
 
 [[entity.fields]]
 name = "description"
@@ -85,7 +90,14 @@ type = "Vec<String>"           # array field
 - Field types must match the type registry — run `puerto validate` to check
 - **Reserved names** (rejected by both the CLI and `puerto validate`): the system fields `id`,
   `created_at`, `updated_at`, `deleted`, `deleted_at`; Rust keywords (`type`, `match`, `move`, …);
-  entity names that collide with generated code (`Error`, `String`, `Logger`, `Type`, …)
+  entity names that collide with generated code (`Error`, `String`, `Tracing`, `Db`, `Type`, …); in
+  `--db` projects, PostgreSQL reserved words as field names (`desc`, `order`, `user`, …)
+- Duplicate field names are rejected; use case actions must be snake_case
+- `generate use-case` refuses an action that already exists (including the scaffolded CRUD ones)
+  and adds the use case's field to `{Entity}Api` in `routes.rs`, so `bootstrap.rs` keeps compiling
+- `generate value-object` validates the name (PascalCase), the inner type and duplicates before
+  writing puerto.toml
+- `puerto new --name` must be lowercase letters, digits, `-`, `_`, starting with a letter
 - `puerto validate` also checks that every declared `[[entity]]` has code on disk — a declared but
   unscaffolded entity makes `bootstrap.rs` import modules that do not exist
 
@@ -99,10 +111,10 @@ type = "Vec<String>"           # array field
 | `f64` | `DOUBLE` | `number(double)` | `1.5` |
 | `Uuid` | `UUID` | `string(uuid)` | `Uuid::new_v4()` |
 | `DateTime<Utc>` | `TIMESTAMPTZ` | `string(date-time)` | `Utc::now()` |
-| `Option<T>` | nullable SQL | `T?` | `None` |
+| `Option<T>` (`T` = `String`, `i64`, `bool`, `f64`, `DateTime<Utc>`) | nullable SQL | `T?` | `None` |
 | `Vec<String>` | `TEXT[]` | `array[string]` | `vec![]` |
 | `Vec<i64>` | `BIGINT[]` | `array[integer]` | `vec![]` |
-| `HashMap<String, String>` | `JSONB` | `object` | `HashMap::new()` |
+| `HashMap<String, String>` | `JSONB` (row field `sqlx::types::Json<…>`) | `object` | `HashMap::new()` |
 
 See `.claude/rules/puerto-toml.md` for the full derivation table and field rules.
 
@@ -146,14 +158,14 @@ puerto generate scaffold <Name> -- name:Name:String age:Age:i64         # VO fie
 puerto generate scaffold <Name> -- status:Status:enum:Active/Inactive   # Enum VO
 puerto generate scaffold <Name> -- mid:MiddleName:opt:String            # Option VO
 puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
-puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String)
+puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String; DateTime shorthand ok)
 puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
 puerto generate domain <Name> -- price:i64 status:Status:enum:Draft/Paid   # Same field syntax as scaffold — fields land in puerto.toml
 puerto generate application <Name>         # Application layer only: use case impls
 puerto generate repository <Name>          # Infrastructure layer only: InMemory or Pg repo (inferred from puerto.toml)
 puerto generate presentation <Name>        # Presentation layer only: routes, dto, responses + regenerates bootstrap
-puerto generate use-case <Entity> <action> # Add a use case to an existing entity
-puerto generate migration <name>           # Create a new SQLx migration file
+puerto generate use-case <Entity> <action> # Add a use case (refuses existing actions; adds the field to {Entity}Api)
+puerto generate migration <name>           # Create a new SQLx migration file (--db projects only; versions never collide)
 puerto generate bootstrap                  # Regenerate bootstrap.rs from puerto.toml (refuses on manifest/filesystem drift)
 puerto generate bootstrap --allow-missing  # Write it anyway, even if a declared entity has no code
 puerto generate snippets                   # Write IDE snippet files (Zed + VS Code)
@@ -167,18 +179,33 @@ puerto validate                            # Validate puerto.toml (field types, 
 ```bash
 make run           # Run puerto CLI (prompts for project name)
 make test          # Fast structural tests (verifies generated file structure)
-make test/full     # Slow test: generates a real project, compiles it, runs its internal tests
+make test/full     # Slow: generates real projects, runs their `clippy --all-targets -D warnings` + tests
+make test/db       # Slow: a generated --db project against a throwaway Postgres (Docker + sqlx-cli)
+make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
 make lint          # cargo clippy --workspace -- -D warnings
 make check         # cargo check --workspace
-make format        # cargo fmt --all
+make format        # cargo fmt --all -- --check
+make format/fix    # cargo fmt --all
 ```
 
 ## Completion Checklist
 
 - [ ] `make test` passes (structural tests — fast)
-- [ ] `make test/full` passes (generated project compiles + internal tests pass — slow, ~20s)
+- [ ] `make test/full` passes (generated projects lint clean + internal tests pass — slow)
+- [ ] `make test/db` passes when the change touches `--db` generation (Pg repository, migrations, SQL)
+- [ ] Tier 1 change (templates, schema, bootstrap, migrations, patchers): diff read in full —
+      see `.claude/rules/workflow.md` § Risk tiers
+- [ ] One commit for this piece; a design decision with no trace in the code gets an ADR
 - [ ] `make lint` clean (zero warnings)
-- [ ] `make format` run
+- [ ] `make format/fix` run
+
+## Generated project contract (what every project gets)
+
+- Logging through `tracing` directly — no logger port (ADR-0006)
+- Errors: `ErrorResponse { name, message }` with the code in `name`; validation → 422; one test per
+  mapper arm (ADR-0007)
+- `/health`, `/health/ready`, graceful shutdown on SIGTERM (ADR-0008)
+- Pinned toolchain + edition 2024 (ADR-0009); root `AGENTS.md` + `CLAUDE.md` (ADR-0010)
 
 ## Detailed Rules
 
@@ -188,3 +215,4 @@ make format        # cargo fmt --all
 - `.claude/rules/testing-conventions.md` — Object Mother pattern, mock setup, naming table
 - `.claude/rules/workflow.md` — Puerto development workflow (Spec-Driven) + generated project TDD workflow
 - `.claude/rules/release.md` — Versioning, changelog, release process, breaking changes policy, crates.io checklist
+- `docs/adr/` — Architecture Decision Records

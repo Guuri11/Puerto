@@ -7,38 +7,30 @@ use crate::domain::{{ snake }}::{
     repository::{{ pascal }}RepositoryTrait,
     use_cases::delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
 };
-use crate::domain::logger::LoggerTrait;
 
 pub struct Delete{{ pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
-    pub logger: Arc<dyn LoggerTrait>,
 }
 
 #[async_trait]
 impl Delete{{ pascal }}UseCaseTrait for Delete{{ pascal }}UseCaseImpl {
     async fn execute(&self, params: Delete{{ pascal }}Params) -> Result<(), {{ pascal }}Error> {
-        self.logger.info(&format!("Deleting {{ snake }}: {}", params.id));
+        tracing::info!(id = %params.id, "delete_{{ snake }}: start");
         let mut entity = self
             .repository
             .find_by_id(params.id)
             .await
-            .map_err(|e| {
-                self.logger.error(&e.to_string());
-                e
-            })?
+            .inspect_err(|e| tracing::error!(error = %e, "delete_{{ snake }}: repository failed"))?
             .ok_or_else(|| {
                 let err = {{ pascal }}Error::NotFound;
-                self.logger.warn(&err.to_string());
+                tracing::warn!(error = %err, "delete_{{ snake }}: rejected");
                 err
             })?;
         let now = chrono::Utc::now();
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.map_err(|e| {
-            self.logger.error(&e.to_string());
-            e
-        })?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_{{ snake }}: repository failed"))?;
         Ok(())
     }
 }
@@ -50,17 +42,7 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
-    use crate::domain::logger::mocks::MockLogger;
-    use uuid::Uuid;
-{{ test_vo_imports }}
-    fn silent_logger() -> MockLogger {
-        let mut mock = MockLogger::new();
-        mock.expect_info().returning(|_| ());
-        mock.expect_warn().returning(|_| ());
-        mock.expect_error().returning(|_| ());
-        mock.expect_debug().returning(|_| ());
-        mock
-    }
+{{ test_imports }}
 
     #[tokio::test]
     async fn should_soft_delete_{{ snake }}_when_id_exists() {
@@ -75,7 +57,6 @@ mod tests {
         mock_repo.expect_save().returning(|_| Ok(()));
         let use_case = Delete{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         let result = use_case
@@ -91,7 +72,6 @@ mod tests {
         mock_repo.expect_find_by_id().returning(|_| Ok(None));
         let use_case = Delete{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         let result = use_case

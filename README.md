@@ -118,7 +118,7 @@ puerto generate value-object Email String
 puerto generate scaffold User -- email:Email   # type inferred from the shared VO declaration
 ```
 
-Each VO generates a domain struct with private inner value, `new()` returning `Result`, and `value()` / `as_str()` accessors. Enum VOs generate `from_str()` / `as_str()` pattern. Infrastructure and presentation layers use primitives; VOs are constructed and extracted at the boundary automatically.
+Each VO generates a domain struct with private inner value, `new()` returning `Result`, and `value()` / `as_str()` accessors. Enum VOs implement `FromStr` (`"Active".parse::<Status>()`) and `as_str()`. Infrastructure and presentation layers use primitives; VOs are constructed and extracted at the boundary automatically.
 
 Validate your `puerto.toml` at any time:
 
@@ -150,7 +150,9 @@ puerto/
 | ---------------- | ---------------------------------------------------------- |
 | `make run`       | Run the puerto CLI                                         |
 | `make test`      | Fast structural tests                                      |
-| `make test/full` | Full test: generates a project + compiles + runs its tests |
+| `make test/full` | Full test: generates projects + runs their clippy and tests     |
+| `make test/db`   | Same for a `--db` project, against a throwaway Postgres    |
+| `make test/mutation` | Mutation testing (cargo-mutants) on Puerto's pure logic |
 | `make lint`      | Clippy with `-D warnings`                                  |
 | `make format`    | rustfmt                                                    |
 | `make check`     | cargo check                                                |

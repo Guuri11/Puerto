@@ -5,16 +5,7 @@ use crate::generators::types::{
 };
 use crate::puerto_toml;
 
-const SHARED_VO_ALLOWED_INNER_TYPES: &[&str] =
-    &["String", "i64", "bool", "f64", "Uuid", "DateTime<Utc>"];
-
-fn is_valid_use_case_name(name: &str) -> bool {
-    if name.is_empty() {
-        return false;
-    }
-    name.chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-}
+use crate::validation::SHARED_VO_ALLOWED_INNER_TYPES;
 
 const VO_ALLOWED_INNER_TYPES: &[&str] = &[
     "String",
@@ -27,7 +18,6 @@ const VO_ALLOWED_INNER_TYPES: &[&str] = &[
     "Option<i64>",
     "Option<bool>",
     "Option<f64>",
-    "Option<Uuid>",
     "Option<DateTime<Utc>>",
     "Vec<String>",
     "Vec<i64>",
@@ -79,7 +69,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         }
 
         for uc in &entity.use_cases {
-            if !is_valid_use_case_name(uc) {
+            if crate::validation::validate_use_case_name(uc).is_err() {
                 errors.push(format!(
                     "entity '{}': use case '{}' is not valid snake_case",
                     entity.name, uc
@@ -96,6 +86,11 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
             if let Err(e) = crate::validation::validate_field_name(&field.name) {
                 errors.push(format!("entity '{}': {}", entity.name, e));
+            }
+            if config.project.db {
+                if let Err(e) = crate::validation::validate_sql_field_name(&field.name) {
+                    errors.push(format!("entity '{}': {}", entity.name, e));
+                }
             }
 
             if seen_fields.contains(&field.name) {

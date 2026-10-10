@@ -1,3 +1,4 @@
+use serde_json::json;
 use std::path::Path;
 
 use crate::generators::bootstrap::regenerate_bootstrap;
@@ -89,7 +90,6 @@ pub(crate) fn build_dto_ctx(
 
     let request_fields_str = eff
         .iter()
-        .filter(|f| f.field_type != "Uuid")
         .map(|f| format!("    pub {}: {},", f.name, f.field_type))
         .collect::<Vec<_>>()
         .join("\n");
@@ -131,22 +131,68 @@ pub(crate) fn build_dto_ctx(
 
 pub(crate) fn build_error_mapper_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::Context {
     let eff = effective_fields(fields);
-    let vo_arms: Vec<String> = eff
+    let mut vo_names: Vec<&str> = vec![];
+    for f in eff.iter().filter(|f| is_value_object(f)) {
+        let vo = f.value_object.as_deref().unwrap();
+        if !vo_names.contains(&vo) {
+            vo_names.push(vo);
+        }
+    }
+    let vo_arms_str: String = vo_names
         .iter()
-        .filter(|f| is_value_object(f))
-        .map(|f| {
-            let vo = f.value_object.as_deref().unwrap();
-            format!(
-                "\n            {pascal}Error::Invalid{vo} => (StatusCode::BAD_REQUEST, self.to_string()),",
-            )
+        .map(|vo| {
+            format!("\n            {pascal}Error::Invalid{vo} => StatusCode::UNPROCESSABLE_ENTITY,")
         })
         .collect();
-    let vo_arms_str = vo_arms.join("");
+
+    // One test per arm, so a status cannot drift unnoticed.
+    let mut test_cases = vec![
+        json!({
+            "test_name": "should_map_validation_error_to_422_with_its_code",
+            "error": format!("{pascal}Error::ValidationError(\"name_empty\".into())"),
+            "status": "UNPROCESSABLE_ENTITY",
+            "code": format!("{snake}.validation_error.name_empty"),
+        }),
+        json!({
+            "test_name": "should_map_not_found_to_404_with_its_code",
+            "error": format!("{pascal}Error::NotFound"),
+            "status": "NOT_FOUND",
+            "code": format!("{snake}.not_found"),
+        }),
+        json!({
+            "test_name": "should_map_duplicate_to_409_with_its_code",
+            "error": format!("{pascal}Error::Duplicate"),
+            "status": "CONFLICT",
+            "code": format!("{snake}.duplicate"),
+        }),
+        json!({
+            "test_name": "should_map_repository_error_to_500_with_its_code",
+            "error": format!("{pascal}Error::RepositoryError"),
+            "status": "INTERNAL_SERVER_ERROR",
+            "code": format!("{snake}.repository_error"),
+        }),
+        json!({
+            "test_name": "should_map_unknown_to_500_with_its_code",
+            "error": format!("{pascal}Error::Unknown"),
+            "status": "INTERNAL_SERVER_ERROR",
+            "code": format!("{snake}.unknown"),
+        }),
+    ];
+    for vo in &vo_names {
+        let vo_snake = pascal_to_snake(vo);
+        test_cases.push(json!({
+            "test_name": format!("should_map_invalid_{vo_snake}_to_422_with_its_code"),
+            "error": format!("{pascal}Error::Invalid{vo}"),
+            "status": "UNPROCESSABLE_ENTITY",
+            "code": format!("{snake}.invalid_{vo_snake}"),
+        }));
+    }
 
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
     ctx.insert("vo_arms_str", &vo_arms_str);
+    ctx.insert("test_cases", &test_cases);
     ctx
 }
 
@@ -162,7 +208,6 @@ fn build_routes_crud_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::C
 
     let create_params_str = eff
         .iter()
-        .filter(|f| f.field_type != "Uuid")
         .map(|f| {
             if field_needs_clone(&f.field_type) {
                 format!("                {}: body.{}.clone(),", f.name, f.name)
@@ -174,7 +219,7 @@ fn build_routes_crud_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::C
         .join("\n");
 
     let mut update_lines = vec!["                id: id.0,".to_string()];
-    for f in eff.iter().filter(|f| f.field_type != "Uuid") {
+    for f in eff.iter() {
         if field_needs_clone(&f.field_type) {
             update_lines.push(format!(
                 "                {}: body.{}.clone(),",
@@ -281,6 +326,7 @@ pub fn run_generate_presentation(
 
     write_presentation_files(&pascal, &snake, base, &fields)?;
     patch_api_rs(base, &snake)?;
+    crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)?;
     regenerate_bootstrap(base)?;
 
     println!("✓ presentation/        — routes, dto, responses, error_mapper");

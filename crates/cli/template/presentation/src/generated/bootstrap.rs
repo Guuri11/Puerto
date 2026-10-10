@@ -3,23 +3,17 @@ use std::sync::Arc;
 
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 
+use business::domain::greeting::repository::GreetingRepositoryTrait;
 use infrastructure::greeting::repository::InMemoryGreetingRepository;
-use infrastructure::logger::TracingLogger;
-use business::domain::logger::LoggerTrait;
 
-use poem::{EndpointExt, Route, middleware::{Cors, Tracing}};
+use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
 use poem_openapi::OpenApiService;
 
 use crate::api::greeting::routes::GreetingApi;
 
 pub async fn build_app() -> impl poem::Endpoint {
-    let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger);
-
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
-        repository: Arc::new(InMemoryGreetingRepository::new(Arc::clone(&logger))),
-        logger: Arc::clone(&logger),
-    });
-    let greeting_api = GreetingApi { get_greeting, logger: Arc::clone(&logger) };
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let greeting_api = GreetingApi { get_greeting };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -36,5 +30,14 @@ pub async fn build_app() -> impl poem::Endpoint {
         cors = cors.allow_origin(origin);
     }
 
-    Route::new().nest("/api", api_service).nest("/", ui).with(Tracing).with(cors)
+    Route::new()
+        .at("/health", get(crate::health::liveness))
+        .at(
+            "/health/ready",
+            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
+        )
+        .nest("/api", api_service)
+        .nest("/", ui)
+        .with(Tracing)
+        .with(cors)
 }

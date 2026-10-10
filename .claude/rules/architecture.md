@@ -7,7 +7,7 @@ Presentation → Infrastructure → Application → Domain
 ```
 
 - **Domain** depends on NOTHING — pure Rust, only `std`, `async-trait`, `thiserror`
-- **Application** depends on Domain only — use case implementations
+- **Application** depends on Domain only — use case implementations (plus `tracing` for logs)
 - **Infrastructure** depends on Domain — adapters (DB, HTTP, etc.)
 - **Presentation** depends on all layers via manual dependency injection
 
@@ -217,6 +217,10 @@ Error codes are **machine-readable identifiers**, never human-readable messages.
 - One file per use case: `application/<entity>/<action>.rs`
 - Implements the trait defined in `domain/<entity>/use_cases/<action>.rs`
 - Dependencies injected as `Arc<dyn Trait>` — never concrete types
+- **Logging with `tracing` directly** — no injected logger, no `Logger` port (ADR-0006).
+  `tracing` is already a facade: the subscriber is chosen once in `main.rs`. A use case logs
+  `<use_case>: start` and `<use_case>: done` (plus the id when there is one); it never logs the
+  request payload, which is user data
 
 ```rust
 pub struct CreateEntityUseCaseImpl {
@@ -226,8 +230,14 @@ pub struct CreateEntityUseCaseImpl {
 #[async_trait]
 impl CreateEntityUseCaseTrait for CreateEntityUseCaseImpl {
     async fn execute(&self, params: CreateEntityParams) -> Result<Entity, EntityError> {
-        let entity = Entity::new(EntityProps { name: params.name })?;
-        self.repository.save(&entity).await?;
+        tracing::info!("create_entity: start");
+        let entity = Entity::new(EntityProps { name: params.name })
+            .inspect_err(|e| tracing::warn!(error = %e, "create_entity: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_entity: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_entity: done");
         Ok(entity)
     }
 }
@@ -270,6 +280,12 @@ infrastructure/migrations/
 - `From<&Entity> for EntityDb` handles domain → row conversion (infallible)
 - `db.rs` is shared across all entities — never duplicated per entity
 - `entity.rs` and `db.rs` are only present when `db = true` in puerto.toml
+- A `HashMap<String, String>` field is a `JSONB` column: the row field is
+  `sqlx::types::Json<HashMap<String, String>>`, the `SELECT` overrides the column type
+  (`meta as "meta: Json<HashMap<String, String>>"`) and the bind uses `db.meta as _`
+- `unique` fields get a partial unique index (`WHERE deleted = false`) — rows are soft-deleted
+- Repositories log and convert errors with `inspect_err` / `map_err`; never a `map_err` that
+  returns its input unchanged (clippy `manual_inspect` under the generated project's `make lint`)
 
 **When `entity.fields` is defined**, `<Entity>Db` includes all custom columns alongside system columns:
 
@@ -302,7 +318,8 @@ SQL type mappings come from the type registry (see `puerto-toml.md`).
 
 ```
 presentation/src/
-  main.rs                  # 5-line entry point — calls generated::bootstrap::build_app()
+  main.rs                  # tracing subscriber + server + graceful shutdown — never changes
+  health.rs                # GET /health (liveness) + /health/ready (readiness)
   generated.rs             # pub mod bootstrap; — static, never changes
   generated/
     bootstrap.rs           # AUTO-GENERATED from puerto.toml — never hand-edit
@@ -346,24 +363,29 @@ When `entity.fields` is defined, `dto.rs` generates typed request/response struc
 
 ```rust
 // CreateProductRequest maps to CreateProductParams
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
 pub struct CreateProductRequest {
     pub name: String,
-    pub price: i64,
+    pub unit_price: i64,          // JSON: "unitPrice"
     pub sku: String,
     pub description: Option<String>,
     pub tags: Vec<String>,
 }
 
 // ProductDto maps from the domain model for responses
-#[derive(Debug, Serialize)]
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
 pub struct ProductDto {
-    pub id: String,
+    pub id: Uuid,
     pub name: String,
-    pub price: i64,
+    pub unit_price: i64,
     // ...
 }
 ```
+
+DTOs derive poem-openapi's `Object` (not serde) and the JSON contract is **camelCase**: a
+`published_at` field is `publishedAt` on the wire.
 
 Each OpenAPI type derives from the type registry mapping (e.g., `i64` → `integer(int64)`, `Uuid` → `string(uuid)`).
 
@@ -372,7 +394,15 @@ Each OpenAPI type derives from the type registry mapping (e.g., `i64` → `integ
 - **API First**: update `routes.rs` + `dto.rs` before any implementation
 - Domain models are **never** exposed in responses — always map via `EntityDto::from_domain(&entity)`
 - Every `ApiResponse` enum has a `from_status(StatusCode, Json<ErrorResponse>) -> Self` helper
-- All errors use the shared `ErrorResponse { name: String, message: String }` from `api/error.rs`
+- All errors use the shared `ErrorResponse { name, message }` from `api/error.rs`, built with
+  `ErrorResponse::from_code(err.to_string())`: **`name` is the machine-readable code**
+  (`product.not_found`) — ADR-0007
+- Status mapping: domain validation and invalid value objects → **422**; not found → 404;
+  duplicate → 409; repository / unknown → 500. `400` is left to poem for malformed bodies
+- Error mappers are exhaustive (no `_` arm) and generated with **one unit test per arm**
+- `/health` is liveness only; `/health/ready` probes the dependencies (`infrastructure::db::ping`
+  in `--db` projects) and answers 503 when one is down. SIGTERM drains in-flight requests for
+  `SHUTDOWN_DEADLINE` (ADR-0008)
 - DI wiring lives in `generated/bootstrap.rs` — never in `main.rs`
 
 ```rust

@@ -174,13 +174,12 @@ is_option_vo(field)                             // true if field_type starts wit
 is_vec_vo(field)                                // true if field_type starts with "Vec<"
 is_enum_vo(field)                               // true if value_object_kind == "enum"
 is_shared_vo(field, shared_vos)                 // true if VO name matches a [[value_object]] entry
-vo_name(field)                                  // Option<&str> of the VO name
 vo_inner_type(field)                            // inner primitive: "String" from Option<String>, Vec<String>
 field_rust_type(field)                          // Rust type to use in structs: VO name, Option<VO>, Vec<VO>, or primitive
-field_value_accessor(field, prefix)             // e.g. "entity.name.value().to_string()" for String VO
 field_vo_constructor(field, pascal, shared_vos) // VO construction expression for use case impls
-field_needs_clone(field_type)                   // true for String/Option<String>/Vec/HashMap
 vo_import_path(field, snake, shared_vos)        // import path: local or shared
+literal_import(field)                           // import a value literal needs (chrono::Utc, uuid::Uuid…)
+literal_names_vo(field)                         // whether a literal names the VO (false for Option/Vec VOs)
 ```
 
 ## Architecture: Value Objects Across Layers
@@ -257,8 +256,10 @@ pub enum Status {
     Cancelled,
 }
 
-impl Status {
-    pub fn from_str(s: &str) -> Result<Self, OrderError> {
+impl std::str::FromStr for Status {
+    type Err = OrderError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Pending" => Ok(Self::Pending),
             "Confirmed" => Ok(Self::Confirmed),
@@ -266,8 +267,10 @@ impl Status {
             _ => Err(OrderError::InvalidStatus),
         }
     }
+}
 
-    pub fn as_str(&self) -> &str {
+impl Status {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Pending => "Pending",
             Self::Confirmed => "Confirmed",
@@ -281,7 +284,9 @@ impl Status {
 - Private inner value (tuple struct for numeric/bool/Uuid, named field for String, enum variants for enum)
 - `new()` always returns `Result<Self, EntityError>` — even pass-through VOs
 - `value()` returns `&str` (String), primitive by value (numeric/bool/Uuid), owned (DateTime)
-- Enum VOs use `from_str()` / `as_str()` instead of `new()` / `value()`
+- Enum VOs implement `std::str::FromStr` (construct with `s.parse::<Status>()`, no import needed) and
+  expose `as_str()`, instead of `new()` / `value()`. An inherent `from_str` is what clippy's
+  `should_implement_trait` rejects in the generated project's `make lint`
 - No `Serialize`/`Deserialize` on VOs — domain-only; DTOs use primitives
 - Shared VOs have their own error type in `domain/shared/errors.rs`
 
@@ -362,7 +367,7 @@ async fn execute(&self, params: CreatePersonaParams) -> Result<Persona, PersonaE
     let name = Name::new(params.name)?;
     let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
     let tags = params.tags.into_iter().map(Tag::new).collect::<Result<Vec<_>, _>>()?;
-    let status = Status::from_str(&params.status)?;
+    let status = params.status.parse::<Status>()?;
 
     let entity = Persona::new(PersonaProps { name, middle_name, tags, status, active: params.active })?;
     self.repository.save(&entity).await?;
@@ -384,7 +389,7 @@ impl TryFrom<PersonaDb> for Persona {
             name: Name::new(row.name)?,
             middle_name: row.middle_name.map(MiddleName::new).transpose()?,
             tags: row.tags.into_iter().map(Tag::new).collect::<Result<Vec<_>, _>>()?,
-            status: Status::from_str(&row.status)?,
+            status: row.status.parse::<Status>()?,
             active: row.active,
             // ... audit fields
         }))

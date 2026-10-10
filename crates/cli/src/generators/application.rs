@@ -6,8 +6,8 @@ use crate::generators::effective_fields;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::render;
 use crate::generators::types::{
-    field_vo_constructor, is_enum_vo, is_option_vo, is_value_object, is_vec_vo, resolve_type,
-    vo_import_path,
+    field_vo_constructor, is_enum_vo, is_option_vo, is_value_object, is_vec_vo, literal_import,
+    literal_names_vo, resolve_type, vo_import_path,
 };
 use crate::patchers::lib_rs::patch_business_lib_application_crud;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
@@ -62,7 +62,6 @@ fn build_test_props(eff: &[Field], string_override: &str) -> String {
 
 fn build_create_params_vo(eff: &[Field]) -> String {
     eff.iter()
-        .filter(|f| f.field_type != "Uuid")
         .map(|f| {
             let mapping = resolve_type(&f.field_type).unwrap();
             let value = if f.field_type == "String" {
@@ -78,7 +77,6 @@ fn build_create_params_vo(eff: &[Field]) -> String {
 
 fn build_empty_create_params(eff: &[Field], empty_field: &str) -> String {
     eff.iter()
-        .filter(|f| f.field_type != "Uuid")
         .map(|f| {
             if f.name == empty_field {
                 format!("            {}: \"\".to_string(),", f.name)
@@ -98,7 +96,7 @@ fn build_empty_create_params(eff: &[Field], empty_field: &str) -> String {
 
 fn build_update_params(eff: &[Field]) -> String {
     let mut lines = vec!["            id: entity_id,".to_string()];
-    for f in eff.iter().filter(|f| f.field_type != "Uuid") {
+    for f in eff.iter() {
         let value = if f.field_type == "String" {
             enum_or_string(f, "updated")
         } else {
@@ -114,7 +112,7 @@ fn build_update_params(eff: &[Field]) -> String {
 
 fn build_empty_update_params(eff: &[Field], empty_field: &str) -> String {
     let mut lines = vec!["            id: entity_id,".to_string()];
-    for f in eff.iter().filter(|f| f.field_type != "Uuid") {
+    for f in eff.iter() {
         if f.name == empty_field {
             lines.push(format!("            {}: \"\".to_string(),", f.name));
         } else {
@@ -134,7 +132,7 @@ fn build_empty_update_params(eff: &[Field], empty_field: &str) -> String {
 
 fn build_not_found_params(eff: &[Field]) -> String {
     let mut lines = vec!["            id: Uuid::new_v4(),".to_string()];
-    for f in eff.iter().filter(|f| f.field_type != "Uuid") {
+    for f in eff.iter() {
         let mapping = resolve_type(&f.field_type).unwrap();
         let value = if f.field_type == "String" {
             enum_or_string(f, "new")
@@ -146,49 +144,56 @@ fn build_not_found_params(eff: &[Field]) -> String {
     lines.join("\n")
 }
 
-fn build_test_vo_imports_block(
-    eff: &[Field],
-    snake: &str,
-    shared_vos: &[ValueObjectDefinition],
-) -> String {
-    let mut imports: Vec<String> = vec![];
-    for f in eff.iter().filter(|f| is_value_object(f)) {
-        let stmt = format!("    use {};", vo_import_path(f, snake, shared_vos));
-        if !imports.contains(&stmt) {
-            imports.push(stmt);
-        }
-    }
-    if imports.is_empty() {
-        String::new()
-    } else {
-        imports.join("\n") + "\n"
-    }
-}
-
-/// Test-module imports for the read/delete use cases.
+/// Test-module imports for the use cases whose tests build an `EntityProps` literal
+/// (get / list / update / delete).
 ///
-/// Their templates carry no file-level `extra_imports` (the impls themselves need none), but their
-/// generated test modules build full `EntityProps` literals — so a `HashMap<String, String>`,
-/// `Uuid` or `DateTime<Utc>` field needs its type in scope *inside* `mod tests`. Without this a
-/// `meta:map` field produced `meta: HashMap::new()` against an undeclared type (E0433).
+/// The impls themselves name no primitive type, so those imports must **not** sit at file level —
+/// there they are dead in a non-test build (`unused_imports`, and `-D warnings` in the generated
+/// project's `make lint`). The test module is where a `Uuid`, `DateTime<Utc>` or
+/// `HashMap<String, String>` field literal needs its type in scope (E0433 otherwise), alongside the
+/// VO types the Props literal constructs.
+///
+/// `always_uuid` covers the templates whose tests name `Uuid` no matter the entity's fields (the
+/// `id: Uuid::new_v4()` of the not-found cases). It must not be emitted twice for an entity that
+/// also *has* a `Uuid` field — that is a duplicate import (E0252).
 fn build_test_imports_block(
     eff: &[Field],
     snake: &str,
     shared_vos: &[ValueObjectDefinition],
+    always_uuid: bool,
 ) -> String {
     let mut imports: Vec<String> = vec![];
+    let mut push = |stmt: String| {
+        if !imports.contains(&stmt) {
+            imports.push(stmt);
+        }
+    };
+    if always_uuid {
+        push("    use uuid::Uuid;".to_string());
+    }
     for f in eff {
-        if let Ok(mapping) = resolve_type(&f.field_type) {
-            if let Some(imp) = mapping.needs_import {
-                let stmt = format!("    use {};", imp);
-                if !imports.contains(&stmt) {
-                    imports.push(stmt);
-                }
-            }
+        if let Some(imp) = literal_import(f) {
+            push(format!("    use {imp};"));
         }
     }
-    for f in eff.iter().filter(|f| is_value_object(f)) {
-        let stmt = format!("    use {};", vo_import_path(f, snake, shared_vos));
+    for f in eff.iter().filter(|f| literal_names_vo(f)) {
+        push(format!("    use {};", vo_import_path(f, snake, shared_vos)));
+    }
+    if imports.is_empty() {
+        String::new()
+    } else {
+        imports.join("\n") + "\n"
+    }
+}
+
+/// Test-module imports for the create use case.
+///
+/// Its tests build `CreateEntityParams` literals only — always primitives — so unlike the Props
+/// builders above it needs no VO import, and adding one would be an unused import.
+fn build_create_test_imports_block(eff: &[Field]) -> String {
+    let mut imports: Vec<String> = vec![];
+    for imp in eff.iter().filter_map(literal_import) {
+        let stmt = format!("    use {imp};");
         if !imports.contains(&stmt) {
             imports.push(stmt);
         }
@@ -200,22 +205,16 @@ fn build_test_imports_block(
     }
 }
 
-fn build_extra_imports(
+/// File-level imports for the create/update impls: VO types only.
+///
+/// The impl bodies construct VOs (`Name::new(params.name)?`) but never name a primitive type — the
+/// params carry those. A primitive import here is dead code in a non-test build.
+fn build_vo_imports(
     eff: &[Field],
     snake: &str,
     shared_vos: &[ValueObjectDefinition],
 ) -> Vec<String> {
     let mut imports: Vec<String> = vec![];
-    for f in eff {
-        if let Ok(mapping) = resolve_type(&f.field_type) {
-            if let Some(imp) = mapping.needs_import {
-                let stmt = format!("use {};", imp);
-                if !imports.contains(&stmt) {
-                    imports.push(stmt);
-                }
-            }
-        }
-    }
     for f in eff.iter().filter(|f| is_value_object(f)) {
         let stmt = format!("use {};", vo_import_path(f, snake, shared_vos));
         if !imports.contains(&stmt) {
@@ -234,15 +233,16 @@ fn build_create_context(
     shared_vos: &[ValueObjectDefinition],
 ) -> tera::Context {
     let eff = effective_fields(fields);
-    let extra_imports = build_extra_imports(&eff, snake, shared_vos);
+    let extra_imports = build_vo_imports(&eff, snake, shared_vos);
+    let test_imports = build_create_test_imports_block(&eff);
     let model_import = format!("{{{pascal}, {pascal}Props}}");
 
     let props_fields = eff
         .iter()
-        .filter(|f| f.field_type != "Uuid")
         .map(|f| {
             if is_value_object(f) {
-                format!("            {}: {},", f.name, f.name)
+                // Bound by `vo_constructions` under the field's own name: shorthand init.
+                format!("            {},", f.name)
             } else {
                 format!("            {}: params.{},", f.name, f.name)
             }
@@ -252,7 +252,7 @@ fn build_create_context(
 
     let vo_constr: Vec<String> = eff
         .iter()
-        .filter(|f| f.field_type != "Uuid" && is_value_object(f))
+        .filter(|f| is_value_object(f))
         .map(|f| field_vo_constructor(f, "params.", pascal, shared_vos))
         .collect();
     let vo_constructions = if vo_constr.is_empty() {
@@ -260,8 +260,6 @@ fn build_create_context(
     } else {
         vo_constr.join("\n") + "\n"
     };
-
-    let log_ident = format!("params.{}", eff[0].name);
 
     let valid_test_name = if eff.len() == 1
         && eff[0].name == "name"
@@ -285,10 +283,17 @@ fn build_create_context(
         )
     } else if let Some(f) = eff
         .iter()
-        .find(|f| is_value_object(f) && f.field_type == "String")
+        .find(|f| is_value_object(f) && !is_enum_vo(f) && f.field_type == "String")
     {
         format!(
             "\n        assert_eq!(result.unwrap().{}.value(), \"example\");",
+            f.name
+        )
+    } else if let Some(f) = eff.iter().find(|f| is_enum_vo(f)) {
+        // Enum VOs expose `as_str()`, not `value()`; the params use the first variant.
+        let first = f.enum_variants.as_deref().unwrap().first().unwrap();
+        format!(
+            "\n        assert_eq!(result.unwrap().{}.as_str(), \"{first}\");",
             f.name
         )
     } else {
@@ -325,10 +330,10 @@ fn build_create_context(
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
     ctx.insert("extra_imports", &extra_imports);
+    ctx.insert("test_imports", &test_imports);
     ctx.insert("model_import", &model_import);
     ctx.insert("vo_constructions", &vo_constructions);
     ctx.insert("props_fields", &props_fields);
-    ctx.insert("log_ident", &log_ident);
     ctx.insert("valid_test_name", &valid_test_name);
     ctx.insert("valid_params", &valid_params);
     ctx.insert("valid_assertion", &valid_assertion);
@@ -344,7 +349,7 @@ fn build_get_context(
 ) -> tera::Context {
     let eff = effective_fields(fields);
     let props_fields = build_test_props(&eff, "example");
-    let test_vo_imports = build_test_imports_block(&eff, snake, shared_vos);
+    let test_imports = build_test_imports_block(&eff, snake, shared_vos, true);
 
     let found_assertion = if let Some(f) = eff
         .iter()
@@ -371,7 +376,7 @@ fn build_get_context(
     ctx.insert("snake", snake);
     ctx.insert("props_fields", &props_fields);
     ctx.insert("found_assertion", &found_assertion);
-    ctx.insert("test_vo_imports", &test_vo_imports);
+    ctx.insert("test_imports", &test_imports);
     ctx
 }
 
@@ -384,14 +389,14 @@ fn build_list_context(
     let eff = effective_fields(fields);
     let first_props = build_test_props(&eff, "first");
     let second_props = build_test_props(&eff, "second");
-    let test_vo_imports = build_test_imports_block(&eff, snake, shared_vos);
+    let test_imports = build_test_imports_block(&eff, snake, shared_vos, false);
 
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
     ctx.insert("first_props", &first_props);
     ctx.insert("second_props", &second_props);
-    ctx.insert("test_vo_imports", &test_vo_imports);
+    ctx.insert("test_imports", &test_imports);
     ctx
 }
 
@@ -403,37 +408,15 @@ fn build_update_context(
 ) -> tera::Context {
     let eff = effective_fields(fields);
 
-    let extra_imports: Vec<String> = {
-        let mut imp = vec![];
-        for f in &eff {
-            if let Ok(mapping) = resolve_type(&f.field_type) {
-                if let Some(i) = mapping.needs_import {
-                    let stmt = format!("use {};", i);
-                    if !imp.contains(&stmt) {
-                        imp.push(stmt);
-                    }
-                }
-            }
-        }
-        for f in eff
-            .iter()
-            .filter(|f| is_value_object(f) && f.field_type != "Uuid")
-        {
-            let stmt = format!("use {};", vo_import_path(f, snake, shared_vos));
-            if !imp.contains(&stmt) {
-                imp.push(stmt);
-            }
-        }
-        imp
-    };
+    let extra_imports = build_vo_imports(&eff, snake, shared_vos);
 
     let validations: Vec<String> = eff
         .iter()
         .filter(|f| f.field_type == "String" && !is_value_object(f))
         .map(|f| {
             format!(
-                "        if params.{}.trim().is_empty() {{\n            let err = {}Error::ValidationError(\"{}_empty\".into());\n            self.logger.warn(&err.to_string());\n            return Err(err);\n        }}",
-                f.name, pascal, f.name
+                "        if params.{}.trim().is_empty() {{\n            let err = {}Error::ValidationError(\"{}_empty\".into());\n            tracing::warn!(error = %err, \"update_{}: rejected\");\n            return Err(err);\n        }}",
+                f.name, pascal, f.name, snake
             )
         })
         .collect();
@@ -445,7 +428,7 @@ fn build_update_context(
 
     let vo_constr: Vec<String> = eff
         .iter()
-        .filter(|f| f.field_type != "Uuid" && is_value_object(f))
+        .filter(|f| is_value_object(f))
         .map(|f| field_vo_constructor(f, "params.", pascal, shared_vos))
         .collect();
     let vo_constructions = if vo_constr.is_empty() {
@@ -456,7 +439,6 @@ fn build_update_context(
 
     let assignments: Vec<String> = eff
         .iter()
-        .filter(|f| f.field_type != "Uuid")
         .map(|f| {
             if is_value_object(f) {
                 format!("        entity.{} = {};", f.name, f.name)
@@ -470,7 +452,7 @@ fn build_update_context(
     let original_props = build_test_props(&eff, "original");
     let update_params = build_update_params(&eff);
     let not_found_params = build_not_found_params(&eff);
-    let test_vo_imports = build_test_vo_imports_block(&eff, snake, shared_vos);
+    let test_imports = build_test_imports_block(&eff, snake, shared_vos, true);
 
     let primitive_string_fields: Vec<&Field> = eff
         .iter()
@@ -524,7 +506,7 @@ fn build_update_context(
     ctx.insert("update_params", &update_params);
     ctx.insert("not_found_params", &not_found_params);
     ctx.insert("valid_assertion", &valid_assertion);
-    ctx.insert("test_vo_imports", &test_vo_imports);
+    ctx.insert("test_imports", &test_imports);
     ctx.insert("validation_test_cases", &validation_test_cases);
     ctx
 }
@@ -537,13 +519,13 @@ fn build_delete_context(
 ) -> tera::Context {
     let eff = effective_fields(fields);
     let props_fields = build_test_props(&eff, "example");
-    let test_vo_imports = build_test_imports_block(&eff, snake, shared_vos);
+    let test_imports = build_test_imports_block(&eff, snake, shared_vos, true);
 
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
     ctx.insert("props_fields", &props_fields);
-    ctx.insert("test_vo_imports", &test_vo_imports);
+    ctx.insert("test_imports", &test_imports);
     ctx
 }
 

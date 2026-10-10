@@ -25,3 +25,11 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), DatabaseError> {
         .await
         .map_err(|_| DatabaseError::MigrationError)
 }
+
+/// Whether the database answers a trivial query — what `/health/ready` reports.
+///
+/// Bounded by the pool's acquire timeout, so a database that is down makes the probe slow to
+/// answer rather than hang forever.
+pub async fn ping(pool: &PgPool) -> bool {
+    sqlx::query("SELECT 1").execute(pool).await.is_ok()
+}

@@ -969,38 +969,12 @@ fn scaffold_without_db_still_uses_inmemory() {
 // ── puerto generate migration ─────────────────────────────────────────────
 
 #[test]
-fn migration_errors_when_sqlx_not_in_path() {
-    let dir = temp_dir("migration_no_sqlx");
-    cleanup(&dir);
-    fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
-
-    let result = scaffold::run_migration(
-        "add_products_table",
-        &dir,
-        Some("nonexistent_sqlx_bin"),
-        None,
-    );
-    assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("sqlx CLI not found"),
-        "expected 'sqlx CLI not found' in: {msg}"
-    );
-    assert!(
-        msg.contains("cargo install sqlx-cli"),
-        "expected install hint in: {msg}"
-    );
-
-    cleanup(&dir);
-}
-
-#[test]
 fn migration_creates_migrations_dir_when_missing() {
     let dir = temp_dir("migration_no_dir");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    let _ = scaffold::run_migration("add_products_table", &dir, Some("/bin/true"), None);
+    scaffold::run_migration("add_products_table", &dir, None).unwrap();
 
     assert!(
         dir.join("infrastructure/migrations").exists(),
@@ -1011,19 +985,27 @@ fn migration_creates_migrations_dir_when_missing() {
 }
 
 #[test]
-fn use_case_is_idempotent() {
-    let dir = temp_dir("uc_idempotent");
+fn use_case_rerun_is_refused_and_leaves_files_untouched() {
+    // Running the same `generate use-case` twice used to rewrite both files with the `todo!()`
+    // stub and still print "added" — silently discarding whatever had been implemented since.
+    let dir = temp_dir("uc_rerun_refused");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
     scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    let impl_path = dir.join("business/src/application/product/delete_product.rs");
+    fs::write(&impl_path, "// implemented by hand\n").unwrap();
 
+    let result = scaffold::run_use_case("Product", "delete_product", &dir);
+
+    assert!(result.is_err(), "a second run must be refused");
+    assert!(result.unwrap_err().to_string().contains("already exists"));
+    assert_eq!(
+        fs::read_to_string(&impl_path).unwrap(),
+        "// implemented by hand\n"
+    );
     let toml = fs::read_to_string(dir.join("puerto.toml")).unwrap();
     assert_eq!(toml.matches("delete_product").count(), 1);
-
-    let lib = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
-    assert_eq!(lib.matches("pub mod delete_product;").count(), 2);
 
     cleanup(&dir);
 }
@@ -1031,33 +1013,8 @@ fn use_case_is_idempotent() {
 // ── Phase 5: logger ───────────────────────────────────────────────────────
 
 #[test]
-fn new_project_has_domain_logger_file() {
-    let dir = temp_dir("logger_domain_file");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-
-    let output = generate_project("logger-test", &dir).unwrap();
-
-    assert!(output.join("business/src/domain/logger.rs").exists());
-
-    cleanup(&dir);
-}
-
-#[test]
-fn new_project_has_infrastructure_logger_file() {
-    let dir = temp_dir("logger_infra_file");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-
-    let output = generate_project("logger-test", &dir).unwrap();
-
-    assert!(output.join("infrastructure/src/logger.rs").exists());
-
-    cleanup(&dir);
-}
-
-#[test]
-fn new_project_bootstrap_wires_tracing_logger() {
+fn new_project_bootstrap_injects_no_logger() {
+    // Logging goes through `tracing` directly; the subscriber is set up once in main.rs.
     let dir = temp_dir("logger_bootstrap");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -1066,15 +1023,15 @@ fn new_project_bootstrap_wires_tracing_logger() {
 
     let content =
         fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
-    assert!(content.contains("TracingLogger"));
-    assert!(content.contains("let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger)"));
-    assert!(content.contains("Arc::clone(&logger)"));
+    assert!(!content.contains("logger"), "{content}");
+    let main = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
+    assert!(main.contains("tracing_subscriber::fmt()"), "{main}");
 
     cleanup(&dir);
 }
 
 #[test]
-fn scaffold_use_case_impl_has_logger_field() {
+fn scaffold_use_case_impl_logs_with_tracing() {
     let dir = temp_dir("logger_scaffold_impl");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -1082,14 +1039,14 @@ fn scaffold_use_case_impl_has_logger_field() {
 
     let content =
         fs::read_to_string(dir.join("business/src/application/product/create_product.rs")).unwrap();
-    assert!(content.contains("pub logger: Arc<dyn LoggerTrait>"));
-    assert!(content.contains("use crate::domain::logger::LoggerTrait"));
+    assert!(content.contains("tracing::info!"), "{content}");
+    assert!(!content.contains("logger"), "{content}");
 
     cleanup(&dir);
 }
 
 #[test]
-fn use_case_generator_impl_has_logger_field() {
+fn use_case_generator_impl_logs_with_tracing() {
     let dir = temp_dir("logger_uc_impl");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -1098,14 +1055,14 @@ fn use_case_generator_impl_has_logger_field() {
 
     let content =
         fs::read_to_string(dir.join("business/src/application/product/delete_product.rs")).unwrap();
-    assert!(content.contains("pub logger: Arc<dyn LoggerTrait>"));
-    assert!(content.contains("use crate::domain::logger::LoggerTrait"));
+    assert!(content.contains("tracing::info!"), "{content}");
+    assert!(!content.contains("logger"), "{content}");
 
     cleanup(&dir);
 }
 
 #[test]
-fn scaffold_bootstrap_wires_logger_for_all_entities() {
+fn scaffold_bootstrap_wires_use_cases_without_a_logger() {
     let dir = temp_dir("logger_bootstrap_scaffold");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -1113,9 +1070,10 @@ fn scaffold_bootstrap_wires_logger_for_all_entities() {
     scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
-    assert!(content.contains("TracingLogger"));
-    assert!(content.contains("let logger: Arc<dyn LoggerTrait> = Arc::new(TracingLogger)"));
-    assert_eq!(content.matches("Arc::clone(&logger)").count(), 6);
+    assert!(content.contains(
+        "let create_product = Arc::new(CreateProductUseCaseImpl { repository: Arc::new(InMemoryProductRepository::new()) as Arc<dyn ProductRepositoryTrait> });"
+    ), "{content}");
+    assert!(!content.contains("logger"), "{content}");
 
     cleanup(&dir);
 }
@@ -1544,7 +1502,7 @@ fn generate_domain_fields_reach_the_later_layers() {
     let fields = vec![puerto_toml::parse_field_arg("amount:i64").unwrap()];
     scaffold::run_generate_domain("Invoice", &output, &fields).unwrap();
     scaffold::run_generate_application("Invoice", &output).unwrap();
-    scaffold::run_generate_repository("Invoice", &output, None).unwrap();
+    scaffold::run_generate_repository("Invoice", &output).unwrap();
     scaffold::run_generate_presentation("Invoice", &output).unwrap();
 
     let impl_rs =
@@ -1649,7 +1607,7 @@ fn generate_repository_creates_infra_files() {
     let output = generate_project("myapp", &dir).unwrap();
 
     scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
-    scaffold::run_generate_repository("Widget", &output, None).unwrap();
+    scaffold::run_generate_repository("Widget", &output).unwrap();
 
     assert!(
         output
@@ -1670,7 +1628,7 @@ fn generate_presentation_creates_all_files_and_regenerates_bootstrap() {
     let output = generate_project("myapp", &dir).unwrap();
 
     scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
-    scaffold::run_generate_repository("Widget", &output, None).unwrap();
+    scaffold::run_generate_repository("Widget", &output).unwrap();
     scaffold::run_generate_presentation("Widget", &output).unwrap();
 
     assert!(output.join("presentation/src/api/widget.rs").exists());
@@ -1847,19 +1805,11 @@ fn no_demo_lib_files_have_no_greeting_modules() {
         !biz_lib.contains("greeting"),
         "business lib.rs should not reference greeting"
     );
-    assert!(
-        biz_lib.contains("pub mod logger"),
-        "business lib.rs should retain logger"
-    );
 
     let infra_lib = fs::read_to_string(output.join("infrastructure/src/lib.rs")).unwrap();
     assert!(
         !infra_lib.contains("greeting"),
         "infra lib.rs should not reference greeting"
-    );
-    assert!(
-        infra_lib.contains("pub mod logger"),
-        "infra lib.rs should retain logger"
     );
 
     let api_rs = fs::read_to_string(output.join("presentation/src/api.rs")).unwrap();
@@ -1928,7 +1878,7 @@ fn no_demo_then_scaffold_generates_new_entity() {
 
     let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
     scaffold::apply_no_demo(&output).unwrap();
-    scaffold::run_scaffold("Player", &output, None, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Player", &output, &[], OverwritePolicy::Ask).unwrap();
 
     assert!(output.join("business/src/domain/player/model.rs").exists());
     assert!(
@@ -1974,7 +1924,7 @@ fn scaffold_7_4_infers_db_from_project_toml() {
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs_with_project_db(&dir);
     fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
-    scaffold::run_scaffold("Team", &dir, Some("/bin/true"), &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Team", &dir, &[], OverwritePolicy::Ask).unwrap();
 
     let content = fs::read_to_string(dir.join("infrastructure/src/team/repository.rs")).unwrap();
     assert!(content.contains("PgTeamRepository"));
@@ -1989,7 +1939,7 @@ fn scaffold_7_4_non_db_project_uses_inmemory() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run_scaffold("Team", &dir, None, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Team", &dir, &[], OverwritePolicy::Ask).unwrap();
 
     let content = fs::read_to_string(dir.join("infrastructure/src/team/repository.rs")).unwrap();
     assert!(content.contains("InMemoryTeamRepository"));
@@ -2004,7 +1954,7 @@ fn scaffold_7_4_always_generates_5_use_cases() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run_scaffold("Team", &dir, None, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Team", &dir, &[], OverwritePolicy::Ask).unwrap();
 
     assert!(
         dir.join("business/src/domain/team/use_cases/create_team.rs")
@@ -2036,7 +1986,7 @@ fn scaffold_7_4_db_project_auto_creates_migration() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs_with_project_db(&dir);
-    scaffold::run_scaffold("Team", &dir, Some("/bin/true"), &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Team", &dir, &[], OverwritePolicy::Ask).unwrap();
 
     assert!(
         dir.join("infrastructure/migrations").is_dir(),
@@ -2052,7 +2002,7 @@ fn scaffold_7_4_non_db_project_does_not_create_migrations_dir() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run_scaffold("Team", &dir, None, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Team", &dir, &[], OverwritePolicy::Ask).unwrap();
 
     assert!(
         !dir.join("infrastructure/migrations").exists(),
@@ -2546,8 +2496,11 @@ fn generate_update_use_case_trait_with_custom_fields() {
     assert!(result.contains("pub trait UpdateProductUseCaseTrait"));
 }
 
+/// A `Uuid` field is an ordinary field — `model.tera` puts it in `EntityProps`, so every params
+/// struct that feeds `Entity::new` must carry it too. Dropping it (as the generators used to)
+/// produced `missing field 'category_id' in initializer of ItemProps` (E0063).
 #[test]
-fn generate_update_use_case_trait_uuid_fields_excluded() {
+fn generate_update_use_case_trait_includes_uuid_fields() {
     use crate::generators::domain::generate_update_use_case_trait;
     use crate::puerto_toml::Field;
 
@@ -2569,11 +2522,43 @@ fn generate_update_use_case_trait_uuid_fields_excluded() {
 
     assert!(result.contains("pub name: String,"));
     assert!(result.contains("pub id: Uuid,"));
-    assert!(
-        !result.contains("pub category_id: Uuid,"),
-        "Uuid custom field should not appear in UpdateParams"
+    assert!(result.contains("pub category_id: Uuid,"));
+    // The template writes `use uuid::Uuid;` itself for `id` — the field must not add a second one.
+    assert_eq!(
+        result.matches("use uuid::Uuid;").count(),
+        1,
+        "a Uuid field must not duplicate the import the template already writes (E0252)"
     );
-    assert!(result.contains("use uuid::Uuid;"));
+}
+
+#[test]
+fn generate_create_use_case_trait_includes_uuid_fields() {
+    use crate::generators::domain::generate_create_use_case_trait;
+    use crate::puerto_toml::Field;
+
+    let fields = vec![
+        Field {
+            name: "category_id".into(),
+            field_type: "Uuid".into(),
+            unique: false,
+            ..Default::default()
+        },
+        Field {
+            name: "name".into(),
+            field_type: "String".into(),
+            unique: false,
+            ..Default::default()
+        },
+    ];
+    let result = generate_create_use_case_trait("Item", "item", &fields);
+
+    assert!(result.contains("pub name: String,"));
+    assert!(result.contains("pub category_id: Uuid,"));
+    assert!(
+        !result.contains("pub id: Uuid,"),
+        "Create params must not carry the system id"
+    );
+    assert_eq!(result.matches("use uuid::Uuid;").count(), 1);
 }
 
 #[test]
@@ -2602,7 +2587,7 @@ fn generate_create_use_case_impl_with_custom_fields() {
     assert!(result.contains("title: params.title,"));
     assert!(result.contains("price: params.price,"));
     assert!(result.contains("Product::new(ProductProps"));
-    assert!(result.contains("Creating product: params.title"));
+    assert!(result.contains("tracing::info!(\"create_product: start\");"));
 }
 
 #[test]
@@ -2639,7 +2624,7 @@ fn generate_update_use_case_impl_with_custom_fields() {
 }
 
 #[test]
-fn generate_update_use_case_impl_excludes_uuid_fields() {
+fn generate_update_use_case_impl_assigns_uuid_fields() {
     use crate::generators::application::generate_update_use_case_impl;
     use crate::puerto_toml::Field;
 
@@ -2660,9 +2645,46 @@ fn generate_update_use_case_impl_excludes_uuid_fields() {
     let result = generate_update_use_case_impl("Item", "item", &fields, &[]);
 
     assert!(result.contains("entity.name = params.name;"));
+    assert!(result.contains("entity.category_id = params.category_id;"));
+    // `Uuid` belongs to the test module (the impl names no primitive type); at file level it would
+    // be an unused import in a non-test build, which `-D warnings` rejects.
+    assert!(result.contains("    use uuid::Uuid;"));
     assert!(
-        !result.contains("entity.category_id = params.category_id;"),
-        "Uuid fields should not be assigned in update"
+        !result.contains("\nuse uuid::Uuid;"),
+        "primitive imports must not sit at file level in the impl"
+    );
+    assert_eq!(result.matches("use uuid::Uuid;").count(), 1);
+}
+
+#[test]
+fn generate_create_use_case_impl_passes_uuid_fields_to_props() {
+    use crate::generators::application::generate_create_use_case_impl;
+    use crate::puerto_toml::Field;
+
+    let fields = vec![
+        Field {
+            name: "category_id".into(),
+            field_type: "Uuid".into(),
+            unique: false,
+            ..Default::default()
+        },
+        Field {
+            name: "name".into(),
+            field_type: "String".into(),
+            unique: false,
+            ..Default::default()
+        },
+    ];
+    let result = generate_create_use_case_impl("Item", "item", &fields, &[]);
+
+    assert!(result.contains("category_id: params.category_id,"));
+    assert!(result.contains("name: params.name,"));
+    // The generated test builds the params, so it needs `Uuid` — inside `mod tests`, once.
+    assert!(result.contains("            category_id: Uuid::new_v4(),"));
+    assert!(result.contains("    use uuid::Uuid;"));
+    assert!(
+        !result.contains("\nuse uuid::Uuid;"),
+        "primitive imports must not sit at file level in the impl"
     );
 }
 
@@ -2790,7 +2812,7 @@ fn generate_get_use_case_impl_with_custom_fields() {
     assert!(result.contains("Product::new(ProductProps"));
     assert!(result.contains("title: \"example\".to_string(),"));
     assert!(result.contains("price: 42,"));
-    assert!(result.contains("silent_logger"));
+    assert!(!result.contains("logger"));
 }
 
 #[test]
@@ -2833,7 +2855,7 @@ fn generate_list_use_case_impl_with_custom_fields() {
     assert!(result.contains("title: \"first\".to_string(),"));
     assert!(result.contains("title: \"second\".to_string(),"));
     assert!(result.contains("price: 42,"));
-    assert!(result.contains("silent_logger"));
+    assert!(!result.contains("logger"));
 }
 
 #[test]
@@ -2863,7 +2885,7 @@ fn generate_delete_use_case_impl_with_custom_fields() {
     assert!(result.contains("should_return_not_found_when_product_does_not_exist"));
     assert!(result.contains("title: \"example\".to_string(),"));
     assert!(result.contains("price: 42,"));
-    assert!(result.contains("silent_logger"));
+    assert!(!result.contains("logger"));
 }
 
 #[test]
@@ -2890,7 +2912,7 @@ fn generate_create_use_case_impl_with_custom_fields_has_tests() {
     assert!(result.contains("#[cfg(test)]"));
     assert!(result.contains("should_create_product_when_fields_are_valid"));
     assert!(result.contains("should_return_error_when_title_is_empty"));
-    assert!(result.contains("silent_logger"));
+    assert!(!result.contains("logger"));
     assert!(result.contains("MockProductRepository"));
     assert!(result.contains("title: \"example\".to_string(),"));
     assert!(result.contains("price: 42,"));
@@ -2922,7 +2944,7 @@ fn generate_update_use_case_impl_with_custom_fields_has_tests() {
     assert!(result.contains("should_return_not_found_when_product_does_not_exist"));
     assert!(result.contains("should_return_error_when_title_is_empty"));
     assert!(result.contains("Product::new(ProductProps"));
-    assert!(result.contains("silent_logger"));
+    assert!(!result.contains("logger"));
     assert!(result.contains("title: \"original\".to_string(),"));
     assert!(result.contains("title: \"updated\".to_string(),"));
     assert!(result.contains("price: 42,"));
@@ -3117,7 +3139,9 @@ fn create_table_sql_emits_unique_index_for_unique_fields() {
     // can drop or replace it by name.
     assert!(result.contains("sku TEXT NOT NULL"));
     assert!(
-        result.contains("CREATE UNIQUE INDEX products_sku_key ON products (sku);"),
+        result.contains(
+            "CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;"
+        ),
         "unique field must produce a unique index, got:\n{result}"
     );
     assert!(!result.contains("price_key"));
@@ -3138,7 +3162,9 @@ fn create_table_sql_emits_unique_index_for_unique_value_object_field() {
     }];
     let result = create_table_sql("item", &fields);
 
-    assert!(result.contains("CREATE UNIQUE INDEX items_sku_key ON items (sku);"));
+    assert!(
+        result.contains("CREATE UNIQUE INDEX items_sku_key ON items (sku) WHERE deleted = false;")
+    );
 }
 
 #[test]
@@ -3254,6 +3280,48 @@ fn generate_crud_dto_with_custom_fields() {
     assert!(result.contains("price: entity.price,"));
     assert!(result.contains("pub struct CreateProductRequest"));
     assert!(result.contains("pub struct UpdateProductRequest"));
+}
+
+/// The request DTOs feed the use case params, which feed `EntityProps` — a `Uuid` field has to
+/// travel the whole way or the handler cannot build the params (E0063).
+#[test]
+fn generate_crud_dto_and_routes_carry_uuid_fields() {
+    use crate::generators::presentation::{generate_crud_dto, generate_crud_routes};
+    use crate::puerto_toml::Field;
+
+    let fields = vec![
+        Field {
+            name: "title".into(),
+            field_type: "String".into(),
+            unique: false,
+            ..Default::default()
+        },
+        Field {
+            name: "category_id".into(),
+            field_type: "Uuid".into(),
+            unique: false,
+            ..Default::default()
+        },
+    ];
+
+    let dto = generate_crud_dto("Product", "product", &fields);
+    assert!(dto.contains("pub category_id: Uuid"));
+    assert!(dto.contains("category_id: entity.category_id,"));
+    let create_request = dto
+        .split("pub struct CreateProductRequest")
+        .nth(1)
+        .expect("CreateProductRequest missing");
+    assert!(
+        create_request.contains("pub category_id: Uuid"),
+        "CreateProductRequest must carry the Uuid field"
+    );
+
+    let routes = generate_crud_routes("Product", "product", &fields);
+    assert_eq!(
+        routes.matches("category_id: body.category_id,").count(),
+        2,
+        "both the create and the update handler must pass the Uuid field through"
+    );
 }
 
 #[test]
@@ -4422,26 +4490,36 @@ struct Scenario<'a> {
     shared_vos: &'a [(&'a str, &'a str)],
     /// Entities to scaffold: `(PascalName, CLI field args)`.
     entities: &'a [(&'a str, &'a [&'a str])],
+    /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
+    use_cases: &'a [(&'a str, &'a str)],
 }
 
-/// Generates the project, applies the scenario, and asserts the result compiles **and its tests
-/// pass**. `cargo check` is not enough: T-01 only breaks test targets.
+/// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
+/// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
+/// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto new`
+/// used to fail.
 fn assert_scenario_compiles(scenario: &Scenario) {
     let dir = scenario_workspace(scenario.name);
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
 
     let output = generate_project(&format!("compile-{}", scenario.name), &dir).unwrap();
+    apply_scenario(scenario, &output);
+    assert_generated_project_is_clean(&output, &dir, scenario.name, &[]);
+    cleanup(&dir);
+}
 
+/// Applies the scenario's shared VOs, entities and custom use cases to a generated project.
+fn apply_scenario(scenario: &Scenario, output: &Path) {
     if scenario.no_demo {
-        scaffold::apply_no_demo(&output).unwrap();
+        scaffold::apply_no_demo(output).unwrap();
     }
 
     for (vo_name, inner) in scenario.shared_vos {
-        puerto_toml::add_value_object(&output, vo_name, inner).unwrap();
+        puerto_toml::add_value_object(output, vo_name, inner).unwrap();
     }
 
-    let shared_vos = puerto_toml::read(&output).unwrap().value_object;
+    let shared_vos = puerto_toml::read(output).unwrap().value_object;
 
     for (entity, field_args) in scenario.entities {
         let parsed: Vec<puerto_toml::Field> = field_args
@@ -4450,36 +4528,48 @@ fn assert_scenario_compiles(scenario: &Scenario) {
             .collect();
         let fields = puerto_toml::apply_shared_vo_inference(parsed, &shared_vos);
         crate::generators::types::validate_fields(&fields).unwrap();
-        scaffold::run_scaffold(
-            entity,
-            &output,
-            Some("/bin/true"),
-            &fields,
-            OverwritePolicy::Ask,
-        )
-        .unwrap();
+        scaffold::run_scaffold(entity, output, &fields, OverwritePolicy::Ask).unwrap();
     }
 
-    let result = std::process::Command::new("cargo")
-        .args(["test", "--workspace"])
-        // A target dir **per scenario**. They must not share one: every generated project names
-        // its crates `business`/`infrastructure`/`presentation`, so a shared target dir has them
-        // overwrite each other's artifacts and fail for reasons unrelated to the code under test.
-        .env("CARGO_TARGET_DIR", dir.join("target"))
-        .current_dir(&output)
-        .output()
-        .expect("failed to run cargo test");
-
-    if !result.status.success() {
-        eprintln!("stdout:\n{}", String::from_utf8_lossy(&result.stdout));
-        eprintln!("stderr:\n{}", String::from_utf8_lossy(&result.stderr));
-        panic!(
-            "scenario '{}': generated project failed `cargo test --workspace`",
-            scenario.name
-        );
+    for (entity, action) in scenario.use_cases {
+        scaffold::run_use_case(entity, action, output).unwrap();
     }
+}
 
-    cleanup(&dir);
+/// Runs `cargo clippy --all-targets -D warnings` and `cargo test` inside a generated project.
+///
+/// A target dir **per scenario**: every generated project names its crates
+/// `business`/`infrastructure`/`presentation`, so a shared target dir has them overwrite each
+/// other's artifacts and fail for reasons unrelated to the code under test.
+fn assert_generated_project_is_clean(output: &Path, dir: &Path, name: &str, envs: &[(&str, &str)]) {
+    for args in [
+        &[
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ][..],
+        &["test", "--workspace"][..],
+    ] {
+        let result = std::process::Command::new("cargo")
+            .args(args)
+            .env("CARGO_TARGET_DIR", dir.join("target"))
+            .envs(envs.iter().copied())
+            .current_dir(output)
+            .output()
+            .expect("failed to run cargo");
+
+        if !result.status.success() {
+            eprintln!("stdout:\n{}", String::from_utf8_lossy(&result.stdout));
+            eprintln!("stderr:\n{}", String::from_utf8_lossy(&result.stderr));
+            panic!(
+                "scenario '{name}': generated project failed `cargo {}`",
+                args.join(" ")
+            );
+        }
+    }
 }
 
 /// Workspace for one scenario: the generated project plus its cargo target dir.
@@ -4503,6 +4593,7 @@ fn compiles_with_no_demo_then_scaffold() {
         name: "no_demo",
         no_demo: true,
         shared_vos: &[],
+        use_cases: &[],
         entities: &[("Persona", &["name:String"])],
     });
 }
@@ -4514,6 +4605,7 @@ fn compiles_with_all_primitive_field_types() {
         name: "primitives",
         no_demo: false,
         shared_vos: &[],
+        use_cases: &[],
         entities: &[(
             "Product",
             &[
@@ -4523,8 +4615,23 @@ fn compiles_with_all_primitive_field_types() {
                 "rate:f64",
                 "released_at:DateTime",
                 "meta:map",
+                // A `Uuid` field (the usual foreign key) was missing from this matrix, which is how
+                // the generators shipped dropping it from every params struct and DTO.
+                "category_id:Uuid",
             ],
         )],
+    });
+}
+
+#[test]
+#[ignore = "slow: compiles and tests a generated project"]
+fn compiles_with_uuid_value_object() {
+    assert_scenario_compiles(&Scenario {
+        name: "uuid_vo",
+        no_demo: false,
+        shared_vos: &[],
+        use_cases: &[],
+        entities: &[("Booking", &["reference:String", "tenant_id:TenantId:Uuid"])],
     });
 }
 
@@ -4535,6 +4642,7 @@ fn compiles_with_option_and_vec_primitives() {
         name: "opt_vec_prim",
         no_demo: false,
         shared_vos: &[],
+        use_cases: &[],
         entities: &[(
             "Article",
             &[
@@ -4555,6 +4663,7 @@ fn compiles_with_plain_and_unique_value_objects() {
         name: "plain_vo",
         no_demo: false,
         shared_vos: &[],
+        use_cases: &[],
         entities: &[(
             "Item",
             &["name:Name:String", "sku:Sku:String!", "weight:Weight:i64"],
@@ -4569,6 +4678,7 @@ fn compiles_with_option_and_vec_value_objects() {
         name: "opt_vec_vo",
         no_demo: false,
         shared_vos: &[],
+        use_cases: &[],
         entities: &[(
             "Persona",
             &[
@@ -4587,6 +4697,7 @@ fn compiles_with_enum_value_object() {
         name: "enum_vo",
         no_demo: false,
         shared_vos: &[],
+        use_cases: &[],
         entities: &[(
             "Order",
             &[
@@ -4604,6 +4715,7 @@ fn compiles_with_shared_value_objects() {
         name: "shared_vo",
         no_demo: false,
         shared_vos: &[("Email", "String"), ("Money", "i64")],
+        use_cases: &[],
         entities: &[("Customer", &["name:String", "email:Email", "credit:Money"])],
     });
 }
@@ -4615,6 +4727,7 @@ fn compiles_with_multiple_entities() {
         name: "multi_entity",
         no_demo: false,
         shared_vos: &[],
+        use_cases: &[],
         entities: &[
             ("Product", &["title:String", "price:i64"]),
             ("Category", &["name:Name:String"]),
@@ -4629,6 +4742,7 @@ fn compiles_with_every_value_object_kind_at_once() {
         name: "vo_kitchen_sink",
         no_demo: false,
         shared_vos: &[("Email", "String")],
+        use_cases: &[],
         entities: &[(
             "Account",
             &[
@@ -4669,21 +4783,10 @@ fn compiles_with_domain_first_layered_flow_and_fields() {
 
     scaffold::run_generate_domain("Invoice", &output, &fields).unwrap();
     scaffold::run_generate_application("Invoice", &output).unwrap();
-    scaffold::run_generate_repository("Invoice", &output, Some("/bin/true")).unwrap();
+    scaffold::run_generate_repository("Invoice", &output).unwrap();
     scaffold::run_generate_presentation("Invoice", &output).unwrap();
 
-    let result = std::process::Command::new("cargo")
-        .args(["test", "--workspace"])
-        .env("CARGO_TARGET_DIR", dir.join("target"))
-        .current_dir(&output)
-        .output()
-        .expect("failed to run cargo test");
-
-    if !result.status.success() {
-        eprintln!("stdout:\n{}", String::from_utf8_lossy(&result.stdout));
-        eprintln!("stderr:\n{}", String::from_utf8_lossy(&result.stderr));
-        panic!("domain-first layered flow with fields failed `cargo test --workspace`");
-    }
+    assert_generated_project_is_clean(&output, &dir, "layered_fields", &[]);
 
     cleanup(&dir);
 }
@@ -4693,7 +4796,7 @@ fn compiles_with_domain_first_layered_flow_and_fields() {
 #[test]
 fn bootstrap_with_entity_without_use_cases_is_syntactically_valid() {
     // An entity can reach puerto.toml with no use cases (hand-edited manifest; `puerto validate`
-    // only warns). Joining an empty use-case list used to emit `EntityApi { , logger: … }`.
+    // only warns). Joining an empty use-case list used to emit `EntityApi { , … }`.
     let entities = vec![puerto_toml::Entity {
         name: "Invoice".to_string(),
         use_cases: vec![],
@@ -4704,11 +4807,11 @@ fn bootstrap_with_entity_without_use_cases_is_syntactically_valid() {
     let content = crate::generators::bootstrap::generate_bootstrap_content(&entities);
 
     assert!(!content.contains("{ ,"));
-    assert!(content.contains("let invoice_api = InvoiceApi { logger: Arc::clone(&logger) };"));
+    assert!(content.contains("let invoice_api = InvoiceApi {};"));
 }
 
 #[test]
-fn bootstrap_with_use_cases_still_lists_them_before_logger() {
+fn bootstrap_with_use_cases_lists_them_in_the_api_initializer() {
     let entities = vec![puerto_toml::Entity {
         name: "Product".to_string(),
         use_cases: vec!["create_product".into(), "get_product".into()],
@@ -4718,9 +4821,7 @@ fn bootstrap_with_use_cases_still_lists_them_before_logger() {
 
     let content = crate::generators::bootstrap::generate_bootstrap_content(&entities);
 
-    assert!(content.contains(
-        "let product_api = ProductApi { create_product, get_product, logger: Arc::clone(&logger) };"
-    ));
+    assert!(content.contains("let product_api = ProductApi { create_product, get_product };"));
 }
 
 // ── T-02: --no-demo keeps the tags module ─────────────────────────────────
@@ -4780,7 +4881,6 @@ fn rescaffold_refuses_to_overwrite_and_writes_nothing() {
     scaffold::run_scaffold(
         "Product",
         &output,
-        Some("/bin/true"),
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Ask,
     )
@@ -4797,7 +4897,6 @@ fn rescaffold_refuses_to_overwrite_and_writes_nothing() {
     let result = scaffold::run_scaffold(
         "Product",
         &output,
-        Some("/bin/true"),
         &[scaffold_test_field("other", "i64")],
         OverwritePolicy::Ask,
     );
@@ -4827,7 +4926,6 @@ fn rescaffold_with_force_overwrites_and_syncs_puerto_toml() {
     scaffold::run_scaffold(
         "Product",
         &output,
-        Some("/bin/true"),
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Ask,
     )
@@ -4836,7 +4934,6 @@ fn rescaffold_with_force_overwrites_and_syncs_puerto_toml() {
     scaffold::run_scaffold(
         "Product",
         &output,
-        Some("/bin/true"),
         &[scaffold_test_field("headline", "String")],
         OverwritePolicy::Force,
     )
@@ -4869,7 +4966,6 @@ fn rescaffold_preserves_use_cases_added_by_generate_use_case() {
     scaffold::run_scaffold(
         "Product",
         &output,
-        Some("/bin/true"),
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Ask,
     )
@@ -4879,7 +4975,6 @@ fn rescaffold_preserves_use_cases_added_by_generate_use_case() {
     scaffold::run_scaffold(
         "Product",
         &output,
-        Some("/bin/true"),
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Force,
     )
@@ -5019,14 +5114,7 @@ fn scaffolding_the_declared_entity_clears_the_drift() {
     let output = generate_project("drift-cleared", &dir).unwrap();
 
     declare_phantom_entity(&output, "Invoice");
-    scaffold::run_scaffold(
-        "Invoice",
-        &output,
-        Some("/bin/true"),
-        &[],
-        OverwritePolicy::Ask,
-    )
-    .unwrap();
+    scaffold::run_scaffold("Invoice", &output, &[], OverwritePolicy::Ask).unwrap();
 
     assert!(validate::run_validate(&output).is_ok());
     assert!(scaffold::run_bootstrap_command(&output, false).is_ok());
@@ -5164,17 +5252,11 @@ fn scaffold_refuses_an_entity_name_that_collides_with_generated_code() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("reserved-name", &dir).unwrap();
 
-    let result = scaffold::run_scaffold(
-        "Logger",
-        &output,
-        Some("/bin/true"),
-        &[],
-        OverwritePolicy::Ask,
-    );
+    let result = scaffold::run_scaffold("Tracing", &output, &[], OverwritePolicy::Ask);
 
     assert!(result.is_err());
     assert!(
-        !output.join("business/src/domain/logger").is_dir(),
+        !output.join("business/src/domain/tracing").is_dir(),
         "nothing may be written for a refused name"
     );
 
@@ -5202,4 +5284,1025 @@ fn model_does_not_reimport_chrono_or_uuid_for_field_types() {
 
     assert_eq!(model.matches("use chrono::{DateTime, Utc};").count(), 1);
     assert_eq!(model.matches("use uuid::Uuid;").count(), 1);
+}
+
+// ── T-13: review fixes — matrix gaps ──────────────────────────────────────
+
+#[test]
+#[ignore = "slow: compiles and tests a generated project"]
+fn compiles_with_enum_vo_as_only_string_field() {
+    // The create test asserted `.value()` on the first String-typed field — an enum VO has
+    // `as_str()`, so an entity whose only String was an enum never compiled its tests.
+    assert_scenario_compiles(&Scenario {
+        name: "enum_only",
+        no_demo: false,
+        shared_vos: &[],
+        use_cases: &[],
+        entities: &[("Ticket", &["state:State:enum:Open/Closed"])],
+    });
+}
+
+#[test]
+#[ignore = "slow: compiles and tests a generated project"]
+fn compiles_with_custom_use_case_after_scaffold() {
+    // `generate use-case` on a scaffolded entity wired the use case into `ProductApi` in
+    // bootstrap.rs while routes.rs had no such field (E0560).
+    assert_scenario_compiles(&Scenario {
+        name: "custom_use_case",
+        no_demo: false,
+        shared_vos: &[],
+        use_cases: &[("Product", "archive_product")],
+        entities: &[("Product", &["title:String", "price:i64"])],
+    });
+}
+
+/// `PUERTO_TEST_DATABASE_URL` — a Postgres server URL **without** a database name, e.g.
+/// `postgres://postgres:pg@localhost:55432`. `make test/db` starts one in Docker and sets it.
+fn test_database_server() -> Option<String> {
+    std::env::var("PUERTO_TEST_DATABASE_URL")
+        .ok()
+        .map(|u| u.trim_end_matches('/').to_string())
+        .filter(|u| !u.is_empty())
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests() {
+    // Nothing in the matrix generated a `--db` project, which is how `HashMap` columns, the Pg
+    // repository test imports, timestamp round-trips and `unique` seeds all shipped broken.
+    let Some(server) = test_database_server() else {
+        eprintln!("PUERTO_TEST_DATABASE_URL not set — skipping (run `make test/db`)");
+        return;
+    };
+    let dir = scenario_workspace("postgres_every_type");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("compile-postgres", &dir).unwrap();
+    crate::generators::project::apply_db_to_new_project(&output).unwrap();
+    apply_scenario(
+        &Scenario {
+            name: "postgres_every_type",
+            no_demo: false,
+            shared_vos: &[("Email", "String")],
+            use_cases: &[("Product", "archive_product")],
+            entities: &[
+                (
+                    "Product",
+                    &[
+                        "title:String",
+                        "sku:String!",
+                        "price:i64!",
+                        "rating:f64",
+                        "active:bool",
+                        "ref_id:Uuid",
+                        "published_at:DateTime",
+                        "summary:opt:String",
+                        "views:opt:i64",
+                        "expires_at:opt:DateTime",
+                        "tags:vec:String",
+                        "scores:vec:i64",
+                        "meta:map",
+                    ],
+                ),
+                (
+                    "Customer",
+                    &[
+                        "email:Email",
+                        "name:Name:String",
+                        "code:Code:String!",
+                        "age:Age:i64",
+                        "joined:Joined:DateTime",
+                        "middle:MiddleName:opt:String",
+                        "labels:Label:vec:String",
+                        "status:Status:enum:Active/Inactive",
+                    ],
+                ),
+                ("Ticket", &["state:State:enum:Open/Closed"]),
+            ],
+        },
+        &output,
+    );
+
+    let database_url = format!("{server}/puerto_matrix");
+    for args in [
+        &["database", "drop", "-y"][..],
+        &["database", "create"][..],
+        &["migrate", "run", "--source", "infrastructure/migrations"][..],
+    ] {
+        let status = std::process::Command::new("sqlx")
+            .args(args)
+            .env("DATABASE_URL", &database_url)
+            .current_dir(&output)
+            .status()
+            .expect("sqlx CLI not found — cargo install sqlx-cli");
+        assert!(status.success(), "`sqlx {}` failed", args.join(" "));
+    }
+
+    assert_generated_project_is_clean(
+        &output,
+        &dir,
+        "postgres_every_type",
+        &[("DATABASE_URL", &database_url), ("SQLX_OFFLINE", "false")],
+    );
+
+    cleanup(&dir);
+}
+
+// ── T-13: review fixes — generate use-case ────────────────────────────────
+
+#[test]
+fn use_case_rejects_an_action_that_is_not_snake_case() {
+    let dir = temp_dir("uc_not_snake");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_use_case_stubs(&dir);
+
+    let result = scaffold::run_use_case("Product", "ArchiveProduct", &dir);
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("snake_case"));
+    assert!(
+        !dir.join("business/src/application/product/ArchiveProduct.rs")
+            .exists()
+    );
+    assert!(
+        !fs::read_to_string(dir.join("puerto.toml"))
+            .unwrap()
+            .contains("ArchiveProduct")
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_refuses_to_replace_a_scaffolded_crud_use_case() {
+    // `generate use-case Item create_item` replaced the working CRUD impl with a `todo!()` stub.
+    let dir = temp_dir("uc_crud_clash");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("uc-crud-clash", &dir).unwrap();
+    scaffold::run_scaffold(
+        "Product",
+        &output,
+        &[scaffold_test_field("title", "String")],
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+    let impl_path = output.join("business/src/application/product/create_product.rs");
+    let before = fs::read_to_string(&impl_path).unwrap();
+
+    let result = scaffold::run_use_case("Product", "create_product", &output);
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("already exists"));
+    assert_eq!(fs::read_to_string(&impl_path).unwrap(), before);
+
+    cleanup(&dir);
+}
+
+#[test]
+fn use_case_adds_its_field_to_the_entity_api_struct() {
+    let dir = temp_dir("uc_routes_field");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("uc-routes-field", &dir).unwrap();
+    scaffold::run_scaffold(
+        "Product",
+        &output,
+        &[scaffold_test_field("title", "String")],
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+
+    scaffold::run_use_case("Product", "archive_product", &output).unwrap();
+
+    let routes = fs::read_to_string(output.join("presentation/src/api/product/routes.rs")).unwrap();
+    assert!(routes.contains("pub archive_product: Arc<ArchiveProductUseCaseImpl>,"));
+    assert!(routes.contains(
+        "use business::application::product::archive_product::ArchiveProductUseCaseImpl;"
+    ));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn rescaffold_with_force_keeps_custom_use_case_in_the_api_struct() {
+    // The custom use case survives in puerto.toml (and so in bootstrap.rs); routes.rs is
+    // rewritten from the CRUD template — it must get the field back or bootstrap stops compiling.
+    let dir = temp_dir("uc_routes_force");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("uc-routes-force", &dir).unwrap();
+    let fields = [scaffold_test_field("title", "String")];
+    scaffold::run_scaffold("Product", &output, &fields, OverwritePolicy::Ask).unwrap();
+    scaffold::run_use_case("Product", "archive_product", &output).unwrap();
+
+    scaffold::run_scaffold("Product", &output, &fields, OverwritePolicy::Force).unwrap();
+
+    let routes = fs::read_to_string(output.join("presentation/src/api/product/routes.rs")).unwrap();
+    assert_eq!(
+        routes
+            .matches("pub archive_product: Arc<ArchiveProductUseCaseImpl>,")
+            .count(),
+        1
+    );
+
+    cleanup(&dir);
+}
+
+// ── T-13: review fixes — value objects, names, migrations ─────────────────
+
+#[test]
+fn value_object_command_rejects_invalid_name_type_and_duplicates() {
+    let dir = temp_dir("vo_cmd_validation");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+
+    assert!(scaffold::run_value_object("email", "String", &dir).is_err());
+    assert!(scaffold::run_value_object("Email", "Strin", &dir).is_err());
+    scaffold::run_value_object("Email", "String", &dir).unwrap();
+    let dup = scaffold::run_value_object("Email", "String", &dir);
+
+    assert!(dup.is_err());
+    assert!(dup.unwrap_err().to_string().contains("already declared"));
+    let config = puerto_toml::read(&dir).unwrap();
+    assert_eq!(config.value_object.len(), 1);
+
+    cleanup(&dir);
+}
+
+#[test]
+fn value_object_command_expands_datetime_shorthand() {
+    let dir = temp_dir("vo_cmd_datetime");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+
+    scaffold::run_value_object("When", "DateTime", &dir).unwrap();
+
+    let config = puerto_toml::read(&dir).unwrap();
+    assert_eq!(config.value_object[0].inner_type, "DateTime<Utc>");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_migration_is_refused_in_a_project_without_database() {
+    let dir = temp_dir("migration_no_db_project");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+
+    let result = scaffold::run_generate_migration("add_stuff", &dir);
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("--db"));
+    assert!(!dir.join("infrastructure/migrations").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn migrations_created_in_the_same_second_get_distinct_versions() {
+    // sqlx keys migrations by the timestamp prefix: two scaffolds within one second produced the
+    // same version and `sqlx migrate run` refused with "previously applied but modified".
+    let dir = temp_dir("migration_same_second");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    for name in ["create_a_table", "create_b_table", "create_c_table"] {
+        scaffold::run_migration(name, &dir, Some("SELECT 1;\n")).unwrap();
+    }
+
+    let mut versions: Vec<String> = fs::read_dir(dir.join("infrastructure/migrations"))
+        .unwrap()
+        .flatten()
+        .map(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .split('_')
+                .next()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    versions.sort();
+    versions.dedup();
+    assert_eq!(versions.len(), 3, "versions must be unique: {versions:?}");
+    assert!(
+        versions
+            .iter()
+            .all(|v| v.len() == 14 && v.chars().all(|c| c.is_ascii_digit()))
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn migration_file_carries_the_given_body() {
+    let dir = temp_dir("migration_body");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    scaffold::run_migration("create_x_table", &dir, Some("CREATE TABLE xs ();\n")).unwrap();
+
+    let entry = fs::read_dir(dir.join("infrastructure/migrations"))
+        .unwrap()
+        .flatten()
+        .next()
+        .unwrap();
+    assert!(
+        entry
+            .file_name()
+            .to_string_lossy()
+            .ends_with("_create_x_table.sql")
+    );
+    assert!(
+        fs::read_to_string(entry.path())
+            .unwrap()
+            .contains("CREATE TABLE xs ();")
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_rejects_sql_reserved_field_names_in_a_database_project() {
+    let dir = temp_dir("sql_reserved_db");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_with_project_db(&dir);
+
+    let result = scaffold::run_scaffold(
+        "Product",
+        &dir,
+        &[scaffold_test_field("desc", "String")],
+        OverwritePolicy::Ask,
+    );
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("SQL"));
+    assert!(!dir.join("business/src/domain/product").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_accepts_sql_reserved_field_names_without_a_database() {
+    let dir = temp_dir("sql_reserved_no_db");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
+
+    let result = scaffold::run_scaffold(
+        "Product",
+        &dir,
+        &[scaffold_test_field("order", "String")],
+        OverwritePolicy::Ask,
+    );
+
+    assert!(result.is_ok(), "{result:?}");
+    cleanup(&dir);
+}
+
+#[test]
+fn validate_rejects_sql_reserved_field_names_in_a_database_project() {
+    let dir = temp_dir("validate_sql_reserved");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("puerto.toml"),
+        r#"[project]
+name = "my-app"
+db = true
+
+[[entity]]
+name = "Product"
+use_cases = ["create_product"]
+
+[[entity.fields]]
+name = "user"
+type = "String"
+"#,
+    )
+    .unwrap();
+
+    let result = validate::run_validate(&dir);
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("SQL"));
+    cleanup(&dir);
+}
+
+#[test]
+fn duplicate_field_names_are_rejected() {
+    let fields = vec![
+        scaffold_test_field("name", "String"),
+        scaffold_test_field("name", "i64"),
+    ];
+
+    let result = crate::validation::validate_unique_field_names(&fields);
+
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("'name'"));
+}
+
+#[test]
+fn project_name_must_be_a_valid_package_name() {
+    use crate::commands::new::validate_project_name;
+    assert!(validate_project_name("Bad Name").is_err());
+    assert!(validate_project_name("MyApp").is_err());
+    assert!(validate_project_name("1app").is_err());
+    assert!(validate_project_name("my-app").is_ok());
+    assert!(validate_project_name("my_app2").is_ok());
+}
+
+// ── T-13: review fixes — generated content ────────────────────────────────
+
+#[test]
+fn create_impl_logs_start_and_done_without_the_payload() {
+    let fields = [scaffold_test_field("title", "String")];
+
+    let content = crate::generators::application::generate_create_use_case_impl(
+        "Product",
+        "product",
+        &fields,
+        &[],
+    );
+
+    assert!(
+        content.contains("tracing::info!(\"create_product: start\");"),
+        "{content}"
+    );
+    assert!(content.contains("tracing::info!(id = %entity.id, \"create_product: done\");"));
+    // The payload is not logged: a field value is user data (and often personal data).
+    assert!(!content.contains("Creating product"), "{content}");
+}
+
+#[test]
+fn create_test_asserts_an_enum_vo_with_as_str() {
+    let fields = [puerto_toml::parse_field_arg("state:State:enum:Open/Closed").unwrap()];
+
+    let content = crate::generators::application::generate_create_use_case_impl(
+        "Ticket",
+        "ticket",
+        &fields,
+        &[],
+    );
+
+    assert!(!content.contains("state.value()"), "{content}");
+}
+
+#[test]
+fn unique_index_ignores_soft_deleted_rows() {
+    // Soft-delete keeps the row: a plain unique index made a deleted SKU impossible to reuse.
+    let mut sku = scaffold_test_field("sku", "String");
+    sku.unique = true;
+
+    let sql = crate::generators::infrastructure::create_table_sql("product", &[sku]);
+
+    assert!(
+        sql.contains(
+            "CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;"
+        )
+    );
+}
+
+#[test]
+fn db_entity_maps_hashmap_columns_through_sqlx_json() {
+    let fields = [scaffold_test_field("meta", "HashMap<String, String>")];
+
+    let entity = crate::generators::infrastructure::generate_infra_entity(
+        "Product",
+        "product",
+        &fields,
+        &[],
+    );
+    let repo = crate::generators::infrastructure::generate_crud_infra_db_repository(
+        "Product",
+        "product",
+        &fields,
+        &[],
+    );
+
+    assert!(entity.contains("use std::collections::HashMap;"));
+    assert!(entity.contains("pub meta: Json<HashMap<String, String>>,"));
+    assert!(
+        repo.contains(r#"meta as \"meta: Json<HashMap<String, String>>\""#),
+        "{repo}"
+    );
+}
+
+#[test]
+fn db_project_enables_sqlx_json_and_commits_the_offline_cache() {
+    let dir = temp_dir("db_project_sqlx");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("db-project-sqlx", &dir).unwrap();
+    crate::generators::project::apply_base_env(&output).unwrap();
+
+    crate::generators::project::apply_db_to_new_project(&output).unwrap();
+
+    let infra = fs::read_to_string(output.join("infrastructure/Cargo.toml")).unwrap();
+    assert!(infra.contains("\"json\""), "{infra}");
+    // `.cargo/config.toml` sets SQLX_OFFLINE=true: an ignored `.sqlx/` means no clone builds.
+    let gitignore = fs::read_to_string(output.join(".gitignore")).unwrap();
+    assert!(!gitignore.contains(".sqlx"), "{gitignore}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn pg_repository_tests_import_what_their_seed_names() {
+    let fields = [
+        scaffold_test_field("published_at", "DateTime<Utc>"),
+        puerto_toml::parse_field_arg("status:Status:enum:Active/Inactive").unwrap(),
+    ];
+
+    let repo = crate::generators::infrastructure::generate_crud_infra_db_repository(
+        "Product",
+        "product",
+        &fields,
+        &[],
+    );
+
+    assert!(repo.contains("use business::domain::product::value_objects::Status;"));
+    assert!(
+        !repo.contains("Utc::now()"),
+        "a ns-precision timestamp cannot round-trip Postgres"
+    );
+}
+
+#[test]
+fn pg_repository_seed_varies_unique_fields() {
+    let mut sku = scaffold_test_field("sku", "String");
+    sku.unique = true;
+
+    let repo = crate::generators::infrastructure::generate_crud_infra_db_repository(
+        "Product",
+        "product",
+        &[sku],
+        &[],
+    );
+
+    assert!(repo.contains("sku: Uuid::new_v4().to_string(),"), "{repo}");
+}
+
+// ── T-14: document-api conventions (T-31…T-38, logger removal) ────────────
+
+/// Every file under `base` (skipping build output), as `(relative path, content)`.
+fn project_files(base: &Path) -> Vec<(String, String)> {
+    fn walk(dir: &Path, base: &Path, out: &mut Vec<(String, String)>) {
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name == "target" || name == ".git" {
+                continue;
+            }
+            if path.is_dir() {
+                walk(&path, base, out);
+            } else if let Ok(content) = fs::read_to_string(&path) {
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+                out.push((rel, content));
+            }
+        }
+    }
+    let mut out = vec![];
+    walk(base, base, &mut out);
+    out
+}
+
+/// A generated project with the Greeting demo plus a scaffolded entity carrying a VO.
+fn project_with_product(name: &str, db: bool) -> (PathBuf, PathBuf) {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project(&name.replace('_', "-"), &dir).unwrap();
+    crate::generators::project::apply_base_env(&output).unwrap();
+    if db {
+        crate::generators::project::apply_db_to_new_project(&output).unwrap();
+    }
+    let fields = [
+        scaffold_test_field("title", "String"),
+        puerto_toml::parse_field_arg("status:Status:enum:Active/Archived").unwrap(),
+    ];
+    scaffold::run_scaffold("Product", &output, &fields, OverwritePolicy::Ask).unwrap();
+    (dir, output)
+}
+
+#[test]
+fn generated_project_logs_with_tracing_and_has_no_logger_port() {
+    // document-api's convention: `tracing` is already a facade, so an injected `LoggerTrait` only
+    // added a field to every use case and repository and a mock helper to every test module.
+    let (dir, output) = project_with_product("no_logger_port", true);
+    scaffold::run_use_case("Product", "archive_product", &output).unwrap();
+
+    for (path, content) in project_files(&output) {
+        if !path.ends_with(".rs") {
+            continue;
+        }
+        assert!(
+            !content.contains("LoggerTrait"),
+            "{path} still names LoggerTrait"
+        );
+        assert!(
+            !content.contains("MockLogger"),
+            "{path} still names MockLogger"
+        );
+        assert!(
+            !content.contains("logger:"),
+            "{path} still has a logger field"
+        );
+    }
+    assert!(!output.join("business/src/domain/logger.rs").exists());
+    assert!(!output.join("infrastructure/src/logger.rs").exists());
+    let create =
+        fs::read_to_string(output.join("business/src/application/product/create_product.rs"))
+            .unwrap();
+    assert!(create.contains("tracing::info!"), "{create}");
+    let business_toml = fs::read_to_string(output.join("business/Cargo.toml")).unwrap();
+    assert!(business_toml.contains("tracing"), "{business_toml}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn no_demo_project_has_no_logger_module() {
+    let dir = temp_dir("no_demo_no_logger");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("no-demo-no-logger", &dir).unwrap();
+
+    scaffold::apply_no_demo(&output).unwrap();
+
+    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    assert!(!lib.contains("logger"), "{lib}");
+    let infra = fs::read_to_string(output.join("infrastructure/src/lib.rs")).unwrap();
+    assert!(!infra.contains("logger"), "{infra}");
+    cleanup(&dir);
+}
+
+// ── T-37: error responses ─────────────────────────────────────────────────
+
+#[test]
+fn error_mapper_names_the_code_and_maps_validation_to_422() {
+    let fields = [
+        scaffold_test_field("title", "String"),
+        puerto_toml::parse_field_arg("status:Status:enum:Active/Archived").unwrap(),
+    ];
+    let ctx =
+        crate::generators::presentation::build_error_mapper_ctx("Product", "product", &fields);
+
+    let mapper = crate::generators::render::render("presentation/error_mapper.tera", &ctx).unwrap();
+
+    assert!(mapper.contains("ErrorResponse::from_code"), "{mapper}");
+    assert!(!mapper.contains("\"product_error\""), "{mapper}");
+    assert!(
+        mapper.contains("ProductError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY")
+    );
+    assert!(mapper.contains("ProductError::InvalidStatus => StatusCode::UNPROCESSABLE_ENTITY"));
+    // One test per arm, so a status can't drift unnoticed.
+    for test in [
+        "should_map_validation_error_to_422_with_its_code",
+        "should_map_not_found_to_404_with_its_code",
+        "should_map_duplicate_to_409_with_its_code",
+        "should_map_repository_error_to_500_with_its_code",
+        "should_map_invalid_status_to_422_with_its_code",
+    ] {
+        assert!(mapper.contains(test), "missing {test}:\n{mapper}");
+    }
+}
+
+#[test]
+fn responses_offer_422_and_no_longer_map_400() {
+    let ctx = crate::generators::presentation::build_simple_ctx("Product", "product");
+
+    let responses =
+        crate::generators::render::render("presentation/responses_crud.tera", &ctx).unwrap();
+
+    assert!(responses.contains("#[oai(status = 422)]"));
+    assert!(
+        responses.contains("StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error)")
+    );
+    assert!(!responses.contains("BAD_REQUEST"), "{responses}");
+}
+
+#[test]
+fn shared_error_response_is_built_from_the_code() {
+    let dir = temp_dir("error_rs_from_code");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("error-rs-from-code", &dir).unwrap();
+
+    let error_rs = fs::read_to_string(output.join("presentation/src/api/error.rs")).unwrap();
+
+    assert!(error_rs.contains("pub fn from_code("), "{error_rs}");
+    cleanup(&dir);
+}
+
+// ── T-38: health probes + graceful shutdown ───────────────────────────────
+
+#[test]
+fn generated_project_serves_liveness_and_readiness_and_shuts_down_gracefully() {
+    let (dir, output) = project_with_product("health_no_db", false);
+
+    let bootstrap =
+        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let main = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
+
+    assert!(
+        bootstrap.contains(".at(\"/health\", get(crate::health::liveness))"),
+        "{bootstrap}"
+    );
+    assert!(bootstrap.contains("\"/health/ready\""), "{bootstrap}");
+    assert!(main.contains("run_with_graceful_shutdown"), "{main}");
+    assert!(main.contains("mod health;"), "{main}");
+    assert!(output.join("presentation/src/health.rs").exists());
+    cleanup(&dir);
+}
+
+#[test]
+fn readiness_pings_the_database_in_a_db_project() {
+    let (dir, output) = project_with_product("health_db", true);
+
+    let bootstrap =
+        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let db_rs = fs::read_to_string(output.join("infrastructure/src/db.rs")).unwrap();
+
+    assert!(
+        bootstrap.contains("infrastructure::db::ping(&pool)"),
+        "{bootstrap}"
+    );
+    assert!(db_rs.contains("pub async fn ping("), "{db_rs}");
+    cleanup(&dir);
+}
+
+// ── T-35: toolchain + edition ─────────────────────────────────────────────
+
+#[test]
+fn generated_project_pins_its_toolchain_and_uses_edition_2024() {
+    // The clippy lints the generated `make lint` enforces change between Rust versions: without a
+    // pin, whether a fresh project passes its own lint depends on the machine.
+    let dir = temp_dir("toolchain_pin");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("toolchain-pin", &dir).unwrap();
+
+    let toolchain = fs::read_to_string(output.join("rust-toolchain.toml")).unwrap();
+    assert!(toolchain.contains("channel = \"1.95.0\""), "{toolchain}");
+    assert!(toolchain.contains("clippy") && toolchain.contains("rustfmt"));
+    for krate in ["business", "infrastructure", "presentation"] {
+        let manifest = fs::read_to_string(output.join(format!("{krate}/Cargo.toml"))).unwrap();
+        assert!(
+            manifest.contains("edition = \"2024\""),
+            "{krate}: {manifest}"
+        );
+    }
+    let workspace = fs::read_to_string(output.join("Cargo.toml")).unwrap();
+    assert!(workspace.contains("resolver = \"3\""), "{workspace}");
+    cleanup(&dir);
+}
+
+// ── T-31 / T-32 / T-33: AI rules shipped to generated projects ────────────
+
+#[test]
+fn generated_agent_rules_never_describe_mod_rs_files() {
+    // The per-crate AGENTS.md drew `mod.rs` trees — the one thing the module convention forbids —
+    // and nothing tested them. An agent in a generated project was told to create them.
+    let dir = temp_dir("agents_no_mod_rs");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("agents-no-mod-rs", &dir).unwrap();
+
+    for (path, content) in project_files(&output) {
+        if !path.ends_with("AGENTS.md") {
+            continue;
+        }
+        for line in content.lines() {
+            if line.contains("mod.rs") {
+                assert!(
+                    line.to_lowercase().contains("no `mod.rs`"),
+                    "{path} describes a mod.rs file: {line}"
+                );
+            }
+        }
+        assert!(
+            !content.contains("LoggerTrait"),
+            "{path} documents the removed logger port"
+        );
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn generated_project_has_a_root_entry_point_for_agents() {
+    let dir = temp_dir("agents_root");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("agents-root", &dir).unwrap();
+
+    let claude = fs::read_to_string(output.join("CLAUDE.md")).unwrap();
+    let agents = fs::read_to_string(output.join("AGENTS.md")).unwrap();
+
+    assert_eq!(claude.trim(), "@AGENTS.md");
+    for must in [
+        "puerto generate",
+        "generated/bootstrap.rs",
+        "Tier 1",
+        "make lint",
+        "one commit",
+        "business/AGENTS.md",
+    ] {
+        assert!(agents.contains(must), "root AGENTS.md misses '{must}'");
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn template_bootstrap_is_exactly_what_the_generator_writes() {
+    // `puerto new` copies the template's bootstrap.rs verbatim — it is not regenerated. When the
+    // generator changed (the logger removal), the copy kept wiring a `TracingLogger` that no longer
+    // existed, and every fresh project failed to compile.
+    let dir = temp_dir("template_bootstrap_drift");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("template-bootstrap-drift", &dir).unwrap();
+    let config = puerto_toml::read(&output).unwrap();
+
+    let shipped =
+        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let tags = fs::read_to_string(output.join("presentation/src/api/tags.rs")).unwrap();
+
+    assert_eq!(
+        shipped,
+        crate::generators::bootstrap::generate_bootstrap_content(&config.entity),
+        "template/presentation/src/generated/bootstrap.rs is stale — regenerate it"
+    );
+    assert_eq!(
+        tags,
+        crate::generators::bootstrap::generate_tags_content(&config.entity),
+        "template/presentation/src/api/tags.rs is stale — regenerate it"
+    );
+    cleanup(&dir);
+}
+
+// ── T-36: patchers — exact output (killed mutants) ────────────────────────
+
+#[test]
+fn api_rs_patch_separates_declarations_when_the_file_lacks_a_trailing_newline() {
+    let dir = temp_dir("api_rs_no_newline");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("presentation/src")).unwrap();
+    fs::write(dir.join("presentation/src/api.rs"), "pub mod error;").unwrap();
+
+    crate::patchers::api_rs::patch_api_rs(&dir, "product").unwrap();
+
+    assert_eq!(
+        fs::read_to_string(dir.join("presentation/src/api.rs")).unwrap(),
+        "pub mod error;\npub mod tags;\npub mod product;\n"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn insert_before_block_end_skips_nested_blocks() {
+    let source = "pub mod domain {\n    pub mod greeting {\n        pub mod model;\n    }\n}\n";
+
+    let patched =
+        crate::patchers::lib_rs::insert_before_block_end(source, "domain", "    pub mod shared;\n")
+            .unwrap();
+
+    assert_eq!(
+        patched,
+        "pub mod domain {\n    pub mod greeting {\n        pub mod model;\n    }\n    pub mod shared;\n}\n"
+    );
+}
+
+#[test]
+fn infra_lib_patch_appends_on_its_own_line_and_declares_db_once() {
+    let dir = temp_dir("infra_lib_patch");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("infrastructure/src")).unwrap();
+    fs::write(dir.join("infrastructure/src/lib.rs"), "pub mod db;").unwrap();
+
+    crate::patchers::lib_rs::patch_infra_lib(&dir, "product", true).unwrap();
+
+    assert_eq!(
+        fs::read_to_string(dir.join("infrastructure/src/lib.rs")).unwrap(),
+        "pub mod db;\npub mod product {\n    pub mod entity;\n    pub mod repository;\n}\n"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn value_objects_module_is_declared_per_entity_even_when_another_entity_has_one() {
+    let dir = temp_dir("vo_module_per_entity");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("business/src")).unwrap();
+    fs::write(
+        dir.join("business/src/lib.rs"),
+        "pub mod domain {\n    pub mod order {\n        pub mod model;\n        pub mod value_objects;\n    }\n    pub mod product {\n        pub mod model;\n    }\n}\n",
+    )
+    .unwrap();
+
+    crate::patchers::lib_rs::patch_business_lib_value_objects(&dir, "product").unwrap();
+    crate::patchers::lib_rs::patch_business_lib_value_objects(&dir, "product").unwrap();
+
+    let lib = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+    let product_block = &lib[lib.find("pub mod product {").unwrap()..];
+    assert_eq!(
+        product_block.matches("pub mod value_objects;").count(),
+        1,
+        "{lib}"
+    );
+    assert_eq!(lib.matches("pub mod value_objects;").count(), 2, "{lib}");
+    cleanup(&dir);
+}
+
+#[test]
+fn routes_patch_appends_the_field_as_the_last_member_of_the_api_struct() {
+    let dir = temp_dir("routes_patch_position");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("presentation/src/api/product")).unwrap();
+    fs::write(
+        dir.join("presentation/src/api/product/routes.rs"),
+        "use std::sync::Arc;\n\npub struct ProductApi {\n    pub get_product: Arc<GetProductUseCaseImpl>,\n}\n\nimpl ProductApi {}\n",
+    )
+    .unwrap();
+
+    crate::patchers::routes_rs::patch_routes_use_cases(
+        &dir,
+        "Product",
+        "product",
+        &["archive_product".to_string()],
+    )
+    .unwrap();
+
+    assert_eq!(
+        fs::read_to_string(dir.join("presentation/src/api/product/routes.rs")).unwrap(),
+        "use business::application::product::archive_product::ArchiveProductUseCaseImpl;\n\
+         use std::sync::Arc;\n\n\
+         pub struct ProductApi {\n    pub get_product: Arc<GetProductUseCaseImpl>,\n    \
+         /// Wired by bootstrap.rs. Call it from an endpoint in the `#[OpenApi]` impl below.\n    \
+         #[allow(dead_code)]\n    pub archive_product: Arc<ArchiveProductUseCaseImpl>,\n}\n\n\
+         impl ProductApi {}\n"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn api_rs_patch_adds_no_blank_lines_to_a_well_formed_or_empty_file() {
+    let dir = temp_dir("api_rs_well_formed");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("presentation/src")).unwrap();
+    let api_rs = dir.join("presentation/src/api.rs");
+
+    fs::write(&api_rs, "pub mod error;\n").unwrap();
+    crate::patchers::api_rs::patch_api_rs(&dir, "product").unwrap();
+    assert_eq!(
+        fs::read_to_string(&api_rs).unwrap(),
+        "pub mod error;\npub mod tags;\npub mod product;\n"
+    );
+
+    fs::write(&api_rs, "pub mod error;\npub mod tags;").unwrap();
+    crate::patchers::api_rs::patch_api_rs(&dir, "product").unwrap();
+    assert_eq!(
+        fs::read_to_string(&api_rs).unwrap(),
+        "pub mod error;\npub mod tags;\npub mod product;\n"
+    );
+
+    fs::write(&api_rs, "").unwrap();
+    crate::patchers::api_rs::patch_api_rs(&dir, "product").unwrap();
+    assert_eq!(
+        fs::read_to_string(&api_rs).unwrap(),
+        "pub mod tags;\npub mod product;\n"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn value_objects_check_stops_at_the_end_of_its_own_entity_block() {
+    // The entity being patched comes first; a later entity's `value_objects` must not count.
+    let dir = temp_dir("vo_module_block_end");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("business/src")).unwrap();
+    fs::write(
+        dir.join("business/src/lib.rs"),
+        "pub mod domain {\n    pub mod product {\n        pub mod model;\n    }\n    pub mod order {\n        pub mod value_objects;\n    }\n}\n",
+    )
+    .unwrap();
+
+    crate::patchers::lib_rs::patch_business_lib_value_objects(&dir, "product").unwrap();
+
+    let lib = fs::read_to_string(dir.join("business/src/lib.rs")).unwrap();
+    let product_block =
+        &lib[lib.find("pub mod product {").unwrap()..lib.find("pub mod order {").unwrap()];
+    assert!(product_block.contains("pub mod value_objects;"), "{lib}");
+    cleanup(&dir);
 }

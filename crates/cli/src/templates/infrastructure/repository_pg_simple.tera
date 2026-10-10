@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -9,25 +7,23 @@ use business::domain::{{ snake }}::{
     model::{{ pascal }},
     repository::{{ pascal }}RepositoryTrait,
 };
-use business::domain::logger::LoggerTrait;
 
 use super::entity::{{ pascal }}Db;
 
 pub struct Pg{{ pascal }}Repository {
     pub pool: PgPool,
-    logger: Arc<dyn LoggerTrait>,
 }
 
 impl Pg{{ pascal }}Repository {
-    pub fn new(pool: PgPool, logger: Arc<dyn LoggerTrait>) -> Self {
-        Self { pool, logger }
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 }
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<{{ pascal }}>, {{ pascal }}Error> {
-        self.logger.debug(&format!("find_by_id: {id}"));
+        tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             {{ pascal }}Db,
             "SELECT id, created_at, updated_at, deleted, deleted_at, name
@@ -37,7 +33,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
-            self.logger.error(&format!("find_by_id error: {e}"));
+            tracing::error!(error = %e, "find_by_id failed");
             {{ pascal }}Error::RepositoryError
         })?;
 
@@ -45,7 +41,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
     }
 
     async fn save(&self, entity: &{{ pascal }}) -> Result<(), {{ pascal }}Error> {
-        self.logger.debug(&format!("save: {}", entity.id));
+        tracing::debug!(id = %entity.id, "save");
         let db = {{ pascal }}Db::from(entity);
         sqlx::query!(
             "INSERT INTO {{ snake }}s (id, created_at, updated_at, deleted, deleted_at, name)
@@ -62,12 +58,13 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            if let Some(db_err) = e.as_database_error() {
-                if db_err.code().map_or(false, |c| c == "23505") {
-                    return {{ pascal }}Error::Duplicate;
-                }
+            // 23505 = unique_violation: a `unique` field already taken.
+            if let Some(db_err) = e.as_database_error()
+                && db_err.code().is_some_and(|c| c == "23505")
+            {
+                return {{ pascal }}Error::Duplicate;
             }
-            self.logger.error(&format!("save error: {e}"));
+            tracing::error!(error = %e, "save failed");
             {{ pascal }}Error::RepositoryError
         })?;
         Ok(())
@@ -78,18 +75,10 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
 mod integration_tests {
     use super::*;
     use business::domain::{{ snake }}::model::{{ pascal }}Props;
-    use std::sync::Arc;
 
-    struct TestLogger;
-    impl business::domain::logger::LoggerTrait for TestLogger {
-        fn info(&self, _: &str) {}
-        fn warn(&self, _: &str) {}
-        fn error(&self, _: &str) {}
-        fn debug(&self, _: &str) {}
-    }
 
     fn test_repo(pool: PgPool) -> Pg{{ pascal }}Repository {
-        Pg{{ pascal }}Repository::new(pool, Arc::new(TestLogger))
+        Pg{{ pascal }}Repository::new(pool)
     }
 
     async fn seed(pool: &PgPool, name: &str) -> {{ pascal }} {

@@ -89,7 +89,10 @@ fn add_env_to_gitignore(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
             fs::write(&path, src)?;
         }
     } else {
-        write_file(&path, "/target\n.env\n/.sqlx\n")?;
+        // `.sqlx/` is deliberately *not* ignored: `--db` projects compile with SQLX_OFFLINE=true,
+        // so the query cache written by `make sqlx/prepare` must be committed for a clone (or CI)
+        // to build without a live database.
+        write_file(&path, "/target\n.env\n")?;
     }
     Ok(())
 }
@@ -141,7 +144,7 @@ fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>>
         src.push('\n');
     }
     src.push_str(
-        "\n[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\"]\n",
+        "\n[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\", \"json\"]\n",
     );
     fs::write(&path, src)?;
     Ok(())
@@ -229,14 +232,19 @@ pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let _ = fs::remove_dir_all(base.join("presentation/src/api/greeting"));
     let _ = fs::remove_file(base.join("presentation/src/api/greeting.rs"));
 
-    // Minimal business lib.rs: keep domain::logger, empty application block.
+    // Minimal business lib.rs: empty domain and application blocks for the patchers to fill.
     fs::write(
         base.join("business/src/lib.rs"),
-        "pub mod domain {\n    pub mod logger;\n}\npub mod application {\n}\n",
+        "pub mod domain {\n}\npub mod application {\n}\n",
     )?;
 
-    // Minimal infrastructure lib.rs: logger only.
-    fs::write(base.join("infrastructure/src/lib.rs"), "pub mod logger;\n")?;
+    // Minimal infrastructure lib.rs: no adapters yet. A `--db` project keeps its `db` module.
+    let infra_lib = if crate::puerto_toml::read(base).is_ok_and(|c| c.project.db) {
+        "pub mod db;\n"
+    } else {
+        ""
+    };
+    fs::write(base.join("infrastructure/src/lib.rs"), infra_lib)?;
 
     // Minimal presentation api.rs. `tags` must survive the demo strip: `regenerate_bootstrap`
     // always writes `api/tags.rs`, and every generated `routes.rs` does

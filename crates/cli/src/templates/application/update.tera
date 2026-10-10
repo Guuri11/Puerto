@@ -9,36 +9,28 @@ use crate::domain::{{ snake }}::{
     repository::{{ pascal }}RepositoryTrait,
     use_cases::update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
 };
-use crate::domain::logger::LoggerTrait;
 
 pub struct Update{{ pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
-    pub logger: Arc<dyn LoggerTrait>,
 }
 
 #[async_trait]
 impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCaseImpl {
     async fn execute(&self, params: Update{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
-        self.logger.info(&format!("Updating {{ snake }}: {}", params.id));
+        tracing::info!(id = %params.id, "update_{{ snake }}: start");
         let mut entity = self
             .repository
             .find_by_id(params.id)
             .await
-            .map_err(|e| {
-                self.logger.error(&e.to_string());
-                e
-            })?
+            .inspect_err(|e| tracing::error!(error = %e, "update_{{ snake }}: repository failed"))?
             .ok_or_else(|| {
                 let err = {{ pascal }}Error::NotFound;
-                self.logger.warn(&err.to_string());
+                tracing::warn!(error = %err, "update_{{ snake }}: rejected");
                 err
             })?;
 {% if validations %}{{ validations }}{% endif %}{% if vo_constructions %}{{ vo_constructions }}{% endif %}{{ assignments }}
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.map_err(|e| {
-            self.logger.error(&e.to_string());
-            e
-        })?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_{{ snake }}: repository failed"))?;
         Ok(entity)
     }
 }
@@ -50,17 +42,7 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
-    use crate::domain::logger::mocks::MockLogger;
-    use uuid::Uuid;
-{{ test_vo_imports }}
-    fn silent_logger() -> MockLogger {
-        let mut mock = MockLogger::new();
-        mock.expect_info().returning(|_| ());
-        mock.expect_warn().returning(|_| ());
-        mock.expect_error().returning(|_| ());
-        mock.expect_debug().returning(|_| ());
-        mock
-    }
+{{ test_imports }}
 
     #[tokio::test]
     async fn should_update_{{ snake }}_when_params_are_valid() {
@@ -76,7 +58,6 @@ mod tests {
         mock_repo.expect_save().returning(|_| Ok(()));
         let use_case = Update{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         // Act
@@ -97,7 +78,6 @@ mod tests {
         mock_repo.expect_find_by_id().returning(|_| Ok(None));
         let use_case = Update{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         // Act
@@ -125,7 +105,6 @@ mod tests {
             .returning(move |_| Ok(Some(entity.clone())));
         let use_case = Update{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-            logger: Arc::new(silent_logger()),
         };
 
         // Act

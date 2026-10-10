@@ -1,0 +1,15 @@
+# cargo-mutants configuration — `make test/mutation`.
+#
+# Scoped to Puerto's pure logic, where a surviving mutant is a rule that can break with every test
+# still green: name/field validation, migration versioning, the type registry and the patchers
+# that rewrite user files. Template rendering is covered by the compile matrix (`make test/full`),
+# which mutation testing cannot run per-mutant in reasonable time.
+examine_globs = [
+    "crates/cli/src/validation.rs",
+    "crates/cli/src/generators/migration.rs",
+    "crates/cli/src/generators/types.rs",
+    "crates/cli/src/generators/naming.rs",
+    "crates/cli/src/patchers/*.rs",
+]
+# The compile matrix is `#[ignore]`d; a mutant run uses the fast structural suite only.
+test_tool = "nextest"

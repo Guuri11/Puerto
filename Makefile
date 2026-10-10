@@ -1,4 +1,4 @@
-.PHONY: help run build install setup test test/full lint check format format/fix audit audit/fix
+.PHONY: help run build install setup test test/full test/db test/mutation lint check format format/fix audit audit/fix
 
 CARGO := cargo
 
@@ -31,6 +31,7 @@ install: ## Install puerto to ~/.cargo/bin
 setup: ## Install required dev tools (run once after cloning)
 	@echo "${CYAN}Setting up development environment...${NC}"
 	$(CARGO) install cargo-nextest --locked
+	$(CARGO) install cargo-mutants --locked
 
 test: ## Fast structural tests
 	@echo "${YELLOW}Running structural tests...${NC}"
@@ -39,6 +40,20 @@ test: ## Fast structural tests
 test/full: ## Slow test: generates real projects, compiles them, runs their internal tests
 	@echo "${YELLOW}Running compile matrix (generates + compiles + tests real projects)...${NC}"
 	$(CARGO) nextest run --workspace --run-ignored all --test-threads 3
+
+test/db: ## Slow test: generated --db project against a throwaway Postgres (needs Docker + sqlx-cli)
+	@echo "${YELLOW}Starting throwaway Postgres on :55432...${NC}"
+	@docker run -d --rm --name puerto-test-pg -e POSTGRES_PASSWORD=pg -p 55432:5432 postgres:16-alpine >/dev/null
+	@until docker exec puerto-test-pg pg_isready -U postgres -q; do sleep 1; done
+	PUERTO_TEST_DATABASE_URL=postgres://postgres:pg@localhost:55432 \
+		$(CARGO) nextest run --workspace --run-ignored all -E 'test(postgres)'; \
+		status=$$?; docker stop puerto-test-pg >/dev/null; exit $$status
+
+test/mutation: ## Slow: mutation testing on Puerto's pure logic (see .cargo/mutants.toml)
+	@echo "${YELLOW}Running cargo-mutants...${NC}"
+	@mkdir -p target/mutants-tmp
+	# Each job copies the tree and builds it: on a tmpfs /tmp that runs out of space mid-link.
+	TMPDIR=$(CURDIR)/target/mutants-tmp $(CARGO) mutants --workspace --jobs 3
 
 lint: ## Run clippy with -D warnings
 	@echo "${CYAN}Linting code...${NC}"

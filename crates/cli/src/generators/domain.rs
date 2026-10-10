@@ -6,7 +6,7 @@ use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::render;
 use crate::generators::types::{
     field_rust_type, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
-    resolve_type, vo_import_path, vo_inner_type,
+    literal_import, resolve_type, vo_import_path, vo_inner_type,
 };
 use crate::patchers::lib_rs::{
     patch_business_lib_domain_crud, patch_business_lib_shared, patch_business_lib_value_objects,
@@ -19,6 +19,10 @@ use crate::generators::effective_fields;
 /// Imports `domain/model.tera` writes itself, for the always-present system fields. Field-derived
 /// imports matching these must not be emitted again.
 const MODEL_TEMPLATE_IMPORTS: &[&str] = &["use chrono::{DateTime, Utc};", "use uuid::Uuid;"];
+
+/// Imports `domain/use_case_update.tera` writes itself, for the always-present `id: Uuid` param.
+/// A `Uuid` *field* resolves to the same import — emitting it again is a duplicate import (E0252).
+const UPDATE_USE_CASE_TEMPLATE_IMPORTS: &[&str] = &["use uuid::Uuid;"];
 
 /// A single `EntityProps` field literal, e.g. `            tags: vec![],`.
 ///
@@ -222,7 +226,7 @@ pub fn generate_model(
             format!("{snake}.invalid_{snake_vo}")
         };
         validation_tests.push(format!(
-            "    #[test]\n    fn should_reject_{snake}_when_{snake_vo}_is_invalid() {{\n        let result = {vo}::from_str(\"InvalidVariant\");\n        assert!(result.is_err());\n        assert_eq!(\n            result.unwrap_err().to_string(),\n            \"{error_str}\"\n        );\n    }}"
+            "    #[test]\n    fn should_reject_{snake}_when_{snake_vo}_is_invalid() {{\n        let result = \"InvalidVariant\".parse::<{vo}>();\n        assert!(result.is_err());\n        assert_eq!(\n            result.unwrap_err().to_string(),\n            \"{error_str}\"\n        );\n    }}"
         ));
     }
 
@@ -255,14 +259,22 @@ pub fn generate_mother(
 ) -> String {
     let eff = effective_fields(fields);
 
+    // A primitive field's *type* appears in the Mother struct (`Option<DateTime<Utc>>`); a VO
+    // field's type is the VO, and only its default literal (`Joined::new(Utc::now())`) names a
+    // primitive.
     let mut mother_imports: Vec<String> = vec![];
     for f in &eff {
-        if let Ok(mapping) = resolve_type(&f.field_type) {
-            if let Some(imp) = mapping.needs_import {
-                let stmt = format!("use {};", imp);
-                if !mother_imports.contains(&stmt) {
-                    mother_imports.push(stmt);
-                }
+        let imp = if is_value_object(f) {
+            literal_import(f)
+        } else {
+            resolve_type(&f.field_type)
+                .ok()
+                .and_then(|m| m.needs_import)
+        };
+        if let Some(imp) = imp {
+            let stmt = format!("use {imp};");
+            if !mother_imports.contains(&stmt) {
+                mother_imports.push(stmt);
             }
         }
     }
@@ -353,7 +365,7 @@ pub fn generate_mother(
             } else if is_enum_vo(f) {
                 let vo = f.value_object.as_deref().unwrap();
                 let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
-                format!("            {}: self.{}.unwrap_or_else(|| {}::{}),", f.name, f.name, vo, first_variant)
+                format!("            {}: self.{}.unwrap_or({}::{}),", f.name, f.name, vo, first_variant)
             } else if is_value_object(f) {
                 let vo = f.value_object.as_deref().unwrap();
                 let mapping = resolve_type(&f.field_type).unwrap();
@@ -497,7 +509,7 @@ pub fn generate_value_objects(
                 .join("\n");
             let unknown_arm = format!("            _ => Err({pascal}Error::Invalid{vo}),");
             vo_structs.push(format!(
-                "#[derive(Debug, Clone, PartialEq)]\npub enum {vo} {{\n{variant_lines}\n}}\n\nimpl {vo} {{\n    pub fn from_str(s: &str) -> Result<Self, {pascal}Error> {{\n        match s {{\n{from_str_arms}\n{unknown_arm}\n        }}\n    }}\n\n    pub fn as_str(&self) -> &'static str {{\n        match self {{\n{as_str_arms}\n        }}\n    }}\n}}"
+                "#[derive(Debug, Clone, PartialEq)]\npub enum {vo} {{\n{variant_lines}\n}}\n\nimpl std::str::FromStr for {vo} {{\n    type Err = {pascal}Error;\n\n    fn from_str(s: &str) -> Result<Self, Self::Err> {{\n        match s {{\n{from_str_arms}\n{unknown_arm}\n        }}\n    }}\n}}\n\nimpl {vo} {{\n    pub fn as_str(&self) -> &'static str {{\n        match self {{\n{as_str_arms}\n        }}\n    }}\n}}"
             ));
             continue;
         }
@@ -545,7 +557,6 @@ pub fn generate_create_use_case_trait(pascal: &str, snake: &str, fields: &[Field
 
     let params_fields: Vec<serde_json::Value> = eff
         .iter()
-        .filter(|f| f.field_type != "Uuid")
         .map(|f| json!({ "name": f.name, "field_type": f.field_type }))
         .collect();
 
@@ -566,6 +577,9 @@ pub fn generate_update_use_case_trait(pascal: &str, snake: &str, fields: &[Field
         if let Ok(mapping) = resolve_type(&f.field_type) {
             if let Some(imp) = mapping.needs_import {
                 let stmt = format!("use {};", imp);
+                if UPDATE_USE_CASE_TEMPLATE_IMPORTS.contains(&stmt.as_str()) {
+                    continue;
+                }
                 if !extra_imports.contains(&stmt) {
                     extra_imports.push(stmt);
                 }
@@ -575,7 +589,6 @@ pub fn generate_update_use_case_trait(pascal: &str, snake: &str, fields: &[Field
 
     let params_fields: Vec<serde_json::Value> = eff
         .iter()
-        .filter(|f| f.field_type != "Uuid")
         .map(|f| json!({ "name": f.name, "field_type": f.field_type }))
         .collect();
 
@@ -855,6 +868,13 @@ pub fn run_generate_domain(
 
     let fields: Vec<Field> = cli_fields.to_vec();
     let shared_vos = config.value_object.clone();
+
+    crate::validation::validate_unique_field_names(&fields)?;
+    if config.project.db {
+        for f in &fields {
+            crate::validation::validate_sql_field_name(&f.name)?;
+        }
+    }
 
     let vo_conflicts = crate::validation::validate_vo_coherence(&fields, &shared_vos);
     if !vo_conflicts.is_empty() {

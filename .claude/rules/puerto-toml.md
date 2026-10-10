@@ -8,7 +8,7 @@ name = "my-app"          # project name (hyphen-separated, matches Cargo binary 
 
 [[entity]]
 name = "Product"         # PascalCase entity name
-use_cases = ["create_product", "list_products"]  # snake_case action names
+use_cases = ["create_product", "list_product"]   # snake_case action names
 db = true                # optional — omit for InMemory, set true for SQLx/Postgres
 
 [[entity.fields]]
@@ -40,7 +40,13 @@ type = "Vec<String>"     # array field
 - `[[entity.fields]]` is an optional list of typed fields. If absent or empty, entities default to `name: String` (backward compatible)
 - Field `name` must be valid snake_case (lowercase letters, digits, underscores; cannot start with a digit)
 - Field `type` must match the type registry — run `puerto validate` to check
-- Field `unique = true` generates a unique DB constraint (SQL only). Cannot be combined with `Option<T>` (warned by `puerto validate`)
+- Field `unique = true` generates a **partial** unique index (`… WHERE deleted = false`, SQL only):
+  rows are soft-deleted, so a deleted row does not keep its value taken. Cannot be combined with
+  `Option<T>` (warned by `puerto validate`)
+- Field names that are PostgreSQL reserved words (`desc`, `order`, `user`, `select`, …) are rejected
+  in `--db` projects — they become unquoted column names. Duplicate field names are rejected
+- `HashMap<String, String>` is a `JSONB` column; the `{Entity}Db` row field is
+  `sqlx::types::Json<HashMap<String, String>>` and the repository's `SELECT` overrides its type
 - Managed by Puerto CLI — do not add entities manually unless also running `puerto generate bootstrap`
 
 ### CLI Field Syntax
@@ -70,7 +76,6 @@ puerto generate scaffold Product name:String price:i64! sku:String
 | `Option<i64>` | `BIGINT` (nullable) | `integer(int64)?` | `None` |
 | `Option<bool>` | `BOOLEAN` (nullable) | `boolean?` | `None` |
 | `Option<f64>` | `DOUBLE` (nullable) | `number(double)?` | `None` |
-| `Option<Uuid>` | `UUID` (nullable) | `string(uuid)?` | `None` |
 | `Option<DateTime<Utc>>` | `TIMESTAMPTZ` (nullable) | `string(date-time)?` | `None` |
 | `Vec<String>` | `TEXT[]` | `array[string]` | `vec![]` |
 | `Vec<i64>` | `BIGINT[]` | `array[integer]` | `vec![]` |
@@ -97,7 +102,9 @@ pub deleted_at: Option<DateTime<Utc>>,
 
 `validate_fields(fields: &[Field]) -> Result<(), Vec<String>>` validates all fields at once.
 
-`collect_imports(fields: &[Field]) -> Vec<&'static str>` returns the set of crate imports needed for a given field list.
+`literal_import(field) -> Option<&'static str>` returns the import a value *literal* of the field
+needs (`chrono::Utc` for `Utc::now()`), as opposed to `TypeMapping::needs_import`, which is what
+naming the field's *type* needs.
 
 ---
 
@@ -193,9 +200,9 @@ presentation/src/api/product/error_mapper.rs
 | `puerto generate scaffold <Name> -- name:Type`  | Same, with `[[entity.fields]]` from the trailing arguments                        |
 | `puerto generate domain <Name> -- name:Type`    | Registers the entity **with its fields** so the later layered commands see them   |
 | `puerto generate bootstrap [--allow-missing]`   | Regenerates bootstrap.rs; refuses when a declared entity has no code on disk      |
-| `puerto generate use-case <Entity> <action>`    | Appends action to entity's `use_cases`, regenerates bootstrap.rs                  |
-| `puerto generate value-object <Name> <type>`    | Appends a `[[value_object]]` block                                                |
-| `puerto generate migration <name>`              | Creates migration file — does not touch puerto.toml                               |
+| `puerto generate use-case <Entity> <action>`    | Appends action to `use_cases`, adds the field to `{Entity}Api`, regenerates bootstrap.rs. Refuses an action that already exists |
+| `puerto generate value-object <Name> <type>`    | Appends a `[[value_object]]` block. Refuses invalid names/types and duplicates    |
+| `puerto generate migration <name>`              | Creates a migration file (`--db` projects only) — does not touch puerto.toml. The version is unique even within one second |
 | `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk |
 
 `db` is a **project-level** setting (`[project] db`), chosen once by `puerto new --db`. There is

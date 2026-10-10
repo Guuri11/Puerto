@@ -42,6 +42,26 @@ fn sql_col_list(eff: &[Field]) -> String {
     format!("id, created_at, updated_at, deleted, deleted_at{custom}")
 }
 
+/// `HashMap<String, String>` maps to a JSONB column. sqlx has no `HashMap` codec: the row field is
+/// `sqlx::types::Json<HashMap<…>>` and `query_as!` needs the column's type overridden to match.
+const MAP_TYPE: &str = "HashMap<String, String>";
+
+/// The `SELECT` column list — like [`sql_col_list`], with JSONB columns type-overridden.
+fn sql_select_list(eff: &[Field]) -> String {
+    let custom: String = eff
+        .iter()
+        .map(|f| {
+            if f.field_type == MAP_TYPE {
+                // Emitted inside the query's string literal, hence the escaped quotes.
+                format!(r#", {name} as \"{name}: Json<{MAP_TYPE}>\""#, name = f.name)
+            } else {
+                format!(", {}", f.name)
+            }
+        })
+        .collect();
+    format!("id, created_at, updated_at, deleted, deleted_at{custom}")
+}
+
 fn sql_params_list(n: usize) -> String {
     let custom: String = (6..=n).map(|i| format!(", ${i}")).collect();
     format!("$1, $2, $3, $4, $5{custom}")
@@ -68,6 +88,10 @@ fn db_bindings_str(eff: &[Field]) -> String {
         // SQLx requires array fields to be passed as slice references (&[T])
         let binding = if f.field_type.starts_with("Vec<") {
             format!("            &db.{},", f.name)
+        } else if f.field_type == MAP_TYPE {
+            // `Json<T>` encodes as JSONB; `as _` opts this one bind out of the macro's
+            // `serde_json::Value` type check.
+            format!("            db.{} as _,", f.name)
         } else {
             format!("            db.{},", f.name)
         };
@@ -76,11 +100,29 @@ fn db_bindings_str(eff: &[Field]) -> String {
     lines.join("\n")
 }
 
-fn seed_fn_str(
-    pascal: &str,
-    eff: &[Field],
-    shared_vos: &[crate::puerto_toml::ValueObjectDefinition],
-) -> String {
+/// A seed value for a field, for the Pg integration tests.
+///
+/// Differs from the type registry's `default_expr` in two ways. Timestamps are a fixed whole
+/// second: `Utc::now()` has nanosecond precision and Postgres stores microseconds, so a seeded
+/// value never compared equal after a round-trip (and `Utc` was not even in scope). And `unique`
+/// fields get a fresh value per call: the list test seeds twice, and a constant hit the unique
+/// index (`Duplicate`).
+fn seed_value_expr(field_type: &str, unique: bool) -> String {
+    const FIXED_TIME: &str = "chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap()";
+    match (field_type, unique) {
+        ("String", true) => "Uuid::new_v4().to_string()".to_string(),
+        ("i64", true) => "(Uuid::new_v4().as_u128() >> 65) as i64".to_string(),
+        ("f64", true) => "(Uuid::new_v4().as_u128() >> 76) as f64".to_string(),
+        ("DateTime<Utc>", true) => {
+            "chrono::DateTime::from_timestamp(1_700_000_000 + (Uuid::new_v4().as_u128() >> 100) as i64, 0).unwrap()".to_string()
+        }
+        ("DateTime<Utc>", false) => FIXED_TIME.to_string(),
+        (MAP_TYPE, _) => "std::collections::HashMap::new()".to_string(),
+        (other, _) => resolve_type(other).unwrap().default_expr.to_string(),
+    }
+}
+
+fn seed_fn_str(pascal: &str, eff: &[Field]) -> String {
     let props_lines: String = eff
         .iter()
         .map(|f| {
@@ -93,24 +135,26 @@ fn seed_fn_str(
                 let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
                 format!("            {}: {}::{},", f.name, vo, first_variant)
             } else if is_value_object(f) {
-                let mapping = resolve_type(&f.field_type).unwrap();
                 let vo = f.value_object.as_deref().unwrap();
                 format!(
                     "            {}: {}::new({}).expect(\"valid {}\"),",
-                    f.name, vo, mapping.default_expr, vo
+                    f.name,
+                    vo,
+                    seed_value_expr(&f.field_type, f.unique),
+                    vo
                 )
             } else {
-                let mapping = resolve_type(&f.field_type).unwrap();
-                format!("            {}: {},", f.name, mapping.default_expr)
+                format!(
+                    "            {}: {},",
+                    f.name,
+                    seed_value_expr(&f.field_type, f.unique)
+                )
             }
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let _ = shared_vos;
     format!(
         "    async fn seed(pool: &PgPool) -> {pascal} {{\n        let entity = {pascal}::new({pascal}Props {{\n{props_lines}\n        }}).unwrap();\n        test_repo(pool.clone()).save(&entity).await.unwrap();\n        entity\n    }}\n",
-        pascal = pascal,
-        props_lines = props_lines,
     )
 }
 
@@ -165,11 +209,21 @@ pub fn generate_infra_entity(
 
     let struct_fields_str: String = eff
         .iter()
-        .map(|f| format!("    pub {}: {},", f.name, f.field_type))
+        .map(|f| {
+            if f.field_type == MAP_TYPE {
+                format!("    pub {}: Json<{MAP_TYPE}>,", f.name)
+            } else {
+                format!("    pub {}: {},", f.name, f.field_type)
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
     let mut vo_imports: Vec<String> = vec![];
+    if eff.iter().any(|f| f.field_type == MAP_TYPE) {
+        vo_imports.push("use sqlx::types::Json;".to_string());
+        vo_imports.push("use std::collections::HashMap;".to_string());
+    }
     if eff.iter().any(is_value_object) {
         for f in eff.iter().filter(|f| is_value_object(f)) {
             let vo = f.value_object.as_deref().unwrap();
@@ -195,9 +249,9 @@ pub fn generate_infra_entity(
             if is_enum_vo(f) {
                 let vo = f.value_object.as_deref().unwrap();
                 if is_shared_vo(f, shared_vos) {
-                    format!("            {}: {}::from_str(&row.{}).map_err(|_| {}Error::Invalid{})?,", f.name, vo, f.name, pascal, vo)
+                    format!("            {}: row.{}.parse::<{}>().map_err(|_| {}Error::Invalid{})?,", f.name, f.name, vo, pascal, vo)
                 } else {
-                    format!("            {}: {}::from_str(&row.{})?,", f.name, vo, f.name)
+                    format!("            {}: row.{}.parse::<{}>()?,", f.name, f.name, vo)
                 }
             } else if is_option_vo(f) {
                 let vo = f.value_object.as_deref().unwrap();
@@ -220,6 +274,8 @@ pub fn generate_infra_entity(
                 } else {
                     format!("            {}: {}::new(row.{})?,", f.name, vo, f.name)
                 }
+            } else if f.field_type == MAP_TYPE {
+                format!("            {}: row.{}.0,", f.name, f.name)
             } else {
                 format!("            {}: row.{},", f.name, f.name)
             }
@@ -251,6 +307,8 @@ pub fn generate_infra_entity(
                     "String" => format!("            {}: entity.{}.value().to_string(),", f.name, f.name),
                     _ => format!("            {}: entity.{}.value(),", f.name, f.name),
                 }
+            } else if f.field_type == MAP_TYPE {
+                format!("            {}: Json(entity.{}.clone()),", f.name, f.name)
             } else if field_needs_clone(&f.field_type) {
                 format!("            {}: entity.{}.clone(),", f.name, f.name)
             } else {
@@ -280,17 +338,25 @@ pub fn generate_crud_infra_db_repository(
     let n = 5 + eff.len();
 
     let all_cols = sql_col_list(&eff);
+    let select_cols = sql_select_list(&eff);
+    let map_imports = if eff.iter().any(|f| f.field_type == MAP_TYPE) {
+        "use sqlx::types::Json;\nuse std::collections::HashMap;\n"
+    } else {
+        ""
+    };
     let all_params = sql_params_list(n);
     let all_updates = sql_conflict_set(&eff);
     let all_bindings = db_bindings_str(&eff);
-    let seed_fn = seed_fn_str(pascal, &eff, shared_vos);
+    let seed_fn = seed_fn_str(pascal, &eff);
     let field_asserts = field_asserts_str(&eff);
     let update_test = update_test_str(&eff);
 
     let mut vo_test_imports_vec: Vec<String> = vec![];
+    // The seed names every plain and enum VO it constructs (`Name::new(…)`, `Status::Active`);
+    // Option/Vec VOs are seeded as `None` / `vec![]` and need no import.
     for f in eff
         .iter()
-        .filter(|f| is_value_object(f) && !is_option_vo(f) && !is_vec_vo(f) && !is_enum_vo(f))
+        .filter(|f| is_value_object(f) && !is_option_vo(f) && !is_vec_vo(f))
     {
         let vo = f.value_object.as_deref().unwrap();
         let stmt = if is_shared_vo(f, shared_vos) {
@@ -315,6 +381,8 @@ pub fn generate_crud_infra_db_repository(
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
     ctx.insert("all_cols", &all_cols);
+    ctx.insert("select_cols", &select_cols);
+    ctx.insert("map_imports", map_imports);
     ctx.insert("all_params", &all_params);
     ctx.insert("all_updates", &all_updates);
     ctx.insert("all_bindings", &all_bindings);
@@ -348,7 +416,10 @@ pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
         .filter(|f| f.unique)
         .map(|f| {
             let name = &f.name;
-            format!("\nCREATE UNIQUE INDEX {table}_{name}_key ON {table} ({name});\n")
+            // Partial: rows are soft-deleted, and a deleted row must not keep its value taken.
+            format!(
+                "\nCREATE UNIQUE INDEX {table}_{name}_key ON {table} ({name}) WHERE deleted = false;\n"
+            )
         })
         .collect();
     sql.push_str(&unique_indexes);
@@ -385,11 +456,7 @@ pub fn write_repository_files(
     Ok(())
 }
 
-pub fn run_generate_repository(
-    name: &str,
-    base: &Path,
-    sqlx_bin: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     let pascal = to_pascal_case(name);
     let snake = pascal_to_snake(&pascal);
@@ -417,7 +484,6 @@ pub fn run_generate_repository(
         run_migration(
             &format!("create_{snake}_table"),
             base,
-            sqlx_bin,
             Some(&create_table_sql(&snake, &fields)),
         )?;
     }

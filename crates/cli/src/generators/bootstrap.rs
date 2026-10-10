@@ -23,9 +23,9 @@ struct BootstrapEntity {
     needs_repo_var: bool,
     repo_var_line: String,
     use_cases: Vec<BootstrapUseCase>,
-    /// The full `EntityApi { … }` field list, logger included. Built here rather than joined in the
-    /// template so an entity with no use cases cannot emit `EntityApi { , logger: … }`.
-    api_struct_fields: String,
+    /// The full `EntityApi { … }` initializer. Built here rather than joined in the template so an
+    /// entity with no use cases emits `EntityApi {}`, not a dangling separator.
+    api_init: String,
     api_var: String,
 }
 
@@ -53,9 +53,9 @@ fn build_context(entities: &[crate::puerto_toml::Entity]) -> tera::Context {
             let uc_count = entity.use_cases.len();
 
             let repo_init = if entity.db {
-                format!("Pg{pascal}Repository::new(pool.clone(), Arc::clone(&logger))")
+                format!("Pg{pascal}Repository::new(pool.clone())")
             } else {
-                format!("InMemory{pascal}Repository::new(Arc::clone(&logger))")
+                format!("InMemory{pascal}Repository::new()")
             };
 
             let repo_crate_path = if entity.db {
@@ -113,13 +113,10 @@ fn build_context(entities: &[crate::puerto_toml::Entity]) -> tera::Context {
                 ),
                 repo_impl_import: format!("use {repo_crate_path};"),
                 api_import: format!("use crate::api::{snake}::routes::{pascal}Api;"),
-                api_struct_fields: if entity.use_cases.is_empty() {
-                    "logger: Arc::clone(&logger)".to_string()
+                api_init: if entity.use_cases.is_empty() {
+                    format!("{pascal}Api {{}}")
                 } else {
-                    format!(
-                        "{}, logger: Arc::clone(&logger)",
-                        entity.use_cases.join(", ")
-                    )
+                    format!("{pascal}Api {{ {} }}", entity.use_cases.join(", "))
                 },
                 api_var: format!("{snake}_api"),
                 pascal: pascal.clone(),

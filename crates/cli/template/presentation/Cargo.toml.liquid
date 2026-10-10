@@ -1,7 +1,7 @@
 [package]
 name = "presentation"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [[bin]]
 name = "{{project-name}}"
@@ -14,7 +14,8 @@ poem = "3"
 # `chrono` feature: without it poem-openapi has no `Type` impl for DateTime<Utc>, so any entity
 # with a date field fails to derive `Object`.
 poem-openapi = { version = "5", features = ["swagger-ui", "uuid", "chrono"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
 uuid = { version = "1", features = ["v4"] }

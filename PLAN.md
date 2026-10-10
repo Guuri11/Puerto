@@ -154,6 +154,9 @@ business/src/application/<entity>/<action>.rs         # UseCaseImpl + unit tests
 
 ### 2.3 `puerto generate migration <name>` ✅ DONE
 
+> **Superseded in Phase 8.5:** the file is now written directly (no `sqlx` CLI needed), versions
+> are unique even within one second, and the command is refused in projects without `--db`.
+
 Wraps `sqlx migrate add` with Puerto conventions.
 
 **Command signature:**
@@ -1135,6 +1138,93 @@ let p  = WidgetMother::new().with_empty_name().build_props();
 ### Idempotency
 
 All patching functions (`patch_business_lib_domain_crud`, `patch_business_lib_application_crud`, `patch_infra_lib`, `patch_api_rs`, `patch_mothers_lib`) are now idempotent — safe to re-run.
+
+---
+
+## Phase 8.5 — Generated-project hardening (review fixes) ✅ DONE
+
+An end-to-end review generated real projects with every option and found output that did not
+compile, or did not pass the generated project's own `make lint`. Root cause: the compile matrix
+never ran clippy, never generated a `--db` project, and never ran `generate use-case` after
+`scaffold`.
+
+### Behaviour
+
+- **Generated code is clippy-clean** (`clippy --all-targets -D warnings`): `inspect_err` instead of
+  pass-through `map_err`; shorthand init for VO props; no argument-less `format!`; enum VOs
+  implement `std::str::FromStr` (`.parse::<Vo>()`) instead of an inherent `from_str`; test modules
+  and Object Mothers import only what their literals name; Mothers implement `Default`; response
+  enums allow `large_enum_variant` (documented in the template).
+- **`generate use-case <Entity> <action>`**: `<action>` must be snake_case; refused when the action
+  already exists (in puerto.toml or on disk — including the scaffolded CRUD ones) and nothing is
+  written; adds `pub <action>: Arc<…UseCaseImpl>` to `{Entity}Api` in `routes.rs`. `scaffold
+  --force` and `generate presentation` re-add the fields of custom use cases after rewriting
+  `routes.rs`.
+- **`generate value-object <Name> <type>`**: name PascalCase, type in the shared-VO list
+  (`DateTime` shorthand), refused if already declared.
+- **`generate migration`**: refused without `[project] db = true`; version = now, or one second
+  past the newest existing migration.
+- **Names**: duplicate field names rejected; in `--db` projects PostgreSQL reserved words are
+  rejected as field names (CLI and `puerto validate`); `puerto new --name` must be
+  `[a-z][a-z0-9_-]*`.
+- **`--db` projects**: `HashMap<String, String>` columns go through `sqlx::types::Json` (sqlx `json`
+  feature enabled); Pg repository tests import what their seed names, seed timestamps at whole
+  seconds (Postgres stores µs) and vary `unique` fields per seed; unique indexes are partial
+  (`WHERE deleted = false`); `.sqlx/` is no longer git-ignored (builds run with `SQLX_OFFLINE=true`).
+- **Create use case** logs the value of its first field (`{:?}`), not the literal `params.x`.
+- `puerto new` "next steps" prints `make run` (the package is `presentation`, not the project name).
+
+### Test scenarios
+
+- Matrix runs `cargo clippy --workspace --all-targets -- -D warnings` before `cargo test` in every
+  generated project.
+- New matrix scenarios: enum VO as the only String field; custom use case after scaffold;
+  `postgres_project_with_every_type…` (every primitive, VO kind, shared VO, unique fields, custom
+  use case) against Postgres via `make test/db`.
+- Structural: use-case refusal / snake_case / routes field (+ survives `--force`); value-object
+  validation; migration refusal without db and distinct versions within one second; SQL reserved
+  words (db vs no-db, CLI and validate); duplicate fields; project name; create log; enum `as_str`
+  assertion; partial unique index; JSONB mapping; sqlx `json` feature + `.gitignore`; Pg seed
+  imports and unique variation.
+
+---
+
+## Phase 8.6 — document-api conventions (T-31 … T-38) ✅ DONE
+
+Adopted from the comparison with `document-api` (`puerto_vs_document_api.md` §6). Every decision
+has an ADR in `docs/adr/`.
+
+- **Logger port removed** (ADR-0006): `tracing` macros directly in every layer; no `LoggerTrait`,
+  `TracingLogger`, `logger` fields or `silent_logger()` mocks. Entity names `Tracing` and `Db` are
+  rejected (module collisions).
+- **T-37 Error contract** (ADR-0007): `ErrorResponse::from_code`, code in `name`, validation and
+  invalid VOs → 422, exhaustive mappers with one generated test per arm.
+- **T-38 Health** (ADR-0008): `/health`, `/health/ready` (pings the pool in `--db` projects),
+  graceful shutdown on SIGTERM with an 8 s deadline.
+- **T-35 Toolchain** (ADR-0009): `rust-toolchain.toml` (1.95.0) + edition 2024 + resolver 3 in
+  generated projects; let-chains where clippy now asks for them.
+- **T-31 / T-32 Agent rules** (ADR-0010): root `AGENTS.md` + `CLAUDE.md` in every project; the
+  per-crate files rewritten (no `mod.rs`, real DI location, real error contract); tests that they
+  never describe `mod.rs` or the logger port; the template's `bootstrap.rs` tested against the
+  generator.
+- **T-33 Risk tiers**: `.claude/rules/workflow.md` § Risk tiers (Puerto) and the root `AGENTS.md`
+  (generated projects). One commit per piece, in both.
+- **T-34 ADRs**: `docs/adr/` with 0001–0010.
+- **T-36 Mutation testing**: `make test/mutation` (`.cargo/mutants.toml`, scoped to validation,
+  migrations, types, naming, patchers; `TMPDIR` on disk — a tmpfs `/tmp` runs out mid-link).
+  First run: 351 mutants, **50 survivors**. Fixed by deleting dead code hidden behind blanket
+  `#[allow(dead_code)]` in `types.rs` (5 functions), a redundant guard in `field_vo_constructor`,
+  extracting `timestamp_from_unix_secs` so the clock logic is testable, and exact-output tests for
+  the patchers. Final run: 335 mutants, **332 caught, 0 survivors**, 3 unviable.
+
+### Test scenarios
+
+Structural: no logger in any generated file (CLI + `--no-demo`); mapper names the code, maps to
+422, one test per arm; responses carry 422 and no 400; `ErrorResponse::from_code`; health routes
+and graceful shutdown; readiness pings the pool in `--db`; toolchain pin + edition 2024 + resolver
+3; agent rules free of `mod.rs` and the logger port; root `AGENTS.md`/`CLAUDE.md`; template
+`bootstrap.rs` identical to the generator's. Compile matrix and `make test/db` unchanged in shape —
+they now run on the pinned toolchain and edition 2024.
 
 ---
 

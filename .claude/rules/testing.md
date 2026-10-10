@@ -154,7 +154,9 @@ The `business/Cargo.toml` has `mockall` both as an optional dependency (feature 
 
 ```bash
 make test        # Fast — structural tests (file layout, cargo-generate output)
-make test/full   # Slow (~20s) — generates a real project, compiles it, runs its internal tests
+make test/full   # Slow — generates real projects, runs their clippy (-D warnings) and tests
+make test/db     # Slow — a generated --db project against a throwaway Postgres (Docker)
+make test/mutation  # Slow — cargo-mutants on Puerto's pure logic (validation, migrations, types, patchers)
 ```
 
 Single test with output:

@@ -5,21 +5,30 @@ use poem_openapi::payload::Json;
 use crate::api::error::{ErrorResponse, IntoErrorResponse};
 
 impl IntoErrorResponse for {{ pascal }}Error {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
     fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
-        let (status, message) = match &self {
-            {{ pascal }}Error::ValidationError(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            {{ pascal }}Error::NotFound => (StatusCode::NOT_FOUND, self.to_string()),
-            {{ pascal }}Error::Duplicate => (StatusCode::CONFLICT, self.to_string()),
-            {{ pascal }}Error::RepositoryError => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            {{ pascal }}Error::Unknown => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),{{ vo_arms_str }}
+        let status = match &self {
+            {{ pascal }}Error::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            {{ pascal }}Error::NotFound => StatusCode::NOT_FOUND,
+            {{ pascal }}Error::Duplicate => StatusCode::CONFLICT,
+            {{ pascal }}Error::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            {{ pascal }}Error::Unknown => StatusCode::INTERNAL_SERVER_ERROR,{{ vo_arms_str }}
         };
-
-        (
-            status,
-            Json(ErrorResponse {
-                name: "{{ snake }}_error".into(),
-                message,
-            }),
-        )
+        (status, Json(ErrorResponse::from_code(self.to_string())))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+{% for case in test_cases %}
+    #[test]
+    fn {{ case.test_name }}() {
+        // Act
+        let (status, Json(body)) = {{ case.error }}.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::{{ case.status }});
+        assert_eq!(body.name, "{{ case.code }}");
+    }
+{% endfor %}}

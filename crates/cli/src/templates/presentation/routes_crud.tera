@@ -8,15 +8,12 @@ use business::{
         list_{{ snake }}::List{{ pascal }}UseCaseImpl,
         update_{{ snake }}::Update{{ pascal }}UseCaseImpl,
     },
-    domain::{
-        {{ snake }}::use_cases::{
-            create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
-            delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
-            get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
-            list_{{ snake }}::{List{{ pascal }}Params, List{{ pascal }}UseCaseTrait},
-            update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
-        },
-        logger::LoggerTrait,
+    domain::{{ snake }}::use_cases::{
+        create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
+        delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
+        get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
+        list_{{ snake }}::{List{{ pascal }}Params, List{{ pascal }}UseCaseTrait},
+        update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
     },
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -36,7 +33,6 @@ pub struct {{ pascal }}Api {
     pub list_{{ snake }}: Arc<List{{ pascal }}UseCaseImpl>,
     pub update_{{ snake }}: Arc<Update{{ pascal }}UseCaseImpl>,
     pub delete_{{ snake }}: Arc<Delete{{ pascal }}UseCaseImpl>,
-    pub logger: Arc<dyn LoggerTrait>,
 }
 
 #[OpenApi]
@@ -54,7 +50,7 @@ impl {{ pascal }}Api {
             Ok(entity) => Create{{ pascal }}Response::Created(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                self.logger.warn(&format!("create_{{ snake }} error: {}", error.0.message));
+                tracing::warn!(code = %error.0.name, "create_{{ snake }} failed");
                 Create{{ pascal }}Response::from_status(status, error)
             }
         }
@@ -71,7 +67,7 @@ impl {{ pascal }}Api {
             Ok(entity) => Get{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                self.logger.warn(&format!("get_{{ snake }} error: {}", error.0.message));
+                tracing::warn!(code = %error.0.name, "get_{{ snake }} failed");
                 Get{{ pascal }}Response::from_status(status, error)
             }
         }
@@ -86,7 +82,7 @@ impl {{ pascal }}Api {
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                self.logger.error(&format!("list_{{ snake }} error: {}", error.0.message));
+                tracing::error!(code = %error.0.name, "list_{{ snake }} failed");
                 List{{ pascal }}Response::from_status(status, error)
             }
         }
@@ -105,7 +101,7 @@ impl {{ pascal }}Api {
             Ok(entity) => Update{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                self.logger.warn(&format!("update_{{ snake }} error: {}", error.0.message));
+                tracing::warn!(code = %error.0.name, "update_{{ snake }} failed");
                 Update{{ pascal }}Response::from_status(status, error)
             }
         }
@@ -122,7 +118,7 @@ impl {{ pascal }}Api {
             Ok(()) => Delete{{ pascal }}Response::NoContent,
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                self.logger.warn(&format!("delete_{{ snake }} error: {}", error.0.message));
+                tracing::warn!(code = %error.0.name, "delete_{{ snake }} failed");
                 Delete{{ pascal }}Response::from_status(status, error)
             }
         }

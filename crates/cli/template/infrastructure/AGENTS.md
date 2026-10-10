@@ -1,52 +1,49 @@
 # Infrastructure Layer — AI Agent Notes
 
-This crate contains **adapters** — implementations of the ports defined in the domain. No business logic lives here.
+This crate contains **adapters** — implementations of the ports defined in the domain. No business
+logic lives here.
 
 ## Layer Structure
 
 ```
-infrastructure/src/
-└── <entity>/
-    ├── repository.rs    # Implements domain repository trait
-    └── mod.rs
+infrastructure/
+├── src/
+│   ├── lib.rs               # Module tree, inline (`pub mod <entity> { pub mod repository; }`) — no `mod.rs`
+│   ├── db.rs                # Postgres pool, migrations, `ping` for readiness (--db projects)
+│   └── <entity>/
+│       ├── repository.rs    # Implements the domain repository trait
+│       └── entity.rs        # `<Entity>Db` row + conversions (--db projects)
+└── migrations/              # SQLx migrations (--db projects)
 ```
 
 ## Critical Rules
 
-- **No business logic** — repositories only translate between domain objects and external storage.
-- **`from_repository()` is the only door** from persistence into the domain — never call `Entity::new()` inside a repository.
-- **`InMemoryRepository` is the default** — replace with a real adapter (SQLx, HTTP, etc.) when external storage is added.
+- **No business logic** — repositories only translate between domain objects and storage.
+- **`from_repository()` is the only door** from persistence into the domain — never call
+  `Entity::new()` inside a repository.
 - Repositories depend on `business` only. Never import from `presentation`.
+- Logging with `tracing::debug!` / `error!` directly. Map driver errors to domain errors
+  (`23505` unique violation → `EntityError::Duplicate`); never leak a driver error upward.
 
-## In-Memory Repository Pattern
+## In-memory (default without `--db`)
 
-```rust
-pub struct InMemoryEntityRepository;
+`InMemory<Entity>Repository` is a stand-in that stores nothing. Replace it with a real adapter
+when storage is added.
 
-#[async_trait]
-impl EntityRepositoryTrait for InMemoryEntityRepository {
-    async fn find_by_id(&self, _id: Uuid) -> Result<Option<Entity>, EntityError> {
-        Ok(None)  // Stub — replace with real storage
-    }
-}
-```
+## Postgres (`puerto new --db`)
 
-## SQLx Migration Path (when adding DB)
-
-When replacing the in-memory adapter with SQLx:
-
-1. Add `sqlx` to `infrastructure/Cargo.toml`
-2. Create `infrastructure/src/<entity>/entity.rs` — flat `#[derive(sqlx::FromRow)]` struct with system fields + custom fields from `puerto.toml`
-3. Implement conversions: `TryFrom<EntityDb> for Entity` + `From<&Entity> for EntityDb`
-4. Replace `InMemoryRepository` with the SQLx implementation
-5. Run migrations: `sqlx migrate run`
-
-**Typed fields**: When `entity.fields` is defined, `EntityDb` includes all custom columns alongside system fields (`id`, `created_at`, `updated_at`, `deleted`, `deleted_at`). SQL column types are mapped from the type registry (see `puerto.toml`).
+- `<Entity>Db` (`#[derive(sqlx::FromRow)]`) holds the system columns (`id`, `created_at`,
+  `updated_at`, `deleted`, `deleted_at`) plus the custom fields. `TryFrom<EntityDb> for Entity`
+  (can fail: value objects are re-validated) and `From<&Entity> for EntityDb`.
+- Deletes are soft (`deleted = true`); every query filters `WHERE deleted = false`, and unique
+  indexes are partial (`… WHERE deleted = false`).
+- `HashMap<String, String>` fields are `JSONB` columns read through `sqlx::types::Json`.
+- Queries use `sqlx::query!` / `query_as!`, checked at compile time. After changing a query or a
+  migration, run `make sqlx/prepare` and **commit `.sqlx/`**: builds run with `SQLX_OFFLINE=true`.
+- Integration tests use `#[sqlx::test]`, which creates a throwaway database per test — the role in
+  `DATABASE_URL` needs `CREATEDB`. Seed data must vary `unique` fields between calls.
 
 ## Adding a New Entity Adapter
 
-Run `puerto generate repository <Name>` to scaffold this layer in isolation. It reads `project.db` from `puerto.toml` to decide InMemory vs Pg — no flag needed.
-
-Manual steps if not using the CLI:
-1. Create `infrastructure/src/<entity>/repository.rs` implementing the domain trait
-2. Add the entity module to `infrastructure/src/lib.rs`
+Run `puerto generate repository <Name>`. It reads `[project] db` from `puerto.toml` to choose
+InMemory vs Postgres and, for Postgres, writes the migration.
