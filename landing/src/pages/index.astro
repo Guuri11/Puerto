@@ -64,7 +64,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <div class="flex gap-3">
             <span class="text-green-400">➜</span>
             <span class="text-puerto-teal">~</span>
-            <span class="text-puerto-ice">puerto new my-app</span>
+            <span class="text-puerto-ice">puerto new --name my-app</span>
           </div>
           <div class="mt-2 text-puerto-mist/60 italic text-xs">// Constructing project skeleton...</div>
           <div class="mt-4 space-y-1 text-sm">
@@ -81,7 +81,12 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <div class="flex items-center gap-2">
               <span class="text-puerto-mist/40">├──</span>
               <span class="text-puerto-rust font-bold">presentation/</span>
-              <span class="text-puerto-mist/40 text-xs">(openapi routes)</span>
+              <span class="text-puerto-mist/40 text-xs">(openapi routes, health probes)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-puerto-mist/40">├──</span>
+              <span class="text-puerto-mist/60">AGENTS.md</span>
+              <span class="text-puerto-mist/40 text-xs">(rules for coding agents)</span>
             </div>
             <div class="flex items-center gap-2">
               <span class="text-puerto-mist/40">└──</span>
@@ -253,7 +258,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </svg>
           </div>
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">AI-Ready</h3>
-          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Rust's compiler catches AI-generated errors instantly. Precise, actionable feedback on every generation.</p>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Every project ships an <code class="text-puerto-teal text-xs">AGENTS.md</code> + <code class="text-puerto-teal text-xs">CLAUDE.md</code> kept in sync by tests — and Rust's compiler catches what an agent gets wrong.</p>
         </div>
 
         <!-- Convention over Config -->
@@ -309,6 +314,39 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           </div>
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Built for SQLx</h3>
           <p class="font-sans text-sm text-puerto-mist leading-relaxed">First-class Postgres support. Enable once with <code class="text-puerto-indigo-light text-xs">--db</code> at project creation — every scaffold infers it automatically.</p>
+        </div>
+
+        <!-- Production defaults -->
+        <div class="feature-card group rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card transition-colors hover:border-puerto-teal">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-puerto-teal/10">
+            <svg class="h-5 w-5 text-puerto-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Production Defaults</h3>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed"><code class="text-puerto-teal text-xs">/health</code> and <code class="text-puerto-teal text-xs">/health/ready</code> probes, graceful shutdown on SIGTERM and structured <code class="text-puerto-teal text-xs">tracing</code> logs — from the first <code class="text-puerto-teal text-xs">puerto new</code>.</p>
+        </div>
+
+        <!-- Error contract -->
+        <div class="feature-card group rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card transition-colors hover:border-puerto-rust">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-puerto-rust/10">
+            <svg class="h-5 w-5 text-puerto-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Errors Clients Can Use</h3>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Machine-readable codes like <code class="text-puerto-rust text-xs">user.not_found</code>, validation as <code class="text-puerto-rust text-xs">422</code>, and one generated test per status mapping.</p>
+        </div>
+
+        <!-- Lint-clean -->
+        <div class="feature-card group rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card transition-colors hover:border-puerto-indigo">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-puerto-indigo/10">
+            <svg class="h-5 w-5 text-puerto-indigo-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Lint-Clean by Construction</h3>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Every release generates real projects — Postgres included — and runs their clippy <code class="text-puerto-indigo-light text-xs">-D warnings</code> and tests. Pinned toolchain, edition 2024.</p>
         </div>
       </div>
     </div>

@@ -24,7 +24,7 @@ Puerto es un **framework Rust full-stack con arquitectura DDD** que trae la expe
 1. **`puerto new`**: scaffolding interactivo de workspace Cargo con 3 capas (business, infrastructure, presentation). Con o sin base de datos (--db).
 2. **`puerto generate scaffold <Name>`**: genera una entidad DDD completa cruzando todas las capas. Zero boilerplate manual.
 3. **`puerto generate use-case <Entity> <action>`**: añade un caso de uso a una entidad existente con tests incluidos.
-4. **`puerto generate migration <name>`**: wraps `sqlx migrate add` con convenciones Puerto.
+4. **`puerto generate migration <name>`**: crea una migración SQLx con convenciones Puerto (solo proyectos `--db`; versiones únicas).
 5. **Convención sobre configuración**: estructura estandarizada, patrones de error, DI automática via `bootstrap.rs` generado.
 
 ## Público objetivo

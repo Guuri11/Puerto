@@ -22,6 +22,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <a href="#use-case" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Add Use Case</a>
           <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Database (SQLx)</a>
           <a href="#architecture" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Architecture</a>
+          <a href="#production" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Production defaults</a>
+          <a href="#ai-agents" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">AI agents</a>
           <a href="#snippets" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">IDE Snippets</a>
         </nav>
       </aside>
@@ -39,7 +41,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <ul class="mt-2 space-y-1 font-sans text-sm text-puerto-mist">
             <li>Rust stable (1.85+) — <a href="https://rustup.rs" target="_blank" rel="noopener noreferrer" class="text-puerto-teal hover:underline">install via rustup</a></li>
             <li>Cargo (included with Rust)</li>
-            <li>Optional: PostgreSQL + SQLx CLI for database projects</li>
+            <li>Optional: PostgreSQL + SQLx CLI for database projects (migrations, query cache)</li>
+            <li>Generated projects pin their toolchain (<code class="font-mono text-xs text-puerto-teal">rust-toolchain.toml</code>, Rust 1.95.0) — rustup installs it on the first build</li>
           </ul>
         </div>
 
@@ -69,8 +72,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           </p>
           <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
             <span class="font-mono text-sm text-puerto-teal select-none">$</span>
-            <code class="font-mono text-sm text-puerto-ice">puerto new my-app</code>
-            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto new my-app" aria-label="Copy">
+            <code class="font-mono text-sm text-puerto-ice">puerto new</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto new" aria-label="Copy">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
@@ -90,8 +93,11 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <div class="pl-8 text-puerto-mist/50">src/greeting/repository.rs</div>
             <div class="pl-4 mt-1"><span class="text-puerto-rust">presentation/</span><span class="text-puerto-mist/40 ml-3">← http api</span></div>
             <div class="pl-8 text-puerto-mist/50">src/api/greeting/routes.rs</div>
-            <div class="pl-4 mt-1 text-puerto-mist/50">puerto.toml</div>
-            <div class="pl-4 text-puerto-mist/50">Cargo.toml</div>
+            <div class="pl-8 text-puerto-mist/50">src/health.rs<span class="text-puerto-mist/40 ml-3">← /health + /health/ready</span></div>
+            <div class="pl-4 mt-1 text-puerto-mist/50">puerto.toml<span class="text-puerto-mist/40 ml-3">← source of truth</span></div>
+            <div class="pl-4 text-puerto-mist/50">AGENTS.md + CLAUDE.md<span class="text-puerto-mist/40 ml-3">← rules for coding agents</span></div>
+            <div class="pl-4 text-puerto-mist/50">rust-toolchain.toml<span class="text-puerto-mist/40 ml-3">← pinned Rust, reproducible lint</span></div>
+            <div class="pl-4 text-puerto-mist/50">Cargo.toml<span class="text-puerto-mist/40 ml-3">← edition 2024 workspace</span></div>
           </div>
         </section>
 
@@ -155,7 +161,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <div class="mt-2 rounded-md border border-puerto-steel/40 bg-puerto-navy p-5 font-mono text-sm leading-relaxed">
             <div class="text-puerto-mist/60">[[entity]]</div>
             <div class="text-puerto-ice">name = "Product"</div>
-            <div class="text-puerto-ice">use_cases = ["create_product", "list_products"]</div>
+            <div class="text-puerto-ice">use_cases = ["create_product", "list_product"]</div>
             <div class="mt-2 text-puerto-mist/60">[[entity.fields]]</div>
             <div class="text-puerto-ice">name = "name"</div>
             <div class="text-puerto-ice">type = "String"</div>
@@ -234,7 +240,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">age:Age:i64</td><td class="text-xs">Numeric VO (i64 / f64), pass-through</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">mid:Mid:opt:String</td><td class="text-xs"><code class="text-puerto-teal">Option&lt;Mid&gt;</code> — nullable VO</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">tags:Tag:vec:String</td><td class="text-xs"><code class="text-puerto-teal">Vec&lt;Tag&gt;</code> — array VO</td></tr>
-                <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">status:Status:enum:A/B/C</td><td class="text-xs">Enum VO — <code class="text-puerto-teal">from_str()</code> / <code class="text-puerto-teal">as_str()</code></td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">status:Status:enum:A/B/C</td><td class="text-xs">Enum VO — <code class="text-puerto-teal">FromStr</code> (<code class="text-puerto-teal">.parse::&lt;Status&gt;()</code>) / <code class="text-puerto-teal">as_str()</code></td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">sku:Sku:String!</td><td class="text-xs">Unique VO (DB constraint)</td></tr>
                 <tr><td class="py-1.5 pr-6 font-mono text-puerto-ice text-xs">email:Email</td><td class="text-xs">Shared VO — type inferred from <code class="font-mono text-xs text-puerto-rust">puerto.toml</code></td></tr>
               </tbody>
@@ -334,12 +340,12 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
         <section id="use-case" class="mt-16 scroll-mt-28">
           <h2 class="font-mono text-2xl font-bold text-puerto-ice">Add a Use Case</h2>
           <p class="mt-3 font-sans text-puerto-mist">
-            Add a single use case to an existing entity. Puerto generates the trait, implementation, and unit tests.
+            Add a use case to an existing entity. Puerto generates the trait and implementation, declares them in <code class="font-mono text-xs text-puerto-rust">lib.rs</code>, adds the use case to <code class="font-mono text-xs text-puerto-rust">UserApi</code> and rewires <code class="font-mono text-xs text-puerto-rust">bootstrap.rs</code> — the project keeps compiling. Expose it by adding an endpoint to <code class="font-mono text-xs text-puerto-rust">routes.rs</code>.
           </p>
           <div class="code-block mt-4 flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-teal bg-puerto-navy px-5 py-4">
             <span class="font-mono text-sm text-puerto-teal select-none">$</span>
-            <code class="font-mono text-sm text-puerto-ice">puerto generate use-case User create</code>
-            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate use-case User create" aria-label="Copy">
+            <code class="font-mono text-sm text-puerto-ice">puerto generate use-case User archive_user</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="puerto generate use-case User archive_user" aria-label="Copy">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
           </div>
@@ -368,6 +374,12 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <p class="mt-4 font-sans text-sm text-puerto-mist">
             Puerto reads <code class="font-mono text-xs text-puerto-rust">puerto.toml</code> to decide: db projects get a <code class="font-mono text-xs text-puerto-mist">PgUserRepository</code> with a connection pool and auto-created migration; non-db projects get <code class="font-mono text-xs text-puerto-mist">InMemoryUserRepository</code>. No flag needed on every scaffold.
           </p>
+          <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
+            <li>• Every scaffold writes its own migration; versions stay unique even when two entities are scaffolded within the same second.</li>
+            <li>• Deletes are soft, so <code class="font-mono text-xs text-puerto-rust">unique</code> fields get a partial index (<code class="font-mono text-xs text-puerto-mist">WHERE deleted = false</code>): a deleted row never keeps its value taken.</li>
+            <li>• Field names that are SQL reserved words (<code class="font-mono text-xs text-puerto-mist">order</code>, <code class="font-mono text-xs text-puerto-mist">user</code>, <code class="font-mono text-xs text-puerto-mist">desc</code>…) are rejected up front instead of breaking the migration.</li>
+            <li>• <code class="font-mono text-xs text-puerto-rust">puerto generate migration</code> is only available in <code class="font-mono text-xs text-puerto-rust">--db</code> projects.</li>
+          </ul>
         </section>
 
         <!-- Architecture -->
@@ -392,10 +404,46 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
               <div class="flex items-center gap-3">
                 <span class="w-36 text-puerto-teal">business/</span>
                 <span class="text-puerto-mist/40">→ depends on</span>
-                <span class="text-puerto-mist/60">nothing (std + thiserror only)</span>
+                <span class="text-puerto-mist/60">no other crate of the workspace</span>
               </div>
             </div>
           </div>
+          <p class="mt-4 font-sans text-sm text-puerto-mist">
+            Modules are declared inline in each crate's <code class="font-mono text-xs text-puerto-rust">lib.rs</code> — no <code class="font-mono text-xs text-puerto-rust">mod.rs</code> files. Logging goes through <code class="font-mono text-xs text-puerto-rust">tracing</code> directly: no logger to inject or mock.
+          </p>
+        </section>
+
+        <!-- Production defaults -->
+        <section id="production" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Production defaults</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
+            Every generated project ships with what a service needs before its first deploy — and passes its own <code class="font-mono text-xs text-puerto-rust">make lint</code> (clippy <code class="font-mono text-xs text-puerto-rust">-D warnings</code>) out of the box.
+          </p>
+          <div class="mt-6 overflow-x-auto">
+            <table class="w-full font-sans text-sm text-puerto-mist">
+              <tbody>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">GET /health</td><td class="text-xs">Liveness — the process answers</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">GET /health/ready</td><td class="text-xs">Readiness — <code class="text-puerto-teal">503</code> until the database answers (<code class="text-puerto-teal">--db</code> projects)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">SIGTERM / Ctrl-C</td><td class="text-xs">Graceful shutdown — in-flight requests drain before exit</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">Error bodies</td><td class="text-xs"><code class="text-puerto-teal">&#123;"name": "user.not_found", …&#125;</code> — a machine-readable code clients can branch on</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">Status codes</td><td class="text-xs">Validation <code class="text-puerto-teal">422</code> · not found <code class="text-puerto-teal">404</code> · duplicate <code class="text-puerto-teal">409</code> · storage <code class="text-puerto-teal">500</code> — one generated test per mapping</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">rust-toolchain.toml</td><td class="text-xs">Pinned Rust: the lint gives the same answer on every machine</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- AI agents -->
+        <section id="ai-agents" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">AI agents</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
+            Every project ships instructions for coding agents: a root <code class="font-mono text-xs text-puerto-rust">AGENTS.md</code> (architecture, <code class="font-mono text-xs text-puerto-rust">puerto</code> commands, conventions, the checks to run) imported by <code class="font-mono text-xs text-puerto-rust">CLAUDE.md</code>, plus one per crate. Puerto's own test suite keeps them in sync with what it generates.
+          </p>
+          <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
+            <li>• <span class="text-puerto-ice">One commit per piece</span> — finish a use case, get tests and lint green, commit, move on.</li>
+            <li>• <span class="text-puerto-ice">Risk tiers</span> — migrations, money, auth and uniqueness rules get a human read of the full diff; DTO mapping and docs trust the checks.</li>
+            <li>• <span class="text-puerto-ice">Decisions written down</span> — design choices go to <code class="font-mono text-xs text-puerto-rust">docs/adr/</code>, so the next session inherits the reason.</li>
+          </ul>
         </section>
 
         <!-- IDE Snippets -->
@@ -475,7 +523,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">vo-enum</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">Enum VO — from_str() / as_str() pattern with variant tab stops</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">Enum VO — FromStr / as_str() pattern with variant tab stops</span>
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">vo-option-construct</code>
@@ -496,7 +544,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
               <div class="space-y-1.5">
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-rust">app-use-case</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">UseCaseImpl with LoggerTrait injection + unit tests included</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">UseCaseImpl with repository injection, tracing logs + unit tests</span>
                 </div>
               </div>
             </div>
