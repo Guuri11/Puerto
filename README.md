@@ -74,6 +74,14 @@ Presentation → Infrastructure → Application → Domain
 The domain depends on nothing. Everything else depends on the domain. `web/` follows the same
 rule, checked by dependency-cruiser.
 
+Every generated entity also gets, out of the box:
+
+- **Its own id type** (`ProductId`), so another entity's id cannot be passed by mistake
+- **One repository error** (`RepositoryError`: `Duplicate`, `InvalidData`, `Unavailable`) that its
+  own error converts — a unique violation in Postgres answers `409`
+- **Paged lists** — `GET /products?limit=&offset=` answers `{ items, total, limit, offset }`, 20 per
+  page by default and capped at 100 in the domain
+
 ---
 
 ## Getting Started

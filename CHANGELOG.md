@@ -1,3 +1,50 @@
+## [0.13.0] - 2026-10-11
+
+Three backlog items that a production service needs on day one and cannot cheaply add on day 100:
+ids that cannot be mixed up, one error type for every repository, and lists that never read a whole
+table. All three change generated code, hence the minor bump.
+
+### Breaking
+
+- **Entity ids are newtypes.** `Product.id`, the get / update / delete params and
+  `find_by_id` take `ProductId` (declared in `model.rs`) instead of `Uuid`. The wire format, the
+  SQL column and `web/` are unchanged (ADR-0014)
+- **Repositories return `RepositoryError`** (`business/src/domain/shared/repository_error.rs`)
+  instead of the entity's error; every entity error gets `From<RepositoryError>`. The API's error
+  codes are unchanged (ADR-0015)
+- **`list_*` is paged.** `find_all(page: PageRequest) -> Page<Entity>`,
+  `ListEntitiesParams { page }`, and `GET /entities?limit=&offset=` answers
+  `{ items, total, limit, offset }` instead of a bare array (ADR-0016)
+- Shared value objects are declared in `business/src/domain/shared.rs`; `shared/mod.rs` is no
+  longer generated
+
+### 🚀 Features
+
+- **Typed ids:** `{Entity}Id::generate()`, `from_uuid`, `value()` and `Display`; passing another
+  entity's id is a compile error
+- **One driver-error mapping:** `infrastructure::db::map_sqlx_error` turns a `23505` unique
+  violation into `Duplicate` (→ `409`) and anything else into `Unavailable`; a row the domain
+  rejects is reported as `InvalidData` and logged with the reason. Pg repositories with a
+  `unique` field ship an integration test for the duplicate
+- **Paged lists:** `PageRequest` (default 20, capped at 100 in the domain — no route can bypass
+  it) and `Page<T>`; Postgres reads `ORDER BY created_at DESC, id LIMIT/OFFSET` plus a `COUNT(*)`
+- **Paged screens:** the web list screen asks for one page at a time and renders a new
+  `Pagination` control ("1–20 of 45", Previous / Next)
+- New generated tests: the `From<RepositoryError>` arms, a duplicate on create, an unavailable
+  store on get, the page passed through the list use case and route, and the Pg page of a larger
+  table
+
+### Migration Guide
+
+No project generated before 0.13.0 is in use, so the simplest path is to regenerate. For a project
+you keep: copy `business/src/domain/shared.rs` and `shared/{pagination,repository_error}.rs` from a
+fresh `puerto new`, declare `pub mod shared;` in the `domain` block of `business/src/lib.rs`
+(replacing `shared/mod.rs` with `shared.rs` if you have shared value objects), then re-scaffold
+each entity with `puerto generate scaffold <Name> --force` and `make web/sync`. Hand-written code
+that called `find_all()` or `find_by_id(uuid)` needs `PageRequest::default()` and
+`{Entity}Id::from_uuid(uuid)`; a mock returning `Err(EntityError::RepositoryError)` from a
+repository returns `Err(RepositoryError::Unavailable)`.
+
 ## [0.12.0] - 2026-10-11
 
 Full-stack: every project now ships a React frontend, and `scaffold` writes each CRUD entity's
