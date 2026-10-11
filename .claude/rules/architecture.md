@@ -188,8 +188,8 @@ Custom use cases (added via `puerto generate use-case`) also support typed field
 ```rust
 #[async_trait]
 pub trait EntityRepositoryTrait: Send + Sync {
-    async fn find_by_id(&self, id: EntityId) -> Result<Option<Entity>, EntityError>;
-    async fn save(&self, entity: &Entity) -> Result<(), EntityError>;
+    async fn find_by_id(&self, id: EntityId) -> Result<Option<Entity>, RepositoryError>;
+    async fn save(&self, entity: &Entity) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -201,8 +201,8 @@ pub mod mocks {
         pub EntityRepository {}
         #[async_trait]
         impl EntityRepositoryTrait for EntityRepository {
-            async fn find_by_id(&self, id: EntityId) -> Result<Option<Entity>, EntityError>;
-            async fn save(&self, entity: &Entity) -> Result<(), EntityError>;
+            async fn find_by_id(&self, id: EntityId) -> Result<Option<Entity>, RepositoryError>;
+            async fn save(&self, entity: &Entity) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -227,6 +227,24 @@ pub enum EntityError {
 ```
 
 Error codes are **machine-readable identifiers**, never human-readable messages.
+
+### Repository error
+
+Repository ports return one shared error, whatever the entity and the adapter (ADR-0015):
+
+```rust
+// business/src/domain/shared/repository_error.rs — shipped by the template
+pub enum RepositoryError {
+    Duplicate,    // "repository.duplicate"    — a unique constraint rejected the write
+    InvalidData,  // "repository.invalid_data" — a stored row fails the domain's rules
+    Unavailable,  // "repository.unavailable"  — the store failed or is unreachable
+}
+```
+
+Each entity error converts it — `impl From<RepositoryError> for EntityError` (`Duplicate →
+Duplicate`, the rest → `RepositoryError`) — so use cases propagate it with `?` and the API keeps
+answering the entity's codes. `domain/shared.rs` declares `repository_error` (and the shared value
+objects' `errors` / `value_objects`); there is no `shared/mod.rs`.
 
 ---
 
@@ -304,8 +322,11 @@ infrastructure/migrations/
   `sqlx::types::Json<HashMap<String, String>>`, the `SELECT` overrides the column type
   (`meta as "meta: Json<HashMap<String, String>>"`) and the bind uses `db.meta as _`
 - `unique` fields get a partial unique index (`WHERE deleted = false`) — rows are soft-deleted
-- Repositories log and convert errors with `inspect_err` / `map_err`; never a `map_err` that
-  returns its input unchanged (clippy `manual_inspect` under the generated project's `make lint`)
+- Repositories return `RepositoryError`: they log the driver error with their context and convert
+  it with `infrastructure::db::map_sqlx_error` (the only place that knows Postgres codes —
+  `23505` → `Duplicate`); `to_domain(row)` turns a row `TryFrom` rejects into `InvalidData`
+- Never a `map_err` that returns its input unchanged (clippy `manual_inspect` under the generated
+  project's `make lint`)
 
 **When `entity.fields` is defined**, `<Entity>Db` includes all custom columns alongside system columns:
 

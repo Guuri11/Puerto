@@ -1,0 +1,234 @@
+// Phase 11.1 (T-28): repositories speak one error, `RepositoryError`, whatever the entity.
+use super::*;
+
+fn read(dir: &Path, path: &str) -> String {
+    fs::read_to_string(dir.join(path)).unwrap()
+}
+
+fn scaffold_product(name: &str, db: bool, crud: bool, fields: &[puerto_toml::Field]) -> PathBuf {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    setup_puerto_stubs(&dir);
+    if db {
+        fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+    }
+    scaffold::run("Product", &dir, db, crud, fields, &[]).unwrap();
+    dir
+}
+
+#[test]
+fn new_project_ships_the_shared_repository_error() {
+    let dir = temp_dir("repo_error_template");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("repo-error-app", &dir).unwrap();
+
+    let shared = read(&output, "business/src/domain/shared.rs");
+    assert!(shared.contains("pub mod repository_error;"));
+    let error = read(&output, "business/src/domain/shared/repository_error.rs");
+    assert!(error.contains("pub enum RepositoryError"));
+    for code in [
+        "repository.duplicate",
+        "repository.invalid_data",
+        "repository.unavailable",
+    ] {
+        assert!(error.contains(code), "{code}");
+    }
+    let lib = read(&output, "business/src/lib.rs");
+    assert!(lib.contains("pub mod shared;"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn no_demo_project_keeps_the_shared_module() {
+    let dir = temp_dir("repo_error_no_demo");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("repo-error-no-demo", &dir).unwrap();
+    scaffold::apply_no_demo(&output).unwrap();
+
+    let lib = read(&output, "business/src/lib.rs");
+    assert!(lib.contains("pub mod shared;"));
+    assert!(output.join("business/src/domain/shared.rs").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn greeting_repository_returns_the_repository_error() {
+    let dir = temp_dir("repo_error_greeting");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("repo-error-greeting", &dir).unwrap();
+
+    let port = read(&output, "business/src/domain/greeting/repository.rs");
+    assert!(port.contains("Result<Option<Greeting>, RepositoryError>"));
+    let errors = read(&output, "business/src/domain/greeting/errors.rs");
+    assert!(errors.contains("impl From<RepositoryError> for GreetingError"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn crud_repository_port_returns_the_repository_error() {
+    let dir = scaffold_product("repo_error_crud_port", false, true, &[]);
+
+    let port = read(&dir, "business/src/domain/product/repository.rs");
+    assert!(port.contains("use crate::domain::shared::repository_error::RepositoryError;"));
+    assert!(
+        port.contains("async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;")
+    );
+    assert!(port.contains("Result<Option<Product>, RepositoryError>"));
+    assert!(!port.contains("ProductError"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn non_crud_repository_port_returns_the_repository_error() {
+    let dir = scaffold_product("repo_error_simple_port", false, false, &[]);
+
+    let port = read(&dir, "business/src/domain/product/repository.rs");
+    assert!(port.contains("Result<Option<Product>, RepositoryError>"));
+    assert!(!port.contains("ProductError"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn entity_error_converts_the_repository_error_and_tests_each_arm() {
+    let dir = scaffold_product("repo_error_from", false, true, &[]);
+
+    let errors = read(&dir, "business/src/domain/product/errors.rs");
+    assert!(errors.contains("impl From<RepositoryError> for ProductError"));
+    assert!(errors.contains("RepositoryError::Duplicate => Self::Duplicate,"));
+    assert!(errors.contains(
+        "RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,"
+    ));
+    assert!(errors.contains("fn should_convert_a_duplicate_into_the_entity_duplicate()"));
+    assert!(errors.contains("fn should_convert_invalid_data_into_a_repository_error()"));
+    assert!(errors.contains("fn should_convert_an_unavailable_store_into_a_repository_error()"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn inmemory_repository_returns_the_repository_error() {
+    let dir = scaffold_product("repo_error_inmemory", false, true, &[]);
+
+    let repository = read(&dir, "infrastructure/src/product/repository.rs");
+    assert!(repository.contains("RepositoryError"));
+    assert!(!repository.contains("ProductError"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn postgres_repositories_map_driver_errors_in_one_place() {
+    for (name, crud) in [
+        ("repo_error_pg_crud", true),
+        ("repo_error_pg_simple", false),
+    ] {
+        let dir = scaffold_product(name, true, crud, &[]);
+
+        let repository = read(&dir, "infrastructure/src/product/repository.rs");
+        assert!(repository.contains("map_sqlx_error"), "{name}");
+        assert!(!repository.contains("23505"), "{name}");
+        assert!(
+            repository.contains("RepositoryError::InvalidData"),
+            "{name}"
+        );
+        assert!(
+            !repository.contains("ProductError::RepositoryError"),
+            "{name}"
+        );
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn db_module_maps_unique_violations_to_duplicate() {
+    let dir = temp_dir("repo_error_db_rs");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some("repo-error-db".into()), true, &dir).unwrap();
+
+    let db = read(&output, "infrastructure/src/db.rs");
+    assert!(db.contains("pub fn map_sqlx_error(err: &sqlx::Error) -> RepositoryError"));
+    assert!(db.contains("\"23505\""));
+    assert!(db.contains("RepositoryError::Duplicate"));
+    assert!(db.contains("fn should_map_a_non_database_error_to_unavailable()"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn postgres_test_rejects_a_duplicate_when_a_field_is_unique() {
+    let mut sku = scaffold_test_field("sku", "String");
+    sku.unique = true;
+    let dir = scaffold_product("repo_error_pg_unique", true, true, &[sku]);
+
+    let repository = read(&dir, "infrastructure/src/product/repository.rs");
+    assert!(repository.contains("async fn should_reject_a_duplicate_sku(pool: PgPool)"));
+    assert!(repository.contains("RepositoryError::Duplicate"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn postgres_test_has_no_duplicate_case_without_a_unique_field() {
+    let dir = scaffold_product("repo_error_pg_no_unique", true, true, &[]);
+
+    let repository = read(&dir, "infrastructure/src/product/repository.rs");
+    assert!(!repository.contains("should_reject_a_duplicate"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn shared_value_objects_are_declared_in_shared_rs_without_mod_rs() {
+    let dir = temp_dir("repo_error_shared_vo");
+    cleanup(&dir);
+    setup_puerto_stubs(&dir);
+    let email = puerto_toml::Field {
+        name: "email".into(),
+        field_type: "String".into(),
+        value_object: Some("Email".to_string()),
+        ..Default::default()
+    };
+    let vos = [ValueObjectDefinition {
+        name: "Email".to_string(),
+        inner_type: "String".to_string(),
+    }];
+    fs::create_dir_all(dir.join("business/src/domain")).unwrap();
+    fs::write(
+        dir.join("business/src/domain/shared.rs"),
+        "pub mod repository_error;\n",
+    )
+    .unwrap();
+
+    scaffold::run(
+        "User",
+        &dir,
+        false,
+        true,
+        std::slice::from_ref(&email),
+        &vos,
+    )
+    .unwrap();
+    scaffold::run("Account", &dir, false, true, &[email], &vos).unwrap();
+
+    assert!(!dir.join("business/src/domain/shared/mod.rs").exists());
+    let shared = read(&dir, "business/src/domain/shared.rs");
+    assert!(shared.contains("pub mod repository_error;"));
+    assert_eq!(shared.matches("pub mod errors;").count(), 1);
+    assert_eq!(shared.matches("pub mod value_objects;").count(), 1);
+    assert!(
+        dir.join("business/src/domain/shared/value_objects.rs")
+            .exists()
+    );
+
+    cleanup(&dir);
+}

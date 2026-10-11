@@ -43,6 +43,7 @@ let weight = Weight::new(params.weight)?;
 mod tests {
     use super::*;
     use crate::domain::item::repository::mocks::MockItemRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -66,6 +67,31 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name.value(), "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateItemParams {
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            weight: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "item.duplicate");
     }
 
     #[tokio::test]
@@ -246,6 +272,7 @@ mod tests {
         model::{Item, ItemId, ItemProps},
         repository::mocks::MockItemRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use crate::domain::item::value_objects::Name;
     use crate::domain::item::value_objects::Sku;
     use crate::domain::item::value_objects::Weight;
@@ -288,6 +315,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "item.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetItemParams { id: ItemId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "item.repository_error");
+    }
 }
 
 === business/src/application/item/list_items.rs ===
@@ -310,7 +355,11 @@ pub struct ListItemsUseCaseImpl {
 impl ListItemsUseCaseTrait for ListItemsUseCaseImpl {
     async fn execute(&self, _params: ListItemsParams) -> Result<Vec<Item>, ItemError> {
         tracing::info!("list_items: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_items: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_items: repository failed"))
+            .map_err(ItemError::from)
     }
 }
 
@@ -556,6 +605,8 @@ mod tests {
 === business/src/domain/item/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum ItemError {
     #[error("item.validation_error.{0}")]
@@ -574,6 +625,39 @@ pub enum ItemError {
     InvalidSku,
     #[error("item.invalid_weight")]
     InvalidWeight,
+}
+
+impl From<RepositoryError> for ItemError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = ItemError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "item.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = ItemError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "item.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = ItemError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "item.repository_error");
+    }
 }
 
 === business/src/domain/item/model.rs ===
@@ -689,16 +773,14 @@ mod tests {
 === business/src/domain/item/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::ItemError,
-    model::{Item, ItemId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Item, ItemId};
 
 #[async_trait]
 pub trait ItemRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Item>, ItemError>;
-    async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, ItemError>;
-    async fn save(&self, entity: &Item) -> Result<(), ItemError>;
+    async fn find_all(&self) -> Result<Vec<Item>, RepositoryError>;
+    async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, RepositoryError>;
+    async fn save(&self, entity: &Item) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -712,9 +794,9 @@ pub mod mocks {
 
         #[async_trait]
         impl ItemRepositoryTrait for ItemRepository {
-            async fn find_all(&self) -> Result<Vec<Item>, ItemError>;
-            async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, ItemError>;
-            async fn save(&self, entity: &Item) -> Result<(), ItemError>;
+            async fn find_all(&self) -> Result<Vec<Item>, RepositoryError>;
+            async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, RepositoryError>;
+            async fn save(&self, entity: &Item) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -939,6 +1021,7 @@ impl Weight {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1052,8 +1135,8 @@ impl Default for ItemMother {
 === infrastructure/src/item/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::item::{
-    errors::ItemError,
     model::{Item, ItemId},
     repository::ItemRepositoryTrait,
 };
@@ -1071,17 +1154,17 @@ impl InMemoryItemRepository {
 
 #[async_trait]
 impl ItemRepositoryTrait for InMemoryItemRepository {
-    async fn find_all(&self) -> Result<Vec<Item>, ItemError> {
+    async fn find_all(&self) -> Result<Vec<Item>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, ItemError> {
+    async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &Item) -> Result<(), ItemError> {
+    async fn save(&self, entity: &Item) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

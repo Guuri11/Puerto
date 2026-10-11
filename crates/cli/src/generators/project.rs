@@ -245,10 +245,11 @@ pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         base.join("presentation/src/api/greeting.rs"),
     ))?;
 
-    // Minimal business lib.rs: empty domain and application blocks for the patchers to fill.
+    // Minimal business lib.rs: the shared module (`RepositoryError`, …) and otherwise empty
+    // domain and application blocks for the patchers to fill.
     fs::write(
         base.join("business/src/lib.rs"),
-        "pub mod domain {\n}\npub mod application {\n}\n",
+        "pub mod domain {\n  pub mod shared;\n}\npub mod application {\n}\n",
     )?;
 
     // Minimal infrastructure lib.rs: no adapters yet. A `--db` project keeps its `db` module.

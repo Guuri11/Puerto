@@ -39,6 +39,7 @@ impl CreateArticleUseCaseTrait for CreateArticleUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::article::repository::mocks::MockArticleRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -64,6 +65,33 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateArticleParams {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "article.duplicate");
     }
 
     #[tokio::test]
@@ -220,6 +248,7 @@ mod tests {
         model::{Article, ArticleId, ArticleProps},
         repository::mocks::MockArticleRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -261,6 +290,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "article.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetArticleParams { id: ArticleId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "article.repository_error");
+    }
 }
 
 === business/src/application/article/list_articles.rs ===
@@ -283,7 +330,11 @@ pub struct ListArticlesUseCaseImpl {
 impl ListArticlesUseCaseTrait for ListArticlesUseCaseImpl {
     async fn execute(&self, _params: ListArticlesParams) -> Result<Vec<Article>, ArticleError> {
         tracing::info!("list_articles: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_articles: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_articles: repository failed"))
+            .map_err(ArticleError::from)
     }
 }
 
@@ -503,6 +554,8 @@ mod tests {
 === business/src/domain/article/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum ArticleError {
     #[error("article.validation_error.{0}")]
@@ -515,6 +568,39 @@ pub enum ArticleError {
     RepositoryError,
     #[error("article.unknown")]
     Unknown,
+}
+
+impl From<RepositoryError> for ArticleError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = ArticleError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "article.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = ArticleError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "article.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = ArticleError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "article.repository_error");
+    }
 }
 
 === business/src/domain/article/model.rs ===
@@ -646,16 +732,14 @@ mod tests {
 === business/src/domain/article/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::ArticleError,
-    model::{Article, ArticleId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Article, ArticleId};
 
 #[async_trait]
 pub trait ArticleRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Article>, ArticleError>;
-    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ArticleError>;
-    async fn save(&self, entity: &Article) -> Result<(), ArticleError>;
+    async fn find_all(&self) -> Result<Vec<Article>, RepositoryError>;
+    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError>;
+    async fn save(&self, entity: &Article) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -669,9 +753,9 @@ pub mod mocks {
 
         #[async_trait]
         impl ArticleRepositoryTrait for ArticleRepository {
-            async fn find_all(&self) -> Result<Vec<Article>, ArticleError>;
-            async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ArticleError>;
-            async fn save(&self, entity: &Article) -> Result<(), ArticleError>;
+            async fn find_all(&self) -> Result<Vec<Article>, RepositoryError>;
+            async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError>;
+            async fn save(&self, entity: &Article) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -846,6 +930,7 @@ pub mod mocks {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -975,8 +1060,8 @@ impl Default for ArticleMother {
 === infrastructure/src/article/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::article::{
-    errors::ArticleError,
     model::{Article, ArticleId},
     repository::ArticleRepositoryTrait,
 };
@@ -994,17 +1079,17 @@ impl InMemoryArticleRepository {
 
 #[async_trait]
 impl ArticleRepositoryTrait for InMemoryArticleRepository {
-    async fn find_all(&self) -> Result<Vec<Article>, ArticleError> {
+    async fn find_all(&self) -> Result<Vec<Article>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ArticleError> {
+    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &Article) -> Result<(), ArticleError> {
+    async fn save(&self, entity: &Article) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

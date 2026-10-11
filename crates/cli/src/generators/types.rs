@@ -259,6 +259,8 @@ pub fn field_rust_type(field: &Field) -> String {
 #[derive(Debug, serde::Serialize)]
 pub struct FieldCtx {
     pub name: String,
+    /// `unique = true`: a partial unique index in `--db` projects.
+    pub unique: bool,
     /// The type in domain structs: the VO name, `Option<Vo>`, `Vec<Vo>`, or the primitive.
     pub rust_type: String,
     pub is_vo: bool,
@@ -307,6 +309,7 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
     let vo = field.value_object.clone().unwrap_or_default();
     let is_map = field.field_type == "HashMap<String, String>";
     FieldCtx {
+        unique: field.unique,
         seed_literal: seed_literal(field),
         field_type: field.field_type.clone(),
         is_map,

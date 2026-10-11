@@ -1,14 +1,12 @@
 use async_trait::async_trait;
 
-use super::{
-    errors::{{ pascal }}Error,
-    model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{{ "{" }}{{ pascal }}, {{ pascal }}Id};
 
 #[async_trait]
 pub trait {{ pascal }}RepositoryTrait: Send + Sync {
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, {{ pascal }}Error>;
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), {{ pascal }}Error>;
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
+    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -22,8 +20,8 @@ pub mod mocks {
 
         #[async_trait]
         impl {{ pascal }}RepositoryTrait for {{ pascal }}Repository {
-            async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, {{ pascal }}Error>;
-            async fn save(&self, entity: &{{ pascal }}) -> Result<(), {{ pascal }}Error>;
+            async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
+            async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
         }
     }
 }

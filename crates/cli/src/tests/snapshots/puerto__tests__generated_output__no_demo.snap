@@ -38,6 +38,7 @@ impl CreatePersonaUseCaseTrait for CreatePersonaUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::persona::repository::mocks::MockPersonaRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -59,6 +60,29 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreatePersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreatePersonaParams {
+            name: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "persona.duplicate");
     }
 
     #[tokio::test]
@@ -207,6 +231,7 @@ mod tests {
         model::{Persona, PersonaId, PersonaProps},
         repository::mocks::MockPersonaRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -244,6 +269,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "persona.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetPersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetPersonaParams { id: PersonaId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "persona.repository_error");
+    }
 }
 
 === business/src/application/persona/list_personas.rs ===
@@ -266,7 +309,11 @@ pub struct ListPersonasUseCaseImpl {
 impl ListPersonasUseCaseTrait for ListPersonasUseCaseImpl {
     async fn execute(&self, _params: ListPersonasParams) -> Result<Vec<Persona>, PersonaError> {
         tracing::info!("list_personas: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_personas: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_personas: repository failed"))
+            .map_err(PersonaError::from)
     }
 }
 
@@ -466,6 +513,8 @@ mod tests {
 === business/src/domain/persona/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum PersonaError {
     #[error("persona.validation_error.{0}")]
@@ -478,6 +527,39 @@ pub enum PersonaError {
     RepositoryError,
     #[error("persona.unknown")]
     Unknown,
+}
+
+impl From<RepositoryError> for PersonaError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = PersonaError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "persona.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = PersonaError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "persona.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = PersonaError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "persona.repository_error");
+    }
 }
 
 === business/src/domain/persona/model.rs ===
@@ -585,16 +667,14 @@ mod tests {
 === business/src/domain/persona/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::PersonaError,
-    model::{Persona, PersonaId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Persona, PersonaId};
 
 #[async_trait]
 pub trait PersonaRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Persona>, PersonaError>;
-    async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, PersonaError>;
-    async fn save(&self, entity: &Persona) -> Result<(), PersonaError>;
+    async fn find_all(&self) -> Result<Vec<Persona>, RepositoryError>;
+    async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, RepositoryError>;
+    async fn save(&self, entity: &Persona) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -608,9 +688,9 @@ pub mod mocks {
 
         #[async_trait]
         impl PersonaRepositoryTrait for PersonaRepository {
-            async fn find_all(&self) -> Result<Vec<Persona>, PersonaError>;
-            async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, PersonaError>;
-            async fn save(&self, entity: &Persona) -> Result<(), PersonaError>;
+            async fn find_all(&self) -> Result<Vec<Persona>, RepositoryError>;
+            async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, RepositoryError>;
+            async fn save(&self, entity: &Persona) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -777,6 +857,7 @@ pub mod mocks {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
 
     pub mod persona {
         pub mod errors;
@@ -872,8 +953,8 @@ pub mod persona {
 === infrastructure/src/persona/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::persona::{
-    errors::PersonaError,
     model::{Persona, PersonaId},
     repository::PersonaRepositoryTrait,
 };
@@ -891,17 +972,17 @@ impl InMemoryPersonaRepository {
 
 #[async_trait]
 impl PersonaRepositoryTrait for InMemoryPersonaRepository {
-    async fn find_all(&self) -> Result<Vec<Persona>, PersonaError> {
+    async fn find_all(&self) -> Result<Vec<Persona>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, PersonaError> {
+    async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &Persona) -> Result<(), PersonaError> {
+    async fn save(&self, entity: &Persona) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

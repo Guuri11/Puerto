@@ -245,10 +245,20 @@ pub fn write_shared_vo_files(
         &generate_shared_errors_combined(shared_vos)?,
     )?;
 
-    write_file(
-        &shared_dir.join("mod.rs"),
-        "pub mod errors;\npub mod value_objects;\n",
-    )?;
+    // Declared in `shared.rs` (shipped with `repository_error`), never a `shared/mod.rs`.
+    let shared_rs = base.join("business/src/domain/shared.rs");
+    let mut declarations = fs::read_to_string(&shared_rs).unwrap_or_default();
+    for module in ["errors", "value_objects"] {
+        let line = format!("pub mod {module};");
+        if !declarations.lines().any(|l| l.trim() == line) {
+            if !declarations.is_empty() && !declarations.ends_with('\n') {
+                declarations.push('\n');
+            }
+            declarations.push_str(&line);
+            declarations.push('\n');
+        }
+    }
+    fs::write(&shared_rs, declarations)?;
 
     Ok(())
 }

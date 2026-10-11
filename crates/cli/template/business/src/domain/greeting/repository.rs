@@ -1,11 +1,12 @@
 use async_trait::async_trait;
 
-use super::{errors::GreetingError, model::Greeting};
+use super::model::Greeting;
+use crate::domain::shared::repository_error::RepositoryError;
 
 /// Port: contract for greeting persistence (implemented by infrastructure)
 #[async_trait]
 pub trait GreetingRepositoryTrait: Send + Sync {
-    async fn find_by_name(&self, name: &str) -> Result<Option<Greeting>, GreetingError>;
+    async fn find_by_name(&self, name: &str) -> Result<Option<Greeting>, RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -19,7 +20,7 @@ pub mod mocks {
 
         #[async_trait]
         impl GreetingRepositoryTrait for GreetingRepository {
-            async fn find_by_name(&self, name: &str) -> Result<Option<Greeting>, GreetingError>;
+            async fn find_by_name(&self, name: &str) -> Result<Option<Greeting>, RepositoryError>;
         }
     }
 }

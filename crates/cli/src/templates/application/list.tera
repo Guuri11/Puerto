@@ -17,7 +17,11 @@ pub struct List{{ plural_pascal }}UseCaseImpl {
 impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl {
     async fn execute(&self, _params: List{{ plural_pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error> {
         tracing::info!("list_{{ plural }}: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_{{ plural }}: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_{{ plural }}: repository failed"))
+            .map_err({{ pascal }}Error::from)
     }
 }
 

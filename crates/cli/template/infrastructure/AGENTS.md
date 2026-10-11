@@ -22,8 +22,10 @@ infrastructure/
 - **`from_repository()` is the only door** from persistence into the domain — never call
   `Entity::new()` inside a repository.
 - Repositories depend on `business` only. Never import from `presentation`.
-- Logging with `tracing::debug!` / `error!` directly. Map driver errors to domain errors
-  (`23505` unique violation → `EntityError::Duplicate`); never leak a driver error upward.
+- Logging with `tracing::debug!` / `error!` directly. Repositories return `RepositoryError`
+  (`business::domain::shared::repository_error`): log the driver error with context, then convert
+  it with `db::map_sqlx_error` (`23505` unique violation → `Duplicate`, the rest → `Unavailable`);
+  a row the domain rejects is `InvalidData`. Never leak a driver error upward.
 
 ## In-memory (default without `--db`)
 

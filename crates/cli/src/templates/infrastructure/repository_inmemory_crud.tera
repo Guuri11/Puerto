@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::{{ snake }}::{
-    errors::{{ pascal }}Error,
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{{ pascal }}RepositoryTrait,
 };
@@ -19,17 +19,17 @@ impl InMemory{{ pascal }}Repository {
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
-    async fn find_all(&self) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error> {
+    async fn find_all(&self) -> Result<Vec<{{ pascal }}>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, {{ pascal }}Error> {
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), {{ pascal }}Error> {
+    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

@@ -292,7 +292,9 @@ type = "String"
             .exists()
     );
     assert!(dir.join("business/src/domain/shared/errors.rs").exists());
-    assert!(dir.join("business/src/domain/shared/mod.rs").exists());
+    assert!(!dir.join("business/src/domain/shared/mod.rs").exists());
+    let shared = fs::read_to_string(dir.join("business/src/domain/shared.rs")).unwrap();
+    assert!(shared.contains("pub mod value_objects;"));
 
     cleanup(&dir);
 }

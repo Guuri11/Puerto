@@ -42,6 +42,7 @@ let sku = Sku::new(params.sku)?;
 mod tests {
     use super::*;
     use crate::domain::order_item::repository::mocks::MockOrderItemRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
     use uuid::Uuid;
 
 
@@ -69,6 +70,34 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockOrderItemRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateOrderItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateOrderItemParams {
+            title: "example".to_string(),
+            quantity: 42,
+            rate: 1.5,
+            in_stock: true,
+            ref_id: Uuid::new_v4(),
+            sku: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order_item.duplicate");
     }
 
     #[tokio::test]
@@ -257,6 +286,7 @@ mod tests {
         model::{OrderItem, OrderItemId, OrderItemProps},
         repository::mocks::MockOrderItemRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use uuid::Uuid;
     use crate::domain::order_item::value_objects::Sku;
 
@@ -301,6 +331,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "order_item.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockOrderItemRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetOrderItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetOrderItemParams { id: OrderItemId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order_item.repository_error");
+    }
 }
 
 === business/src/application/order_item/list_order_items.rs ===
@@ -323,7 +371,11 @@ pub struct ListOrderItemsUseCaseImpl {
 impl ListOrderItemsUseCaseTrait for ListOrderItemsUseCaseImpl {
     async fn execute(&self, _params: ListOrderItemsParams) -> Result<Vec<OrderItem>, OrderItemError> {
         tracing::info!("list_order_items: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_order_items: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_order_items: repository failed"))
+            .map_err(OrderItemError::from)
     }
 }
 
@@ -598,6 +650,8 @@ mod tests {
 === business/src/domain/order_item/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum OrderItemError {
     #[error("order_item.validation_error.{0}")]
@@ -612,6 +666,39 @@ pub enum OrderItemError {
     Unknown,
     #[error("order_item.invalid_sku")]
     InvalidSku,
+}
+
+impl From<RepositoryError> for OrderItemError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = OrderItemError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "order_item.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = OrderItemError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "order_item.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = OrderItemError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "order_item.repository_error");
+    }
 }
 
 === business/src/domain/order_item/model.rs ===
@@ -760,16 +847,14 @@ mod tests {
 === business/src/domain/order_item/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::OrderItemError,
-    model::{OrderItem, OrderItemId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{OrderItem, OrderItemId};
 
 #[async_trait]
 pub trait OrderItemRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<OrderItem>, OrderItemError>;
-    async fn find_by_id(&self, id: OrderItemId) -> Result<Option<OrderItem>, OrderItemError>;
-    async fn save(&self, entity: &OrderItem) -> Result<(), OrderItemError>;
+    async fn find_all(&self) -> Result<Vec<OrderItem>, RepositoryError>;
+    async fn find_by_id(&self, id: OrderItemId) -> Result<Option<OrderItem>, RepositoryError>;
+    async fn save(&self, entity: &OrderItem) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -783,9 +868,9 @@ pub mod mocks {
 
         #[async_trait]
         impl OrderItemRepositoryTrait for OrderItemRepository {
-            async fn find_all(&self) -> Result<Vec<OrderItem>, OrderItemError>;
-            async fn find_by_id(&self, id: OrderItemId) -> Result<Option<OrderItem>, OrderItemError>;
-            async fn save(&self, entity: &OrderItem) -> Result<(), OrderItemError>;
+            async fn find_all(&self) -> Result<Vec<OrderItem>, RepositoryError>;
+            async fn find_by_id(&self, id: OrderItemId) -> Result<Option<OrderItem>, RepositoryError>;
+            async fn save(&self, entity: &OrderItem) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -986,6 +1071,7 @@ impl Sku {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1135,8 +1221,8 @@ pub mod order_item {
 === infrastructure/src/order_item/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::order_item::{
-    errors::OrderItemError,
     model::{OrderItem, OrderItemId},
     repository::OrderItemRepositoryTrait,
 };
@@ -1154,17 +1240,17 @@ impl InMemoryOrderItemRepository {
 
 #[async_trait]
 impl OrderItemRepositoryTrait for InMemoryOrderItemRepository {
-    async fn find_all(&self) -> Result<Vec<OrderItem>, OrderItemError> {
+    async fn find_all(&self) -> Result<Vec<OrderItem>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: OrderItemId) -> Result<Option<OrderItem>, OrderItemError> {
+    async fn find_by_id(&self, id: OrderItemId) -> Result<Option<OrderItem>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &OrderItem) -> Result<(), OrderItemError> {
+    async fn save(&self, entity: &OrderItem) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

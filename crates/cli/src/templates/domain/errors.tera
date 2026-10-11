@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum {{ pascal }}Error {
     #[error("{{ snake }}.validation_error.{0}")]
@@ -15,3 +17,36 @@ pub enum {{ pascal }}Error {
 {% for f in vo_fields %}    #[error("{{ snake }}.invalid_{{ f.vo_snake }}")]
     Invalid{{ f.vo_pascal }},
 {% endfor %}}
+
+impl From<RepositoryError> for {{ pascal }}Error {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = {{ pascal }}Error::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "{{ snake }}.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = {{ pascal }}Error::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "{{ snake }}.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = {{ pascal }}Error::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "{{ snake }}.repository_error");
+    }
+}

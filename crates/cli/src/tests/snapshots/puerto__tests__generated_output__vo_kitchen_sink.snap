@@ -55,6 +55,7 @@ let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
 mod tests {
     use super::*;
     use crate::domain::account::repository::mocks::MockAccountRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -84,6 +85,37 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockAccountRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateAccountUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateAccountParams {
+            title: "example".to_string(),
+            price: 42,
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            note: None,
+            middle_name: None,
+            tags: vec![],
+            status: "Active".to_string(),
+            email: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "account.duplicate");
     }
 
     #[tokio::test]
@@ -376,6 +408,7 @@ mod tests {
         model::{Account, AccountId, AccountProps},
         repository::mocks::MockAccountRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use crate::domain::account::value_objects::Name;
     use crate::domain::account::value_objects::Sku;
     use crate::domain::account::value_objects::Status;
@@ -425,6 +458,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "account.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockAccountRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetAccountUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetAccountParams { id: AccountId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "account.repository_error");
+    }
 }
 
 === business/src/application/account/list_accounts.rs ===
@@ -447,7 +498,11 @@ pub struct ListAccountsUseCaseImpl {
 impl ListAccountsUseCaseTrait for ListAccountsUseCaseImpl {
     async fn execute(&self, _params: ListAccountsParams) -> Result<Vec<Account>, AccountError> {
         tracing::info!("list_accounts: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_accounts: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_accounts: repository failed"))
+            .map_err(AccountError::from)
     }
 }
 
@@ -860,6 +915,8 @@ mod tests {
 === business/src/domain/account/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum AccountError {
     #[error("account.validation_error.{0}")]
@@ -884,6 +941,39 @@ pub enum AccountError {
     InvalidStatus,
     #[error("account.invalid_email")]
     InvalidEmail,
+}
+
+impl From<RepositoryError> for AccountError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = AccountError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "account.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = AccountError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "account.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = AccountError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "account.repository_error");
+    }
 }
 
 === business/src/domain/account/model.rs ===
@@ -1085,16 +1175,14 @@ mod tests {
 === business/src/domain/account/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::AccountError,
-    model::{Account, AccountId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Account, AccountId};
 
 #[async_trait]
 pub trait AccountRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Account>, AccountError>;
-    async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, AccountError>;
-    async fn save(&self, entity: &Account) -> Result<(), AccountError>;
+    async fn find_all(&self) -> Result<Vec<Account>, RepositoryError>;
+    async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, RepositoryError>;
+    async fn save(&self, entity: &Account) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1108,9 +1196,9 @@ pub mod mocks {
 
         #[async_trait]
         impl AccountRepositoryTrait for AccountRepository {
-            async fn find_all(&self) -> Result<Vec<Account>, AccountError>;
-            async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, AccountError>;
-            async fn save(&self, entity: &Account) -> Result<(), AccountError>;
+            async fn find_all(&self) -> Result<Vec<Account>, RepositoryError>;
+            async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, RepositoryError>;
+            async fn save(&self, entity: &Account) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -1397,6 +1485,12 @@ impl Status {
     }
 }
 
+=== business/src/domain/shared.rs ===
+//! What every entity of the domain shares.
+pub mod repository_error;
+pub mod errors;
+pub mod value_objects;
+
 === business/src/domain/shared/errors.rs ===
 use thiserror::Error;
 
@@ -1405,10 +1499,6 @@ pub enum EmailError {
     #[error("shared.value_object.email.invalid")]
     Invalid,
 }
-
-=== business/src/domain/shared/mod.rs ===
-pub mod errors;
-pub mod value_objects;
 
 === business/src/domain/shared/value_objects.rs ===
 use super::errors::EmailError;
@@ -1434,6 +1524,7 @@ impl Email {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1457,8 +1548,6 @@ pub mod domain {
     
         pub mod value_objects;
 }
-
-    pub mod shared;
 }
 pub mod application {
   pub mod greeting {
@@ -1605,8 +1694,8 @@ impl Default for AccountMother {
 === infrastructure/src/account/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::account::{
-    errors::AccountError,
     model::{Account, AccountId},
     repository::AccountRepositoryTrait,
 };
@@ -1624,17 +1713,17 @@ impl InMemoryAccountRepository {
 
 #[async_trait]
 impl AccountRepositoryTrait for InMemoryAccountRepository {
-    async fn find_all(&self) -> Result<Vec<Account>, AccountError> {
+    async fn find_all(&self) -> Result<Vec<Account>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, AccountError> {
+    async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &Account) -> Result<(), AccountError> {
+    async fn save(&self, entity: &Account) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

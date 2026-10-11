@@ -23,3 +23,4 @@ ADR; supersede it with a new one and link both ways.
 | [0012](0012-presentation-holds-use-case-ports.md) | Presentation holds use case ports; routes are tested with mocks | Accepted |
 | [0013](0013-web-frontend-react-daisyui-bun.md) | Web frontend: React + daisyUI on Bun; structure by Puerto, wire types from OpenAPI | Accepted |
 | [0014](0014-entity-ids-are-generated-newtypes.md) | Entity ids are generated newtypes | Accepted |
+| [0015](0015-repositories-return-one-repository-error.md) | Repositories return one `RepositoryError` | Accepted |

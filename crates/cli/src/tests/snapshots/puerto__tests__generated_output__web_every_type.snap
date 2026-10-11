@@ -53,6 +53,7 @@ let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Res
 mod tests {
     use super::*;
     use crate::domain::case::repository::mocks::MockCaseRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
     use chrono::Utc;
     use std::collections::HashMap;
 
@@ -88,6 +89,41 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCaseParams {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "Open".to_string(),
+            middle_name: None,
+            labels: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "case.duplicate");
     }
 
     #[tokio::test]
@@ -298,6 +334,7 @@ mod tests {
         model::{Case, CaseId, CaseProps},
         repository::mocks::MockCaseRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use chrono::Utc;
     use std::collections::HashMap;
     use crate::domain::case::value_objects::Status;
@@ -350,6 +387,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "case.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetCaseParams { id: CaseId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "case.repository_error");
+    }
 }
 
 === business/src/application/case/list_cases.rs ===
@@ -372,7 +427,11 @@ pub struct ListCasesUseCaseImpl {
 impl ListCasesUseCaseTrait for ListCasesUseCaseImpl {
     async fn execute(&self, _params: ListCasesParams) -> Result<Vec<Case>, CaseError> {
         tracing::info!("list_cases: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_cases: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_cases: repository failed"))
+            .map_err(CaseError::from)
     }
 }
 
@@ -668,6 +727,8 @@ mod tests {
 === business/src/domain/case/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum CaseError {
     #[error("case.validation_error.{0}")]
@@ -686,6 +747,39 @@ pub enum CaseError {
     InvalidMiddleName,
     #[error("case.invalid_label")]
     InvalidLabel,
+}
+
+impl From<RepositoryError> for CaseError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = CaseError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "case.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = CaseError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "case.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = CaseError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "case.repository_error");
+    }
 }
 
 === business/src/domain/case/model.rs ===
@@ -879,16 +973,14 @@ mod tests {
 === business/src/domain/case/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::CaseError,
-    model::{Case, CaseId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Case, CaseId};
 
 #[async_trait]
 pub trait CaseRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Case>, CaseError>;
-    async fn find_by_id(&self, id: CaseId) -> Result<Option<Case>, CaseError>;
-    async fn save(&self, entity: &Case) -> Result<(), CaseError>;
+    async fn find_all(&self) -> Result<Vec<Case>, RepositoryError>;
+    async fn find_by_id(&self, id: CaseId) -> Result<Option<Case>, RepositoryError>;
+    async fn save(&self, entity: &Case) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -902,9 +994,9 @@ pub mod mocks {
 
         #[async_trait]
         impl CaseRepositoryTrait for CaseRepository {
-            async fn find_all(&self) -> Result<Vec<Case>, CaseError>;
-            async fn find_by_id(&self, id: CaseId) -> Result<Option<Case>, CaseError>;
-            async fn save(&self, entity: &Case) -> Result<(), CaseError>;
+            async fn find_all(&self) -> Result<Vec<Case>, RepositoryError>;
+            async fn find_by_id(&self, id: CaseId) -> Result<Option<Case>, RepositoryError>;
+            async fn save(&self, entity: &Case) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -1167,6 +1259,7 @@ impl Label {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1367,8 +1460,8 @@ impl Default for CaseMother {
 === infrastructure/src/case/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::case::{
-    errors::CaseError,
     model::{Case, CaseId},
     repository::CaseRepositoryTrait,
 };
@@ -1386,17 +1479,17 @@ impl InMemoryCaseRepository {
 
 #[async_trait]
 impl CaseRepositoryTrait for InMemoryCaseRepository {
-    async fn find_all(&self) -> Result<Vec<Case>, CaseError> {
+    async fn find_all(&self) -> Result<Vec<Case>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: CaseId) -> Result<Option<Case>, CaseError> {
+    async fn find_by_id(&self, id: CaseId) -> Result<Option<Case>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &Case) -> Result<(), CaseError> {
+    async fn save(&self, entity: &Case) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

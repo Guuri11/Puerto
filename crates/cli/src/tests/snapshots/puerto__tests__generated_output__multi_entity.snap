@@ -37,6 +37,7 @@ let name = Name::new(params.name)?;
 mod tests {
     use super::*;
     use crate::domain::category::repository::mocks::MockCategoryRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -58,6 +59,29 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name.value(), "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCategoryParams {
+            name: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "category.duplicate");
     }
 
     #[tokio::test]
@@ -207,6 +231,7 @@ mod tests {
         model::{Category, CategoryId, CategoryProps},
         repository::mocks::MockCategoryRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use crate::domain::category::value_objects::Name;
 
 
@@ -245,6 +270,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "category.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetCategoryParams { id: CategoryId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "category.repository_error");
+    }
 }
 
 === business/src/application/category/list_categories.rs ===
@@ -267,7 +310,11 @@ pub struct ListCategoriesUseCaseImpl {
 impl ListCategoriesUseCaseTrait for ListCategoriesUseCaseImpl {
     async fn execute(&self, _params: ListCategoriesParams) -> Result<Vec<Category>, CategoryError> {
         tracing::info!("list_categories: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_categories: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_categories: repository failed"))
+            .map_err(CategoryError::from)
     }
 }
 
@@ -485,6 +532,7 @@ impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::repository::mocks::MockProductRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -507,6 +555,30 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+            title: "example".to_string(),
+            price: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.duplicate");
     }
 
     #[tokio::test]
@@ -657,6 +729,7 @@ mod tests {
         model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -695,6 +768,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "product.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetProductParams { id: ProductId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.repository_error");
+    }
 }
 
 === business/src/application/product/list_products.rs ===
@@ -717,7 +808,11 @@ pub struct ListProductsUseCaseImpl {
 impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
     async fn execute(&self, _params: ListProductsParams) -> Result<Vec<Product>, ProductError> {
         tracing::info!("list_products: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
+            .map_err(ProductError::from)
     }
 }
 
@@ -913,6 +1008,8 @@ mod tests {
 === business/src/domain/category/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum CategoryError {
     #[error("category.validation_error.{0}")]
@@ -927,6 +1024,39 @@ pub enum CategoryError {
     Unknown,
     #[error("category.invalid_name")]
     InvalidName,
+}
+
+impl From<RepositoryError> for CategoryError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = CategoryError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "category.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = CategoryError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "category.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = CategoryError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "category.repository_error");
+    }
 }
 
 === business/src/domain/category/model.rs ===
@@ -1022,16 +1152,14 @@ mod tests {
 === business/src/domain/category/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::CategoryError,
-    model::{Category, CategoryId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Category, CategoryId};
 
 #[async_trait]
 pub trait CategoryRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Category>, CategoryError>;
-    async fn find_by_id(&self, id: CategoryId) -> Result<Option<Category>, CategoryError>;
-    async fn save(&self, entity: &Category) -> Result<(), CategoryError>;
+    async fn find_all(&self) -> Result<Vec<Category>, RepositoryError>;
+    async fn find_by_id(&self, id: CategoryId) -> Result<Option<Category>, RepositoryError>;
+    async fn save(&self, entity: &Category) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1045,9 +1173,9 @@ pub mod mocks {
 
         #[async_trait]
         impl CategoryRepositoryTrait for CategoryRepository {
-            async fn find_all(&self) -> Result<Vec<Category>, CategoryError>;
-            async fn find_by_id(&self, id: CategoryId) -> Result<Option<Category>, CategoryError>;
-            async fn save(&self, entity: &Category) -> Result<(), CategoryError>;
+            async fn find_all(&self) -> Result<Vec<Category>, RepositoryError>;
+            async fn find_by_id(&self, id: CategoryId) -> Result<Option<Category>, RepositoryError>;
+            async fn save(&self, entity: &Category) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -1237,6 +1365,8 @@ impl Name {
 === business/src/domain/product/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum ProductError {
     #[error("product.validation_error.{0}")]
@@ -1249,6 +1379,39 @@ pub enum ProductError {
     RepositoryError,
     #[error("product.unknown")]
     Unknown,
+}
+
+impl From<RepositoryError> for ProductError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = ProductError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "product.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = ProductError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "product.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = ProductError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "product.repository_error");
+    }
 }
 
 === business/src/domain/product/model.rs ===
@@ -1362,16 +1525,14 @@ mod tests {
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::ProductError,
-    model::{Product, ProductId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Product, ProductId};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError>;
-    async fn save(&self, entity: &Product) -> Result<(), ProductError>;
+    async fn find_all(&self) -> Result<Vec<Product>, RepositoryError>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+    async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1385,9 +1546,9 @@ pub mod mocks {
 
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
-            async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
-            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError>;
-            async fn save(&self, entity: &Product) -> Result<(), ProductError>;
+            async fn find_all(&self) -> Result<Vec<Product>, RepositoryError>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+            async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -1556,6 +1717,7 @@ pub mod mocks {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1733,8 +1895,8 @@ impl Default for ProductMother {
 === infrastructure/src/category/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::category::{
-    errors::CategoryError,
     model::{Category, CategoryId},
     repository::CategoryRepositoryTrait,
 };
@@ -1752,17 +1914,17 @@ impl InMemoryCategoryRepository {
 
 #[async_trait]
 impl CategoryRepositoryTrait for InMemoryCategoryRepository {
-    async fn find_all(&self) -> Result<Vec<Category>, CategoryError> {
+    async fn find_all(&self) -> Result<Vec<Category>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: CategoryId) -> Result<Option<Category>, CategoryError> {
+    async fn find_by_id(&self, id: CategoryId) -> Result<Option<Category>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &Category) -> Result<(), CategoryError> {
+    async fn save(&self, entity: &Category) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }
@@ -1782,8 +1944,8 @@ pub mod category {
 === infrastructure/src/product/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::product::{
-    errors::ProductError,
     model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
@@ -1801,17 +1963,17 @@ impl InMemoryProductRepository {
 
 #[async_trait]
 impl ProductRepositoryTrait for InMemoryProductRepository {
-    async fn find_all(&self) -> Result<Vec<Product>, ProductError> {
+    async fn find_all(&self) -> Result<Vec<Product>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError> {
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &Product) -> Result<(), ProductError> {
+    async fn save(&self, entity: &Product) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

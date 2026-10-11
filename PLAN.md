@@ -1543,7 +1543,7 @@ Test scenarios: model declares `ProductId` and `pub id: ProductId`; get/update/d
 Pg row conversion uses `from_uuid` / `.value()`; no generated file of a fieldless CRUD entity
 imports `uuid::Uuid` without using it (compile matrix, `-D warnings`). Snapshots re-recorded.
 
-### 11.1 — One repository error (T-28)
+### 11.1 — One repository error (T-28) ✅
 
 Repositories speak one error, whatever the entity and the adapter; the entity's error converts
 it. The `23505 → Duplicate` mapping moves out of each repository into one function.

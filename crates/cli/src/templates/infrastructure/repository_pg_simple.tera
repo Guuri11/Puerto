@@ -1,13 +1,14 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::{{ snake }}::{
-    errors::{{ pascal }}Error,
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{{ pascal }}RepositoryTrait,
 };
 
 use super::entity::{{ pascal }}Db;
+use crate::db::map_sqlx_error;
 
 pub struct Pg{{ pascal }}Repository {
     pub pool: PgPool,
@@ -19,9 +20,18 @@ impl Pg{{ pascal }}Repository {
     }
 }
 
+/// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
+/// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
+fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, RepositoryError> {
+    {{ pascal }}::try_from(row).map_err(|e| {
+        tracing::error!(error = %e, "stored row is not a valid {{ snake }}");
+        RepositoryError::InvalidData
+    })
+}
+
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, {{ pascal }}Error> {
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             {{ pascal }}Db,
@@ -33,13 +43,13 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            {{ pascal }}Error::RepositoryError
+            map_sqlx_error(&e)
         })?;
 
-        row.map(|r| r.try_into()).transpose()
+        row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), {{ pascal }}Error> {
+    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         let db = {{ pascal }}Db::from(entity);
         sqlx::query!(
@@ -57,14 +67,8 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            // 23505 = unique_violation: a `unique` field already taken.
-            if let Some(db_err) = e.as_database_error()
-                && db_err.code().is_some_and(|c| c == "23505")
-            {
-                return {{ pascal }}Error::Duplicate;
-            }
             tracing::error!(error = %e, "save failed");
-            {{ pascal }}Error::RepositoryError
+            map_sqlx_error(&e)
         })?;
         Ok(())
     }

@@ -41,6 +41,7 @@ let credit = Money::new(params.credit).map_err(|_| CustomerError::InvalidMoney)?
 mod tests {
     use super::*;
     use crate::domain::customer::repository::mocks::MockCustomerRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -64,6 +65,31 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+            name: "example".to_string(),
+            email: "example".to_string(),
+            credit: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.duplicate");
     }
 
     #[tokio::test]
@@ -243,6 +269,7 @@ mod tests {
         model::{Customer, CustomerId, CustomerProps},
         repository::mocks::MockCustomerRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use crate::domain::shared::value_objects::Email;
     use crate::domain::shared::value_objects::Money;
 
@@ -284,6 +311,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "customer.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetCustomerParams { id: CustomerId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.repository_error");
+    }
 }
 
 === business/src/application/customer/list_customers.rs ===
@@ -306,7 +351,11 @@ pub struct ListCustomersUseCaseImpl {
 impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
     async fn execute(&self, _params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError> {
         tracing::info!("list_customers: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
+            .map_err(CustomerError::from)
     }
 }
 
@@ -553,6 +602,8 @@ mod tests {
 === business/src/domain/customer/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum CustomerError {
     #[error("customer.validation_error.{0}")]
@@ -569,6 +620,39 @@ pub enum CustomerError {
     InvalidEmail,
     #[error("customer.invalid_money")]
     InvalidMoney,
+}
+
+impl From<RepositoryError> for CustomerError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = CustomerError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "customer.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = CustomerError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "customer.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = CustomerError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "customer.repository_error");
+    }
 }
 
 === business/src/domain/customer/model.rs ===
@@ -700,16 +784,14 @@ mod tests {
 === business/src/domain/customer/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::CustomerError,
-    model::{Customer, CustomerId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Customer, CustomerId};
 
 #[async_trait]
 pub trait CustomerRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Customer>, CustomerError>;
-    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError>;
-    async fn save(&self, entity: &Customer) -> Result<(), CustomerError>;
+    async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError>;
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
+    async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -723,9 +805,9 @@ pub mod mocks {
 
         #[async_trait]
         impl CustomerRepositoryTrait for CustomerRepository {
-            async fn find_all(&self) -> Result<Vec<Customer>, CustomerError>;
-            async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError>;
-            async fn save(&self, entity: &Customer) -> Result<(), CustomerError>;
+            async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError>;
+            async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
+            async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -894,6 +976,12 @@ pub mod mocks {
     }
 }
 
+=== business/src/domain/shared.rs ===
+//! What every entity of the domain shares.
+pub mod repository_error;
+pub mod errors;
+pub mod value_objects;
+
 === business/src/domain/shared/errors.rs ===
 use thiserror::Error;
 
@@ -908,10 +996,6 @@ pub enum MoneyError {
     #[error("shared.value_object.money.invalid")]
     Invalid,
 }
-
-=== business/src/domain/shared/mod.rs ===
-pub mod errors;
-pub mod value_objects;
 
 === business/src/domain/shared/value_objects.rs ===
 use super::errors::EmailError;
@@ -952,6 +1036,7 @@ impl Money {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -973,8 +1058,6 @@ pub mod domain {
             pub mod delete_customer;
         }
     }
-
-    pub mod shared;
 }
 pub mod application {
   pub mod greeting {
@@ -1069,8 +1152,8 @@ impl Default for CustomerMother {
 === infrastructure/src/customer/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::customer::{
-    errors::CustomerError,
     model::{Customer, CustomerId},
     repository::CustomerRepositoryTrait,
 };
@@ -1088,17 +1171,17 @@ impl InMemoryCustomerRepository {
 
 #[async_trait]
 impl CustomerRepositoryTrait for InMemoryCustomerRepository {
-    async fn find_all(&self) -> Result<Vec<Customer>, CustomerError> {
+    async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError> {
         tracing::debug!("find_all");
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError> {
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &Customer) -> Result<(), CustomerError> {
+    async fn save(&self, entity: &Customer) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

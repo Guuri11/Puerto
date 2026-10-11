@@ -264,6 +264,7 @@ let status = params.status.parse::<Status>()?;
 mod tests {
     use super::*;
     use crate::domain::customer::repository::mocks::MockCustomerRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
     use chrono::Utc;
 
 
@@ -293,6 +294,36 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().email.value(), "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+            email: "example".to_string(),
+            name: "example".to_string(),
+            code: "example".to_string(),
+            age: 42,
+            joined: Utc::now(),
+            middle: None,
+            labels: vec![],
+            status: "Active".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.duplicate");
     }
 
     #[tokio::test]
@@ -552,6 +583,7 @@ mod tests {
         model::{Customer, CustomerId, CustomerProps},
         repository::mocks::MockCustomerRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use chrono::Utc;
     use crate::domain::shared::value_objects::Email;
     use crate::domain::customer::value_objects::Name;
@@ -603,6 +635,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "customer.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetCustomerParams { id: CustomerId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.repository_error");
+    }
 }
 
 === business/src/application/customer/list_customers.rs ===
@@ -625,7 +675,11 @@ pub struct ListCustomersUseCaseImpl {
 impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
     async fn execute(&self, _params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError> {
         tracing::info!("list_customers: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
+            .map_err(CustomerError::from)
     }
 }
 
@@ -1070,6 +1124,7 @@ impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::repository::mocks::MockProductRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
     use uuid::Uuid;
     use chrono::Utc;
     use std::collections::HashMap;
@@ -1106,6 +1161,41 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+            title: "example".to_string(),
+            sku: "example".to_string(),
+            price: 42,
+            rating: 1.5,
+            active: true,
+            ref_id: Uuid::new_v4(),
+            published_at: Utc::now(),
+            summary: None,
+            views: None,
+            expires_at: None,
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.duplicate");
     }
 
     #[tokio::test]
@@ -1316,6 +1406,7 @@ mod tests {
         model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use uuid::Uuid;
     use chrono::Utc;
     use std::collections::HashMap;
@@ -1368,6 +1459,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "product.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetProductParams { id: ProductId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.repository_error");
+    }
 }
 
 === business/src/application/product/list_products.rs ===
@@ -1390,7 +1499,11 @@ pub struct ListProductsUseCaseImpl {
 impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
     async fn execute(&self, _params: ListProductsParams) -> Result<Vec<Product>, ProductError> {
         tracing::info!("list_products: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
+            .map_err(ProductError::from)
     }
 }
 
@@ -1772,6 +1885,7 @@ let state = params.state.parse::<State>()?;
 mod tests {
     use super::*;
     use crate::domain::ticket::repository::mocks::MockTicketRepository;
+    use crate::domain::shared::repository_error::RepositoryError;
 
 
     #[tokio::test]
@@ -1793,6 +1907,29 @@ mod tests {
         // Assert
         assert!(result.is_ok());
         assert_eq!(result.unwrap().state.as_str(), "Open");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockTicketRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateTicketUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateTicketParams {
+            state: "Open".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "ticket.duplicate");
     }
 
     #[tokio::test]
@@ -1942,6 +2079,7 @@ mod tests {
         model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
     use crate::domain::ticket::value_objects::State;
 
 
@@ -1979,6 +2117,24 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "ticket.not_found");
     }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockTicketRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetTicketUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetTicketParams { id: TicketId::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "ticket.repository_error");
+    }
 }
 
 === business/src/application/ticket/list_tickets.rs ===
@@ -2001,7 +2157,11 @@ pub struct ListTicketsUseCaseImpl {
 impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
     async fn execute(&self, _params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError> {
         tracing::info!("list_tickets: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_tickets: repository failed"))
+        self.repository
+            .find_all()
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_tickets: repository failed"))
+            .map_err(TicketError::from)
     }
 }
 
@@ -2157,6 +2317,8 @@ mod tests {
 === business/src/domain/customer/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum CustomerError {
     #[error("customer.validation_error.{0}")]
@@ -2185,6 +2347,39 @@ pub enum CustomerError {
     InvalidLabel,
     #[error("customer.invalid_status")]
     InvalidStatus,
+}
+
+impl From<RepositoryError> for CustomerError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = CustomerError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "customer.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = CustomerError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "customer.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = CustomerError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "customer.repository_error");
+    }
 }
 
 === business/src/domain/customer/model.rs ===
@@ -2345,16 +2540,14 @@ mod tests {
 === business/src/domain/customer/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::CustomerError,
-    model::{Customer, CustomerId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Customer, CustomerId};
 
 #[async_trait]
 pub trait CustomerRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Customer>, CustomerError>;
-    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError>;
-    async fn save(&self, entity: &Customer) -> Result<(), CustomerError>;
+    async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError>;
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
+    async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2368,9 +2561,9 @@ pub mod mocks {
 
         #[async_trait]
         impl CustomerRepositoryTrait for CustomerRepository {
-            async fn find_all(&self) -> Result<Vec<Customer>, CustomerError>;
-            async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError>;
-            async fn save(&self, entity: &Customer) -> Result<(), CustomerError>;
+            async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError>;
+            async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
+            async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -2687,6 +2880,8 @@ impl Status {
 === business/src/domain/product/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum ProductError {
     #[error("product.validation_error.{0}")]
@@ -2699,6 +2894,39 @@ pub enum ProductError {
     RepositoryError,
     #[error("product.unknown")]
     Unknown,
+}
+
+impl From<RepositoryError> for ProductError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = ProductError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "product.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = ProductError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "product.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = ProductError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "product.repository_error");
+    }
 }
 
 === business/src/domain/product/model.rs ===
@@ -2926,16 +3154,14 @@ mod tests {
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::ProductError,
-    model::{Product, ProductId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Product, ProductId};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError>;
-    async fn save(&self, entity: &Product) -> Result<(), ProductError>;
+    async fn find_all(&self) -> Result<Vec<Product>, RepositoryError>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+    async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2949,9 +3175,9 @@ pub mod mocks {
 
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
-            async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
-            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError>;
-            async fn save(&self, entity: &Product) -> Result<(), ProductError>;
+            async fn find_all(&self) -> Result<Vec<Product>, RepositoryError>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+            async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -3177,6 +3403,12 @@ pub mod mocks {
     }
 }
 
+=== business/src/domain/shared.rs ===
+//! What every entity of the domain shares.
+pub mod repository_error;
+pub mod errors;
+pub mod value_objects;
+
 === business/src/domain/shared/errors.rs ===
 use thiserror::Error;
 
@@ -3185,10 +3417,6 @@ pub enum EmailError {
     #[error("shared.value_object.email.invalid")]
     Invalid,
 }
-
-=== business/src/domain/shared/mod.rs ===
-pub mod errors;
-pub mod value_objects;
 
 === business/src/domain/shared/value_objects.rs ===
 use super::errors::EmailError;
@@ -3215,6 +3443,8 @@ impl Email {
 === business/src/domain/ticket/errors.rs ===
 use thiserror::Error;
 
+use crate::domain::shared::repository_error::RepositoryError;
+
 #[derive(Debug, Error)]
 pub enum TicketError {
     #[error("ticket.validation_error.{0}")]
@@ -3229,6 +3459,39 @@ pub enum TicketError {
     Unknown,
     #[error("ticket.invalid_state")]
     InvalidState,
+}
+
+impl From<RepositoryError> for TicketError {
+    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = TicketError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "ticket.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = TicketError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "ticket.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = TicketError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "ticket.repository_error");
+    }
 }
 
 === business/src/domain/ticket/model.rs ===
@@ -3324,16 +3587,14 @@ mod tests {
 === business/src/domain/ticket/repository.rs ===
 use async_trait::async_trait;
 
-use super::{
-    errors::TicketError,
-    model::{Ticket, TicketId},
-};
+use crate::domain::shared::repository_error::RepositoryError;
+use super::model::{Ticket, TicketId};
 
 #[async_trait]
 pub trait TicketRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Ticket>, TicketError>;
-    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, TicketError>;
-    async fn save(&self, entity: &Ticket) -> Result<(), TicketError>;
+    async fn find_all(&self) -> Result<Vec<Ticket>, RepositoryError>;
+    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError>;
+    async fn save(&self, entity: &Ticket) -> Result<(), RepositoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3347,9 +3608,9 @@ pub mod mocks {
 
         #[async_trait]
         impl TicketRepositoryTrait for TicketRepository {
-            async fn find_all(&self) -> Result<Vec<Ticket>, TicketError>;
-            async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, TicketError>;
-            async fn save(&self, entity: &Ticket) -> Result<(), TicketError>;
+            async fn find_all(&self) -> Result<Vec<Ticket>, RepositoryError>;
+            async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError>;
+            async fn save(&self, entity: &Ticket) -> Result<(), RepositoryError>;
         }
     }
 }
@@ -3546,6 +3807,7 @@ impl State {
 
 === business/src/lib.rs ===
 pub mod domain {
+  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -3569,8 +3831,6 @@ pub mod domain {
             pub mod archive_product;
 }
     }
-
-    pub mod shared;
 
     pub mod customer {
         pub mod errors;
@@ -4146,13 +4406,14 @@ impl From<&Customer> for CustomerDb {
 use async_trait::async_trait;
 use sqlx::PgPool;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::customer::{
-    errors::CustomerError,
     model::{Customer, CustomerId},
     repository::CustomerRepositoryTrait,
 };
 
 use super::entity::CustomerDb;
+use crate::db::map_sqlx_error;
 
 pub struct PgCustomerRepository {
     pub pool: PgPool,
@@ -4164,9 +4425,18 @@ impl PgCustomerRepository {
     }
 }
 
+/// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
+/// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
+fn to_domain(row: CustomerDb) -> Result<Customer, RepositoryError> {
+    Customer::try_from(row).map_err(|e| {
+        tracing::error!(error = %e, "stored row is not a valid customer");
+        RepositoryError::InvalidData
+    })
+}
+
 #[async_trait]
 impl CustomerRepositoryTrait for PgCustomerRepository {
-    async fn find_all(&self) -> Result<Vec<Customer>, CustomerError> {
+    async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError> {
         tracing::debug!("find_all");
         let rows = sqlx::query_as!(
             CustomerDb,
@@ -4177,13 +4447,13 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all failed");
-            CustomerError::RepositoryError
+            map_sqlx_error(&e)
         })?;
 
-        rows.into_iter().map(|r| r.try_into()).collect()
+        rows.into_iter().map(to_domain).collect()
     }
 
-    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError> {
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             CustomerDb,
@@ -4195,13 +4465,13 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            CustomerError::RepositoryError
+            map_sqlx_error(&e)
         })?;
 
-        row.map(|r| r.try_into()).transpose()
+        row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &Customer) -> Result<(), CustomerError> {
+    async fn save(&self, entity: &Customer) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         let db = CustomerDb::from(entity);
         sqlx::query!(
@@ -4226,14 +4496,8 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            // 23505 = unique_violation: a `unique` field already taken.
-            if let Some(db_err) = e.as_database_error()
-                && db_err.code().is_some_and(|c| c == "23505")
-            {
-                return CustomerError::Duplicate;
-            }
             tracing::error!(error = %e, "save failed");
-            CustomerError::RepositoryError
+            map_sqlx_error(&e)
         })?;
         Ok(())
     }
@@ -4328,9 +4592,34 @@ mod integration_tests {
         // Assert
         assert_eq!(results.len(), 2);
     }
+
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_reject_a_duplicate_code(pool: PgPool) {
+        // Arrange
+        let first = seed(&pool).await;
+        let mut second = Customer::new(CustomerProps {
+            email: Email::new("example".to_string()).expect("valid Email"),
+            name: Name::new("example".to_string()).expect("valid Name"),
+            code: Code::new(Uuid::new_v4().to_string()).expect("valid Code"),
+            age: Age::new(42).expect("valid Age"),
+            joined: Joined::new(chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap()).expect("valid Joined"),
+            middle: None,
+            labels: vec![],
+            status: Status::Active,
+        }).unwrap();
+        second.code = first.code.clone();
+
+        // Act
+        let result = test_repo(pool).save(&second).await;
+
+        // Assert
+        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+    }
 }
 
 === infrastructure/src/db.rs ===
+use business::domain::shared::repository_error::RepositoryError;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
 use thiserror::Error;
@@ -4365,6 +4654,28 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), DatabaseError> {
 /// answer rather than hang forever.
 pub async fn ping(pool: &PgPool) -> bool {
     sqlx::query("SELECT 1").execute(pool).await.is_ok()
+}
+
+/// The one place that knows Postgres error codes: a driver error, as the repository port speaks it.
+/// The caller logs it first, with its own context.
+pub fn map_sqlx_error(err: &sqlx::Error) -> RepositoryError {
+    // 23505 = unique_violation: a `unique` column already taken.
+    if let Some(db_err) = err.as_database_error()
+        && db_err.code().is_some_and(|c| c == "23505")
+    {
+        return RepositoryError::Duplicate;
+    }
+    RepositoryError::Unavailable
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_a_non_database_error_to_unavailable() {
+        assert_eq!(map_sqlx_error(&sqlx::Error::PoolTimedOut), RepositoryError::Unavailable);
+    }
 }
 
 === infrastructure/src/lib.rs ===
@@ -4478,13 +4789,14 @@ use sqlx::PgPool;
 use sqlx::types::Json;
 use std::collections::HashMap;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::product::{
-    errors::ProductError,
     model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
 
 use super::entity::ProductDb;
+use crate::db::map_sqlx_error;
 
 pub struct PgProductRepository {
     pub pool: PgPool,
@@ -4496,9 +4808,18 @@ impl PgProductRepository {
     }
 }
 
+/// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
+/// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
+fn to_domain(row: ProductDb) -> Result<Product, RepositoryError> {
+    Product::try_from(row).map_err(|e| {
+        tracing::error!(error = %e, "stored row is not a valid product");
+        RepositoryError::InvalidData
+    })
+}
+
 #[async_trait]
 impl ProductRepositoryTrait for PgProductRepository {
-    async fn find_all(&self) -> Result<Vec<Product>, ProductError> {
+    async fn find_all(&self) -> Result<Vec<Product>, RepositoryError> {
         tracing::debug!("find_all");
         let rows = sqlx::query_as!(
             ProductDb,
@@ -4509,13 +4830,13 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all failed");
-            ProductError::RepositoryError
+            map_sqlx_error(&e)
         })?;
 
-        rows.into_iter().map(|r| r.try_into()).collect()
+        rows.into_iter().map(to_domain).collect()
     }
 
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError> {
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             ProductDb,
@@ -4527,13 +4848,13 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            ProductError::RepositoryError
+            map_sqlx_error(&e)
         })?;
 
-        row.map(|r| r.try_into()).transpose()
+        row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &Product) -> Result<(), ProductError> {
+    async fn save(&self, entity: &Product) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         let db = ProductDb::from(entity);
         sqlx::query!(
@@ -4563,14 +4884,8 @@ impl ProductRepositoryTrait for PgProductRepository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            // 23505 = unique_violation: a `unique` field already taken.
-            if let Some(db_err) = e.as_database_error()
-                && db_err.code().is_some_and(|c| c == "23505")
-            {
-                return ProductError::Duplicate;
-            }
             tracing::error!(error = %e, "save failed");
-            ProductError::RepositoryError
+            map_sqlx_error(&e)
         })?;
         Ok(())
     }
@@ -4669,6 +4984,35 @@ mod integration_tests {
         // Assert
         assert_eq!(results.len(), 2);
     }
+
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_reject_a_duplicate_sku(pool: PgPool) {
+        // Arrange
+        let first = seed(&pool).await;
+        let mut second = Product::new(ProductProps {
+            title: "example".to_string(),
+            sku: Uuid::new_v4().to_string(),
+            price: (Uuid::new_v4().as_u128() >> 65) as i64,
+            rating: 1.5,
+            active: true,
+            ref_id: Uuid::new_v4(),
+            published_at: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            summary: None,
+            views: None,
+            expires_at: None,
+            tags: vec![],
+            scores: vec![],
+            meta: std::collections::HashMap::new(),
+        }).unwrap();
+        second.sku = first.sku.clone();
+
+        // Act
+        let result = test_repo(pool).save(&second).await;
+
+        // Assert
+        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+    }
 }
 
 === infrastructure/src/ticket/entity.rs ===
@@ -4725,13 +5069,14 @@ impl From<&Ticket> for TicketDb {
 use async_trait::async_trait;
 use sqlx::PgPool;
 
+use business::domain::shared::repository_error::RepositoryError;
 use business::domain::ticket::{
-    errors::TicketError,
     model::{Ticket, TicketId},
     repository::TicketRepositoryTrait,
 };
 
 use super::entity::TicketDb;
+use crate::db::map_sqlx_error;
 
 pub struct PgTicketRepository {
     pub pool: PgPool,
@@ -4743,9 +5088,18 @@ impl PgTicketRepository {
     }
 }
 
+/// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
+/// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
+fn to_domain(row: TicketDb) -> Result<Ticket, RepositoryError> {
+    Ticket::try_from(row).map_err(|e| {
+        tracing::error!(error = %e, "stored row is not a valid ticket");
+        RepositoryError::InvalidData
+    })
+}
+
 #[async_trait]
 impl TicketRepositoryTrait for PgTicketRepository {
-    async fn find_all(&self) -> Result<Vec<Ticket>, TicketError> {
+    async fn find_all(&self) -> Result<Vec<Ticket>, RepositoryError> {
         tracing::debug!("find_all");
         let rows = sqlx::query_as!(
             TicketDb,
@@ -4756,13 +5110,13 @@ impl TicketRepositoryTrait for PgTicketRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all failed");
-            TicketError::RepositoryError
+            map_sqlx_error(&e)
         })?;
 
-        rows.into_iter().map(|r| r.try_into()).collect()
+        rows.into_iter().map(to_domain).collect()
     }
 
-    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, TicketError> {
+    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             TicketDb,
@@ -4774,13 +5128,13 @@ impl TicketRepositoryTrait for PgTicketRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            TicketError::RepositoryError
+            map_sqlx_error(&e)
         })?;
 
-        row.map(|r| r.try_into()).transpose()
+        row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &Ticket) -> Result<(), TicketError> {
+    async fn save(&self, entity: &Ticket) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         let db = TicketDb::from(entity);
         sqlx::query!(
@@ -4798,14 +5152,8 @@ impl TicketRepositoryTrait for PgTicketRepository {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            // 23505 = unique_violation: a `unique` field already taken.
-            if let Some(db_err) = e.as_database_error()
-                && db_err.code().is_some_and(|c| c == "23505")
-            {
-                return TicketError::Duplicate;
-            }
             tracing::error!(error = %e, "save failed");
-            TicketError::RepositoryError
+            map_sqlx_error(&e)
         })?;
         Ok(())
     }

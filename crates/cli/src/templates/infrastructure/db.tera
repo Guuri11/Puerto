@@ -1,3 +1,4 @@
+use business::domain::shared::repository_error::RepositoryError;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
 use thiserror::Error;
@@ -32,4 +33,26 @@ pub async fn run_migrations(pool: &PgPool) -> Result<(), DatabaseError> {
 /// answer rather than hang forever.
 pub async fn ping(pool: &PgPool) -> bool {
     sqlx::query("SELECT 1").execute(pool).await.is_ok()
+}
+
+/// The one place that knows Postgres error codes: a driver error, as the repository port speaks it.
+/// The caller logs it first, with its own context.
+pub fn map_sqlx_error(err: &sqlx::Error) -> RepositoryError {
+    // 23505 = unique_violation: a `unique` column already taken.
+    if let Some(db_err) = err.as_database_error()
+        && db_err.code().is_some_and(|c| c == "23505")
+    {
+        return RepositoryError::Duplicate;
+    }
+    RepositoryError::Unavailable
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_a_non_database_error_to_unavailable() {
+        assert_eq!(map_sqlx_error(&sqlx::Error::PoolTimedOut), RepositoryError::Unavailable);
+    }
 }

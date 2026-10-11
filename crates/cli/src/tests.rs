@@ -48,6 +48,7 @@ mod manifest_validation;
 mod migrations;
 mod new_project;
 mod patchers;
+mod repository_errors;
 mod scaffolding;
 mod typed_fields;
 mod typed_ids;

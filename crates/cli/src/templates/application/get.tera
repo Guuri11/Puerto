@@ -33,6 +33,7 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
+    use crate::domain::shared::repository_error::RepositoryError;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
@@ -70,5 +71,23 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = Mock{{ pascal }}Repository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = Get{{ pascal }}UseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(Get{{ pascal }}Params { id: {{ pascal }}Id::generate() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.repository_error");
     }
 }

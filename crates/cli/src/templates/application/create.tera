@@ -32,6 +32,7 @@ impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
+    use crate::domain::shared::repository_error::RepositoryError;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
@@ -55,6 +56,28 @@ mod tests {
         assert_eq!(result.unwrap().{{ required.0.name }}, "example");{% elif string_vos %}
         assert_eq!(result.unwrap().{{ string_vos.0.name }}.value(), "example");{% elif enum_vos %}
         assert_eq!(result.unwrap().{{ enum_vos.0.name }}.as_str(), "{{ enum_vos.0.first_variant }}");{% endif %}
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = Mock{{ pascal }}Repository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = Create{{ pascal }}UseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Create{{ pascal }}Params {
+{{ macros::params(fields=fields, word="example") }}            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.duplicate");
     }
 {% for f in required | concat(with=fields | filter(attribute="is_vo", value=true) | filter(attribute="field_type", value="String")) %}
     #[tokio::test]

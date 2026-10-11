@@ -505,7 +505,7 @@ Generated at `business/src/domain/shared/value_objects.rs`. Each shared VO has i
 |------|--------|
 | `business/src/domain/shared/value_objects.rs` | **NEW** — shared VO structs |
 | `business/src/domain/shared/errors.rs` | **NEW** — shared VO error types |
-| `business/src/domain/shared/mod.rs` | **NEW** — `pub mod value_objects; pub mod errors;` |
+| `business/src/domain/shared.rs` | **PATCH** — `pub mod errors; pub mod value_objects;` appended (the template ships it with `repository_error`) |
 | `business/src/lib.rs` | **PATCH** — `pub mod shared;` in domain block |
 
 ## V1 Scope — COMPLETE
