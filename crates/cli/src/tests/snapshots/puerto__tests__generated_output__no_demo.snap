@@ -2195,7 +2195,7 @@ export function PersonaDetailView({ persona }: { persona: Persona }) {
 === web/src/presentation/features/persona/views/persona-form-view.tsx ===
 import type { Persona, PersonaDraft } from "../../../../domain/persona/model";
 
-/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface PersonaFormValues {
   name: string;
 }

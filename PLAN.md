@@ -46,9 +46,10 @@ Puerto is a Rust full-stack framework built around DDD + Clean Architecture (Hex
 
 `puerto generate scaffold <Name>` creates all DDD files, patches `lib.rs` files, updates `puerto.toml`, and regenerates `bootstrap.rs` — zero manual wiring.
 
-Since Phase 9 (in progress) a project also gets `web/` — a React + daisyUI frontend shell on Bun
-(`--no-web` skips it) — and, once `cargo test` runs, `docs/api/openapi.json`, the API contract the
-frontend is typed from (`make web/sync`). Per-entity screens arrive with 9.2.
+Since Phase 9 a project also gets `web/` — a React + daisyUI frontend on Bun (`--no-web` skips it)
+— and, once `cargo test` runs, `docs/api/openapi.json`, the API contract the frontend is typed from
+(`make web/sync`). `scaffold` writes each CRUD entity's screens (list, detail, form) for every field
+type; `generate web <Name>` writes them alone.
 
 ---
 
@@ -1286,10 +1287,10 @@ Test scenarios: scaffold writes `list_products.rs` in domain and application; pu
 
 ---
 
-## Phase 9 — Full-stack (frontend) — `web/`
+## Phase 9 — Full-stack (frontend) — `web/` ✅ DONE
 
-**Status:** 9.0 ✅ (`33d4113`) · 9.1 ✅ (`4ea452e`) · 9.2 ✅ · **next: 9.3** — read "Handoff to 9.3"
-below first.
+**Status:** ✅ DONE — 9.0 (`33d4113`) · 9.1 (`4ea452e`) · 9.2 (`752dd04`) · 9.3. Next: Phase 10
+(optional, triggered by the first non-trivial validation rule).
 
 Rails-style: `scaffold` leaves a working CRUD screen per entity, and the project carries the
 structure to grow the frontend by hand. Same Dependency Rule as the backend, but **no layer
@@ -1446,40 +1447,21 @@ generated `application/` use cases.
    deps, path)`, wouter memory location); two dependency-cruiser rules cover `test-support/`.
    `make web/sync` also runs `bun run format` (Biome, linter off). Decisions: ADR-0013 § Decided
    in 9.2.
-4. **9.3 Every type** — Option / Vec / HashMap / DateTime / enum VO types and controls.
-
-### Handoff to 9.3 — what 9.0 – 9.2 left in place
-
-Already true (do not re-derive):
-
-- **One predicate gates the slice:** `web::has_web_slice(entity)` = the five CRUD use cases +
-  `unsupported_web_types(fields)` empty, where support is `types::web_supported`. Scaffold,
-  `generate web`, the conflict guard (`entity_files(snake, db, web)`), the drift check
-  (`consistency::required_files`) and `core/generated/*` all go through it. 9.3 widens
-  `web_supported` until it is always true — then delete the "no screens for X" warning, the
-  refusal in `web_slice_refusal` and the 9.2 test `an_entity_with_field_types_beyond_9_2_…`.
-  Every scenario with such fields (`primitives`, `opt_vec_*`, `enum_*`, `vo_kitchen_sink`,
-  `postgres_every_type`, …) gains a slice in its snapshot then.
-- **Per-field decisions live in `types::web_field_ctx`** (ADR-0011): `ts_type`, `input`
-  (`text`/`number`/`checkbox`), `decimal`, `empty_form`, `to_form` / `draft_to_form` (model →
-  form text), `from_form` (form text → model), `display` (JSX), `mother`. The form keeps **text**
-  for every input but a checkbox (`{Entity}FormValues`), so `Option` (empty → `null`), `Vec`
-  (comma-separated), `HashMap` (`key=value` lines) and `datetime-local` are new rows there plus
-  one `{% if f.input == … %}` branch in `form_view.tera`. Enum VOs: a `<select>` branch, and
-  `repository_http.tera`'s `to{Entity}` narrows the wire `string` to the union (today it copies
-  every field as-is).
-- **The form test fills inputs by label** (`fillIn(draft)` in `form_container_test.tera`): a new
-  control needs its own fill line there.
-- **Generated TS must be Biome-clean for ordinary names**, checked by the matrix (`bun run lint`
-  before any format). Imports: write them on one line each in the template —
-  `web::organize_imports` sorts and wraps them like Biome. Line width: keep lines name-length
-  independent (see `title` in `form_container.tera`); where impossible, decide in Rust as
-  `generated_ctx` does for routes and `navEntries`. `make web/sync` formats as the net for long
-  names.
-- Variables named after the entity go through `ident` / `plural_ident` (`TAKEN_IDENTIFIERS`:
-  TS reserved words + the templates' own locals; uncountable plurals get `List`).
-- The matrix runs `assert_web_is_clean` in **every** web scenario; `web_crud` (`OrderItem`, every
-  9.2 type) is the snapshot of the slice. 9.3 adds `web_every_type`.
+4. ✅ **9.3 Every type** — Option / Vec / HashMap / DateTime / enum VO types and controls.
+   As built: the 9.2 gate is gone — every CRUD entity gets a slice (`has_web_slice` = the five
+   CRUD use cases). Each field's shape (`types::WebShape`) decides its expressions in
+   `web_field_ctx`; conversions are helpers of a new template file
+   `presentation/shared/forms.ts` (+ tests): `textOf` / `textOrNull` / `numberOrNull` /
+   `booleanOrNull`, `splitList` / `splitNumbers`, `formatEntries` / `parseEntries`,
+   `toDateTimeLocal` / `fromDateTimeLocal` / `dateTimeOrNull`, `formatDateTime`. Each file imports
+   only the helpers its fields call. An `Option` is an optional property on the wire (poem omits
+   `required`), `null` in the model: the adapter maps `dto.x ?? null` in, `draft.x ?? undefined`
+   out. `Option<bool>` is a `<select>` (—/Yes/No), not a checkbox, so it can be `null`. An enum VO
+   is a union with `statusValues` + `parseStatus()` in `model.ts`, rejecting with the backend's
+   `{entity}.invalid_{vo}`; the adapter and the form narrow through it. Mothers hold present,
+   non-empty values (`Option` set, `["example"]`, `{ key: "value" }`, a whole-minute instant) so
+   the form round-trip tests convert every field. Snapshot + matrix scenario `web_every_type`
+   (entity `Case`, every type — and a TypeScript keyword as its name).
 
 ### Test scenarios
 

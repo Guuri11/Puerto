@@ -1767,3 +1767,817 @@ type = "Vec<String>"
 [[entity.fields]]
 name = "scores"
 type = "Vec<i64>"
+
+=== web/src/domain/article/errors.ts ===
+/**
+ * A request about an article that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `article.not_found`, `article.validation_error.<field>_empty`.
+ */
+export class ArticleError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "ArticleError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/article/model.ts ===
+export interface Article {
+  id: string;
+  title: string;
+  summary: string | null;
+  views: number | null;
+  tags: string[];
+  scores: number[];
+}
+
+/** What a create or an update sends: an article without its id. */
+export type ArticleDraft = Omit<Article, "id">;
+
+=== web/src/domain/article/repository.ts ===
+import type { Article, ArticleDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `ArticleError` the API answered. */
+export interface ArticleRepository {
+  list(): Promise<Article[]>;
+  get(id: string): Promise<Article>;
+  create(draft: ArticleDraft): Promise<Article>;
+  update(id: string, draft: ArticleDraft): Promise<Article>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/article/article-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { ArticleError } from "../../domain/article/errors";
+import { ArticleMother } from "../../test-support/article";
+import { createApiClient } from "../http/client";
+import { articleRepositoryHttp } from "./article-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: articleRepositoryHttp(api), requests };
+}
+
+describe("articleRepositoryHttp", () => {
+  test("should return every article when the API lists them", async () => {
+    // Arrange
+    const article = ArticleMother.random();
+    const { repository } = answering(200, [article]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([article]);
+  });
+
+  test("should send the draft when creating an article", async () => {
+    // Arrange
+    const draft = ArticleMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the article does not exist", async () => {
+    // Arrange
+    const code = "article.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(ArticleError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the article", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/articles/42");
+  });
+});
+
+=== web/src/infrastructure/article/article-repository-http.ts ===
+import { ArticleError } from "../../domain/article/errors";
+import type { Article, ArticleDraft } from "../../domain/article/model";
+import type { ArticleRepository } from "../../domain/article/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type ArticleDto = components["schemas"]["ArticleDto"];
+type ArticleRequest = components["schemas"]["CreateArticleRequest"];
+
+function toArticle(dto: ArticleDto): Article {
+  return {
+    id: dto.id,
+    title: dto.title,
+    summary: dto.summary ?? null,
+    views: dto.views ?? null,
+    tags: dto.tags,
+    scores: dto.scores,
+  };
+}
+
+function toRequest(draft: ArticleDraft): ArticleRequest {
+  return {
+    title: draft.title,
+    summary: draft.summary ?? undefined,
+    views: draft.views ?? undefined,
+    tags: draft.tags,
+    scores: draft.scores,
+  };
+}
+
+/** `ArticleRepository` over the REST API (`/articles`). */
+export function articleRepositoryHttp(api: ApiClient): ArticleRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/articles");
+      if (data === undefined) throw new ArticleError(apiErrorCode(error, response));
+      return data.map(toArticle);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/articles/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new ArticleError(apiErrorCode(error, response));
+      return toArticle(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/articles", { body: toRequest(draft) });
+      if (data === undefined) throw new ArticleError(apiErrorCode(error, response));
+      return toArticle(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/articles/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new ArticleError(apiErrorCode(error, response));
+      return toArticle(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/articles/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new ArticleError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/presentation/core/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { ArticleRepository } from "../../../domain/article/repository";
+import { articleRepositoryHttp } from "../../../infrastructure/article/article-repository-http";
+import { createApiClient } from "../../../infrastructure/http/client";
+
+export interface Dependencies {
+  articleRepository: ArticleRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return {
+    articleRepository: articleRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { ArticleDetailContainer } from "../../features/article/containers/article-detail-container";
+import { ArticleFormContainer } from "../../features/article/containers/article-form-container";
+import { ArticleListContainer } from "../../features/article/containers/article-list-container";
+import { HomePage } from "../../pages/home";
+import { NotFoundPage } from "../../pages/not-found";
+import type { NavEntry } from "../../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Articles", href: "/articles" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/articles">
+        <ArticleListContainer />
+      </Route>
+      <Route path="/articles/new">
+        <ArticleFormContainer />
+      </Route>
+      <Route path="/articles/:id/edit">{(params) => <ArticleFormContainer id={params.id} />}</Route>
+      <Route path="/articles/:id">{(params) => <ArticleDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/presentation/features/article/containers/article-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ArticleMother, fakeArticleRepository } from "../../../../test-support/article";
+import { renderScreen } from "../../../../test-support/render";
+import { ArticleDetailContainer } from "./article-detail-container";
+
+describe("ArticleDetailContainer", () => {
+  test("should show the article when it exists", async () => {
+    // Arrange
+    const seeded = ArticleMother.random();
+    const articleRepository = fakeArticleRepository([seeded]);
+
+    // Act
+    renderScreen(<ArticleDetailContainer id={seeded.id} />, { articleRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the article does not exist", async () => {
+    // Arrange
+    const articleRepository = fakeArticleRepository();
+
+    // Act
+    renderScreen(<ArticleDetailContainer id={crypto.randomUUID()} />, { articleRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("article.not_found");
+  });
+
+  test("should delete the article only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = ArticleMother.random();
+    const fake = fakeArticleRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<ArticleDetailContainer id={seeded.id} />, {
+      articleRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/articles"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/article/containers/article-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ArticleDetailView } from "../views/article-detail-view";
+
+export function ArticleDetailContainer({ id }: { id: string }) {
+  const { articleRepository } = useDependencies();
+  const article = useAsync(() => articleRepository.get(id), [articleRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await articleRepository.remove(id);
+      navigate("/articles");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Article</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {article.status === "loading" && <span className="loading loading-spinner" />}
+      {article.status === "error" && <ErrorAlert error={article.error} />}
+      {article.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <ArticleDetailView article={article.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/articles/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/articles" className="link">
+        Back to articles
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this article?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/article/containers/article-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ArticleError } from "../../../../domain/article/errors";
+import type { ArticleDraft } from "../../../../domain/article/model";
+import { ArticleMother, fakeArticleRepository } from "../../../../test-support/article";
+import { renderScreen } from "../../../../test-support/render";
+import { textOf } from "../../../shared/forms";
+import { ArticleFormContainer } from "./article-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: ArticleDraft) {
+  await screen.findByText("Save");
+  type("Title", draft.title);
+  type("Summary", textOf(draft.summary));
+  type("Views", textOf(draft.views));
+  type("Tags", draft.tags.join(", "));
+  type("Scores", draft.scores.join(", "));
+}
+
+describe("ArticleFormContainer", () => {
+  test("should create the article from what was typed and show it", async () => {
+    // Arrange
+    const draft = ArticleMother.draft();
+    const articleRepository = fakeArticleRepository();
+    const { history } = renderScreen(<ArticleFormContainer />, { articleRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/articles/"));
+    const [created] = await articleRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/articles/${created?.id}`);
+  });
+
+  test("should save the edited article when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = ArticleMother.random();
+    const articleRepository = fakeArticleRepository([seeded]);
+    const { history } = renderScreen(<ArticleFormContainer id={seeded.id} />, {
+      articleRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/articles/${seeded.id}`));
+    expect(await articleRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the article", async () => {
+    // Arrange
+    const code = "article.validation_error.invalid";
+    const articleRepository = {
+      ...fakeArticleRepository(),
+      create: () => Promise.reject(new ArticleError(code)),
+    };
+    renderScreen(<ArticleFormContainer />, { articleRepository });
+    await fillIn(ArticleMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/article/containers/article-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Article } from "../../../../domain/article/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ArticleFormView, toArticleDraft, toArticleForm } from "../views/article-form-view";
+
+/** Creates an article, or edits the one with `id`. */
+export function ArticleFormContainer({ id }: { id?: string }) {
+  const { articleRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : articleRepository.get(id)),
+    [articleRepository, id],
+  );
+  const title = id === undefined ? "New article" : "Edit article";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <ArticleForm existing={existing.data} />}
+      <Link href={id === undefined ? "/articles" : `/articles/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function ArticleForm({ existing }: { existing: Article | null }) {
+  const { articleRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toArticleForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toArticleDraft(values);
+      const saved =
+        existing === null
+          ? await articleRepository.create(draft)
+          : await articleRepository.update(existing.id, draft);
+      navigate(`/articles/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <ArticleFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/article/containers/article-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { ArticleError } from "../../../../domain/article/errors";
+import { ArticleMother, fakeArticleRepository } from "../../../../test-support/article";
+import { renderScreen } from "../../../../test-support/render";
+import { ArticleListContainer } from "./article-list-container";
+
+describe("ArticleListContainer", () => {
+  test("should show a row per article when there are some", async () => {
+    // Arrange
+    const seed = [ArticleMother.random(), ArticleMother.random()];
+    const articleRepository = fakeArticleRepository(seed);
+
+    // Act
+    renderScreen(<ArticleListContainer />, { articleRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no article", async () => {
+    // Arrange
+    const articleRepository = fakeArticleRepository();
+
+    // Act
+    renderScreen(<ArticleListContainer />, { articleRepository });
+
+    // Assert
+    expect(await screen.findByText("No articles yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the articles cannot be listed", async () => {
+    // Arrange
+    const articleRepository = {
+      ...fakeArticleRepository(),
+      list: () => Promise.reject(new ArticleError("article.repository_error")),
+    };
+
+    // Act
+    renderScreen(<ArticleListContainer />, { articleRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("article.repository_error");
+  });
+});
+
+=== web/src/presentation/features/article/containers/article-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ArticleListView } from "../views/article-list-view";
+
+export function ArticleListContainer() {
+  const { articleRepository } = useDependencies();
+  const articles = useAsync(() => articleRepository.list(), [articleRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Articles</h1>
+        <Link href="/articles/new" className="btn btn-primary">
+          New article
+        </Link>
+      </div>
+      {articles.status === "loading" && <span className="loading loading-spinner" />}
+      {articles.status === "error" && <ErrorAlert error={articles.error} />}
+      {articles.status === "ok" &&
+        (articles.data.length === 0 ? (
+          <EmptyState message="No articles yet." />
+        ) : (
+          <ArticleListView articles={articles.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/article/views/article-detail-view.tsx ===
+import type { Article } from "../../../../domain/article/model";
+
+export function ArticleDetailView({ article }: { article: Article }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Title</dt>
+      <dd>{article.title}</dd>
+      <dt className="font-semibold">Summary</dt>
+      <dd>{article.summary ?? "—"}</dd>
+      <dt className="font-semibold">Views</dt>
+      <dd>{article.views ?? "—"}</dd>
+      <dt className="font-semibold">Tags</dt>
+      <dd>{article.tags.join(", ")}</dd>
+      <dt className="font-semibold">Scores</dt>
+      <dd>{article.scores.join(", ")}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/article/views/article-form-view.tsx ===
+import type { Article, ArticleDraft } from "../../../../domain/article/model";
+import { numberOrNull, splitList, splitNumbers, textOf, textOrNull } from "../../../shared/forms";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface ArticleFormValues {
+  title: string;
+  summary: string;
+  views: string;
+  tags: string;
+  scores: string;
+}
+
+/** The inputs for `article`, empty when there is none yet. */
+export function toArticleForm(article: Article | null): ArticleFormValues {
+  if (article === null) {
+    return {
+      title: "",
+      summary: "",
+      views: "",
+      tags: "",
+      scores: "",
+    };
+  }
+  return {
+    title: article.title,
+    summary: textOf(article.summary),
+    views: textOf(article.views),
+    tags: article.tags.join(", "),
+    scores: article.scores.join(", "),
+  };
+}
+
+export function toArticleDraft(values: ArticleFormValues): ArticleDraft {
+  return {
+    title: values.title,
+    summary: textOrNull(values.summary),
+    views: numberOrNull(values.views),
+    tags: splitList(values.tags),
+    scores: splitNumbers(values.scores),
+  };
+}
+
+export function ArticleFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: ArticleFormValues;
+  saving: boolean;
+  onChange: (values: ArticleFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Title</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.title}
+          onChange={(event) => onChange({ ...values, title: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Summary</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.summary}
+          onChange={(event) => onChange({ ...values, summary: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Views</span>
+        <input
+          className="input w-full"
+          type="number"
+          value={values.views}
+          onChange={(event) => onChange({ ...values, views: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Tags</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.tags}
+          onChange={(event) => onChange({ ...values, tags: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Scores</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.scores}
+          onChange={(event) => onChange({ ...values, scores: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/article/views/article-list-view.tsx ===
+import { Link } from "wouter";
+import type { Article } from "../../../../domain/article/model";
+
+export function ArticleListView({ articles }: { articles: Article[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Summary</th>
+            <th>Views</th>
+            <th>Tags</th>
+            <th>Scores</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {articles.map((article) => (
+            <tr key={article.id}>
+              <td>{article.title}</td>
+              <td>{article.summary ?? "—"}</td>
+              <td>{article.views ?? "—"}</td>
+              <td>{article.tags.join(", ")}</td>
+              <td>{article.scores.join(", ")}</td>
+              <td className="text-right">
+                <Link href={`/articles/${article.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/test-support/article.ts ===
+import { ArticleError } from "../domain/article/errors";
+import type { Article, ArticleDraft } from "../domain/article/model";
+import type { ArticleRepository } from "../domain/article/repository";
+
+/** Valid articles for tests; pass `overrides` for the fields a test is about. */
+export const ArticleMother = {
+  draft(overrides: Partial<ArticleDraft> = {}): ArticleDraft {
+    return {
+      title: "example",
+      summary: "example",
+      views: 42,
+      tags: ["example"],
+      scores: [42],
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Article> = {}): Article {
+    return { id: crypto.randomUUID(), ...ArticleMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `ArticleRepository`. Override a method to make it fail. */
+export function fakeArticleRepository(seed: Article[] = []): ArticleRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new ArticleError("article.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

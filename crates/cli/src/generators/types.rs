@@ -516,76 +516,296 @@ pub fn field_vo_conversion(
 
 // ── Frontend (`web/`) ─────────────────────────────────────────────────────────
 
-/// Whether the frontend generator handles this field yet: the primitives a text, number or
-/// checkbox input holds — directly or wrapped in a non-enum value object, which is its inner
-/// primitive on the wire. `Option`, `Vec`, `HashMap`, `DateTime` and enum VOs are Phase 9.3.
-pub fn web_supported(field: &Field) -> bool {
-    !is_enum_vo(field)
-        && matches!(
-            field.field_type.as_str(),
-            "String" | "Uuid" | "i64" | "f64" | "bool"
-        )
+/// One `<option>` of a `<select>`.
+#[derive(Debug, serde::Serialize, PartialEq)]
+pub struct WebOption {
+    pub value: String,
+    pub label: String,
 }
 
 /// What the frontend templates know about one field (ADR-0011, applied to `web/`): its names, its
-/// TypeScript type, its input, and the expressions that move it between the model, the form and a
-/// screen.
+/// TypeScript type, its input, and the expressions that move it between the wire, the model, the
+/// form and a screen. Expressions name helpers of `presentation/shared/forms.ts`; the `*_helpers`
+/// lists say which, so a file imports exactly those.
 #[derive(Debug, serde::Serialize)]
 pub struct WebFieldCtx {
     /// The model property and the JSON key: poem-openapi's camelCase (`inStock`).
     pub camel: String,
     /// What a screen calls it: `In stock`.
     pub label: String,
-    pub ts_type: &'static str,
-    /// The `type` of its `<input>`: `text`, `number` or `checkbox`.
+    pub ts_type: String,
+    /// `text`, `number`, `checkbox`, `datetime-local`, `textarea` or `select`.
     pub input: &'static str,
     /// A number input that takes decimals (`step="any"`).
     pub decimal: bool,
+    /// The input must be filled: not an `Option`, a `Vec`, a map or a checkbox.
+    pub required: bool,
+    /// A `select`'s options, after an empty one labelled `placeholder`.
+    pub options: Vec<WebOption>,
+    pub placeholder: &'static str,
     /// The form value of a new, empty form.
     pub empty_form: &'static str,
-    /// The form value read out of `{entity}` (the entity's camelCase name) and out of `draft`.
+    /// The form value read out of `{entity}` (the entity's variable) and out of `draft`.
     pub to_form: String,
     pub draft_to_form: String,
     /// The model value read out of `values` (the form).
     pub from_form: String,
     /// What a list or detail screen shows for `{entity}`, as a JSX expression.
     pub display: String,
-    /// A valid value, for the Object Mother.
-    pub mother: &'static str,
+    /// The model value read out of `dto` (the wire), and the wire value out of `draft`. An `Option`
+    /// is an optional property on the wire, `null` in the model.
+    pub from_wire: String,
+    pub to_wire: String,
+    /// A valid value, for the Object Mother: a present one for an `Option`, a non-empty one for a
+    /// `Vec` or a map, so the form round-trip tests exercise the conversion.
+    pub mother: String,
+    pub to_form_helpers: Vec<&'static str>,
+    pub from_form_helpers: Vec<&'static str>,
+    pub display_helpers: Vec<&'static str>,
+    /// An enum VO: the union type (`Status`), its `parseStatus` in `model.ts`.
+    pub enum_type: String,
 }
 
-pub fn web_field_ctx(field: &Field, entity_camel: &str) -> WebFieldCtx {
+/// An enum value object as `model.ts` declares it: `statusValues`, `type Status`, `parseStatus`.
+#[derive(Debug, serde::Serialize, PartialEq)]
+pub struct WebEnumCtx {
+    pub name: String,
+    pub values_const: String,
+    pub variants: Vec<String>,
+    /// The code `parseStatus` rejects with — the backend's `{entity}.invalid_{vo}`.
+    pub invalid_code: String,
+}
+
+pub fn web_enum_ctx(field: &Field, entity_snake: &str) -> Option<WebEnumCtx> {
+    if !is_enum_vo(field) {
+        return None;
+    }
+    let name = field.value_object.clone().unwrap_or_default();
+    let vo_snake = crate::generators::naming::pascal_to_snake(&name);
+    Some(WebEnumCtx {
+        values_const: format!(
+            "{}Values",
+            crate::generators::naming::snake_to_camel(&vo_snake)
+        ),
+        variants: field.enum_variants.clone().unwrap_or_default(),
+        invalid_code: format!("{entity_snake}.invalid_{vo_snake}"),
+        name,
+    })
+}
+
+/// A JSON string literal (double quotes, as Biome writes them).
+fn ts_string(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// A fixed whole-minute instant: a `datetime-local` input round-trips it unchanged.
+const MOTHER_DATE_TIME: &str = "\"2026-01-01T10:00:00.000Z\"";
+
+/// The shape of a field on the frontend, which every per-field expression branches on.
+#[derive(Clone, Copy, PartialEq)]
+enum WebShape {
+    Text,
+    Number,
+    Checkbox,
+    DateTime,
+    List { numbers: bool },
+    Map,
+    Enum,
+}
+
+fn web_shape(field: &Field) -> WebShape {
+    let ty = field.field_type.as_str();
+    if is_enum_vo(field) {
+        WebShape::Enum
+    } else if ty.starts_with("Vec<") {
+        WebShape::List {
+            numbers: vo_inner_type(field) == "i64",
+        }
+    } else if ty == "HashMap<String, String>" {
+        WebShape::Map
+    } else {
+        match vo_inner_type(field).as_str() {
+            "i64" | "f64" => WebShape::Number,
+            "bool" => WebShape::Checkbox,
+            "DateTime<Utc>" => WebShape::DateTime,
+            _ => WebShape::Text,
+        }
+    }
+}
+
+/// The form text of `{owner}.{camel}`, and the helpers that expression calls.
+fn web_to_form(shape: WebShape, optional: bool, access: &str) -> (String, Vec<&'static str>) {
+    match shape {
+        WebShape::DateTime => (
+            format!("toDateTimeLocal({access})"),
+            vec!["toDateTimeLocal"],
+        ),
+        WebShape::List { .. } => (format!("{access}.join(\", \")"), vec![]),
+        WebShape::Map => (format!("formatEntries({access})"), vec!["formatEntries"]),
+        _ if optional => (format!("textOf({access})"), vec!["textOf"]),
+        WebShape::Number => (format!("String({access})"), vec![]),
+        _ => (access.to_string(), vec![]),
+    }
+}
+
+/// What a screen shows for `{owner}.{camel}`, and the helpers that expression calls.
+fn web_display(shape: WebShape, optional: bool, access: &str) -> (String, Vec<&'static str>) {
+    let (shown, helpers) = match shape {
+        WebShape::Checkbox => (format!("{access} ? \"Yes\" : \"No\""), vec![]),
+        WebShape::DateTime => (format!("formatDateTime({access})"), vec!["formatDateTime"]),
+        WebShape::List { .. } => (format!("{access}.join(\", \")"), vec![]),
+        WebShape::Map => (
+            format!("formatEntries({access}, \", \")"),
+            vec!["formatEntries"],
+        ),
+        _ => (access.to_string(), vec![]),
+    };
+    match (optional, shape) {
+        (true, WebShape::Checkbox | WebShape::DateTime) => {
+            (format!("{access} === null ? \"—\" : {shown}"), helpers)
+        }
+        (true, _) => (format!("{access} ?? \"—\""), helpers),
+        _ => (shown, helpers),
+    }
+}
+
+pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
     let camel = crate::generators::naming::snake_to_camel(&field.name);
     let words = crate::generators::naming::snake_to_words(&field.name);
-    let (ts_type, input, empty_form, mother) = match field.field_type.as_str() {
-        "i64" => ("number", "number", "\"\"", "42"),
-        "f64" => ("number", "number", "\"\"", "1.5"),
-        "bool" => ("boolean", "checkbox", "false", "true"),
-        "Uuid" => ("string", "text", "\"\"", "crypto.randomUUID()"),
-        _ => ("string", "text", "\"\"", "\"example\""),
+    let optional = field.field_type.starts_with("Option<");
+    let shape = web_shape(field);
+    let vo = field.value_object.clone().unwrap_or_default();
+    let variants = field.enum_variants.clone().unwrap_or_default();
+    let value = format!("values.{camel}");
+
+    let (base_ts, input, mother) = match shape {
+        WebShape::Enum => (
+            vo.clone(),
+            "select",
+            variants
+                .first()
+                .map_or("\"\"".to_string(), |v| ts_string(v)),
+        ),
+        WebShape::List { numbers: true } => ("number[]".into(), "text", "[42]".into()),
+        WebShape::List { numbers: false } => ("string[]".into(), "text", "[\"example\"]".into()),
+        WebShape::Map => (
+            "Record<string, string>".into(),
+            "textarea",
+            "{ key: \"value\" }".into(),
+        ),
+        WebShape::Number => (
+            "number".into(),
+            "number",
+            if vo_inner_type(field) == "f64" {
+                "1.5"
+            } else {
+                "42"
+            }
+            .into(),
+        ),
+        WebShape::Checkbox => (
+            "boolean".into(),
+            if optional { "select" } else { "checkbox" },
+            "true".into(),
+        ),
+        WebShape::DateTime => ("string".into(), "datetime-local", MOTHER_DATE_TIME.into()),
+        WebShape::Text if vo_inner_type(field) == "Uuid" => {
+            ("string".into(), "text", "crypto.randomUUID()".into())
+        }
+        WebShape::Text => ("string".into(), "text", "\"example\"".into()),
     };
-    let to_form = |owner: &str| match ts_type {
-        "number" => format!("String({owner}.{camel})"),
-        _ => format!("{owner}.{camel}"),
+
+    // An enum is parsed by its own `parse{Vo}` (below), a required text or number needs no helper.
+    let from_form_helper = match shape {
+        WebShape::List { numbers } => Some(if numbers { "splitNumbers" } else { "splitList" }),
+        WebShape::Map => Some("parseEntries"),
+        WebShape::DateTime if optional => Some("dateTimeOrNull"),
+        WebShape::DateTime => Some("fromDateTimeLocal"),
+        WebShape::Number if optional => Some("numberOrNull"),
+        WebShape::Checkbox if optional => Some("booleanOrNull"),
+        WebShape::Text if optional => Some("textOrNull"),
+        _ => None,
     };
-    let display = match ts_type {
-        "boolean" => format!("{entity_camel}.{camel} ? \"Yes\" : \"No\""),
-        _ => format!("{entity_camel}.{camel}"),
+    let from_form = match (shape, from_form_helper) {
+        (WebShape::Enum, _) => format!("parse{vo}({value})"),
+        (_, Some(helper)) => format!("{helper}({value})"),
+        (WebShape::Number, None) => format!("Number({value})"),
+        _ => value.clone(),
     };
+
+    let options = match (shape, input) {
+        (WebShape::Enum, _) => variants
+            .iter()
+            .map(|v| WebOption {
+                value: v.clone(),
+                label: v.clone(),
+            })
+            .collect(),
+        (_, "select") => vec![
+            WebOption {
+                value: "true".into(),
+                label: "Yes".into(),
+            },
+            WebOption {
+                value: "false".into(),
+                label: "No".into(),
+            },
+        ],
+        _ => vec![],
+    };
+
+    let (to_form, to_form_helpers) =
+        web_to_form(shape, optional, &format!("{entity_ident}.{camel}"));
+    let (draft_to_form, _) = web_to_form(shape, optional, &format!("draft.{camel}"));
+    let (display, display_helpers) =
+        web_display(shape, optional, &format!("{entity_ident}.{camel}"));
+
     WebFieldCtx {
         label: crate::generators::naming::capitalize(&words),
-        ts_type,
-        input,
-        decimal: field.field_type == "f64",
-        empty_form,
-        to_form: to_form(entity_camel),
-        draft_to_form: to_form("draft"),
-        from_form: match ts_type {
-            "number" => format!("Number(values.{camel})"),
-            _ => format!("values.{camel}"),
+        ts_type: if optional {
+            format!("{base_ts} | null")
+        } else {
+            base_ts
         },
+        input,
+        decimal: vo_inner_type(field) == "f64",
+        required: !optional
+            && !matches!(
+                shape,
+                WebShape::Checkbox | WebShape::List { .. } | WebShape::Map
+            ),
+        placeholder: if shape == WebShape::Enum {
+            "Choose…"
+        } else {
+            "—"
+        },
+        options,
+        empty_form: if input == "checkbox" { "false" } else { "\"\"" },
+        to_form,
+        draft_to_form,
+        from_form,
         display,
+        from_wire: if shape == WebShape::Enum {
+            format!("parse{vo}(dto.{camel})")
+        } else if optional {
+            format!("dto.{camel} ?? null")
+        } else {
+            format!("dto.{camel}")
+        },
+        to_wire: if optional {
+            format!("draft.{camel} ?? undefined")
+        } else {
+            format!("draft.{camel}")
+        },
         mother,
+        to_form_helpers,
+        from_form_helpers: from_form_helper.into_iter().collect(),
+        display_helpers,
+        enum_type: if shape == WebShape::Enum {
+            vo
+        } else {
+            String::new()
+        },
         camel,
     }
 }
@@ -1032,39 +1252,30 @@ mod tests {
 
     // ── Frontend ──────────────────────────────────────────────────────────────
 
-    #[test]
-    fn should_support_on_the_web_only_the_primitives_an_input_holds_as_is() {
-        for supported in ["String", "Uuid", "i64", "f64", "bool"] {
-            assert!(web_supported(&field(supported, None)), "{supported}");
+    fn named(name: &str, field_type: &str) -> crate::puerto_toml::Field {
+        crate::puerto_toml::Field {
+            name: name.into(),
+            field_type: field_type.into(),
+            ..Default::default()
         }
-        assert!(web_supported(&field("String", Some("Name"))));
-        for later in [
-            "Option<String>",
-            "Vec<String>",
-            "HashMap<String, String>",
-            "DateTime<Utc>",
-        ] {
-            assert!(!web_supported(&field(later, None)), "{later}");
-        }
-        assert!(!web_supported(&enum_field()));
     }
 
     #[test]
     fn should_move_a_number_through_the_form_as_text() {
-        let mut price = field("i64", None);
-        price.name = "unit_price".into();
-
-        let ctx = web_field_ctx(&price, "orderItem");
+        let ctx = web_field_ctx(&named("unit_price", "i64"), "orderItem");
 
         assert_eq!(ctx.camel, "unitPrice");
         assert_eq!(ctx.label, "Unit price");
-        assert_eq!(ctx.ts_type, "number");
-        assert_eq!(ctx.input, "number");
-        assert!(!ctx.decimal);
+        assert_eq!((ctx.ts_type.as_str(), ctx.input), ("number", "number"));
+        assert!(!ctx.decimal && ctx.required);
         assert_eq!(ctx.to_form, "String(orderItem.unitPrice)");
         assert_eq!(ctx.draft_to_form, "String(draft.unitPrice)");
         assert_eq!(ctx.from_form, "Number(values.unitPrice)");
         assert_eq!(ctx.display, "orderItem.unitPrice");
+        assert_eq!(
+            (ctx.from_wire.as_str(), ctx.to_wire.as_str()),
+            ("dto.unitPrice", "draft.unitPrice")
+        );
         assert_eq!(ctx.mother, "42");
     }
 
@@ -1074,21 +1285,146 @@ mod tests {
 
         let flag = web_field_ctx(&field("bool", None), "p");
         assert_eq!(flag.input, "checkbox");
+        assert!(!flag.required);
         assert_eq!(flag.empty_form, "false");
-        assert_eq!(flag.to_form, "p.x");
-        assert_eq!(flag.from_form, "values.x");
+        assert_eq!(
+            (flag.to_form.as_str(), flag.from_form.as_str()),
+            ("p.x", "values.x")
+        );
         assert_eq!(flag.display, "p.x ? \"Yes\" : \"No\"");
     }
 
     #[test]
     fn should_keep_strings_uuids_and_value_objects_as_text() {
         let id = web_field_ctx(&field("Uuid", None), "p");
-        assert_eq!((id.ts_type, id.input), ("string", "text"));
+        assert_eq!((id.ts_type.as_str(), id.input), ("string", "text"));
         assert_eq!(id.mother, "crypto.randomUUID()");
 
         let name = web_field_ctx(&field("String", Some("Name")), "p");
-        assert_eq!((name.ts_type, name.empty_form), ("string", "\"\""));
-        assert_eq!(name.mother, "\"example\"");
-        assert_eq!(name.to_form, "p.x");
+        assert_eq!((name.ts_type.as_str(), name.empty_form), ("string", "\"\""));
+        assert_eq!(
+            (name.mother.as_str(), name.to_form.as_str()),
+            ("\"example\"", "p.x")
+        );
+    }
+
+    #[test]
+    fn should_make_an_option_nullable_optional_on_the_wire_and_empty_text_in_the_form() {
+        let views = web_field_ctx(&field("Option<i64>", None), "p");
+
+        assert_eq!(views.ts_type, "number | null");
+        assert!(!views.required);
+        assert_eq!(
+            (views.to_form.as_str(), views.from_form.as_str()),
+            ("textOf(p.x)", "numberOrNull(values.x)")
+        );
+        assert_eq!(
+            (views.from_wire.as_str(), views.to_wire.as_str()),
+            ("dto.x ?? null", "draft.x ?? undefined")
+        );
+        assert_eq!(views.display, "p.x ?? \"—\"");
+        assert_eq!(views.mother, "42", "present, so the round trip converts it");
+        assert_eq!(views.to_form_helpers, ["textOf"]);
+        assert_eq!(views.from_form_helpers, ["numberOrNull"]);
+
+        let middle = web_field_ctx(&field("Option<String>", Some("MiddleName")), "p");
+        assert_eq!(middle.from_form, "textOrNull(values.x)");
+    }
+
+    #[test]
+    fn should_choose_an_optional_boolean_from_a_select() {
+        let flag = web_field_ctx(&field("Option<bool>", None), "p");
+
+        assert_eq!(flag.input, "select");
+        assert_eq!(flag.empty_form, "\"\"");
+        assert_eq!(
+            flag.options
+                .iter()
+                .map(|o| o.value.as_str())
+                .collect::<Vec<_>>(),
+            ["true", "false"]
+        );
+        assert_eq!(flag.from_form, "booleanOrNull(values.x)");
+        assert_eq!(
+            flag.display,
+            "p.x === null ? \"—\" : p.x ? \"Yes\" : \"No\""
+        );
+    }
+
+    #[test]
+    fn should_edit_a_date_time_in_local_time_and_keep_iso_8601_in_the_model() {
+        let at = web_field_ctx(&field("DateTime<Utc>", None), "p");
+        assert_eq!(
+            (at.ts_type.as_str(), at.input),
+            ("string", "datetime-local")
+        );
+        assert!(at.required);
+        assert_eq!(
+            (at.to_form.as_str(), at.from_form.as_str()),
+            ("toDateTimeLocal(p.x)", "fromDateTimeLocal(values.x)")
+        );
+        assert_eq!(at.display, "formatDateTime(p.x)");
+        assert_eq!(at.display_helpers, ["formatDateTime"]);
+        assert_eq!(at.mother, MOTHER_DATE_TIME);
+
+        let expires = web_field_ctx(&field("Option<DateTime<Utc>>", None), "p");
+        assert_eq!(expires.from_form, "dateTimeOrNull(values.x)");
+        assert_eq!(
+            expires.display,
+            "p.x === null ? \"—\" : formatDateTime(p.x)"
+        );
+    }
+
+    #[test]
+    fn should_write_a_list_comma_separated_and_a_map_one_entry_per_line() {
+        let tags = web_field_ctx(&field("Vec<String>", Some("Tag")), "p");
+        assert_eq!((tags.ts_type.as_str(), tags.input), ("string[]", "text"));
+        assert!(!tags.required);
+        assert_eq!(
+            (tags.to_form.as_str(), tags.from_form.as_str()),
+            ("p.x.join(\", \")", "splitList(values.x)")
+        );
+        assert_eq!(tags.mother, "[\"example\"]");
+
+        let scores = web_field_ctx(&field("Vec<i64>", None), "p");
+        assert_eq!(
+            (scores.ts_type.as_str(), scores.from_form.as_str()),
+            ("number[]", "splitNumbers(values.x)")
+        );
+
+        let meta = web_field_ctx(&field("HashMap<String, String>", None), "p");
+        assert_eq!(
+            (meta.ts_type.as_str(), meta.input),
+            ("Record<string, string>", "textarea")
+        );
+        assert_eq!(
+            (meta.to_form.as_str(), meta.from_form.as_str()),
+            ("formatEntries(p.x)", "parseEntries(values.x)")
+        );
+        assert_eq!(meta.display, "formatEntries(p.x, \", \")");
+    }
+
+    #[test]
+    fn should_narrow_an_enum_to_its_union_on_the_way_in() {
+        let status = enum_field();
+        let ctx = web_field_ctx(&status, "p");
+
+        assert_eq!(
+            (ctx.ts_type.as_str(), ctx.input, ctx.enum_type.as_str()),
+            ("Status", "select", "Status")
+        );
+        assert!(ctx.required);
+        assert_eq!(ctx.from_wire, format!("parseStatus(dto.{})", ctx.camel));
+        assert_eq!(ctx.from_form, format!("parseStatus(values.{})", ctx.camel));
+        assert_eq!(
+            ctx.options.first().map(|o| o.value.as_str()),
+            Some("Active")
+        );
+        assert_eq!(ctx.mother, "\"Active\"");
+
+        let declared = web_enum_ctx(&status, "order_item").unwrap();
+        assert_eq!(declared.values_const, "statusValues");
+        assert_eq!(declared.invalid_code, "order_item.invalid_status");
+        assert!(web_enum_ctx(&field("String", Some("Name")), "x").is_none());
     }
 }

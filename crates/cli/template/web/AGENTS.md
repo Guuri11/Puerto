@@ -36,6 +36,10 @@ src/presentation/features/<entity>/
 src/test-support/<entity>.ts    <Entity>Mother + fake<Entity>Repository (in memory)
 ```
 
+Form inputs hold text; `src/presentation/shared/forms.ts` converts it to the model and back
+(`null` for an empty optional input, comma-separated lists, `key=value` lines, `datetime-local`
+in local time). An enum value object is a union type with a `parse…` function in `model.ts`.
+
 Routes: `/<plural>`, `/<plural>/new`, `/<plural>/:id`, `/<plural>/:id/edit`. Containers call the
 repository port directly; write a use case in `src/application/` once there is logic to hold.
 `src/test-support/` is for tests: it never reaches an adapter, and only test files import it.

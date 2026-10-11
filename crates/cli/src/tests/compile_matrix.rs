@@ -236,6 +236,36 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
     )],
 };
 
+/// Phase 9.3: every field type on the frontend — `Option` of each primitive, `Vec`, `HashMap`,
+/// `DateTime`, an enum VO, `Option` / `Vec` VOs — on an entity named after a TypeScript keyword
+/// (`Case` → `caseItem`).
+pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
+    name: "web_every_type",
+    db: false,
+    no_demo: false,
+    no_web: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[(
+        "Case",
+        &[
+            "title:String",
+            "summary:opt:String",
+            "views:opt:i64",
+            "ratio:opt:f64",
+            "urgent:opt:bool",
+            "due_at:opt:DateTime",
+            "opened_at:DateTime",
+            "tags:vec:String",
+            "scores:vec:i64",
+            "meta:map",
+            "status:Status:enum:Open/Closed",
+            "middle_name:MiddleName:opt:String",
+            "labels:Label:vec:String",
+        ],
+    )],
+};
+
 pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     name: "postgres_every_type",
     db: true,
@@ -494,6 +524,8 @@ fn compiles_with_domain_first_layered_flow_and_fields() {
     scaffold::run_generate_application("Invoice", &output).unwrap();
     scaffold::run_generate_repository("Invoice", &output).unwrap();
     scaffold::run_generate_presentation("Invoice", &output).unwrap();
+    // The flow's last step in a web project: `core/generated/*` already routes Invoice.
+    scaffold::run_generate_web("Invoice", &output, OverwritePolicy::Ask).unwrap();
 
     assert_generated_project_is_clean(&output, &dir, "layered_fields", &[]);
 
@@ -577,6 +609,12 @@ fn web_shell_passes_its_own_checks() {
 #[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
 fn web_crud_slice_passes_its_own_checks() {
     assert_scenario_compiles(&WEB_CRUD);
+}
+
+#[test]
+#[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
+fn web_every_type_slice_passes_its_own_checks() {
+    assert_scenario_compiles(&WEB_EVERY_TYPE);
 }
 
 #[test]

@@ -1,3 +1,7 @@
+{% if enums -%}
+import { {{ pascal }}Error } from "./errors";
+
+{% endif -%}
 export interface {{ pascal }} {
   id: string;
 {%- for f in fields %}
@@ -7,3 +11,16 @@ export interface {{ pascal }} {
 
 /** What a create or an update sends: {{ a_words }} without its id. */
 export type {{ pascal }}Draft = Omit<{{ pascal }}, "id">;
+{%- for e in enums %}
+
+export const {{ e.values_const }} = [{% for v in e.variants %}"{{ v }}"{% if not loop.last %}, {% endif %}{% endfor %}] as const;
+
+export type {{ e.name }} = (typeof {{ e.values_const }})[number];
+
+/** Narrows the API's `string` to a `{{ e.name }}`, rejecting with `{{ e.invalid_code }}`. */
+export function parse{{ e.name }}(value: string): {{ e.name }} {
+  const found = {{ e.values_const }}.find((candidate) => candidate === value);
+  if (found === undefined) throw new {{ pascal }}Error("{{ e.invalid_code }}");
+  return found;
+}
+{%- endfor %}

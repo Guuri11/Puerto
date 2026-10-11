@@ -1,0 +1,3328 @@
+---
+source: crates/cli/src/tests/generated_output.rs
+expression: generated_output(& WEB_EVERY_TYPE)
+---
+=== business/src/application/case/create_case.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::case::value_objects::Status;
+use crate::domain::case::value_objects::MiddleName;
+use crate::domain::case::value_objects::Label;
+
+use crate::domain::case::{
+    errors::CaseError,
+    model::{Case, CaseProps},
+    repository::CaseRepositoryTrait,
+    use_cases::create_case::{CreateCaseParams, CreateCaseUseCaseTrait},
+};
+
+pub struct CreateCaseUseCaseImpl {
+    pub repository: Arc<dyn CaseRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateCaseUseCaseTrait for CreateCaseUseCaseImpl {
+    async fn execute(&self, params: CreateCaseParams) -> Result<Case, CaseError> {
+        tracing::info!("create_case: start");
+let status = params.status.parse::<Status>()?;
+let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
+let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Result<Vec<_>,_>>()?;
+        let entity = Case::new(CaseProps {
+            title: params.title,
+            summary: params.summary,
+            views: params.views,
+            ratio: params.ratio,
+            urgent: params.urgent,
+            due_at: params.due_at,
+            opened_at: params.opened_at,
+            tags: params.tags,
+            scores: params.scores,
+            meta: params.meta,
+            status,
+            middle_name,
+            labels,
+        }).inspect_err(|e| tracing::warn!(error = %e, "create_case: rejected"))?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_case: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_case: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::case::repository::mocks::MockCaseRepository;
+    use chrono::Utc;
+    use std::collections::HashMap;
+
+
+    #[tokio::test]
+    async fn should_create_case_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCaseParams {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "Open".to_string(),
+            middle_name: None,
+            labels: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_title_is_empty() {
+        // Arrange
+        let mock_repo = MockCaseRepository::new();
+        let use_case = CreateCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCaseParams {
+            title: "".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "Open".to_string(),
+            middle_name: None,
+            labels: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "case.validation_error.title_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_status_is_empty() {
+        // Arrange
+        let mock_repo = MockCaseRepository::new();
+        let use_case = CreateCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCaseParams {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "".to_string(),
+            middle_name: None,
+            labels: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "case.invalid_status"
+        );
+    }
+}
+
+=== business/src/application/case/delete_case.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::case::{
+    errors::CaseError,
+    repository::CaseRepositoryTrait,
+    use_cases::delete_case::{DeleteCaseParams, DeleteCaseUseCaseTrait},
+};
+
+pub struct DeleteCaseUseCaseImpl {
+    pub repository: Arc<dyn CaseRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteCaseUseCaseTrait for DeleteCaseUseCaseImpl {
+    async fn execute(&self, params: DeleteCaseParams) -> Result<(), CaseError> {
+        tracing::info!(id = %params.id, "delete_case: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_case: repository failed"))?
+            .ok_or_else(|| {
+                let err = CaseError::NotFound;
+                tracing::warn!(error = %err, "delete_case: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_case: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::case::{
+        model::{Case, CaseProps},
+        repository::mocks::MockCaseRepository,
+    };
+    use uuid::Uuid;
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use crate::domain::case::value_objects::Status;
+
+
+    #[tokio::test]
+    async fn should_soft_delete_case_when_id_exists() {
+        let entity = Case::new(CaseProps {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteCaseParams { id: entity_id })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_case_does_not_exist() {
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteCaseParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "case.not_found");
+    }
+}
+
+=== business/src/application/case/get_case.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::case::{
+    errors::CaseError,
+    model::Case,
+    repository::CaseRepositoryTrait,
+    use_cases::get_case::{GetCaseParams, GetCaseUseCaseTrait},
+};
+
+pub struct GetCaseUseCaseImpl {
+    pub repository: Arc<dyn CaseRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetCaseUseCaseTrait for GetCaseUseCaseImpl {
+    async fn execute(&self, params: GetCaseParams) -> Result<Case, CaseError> {
+        tracing::info!(id = %params.id, "get_case: start");
+        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_case: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = CaseError::NotFound;
+            tracing::warn!(error = %err, "get_case: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::case::{
+        model::{Case, CaseProps},
+        repository::mocks::MockCaseRepository,
+    };
+    use uuid::Uuid;
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use crate::domain::case::value_objects::Status;
+
+
+    #[tokio::test]
+    async fn should_return_case_when_id_exists() {
+        let entity = Case::new(CaseProps {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(GetCaseParams { id: entity_id }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetCaseParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "case.not_found");
+    }
+}
+
+=== business/src/application/case/list_cases.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::case::{
+    errors::CaseError,
+    model::Case,
+    repository::CaseRepositoryTrait,
+    use_cases::list_cases::{ListCasesParams, ListCasesUseCaseTrait},
+};
+
+pub struct ListCasesUseCaseImpl {
+    pub repository: Arc<dyn CaseRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListCasesUseCaseTrait for ListCasesUseCaseImpl {
+    async fn execute(&self, _params: ListCasesParams) -> Result<Vec<Case>, CaseError> {
+        tracing::info!("list_cases: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_cases: repository failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::case::{
+        model::{Case, CaseProps},
+        repository::mocks::MockCaseRepository,
+    };
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use crate::domain::case::value_objects::Status;
+
+
+    #[tokio::test]
+    async fn should_return_all_cases() {
+        let entities = vec![
+            Case::new(CaseProps {
+            title: "first".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        }).unwrap(),
+            Case::new(CaseProps {
+            title: "second".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        }).unwrap(),
+        ];
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move || Ok(entities.clone()));
+        let use_case = ListCasesUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListCasesParams).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_empty_list_when_no_cases_exist() {
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        let use_case = ListCasesUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListCasesParams).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+}
+
+=== business/src/application/case/update_case.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::case::value_objects::Status;
+use crate::domain::case::value_objects::MiddleName;
+use crate::domain::case::value_objects::Label;
+
+use crate::domain::case::{
+    errors::CaseError,
+    model::Case,
+    repository::CaseRepositoryTrait,
+    use_cases::update_case::{UpdateCaseParams, UpdateCaseUseCaseTrait},
+};
+
+pub struct UpdateCaseUseCaseImpl {
+    pub repository: Arc<dyn CaseRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateCaseUseCaseTrait for UpdateCaseUseCaseImpl {
+    async fn execute(&self, params: UpdateCaseParams) -> Result<Case, CaseError> {
+        tracing::info!(id = %params.id, "update_case: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_case: repository failed"))?
+            .ok_or_else(|| {
+                let err = CaseError::NotFound;
+                tracing::warn!(error = %err, "update_case: rejected");
+                err
+            })?;
+        if params.title.trim().is_empty() {
+            let err = CaseError::ValidationError("title_empty".into());
+            tracing::warn!(error = %err, "update_case: rejected");
+            return Err(err);
+        }
+let status = params.status.parse::<Status>()?;
+let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
+let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Result<Vec<_>,_>>()?;
+        entity.title = params.title;
+        entity.summary = params.summary;
+        entity.views = params.views;
+        entity.ratio = params.ratio;
+        entity.urgent = params.urgent;
+        entity.due_at = params.due_at;
+        entity.opened_at = params.opened_at;
+        entity.tags = params.tags;
+        entity.scores = params.scores;
+        entity.meta = params.meta;
+        entity.status = status;
+        entity.middle_name = middle_name;
+        entity.labels = labels;
+        entity.updated_at = chrono::Utc::now();
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_case: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::case::{
+        model::{Case, CaseProps},
+        repository::mocks::MockCaseRepository,
+    };
+    use uuid::Uuid;
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use crate::domain::case::value_objects::Status;
+
+
+    #[tokio::test]
+    async fn should_update_case_when_params_are_valid() {
+        // Arrange
+        let entity = Case::new(CaseProps {
+            title: "original".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCaseParams {
+            id: entity_id,
+            title: "updated".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "Open".to_string(),
+            middle_name: None,
+            labels: vec![],
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().title, "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_case_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCaseParams {
+            id: Uuid::new_v4(),
+            title: "new".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "Open".to_string(),
+            middle_name: None,
+            labels: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "case.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_title_is_empty() {
+        // Arrange
+        let entity = Case::new(CaseProps {
+            title: "original".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCaseRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateCaseUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCaseParams {
+            id: entity_id,
+            title: "".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "Open".to_string(),
+            middle_name: None,
+            labels: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "case.validation_error.title_empty"
+        );
+    }
+}
+
+=== business/src/domain/case/errors.rs ===
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum CaseError {
+    #[error("case.validation_error.{0}")]
+    ValidationError(String),
+    #[error("case.not_found")]
+    NotFound,
+    #[error("case.duplicate")]
+    Duplicate,
+    #[error("case.repository_error")]
+    RepositoryError,
+    #[error("case.unknown")]
+    Unknown,
+    #[error("case.invalid_status")]
+    InvalidStatus,
+    #[error("case.invalid_middle_name")]
+    InvalidMiddleName,
+    #[error("case.invalid_label")]
+    InvalidLabel,
+}
+
+=== business/src/domain/case/model.rs ===
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+use std::collections::HashMap;
+use super::value_objects::Status;
+use super::value_objects::MiddleName;
+use super::value_objects::Label;
+
+use super::errors::CaseError;
+
+#[derive(Debug, Clone)]
+pub struct CaseProps {
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub ratio: Option<f64>,
+    pub urgent: Option<bool>,
+    pub due_at: Option<DateTime<Utc>>,
+    pub opened_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+    pub meta: HashMap<String, String>,
+    pub status: Status,
+    pub middle_name: Option<MiddleName>,
+    pub labels: Vec<Label>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Case {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub ratio: Option<f64>,
+    pub urgent: Option<bool>,
+    pub due_at: Option<DateTime<Utc>>,
+    pub opened_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+    pub meta: HashMap<String, String>,
+    pub status: Status,
+    pub middle_name: Option<MiddleName>,
+    pub labels: Vec<Label>,
+}
+
+impl Case {
+    pub fn new(props: CaseProps) -> Result<Self, CaseError> {
+        if props.title.trim().is_empty() {
+            return Err(CaseError::ValidationError("title_empty".into()));
+        }
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            title: props.title,
+            summary: props.summary,
+            views: props.views,
+            ratio: props.ratio,
+            urgent: props.urgent,
+            due_at: props.due_at,
+            opened_at: props.opened_at,
+            tags: props.tags,
+            scores: props.scores,
+            meta: props.meta,
+            status: props.status,
+            middle_name: props.middle_name,
+            labels: props.labels,
+        })
+    }
+
+    pub fn from_repository(data: Case) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_case_when_fields_are_valid() {
+        let result = Case::new(CaseProps {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        });
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+
+    #[test]
+    fn should_reject_case_when_title_is_empty() {
+        let result = Case::new(CaseProps {
+            title: "".into(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "case.validation_error.title_empty"
+        );
+    }
+
+    #[test]
+    fn should_reject_case_when_title_is_only_whitespace() {
+        let result = Case::new(CaseProps {
+            title: "   ".into(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn should_reject_case_when_status_is_invalid() {
+        let result = "InvalidVariant".parse::<Status>();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "case.invalid_status"
+        );
+    }
+}
+
+=== business/src/domain/case/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use super::{errors::CaseError, model::Case};
+
+#[async_trait]
+pub trait CaseRepositoryTrait: Send + Sync {
+    async fn find_all(&self) -> Result<Vec<Case>, CaseError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Case>, CaseError>;
+    async fn save(&self, entity: &Case) -> Result<(), CaseError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+    use uuid::Uuid;
+
+    use super::*;
+
+    mock! {
+        pub CaseRepository {}
+
+        #[async_trait]
+        impl CaseRepositoryTrait for CaseRepository {
+            async fn find_all(&self) -> Result<Vec<Case>, CaseError>;
+            async fn find_by_id(&self, id: Uuid) -> Result<Option<Case>, CaseError>;
+            async fn save(&self, entity: &Case) -> Result<(), CaseError>;
+        }
+    }
+}
+
+=== business/src/domain/case/use_cases/create_case.rs ===
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+
+use crate::domain::case::{errors::CaseError, model::Case};
+
+#[derive(Debug, Clone)]
+pub struct CreateCaseParams {
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub ratio: Option<f64>,
+    pub urgent: Option<bool>,
+    pub due_at: Option<DateTime<Utc>>,
+    pub opened_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+    pub meta: HashMap<String, String>,
+    pub status: String,
+    pub middle_name: Option<String>,
+    pub labels: Vec<String>,
+}
+
+#[async_trait]
+pub trait CreateCaseUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateCaseParams) -> Result<Case, CaseError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateCaseUseCase {}
+
+        #[async_trait]
+        impl CreateCaseUseCaseTrait for CreateCaseUseCase {
+            async fn execute(&self, params: CreateCaseParams) -> Result<Case, CaseError>;
+        }
+    }
+}
+
+=== business/src/domain/case/use_cases/delete_case.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::case::errors::CaseError;
+
+#[derive(Debug, Clone)]
+pub struct DeleteCaseParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait DeleteCaseUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteCaseParams) -> Result<(), CaseError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteCaseUseCase {}
+
+        #[async_trait]
+        impl DeleteCaseUseCaseTrait for DeleteCaseUseCase {
+            async fn execute(&self, params: DeleteCaseParams) -> Result<(), CaseError>;
+        }
+    }
+}
+
+=== business/src/domain/case/use_cases/get_case.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::case::{errors::CaseError, model::Case};
+
+#[derive(Debug, Clone)]
+pub struct GetCaseParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait GetCaseUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetCaseParams) -> Result<Case, CaseError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetCaseUseCase {}
+
+        #[async_trait]
+        impl GetCaseUseCaseTrait for GetCaseUseCase {
+            async fn execute(&self, params: GetCaseParams) -> Result<Case, CaseError>;
+        }
+    }
+}
+
+=== business/src/domain/case/use_cases/list_cases.rs ===
+use async_trait::async_trait;
+
+use crate::domain::case::{errors::CaseError, model::Case};
+
+#[derive(Debug)]
+pub struct ListCasesParams;
+
+#[async_trait]
+pub trait ListCasesUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListCasesParams) -> Result<Vec<Case>, CaseError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListCasesUseCase {}
+
+        #[async_trait]
+        impl ListCasesUseCaseTrait for ListCasesUseCase {
+            async fn execute(&self, params: ListCasesParams) -> Result<Vec<Case>, CaseError>;
+        }
+    }
+}
+
+=== business/src/domain/case/use_cases/update_case.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+
+use crate::domain::case::{errors::CaseError, model::Case};
+
+#[derive(Debug, Clone)]
+pub struct UpdateCaseParams {
+    pub id: Uuid,
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub ratio: Option<f64>,
+    pub urgent: Option<bool>,
+    pub due_at: Option<DateTime<Utc>>,
+    pub opened_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+    pub meta: HashMap<String, String>,
+    pub status: String,
+    pub middle_name: Option<String>,
+    pub labels: Vec<String>,
+}
+
+#[async_trait]
+pub trait UpdateCaseUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateCaseParams) -> Result<Case, CaseError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateCaseUseCase {}
+
+        #[async_trait]
+        impl UpdateCaseUseCaseTrait for UpdateCaseUseCase {
+            async fn execute(&self, params: UpdateCaseParams) -> Result<Case, CaseError>;
+        }
+    }
+}
+
+=== business/src/domain/case/value_objects.rs ===
+use super::errors::CaseError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Status {
+    Open,
+    Closed,
+}
+
+impl std::str::FromStr for Status {
+    type Err = CaseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Open" => Ok(Self::Open),
+            "Closed" => Ok(Self::Closed),
+            _ => Err(CaseError::InvalidStatus),
+        }
+    }
+}
+
+impl Status {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Open => "Open",
+            Self::Closed => "Closed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MiddleName {
+    value: String,
+}
+
+impl MiddleName {
+    pub fn new(value: String) -> Result<Self, CaseError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(CaseError::InvalidMiddleName);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Label {
+    value: String,
+}
+
+impl Label {
+    pub fn new(value: String) -> Result<Self, CaseError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(CaseError::InvalidLabel);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+=== business/src/lib.rs ===
+pub mod domain {
+  pub mod greeting {
+    pub mod errors;
+    pub mod model;
+    pub mod repository;
+    pub mod use_cases {
+      pub mod get_greeting;
+    }
+  }
+
+    pub mod case {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_case;
+            pub mod get_case;
+            pub mod list_cases;
+            pub mod update_case;
+            pub mod delete_case;
+        }
+    
+        pub mod value_objects;
+}
+}
+pub mod application {
+  pub mod greeting {
+    pub mod get_greeting;
+  }
+
+    pub mod case {
+        pub mod create_case;
+        pub mod get_case;
+        pub mod list_cases;
+        pub mod update_case;
+        pub mod delete_case;
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod tests {
+    pub mod mothers {
+        pub mod case_mother;
+    }
+}
+
+=== business/src/tests/mothers/case_mother.rs ===
+use crate::domain::case::model::Case;
+use crate::domain::case::model::CaseProps;
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+use crate::domain::case::value_objects::Status;
+use crate::domain::case::value_objects::MiddleName;
+use crate::domain::case::value_objects::Label;
+
+pub struct CaseMother {
+    title: Option<String>,
+    summary: Option<String>,
+    views: Option<i64>,
+    ratio: Option<f64>,
+    urgent: Option<bool>,
+    due_at: Option<DateTime<Utc>>,
+    opened_at: Option<DateTime<Utc>>,
+    tags: Option<Vec<String>>,
+    scores: Option<Vec<i64>>,
+    meta: Option<HashMap<String, String>>,
+    status: Option<Status>,
+    middle_name: Option<MiddleName>,
+    labels: Option<Vec<Label>>,
+}
+
+impl CaseMother {
+    pub fn new() -> Self {
+        Self { title: None, summary: None, views: None, ratio: None, urgent: None, due_at: None, opened_at: None, tags: None, scores: None, meta: None, status: None, middle_name: None, labels: None }
+    }
+
+    pub fn with_title(mut self, title: &str) -> Self {
+        self.title = Some(title.to_string());
+        self
+    }
+
+    pub fn with_summary(mut self, summary: &str) -> Self {
+        self.summary = Some(summary.to_string());
+        self
+    }
+
+    pub fn with_views(mut self, views: i64) -> Self {
+        self.views = Some(views);
+        self
+    }
+
+    pub fn with_ratio(mut self, ratio: f64) -> Self {
+        self.ratio = Some(ratio);
+        self
+    }
+
+    pub fn with_urgent(mut self, urgent: bool) -> Self {
+        self.urgent = Some(urgent);
+        self
+    }
+
+    pub fn with_due_at(mut self, due_at: DateTime<Utc>) -> Self {
+        self.due_at = Some(due_at);
+        self
+    }
+
+    pub fn with_opened_at(mut self, opened_at: DateTime<Utc>) -> Self {
+        self.opened_at = Some(opened_at);
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = Some(tags);
+        self
+    }
+
+    pub fn with_scores(mut self, scores: Vec<i64>) -> Self {
+        self.scores = Some(scores);
+        self
+    }
+
+    pub fn with_meta(mut self, meta: HashMap<String, String>) -> Self {
+        self.meta = Some(meta);
+        self
+    }
+
+    pub fn with_status(mut self, status: Status) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    pub fn with_middle_name(mut self, middle_name: MiddleName) -> Self {
+        self.middle_name = Some(middle_name);
+        self
+    }
+
+    pub fn with_labels(mut self, labels: Vec<Label>) -> Self {
+        self.labels = Some(labels);
+        self
+    }
+
+    pub fn with_empty_title(mut self) -> Self {
+        self.title = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> Case {
+        Case::new(CaseProps {
+            title: self.title.unwrap_or_else(|| "example".to_string()),
+            summary: self.summary,
+            views: self.views,
+            ratio: self.ratio,
+            urgent: self.urgent,
+            due_at: self.due_at,
+            opened_at: self.opened_at.unwrap_or_else(Utc::now),
+            tags: self.tags.unwrap_or_default(),
+            scores: self.scores.unwrap_or_default(),
+            meta: self.meta.unwrap_or_default(),
+            status: self.status.unwrap_or(Status::Open),
+            middle_name: self.middle_name,
+            labels: self.labels.unwrap_or_default(),
+        })
+        .expect("CaseMother: failed to build valid Case")
+    }
+
+    pub fn build_props(self) -> CaseProps {
+        CaseProps {
+            title: self.title.unwrap_or_else(|| "example".to_string()),
+            summary: self.summary,
+            views: self.views,
+            ratio: self.ratio,
+            urgent: self.urgent,
+            due_at: self.due_at,
+            opened_at: self.opened_at.unwrap_or_else(Utc::now),
+            tags: self.tags.unwrap_or_default(),
+            scores: self.scores.unwrap_or_default(),
+            meta: self.meta.unwrap_or_default(),
+            status: self.status.unwrap_or(Status::Open),
+            middle_name: self.middle_name,
+            labels: self.labels.unwrap_or_default(),
+        }
+    }
+
+    pub fn random() -> Case {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Case> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for CaseMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== infrastructure/src/case/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use business::domain::case::{
+    errors::CaseError,
+    model::Case,
+    repository::CaseRepositoryTrait,
+};
+
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// Postgres repositories).
+#[derive(Default)]
+pub struct InMemoryCaseRepository;
+
+impl InMemoryCaseRepository {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl CaseRepositoryTrait for InMemoryCaseRepository {
+    async fn find_all(&self) -> Result<Vec<Case>, CaseError> {
+        tracing::debug!("find_all");
+        Ok(vec![])
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Case>, CaseError> {
+        tracing::debug!(%id, "find_by_id");
+        Ok(None)
+    }
+
+    async fn save(&self, entity: &Case) -> Result<(), CaseError> {
+        tracing::debug!(id = %entity.id, "save");
+        Ok(())
+    }
+}
+
+=== infrastructure/src/lib.rs ===
+pub mod greeting {
+    pub mod repository;
+}
+pub mod case {
+    pub mod repository;
+}
+
+=== presentation/src/api.rs ===
+pub mod error;
+pub mod greeting;
+pub mod tags;
+pub mod case;
+
+=== presentation/src/api/case.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/case/dto.rs ===
+use business::domain::case::model::Case;
+use poem_openapi::Object;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CaseDto {
+    pub id: Uuid,
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub ratio: Option<f64>,
+    pub urgent: Option<bool>,
+    pub due_at: Option<DateTime<Utc>>,
+    pub opened_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+    pub meta: HashMap<String, String>,
+    pub status: String,
+    pub middle_name: Option<String>,
+    pub labels: Vec<String>,
+}
+
+impl CaseDto {
+    pub fn from_domain(entity: &Case) -> Self {
+        Self {
+            id: entity.id,
+            title: entity.title.clone(),
+            summary: entity.summary.clone(),
+            views: entity.views,
+            ratio: entity.ratio,
+            urgent: entity.urgent,
+            due_at: entity.due_at,
+            opened_at: entity.opened_at,
+            tags: entity.tags.clone(),
+            scores: entity.scores.clone(),
+            meta: entity.meta.clone(),
+            status: entity.status.as_str().to_string(),
+            middle_name: entity.middle_name.as_ref().map(|v| v.value().to_string()),
+            labels: entity.labels.iter().map(|v| v.value().to_string()).collect::<Vec<_>>(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateCaseRequest {
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub ratio: Option<f64>,
+    pub urgent: Option<bool>,
+    pub due_at: Option<DateTime<Utc>>,
+    pub opened_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+    pub meta: HashMap<String, String>,
+    pub status: String,
+    pub middle_name: Option<String>,
+    pub labels: Vec<String>,
+}
+
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateCaseRequest {
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub ratio: Option<f64>,
+    pub urgent: Option<bool>,
+    pub due_at: Option<DateTime<Utc>>,
+    pub opened_at: DateTime<Utc>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+    pub meta: HashMap<String, String>,
+    pub status: String,
+    pub middle_name: Option<String>,
+    pub labels: Vec<String>,
+}
+
+
+=== presentation/src/api/case/error_mapper.rs ===
+use business::domain::case::errors::CaseError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+
+use crate::api::error::{ErrorResponse, IntoErrorResponse};
+
+impl IntoErrorResponse for CaseError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            CaseError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            CaseError::NotFound => StatusCode::NOT_FOUND,
+            CaseError::Duplicate => StatusCode::CONFLICT,
+            CaseError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            CaseError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            CaseError::InvalidStatus => StatusCode::UNPROCESSABLE_ENTITY,
+            CaseError::InvalidMiddleName => StatusCode::UNPROCESSABLE_ENTITY,
+            CaseError::InvalidLabel => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CaseError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "case.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = CaseError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "case.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = CaseError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "case.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = CaseError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "case.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = CaseError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "case.unknown");
+    }
+
+    #[test]
+    fn should_map_invalid_status_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CaseError::InvalidStatus.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "case.invalid_status");
+    }
+
+    #[test]
+    fn should_map_invalid_middle_name_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CaseError::InvalidMiddleName.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "case.invalid_middle_name");
+    }
+
+    #[test]
+    fn should_map_invalid_label_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CaseError::InvalidLabel.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "case.invalid_label");
+    }
+}
+
+=== presentation/src/api/case/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use crate::api::{error::ErrorResponse, case::dto::CaseDto};
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+
+#[derive(ApiResponse)]
+pub enum CreateCaseResponse {
+    #[oai(status = 201)]
+    Created(Json<CaseDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateCaseResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetCaseResponse {
+    #[oai(status = 200)]
+    Ok(Json<CaseDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetCaseResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListCasesResponse {
+    #[oai(status = 200)]
+    Ok(Json<Vec<CaseDto>>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListCasesResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateCaseResponse {
+    #[oai(status = 200)]
+    Ok(Json<CaseDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateCaseResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteCaseResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteCaseResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/case/routes.rs ===
+use std::sync::Arc;
+
+use business::domain::case::use_cases::{
+    create_case::{CreateCaseParams, CreateCaseUseCaseTrait},
+    delete_case::{DeleteCaseParams, DeleteCaseUseCaseTrait},
+    get_case::{GetCaseParams, GetCaseUseCaseTrait},
+    list_cases::{ListCasesParams, ListCasesUseCaseTrait},
+    update_case::{UpdateCaseParams, UpdateCaseUseCaseTrait},
+};
+use poem_openapi::{OpenApi, param::Path, payload::Json};
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
+use crate::api::case::dto::{CreateCaseRequest, UpdateCaseRequest, CaseDto};
+use crate::api::case::responses::{
+    CreateCaseResponse, DeleteCaseResponse, GetCaseResponse, ListCasesResponse,
+    UpdateCaseResponse,
+};
+
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
+pub struct CaseApi {
+    pub create_case: Arc<dyn CreateCaseUseCaseTrait>,
+    pub get_case: Arc<dyn GetCaseUseCaseTrait>,
+    pub list_cases: Arc<dyn ListCasesUseCaseTrait>,
+    pub update_case: Arc<dyn UpdateCaseUseCaseTrait>,
+    pub delete_case: Arc<dyn DeleteCaseUseCaseTrait>,
+}
+
+#[OpenApi]
+impl CaseApi {
+    /// Create a new Case
+    #[oai(path = "/cases", method = "post", tag = "ApiTags::Case")]
+    async fn create(&self, body: Json<CreateCaseRequest>) -> CreateCaseResponse {
+        match self
+            .create_case
+            .execute(CreateCaseParams {
+                title: body.title.clone(),
+                summary: body.summary.clone(),
+                views: body.views,
+                ratio: body.ratio,
+                urgent: body.urgent,
+                due_at: body.due_at,
+                opened_at: body.opened_at,
+                tags: body.tags.clone(),
+                scores: body.scores.clone(),
+                meta: body.meta.clone(),
+                status: body.status.clone(),
+                middle_name: body.middle_name.clone(),
+                labels: body.labels.clone(),
+            })
+            .await
+        {
+            Ok(entity) => CreateCaseResponse::Created(Json(CaseDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_case failed");
+                CreateCaseResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Case by ID
+    #[oai(path = "/cases/:id", method = "get", tag = "ApiTags::Case")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetCaseResponse {
+        match self
+            .get_case
+            .execute(GetCaseParams { id: id.0 })
+            .await
+        {
+            Ok(entity) => GetCaseResponse::Ok(Json(CaseDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_case failed");
+                GetCaseResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List all Cases
+    #[oai(path = "/cases", method = "get", tag = "ApiTags::Case")]
+    async fn list(&self) -> ListCasesResponse {
+        match self.list_cases.execute(ListCasesParams).await {
+            Ok(entities) => {
+                ListCasesResponse::Ok(Json(entities.iter().map(CaseDto::from_domain).collect()))
+            }
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_cases failed");
+                ListCasesResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Case
+    #[oai(path = "/cases/:id", method = "put", tag = "ApiTags::Case")]
+    async fn update(&self, id: Path<Uuid>, body: Json<UpdateCaseRequest>) -> UpdateCaseResponse {
+        match self
+            .update_case
+            .execute(UpdateCaseParams {
+                id: id.0,
+                title: body.title.clone(),
+                summary: body.summary.clone(),
+                views: body.views,
+                ratio: body.ratio,
+                urgent: body.urgent,
+                due_at: body.due_at,
+                opened_at: body.opened_at,
+                tags: body.tags.clone(),
+                scores: body.scores.clone(),
+                meta: body.meta.clone(),
+                status: body.status.clone(),
+                middle_name: body.middle_name.clone(),
+                labels: body.labels.clone(),
+            })
+            .await
+        {
+            Ok(entity) => UpdateCaseResponse::Ok(Json(CaseDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_case failed");
+                UpdateCaseResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Case
+    #[oai(path = "/cases/:id", method = "delete", tag = "ApiTags::Case")]
+    async fn delete(&self, id: Path<Uuid>) -> DeleteCaseResponse {
+        match self
+            .delete_case
+            .execute(DeleteCaseParams { id: id.0 })
+            .await
+        {
+            Ok(()) => DeleteCaseResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_case failed");
+                DeleteCaseResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::case::errors::CaseError;
+    use business::domain::case::use_cases::{
+        create_case::mocks::MockCreateCaseUseCase, delete_case::mocks::MockDeleteCaseUseCase,
+        get_case::mocks::MockGetCaseUseCase, list_cases::mocks::MockListCasesUseCase,
+        update_case::mocks::MockUpdateCaseUseCase,
+    };
+    use business::tests::mothers::case_mother::CaseMother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use chrono::Utc;
+    use std::collections::HashMap;
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateCaseUseCase,
+        get: MockGetCaseUseCase,
+        list: MockListCasesUseCase,
+        update: MockUpdateCaseUseCase,
+        delete: MockDeleteCaseUseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = CaseApi {
+                create_case: Arc::new(self.create),
+                get_case: Arc::new(self.get),
+                list_cases: Arc::new(self.list),
+                update_case: Arc::new(self.update),
+                delete_case: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> CreateCaseRequest {
+        CreateCaseRequest {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "example".to_string(),
+            middle_name: None,
+            labels: vec![],
+        }
+    }
+
+    fn update_request() -> UpdateCaseRequest {
+        UpdateCaseRequest {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: "example".to_string(),
+            middle_name: None,
+            labels: vec![],
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/cases/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_case_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| Ok(CaseMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/cases")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_case_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(CaseError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/cases")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_case_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Ok(CaseMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_case_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Err(CaseError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_every_case_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Ok(CaseMother::random_vec(2)));
+
+        // Act
+        let response = mocks.client().get("/cases").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        response.json().await.value().array().assert_len(2);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Err(CaseError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/cases").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_case_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Ok(CaseMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Err(CaseError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_case_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Err(CaseError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+}
+
+=== presentation/src/api/tags.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use poem_openapi::Tags;
+
+#[derive(Tags)]
+pub enum ApiTags {
+    Greeting,
+    Case,
+}
+
+=== presentation/src/generated/bootstrap.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use std::sync::Arc;
+
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
+use business::application::case::create_case::CreateCaseUseCaseImpl;
+use business::application::case::get_case::GetCaseUseCaseImpl;
+use business::application::case::list_cases::ListCasesUseCaseImpl;
+use business::application::case::update_case::UpdateCaseUseCaseImpl;
+use business::application::case::delete_case::DeleteCaseUseCaseImpl;
+
+use business::domain::greeting::repository::GreetingRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
+use business::domain::case::repository::CaseRepositoryTrait;
+use infrastructure::case::repository::InMemoryCaseRepository;
+
+use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem_openapi::OpenApiService;
+
+use crate::api::greeting::routes::GreetingApi;
+use crate::api::case::routes::CaseApi;
+
+pub async fn build_app() -> impl poem::Endpoint {
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let greeting_api = GreetingApi { get_greeting };
+
+    let case_repo: Arc<dyn CaseRepositoryTrait> = Arc::new(InMemoryCaseRepository::new());
+    let create_case = Arc::new(CreateCaseUseCaseImpl { repository: Arc::clone(&case_repo) });
+    let get_case = Arc::new(GetCaseUseCaseImpl { repository: Arc::clone(&case_repo) });
+    let list_cases = Arc::new(ListCasesUseCaseImpl { repository: Arc::clone(&case_repo) });
+    let update_case = Arc::new(UpdateCaseUseCaseImpl { repository: Arc::clone(&case_repo) });
+    let delete_case = Arc::new(DeleteCaseUseCaseImpl { repository: case_repo });
+    let case_api = CaseApi { create_case, get_case, list_cases, update_case, delete_case };
+
+    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
+    let api_service =
+        openapi_service((greeting_api, case_api)).server(format!("http://localhost:{port}/api"));
+    let ui = api_service.swagger_ui();
+
+    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
+    let mut cors = Cors::new();
+    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        cors = cors.allow_origin(origin);
+    }
+
+    Route::new()
+        .at("/health", get(crate::health::liveness))
+        .at(
+            "/health/ready",
+            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
+        )
+        .nest("/api", api_service)
+        .nest("/", ui)
+        .with(Tracing)
+        .with(cors)
+}
+
+/// The API service, built in one place: whatever else reads its spec (the export test of a project
+/// with `web/`) sees the API the server answers.
+fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
+    OpenApiService::new(api, env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
+    use business::domain::case::use_cases::create_case::mocks::MockCreateCaseUseCase;
+    use business::domain::case::use_cases::get_case::mocks::MockGetCaseUseCase;
+    use business::domain::case::use_cases::list_cases::mocks::MockListCasesUseCase;
+    use business::domain::case::use_cases::update_case::mocks::MockUpdateCaseUseCase;
+    use business::domain::case::use_cases::delete_case::mocks::MockDeleteCaseUseCase;
+
+    /// The API contract the frontend's types are generated from (`make web/sync`).
+    const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
+
+    /// Built from mocked use cases: no server, no database. A missing file is written; a different
+    /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
+    #[test]
+    fn openapi_spec_matches_docs_api_openapi_json() {
+        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
+        let case_api = CaseApi { create_case: Arc::new(MockCreateCaseUseCase::new()), get_case: Arc::new(MockGetCaseUseCase::new()), list_cases: Arc::new(MockListCasesUseCase::new()), update_case: Arc::new(MockUpdateCaseUseCase::new()), delete_case: Arc::new(MockDeleteCaseUseCase::new()) };
+        let spec = openapi_service((greeting_api, case_api)).spec();
+
+        let path = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
+            let dir = path.parent().expect("docs/api/openapi.json has a parent");
+            std::fs::create_dir_all(dir).expect("create docs/api");
+            std::fs::write(path, &spec).expect("write docs/api/openapi.json");
+            return;
+        }
+        let committed = std::fs::read_to_string(path).expect("read docs/api/openapi.json");
+        assert!(
+            committed == spec,
+            "docs/api/openapi.json is not the API this code serves: run `make web/sync`"
+        );
+    }
+}
+
+=== puerto.toml ===
+[project]
+name = "snapshot"
+web = true
+
+[[entity]]
+name = "Greeting"
+use_cases = ["get_greeting"]
+fields = []
+
+[[entity]]
+name = "Case"
+use_cases = [
+    "create_case",
+    "get_case",
+    "list_cases",
+    "update_case",
+    "delete_case",
+]
+
+[[entity.fields]]
+name = "title"
+type = "String"
+
+[[entity.fields]]
+name = "summary"
+type = "Option<String>"
+
+[[entity.fields]]
+name = "views"
+type = "Option<i64>"
+
+[[entity.fields]]
+name = "ratio"
+type = "Option<f64>"
+
+[[entity.fields]]
+name = "urgent"
+type = "Option<bool>"
+
+[[entity.fields]]
+name = "due_at"
+type = "Option<DateTime<Utc>>"
+
+[[entity.fields]]
+name = "opened_at"
+type = "DateTime<Utc>"
+
+[[entity.fields]]
+name = "tags"
+type = "Vec<String>"
+
+[[entity.fields]]
+name = "scores"
+type = "Vec<i64>"
+
+[[entity.fields]]
+name = "meta"
+type = "HashMap<String, String>"
+
+[[entity.fields]]
+name = "status"
+type = "String"
+value_object = "Status"
+value_object_kind = "enum"
+enum_variants = [
+    "Open",
+    "Closed",
+]
+
+[[entity.fields]]
+name = "middle_name"
+type = "Option<String>"
+value_object = "MiddleName"
+
+[[entity.fields]]
+name = "labels"
+type = "Vec<String>"
+value_object = "Label"
+
+=== web/src/domain/case/errors.ts ===
+/**
+ * A request about a case that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `case.not_found`, `case.validation_error.<field>_empty`.
+ */
+export class CaseError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "CaseError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/case/model.ts ===
+import { CaseError } from "./errors";
+
+export interface Case {
+  id: string;
+  title: string;
+  summary: string | null;
+  views: number | null;
+  ratio: number | null;
+  urgent: boolean | null;
+  dueAt: string | null;
+  openedAt: string;
+  tags: string[];
+  scores: number[];
+  meta: Record<string, string>;
+  status: Status;
+  middleName: string | null;
+  labels: string[];
+}
+
+/** What a create or an update sends: a case without its id. */
+export type CaseDraft = Omit<Case, "id">;
+
+export const statusValues = ["Open", "Closed"] as const;
+
+export type Status = (typeof statusValues)[number];
+
+/** Narrows the API's `string` to a `Status`, rejecting with `case.invalid_status`. */
+export function parseStatus(value: string): Status {
+  const found = statusValues.find((candidate) => candidate === value);
+  if (found === undefined) throw new CaseError("case.invalid_status");
+  return found;
+}
+
+=== web/src/domain/case/repository.ts ===
+import type { Case, CaseDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `CaseError` the API answered. */
+export interface CaseRepository {
+  list(): Promise<Case[]>;
+  get(id: string): Promise<Case>;
+  create(draft: CaseDraft): Promise<Case>;
+  update(id: string, draft: CaseDraft): Promise<Case>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/case/case-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { CaseError } from "../../domain/case/errors";
+import { CaseMother } from "../../test-support/case";
+import { createApiClient } from "../http/client";
+import { caseRepositoryHttp } from "./case-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: caseRepositoryHttp(api), requests };
+}
+
+describe("caseRepositoryHttp", () => {
+  test("should return every case when the API lists them", async () => {
+    // Arrange
+    const caseItem = CaseMother.random();
+    const { repository } = answering(200, [caseItem]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([caseItem]);
+  });
+
+  test("should send the draft when creating a case", async () => {
+    // Arrange
+    const draft = CaseMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the case does not exist", async () => {
+    // Arrange
+    const code = "case.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(CaseError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the case", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/cases/42");
+  });
+});
+
+=== web/src/infrastructure/case/case-repository-http.ts ===
+import { CaseError } from "../../domain/case/errors";
+import { type Case, type CaseDraft, parseStatus } from "../../domain/case/model";
+import type { CaseRepository } from "../../domain/case/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type CaseDto = components["schemas"]["CaseDto"];
+type CaseRequest = components["schemas"]["CreateCaseRequest"];
+
+function toCase(dto: CaseDto): Case {
+  return {
+    id: dto.id,
+    title: dto.title,
+    summary: dto.summary ?? null,
+    views: dto.views ?? null,
+    ratio: dto.ratio ?? null,
+    urgent: dto.urgent ?? null,
+    dueAt: dto.dueAt ?? null,
+    openedAt: dto.openedAt,
+    tags: dto.tags,
+    scores: dto.scores,
+    meta: dto.meta,
+    status: parseStatus(dto.status),
+    middleName: dto.middleName ?? null,
+    labels: dto.labels,
+  };
+}
+
+function toRequest(draft: CaseDraft): CaseRequest {
+  return {
+    title: draft.title,
+    summary: draft.summary ?? undefined,
+    views: draft.views ?? undefined,
+    ratio: draft.ratio ?? undefined,
+    urgent: draft.urgent ?? undefined,
+    dueAt: draft.dueAt ?? undefined,
+    openedAt: draft.openedAt,
+    tags: draft.tags,
+    scores: draft.scores,
+    meta: draft.meta,
+    status: draft.status,
+    middleName: draft.middleName ?? undefined,
+    labels: draft.labels,
+  };
+}
+
+/** `CaseRepository` over the REST API (`/cases`). */
+export function caseRepositoryHttp(api: ApiClient): CaseRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/cases");
+      if (data === undefined) throw new CaseError(apiErrorCode(error, response));
+      return data.map(toCase);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/cases/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new CaseError(apiErrorCode(error, response));
+      return toCase(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/cases", { body: toRequest(draft) });
+      if (data === undefined) throw new CaseError(apiErrorCode(error, response));
+      return toCase(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/cases/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new CaseError(apiErrorCode(error, response));
+      return toCase(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/cases/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new CaseError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/presentation/core/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { CaseRepository } from "../../../domain/case/repository";
+import { caseRepositoryHttp } from "../../../infrastructure/case/case-repository-http";
+import { createApiClient } from "../../../infrastructure/http/client";
+
+export interface Dependencies {
+  caseRepository: CaseRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return {
+    caseRepository: caseRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { CaseDetailContainer } from "../../features/case/containers/case-detail-container";
+import { CaseFormContainer } from "../../features/case/containers/case-form-container";
+import { CaseListContainer } from "../../features/case/containers/case-list-container";
+import { HomePage } from "../../pages/home";
+import { NotFoundPage } from "../../pages/not-found";
+import type { NavEntry } from "../../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Cases", href: "/cases" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/cases">
+        <CaseListContainer />
+      </Route>
+      <Route path="/cases/new">
+        <CaseFormContainer />
+      </Route>
+      <Route path="/cases/:id/edit">{(params) => <CaseFormContainer id={params.id} />}</Route>
+      <Route path="/cases/:id">{(params) => <CaseDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/presentation/features/case/containers/case-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CaseMother, fakeCaseRepository } from "../../../../test-support/case";
+import { renderScreen } from "../../../../test-support/render";
+import { CaseDetailContainer } from "./case-detail-container";
+
+describe("CaseDetailContainer", () => {
+  test("should show the case when it exists", async () => {
+    // Arrange
+    const seeded = CaseMother.random();
+    const caseRepository = fakeCaseRepository([seeded]);
+
+    // Act
+    renderScreen(<CaseDetailContainer id={seeded.id} />, { caseRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the case does not exist", async () => {
+    // Arrange
+    const caseRepository = fakeCaseRepository();
+
+    // Act
+    renderScreen(<CaseDetailContainer id={crypto.randomUUID()} />, { caseRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("case.not_found");
+  });
+
+  test("should delete the case only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = CaseMother.random();
+    const fake = fakeCaseRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<CaseDetailContainer id={seeded.id} />, {
+      caseRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/cases"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/case/containers/case-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CaseDetailView } from "../views/case-detail-view";
+
+export function CaseDetailContainer({ id }: { id: string }) {
+  const { caseRepository } = useDependencies();
+  const caseItem = useAsync(() => caseRepository.get(id), [caseRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await caseRepository.remove(id);
+      navigate("/cases");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Case</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {caseItem.status === "loading" && <span className="loading loading-spinner" />}
+      {caseItem.status === "error" && <ErrorAlert error={caseItem.error} />}
+      {caseItem.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <CaseDetailView caseItem={caseItem.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/cases/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/cases" className="link">
+        Back to cases
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this case?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/case/containers/case-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CaseError } from "../../../../domain/case/errors";
+import type { CaseDraft } from "../../../../domain/case/model";
+import { CaseMother, fakeCaseRepository } from "../../../../test-support/case";
+import { renderScreen } from "../../../../test-support/render";
+import { formatEntries, textOf, toDateTimeLocal } from "../../../shared/forms";
+import { CaseFormContainer } from "./case-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: CaseDraft) {
+  await screen.findByText("Save");
+  type("Title", draft.title);
+  type("Summary", textOf(draft.summary));
+  type("Views", textOf(draft.views));
+  type("Ratio", textOf(draft.ratio));
+  type("Urgent", textOf(draft.urgent));
+  type("Due at", toDateTimeLocal(draft.dueAt));
+  type("Opened at", toDateTimeLocal(draft.openedAt));
+  type("Tags", draft.tags.join(", "));
+  type("Scores", draft.scores.join(", "));
+  type("Meta", formatEntries(draft.meta));
+  type("Status", draft.status);
+  type("Middle name", textOf(draft.middleName));
+  type("Labels", draft.labels.join(", "));
+}
+
+describe("CaseFormContainer", () => {
+  test("should create the case from what was typed and show it", async () => {
+    // Arrange
+    const draft = CaseMother.draft();
+    const caseRepository = fakeCaseRepository();
+    const { history } = renderScreen(<CaseFormContainer />, { caseRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/cases/"));
+    const [created] = await caseRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/cases/${created?.id}`);
+  });
+
+  test("should save the edited case when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = CaseMother.random();
+    const caseRepository = fakeCaseRepository([seeded]);
+    const { history } = renderScreen(<CaseFormContainer id={seeded.id} />, {
+      caseRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/cases/${seeded.id}`));
+    expect(await caseRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the case", async () => {
+    // Arrange
+    const code = "case.validation_error.invalid";
+    const caseRepository = {
+      ...fakeCaseRepository(),
+      create: () => Promise.reject(new CaseError(code)),
+    };
+    renderScreen(<CaseFormContainer />, { caseRepository });
+    await fillIn(CaseMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/case/containers/case-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Case } from "../../../../domain/case/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CaseFormView, toCaseDraft, toCaseForm } from "../views/case-form-view";
+
+/** Creates a case, or edits the one with `id`. */
+export function CaseFormContainer({ id }: { id?: string }) {
+  const { caseRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : caseRepository.get(id)),
+    [caseRepository, id],
+  );
+  const title = id === undefined ? "New case" : "Edit case";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <CaseForm existing={existing.data} />}
+      <Link href={id === undefined ? "/cases" : `/cases/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function CaseForm({ existing }: { existing: Case | null }) {
+  const { caseRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toCaseForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toCaseDraft(values);
+      const saved =
+        existing === null
+          ? await caseRepository.create(draft)
+          : await caseRepository.update(existing.id, draft);
+      navigate(`/cases/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <CaseFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/case/containers/case-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { CaseError } from "../../../../domain/case/errors";
+import { CaseMother, fakeCaseRepository } from "../../../../test-support/case";
+import { renderScreen } from "../../../../test-support/render";
+import { CaseListContainer } from "./case-list-container";
+
+describe("CaseListContainer", () => {
+  test("should show a row per case when there are some", async () => {
+    // Arrange
+    const seed = [CaseMother.random(), CaseMother.random()];
+    const caseRepository = fakeCaseRepository(seed);
+
+    // Act
+    renderScreen(<CaseListContainer />, { caseRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no case", async () => {
+    // Arrange
+    const caseRepository = fakeCaseRepository();
+
+    // Act
+    renderScreen(<CaseListContainer />, { caseRepository });
+
+    // Assert
+    expect(await screen.findByText("No cases yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the cases cannot be listed", async () => {
+    // Arrange
+    const caseRepository = {
+      ...fakeCaseRepository(),
+      list: () => Promise.reject(new CaseError("case.repository_error")),
+    };
+
+    // Act
+    renderScreen(<CaseListContainer />, { caseRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("case.repository_error");
+  });
+});
+
+=== web/src/presentation/features/case/containers/case-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CaseListView } from "../views/case-list-view";
+
+export function CaseListContainer() {
+  const { caseRepository } = useDependencies();
+  const cases = useAsync(() => caseRepository.list(), [caseRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Cases</h1>
+        <Link href="/cases/new" className="btn btn-primary">
+          New case
+        </Link>
+      </div>
+      {cases.status === "loading" && <span className="loading loading-spinner" />}
+      {cases.status === "error" && <ErrorAlert error={cases.error} />}
+      {cases.status === "ok" &&
+        (cases.data.length === 0 ? (
+          <EmptyState message="No cases yet." />
+        ) : (
+          <CaseListView cases={cases.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/case/views/case-detail-view.tsx ===
+import type { Case } from "../../../../domain/case/model";
+import { formatDateTime, formatEntries } from "../../../shared/forms";
+
+export function CaseDetailView({ caseItem }: { caseItem: Case }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Title</dt>
+      <dd>{caseItem.title}</dd>
+      <dt className="font-semibold">Summary</dt>
+      <dd>{caseItem.summary ?? "—"}</dd>
+      <dt className="font-semibold">Views</dt>
+      <dd>{caseItem.views ?? "—"}</dd>
+      <dt className="font-semibold">Ratio</dt>
+      <dd>{caseItem.ratio ?? "—"}</dd>
+      <dt className="font-semibold">Urgent</dt>
+      <dd>{caseItem.urgent === null ? "—" : caseItem.urgent ? "Yes" : "No"}</dd>
+      <dt className="font-semibold">Due at</dt>
+      <dd>{caseItem.dueAt === null ? "—" : formatDateTime(caseItem.dueAt)}</dd>
+      <dt className="font-semibold">Opened at</dt>
+      <dd>{formatDateTime(caseItem.openedAt)}</dd>
+      <dt className="font-semibold">Tags</dt>
+      <dd>{caseItem.tags.join(", ")}</dd>
+      <dt className="font-semibold">Scores</dt>
+      <dd>{caseItem.scores.join(", ")}</dd>
+      <dt className="font-semibold">Meta</dt>
+      <dd>{formatEntries(caseItem.meta, ", ")}</dd>
+      <dt className="font-semibold">Status</dt>
+      <dd>{caseItem.status}</dd>
+      <dt className="font-semibold">Middle name</dt>
+      <dd>{caseItem.middleName ?? "—"}</dd>
+      <dt className="font-semibold">Labels</dt>
+      <dd>{caseItem.labels.join(", ")}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/case/views/case-form-view.tsx ===
+import { type Case, type CaseDraft, parseStatus } from "../../../../domain/case/model";
+import {
+  booleanOrNull,
+  dateTimeOrNull,
+  formatEntries,
+  fromDateTimeLocal,
+  numberOrNull,
+  parseEntries,
+  splitList,
+  splitNumbers,
+  textOf,
+  textOrNull,
+  toDateTimeLocal,
+} from "../../../shared/forms";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface CaseFormValues {
+  title: string;
+  summary: string;
+  views: string;
+  ratio: string;
+  urgent: string;
+  dueAt: string;
+  openedAt: string;
+  tags: string;
+  scores: string;
+  meta: string;
+  status: string;
+  middleName: string;
+  labels: string;
+}
+
+/** The inputs for `caseItem`, empty when there is none yet. */
+export function toCaseForm(caseItem: Case | null): CaseFormValues {
+  if (caseItem === null) {
+    return {
+      title: "",
+      summary: "",
+      views: "",
+      ratio: "",
+      urgent: "",
+      dueAt: "",
+      openedAt: "",
+      tags: "",
+      scores: "",
+      meta: "",
+      status: "",
+      middleName: "",
+      labels: "",
+    };
+  }
+  return {
+    title: caseItem.title,
+    summary: textOf(caseItem.summary),
+    views: textOf(caseItem.views),
+    ratio: textOf(caseItem.ratio),
+    urgent: textOf(caseItem.urgent),
+    dueAt: toDateTimeLocal(caseItem.dueAt),
+    openedAt: toDateTimeLocal(caseItem.openedAt),
+    tags: caseItem.tags.join(", "),
+    scores: caseItem.scores.join(", "),
+    meta: formatEntries(caseItem.meta),
+    status: caseItem.status,
+    middleName: textOf(caseItem.middleName),
+    labels: caseItem.labels.join(", "),
+  };
+}
+
+export function toCaseDraft(values: CaseFormValues): CaseDraft {
+  return {
+    title: values.title,
+    summary: textOrNull(values.summary),
+    views: numberOrNull(values.views),
+    ratio: numberOrNull(values.ratio),
+    urgent: booleanOrNull(values.urgent),
+    dueAt: dateTimeOrNull(values.dueAt),
+    openedAt: fromDateTimeLocal(values.openedAt),
+    tags: splitList(values.tags),
+    scores: splitNumbers(values.scores),
+    meta: parseEntries(values.meta),
+    status: parseStatus(values.status),
+    middleName: textOrNull(values.middleName),
+    labels: splitList(values.labels),
+  };
+}
+
+export function CaseFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: CaseFormValues;
+  saving: boolean;
+  onChange: (values: CaseFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Title</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.title}
+          onChange={(event) => onChange({ ...values, title: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Summary</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.summary}
+          onChange={(event) => onChange({ ...values, summary: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Views</span>
+        <input
+          className="input w-full"
+          type="number"
+          value={values.views}
+          onChange={(event) => onChange({ ...values, views: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Ratio</span>
+        <input
+          className="input w-full"
+          type="number"
+          step="any"
+          value={values.ratio}
+          onChange={(event) => onChange({ ...values, ratio: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Urgent</span>
+        <select
+          className="select w-full"
+          value={values.urgent}
+          onChange={(event) => onChange({ ...values, urgent: event.target.value })}
+        >
+          <option value="">—</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Due at</span>
+        <input
+          className="input w-full"
+          type="datetime-local"
+          value={values.dueAt}
+          onChange={(event) => onChange({ ...values, dueAt: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Opened at</span>
+        <input
+          className="input w-full"
+          type="datetime-local"
+          required
+          value={values.openedAt}
+          onChange={(event) => onChange({ ...values, openedAt: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Tags</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.tags}
+          onChange={(event) => onChange({ ...values, tags: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Scores</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.scores}
+          onChange={(event) => onChange({ ...values, scores: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Meta</span>
+        <textarea
+          className="textarea w-full"
+          placeholder="key=value, one per line"
+          value={values.meta}
+          onChange={(event) => onChange({ ...values, meta: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Status</span>
+        <select
+          className="select w-full"
+          required
+          value={values.status}
+          onChange={(event) => onChange({ ...values, status: event.target.value })}
+        >
+          <option value="">Choose…</option>
+          <option value="Open">Open</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Middle name</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.middleName}
+          onChange={(event) => onChange({ ...values, middleName: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Labels</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.labels}
+          onChange={(event) => onChange({ ...values, labels: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/case/views/case-list-view.tsx ===
+import { Link } from "wouter";
+import type { Case } from "../../../../domain/case/model";
+import { formatDateTime, formatEntries } from "../../../shared/forms";
+
+export function CaseListView({ cases }: { cases: Case[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Summary</th>
+            <th>Views</th>
+            <th>Ratio</th>
+            <th>Urgent</th>
+            <th>Due at</th>
+            <th>Opened at</th>
+            <th>Tags</th>
+            <th>Scores</th>
+            <th>Meta</th>
+            <th>Status</th>
+            <th>Middle name</th>
+            <th>Labels</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {cases.map((caseItem) => (
+            <tr key={caseItem.id}>
+              <td>{caseItem.title}</td>
+              <td>{caseItem.summary ?? "—"}</td>
+              <td>{caseItem.views ?? "—"}</td>
+              <td>{caseItem.ratio ?? "—"}</td>
+              <td>{caseItem.urgent === null ? "—" : caseItem.urgent ? "Yes" : "No"}</td>
+              <td>{caseItem.dueAt === null ? "—" : formatDateTime(caseItem.dueAt)}</td>
+              <td>{formatDateTime(caseItem.openedAt)}</td>
+              <td>{caseItem.tags.join(", ")}</td>
+              <td>{caseItem.scores.join(", ")}</td>
+              <td>{formatEntries(caseItem.meta, ", ")}</td>
+              <td>{caseItem.status}</td>
+              <td>{caseItem.middleName ?? "—"}</td>
+              <td>{caseItem.labels.join(", ")}</td>
+              <td className="text-right">
+                <Link href={`/cases/${caseItem.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/test-support/case.ts ===
+import { CaseError } from "../domain/case/errors";
+import type { Case, CaseDraft } from "../domain/case/model";
+import type { CaseRepository } from "../domain/case/repository";
+
+/** Valid cases for tests; pass `overrides` for the fields a test is about. */
+export const CaseMother = {
+  draft(overrides: Partial<CaseDraft> = {}): CaseDraft {
+    return {
+      title: "example",
+      summary: "example",
+      views: 42,
+      ratio: 1.5,
+      urgent: true,
+      dueAt: "2026-01-01T10:00:00.000Z",
+      openedAt: "2026-01-01T10:00:00.000Z",
+      tags: ["example"],
+      scores: [42],
+      meta: { key: "value" },
+      status: "Open",
+      middleName: "example",
+      labels: ["example"],
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Case> = {}): Case {
+    return { id: crypto.randomUUID(), ...CaseMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `CaseRepository`. Override a method to make it fail. */
+export function fakeCaseRepository(seed: Case[] = []): CaseRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new CaseError("case.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

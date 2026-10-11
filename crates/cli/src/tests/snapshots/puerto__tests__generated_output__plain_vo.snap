@@ -2457,7 +2457,7 @@ export function ItemDetailView({ item }: { item: Item }) {
 === web/src/presentation/features/item/views/item-form-view.tsx ===
 import type { Item, ItemDraft } from "../../../../domain/item/model";
 
-/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface ItemFormValues {
   name: string;
   sku: string;

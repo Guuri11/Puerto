@@ -3921,7 +3921,7 @@ export function CategoryDetailView({ category }: { category: Category }) {
 === web/src/presentation/features/category/views/category-form-view.tsx ===
 import type { Category, CategoryDraft } from "../../../../domain/category/model";
 
-/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface CategoryFormValues {
   name: string;
 }
@@ -4354,7 +4354,7 @@ export function ProductDetailView({ product }: { product: Product }) {
 === web/src/presentation/features/product/views/product-form-view.tsx ===
 import type { Product, ProductDraft } from "../../../../domain/product/model";
 
-/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface ProductFormValues {
   title: string;
   price: string;

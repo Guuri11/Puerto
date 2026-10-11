@@ -1,5 +1,5 @@
 import { {{ pascal }}Error } from "../../domain/{{ kebab }}/errors";
-import type { {{ pascal }}, {{ pascal }}Draft } from "../../domain/{{ kebab }}/model";
+{% if enums %}import { {% for e in enums %}parse{{ e.name }}, {% endfor %}type {{ pascal }}, type {{ pascal }}Draft }{% else %}import type { {{ pascal }}, {{ pascal }}Draft }{% endif %} from "../../domain/{{ kebab }}/model";
 import type { {{ pascal }}Repository } from "../../domain/{{ kebab }}/repository";
 import { type ApiClient, apiErrorCode } from "../http/client";
 import type { components } from "../http/schema";
@@ -11,7 +11,7 @@ function to{{ pascal }}(dto: {{ pascal }}Dto): {{ pascal }} {
   return {
     id: dto.id,
 {%- for f in fields %}
-    {{ f.camel }}: dto.{{ f.camel }},
+    {{ f.camel }}: {{ f.from_wire }},
 {%- endfor %}
   };
 }
@@ -19,7 +19,7 @@ function to{{ pascal }}(dto: {{ pascal }}Dto): {{ pascal }} {
 function toRequest(draft: {{ pascal }}Draft): {{ pascal }}Request {
   return {
 {%- for f in fields %}
-    {{ f.camel }}: draft.{{ f.camel }},
+    {{ f.camel }}: {{ f.to_wire }},
 {%- endfor %}
   };
 }

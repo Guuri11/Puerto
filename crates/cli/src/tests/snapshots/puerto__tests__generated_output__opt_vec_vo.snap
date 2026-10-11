@@ -1768,3 +1768,773 @@ value_object = "MiddleName"
 name = "tags"
 type = "Vec<String>"
 value_object = "Tag"
+
+=== web/src/domain/persona/errors.ts ===
+/**
+ * A request about a persona that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `persona.not_found`, `persona.validation_error.<field>_empty`.
+ */
+export class PersonaError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "PersonaError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/persona/model.ts ===
+export interface Persona {
+  id: string;
+  name: string;
+  middleName: string | null;
+  tags: string[];
+}
+
+/** What a create or an update sends: a persona without its id. */
+export type PersonaDraft = Omit<Persona, "id">;
+
+=== web/src/domain/persona/repository.ts ===
+import type { Persona, PersonaDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `PersonaError` the API answered. */
+export interface PersonaRepository {
+  list(): Promise<Persona[]>;
+  get(id: string): Promise<Persona>;
+  create(draft: PersonaDraft): Promise<Persona>;
+  update(id: string, draft: PersonaDraft): Promise<Persona>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/infrastructure/persona/persona-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { PersonaError } from "../../domain/persona/errors";
+import { PersonaMother } from "../../test-support/persona";
+import { createApiClient } from "../http/client";
+import { personaRepositoryHttp } from "./persona-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: personaRepositoryHttp(api), requests };
+}
+
+describe("personaRepositoryHttp", () => {
+  test("should return every persona when the API lists them", async () => {
+    // Arrange
+    const persona = PersonaMother.random();
+    const { repository } = answering(200, [persona]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([persona]);
+  });
+
+  test("should send the draft when creating a persona", async () => {
+    // Arrange
+    const draft = PersonaMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the persona does not exist", async () => {
+    // Arrange
+    const code = "persona.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(PersonaError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the persona", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/personas/42");
+  });
+});
+
+=== web/src/infrastructure/persona/persona-repository-http.ts ===
+import { PersonaError } from "../../domain/persona/errors";
+import type { Persona, PersonaDraft } from "../../domain/persona/model";
+import type { PersonaRepository } from "../../domain/persona/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type PersonaDto = components["schemas"]["PersonaDto"];
+type PersonaRequest = components["schemas"]["CreatePersonaRequest"];
+
+function toPersona(dto: PersonaDto): Persona {
+  return {
+    id: dto.id,
+    name: dto.name,
+    middleName: dto.middleName ?? null,
+    tags: dto.tags,
+  };
+}
+
+function toRequest(draft: PersonaDraft): PersonaRequest {
+  return {
+    name: draft.name,
+    middleName: draft.middleName ?? undefined,
+    tags: draft.tags,
+  };
+}
+
+/** `PersonaRepository` over the REST API (`/personas`). */
+export function personaRepositoryHttp(api: ApiClient): PersonaRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/personas");
+      if (data === undefined) throw new PersonaError(apiErrorCode(error, response));
+      return data.map(toPersona);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/personas/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new PersonaError(apiErrorCode(error, response));
+      return toPersona(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/personas", { body: toRequest(draft) });
+      if (data === undefined) throw new PersonaError(apiErrorCode(error, response));
+      return toPersona(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/personas/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new PersonaError(apiErrorCode(error, response));
+      return toPersona(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/personas/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new PersonaError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/presentation/core/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { PersonaRepository } from "../../../domain/persona/repository";
+import { createApiClient } from "../../../infrastructure/http/client";
+import { personaRepositoryHttp } from "../../../infrastructure/persona/persona-repository-http";
+
+export interface Dependencies {
+  personaRepository: PersonaRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return {
+    personaRepository: personaRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { PersonaDetailContainer } from "../../features/persona/containers/persona-detail-container";
+import { PersonaFormContainer } from "../../features/persona/containers/persona-form-container";
+import { PersonaListContainer } from "../../features/persona/containers/persona-list-container";
+import { HomePage } from "../../pages/home";
+import { NotFoundPage } from "../../pages/not-found";
+import type { NavEntry } from "../../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Personas", href: "/personas" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/personas">
+        <PersonaListContainer />
+      </Route>
+      <Route path="/personas/new">
+        <PersonaFormContainer />
+      </Route>
+      <Route path="/personas/:id/edit">{(params) => <PersonaFormContainer id={params.id} />}</Route>
+      <Route path="/personas/:id">{(params) => <PersonaDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/presentation/features/persona/containers/persona-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fakePersonaRepository, PersonaMother } from "../../../../test-support/persona";
+import { renderScreen } from "../../../../test-support/render";
+import { PersonaDetailContainer } from "./persona-detail-container";
+
+describe("PersonaDetailContainer", () => {
+  test("should show the persona when it exists", async () => {
+    // Arrange
+    const seeded = PersonaMother.random();
+    const personaRepository = fakePersonaRepository([seeded]);
+
+    // Act
+    renderScreen(<PersonaDetailContainer id={seeded.id} />, { personaRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the persona does not exist", async () => {
+    // Arrange
+    const personaRepository = fakePersonaRepository();
+
+    // Act
+    renderScreen(<PersonaDetailContainer id={crypto.randomUUID()} />, { personaRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("persona.not_found");
+  });
+
+  test("should delete the persona only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = PersonaMother.random();
+    const fake = fakePersonaRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<PersonaDetailContainer id={seeded.id} />, {
+      personaRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/personas"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/persona/containers/persona-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { PersonaDetailView } from "../views/persona-detail-view";
+
+export function PersonaDetailContainer({ id }: { id: string }) {
+  const { personaRepository } = useDependencies();
+  const persona = useAsync(() => personaRepository.get(id), [personaRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await personaRepository.remove(id);
+      navigate("/personas");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Persona</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {persona.status === "loading" && <span className="loading loading-spinner" />}
+      {persona.status === "error" && <ErrorAlert error={persona.error} />}
+      {persona.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <PersonaDetailView persona={persona.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/personas/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/personas" className="link">
+        Back to personas
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this persona?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/persona/containers/persona-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { PersonaError } from "../../../../domain/persona/errors";
+import type { PersonaDraft } from "../../../../domain/persona/model";
+import { fakePersonaRepository, PersonaMother } from "../../../../test-support/persona";
+import { renderScreen } from "../../../../test-support/render";
+import { textOf } from "../../../shared/forms";
+import { PersonaFormContainer } from "./persona-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: PersonaDraft) {
+  await screen.findByText("Save");
+  type("Name", draft.name);
+  type("Middle name", textOf(draft.middleName));
+  type("Tags", draft.tags.join(", "));
+}
+
+describe("PersonaFormContainer", () => {
+  test("should create the persona from what was typed and show it", async () => {
+    // Arrange
+    const draft = PersonaMother.draft();
+    const personaRepository = fakePersonaRepository();
+    const { history } = renderScreen(<PersonaFormContainer />, { personaRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/personas/"));
+    const [created] = await personaRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/personas/${created?.id}`);
+  });
+
+  test("should save the edited persona when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = PersonaMother.random();
+    const personaRepository = fakePersonaRepository([seeded]);
+    const { history } = renderScreen(<PersonaFormContainer id={seeded.id} />, {
+      personaRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/personas/${seeded.id}`));
+    expect(await personaRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the persona", async () => {
+    // Arrange
+    const code = "persona.validation_error.invalid";
+    const personaRepository = {
+      ...fakePersonaRepository(),
+      create: () => Promise.reject(new PersonaError(code)),
+    };
+    renderScreen(<PersonaFormContainer />, { personaRepository });
+    await fillIn(PersonaMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/persona/containers/persona-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Persona } from "../../../../domain/persona/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { PersonaFormView, toPersonaDraft, toPersonaForm } from "../views/persona-form-view";
+
+/** Creates a persona, or edits the one with `id`. */
+export function PersonaFormContainer({ id }: { id?: string }) {
+  const { personaRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : personaRepository.get(id)),
+    [personaRepository, id],
+  );
+  const title = id === undefined ? "New persona" : "Edit persona";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <PersonaForm existing={existing.data} />}
+      <Link href={id === undefined ? "/personas" : `/personas/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function PersonaForm({ existing }: { existing: Persona | null }) {
+  const { personaRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toPersonaForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toPersonaDraft(values);
+      const saved =
+        existing === null
+          ? await personaRepository.create(draft)
+          : await personaRepository.update(existing.id, draft);
+      navigate(`/personas/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <PersonaFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/persona/containers/persona-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { PersonaError } from "../../../../domain/persona/errors";
+import { fakePersonaRepository, PersonaMother } from "../../../../test-support/persona";
+import { renderScreen } from "../../../../test-support/render";
+import { PersonaListContainer } from "./persona-list-container";
+
+describe("PersonaListContainer", () => {
+  test("should show a row per persona when there are some", async () => {
+    // Arrange
+    const seed = [PersonaMother.random(), PersonaMother.random()];
+    const personaRepository = fakePersonaRepository(seed);
+
+    // Act
+    renderScreen(<PersonaListContainer />, { personaRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no persona", async () => {
+    // Arrange
+    const personaRepository = fakePersonaRepository();
+
+    // Act
+    renderScreen(<PersonaListContainer />, { personaRepository });
+
+    // Assert
+    expect(await screen.findByText("No personas yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the personas cannot be listed", async () => {
+    // Arrange
+    const personaRepository = {
+      ...fakePersonaRepository(),
+      list: () => Promise.reject(new PersonaError("persona.repository_error")),
+    };
+
+    // Act
+    renderScreen(<PersonaListContainer />, { personaRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("persona.repository_error");
+  });
+});
+
+=== web/src/presentation/features/persona/containers/persona-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { PersonaListView } from "../views/persona-list-view";
+
+export function PersonaListContainer() {
+  const { personaRepository } = useDependencies();
+  const personas = useAsync(() => personaRepository.list(), [personaRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Personas</h1>
+        <Link href="/personas/new" className="btn btn-primary">
+          New persona
+        </Link>
+      </div>
+      {personas.status === "loading" && <span className="loading loading-spinner" />}
+      {personas.status === "error" && <ErrorAlert error={personas.error} />}
+      {personas.status === "ok" &&
+        (personas.data.length === 0 ? (
+          <EmptyState message="No personas yet." />
+        ) : (
+          <PersonaListView personas={personas.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/persona/views/persona-detail-view.tsx ===
+import type { Persona } from "../../../../domain/persona/model";
+
+export function PersonaDetailView({ persona }: { persona: Persona }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Name</dt>
+      <dd>{persona.name}</dd>
+      <dt className="font-semibold">Middle name</dt>
+      <dd>{persona.middleName ?? "—"}</dd>
+      <dt className="font-semibold">Tags</dt>
+      <dd>{persona.tags.join(", ")}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/persona/views/persona-form-view.tsx ===
+import type { Persona, PersonaDraft } from "../../../../domain/persona/model";
+import { splitList, textOf, textOrNull } from "../../../shared/forms";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface PersonaFormValues {
+  name: string;
+  middleName: string;
+  tags: string;
+}
+
+/** The inputs for `persona`, empty when there is none yet. */
+export function toPersonaForm(persona: Persona | null): PersonaFormValues {
+  if (persona === null) {
+    return {
+      name: "",
+      middleName: "",
+      tags: "",
+    };
+  }
+  return {
+    name: persona.name,
+    middleName: textOf(persona.middleName),
+    tags: persona.tags.join(", "),
+  };
+}
+
+export function toPersonaDraft(values: PersonaFormValues): PersonaDraft {
+  return {
+    name: values.name,
+    middleName: textOrNull(values.middleName),
+    tags: splitList(values.tags),
+  };
+}
+
+export function PersonaFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: PersonaFormValues;
+  saving: boolean;
+  onChange: (values: PersonaFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Name</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.name}
+          onChange={(event) => onChange({ ...values, name: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Middle name</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.middleName}
+          onChange={(event) => onChange({ ...values, middleName: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Tags</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.tags}
+          onChange={(event) => onChange({ ...values, tags: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/persona/views/persona-list-view.tsx ===
+import { Link } from "wouter";
+import type { Persona } from "../../../../domain/persona/model";
+
+export function PersonaListView({ personas }: { personas: Persona[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Middle name</th>
+            <th>Tags</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {personas.map((persona) => (
+            <tr key={persona.id}>
+              <td>{persona.name}</td>
+              <td>{persona.middleName ?? "—"}</td>
+              <td>{persona.tags.join(", ")}</td>
+              <td className="text-right">
+                <Link href={`/personas/${persona.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/test-support/persona.ts ===
+import { PersonaError } from "../domain/persona/errors";
+import type { Persona, PersonaDraft } from "../domain/persona/model";
+import type { PersonaRepository } from "../domain/persona/repository";
+
+/** Valid personas for tests; pass `overrides` for the fields a test is about. */
+export const PersonaMother = {
+  draft(overrides: Partial<PersonaDraft> = {}): PersonaDraft {
+    return {
+      name: "example",
+      middleName: "example",
+      tags: ["example"],
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Persona> = {}): Persona {
+    return { id: crypto.randomUUID(), ...PersonaMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `PersonaRepository`. Override a method to make it fail. */
+export function fakePersonaRepository(seed: Persona[] = []): PersonaRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new PersonaError("persona.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

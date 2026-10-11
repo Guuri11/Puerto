@@ -2285,7 +2285,7 @@ export function BookingDetailView({ booking }: { booking: Booking }) {
 === web/src/presentation/features/booking/views/booking-form-view.tsx ===
 import type { Booking, BookingDraft } from "../../../../domain/booking/model";
 
-/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface BookingFormValues {
   reference: string;
   tenantId: string;

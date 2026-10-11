@@ -203,6 +203,12 @@ fields = []
 === web/src/presentation/pages/not-found.tsx ===
 (deleted)
 
+=== web/src/presentation/shared/forms.test.ts ===
+(deleted)
+
+=== web/src/presentation/shared/forms.ts ===
+(deleted)
+
 === web/src/presentation/shared/ui/confirm-dialog.test.tsx ===
 (deleted)
 

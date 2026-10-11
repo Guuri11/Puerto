@@ -2565,7 +2565,7 @@ export function OrderItemDetailView({ orderItem }: { orderItem: OrderItem }) {
 === web/src/presentation/features/order-item/views/order-item-form-view.tsx ===
 import type { OrderItem, OrderItemDraft } from "../../../../domain/order-item/model";
 
-/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface OrderItemFormValues {
   title: string;
   quantity: string;

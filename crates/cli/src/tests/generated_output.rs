@@ -2,7 +2,7 @@ use super::*;
 use compile_matrix::{
     CUSTOM_USE_CASE, ENUM_ONLY, ENUM_VO, MULTI_ENTITY, NO_DEMO, NO_WEB, OPT_VEC_PRIM, OPT_VEC_VO,
     PLAIN_VO, POSTGRES_EVERY_TYPE, PRIMITIVES, SHARED_VO, Scenario, UUID_VO, VO_KITCHEN_SINK,
-    WEB_CRUD, apply_scenario,
+    WEB_CRUD, WEB_EVERY_TYPE, apply_scenario,
 };
 use std::collections::BTreeMap;
 
@@ -106,6 +106,7 @@ snapshot_scenarios! {
     snapshot_custom_use_case => CUSTOM_USE_CASE,
     snapshot_postgres_every_type => POSTGRES_EVERY_TYPE,
     snapshot_web_crud => WEB_CRUD,
+    snapshot_web_every_type => WEB_EVERY_TYPE,
 }
 
 #[test]

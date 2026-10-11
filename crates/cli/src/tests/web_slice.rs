@@ -197,25 +197,61 @@ fn generated_files_list_every_crud_entity_and_skip_greeting() {
 }
 
 #[test]
-fn an_entity_with_field_types_beyond_9_2_gets_no_slice_and_no_route() {
-    // Option / Vec / HashMap / DateTime / enum VOs reach the frontend in Phase 9.3.
-    let (dir, output) = web_project("web_unsupported_types");
+fn every_field_type_reaches_the_frontend_with_its_own_input() {
+    let (dir, output) = web_project("web_every_type");
 
     scaffold::run_scaffold(
         "Event",
         &output,
-        &fields(&["title:String", "at:DateTime"]),
+        &fields(&[
+            "summary:opt:String",
+            "flag:opt:bool",
+            "starts_at:DateTime",
+            "tags:vec:String",
+            "meta:map",
+            "status:Status:enum:Draft/Published",
+        ]),
         OverwritePolicy::Ask,
     )
     .unwrap();
 
-    assert!(!output.join("web/src/domain/event").exists());
-    let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
-    assert!(!routes.contains("Event"));
-    assert!(
-        validate::run_validate(&output).is_ok(),
-        "no slice is not drift"
+    let model = read(&output, "web/src/domain/event/model.ts");
+    for line in [
+        "summary: string | null;",
+        "flag: boolean | null;",
+        "startsAt: string;",
+        "tags: string[];",
+        "meta: Record<string, string>;",
+        "status: Status;",
+        r#"export const statusValues = ["Draft", "Published"] as const;"#,
+        r#"throw new EventError("event.invalid_status");"#,
+    ] {
+        assert!(model.contains(line), "{line} in:\n{model}");
+    }
+    let adapter = read(
+        &output,
+        "web/src/infrastructure/event/event-repository-http.ts",
     );
+    assert!(
+        adapter.contains("summary: dto.summary ?? null,"),
+        "{adapter}"
+    );
+    assert!(adapter.contains("summary: draft.summary ?? undefined,"));
+    assert!(adapter.contains("status: parseStatus(dto.status),"));
+
+    let form = read(
+        &output,
+        "web/src/presentation/features/event/views/event-form-view.tsx",
+    );
+    assert!(form.contains(r#"type="datetime-local""#));
+    assert!(form.contains("<textarea"));
+    assert!(form.contains(r#"<option value="Published">Published</option>"#));
+    assert!(
+        form.contains(r#"<option value="true">Yes</option>"#),
+        "optional bool: a select"
+    );
+    assert!(form.contains(r#"from "../../../shared/forms";"#));
+    assert!(validate::run_validate(&output).is_ok());
     cleanup(&dir);
 }
 

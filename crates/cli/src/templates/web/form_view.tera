@@ -1,6 +1,9 @@
-import type { {{ pascal }}, {{ pascal }}Draft } from "../../../../domain/{{ kebab }}/model";
+{% if enums %}import { {% for e in enums %}parse{{ e.name }}, {% endfor %}type {{ pascal }}, type {{ pascal }}Draft }{% else %}import type { {{ pascal }}, {{ pascal }}Draft }{% endif %} from "../../../../domain/{{ kebab }}/model";
+{%- if form_helpers %}
+import { {{ form_helpers | join(sep=", ") }} } from "../../../shared/forms";
+{%- endif %}
 
-/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface {{ pascal }}FormValues {
 {%- for f in fields %}
   {{ f.camel }}: {% if f.input == "checkbox" %}boolean{% else %}string{% endif %};
@@ -61,6 +64,33 @@ export function {{ pascal }}FormView({
         />
         {{ f.label }}
       </label>
+{%- elif f.input == "select" %}
+      <label className="fieldset">
+        <span className="fieldset-legend">{{ f.label }}</span>
+        <select
+          className="select w-full"
+{%- if f.required %}
+          required
+{%- endif %}
+          value={values.{{ f.camel }}}
+          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
+        >
+          <option value="">{{ f.placeholder }}</option>
+{%- for o in f.options %}
+          <option value="{{ o.value }}">{{ o.label }}</option>
+{%- endfor %}
+        </select>
+      </label>
+{%- elif f.input == "textarea" %}
+      <label className="fieldset">
+        <span className="fieldset-legend">{{ f.label }}</span>
+        <textarea
+          className="textarea w-full"
+          placeholder="key=value, one per line"
+          value={values.{{ f.camel }}}
+          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
+        />
+      </label>
 {%- else %}
       <label className="fieldset">
         <span className="fieldset-legend">{{ f.label }}</span>
@@ -70,7 +100,9 @@ export function {{ pascal }}FormView({
 {%- if f.decimal %}
           step="any"
 {%- endif %}
+{%- if f.required %}
           required
+{%- endif %}
           value={values.{{ f.camel }}}
           onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
         />

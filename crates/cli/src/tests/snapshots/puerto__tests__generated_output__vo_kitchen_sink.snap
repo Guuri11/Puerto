@@ -2527,3 +2527,926 @@ value_object = "Email"
 [[value_object]]
 name = "Email"
 type = "String"
+
+=== web/src/domain/account/errors.ts ===
+/**
+ * A request about an account that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `account.not_found`, `account.validation_error.<field>_empty`.
+ */
+export class AccountError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "AccountError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/account/model.ts ===
+import { AccountError } from "./errors";
+
+export interface Account {
+  id: string;
+  title: string;
+  price: number;
+  name: string;
+  sku: string;
+  note: string | null;
+  middleName: string | null;
+  tags: string[];
+  status: Status;
+  email: string;
+}
+
+/** What a create or an update sends: an account without its id. */
+export type AccountDraft = Omit<Account, "id">;
+
+export const statusValues = ["Active", "Archived"] as const;
+
+export type Status = (typeof statusValues)[number];
+
+/** Narrows the API's `string` to a `Status`, rejecting with `account.invalid_status`. */
+export function parseStatus(value: string): Status {
+  const found = statusValues.find((candidate) => candidate === value);
+  if (found === undefined) throw new AccountError("account.invalid_status");
+  return found;
+}
+
+=== web/src/domain/account/repository.ts ===
+import type { Account, AccountDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `AccountError` the API answered. */
+export interface AccountRepository {
+  list(): Promise<Account[]>;
+  get(id: string): Promise<Account>;
+  create(draft: AccountDraft): Promise<Account>;
+  update(id: string, draft: AccountDraft): Promise<Account>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/account/account-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { AccountError } from "../../domain/account/errors";
+import { AccountMother } from "../../test-support/account";
+import { createApiClient } from "../http/client";
+import { accountRepositoryHttp } from "./account-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: accountRepositoryHttp(api), requests };
+}
+
+describe("accountRepositoryHttp", () => {
+  test("should return every account when the API lists them", async () => {
+    // Arrange
+    const account = AccountMother.random();
+    const { repository } = answering(200, [account]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([account]);
+  });
+
+  test("should send the draft when creating an account", async () => {
+    // Arrange
+    const draft = AccountMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the account does not exist", async () => {
+    // Arrange
+    const code = "account.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(AccountError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the account", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/accounts/42");
+  });
+});
+
+=== web/src/infrastructure/account/account-repository-http.ts ===
+import { AccountError } from "../../domain/account/errors";
+import { type Account, type AccountDraft, parseStatus } from "../../domain/account/model";
+import type { AccountRepository } from "../../domain/account/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type AccountDto = components["schemas"]["AccountDto"];
+type AccountRequest = components["schemas"]["CreateAccountRequest"];
+
+function toAccount(dto: AccountDto): Account {
+  return {
+    id: dto.id,
+    title: dto.title,
+    price: dto.price,
+    name: dto.name,
+    sku: dto.sku,
+    note: dto.note ?? null,
+    middleName: dto.middleName ?? null,
+    tags: dto.tags,
+    status: parseStatus(dto.status),
+    email: dto.email,
+  };
+}
+
+function toRequest(draft: AccountDraft): AccountRequest {
+  return {
+    title: draft.title,
+    price: draft.price,
+    name: draft.name,
+    sku: draft.sku,
+    note: draft.note ?? undefined,
+    middleName: draft.middleName ?? undefined,
+    tags: draft.tags,
+    status: draft.status,
+    email: draft.email,
+  };
+}
+
+/** `AccountRepository` over the REST API (`/accounts`). */
+export function accountRepositoryHttp(api: ApiClient): AccountRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/accounts");
+      if (data === undefined) throw new AccountError(apiErrorCode(error, response));
+      return data.map(toAccount);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/accounts/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new AccountError(apiErrorCode(error, response));
+      return toAccount(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/accounts", { body: toRequest(draft) });
+      if (data === undefined) throw new AccountError(apiErrorCode(error, response));
+      return toAccount(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/accounts/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new AccountError(apiErrorCode(error, response));
+      return toAccount(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/accounts/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new AccountError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/presentation/core/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { AccountRepository } from "../../../domain/account/repository";
+import { accountRepositoryHttp } from "../../../infrastructure/account/account-repository-http";
+import { createApiClient } from "../../../infrastructure/http/client";
+
+export interface Dependencies {
+  accountRepository: AccountRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return {
+    accountRepository: accountRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { AccountDetailContainer } from "../../features/account/containers/account-detail-container";
+import { AccountFormContainer } from "../../features/account/containers/account-form-container";
+import { AccountListContainer } from "../../features/account/containers/account-list-container";
+import { HomePage } from "../../pages/home";
+import { NotFoundPage } from "../../pages/not-found";
+import type { NavEntry } from "../../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Accounts", href: "/accounts" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/accounts">
+        <AccountListContainer />
+      </Route>
+      <Route path="/accounts/new">
+        <AccountFormContainer />
+      </Route>
+      <Route path="/accounts/:id/edit">{(params) => <AccountFormContainer id={params.id} />}</Route>
+      <Route path="/accounts/:id">{(params) => <AccountDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/presentation/features/account/containers/account-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { AccountMother, fakeAccountRepository } from "../../../../test-support/account";
+import { renderScreen } from "../../../../test-support/render";
+import { AccountDetailContainer } from "./account-detail-container";
+
+describe("AccountDetailContainer", () => {
+  test("should show the account when it exists", async () => {
+    // Arrange
+    const seeded = AccountMother.random();
+    const accountRepository = fakeAccountRepository([seeded]);
+
+    // Act
+    renderScreen(<AccountDetailContainer id={seeded.id} />, { accountRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the account does not exist", async () => {
+    // Arrange
+    const accountRepository = fakeAccountRepository();
+
+    // Act
+    renderScreen(<AccountDetailContainer id={crypto.randomUUID()} />, { accountRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("account.not_found");
+  });
+
+  test("should delete the account only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = AccountMother.random();
+    const fake = fakeAccountRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<AccountDetailContainer id={seeded.id} />, {
+      accountRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/accounts"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/account/containers/account-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { AccountDetailView } from "../views/account-detail-view";
+
+export function AccountDetailContainer({ id }: { id: string }) {
+  const { accountRepository } = useDependencies();
+  const account = useAsync(() => accountRepository.get(id), [accountRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await accountRepository.remove(id);
+      navigate("/accounts");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Account</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {account.status === "loading" && <span className="loading loading-spinner" />}
+      {account.status === "error" && <ErrorAlert error={account.error} />}
+      {account.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <AccountDetailView account={account.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/accounts/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/accounts" className="link">
+        Back to accounts
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this account?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/account/containers/account-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { AccountError } from "../../../../domain/account/errors";
+import type { AccountDraft } from "../../../../domain/account/model";
+import { AccountMother, fakeAccountRepository } from "../../../../test-support/account";
+import { renderScreen } from "../../../../test-support/render";
+import { textOf } from "../../../shared/forms";
+import { AccountFormContainer } from "./account-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: AccountDraft) {
+  await screen.findByText("Save");
+  type("Title", draft.title);
+  type("Price", String(draft.price));
+  type("Name", draft.name);
+  type("Sku", draft.sku);
+  type("Note", textOf(draft.note));
+  type("Middle name", textOf(draft.middleName));
+  type("Tags", draft.tags.join(", "));
+  type("Status", draft.status);
+  type("Email", draft.email);
+}
+
+describe("AccountFormContainer", () => {
+  test("should create the account from what was typed and show it", async () => {
+    // Arrange
+    const draft = AccountMother.draft();
+    const accountRepository = fakeAccountRepository();
+    const { history } = renderScreen(<AccountFormContainer />, { accountRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/accounts/"));
+    const [created] = await accountRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/accounts/${created?.id}`);
+  });
+
+  test("should save the edited account when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = AccountMother.random();
+    const accountRepository = fakeAccountRepository([seeded]);
+    const { history } = renderScreen(<AccountFormContainer id={seeded.id} />, {
+      accountRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/accounts/${seeded.id}`));
+    expect(await accountRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the account", async () => {
+    // Arrange
+    const code = "account.validation_error.invalid";
+    const accountRepository = {
+      ...fakeAccountRepository(),
+      create: () => Promise.reject(new AccountError(code)),
+    };
+    renderScreen(<AccountFormContainer />, { accountRepository });
+    await fillIn(AccountMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/account/containers/account-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Account } from "../../../../domain/account/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { AccountFormView, toAccountDraft, toAccountForm } from "../views/account-form-view";
+
+/** Creates an account, or edits the one with `id`. */
+export function AccountFormContainer({ id }: { id?: string }) {
+  const { accountRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : accountRepository.get(id)),
+    [accountRepository, id],
+  );
+  const title = id === undefined ? "New account" : "Edit account";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <AccountForm existing={existing.data} />}
+      <Link href={id === undefined ? "/accounts" : `/accounts/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function AccountForm({ existing }: { existing: Account | null }) {
+  const { accountRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toAccountForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toAccountDraft(values);
+      const saved =
+        existing === null
+          ? await accountRepository.create(draft)
+          : await accountRepository.update(existing.id, draft);
+      navigate(`/accounts/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <AccountFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/account/containers/account-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { AccountError } from "../../../../domain/account/errors";
+import { AccountMother, fakeAccountRepository } from "../../../../test-support/account";
+import { renderScreen } from "../../../../test-support/render";
+import { AccountListContainer } from "./account-list-container";
+
+describe("AccountListContainer", () => {
+  test("should show a row per account when there are some", async () => {
+    // Arrange
+    const seed = [AccountMother.random(), AccountMother.random()];
+    const accountRepository = fakeAccountRepository(seed);
+
+    // Act
+    renderScreen(<AccountListContainer />, { accountRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no account", async () => {
+    // Arrange
+    const accountRepository = fakeAccountRepository();
+
+    // Act
+    renderScreen(<AccountListContainer />, { accountRepository });
+
+    // Assert
+    expect(await screen.findByText("No accounts yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the accounts cannot be listed", async () => {
+    // Arrange
+    const accountRepository = {
+      ...fakeAccountRepository(),
+      list: () => Promise.reject(new AccountError("account.repository_error")),
+    };
+
+    // Act
+    renderScreen(<AccountListContainer />, { accountRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("account.repository_error");
+  });
+});
+
+=== web/src/presentation/features/account/containers/account-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { AccountListView } from "../views/account-list-view";
+
+export function AccountListContainer() {
+  const { accountRepository } = useDependencies();
+  const accounts = useAsync(() => accountRepository.list(), [accountRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Accounts</h1>
+        <Link href="/accounts/new" className="btn btn-primary">
+          New account
+        </Link>
+      </div>
+      {accounts.status === "loading" && <span className="loading loading-spinner" />}
+      {accounts.status === "error" && <ErrorAlert error={accounts.error} />}
+      {accounts.status === "ok" &&
+        (accounts.data.length === 0 ? (
+          <EmptyState message="No accounts yet." />
+        ) : (
+          <AccountListView accounts={accounts.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/account/views/account-detail-view.tsx ===
+import type { Account } from "../../../../domain/account/model";
+
+export function AccountDetailView({ account }: { account: Account }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Title</dt>
+      <dd>{account.title}</dd>
+      <dt className="font-semibold">Price</dt>
+      <dd>{account.price}</dd>
+      <dt className="font-semibold">Name</dt>
+      <dd>{account.name}</dd>
+      <dt className="font-semibold">Sku</dt>
+      <dd>{account.sku}</dd>
+      <dt className="font-semibold">Note</dt>
+      <dd>{account.note ?? "—"}</dd>
+      <dt className="font-semibold">Middle name</dt>
+      <dd>{account.middleName ?? "—"}</dd>
+      <dt className="font-semibold">Tags</dt>
+      <dd>{account.tags.join(", ")}</dd>
+      <dt className="font-semibold">Status</dt>
+      <dd>{account.status}</dd>
+      <dt className="font-semibold">Email</dt>
+      <dd>{account.email}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/account/views/account-form-view.tsx ===
+import { type Account, type AccountDraft, parseStatus } from "../../../../domain/account/model";
+import { splitList, textOf, textOrNull } from "../../../shared/forms";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface AccountFormValues {
+  title: string;
+  price: string;
+  name: string;
+  sku: string;
+  note: string;
+  middleName: string;
+  tags: string;
+  status: string;
+  email: string;
+}
+
+/** The inputs for `account`, empty when there is none yet. */
+export function toAccountForm(account: Account | null): AccountFormValues {
+  if (account === null) {
+    return {
+      title: "",
+      price: "",
+      name: "",
+      sku: "",
+      note: "",
+      middleName: "",
+      tags: "",
+      status: "",
+      email: "",
+    };
+  }
+  return {
+    title: account.title,
+    price: String(account.price),
+    name: account.name,
+    sku: account.sku,
+    note: textOf(account.note),
+    middleName: textOf(account.middleName),
+    tags: account.tags.join(", "),
+    status: account.status,
+    email: account.email,
+  };
+}
+
+export function toAccountDraft(values: AccountFormValues): AccountDraft {
+  return {
+    title: values.title,
+    price: Number(values.price),
+    name: values.name,
+    sku: values.sku,
+    note: textOrNull(values.note),
+    middleName: textOrNull(values.middleName),
+    tags: splitList(values.tags),
+    status: parseStatus(values.status),
+    email: values.email,
+  };
+}
+
+export function AccountFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: AccountFormValues;
+  saving: boolean;
+  onChange: (values: AccountFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Title</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.title}
+          onChange={(event) => onChange({ ...values, title: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Price</span>
+        <input
+          className="input w-full"
+          type="number"
+          required
+          value={values.price}
+          onChange={(event) => onChange({ ...values, price: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Name</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.name}
+          onChange={(event) => onChange({ ...values, name: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Sku</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.sku}
+          onChange={(event) => onChange({ ...values, sku: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Note</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.note}
+          onChange={(event) => onChange({ ...values, note: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Middle name</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.middleName}
+          onChange={(event) => onChange({ ...values, middleName: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Tags</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.tags}
+          onChange={(event) => onChange({ ...values, tags: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Status</span>
+        <select
+          className="select w-full"
+          required
+          value={values.status}
+          onChange={(event) => onChange({ ...values, status: event.target.value })}
+        >
+          <option value="">Choose…</option>
+          <option value="Active">Active</option>
+          <option value="Archived">Archived</option>
+        </select>
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Email</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.email}
+          onChange={(event) => onChange({ ...values, email: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/account/views/account-list-view.tsx ===
+import { Link } from "wouter";
+import type { Account } from "../../../../domain/account/model";
+
+export function AccountListView({ accounts }: { accounts: Account[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Price</th>
+            <th>Name</th>
+            <th>Sku</th>
+            <th>Note</th>
+            <th>Middle name</th>
+            <th>Tags</th>
+            <th>Status</th>
+            <th>Email</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {accounts.map((account) => (
+            <tr key={account.id}>
+              <td>{account.title}</td>
+              <td>{account.price}</td>
+              <td>{account.name}</td>
+              <td>{account.sku}</td>
+              <td>{account.note ?? "—"}</td>
+              <td>{account.middleName ?? "—"}</td>
+              <td>{account.tags.join(", ")}</td>
+              <td>{account.status}</td>
+              <td>{account.email}</td>
+              <td className="text-right">
+                <Link href={`/accounts/${account.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/test-support/account.ts ===
+import { AccountError } from "../domain/account/errors";
+import type { Account, AccountDraft } from "../domain/account/model";
+import type { AccountRepository } from "../domain/account/repository";
+
+/** Valid accounts for tests; pass `overrides` for the fields a test is about. */
+export const AccountMother = {
+  draft(overrides: Partial<AccountDraft> = {}): AccountDraft {
+    return {
+      title: "example",
+      price: 42,
+      name: "example",
+      sku: "example",
+      note: "example",
+      middleName: "example",
+      tags: ["example"],
+      status: "Active",
+      email: "example",
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Account> = {}): Account {
+    return { id: crypto.randomUUID(), ...AccountMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `AccountRepository`. Override a method to make it fail. */
+export function fakeAccountRepository(seed: Account[] = []): AccountRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new AccountError("account.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

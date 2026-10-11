@@ -2471,7 +2471,7 @@ export function CustomerDetailView({ customer }: { customer: Customer }) {
 === web/src/presentation/features/customer/views/customer-form-view.tsx ===
 import type { Customer, CustomerDraft } from "../../../../domain/customer/model";
 
-/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface CustomerFormValues {
   name: string;
   email: string;

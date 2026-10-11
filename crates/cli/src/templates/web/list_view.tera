@@ -1,5 +1,8 @@
 import { Link } from "wouter";
 import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
+{%- if display_helpers %}
+import { {{ display_helpers | join(sep=", ") }} } from "../../../shared/forms";
+{%- endif %}
 
 export function {{ pascal }}ListView({ {{ plural_ident }} }: { {{ plural_ident }}: {{ pascal }}[] }) {
   return (

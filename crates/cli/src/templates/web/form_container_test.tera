@@ -4,6 +4,9 @@ import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
 import type { {{ pascal }}Draft } from "../../../../domain/{{ kebab }}/model";
 import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
 import { renderScreen } from "../../../../test-support/render";
+{%- if fill_helpers %}
+import { {{ fill_helpers | join(sep=", ") }} } from "../../../shared/forms";
+{%- endif %}
 import { {{ pascal }}FormContainer } from "./{{ kebab }}-form-container";
 
 function type(label: string, value: string) {

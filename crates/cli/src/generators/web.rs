@@ -16,7 +16,7 @@ use crate::generators::naming::{
     snake_to_words, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
-use crate::generators::types::{WebFieldCtx, web_field_ctx, web_supported};
+use crate::generators::types::{WebEnumCtx, WebFieldCtx, web_enum_ctx, web_field_ctx};
 use crate::puerto_toml::{Entity, Field, PuertoConfig};
 
 /// Every frontend file `scaffold` writes for one entity, relative to the project root — what the
@@ -62,33 +62,10 @@ pub fn web_required_files(snake: &str) -> Vec<PathBuf> {
     .collect()
 }
 
-/// The field types of `fields` the frontend generator does not handle yet (Phase 9.3), deduplicated.
-pub fn unsupported_web_types(fields: &[Field]) -> Vec<String> {
-    let mut types: Vec<String> = vec![];
-    for field in effective_fields(fields)
-        .iter()
-        .filter(|f| !web_supported(f))
-    {
-        let ty = match field.value_object_kind.as_deref() {
-            Some("enum") => "enum value object".to_string(),
-            _ => field.field_type.clone(),
-        };
-        if !types.contains(&ty) {
-            types.push(ty);
-        }
-    }
-    types
-}
-
-/// Whether `entity` gets a frontend slice: it has the five CRUD use cases (the endpoints the
-/// screens call — the Greeting demo and custom-only entities have none) and only field types the
-/// frontend generator handles.
+/// Whether `entity` gets a frontend slice: it has the five CRUD use cases, the endpoints the
+/// screens call. The Greeting demo and custom-only entities have none.
 pub fn has_web_slice(entity: &Entity) -> bool {
-    let snake = pascal_to_snake(&entity.name);
-    crud_use_cases(&snake)
-        .iter()
-        .all(|uc| entity.use_cases.contains(uc))
-        && unsupported_web_types(&entity.fields).is_empty()
+    web_slice_refusal(entity).is_none()
 }
 
 // ── Templates ─────────────────────────────────────────────────────────────────
@@ -225,7 +202,36 @@ fn entity_template_ctx(pascal: &str, fields: &[Field]) -> tera::Context {
         .iter()
         .map(|f| web_field_ctx(f, &entity.ident))
         .collect();
+    let mut enums: Vec<WebEnumCtx> = vec![];
+    for declared in effective_fields(fields)
+        .iter()
+        .filter_map(|f| web_enum_ctx(f, &entity.snake))
+    {
+        if !enums.iter().any(|e| e.name == declared.name) {
+            enums.push(declared);
+        }
+    }
+    // The `presentation/shared/forms.ts` helpers each group of files calls.
+    let helpers = |pick: fn(&WebFieldCtx) -> &Vec<&'static str>| {
+        let mut names: Vec<&str> = web_fields
+            .iter()
+            .flat_map(|f| pick(f).iter().copied())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        names
+    };
     let mut ctx = tera::Context::from_serialize(&entity).unwrap_or_default();
+    ctx.insert("form_helpers", &{
+        let mut names = helpers(|f| &f.to_form_helpers);
+        names.extend(helpers(|f| &f.from_form_helpers));
+        names.sort_unstable();
+        names.dedup();
+        names
+    });
+    ctx.insert("fill_helpers", &helpers(|f| &f.to_form_helpers));
+    ctx.insert("display_helpers", &helpers(|f| &f.display_helpers));
+    ctx.insert("enums", &enums);
     ctx.insert("fields", &web_fields);
     ctx
 }
@@ -373,13 +379,6 @@ pub fn web_slice_refusal(entity: &Entity) -> Option<String> {
         return Some(format!(
             "it has no CRUD endpoints for the screens to call (missing {})",
             missing.join(", ")
-        ));
-    }
-    let unsupported = unsupported_web_types(&entity.fields);
-    if !unsupported.is_empty() {
-        return Some(format!(
-            "the frontend generator does not handle {} fields yet",
-            unsupported.join(", ")
         ));
     }
     None
@@ -673,18 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn should_name_an_enum_value_object_rather_than_its_wire_type_when_refusing() {
-        let status = crate::puerto_toml::parse_field_arg("status:Status:enum:Open/Closed").unwrap();
-        let title = crate::puerto_toml::parse_field_arg("title:String").unwrap();
-
-        assert_eq!(
-            unsupported_web_types(&[status.clone(), title, status]),
-            vec!["enum value object".to_string()]
-        );
-    }
-
-    #[test]
-    fn should_slice_only_crud_entities_with_supported_fields() {
+    fn should_slice_only_crud_entities_whatever_their_fields() {
         let crud = crud_use_cases("order_item");
         assert!(has_web_slice(&entity("OrderItem", crud.clone(), vec![])));
         assert!(!has_web_slice(&entity(
@@ -697,8 +685,10 @@ mod tests {
             field_type: "DateTime<Utc>".into(),
             ..Default::default()
         };
-        let refused = entity("OrderItem", crud, vec![date]);
-        assert!(!has_web_slice(&refused));
-        assert!(web_slice_refusal(&refused).is_some_and(|r| r.contains("DateTime<Utc>")));
+        assert!(has_web_slice(&entity("OrderItem", crud, vec![date])));
+        assert!(
+            web_slice_refusal(&entity("Greeting", vec!["get_greeting".into()], vec![]))
+                .is_some_and(|r| r.contains("create_greeting"))
+        );
     }
 }

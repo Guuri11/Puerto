@@ -7151,3 +7151,2539 @@ enum_variants = [
 [[value_object]]
 name = "Email"
 type = "String"
+
+=== web/src/domain/customer/errors.ts ===
+/**
+ * A request about a customer that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `customer.not_found`, `customer.validation_error.<field>_empty`.
+ */
+export class CustomerError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "CustomerError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/customer/model.ts ===
+import { CustomerError } from "./errors";
+
+export interface Customer {
+  id: string;
+  email: string;
+  name: string;
+  code: string;
+  age: number;
+  joined: string;
+  middle: string | null;
+  labels: string[];
+  status: Status;
+}
+
+/** What a create or an update sends: a customer without its id. */
+export type CustomerDraft = Omit<Customer, "id">;
+
+export const statusValues = ["Active", "Inactive"] as const;
+
+export type Status = (typeof statusValues)[number];
+
+/** Narrows the API's `string` to a `Status`, rejecting with `customer.invalid_status`. */
+export function parseStatus(value: string): Status {
+  const found = statusValues.find((candidate) => candidate === value);
+  if (found === undefined) throw new CustomerError("customer.invalid_status");
+  return found;
+}
+
+=== web/src/domain/customer/repository.ts ===
+import type { Customer, CustomerDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `CustomerError` the API answered. */
+export interface CustomerRepository {
+  list(): Promise<Customer[]>;
+  get(id: string): Promise<Customer>;
+  create(draft: CustomerDraft): Promise<Customer>;
+  update(id: string, draft: CustomerDraft): Promise<Customer>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/domain/product/errors.ts ===
+/**
+ * A request about a product that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `product.not_found`, `product.validation_error.<field>_empty`.
+ */
+export class ProductError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "ProductError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/product/model.ts ===
+export interface Product {
+  id: string;
+  title: string;
+  sku: string;
+  price: number;
+  rating: number;
+  active: boolean;
+  refId: string;
+  publishedAt: string;
+  summary: string | null;
+  views: number | null;
+  expiresAt: string | null;
+  tags: string[];
+  scores: number[];
+  meta: Record<string, string>;
+}
+
+/** What a create or an update sends: a product without its id. */
+export type ProductDraft = Omit<Product, "id">;
+
+=== web/src/domain/product/repository.ts ===
+import type { Product, ProductDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `ProductError` the API answered. */
+export interface ProductRepository {
+  list(): Promise<Product[]>;
+  get(id: string): Promise<Product>;
+  create(draft: ProductDraft): Promise<Product>;
+  update(id: string, draft: ProductDraft): Promise<Product>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/domain/ticket/errors.ts ===
+/**
+ * A request about a ticket that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `ticket.not_found`, `ticket.validation_error.<field>_empty`.
+ */
+export class TicketError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "TicketError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/ticket/model.ts ===
+import { TicketError } from "./errors";
+
+export interface Ticket {
+  id: string;
+  state: State;
+}
+
+/** What a create or an update sends: a ticket without its id. */
+export type TicketDraft = Omit<Ticket, "id">;
+
+export const stateValues = ["Open", "Closed"] as const;
+
+export type State = (typeof stateValues)[number];
+
+/** Narrows the API's `string` to a `State`, rejecting with `ticket.invalid_state`. */
+export function parseState(value: string): State {
+  const found = stateValues.find((candidate) => candidate === value);
+  if (found === undefined) throw new TicketError("ticket.invalid_state");
+  return found;
+}
+
+=== web/src/domain/ticket/repository.ts ===
+import type { Ticket, TicketDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `TicketError` the API answered. */
+export interface TicketRepository {
+  list(): Promise<Ticket[]>;
+  get(id: string): Promise<Ticket>;
+  create(draft: TicketDraft): Promise<Ticket>;
+  update(id: string, draft: TicketDraft): Promise<Ticket>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/customer/customer-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { CustomerError } from "../../domain/customer/errors";
+import { CustomerMother } from "../../test-support/customer";
+import { createApiClient } from "../http/client";
+import { customerRepositoryHttp } from "./customer-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: customerRepositoryHttp(api), requests };
+}
+
+describe("customerRepositoryHttp", () => {
+  test("should return every customer when the API lists them", async () => {
+    // Arrange
+    const customer = CustomerMother.random();
+    const { repository } = answering(200, [customer]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([customer]);
+  });
+
+  test("should send the draft when creating a customer", async () => {
+    // Arrange
+    const draft = CustomerMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the customer does not exist", async () => {
+    // Arrange
+    const code = "customer.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(CustomerError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the customer", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/customers/42");
+  });
+});
+
+=== web/src/infrastructure/customer/customer-repository-http.ts ===
+import { CustomerError } from "../../domain/customer/errors";
+import { type Customer, type CustomerDraft, parseStatus } from "../../domain/customer/model";
+import type { CustomerRepository } from "../../domain/customer/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type CustomerDto = components["schemas"]["CustomerDto"];
+type CustomerRequest = components["schemas"]["CreateCustomerRequest"];
+
+function toCustomer(dto: CustomerDto): Customer {
+  return {
+    id: dto.id,
+    email: dto.email,
+    name: dto.name,
+    code: dto.code,
+    age: dto.age,
+    joined: dto.joined,
+    middle: dto.middle ?? null,
+    labels: dto.labels,
+    status: parseStatus(dto.status),
+  };
+}
+
+function toRequest(draft: CustomerDraft): CustomerRequest {
+  return {
+    email: draft.email,
+    name: draft.name,
+    code: draft.code,
+    age: draft.age,
+    joined: draft.joined,
+    middle: draft.middle ?? undefined,
+    labels: draft.labels,
+    status: draft.status,
+  };
+}
+
+/** `CustomerRepository` over the REST API (`/customers`). */
+export function customerRepositoryHttp(api: ApiClient): CustomerRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/customers");
+      if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
+      return data.map(toCustomer);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/customers/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
+      return toCustomer(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/customers", { body: toRequest(draft) });
+      if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
+      return toCustomer(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/customers/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
+      return toCustomer(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/customers/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new CustomerError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/infrastructure/product/product-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { ProductError } from "../../domain/product/errors";
+import { ProductMother } from "../../test-support/product";
+import { createApiClient } from "../http/client";
+import { productRepositoryHttp } from "./product-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: productRepositoryHttp(api), requests };
+}
+
+describe("productRepositoryHttp", () => {
+  test("should return every product when the API lists them", async () => {
+    // Arrange
+    const product = ProductMother.random();
+    const { repository } = answering(200, [product]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([product]);
+  });
+
+  test("should send the draft when creating a product", async () => {
+    // Arrange
+    const draft = ProductMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the product does not exist", async () => {
+    // Arrange
+    const code = "product.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(ProductError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the product", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/products/42");
+  });
+});
+
+=== web/src/infrastructure/product/product-repository-http.ts ===
+import { ProductError } from "../../domain/product/errors";
+import type { Product, ProductDraft } from "../../domain/product/model";
+import type { ProductRepository } from "../../domain/product/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type ProductDto = components["schemas"]["ProductDto"];
+type ProductRequest = components["schemas"]["CreateProductRequest"];
+
+function toProduct(dto: ProductDto): Product {
+  return {
+    id: dto.id,
+    title: dto.title,
+    sku: dto.sku,
+    price: dto.price,
+    rating: dto.rating,
+    active: dto.active,
+    refId: dto.refId,
+    publishedAt: dto.publishedAt,
+    summary: dto.summary ?? null,
+    views: dto.views ?? null,
+    expiresAt: dto.expiresAt ?? null,
+    tags: dto.tags,
+    scores: dto.scores,
+    meta: dto.meta,
+  };
+}
+
+function toRequest(draft: ProductDraft): ProductRequest {
+  return {
+    title: draft.title,
+    sku: draft.sku,
+    price: draft.price,
+    rating: draft.rating,
+    active: draft.active,
+    refId: draft.refId,
+    publishedAt: draft.publishedAt,
+    summary: draft.summary ?? undefined,
+    views: draft.views ?? undefined,
+    expiresAt: draft.expiresAt ?? undefined,
+    tags: draft.tags,
+    scores: draft.scores,
+    meta: draft.meta,
+  };
+}
+
+/** `ProductRepository` over the REST API (`/products`). */
+export function productRepositoryHttp(api: ApiClient): ProductRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/products");
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return data.map(toProduct);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/products/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/products", { body: toRequest(draft) });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/products/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/products/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new ProductError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/infrastructure/ticket/ticket-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { TicketError } from "../../domain/ticket/errors";
+import { TicketMother } from "../../test-support/ticket";
+import { createApiClient } from "../http/client";
+import { ticketRepositoryHttp } from "./ticket-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: ticketRepositoryHttp(api), requests };
+}
+
+describe("ticketRepositoryHttp", () => {
+  test("should return every ticket when the API lists them", async () => {
+    // Arrange
+    const ticket = TicketMother.random();
+    const { repository } = answering(200, [ticket]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([ticket]);
+  });
+
+  test("should send the draft when creating a ticket", async () => {
+    // Arrange
+    const draft = TicketMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the ticket does not exist", async () => {
+    // Arrange
+    const code = "ticket.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(TicketError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the ticket", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/tickets/42");
+  });
+});
+
+=== web/src/infrastructure/ticket/ticket-repository-http.ts ===
+import { TicketError } from "../../domain/ticket/errors";
+import { parseState, type Ticket, type TicketDraft } from "../../domain/ticket/model";
+import type { TicketRepository } from "../../domain/ticket/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type TicketDto = components["schemas"]["TicketDto"];
+type TicketRequest = components["schemas"]["CreateTicketRequest"];
+
+function toTicket(dto: TicketDto): Ticket {
+  return {
+    id: dto.id,
+    state: parseState(dto.state),
+  };
+}
+
+function toRequest(draft: TicketDraft): TicketRequest {
+  return {
+    state: draft.state,
+  };
+}
+
+/** `TicketRepository` over the REST API (`/tickets`). */
+export function ticketRepositoryHttp(api: ApiClient): TicketRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/tickets");
+      if (data === undefined) throw new TicketError(apiErrorCode(error, response));
+      return data.map(toTicket);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/tickets/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new TicketError(apiErrorCode(error, response));
+      return toTicket(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/tickets", { body: toRequest(draft) });
+      if (data === undefined) throw new TicketError(apiErrorCode(error, response));
+      return toTicket(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/tickets/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new TicketError(apiErrorCode(error, response));
+      return toTicket(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/tickets/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new TicketError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/presentation/core/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { CustomerRepository } from "../../../domain/customer/repository";
+import type { ProductRepository } from "../../../domain/product/repository";
+import type { TicketRepository } from "../../../domain/ticket/repository";
+import { customerRepositoryHttp } from "../../../infrastructure/customer/customer-repository-http";
+import { createApiClient } from "../../../infrastructure/http/client";
+import { productRepositoryHttp } from "../../../infrastructure/product/product-repository-http";
+import { ticketRepositoryHttp } from "../../../infrastructure/ticket/ticket-repository-http";
+
+export interface Dependencies {
+  customerRepository: CustomerRepository;
+  productRepository: ProductRepository;
+  ticketRepository: TicketRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return {
+    customerRepository: customerRepositoryHttp(api),
+    productRepository: productRepositoryHttp(api),
+    ticketRepository: ticketRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { CustomerDetailContainer } from "../../features/customer/containers/customer-detail-container";
+import { CustomerFormContainer } from "../../features/customer/containers/customer-form-container";
+import { CustomerListContainer } from "../../features/customer/containers/customer-list-container";
+import { ProductDetailContainer } from "../../features/product/containers/product-detail-container";
+import { ProductFormContainer } from "../../features/product/containers/product-form-container";
+import { ProductListContainer } from "../../features/product/containers/product-list-container";
+import { TicketDetailContainer } from "../../features/ticket/containers/ticket-detail-container";
+import { TicketFormContainer } from "../../features/ticket/containers/ticket-form-container";
+import { TicketListContainer } from "../../features/ticket/containers/ticket-list-container";
+import { HomePage } from "../../pages/home";
+import { NotFoundPage } from "../../pages/not-found";
+import type { NavEntry } from "../../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [
+  { label: "Customers", href: "/customers" },
+  { label: "Products", href: "/products" },
+  { label: "Tickets", href: "/tickets" },
+];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/customers">
+        <CustomerListContainer />
+      </Route>
+      <Route path="/customers/new">
+        <CustomerFormContainer />
+      </Route>
+      <Route path="/customers/:id/edit">
+        {(params) => <CustomerFormContainer id={params.id} />}
+      </Route>
+      <Route path="/customers/:id">{(params) => <CustomerDetailContainer id={params.id} />}</Route>
+      <Route path="/products">
+        <ProductListContainer />
+      </Route>
+      <Route path="/products/new">
+        <ProductFormContainer />
+      </Route>
+      <Route path="/products/:id/edit">{(params) => <ProductFormContainer id={params.id} />}</Route>
+      <Route path="/products/:id">{(params) => <ProductDetailContainer id={params.id} />}</Route>
+      <Route path="/tickets">
+        <TicketListContainer />
+      </Route>
+      <Route path="/tickets/new">
+        <TicketFormContainer />
+      </Route>
+      <Route path="/tickets/:id/edit">{(params) => <TicketFormContainer id={params.id} />}</Route>
+      <Route path="/tickets/:id">{(params) => <TicketDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/presentation/features/customer/containers/customer-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
+import { renderScreen } from "../../../../test-support/render";
+import { CustomerDetailContainer } from "./customer-detail-container";
+
+describe("CustomerDetailContainer", () => {
+  test("should show the customer when it exists", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const customerRepository = fakeCustomerRepository([seeded]);
+
+    // Act
+    renderScreen(<CustomerDetailContainer id={seeded.id} />, { customerRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the customer does not exist", async () => {
+    // Arrange
+    const customerRepository = fakeCustomerRepository();
+
+    // Act
+    renderScreen(<CustomerDetailContainer id={crypto.randomUUID()} />, { customerRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("customer.not_found");
+  });
+
+  test("should delete the customer only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const fake = fakeCustomerRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<CustomerDetailContainer id={seeded.id} />, {
+      customerRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/customers"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/customer/containers/customer-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CustomerDetailView } from "../views/customer-detail-view";
+
+export function CustomerDetailContainer({ id }: { id: string }) {
+  const { customerRepository } = useDependencies();
+  const customer = useAsync(() => customerRepository.get(id), [customerRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await customerRepository.remove(id);
+      navigate("/customers");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Customer</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {customer.status === "loading" && <span className="loading loading-spinner" />}
+      {customer.status === "error" && <ErrorAlert error={customer.error} />}
+      {customer.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <CustomerDetailView customer={customer.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/customers/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/customers" className="link">
+        Back to customers
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this customer?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/customer/containers/customer-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CustomerError } from "../../../../domain/customer/errors";
+import type { CustomerDraft } from "../../../../domain/customer/model";
+import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
+import { renderScreen } from "../../../../test-support/render";
+import { textOf, toDateTimeLocal } from "../../../shared/forms";
+import { CustomerFormContainer } from "./customer-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: CustomerDraft) {
+  await screen.findByText("Save");
+  type("Email", draft.email);
+  type("Name", draft.name);
+  type("Code", draft.code);
+  type("Age", String(draft.age));
+  type("Joined", toDateTimeLocal(draft.joined));
+  type("Middle", textOf(draft.middle));
+  type("Labels", draft.labels.join(", "));
+  type("Status", draft.status);
+}
+
+describe("CustomerFormContainer", () => {
+  test("should create the customer from what was typed and show it", async () => {
+    // Arrange
+    const draft = CustomerMother.draft();
+    const customerRepository = fakeCustomerRepository();
+    const { history } = renderScreen(<CustomerFormContainer />, { customerRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/customers/"));
+    const [created] = await customerRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/customers/${created?.id}`);
+  });
+
+  test("should save the edited customer when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const customerRepository = fakeCustomerRepository([seeded]);
+    const { history } = renderScreen(<CustomerFormContainer id={seeded.id} />, {
+      customerRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/customers/${seeded.id}`));
+    expect(await customerRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the customer", async () => {
+    // Arrange
+    const code = "customer.validation_error.invalid";
+    const customerRepository = {
+      ...fakeCustomerRepository(),
+      create: () => Promise.reject(new CustomerError(code)),
+    };
+    renderScreen(<CustomerFormContainer />, { customerRepository });
+    await fillIn(CustomerMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/customer/containers/customer-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Customer } from "../../../../domain/customer/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CustomerFormView, toCustomerDraft, toCustomerForm } from "../views/customer-form-view";
+
+/** Creates a customer, or edits the one with `id`. */
+export function CustomerFormContainer({ id }: { id?: string }) {
+  const { customerRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : customerRepository.get(id)),
+    [customerRepository, id],
+  );
+  const title = id === undefined ? "New customer" : "Edit customer";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <CustomerForm existing={existing.data} />}
+      <Link href={id === undefined ? "/customers" : `/customers/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function CustomerForm({ existing }: { existing: Customer | null }) {
+  const { customerRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toCustomerForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toCustomerDraft(values);
+      const saved =
+        existing === null
+          ? await customerRepository.create(draft)
+          : await customerRepository.update(existing.id, draft);
+      navigate(`/customers/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <CustomerFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/customer/containers/customer-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { CustomerError } from "../../../../domain/customer/errors";
+import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
+import { renderScreen } from "../../../../test-support/render";
+import { CustomerListContainer } from "./customer-list-container";
+
+describe("CustomerListContainer", () => {
+  test("should show a row per customer when there are some", async () => {
+    // Arrange
+    const seed = [CustomerMother.random(), CustomerMother.random()];
+    const customerRepository = fakeCustomerRepository(seed);
+
+    // Act
+    renderScreen(<CustomerListContainer />, { customerRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no customer", async () => {
+    // Arrange
+    const customerRepository = fakeCustomerRepository();
+
+    // Act
+    renderScreen(<CustomerListContainer />, { customerRepository });
+
+    // Assert
+    expect(await screen.findByText("No customers yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the customers cannot be listed", async () => {
+    // Arrange
+    const customerRepository = {
+      ...fakeCustomerRepository(),
+      list: () => Promise.reject(new CustomerError("customer.repository_error")),
+    };
+
+    // Act
+    renderScreen(<CustomerListContainer />, { customerRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("customer.repository_error");
+  });
+});
+
+=== web/src/presentation/features/customer/containers/customer-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CustomerListView } from "../views/customer-list-view";
+
+export function CustomerListContainer() {
+  const { customerRepository } = useDependencies();
+  const customers = useAsync(() => customerRepository.list(), [customerRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Customers</h1>
+        <Link href="/customers/new" className="btn btn-primary">
+          New customer
+        </Link>
+      </div>
+      {customers.status === "loading" && <span className="loading loading-spinner" />}
+      {customers.status === "error" && <ErrorAlert error={customers.error} />}
+      {customers.status === "ok" &&
+        (customers.data.length === 0 ? (
+          <EmptyState message="No customers yet." />
+        ) : (
+          <CustomerListView customers={customers.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/customer/views/customer-detail-view.tsx ===
+import type { Customer } from "../../../../domain/customer/model";
+import { formatDateTime } from "../../../shared/forms";
+
+export function CustomerDetailView({ customer }: { customer: Customer }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Email</dt>
+      <dd>{customer.email}</dd>
+      <dt className="font-semibold">Name</dt>
+      <dd>{customer.name}</dd>
+      <dt className="font-semibold">Code</dt>
+      <dd>{customer.code}</dd>
+      <dt className="font-semibold">Age</dt>
+      <dd>{customer.age}</dd>
+      <dt className="font-semibold">Joined</dt>
+      <dd>{formatDateTime(customer.joined)}</dd>
+      <dt className="font-semibold">Middle</dt>
+      <dd>{customer.middle ?? "—"}</dd>
+      <dt className="font-semibold">Labels</dt>
+      <dd>{customer.labels.join(", ")}</dd>
+      <dt className="font-semibold">Status</dt>
+      <dd>{customer.status}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/customer/views/customer-form-view.tsx ===
+import { type Customer, type CustomerDraft, parseStatus } from "../../../../domain/customer/model";
+import {
+  fromDateTimeLocal,
+  splitList,
+  textOf,
+  textOrNull,
+  toDateTimeLocal,
+} from "../../../shared/forms";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface CustomerFormValues {
+  email: string;
+  name: string;
+  code: string;
+  age: string;
+  joined: string;
+  middle: string;
+  labels: string;
+  status: string;
+}
+
+/** The inputs for `customer`, empty when there is none yet. */
+export function toCustomerForm(customer: Customer | null): CustomerFormValues {
+  if (customer === null) {
+    return {
+      email: "",
+      name: "",
+      code: "",
+      age: "",
+      joined: "",
+      middle: "",
+      labels: "",
+      status: "",
+    };
+  }
+  return {
+    email: customer.email,
+    name: customer.name,
+    code: customer.code,
+    age: String(customer.age),
+    joined: toDateTimeLocal(customer.joined),
+    middle: textOf(customer.middle),
+    labels: customer.labels.join(", "),
+    status: customer.status,
+  };
+}
+
+export function toCustomerDraft(values: CustomerFormValues): CustomerDraft {
+  return {
+    email: values.email,
+    name: values.name,
+    code: values.code,
+    age: Number(values.age),
+    joined: fromDateTimeLocal(values.joined),
+    middle: textOrNull(values.middle),
+    labels: splitList(values.labels),
+    status: parseStatus(values.status),
+  };
+}
+
+export function CustomerFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: CustomerFormValues;
+  saving: boolean;
+  onChange: (values: CustomerFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Email</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.email}
+          onChange={(event) => onChange({ ...values, email: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Name</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.name}
+          onChange={(event) => onChange({ ...values, name: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Code</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.code}
+          onChange={(event) => onChange({ ...values, code: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Age</span>
+        <input
+          className="input w-full"
+          type="number"
+          required
+          value={values.age}
+          onChange={(event) => onChange({ ...values, age: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Joined</span>
+        <input
+          className="input w-full"
+          type="datetime-local"
+          required
+          value={values.joined}
+          onChange={(event) => onChange({ ...values, joined: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Middle</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.middle}
+          onChange={(event) => onChange({ ...values, middle: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Labels</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.labels}
+          onChange={(event) => onChange({ ...values, labels: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Status</span>
+        <select
+          className="select w-full"
+          required
+          value={values.status}
+          onChange={(event) => onChange({ ...values, status: event.target.value })}
+        >
+          <option value="">Choose…</option>
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+        </select>
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/customer/views/customer-list-view.tsx ===
+import { Link } from "wouter";
+import type { Customer } from "../../../../domain/customer/model";
+import { formatDateTime } from "../../../shared/forms";
+
+export function CustomerListView({ customers }: { customers: Customer[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Code</th>
+            <th>Age</th>
+            <th>Joined</th>
+            <th>Middle</th>
+            <th>Labels</th>
+            <th>Status</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {customers.map((customer) => (
+            <tr key={customer.id}>
+              <td>{customer.email}</td>
+              <td>{customer.name}</td>
+              <td>{customer.code}</td>
+              <td>{customer.age}</td>
+              <td>{formatDateTime(customer.joined)}</td>
+              <td>{customer.middle ?? "—"}</td>
+              <td>{customer.labels.join(", ")}</td>
+              <td>{customer.status}</td>
+              <td className="text-right">
+                <Link href={`/customers/${customer.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductDetailContainer } from "./product-detail-container";
+
+describe("ProductDetailContainer", () => {
+  test("should show the product when it exists", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+
+    // Act
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the product does not exist", async () => {
+    // Arrange
+    const productRepository = fakeProductRepository();
+
+    // Act
+    renderScreen(<ProductDetailContainer id={crypto.randomUUID()} />, { productRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("product.not_found");
+  });
+
+  test("should delete the product only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const fake = fakeProductRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<ProductDetailContainer id={seeded.id} />, {
+      productRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/products"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductDetailView } from "../views/product-detail-view";
+
+export function ProductDetailContainer({ id }: { id: string }) {
+  const { productRepository } = useDependencies();
+  const product = useAsync(() => productRepository.get(id), [productRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await productRepository.remove(id);
+      navigate("/products");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Product</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {product.status === "loading" && <span className="loading loading-spinner" />}
+      {product.status === "error" && <ErrorAlert error={product.error} />}
+      {product.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <ProductDetailView product={product.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/products/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/products" className="link">
+        Back to products
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this product?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import type { ProductDraft } from "../../../../domain/product/model";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { formatEntries, textOf, toDateTimeLocal } from "../../../shared/forms";
+import { ProductFormContainer } from "./product-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: ProductDraft) {
+  await screen.findByText("Save");
+  type("Title", draft.title);
+  type("Sku", draft.sku);
+  type("Price", String(draft.price));
+  type("Rating", String(draft.rating));
+  if (draft.active) fireEvent.click(screen.getByLabelText("Active"));
+  type("Ref id", draft.refId);
+  type("Published at", toDateTimeLocal(draft.publishedAt));
+  type("Summary", textOf(draft.summary));
+  type("Views", textOf(draft.views));
+  type("Expires at", toDateTimeLocal(draft.expiresAt));
+  type("Tags", draft.tags.join(", "));
+  type("Scores", draft.scores.join(", "));
+  type("Meta", formatEntries(draft.meta));
+}
+
+describe("ProductFormContainer", () => {
+  test("should create the product from what was typed and show it", async () => {
+    // Arrange
+    const draft = ProductMother.draft();
+    const productRepository = fakeProductRepository();
+    const { history } = renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/products/"));
+    const [created] = await productRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/products/${created?.id}`);
+  });
+
+  test("should save the edited product when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+    const { history } = renderScreen(<ProductFormContainer id={seeded.id} />, {
+      productRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/products/${seeded.id}`));
+    expect(await productRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the product", async () => {
+    // Arrange
+    const code = "product.validation_error.invalid";
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError(code)),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Product } from "../../../../domain/product/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductFormView, toProductDraft, toProductForm } from "../views/product-form-view";
+
+/** Creates a product, or edits the one with `id`. */
+export function ProductFormContainer({ id }: { id?: string }) {
+  const { productRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : productRepository.get(id)),
+    [productRepository, id],
+  );
+  const title = id === undefined ? "New product" : "Edit product";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <ProductForm existing={existing.data} />}
+      <Link href={id === undefined ? "/products" : `/products/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function ProductForm({ existing }: { existing: Product | null }) {
+  const { productRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toProductForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toProductDraft(values);
+      const saved =
+        existing === null
+          ? await productRepository.create(draft)
+          : await productRepository.update(existing.id, draft);
+      navigate(`/products/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <ProductFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductListContainer } from "./product-list-container";
+
+describe("ProductListContainer", () => {
+  test("should show a row per product when there are some", async () => {
+    // Arrange
+    const seed = [ProductMother.random(), ProductMother.random()];
+    const productRepository = fakeProductRepository(seed);
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no product", async () => {
+    // Arrange
+    const productRepository = fakeProductRepository();
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect(await screen.findByText("No products yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the products cannot be listed", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      list: () => Promise.reject(new ProductError("product.repository_error")),
+    };
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("product.repository_error");
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductListView } from "../views/product-list-view";
+
+export function ProductListContainer() {
+  const { productRepository } = useDependencies();
+  const products = useAsync(() => productRepository.list(), [productRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Products</h1>
+        <Link href="/products/new" className="btn btn-primary">
+          New product
+        </Link>
+      </div>
+      {products.status === "loading" && <span className="loading loading-spinner" />}
+      {products.status === "error" && <ErrorAlert error={products.error} />}
+      {products.status === "ok" &&
+        (products.data.length === 0 ? (
+          <EmptyState message="No products yet." />
+        ) : (
+          <ProductListView products={products.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-detail-view.tsx ===
+import type { Product } from "../../../../domain/product/model";
+import { formatDateTime, formatEntries } from "../../../shared/forms";
+
+export function ProductDetailView({ product }: { product: Product }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Title</dt>
+      <dd>{product.title}</dd>
+      <dt className="font-semibold">Sku</dt>
+      <dd>{product.sku}</dd>
+      <dt className="font-semibold">Price</dt>
+      <dd>{product.price}</dd>
+      <dt className="font-semibold">Rating</dt>
+      <dd>{product.rating}</dd>
+      <dt className="font-semibold">Active</dt>
+      <dd>{product.active ? "Yes" : "No"}</dd>
+      <dt className="font-semibold">Ref id</dt>
+      <dd>{product.refId}</dd>
+      <dt className="font-semibold">Published at</dt>
+      <dd>{formatDateTime(product.publishedAt)}</dd>
+      <dt className="font-semibold">Summary</dt>
+      <dd>{product.summary ?? "—"}</dd>
+      <dt className="font-semibold">Views</dt>
+      <dd>{product.views ?? "—"}</dd>
+      <dt className="font-semibold">Expires at</dt>
+      <dd>{product.expiresAt === null ? "—" : formatDateTime(product.expiresAt)}</dd>
+      <dt className="font-semibold">Tags</dt>
+      <dd>{product.tags.join(", ")}</dd>
+      <dt className="font-semibold">Scores</dt>
+      <dd>{product.scores.join(", ")}</dd>
+      <dt className="font-semibold">Meta</dt>
+      <dd>{formatEntries(product.meta, ", ")}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-form-view.tsx ===
+import type { Product, ProductDraft } from "../../../../domain/product/model";
+import {
+  dateTimeOrNull,
+  formatEntries,
+  fromDateTimeLocal,
+  numberOrNull,
+  parseEntries,
+  splitList,
+  splitNumbers,
+  textOf,
+  textOrNull,
+  toDateTimeLocal,
+} from "../../../shared/forms";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface ProductFormValues {
+  title: string;
+  sku: string;
+  price: string;
+  rating: string;
+  active: boolean;
+  refId: string;
+  publishedAt: string;
+  summary: string;
+  views: string;
+  expiresAt: string;
+  tags: string;
+  scores: string;
+  meta: string;
+}
+
+/** The inputs for `product`, empty when there is none yet. */
+export function toProductForm(product: Product | null): ProductFormValues {
+  if (product === null) {
+    return {
+      title: "",
+      sku: "",
+      price: "",
+      rating: "",
+      active: false,
+      refId: "",
+      publishedAt: "",
+      summary: "",
+      views: "",
+      expiresAt: "",
+      tags: "",
+      scores: "",
+      meta: "",
+    };
+  }
+  return {
+    title: product.title,
+    sku: product.sku,
+    price: String(product.price),
+    rating: String(product.rating),
+    active: product.active,
+    refId: product.refId,
+    publishedAt: toDateTimeLocal(product.publishedAt),
+    summary: textOf(product.summary),
+    views: textOf(product.views),
+    expiresAt: toDateTimeLocal(product.expiresAt),
+    tags: product.tags.join(", "),
+    scores: product.scores.join(", "),
+    meta: formatEntries(product.meta),
+  };
+}
+
+export function toProductDraft(values: ProductFormValues): ProductDraft {
+  return {
+    title: values.title,
+    sku: values.sku,
+    price: Number(values.price),
+    rating: Number(values.rating),
+    active: values.active,
+    refId: values.refId,
+    publishedAt: fromDateTimeLocal(values.publishedAt),
+    summary: textOrNull(values.summary),
+    views: numberOrNull(values.views),
+    expiresAt: dateTimeOrNull(values.expiresAt),
+    tags: splitList(values.tags),
+    scores: splitNumbers(values.scores),
+    meta: parseEntries(values.meta),
+  };
+}
+
+export function ProductFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: ProductFormValues;
+  saving: boolean;
+  onChange: (values: ProductFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Title</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.title}
+          onChange={(event) => onChange({ ...values, title: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Sku</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.sku}
+          onChange={(event) => onChange({ ...values, sku: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Price</span>
+        <input
+          className="input w-full"
+          type="number"
+          required
+          value={values.price}
+          onChange={(event) => onChange({ ...values, price: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Rating</span>
+        <input
+          className="input w-full"
+          type="number"
+          step="any"
+          required
+          value={values.rating}
+          onChange={(event) => onChange({ ...values, rating: event.target.value })}
+        />
+      </label>
+      <label className="label">
+        <input
+          className="checkbox"
+          type="checkbox"
+          checked={values.active}
+          onChange={(event) => onChange({ ...values, active: event.target.checked })}
+        />
+        Active
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Ref id</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.refId}
+          onChange={(event) => onChange({ ...values, refId: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Published at</span>
+        <input
+          className="input w-full"
+          type="datetime-local"
+          required
+          value={values.publishedAt}
+          onChange={(event) => onChange({ ...values, publishedAt: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Summary</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.summary}
+          onChange={(event) => onChange({ ...values, summary: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Views</span>
+        <input
+          className="input w-full"
+          type="number"
+          value={values.views}
+          onChange={(event) => onChange({ ...values, views: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Expires at</span>
+        <input
+          className="input w-full"
+          type="datetime-local"
+          value={values.expiresAt}
+          onChange={(event) => onChange({ ...values, expiresAt: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Tags</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.tags}
+          onChange={(event) => onChange({ ...values, tags: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Scores</span>
+        <input
+          className="input w-full"
+          type="text"
+          value={values.scores}
+          onChange={(event) => onChange({ ...values, scores: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Meta</span>
+        <textarea
+          className="textarea w-full"
+          placeholder="key=value, one per line"
+          value={values.meta}
+          onChange={(event) => onChange({ ...values, meta: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-list-view.tsx ===
+import { Link } from "wouter";
+import type { Product } from "../../../../domain/product/model";
+import { formatDateTime, formatEntries } from "../../../shared/forms";
+
+export function ProductListView({ products }: { products: Product[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Sku</th>
+            <th>Price</th>
+            <th>Rating</th>
+            <th>Active</th>
+            <th>Ref id</th>
+            <th>Published at</th>
+            <th>Summary</th>
+            <th>Views</th>
+            <th>Expires at</th>
+            <th>Tags</th>
+            <th>Scores</th>
+            <th>Meta</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((product) => (
+            <tr key={product.id}>
+              <td>{product.title}</td>
+              <td>{product.sku}</td>
+              <td>{product.price}</td>
+              <td>{product.rating}</td>
+              <td>{product.active ? "Yes" : "No"}</td>
+              <td>{product.refId}</td>
+              <td>{formatDateTime(product.publishedAt)}</td>
+              <td>{product.summary ?? "—"}</td>
+              <td>{product.views ?? "—"}</td>
+              <td>{product.expiresAt === null ? "—" : formatDateTime(product.expiresAt)}</td>
+              <td>{product.tags.join(", ")}</td>
+              <td>{product.scores.join(", ")}</td>
+              <td>{formatEntries(product.meta, ", ")}</td>
+              <td className="text-right">
+                <Link href={`/products/${product.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/ticket/containers/ticket-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderScreen } from "../../../../test-support/render";
+import { fakeTicketRepository, TicketMother } from "../../../../test-support/ticket";
+import { TicketDetailContainer } from "./ticket-detail-container";
+
+describe("TicketDetailContainer", () => {
+  test("should show the ticket when it exists", async () => {
+    // Arrange
+    const seeded = TicketMother.random();
+    const ticketRepository = fakeTicketRepository([seeded]);
+
+    // Act
+    renderScreen(<TicketDetailContainer id={seeded.id} />, { ticketRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the ticket does not exist", async () => {
+    // Arrange
+    const ticketRepository = fakeTicketRepository();
+
+    // Act
+    renderScreen(<TicketDetailContainer id={crypto.randomUUID()} />, { ticketRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("ticket.not_found");
+  });
+
+  test("should delete the ticket only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = TicketMother.random();
+    const fake = fakeTicketRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<TicketDetailContainer id={seeded.id} />, {
+      ticketRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/tickets"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/ticket/containers/ticket-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { TicketDetailView } from "../views/ticket-detail-view";
+
+export function TicketDetailContainer({ id }: { id: string }) {
+  const { ticketRepository } = useDependencies();
+  const ticket = useAsync(() => ticketRepository.get(id), [ticketRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await ticketRepository.remove(id);
+      navigate("/tickets");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Ticket</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {ticket.status === "loading" && <span className="loading loading-spinner" />}
+      {ticket.status === "error" && <ErrorAlert error={ticket.error} />}
+      {ticket.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <TicketDetailView ticket={ticket.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/tickets/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/tickets" className="link">
+        Back to tickets
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this ticket?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/ticket/containers/ticket-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { TicketError } from "../../../../domain/ticket/errors";
+import type { TicketDraft } from "../../../../domain/ticket/model";
+import { renderScreen } from "../../../../test-support/render";
+import { fakeTicketRepository, TicketMother } from "../../../../test-support/ticket";
+import { TicketFormContainer } from "./ticket-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: TicketDraft) {
+  await screen.findByText("Save");
+  type("State", draft.state);
+}
+
+describe("TicketFormContainer", () => {
+  test("should create the ticket from what was typed and show it", async () => {
+    // Arrange
+    const draft = TicketMother.draft();
+    const ticketRepository = fakeTicketRepository();
+    const { history } = renderScreen(<TicketFormContainer />, { ticketRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/tickets/"));
+    const [created] = await ticketRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/tickets/${created?.id}`);
+  });
+
+  test("should save the edited ticket when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = TicketMother.random();
+    const ticketRepository = fakeTicketRepository([seeded]);
+    const { history } = renderScreen(<TicketFormContainer id={seeded.id} />, {
+      ticketRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/tickets/${seeded.id}`));
+    expect(await ticketRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the ticket", async () => {
+    // Arrange
+    const code = "ticket.validation_error.invalid";
+    const ticketRepository = {
+      ...fakeTicketRepository(),
+      create: () => Promise.reject(new TicketError(code)),
+    };
+    renderScreen(<TicketFormContainer />, { ticketRepository });
+    await fillIn(TicketMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/ticket/containers/ticket-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Ticket } from "../../../../domain/ticket/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { TicketFormView, toTicketDraft, toTicketForm } from "../views/ticket-form-view";
+
+/** Creates a ticket, or edits the one with `id`. */
+export function TicketFormContainer({ id }: { id?: string }) {
+  const { ticketRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : ticketRepository.get(id)),
+    [ticketRepository, id],
+  );
+  const title = id === undefined ? "New ticket" : "Edit ticket";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <TicketForm existing={existing.data} />}
+      <Link href={id === undefined ? "/tickets" : `/tickets/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function TicketForm({ existing }: { existing: Ticket | null }) {
+  const { ticketRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toTicketForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toTicketDraft(values);
+      const saved =
+        existing === null
+          ? await ticketRepository.create(draft)
+          : await ticketRepository.update(existing.id, draft);
+      navigate(`/tickets/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <TicketFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/ticket/containers/ticket-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { TicketError } from "../../../../domain/ticket/errors";
+import { renderScreen } from "../../../../test-support/render";
+import { fakeTicketRepository, TicketMother } from "../../../../test-support/ticket";
+import { TicketListContainer } from "./ticket-list-container";
+
+describe("TicketListContainer", () => {
+  test("should show a row per ticket when there are some", async () => {
+    // Arrange
+    const seed = [TicketMother.random(), TicketMother.random()];
+    const ticketRepository = fakeTicketRepository(seed);
+
+    // Act
+    renderScreen(<TicketListContainer />, { ticketRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no ticket", async () => {
+    // Arrange
+    const ticketRepository = fakeTicketRepository();
+
+    // Act
+    renderScreen(<TicketListContainer />, { ticketRepository });
+
+    // Assert
+    expect(await screen.findByText("No tickets yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the tickets cannot be listed", async () => {
+    // Arrange
+    const ticketRepository = {
+      ...fakeTicketRepository(),
+      list: () => Promise.reject(new TicketError("ticket.repository_error")),
+    };
+
+    // Act
+    renderScreen(<TicketListContainer />, { ticketRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("ticket.repository_error");
+  });
+});
+
+=== web/src/presentation/features/ticket/containers/ticket-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { TicketListView } from "../views/ticket-list-view";
+
+export function TicketListContainer() {
+  const { ticketRepository } = useDependencies();
+  const tickets = useAsync(() => ticketRepository.list(), [ticketRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Tickets</h1>
+        <Link href="/tickets/new" className="btn btn-primary">
+          New ticket
+        </Link>
+      </div>
+      {tickets.status === "loading" && <span className="loading loading-spinner" />}
+      {tickets.status === "error" && <ErrorAlert error={tickets.error} />}
+      {tickets.status === "ok" &&
+        (tickets.data.length === 0 ? (
+          <EmptyState message="No tickets yet." />
+        ) : (
+          <TicketListView tickets={tickets.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/ticket/views/ticket-detail-view.tsx ===
+import type { Ticket } from "../../../../domain/ticket/model";
+
+export function TicketDetailView({ ticket }: { ticket: Ticket }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">State</dt>
+      <dd>{ticket.state}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/ticket/views/ticket-form-view.tsx ===
+import { parseState, type Ticket, type TicketDraft } from "../../../../domain/ticket/model";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface TicketFormValues {
+  state: string;
+}
+
+/** The inputs for `ticket`, empty when there is none yet. */
+export function toTicketForm(ticket: Ticket | null): TicketFormValues {
+  if (ticket === null) {
+    return {
+      state: "",
+    };
+  }
+  return {
+    state: ticket.state,
+  };
+}
+
+export function toTicketDraft(values: TicketFormValues): TicketDraft {
+  return {
+    state: parseState(values.state),
+  };
+}
+
+export function TicketFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: TicketFormValues;
+  saving: boolean;
+  onChange: (values: TicketFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">State</span>
+        <select
+          className="select w-full"
+          required
+          value={values.state}
+          onChange={(event) => onChange({ ...values, state: event.target.value })}
+        >
+          <option value="">Choose…</option>
+          <option value="Open">Open</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/ticket/views/ticket-list-view.tsx ===
+import { Link } from "wouter";
+import type { Ticket } from "../../../../domain/ticket/model";
+
+export function TicketListView({ tickets }: { tickets: Ticket[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>State</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {tickets.map((ticket) => (
+            <tr key={ticket.id}>
+              <td>{ticket.state}</td>
+              <td className="text-right">
+                <Link href={`/tickets/${ticket.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/test-support/customer.ts ===
+import { CustomerError } from "../domain/customer/errors";
+import type { Customer, CustomerDraft } from "../domain/customer/model";
+import type { CustomerRepository } from "../domain/customer/repository";
+
+/** Valid customers for tests; pass `overrides` for the fields a test is about. */
+export const CustomerMother = {
+  draft(overrides: Partial<CustomerDraft> = {}): CustomerDraft {
+    return {
+      email: "example",
+      name: "example",
+      code: "example",
+      age: 42,
+      joined: "2026-01-01T10:00:00.000Z",
+      middle: "example",
+      labels: ["example"],
+      status: "Active",
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Customer> = {}): Customer {
+    return { id: crypto.randomUUID(), ...CustomerMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `CustomerRepository`. Override a method to make it fail. */
+export function fakeCustomerRepository(seed: Customer[] = []): CustomerRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new CustomerError("customer.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}
+
+=== web/src/test-support/product.ts ===
+import { ProductError } from "../domain/product/errors";
+import type { Product, ProductDraft } from "../domain/product/model";
+import type { ProductRepository } from "../domain/product/repository";
+
+/** Valid products for tests; pass `overrides` for the fields a test is about. */
+export const ProductMother = {
+  draft(overrides: Partial<ProductDraft> = {}): ProductDraft {
+    return {
+      title: "example",
+      sku: "example",
+      price: 42,
+      rating: 1.5,
+      active: true,
+      refId: crypto.randomUUID(),
+      publishedAt: "2026-01-01T10:00:00.000Z",
+      summary: "example",
+      views: 42,
+      expiresAt: "2026-01-01T10:00:00.000Z",
+      tags: ["example"],
+      scores: [42],
+      meta: { key: "value" },
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Product> = {}): Product {
+    return { id: crypto.randomUUID(), ...ProductMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `ProductRepository`. Override a method to make it fail. */
+export function fakeProductRepository(seed: Product[] = []): ProductRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new ProductError("product.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}
+
+=== web/src/test-support/ticket.ts ===
+import { TicketError } from "../domain/ticket/errors";
+import type { Ticket, TicketDraft } from "../domain/ticket/model";
+import type { TicketRepository } from "../domain/ticket/repository";
+
+/** Valid tickets for tests; pass `overrides` for the fields a test is about. */
+export const TicketMother = {
+  draft(overrides: Partial<TicketDraft> = {}): TicketDraft {
+    return {
+      state: "Open",
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Ticket> = {}): Ticket {
+    return { id: crypto.randomUUID(), ...TicketMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `TicketRepository`. Override a method to make it fail. */
+export function fakeTicketRepository(seed: Ticket[] = []): TicketRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new TicketError("ticket.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}
