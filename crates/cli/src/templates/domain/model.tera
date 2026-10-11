@@ -1,45 +1,96 @@
 use chrono::{DateTime, Utc};
-use uuid::Uuid;{{ extra_imports }}
+use uuid::Uuid;{% for import in imports %}
+use {{ import }};{% endfor %}
 
 use super::errors::{{ pascal }}Error;
 
 #[derive(Debug, Clone)]
 pub struct {{ pascal }}Props {
-{{ props_str }}
-}
+{% for f in fields %}    pub {{ f.name }}: {{ f.rust_type }},
+{% endfor %}}
 
 #[derive(Debug, Clone)]
 pub struct {{ pascal }} {
-{{ entity_str }}
-}
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+{% for f in fields %}    pub {{ f.name }}: {{ f.rust_type }},
+{% endfor %}}
 
 impl {{ pascal }} {
     pub fn new(props: {{ pascal }}Props) -> Result<Self, {{ pascal }}Error> {
-{{ validations_str }}        let now = chrono::Utc::now();
+{% for f in fields | filter(attribute="required_string", value=true) %}        if props.{{ f.name }}.trim().is_empty() {
+            return Err({{ pascal }}Error::ValidationError("{{ f.name }}_empty".into()));
+        }
+{% endfor %}        let now = chrono::Utc::now();
         Ok(Self {
             id: Uuid::new_v4(),
             created_at: now,
             updated_at: now,
             deleted: false,
             deleted_at: None,
-{{ new_assignments_str }}
-        })
+{% for f in fields %}            {{ f.name }}: props.{{ f.name }},
+{% endfor %}        })
     }
 
     pub fn from_repository(data: {{ pascal }}) -> Self {
         data
     }
 }
-
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% set enum_vos = fields | filter(attribute="is_enum_vo", value=true) %}
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn {{ valid_test_name }}() {
+    fn should_create_{{ snake }}_when_{% if fields | length == 1 and required | length == 1 and fields.0.name == "name" %}name_is_valid{% else %}fields_are_valid{% endif %}() {
         let result = {{ pascal }}::new({{ pascal }}Props {
-{{ valid_props_str }}
-        });{{ valid_assertion }}
+{% for f in fields %}            {{ f.name }}: {{ f.props_literal }},
+{% endfor %}        });{% if required | length > 0 %}
+        assert_eq!(result.unwrap().{{ required.0.name }}, "example");{% else %}
+        assert!(result.is_ok());{% endif %}
+    }{% if required or string_vos or enum_vos %}
+{% endif %}{% for sf in required %}
+
+    #[test]
+    fn should_reject_{{ snake }}_when_{{ sf.name }}_is_empty() {
+        let result = {{ pascal }}::new({{ pascal }}Props {
+{% for f in fields %}            {{ f.name }}: {% if f.name == sf.name %}"".into(){% else %}{{ f.props_literal }}{% endif %},
+{% endfor %}        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "{{ snake }}.validation_error.{{ sf.name }}_empty"
+        );
     }
-{{ validation_tests_str }}
+
+    #[test]
+    fn should_reject_{{ snake }}_when_{{ sf.name }}_is_only_whitespace() {
+        let result = {{ pascal }}::new({{ pascal }}Props {
+{% for f in fields %}            {{ f.name }}: {% if f.name == sf.name %}"   ".into(){% else %}{{ f.props_literal }}{% endif %},
+{% endfor %}        });
+        assert!(result.is_err());
+    }{% endfor %}{% for f in string_vos %}
+
+    #[test]
+    fn should_reject_{{ snake }}_when_{{ f.vo_snake }}_is_empty() {
+        let result = {{ f.vo }}::new("".to_string());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "{% if f.is_shared_vo %}shared.value_object.{{ f.vo_snake }}.invalid{% else %}{{ snake }}.invalid_{{ f.vo_snake }}{% endif %}"
+        );
+    }{% endfor %}{% for f in enum_vos %}
+
+    #[test]
+    fn should_reject_{{ snake }}_when_{{ f.vo_snake }}_is_invalid() {
+        let result = "InvalidVariant".parse::<{{ f.vo }}>();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "{% if f.is_shared_vo %}shared.value_object.{{ f.vo_snake }}.invalid{% else %}{{ snake }}.invalid_{{ f.vo_snake }}{% endif %}"
+        );
+    }{% endfor %}
 }

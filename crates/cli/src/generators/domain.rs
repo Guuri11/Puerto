@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
-    field_rust_type, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
+    FieldCtx, field_ctx, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
     literal_import, resolve_type, vo_import_path, vo_inner_type,
 };
 use crate::patchers::lib_rs::{
@@ -18,53 +18,11 @@ use crate::generators::effective_fields;
 
 /// Imports `domain/model.tera` writes itself, for the always-present system fields. Field-derived
 /// imports matching these must not be emitted again.
-const MODEL_TEMPLATE_IMPORTS: &[&str] = &["use chrono::{DateTime, Utc};", "use uuid::Uuid;"];
+const MODEL_TEMPLATE_IMPORTS: &[&str] = &["chrono::{DateTime, Utc}", "uuid::Uuid"];
 
 /// Imports `domain/use_case_update.tera` writes itself, for the always-present `id: Uuid` param.
 /// A `Uuid` *field* resolves to the same import — emitting it again is a duplicate import (E0252).
 const UPDATE_USE_CASE_TEMPLATE_IMPORTS: &[&str] = &["use uuid::Uuid;"];
-
-/// A single `EntityProps` field literal, e.g. `            tags: vec![],`.
-///
-/// **The one place that renders a Props field literal.** The four VO shapes (plain, `Option<VO>`,
-/// `Vec<VO>`, enum) must be handled in the same order everywhere: when the validation-test builders
-/// carried their own copy of this branching they omitted `Option`/`Vec`, emitting
-/// `Tag::new(vec![])` and `Mid::new(None)` — generated tests that did not compile.
-fn props_literal(f: &Field) -> String {
-    if is_option_vo(f) {
-        format!("            {}: None,", f.name)
-    } else if is_vec_vo(f) {
-        format!("            {}: vec![],", f.name)
-    } else if is_enum_vo(f) {
-        let vo = f.value_object.as_deref().unwrap();
-        let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
-        format!("            {}: {}::{},", f.name, vo, first_variant)
-    } else if is_value_object(f) {
-        let mapping = resolve_type(&f.field_type).unwrap();
-        let vo = f.value_object.as_deref().unwrap();
-        format!(
-            "            {}: {}::new({}).expect(\"valid {}\"),",
-            f.name, vo, mapping.default_expr, vo
-        )
-    } else {
-        let mapping = resolve_type(&f.field_type).unwrap();
-        format!("            {}: {},", f.name, mapping.default_expr)
-    }
-}
-
-/// Every field of an `EntityProps` literal, one line each.
-///
-/// `override_field` replaces a single field's value — how the validation tests inject `""` /
-/// `"   "` into the field under test while every other field keeps a valid default.
-fn props_literal_lines(eff: &[Field], override_field: Option<(&str, &str)>) -> String {
-    eff.iter()
-        .map(|f| match override_field {
-            Some((name, value)) if f.name == name => format!("            {}: {},", f.name, value),
-            _ => props_literal(f),
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
 
 pub fn generate_model(
     pascal: &str,
@@ -74,180 +32,38 @@ pub fn generate_model(
 ) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
 
-    let mut extra_imports: Vec<String> = vec![];
+    let mut imports: Vec<String> = vec![];
     for f in &eff {
-        if let Ok(mapping) = resolve_type(&f.field_type) {
-            if let Some(imp) = mapping.needs_import {
-                let stmt = format!("use {};", imp);
-                // `model.tera` already imports chrono and uuid for the system fields (`id`,
-                // `created_at`, …). A `DateTime<Utc>` or `Uuid` field would otherwise re-import
-                // them: E0252, the name is defined multiple times.
-                if MODEL_TEMPLATE_IMPORTS.contains(&stmt.as_str()) {
-                    continue;
-                }
-                if !extra_imports.contains(&stmt) {
-                    extra_imports.push(stmt);
-                }
+        if let Some(imp) = resolve_type(&f.field_type)
+            .ok()
+            .and_then(|m| m.needs_import)
+        {
+            // `model.tera` already imports chrono and uuid for the system fields (`id`,
+            // `created_at`, …). A `DateTime<Utc>` or `Uuid` field would otherwise re-import
+            // them: E0252, the name is defined multiple times.
+            if !MODEL_TEMPLATE_IMPORTS.contains(&imp) && !imports.iter().any(|i| i == imp) {
+                imports.push(imp.to_string());
             }
         }
     }
-    let vo_fields: Vec<&Field> = eff.iter().filter(|f| is_value_object(f)).collect();
-    for f in &vo_fields {
-        let stmt = if is_shared_vo(f, shared_vos) {
-            format!(
-                "use crate::domain::shared::value_objects::{};",
-                f.value_object.as_deref().unwrap()
-            )
+    for f in eff.iter().filter(|f| is_value_object(f)) {
+        let vo = f.value_object.as_deref().unwrap_or_default();
+        let import = if is_shared_vo(f, shared_vos) {
+            format!("crate::domain::shared::value_objects::{vo}")
         } else {
-            format!(
-                "use super::value_objects::{};",
-                f.value_object.as_deref().unwrap()
-            )
+            format!("super::value_objects::{vo}")
         };
-        if !extra_imports.contains(&stmt) {
-            extra_imports.push(stmt);
+        if !imports.contains(&import) {
+            imports.push(import);
         }
     }
-    let extra_imports_str = if extra_imports.is_empty() {
-        String::new()
-    } else {
-        format!("\n{}", extra_imports.join("\n"))
-    };
 
-    let props_str = eff
-        .iter()
-        .map(|f| format!("    pub {}: {},", f.name, field_rust_type(f)))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let mut entity_lines = vec![
-        "    pub id: Uuid,".to_string(),
-        "    pub created_at: DateTime<Utc>,".to_string(),
-        "    pub updated_at: DateTime<Utc>,".to_string(),
-        "    pub deleted: bool,".to_string(),
-        "    pub deleted_at: Option<DateTime<Utc>>,".to_string(),
-    ];
-    for f in &eff {
-        entity_lines.push(format!("    pub {}: {},", f.name, field_rust_type(f)));
-    }
-    let entity_str = entity_lines.join("\n");
-
-    let validations: Vec<String> = eff
-        .iter()
-        .filter(|f| f.field_type == "String" && !is_value_object(f))
-        .map(|f| {
-            format!(
-                "        if props.{}.trim().is_empty() {{\n            return Err({}Error::ValidationError(\"{}_empty\".into()));\n        }}",
-                f.name, pascal, f.name
-            )
-        })
-        .collect();
-    let validations_str = if validations.is_empty() {
-        String::new()
-    } else {
-        validations.join("\n") + "\n"
-    };
-
-    let new_assignments_str = eff
-        .iter()
-        .map(|f| format!("            {}: props.{},", f.name, f.name))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let valid_props_str = props_literal_lines(&eff, None);
-
-    let required_string_fields: Vec<&Field> = eff
-        .iter()
-        .filter(|f| f.field_type == "String" && !is_value_object(f))
-        .collect();
-
-    let valid_test_name = if eff.len() == 1
-        && eff[0].name == "name"
-        && eff[0].field_type == "String"
-        && !is_value_object(&eff[0])
-    {
-        format!("should_create_{snake}_when_name_is_valid")
-    } else {
-        format!("should_create_{snake}_when_fields_are_valid")
-    };
-
-    let valid_assertion = if let Some(f) = eff
-        .iter()
-        .find(|f| f.field_type == "String" && !is_value_object(f))
-    {
-        format!(
-            "\n        assert_eq!(result.unwrap().{}, \"example\");",
-            f.name
-        )
-    } else if !eff.is_empty() {
-        "\n        assert!(result.is_ok());".to_string()
-    } else {
-        String::new()
-    };
-
-    let mut validation_tests: Vec<String> = vec![];
-    for sf in &required_string_fields {
-        let field_name = sf.name.clone();
-        validation_tests.push(format!(
-            "    #[test]\n    fn should_reject_{snake}_when_{field}_is_empty() {{\n        let result = {pascal}::new({pascal}Props {{\n{props}\n        }});\n        assert!(result.is_err());\n        assert_eq!(\n            result.unwrap_err().to_string(),\n            \"{snake}.validation_error.{field}_empty\"\n        );\n    }}",
-            field = field_name,
-            props = props_literal_lines(&eff, Some((&field_name, "\"\".into()"))),
-        ));
-
-        validation_tests.push(format!(
-            "    #[test]\n    fn should_reject_{snake}_when_{field}_is_only_whitespace() {{\n        let result = {pascal}::new({pascal}Props {{\n{props}\n        }});\n        assert!(result.is_err());\n    }}",
-            field = field_name,
-            props = props_literal_lines(&eff, Some((&field_name, "\"   \".into()"))),
-        ));
-    }
-
-    for vf in eff
-        .iter()
-        .filter(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
-    {
-        let vo = vf.value_object.as_deref().unwrap();
-        let snake_vo = pascal_to_snake(vo);
-        let error_str = if is_shared_vo(vf, shared_vos) {
-            format!("shared.value_object.{snake_vo}.invalid")
-        } else {
-            format!("{snake}.invalid_{snake_vo}")
-        };
-        validation_tests.push(format!(
-            "    #[test]\n    fn should_reject_{snake}_when_{snake_vo}_is_empty() {{\n        let result = {vo}::new(\"\".to_string());\n        assert!(result.is_err());\n        assert_eq!(\n            result.unwrap_err().to_string(),\n            \"{error_str}\"\n        );\n    }}"
-        ));
-    }
-
-    for vf in eff.iter().filter(|f| is_enum_vo(f)) {
-        let vo = vf.value_object.as_deref().unwrap();
-        let snake_vo = pascal_to_snake(vo);
-        let error_str = if is_shared_vo(vf, shared_vos) {
-            format!("shared.value_object.{snake_vo}.invalid")
-        } else {
-            format!("{snake}.invalid_{snake_vo}")
-        };
-        validation_tests.push(format!(
-            "    #[test]\n    fn should_reject_{snake}_when_{snake_vo}_is_invalid() {{\n        let result = \"InvalidVariant\".parse::<{vo}>();\n        assert!(result.is_err());\n        assert_eq!(\n            result.unwrap_err().to_string(),\n            \"{error_str}\"\n        );\n    }}"
-        ));
-    }
-
-    let validation_tests_str = if validation_tests.is_empty() {
-        String::new()
-    } else {
-        format!("\n\n{}", validation_tests.join("\n\n"))
-    };
-
+    let field_ctxs: Vec<FieldCtx> = eff.iter().map(|f| field_ctx(f, shared_vos)).collect();
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
-    ctx.insert("extra_imports", &extra_imports_str);
-    ctx.insert("props_str", &props_str);
-    ctx.insert("entity_str", &entity_str);
-    ctx.insert("validations_str", &validations_str);
-    ctx.insert("new_assignments_str", &new_assignments_str);
-    ctx.insert("valid_test_name", &valid_test_name);
-    ctx.insert("valid_props_str", &valid_props_str);
-    ctx.insert("valid_assertion", &valid_assertion);
-    ctx.insert("validation_tests_str", &validation_tests_str);
+    ctx.insert("imports", &imports);
+    ctx.insert("fields", &field_ctxs);
     render("domain/model.tera", &ctx)
 }
 

@@ -254,6 +254,71 @@ pub fn field_rust_type(field: &Field) -> String {
     }
 }
 
+/// What a template needs to know about one field. The `.tera` files iterate over these and own the
+/// shape of the generated code; the decisions (which VO shape, which literal) are made here once.
+#[derive(Debug, serde::Serialize)]
+pub struct FieldCtx {
+    pub name: String,
+    /// The type in domain structs: the VO name, `Option<Vo>`, `Vec<Vo>`, or the primitive.
+    pub rust_type: String,
+    pub is_vo: bool,
+    pub is_option_vo: bool,
+    pub is_vec_vo: bool,
+    pub is_enum_vo: bool,
+    pub is_shared_vo: bool,
+    /// The VO name (`""` for a primitive field) and its snake_case form.
+    pub vo: String,
+    pub vo_snake: String,
+    /// A primitive `String`: `new()` rejects it empty.
+    pub required_string: bool,
+    /// A plain `String` VO (not enum, `Option` or `Vec`): `Vo::new("")` must fail.
+    pub string_vo: bool,
+    /// A valid default value, see [`props_literal`].
+    pub props_literal: String,
+}
+
+pub fn field_ctx(field: &Field, shared_vos: &[ValueObjectDefinition]) -> FieldCtx {
+    let vo = field.value_object.clone().unwrap_or_default();
+    FieldCtx {
+        name: field.name.clone(),
+        rust_type: field_rust_type(field),
+        is_vo: is_value_object(field),
+        is_option_vo: is_option_vo(field),
+        is_vec_vo: is_vec_vo(field),
+        is_enum_vo: is_enum_vo(field),
+        is_shared_vo: is_shared_vo(field, shared_vos),
+        vo_snake: crate::generators::naming::pascal_to_snake(&vo),
+        vo,
+        required_string: field.field_type == "String" && !is_value_object(field),
+        string_vo: is_value_object(field) && field.field_type == "String" && !is_enum_vo(field),
+        props_literal: props_literal(field),
+    }
+}
+
+/// A valid value for the field in a Props literal: `None` / `vec![]` for `Option` / `Vec` VOs, the
+/// first variant of an enum VO, `Vo::new(default)` for a plain VO, the registry default otherwise.
+///
+/// **The one place that decides a Props field literal.** The four VO shapes must be handled in the
+/// same order everywhere: when the validation-test builders carried their own copy of this
+/// branching they omitted `Option`/`Vec`, emitting `Tag::new(vec![])` and `Mid::new(None)` —
+/// generated tests that did not compile.
+pub fn props_literal(field: &Field) -> String {
+    let default = || resolve_type(&field.field_type).map_or("", |m| m.default_expr);
+    let vo = field.value_object.as_deref().unwrap_or_default();
+    if is_option_vo(field) {
+        "None".to_string()
+    } else if is_vec_vo(field) {
+        "vec![]".to_string()
+    } else if is_enum_vo(field) {
+        let first = field.enum_variants.as_deref().and_then(<[String]>::first);
+        format!("{vo}::{}", first.map_or("", String::as_str))
+    } else if is_value_object(field) {
+        format!("{vo}::new({}).expect(\"valid {vo}\")", default())
+    } else {
+        default().to_string()
+    }
+}
+
 /// Whether reading a primitive field out of a borrowed struct needs `.clone()` — every registry
 /// type that is not `Copy`.
 pub fn field_needs_clone(field_type: &str) -> bool {
@@ -629,5 +694,59 @@ mod tests {
             "entity.x.as_str().to_string()"
         );
         assert_eq!(field_value_accessor(&field("i64", None), "body"), "body.x");
+    }
+
+    #[test]
+    fn should_describe_a_field_to_the_templates() {
+        let shared = [ValueObjectDefinition {
+            name: "Email".into(),
+            inner_type: "String".into(),
+        }];
+
+        let plain = field_ctx(&field("String", None), &shared);
+        assert!(plain.required_string && !plain.is_vo && !plain.string_vo);
+        assert_eq!(
+            (plain.rust_type.as_str(), plain.vo.as_str()),
+            ("String", "")
+        );
+
+        let name = field_ctx(&field("String", Some("FullName")), &shared);
+        assert!(name.is_vo && name.string_vo && !name.required_string && !name.is_shared_vo);
+        assert_eq!(
+            (name.vo.as_str(), name.vo_snake.as_str()),
+            ("FullName", "full_name")
+        );
+
+        let email = field_ctx(&field("String", Some("Email")), &shared);
+        assert!(email.is_shared_vo && email.string_vo);
+
+        let status = field_ctx(&enum_field(), &shared);
+        assert!(status.is_enum_vo && status.is_vo && !status.string_vo);
+
+        let mid = field_ctx(&field("Option<String>", Some("Mid")), &shared);
+        assert!(mid.is_option_vo && !mid.is_vec_vo && !mid.string_vo);
+        assert_eq!(mid.rust_type, "Option<Mid>");
+
+        let tags = field_ctx(&field("Vec<String>", Some("Tag")), &shared);
+        assert!(tags.is_vec_vo && !tags.is_option_vo && !tags.string_vo);
+
+        let count = field_ctx(&field("i64", None), &shared);
+        assert!(!count.required_string && !count.is_vo);
+    }
+
+    #[test]
+    fn should_write_a_valid_default_literal_for_every_field_shape() {
+        assert_eq!(
+            props_literal(&field("String", None)),
+            "\"example\".to_string()"
+        );
+        assert_eq!(props_literal(&field("i64", None)), "42");
+        assert_eq!(props_literal(&field("Option<String>", Some("Mid"))), "None");
+        assert_eq!(props_literal(&field("Vec<String>", Some("Tag"))), "vec![]");
+        assert_eq!(props_literal(&enum_field()), "Status::Active");
+        assert_eq!(
+            props_literal(&field("i64", Some("Age"))),
+            "Age::new(42).expect(\"valid Age\")"
+        );
     }
 }
