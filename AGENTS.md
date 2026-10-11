@@ -54,7 +54,7 @@ use_cases = ["get_greeting"]   # snake_case action names
 
 [[entity]]
 name = "Product"
-use_cases = ["create_product", "list_product"]
+use_cases = ["create_product", "list_products"]
 
 [[entity.fields]]
 name = "name"                  # snake_case field name

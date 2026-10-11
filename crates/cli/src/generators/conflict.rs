@@ -9,6 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::generators::naming::crud_use_case;
+
 /// What to do when generation would overwrite existing files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverwritePolicy {
@@ -30,12 +32,18 @@ pub fn entity_files(snake: &str, db: bool) -> Vec<PathBuf> {
         format!("business/src/domain/{snake}/value_objects.rs"),
         format!("business/src/domain/{snake}/use_cases/create_{snake}.rs"),
         format!("business/src/domain/{snake}/use_cases/get_{snake}.rs"),
-        format!("business/src/domain/{snake}/use_cases/list_{snake}.rs"),
+        format!(
+            "business/src/domain/{snake}/use_cases/{}.rs",
+            crud_use_case("list", snake)
+        ),
         format!("business/src/domain/{snake}/use_cases/update_{snake}.rs"),
         format!("business/src/domain/{snake}/use_cases/delete_{snake}.rs"),
         format!("business/src/application/{snake}/create_{snake}.rs"),
         format!("business/src/application/{snake}/get_{snake}.rs"),
-        format!("business/src/application/{snake}/list_{snake}.rs"),
+        format!(
+            "business/src/application/{snake}/{}.rs",
+            crud_use_case("list", snake)
+        ),
         format!("business/src/application/{snake}/update_{snake}.rs"),
         format!("business/src/application/{snake}/delete_{snake}.rs"),
         format!("business/src/tests/mothers/{snake}_mother.rs"),

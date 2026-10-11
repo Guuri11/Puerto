@@ -579,7 +579,7 @@ mod tests {
     }
 }
 
-=== business/src/application/customer/list_customer.rs ===
+=== business/src/application/customer/list_customers.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -588,18 +588,18 @@ use crate::domain::customer::{
     errors::CustomerError,
     model::Customer,
     repository::CustomerRepositoryTrait,
-    use_cases::list_customer::{ListCustomerParams, ListCustomerUseCaseTrait},
+    use_cases::list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
 };
 
-pub struct ListCustomerUseCaseImpl {
+pub struct ListCustomersUseCaseImpl {
     pub repository: Arc<dyn CustomerRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListCustomerUseCaseTrait for ListCustomerUseCaseImpl {
-    async fn execute(&self, _params: ListCustomerParams) -> Result<Vec<Customer>, CustomerError> {
-        tracing::info!("list_customer: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_customer: repository failed"))
+impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
+    async fn execute(&self, _params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError> {
+        tracing::info!("list_customers: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
     }
 }
 
@@ -647,11 +647,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListCustomerUseCaseImpl {
+        let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCustomerParams).await;
+        let result = use_case.execute(ListCustomersParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -661,11 +661,11 @@ mod tests {
     async fn should_return_empty_list_when_no_customers_exist() {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListCustomerUseCaseImpl {
+        let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCustomerParams).await;
+        let result = use_case.execute(ListCustomersParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -1345,7 +1345,7 @@ mod tests {
     }
 }
 
-=== business/src/application/product/list_product.rs ===
+=== business/src/application/product/list_products.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -1354,18 +1354,18 @@ use crate::domain::product::{
     errors::ProductError,
     model::Product,
     repository::ProductRepositoryTrait,
-    use_cases::list_product::{ListProductParams, ListProductUseCaseTrait},
+    use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
 };
 
-pub struct ListProductUseCaseImpl {
+pub struct ListProductsUseCaseImpl {
     pub repository: Arc<dyn ProductRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListProductUseCaseTrait for ListProductUseCaseImpl {
-    async fn execute(&self, _params: ListProductParams) -> Result<Vec<Product>, ProductError> {
-        tracing::info!("list_product: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_product: repository failed"))
+impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
+    async fn execute(&self, _params: ListProductsParams) -> Result<Vec<Product>, ProductError> {
+        tracing::info!("list_products: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
     }
 }
 
@@ -1419,11 +1419,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListProductUseCaseImpl {
+        let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductParams).await;
+        let result = use_case.execute(ListProductsParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -1433,11 +1433,11 @@ mod tests {
     async fn should_return_empty_list_when_no_products_exist() {
         let mut mock_repo = MockProductRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListProductUseCaseImpl {
+        let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductParams).await;
+        let result = use_case.execute(ListProductsParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -1958,7 +1958,7 @@ mod tests {
     }
 }
 
-=== business/src/application/ticket/list_ticket.rs ===
+=== business/src/application/ticket/list_tickets.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -1967,18 +1967,18 @@ use crate::domain::ticket::{
     errors::TicketError,
     model::Ticket,
     repository::TicketRepositoryTrait,
-    use_cases::list_ticket::{ListTicketParams, ListTicketUseCaseTrait},
+    use_cases::list_tickets::{ListTicketsParams, ListTicketsUseCaseTrait},
 };
 
-pub struct ListTicketUseCaseImpl {
+pub struct ListTicketsUseCaseImpl {
     pub repository: Arc<dyn TicketRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListTicketUseCaseTrait for ListTicketUseCaseImpl {
-    async fn execute(&self, _params: ListTicketParams) -> Result<Vec<Ticket>, TicketError> {
-        tracing::info!("list_ticket: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_ticket: repository failed"))
+impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
+    async fn execute(&self, _params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError> {
+        tracing::info!("list_tickets: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_tickets: repository failed"))
     }
 }
 
@@ -2006,11 +2006,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListTicketUseCaseImpl {
+        let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListTicketParams).await;
+        let result = use_case.execute(ListTicketsParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -2020,11 +2020,11 @@ mod tests {
     async fn should_return_empty_list_when_no_tickets_exist() {
         let mut mock_repo = MockTicketRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListTicketUseCaseImpl {
+        let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListTicketParams).await;
+        let result = use_case.execute(ListTicketsParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -2429,17 +2429,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/customer/use_cases/list_customer.rs ===
+=== business/src/domain/customer/use_cases/list_customers.rs ===
 use async_trait::async_trait;
 
 use crate::domain::customer::{errors::CustomerError, model::Customer};
 
 #[derive(Debug)]
-pub struct ListCustomerParams;
+pub struct ListCustomersParams;
 
 #[async_trait]
-pub trait ListCustomerUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListCustomerParams) -> Result<Vec<Customer>, CustomerError>;
+pub trait ListCustomersUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2449,11 +2449,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListCustomerUseCase {}
+        pub ListCustomersUseCase {}
 
         #[async_trait]
-        impl ListCustomerUseCaseTrait for ListCustomerUseCase {
-            async fn execute(&self, params: ListCustomerParams) -> Result<Vec<Customer>, CustomerError>;
+        impl ListCustomersUseCaseTrait for ListCustomersUseCase {
+            async fn execute(&self, params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError>;
         }
     }
 }
@@ -3018,17 +3018,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/product/use_cases/list_product.rs ===
+=== business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
 
 use crate::domain::product::{errors::ProductError, model::Product};
 
 #[derive(Debug)]
-pub struct ListProductParams;
+pub struct ListProductsParams;
 
 #[async_trait]
-pub trait ListProductUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+pub trait ListProductsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3038,11 +3038,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListProductUseCase {}
+        pub ListProductsUseCase {}
 
         #[async_trait]
-        impl ListProductUseCaseTrait for ListProductUseCase {
-            async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+        impl ListProductsUseCaseTrait for ListProductsUseCase {
+            async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
         }
     }
 }
@@ -3339,17 +3339,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/ticket/use_cases/list_ticket.rs ===
+=== business/src/domain/ticket/use_cases/list_tickets.rs ===
 use async_trait::async_trait;
 
 use crate::domain::ticket::{errors::TicketError, model::Ticket};
 
 #[derive(Debug)]
-pub struct ListTicketParams;
+pub struct ListTicketsParams;
 
 #[async_trait]
-pub trait ListTicketUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListTicketParams) -> Result<Vec<Ticket>, TicketError>;
+pub trait ListTicketsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3359,11 +3359,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListTicketUseCase {}
+        pub ListTicketsUseCase {}
 
         #[async_trait]
-        impl ListTicketUseCaseTrait for ListTicketUseCase {
-            async fn execute(&self, params: ListTicketParams) -> Result<Vec<Ticket>, TicketError>;
+        impl ListTicketsUseCaseTrait for ListTicketsUseCase {
+            async fn execute(&self, params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError>;
         }
     }
 }
@@ -3449,7 +3449,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_product;
             pub mod get_product;
-            pub mod list_product;
+            pub mod list_products;
             pub mod update_product;
             pub mod delete_product;
         
@@ -3466,7 +3466,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_customer;
             pub mod get_customer;
-            pub mod list_customer;
+            pub mod list_customers;
             pub mod update_customer;
             pub mod delete_customer;
         }
@@ -3481,7 +3481,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_ticket;
             pub mod get_ticket;
-            pub mod list_ticket;
+            pub mod list_tickets;
             pub mod update_ticket;
             pub mod delete_ticket;
         }
@@ -3497,7 +3497,7 @@ pub mod application {
     pub mod product {
         pub mod create_product;
         pub mod get_product;
-        pub mod list_product;
+        pub mod list_products;
         pub mod update_product;
         pub mod delete_product;
     
@@ -3507,7 +3507,7 @@ pub mod application {
     pub mod customer {
         pub mod create_customer;
         pub mod get_customer;
-        pub mod list_customer;
+        pub mod list_customers;
         pub mod update_customer;
         pub mod delete_customer;
     }
@@ -3515,7 +3515,7 @@ pub mod application {
     pub mod ticket {
         pub mod create_ticket;
         pub mod get_ticket;
-        pub mod list_ticket;
+        pub mod list_tickets;
         pub mod update_ticket;
         pub mod delete_ticket;
     }
@@ -5065,7 +5065,7 @@ impl GetCustomerResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListCustomerResponse {
+pub enum ListCustomersResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<CustomerDto>>),
     #[oai(status = 401)]
@@ -5076,7 +5076,7 @@ pub enum ListCustomerResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListCustomerResponse {
+impl ListCustomersResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -5149,7 +5149,7 @@ use business::domain::customer::use_cases::{
     create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
     delete_customer::{DeleteCustomerParams, DeleteCustomerUseCaseTrait},
     get_customer::{GetCustomerParams, GetCustomerUseCaseTrait},
-    list_customer::{ListCustomerParams, ListCustomerUseCaseTrait},
+    list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
     update_customer::{UpdateCustomerParams, UpdateCustomerUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -5159,7 +5159,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::customer::dto::{CreateCustomerRequest, UpdateCustomerRequest, CustomerDto};
 use crate::api::customer::responses::{
-    CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomerResponse,
+    CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomersResponse,
     UpdateCustomerResponse,
 };
 
@@ -5167,7 +5167,7 @@ use crate::api::customer::responses::{
 pub struct CustomerApi {
     pub create_customer: Arc<dyn CreateCustomerUseCaseTrait>,
     pub get_customer: Arc<dyn GetCustomerUseCaseTrait>,
-    pub list_customer: Arc<dyn ListCustomerUseCaseTrait>,
+    pub list_customers: Arc<dyn ListCustomersUseCaseTrait>,
     pub update_customer: Arc<dyn UpdateCustomerUseCaseTrait>,
     pub delete_customer: Arc<dyn DeleteCustomerUseCaseTrait>,
 }
@@ -5219,15 +5219,15 @@ impl CustomerApi {
 
     /// List all Customers
     #[oai(path = "/customers", method = "get", tag = "ApiTags::Customer")]
-    async fn list(&self) -> ListCustomerResponse {
-        match self.list_customer.execute(ListCustomerParams).await {
+    async fn list(&self) -> ListCustomersResponse {
+        match self.list_customers.execute(ListCustomersParams).await {
             Ok(entities) => {
-                ListCustomerResponse::Ok(Json(entities.iter().map(CustomerDto::from_domain).collect()))
+                ListCustomersResponse::Ok(Json(entities.iter().map(CustomerDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_customer failed");
-                ListCustomerResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_customers failed");
+                ListCustomersResponse::from_status(status, error)
             }
         }
     }
@@ -5282,7 +5282,7 @@ mod tests {
     use business::domain::customer::errors::CustomerError;
     use business::domain::customer::use_cases::{
         create_customer::mocks::MockCreateCustomerUseCase, delete_customer::mocks::MockDeleteCustomerUseCase,
-        get_customer::mocks::MockGetCustomerUseCase, list_customer::mocks::MockListCustomerUseCase,
+        get_customer::mocks::MockGetCustomerUseCase, list_customers::mocks::MockListCustomersUseCase,
         update_customer::mocks::MockUpdateCustomerUseCase,
     };
     use business::tests::mothers::customer_mother::CustomerMother;
@@ -5298,7 +5298,7 @@ mod tests {
     struct Mocks {
         create: MockCreateCustomerUseCase,
         get: MockGetCustomerUseCase,
-        list: MockListCustomerUseCase,
+        list: MockListCustomersUseCase,
         update: MockUpdateCustomerUseCase,
         delete: MockDeleteCustomerUseCase,
     }
@@ -5308,7 +5308,7 @@ mod tests {
             let api = CustomerApi {
                 create_customer: Arc::new(self.create),
                 get_customer: Arc::new(self.get),
-                list_customer: Arc::new(self.list),
+                list_customers: Arc::new(self.list),
                 update_customer: Arc::new(self.update),
                 delete_customer: Arc::new(self.delete),
             };
@@ -5732,7 +5732,7 @@ impl GetProductResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListProductResponse {
+pub enum ListProductsResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<ProductDto>>),
     #[oai(status = 401)]
@@ -5743,7 +5743,7 @@ pub enum ListProductResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListProductResponse {
+impl ListProductsResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -5817,7 +5817,7 @@ use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
     delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
     get_product::{GetProductParams, GetProductUseCaseTrait},
-    list_product::{ListProductParams, ListProductUseCaseTrait},
+    list_products::{ListProductsParams, ListProductsUseCaseTrait},
     update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -5827,7 +5827,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::product::dto::{CreateProductRequest, UpdateProductRequest, ProductDto};
 use crate::api::product::responses::{
-    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductResponse,
+    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductsResponse,
     UpdateProductResponse,
 };
 
@@ -5835,7 +5835,7 @@ use crate::api::product::responses::{
 pub struct ProductApi {
     pub create_product: Arc<dyn CreateProductUseCaseTrait>,
     pub get_product: Arc<dyn GetProductUseCaseTrait>,
-    pub list_product: Arc<dyn ListProductUseCaseTrait>,
+    pub list_products: Arc<dyn ListProductsUseCaseTrait>,
     pub update_product: Arc<dyn UpdateProductUseCaseTrait>,
     pub delete_product: Arc<dyn DeleteProductUseCaseTrait>,
     /// Wired by bootstrap.rs. Call it from an endpoint in the `#[OpenApi]` impl below.
@@ -5895,15 +5895,15 @@ impl ProductApi {
 
     /// List all Products
     #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
-    async fn list(&self) -> ListProductResponse {
-        match self.list_product.execute(ListProductParams).await {
+    async fn list(&self) -> ListProductsResponse {
+        match self.list_products.execute(ListProductsParams).await {
             Ok(entities) => {
-                ListProductResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
+                ListProductsResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_product failed");
-                ListProductResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_products failed");
+                ListProductsResponse::from_status(status, error)
             }
         }
     }
@@ -5963,7 +5963,7 @@ mod tests {
     use business::domain::product::errors::ProductError;
     use business::domain::product::use_cases::{
         create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
-        get_product::mocks::MockGetProductUseCase, list_product::mocks::MockListProductUseCase,
+        get_product::mocks::MockGetProductUseCase, list_products::mocks::MockListProductsUseCase,
         update_product::mocks::MockUpdateProductUseCase,
     };
     use business::tests::mothers::product_mother::ProductMother;
@@ -5980,7 +5980,7 @@ mod tests {
     struct Mocks {
         create: MockCreateProductUseCase,
         get: MockGetProductUseCase,
-        list: MockListProductUseCase,
+        list: MockListProductsUseCase,
         update: MockUpdateProductUseCase,
         delete: MockDeleteProductUseCase,
     }
@@ -5990,7 +5990,7 @@ mod tests {
             let api = ProductApi {
                 create_product: Arc::new(self.create),
                 get_product: Arc::new(self.get),
-                list_product: Arc::new(self.list),
+                list_products: Arc::new(self.list),
                 update_product: Arc::new(self.update),
                 delete_product: Arc::new(self.delete),
                 archive_product: Arc::new(
@@ -6400,7 +6400,7 @@ impl GetTicketResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListTicketResponse {
+pub enum ListTicketsResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<TicketDto>>),
     #[oai(status = 401)]
@@ -6411,7 +6411,7 @@ pub enum ListTicketResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListTicketResponse {
+impl ListTicketsResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -6484,7 +6484,7 @@ use business::domain::ticket::use_cases::{
     create_ticket::{CreateTicketParams, CreateTicketUseCaseTrait},
     delete_ticket::{DeleteTicketParams, DeleteTicketUseCaseTrait},
     get_ticket::{GetTicketParams, GetTicketUseCaseTrait},
-    list_ticket::{ListTicketParams, ListTicketUseCaseTrait},
+    list_tickets::{ListTicketsParams, ListTicketsUseCaseTrait},
     update_ticket::{UpdateTicketParams, UpdateTicketUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -6494,7 +6494,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::ticket::dto::{CreateTicketRequest, UpdateTicketRequest, TicketDto};
 use crate::api::ticket::responses::{
-    CreateTicketResponse, DeleteTicketResponse, GetTicketResponse, ListTicketResponse,
+    CreateTicketResponse, DeleteTicketResponse, GetTicketResponse, ListTicketsResponse,
     UpdateTicketResponse,
 };
 
@@ -6502,7 +6502,7 @@ use crate::api::ticket::responses::{
 pub struct TicketApi {
     pub create_ticket: Arc<dyn CreateTicketUseCaseTrait>,
     pub get_ticket: Arc<dyn GetTicketUseCaseTrait>,
-    pub list_ticket: Arc<dyn ListTicketUseCaseTrait>,
+    pub list_tickets: Arc<dyn ListTicketsUseCaseTrait>,
     pub update_ticket: Arc<dyn UpdateTicketUseCaseTrait>,
     pub delete_ticket: Arc<dyn DeleteTicketUseCaseTrait>,
 }
@@ -6547,15 +6547,15 @@ impl TicketApi {
 
     /// List all Tickets
     #[oai(path = "/tickets", method = "get", tag = "ApiTags::Ticket")]
-    async fn list(&self) -> ListTicketResponse {
-        match self.list_ticket.execute(ListTicketParams).await {
+    async fn list(&self) -> ListTicketsResponse {
+        match self.list_tickets.execute(ListTicketsParams).await {
             Ok(entities) => {
-                ListTicketResponse::Ok(Json(entities.iter().map(TicketDto::from_domain).collect()))
+                ListTicketsResponse::Ok(Json(entities.iter().map(TicketDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_ticket failed");
-                ListTicketResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_tickets failed");
+                ListTicketsResponse::from_status(status, error)
             }
         }
     }
@@ -6603,7 +6603,7 @@ mod tests {
     use business::domain::ticket::errors::TicketError;
     use business::domain::ticket::use_cases::{
         create_ticket::mocks::MockCreateTicketUseCase, delete_ticket::mocks::MockDeleteTicketUseCase,
-        get_ticket::mocks::MockGetTicketUseCase, list_ticket::mocks::MockListTicketUseCase,
+        get_ticket::mocks::MockGetTicketUseCase, list_tickets::mocks::MockListTicketsUseCase,
         update_ticket::mocks::MockUpdateTicketUseCase,
     };
     use business::tests::mothers::ticket_mother::TicketMother;
@@ -6618,7 +6618,7 @@ mod tests {
     struct Mocks {
         create: MockCreateTicketUseCase,
         get: MockGetTicketUseCase,
-        list: MockListTicketUseCase,
+        list: MockListTicketsUseCase,
         update: MockUpdateTicketUseCase,
         delete: MockDeleteTicketUseCase,
     }
@@ -6628,7 +6628,7 @@ mod tests {
             let api = TicketApi {
                 create_ticket: Arc::new(self.create),
                 get_ticket: Arc::new(self.get),
-                list_ticket: Arc::new(self.list),
+                list_tickets: Arc::new(self.list),
                 update_ticket: Arc::new(self.update),
                 delete_ticket: Arc::new(self.delete),
             };
@@ -6814,18 +6814,18 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::product::create_product::CreateProductUseCaseImpl;
 use business::application::product::get_product::GetProductUseCaseImpl;
-use business::application::product::list_product::ListProductUseCaseImpl;
+use business::application::product::list_products::ListProductsUseCaseImpl;
 use business::application::product::update_product::UpdateProductUseCaseImpl;
 use business::application::product::delete_product::DeleteProductUseCaseImpl;
 use business::application::product::archive_product::ArchiveProductUseCaseImpl;
 use business::application::customer::create_customer::CreateCustomerUseCaseImpl;
 use business::application::customer::get_customer::GetCustomerUseCaseImpl;
-use business::application::customer::list_customer::ListCustomerUseCaseImpl;
+use business::application::customer::list_customers::ListCustomersUseCaseImpl;
 use business::application::customer::update_customer::UpdateCustomerUseCaseImpl;
 use business::application::customer::delete_customer::DeleteCustomerUseCaseImpl;
 use business::application::ticket::create_ticket::CreateTicketUseCaseImpl;
 use business::application::ticket::get_ticket::GetTicketUseCaseImpl;
-use business::application::ticket::list_ticket::ListTicketUseCaseImpl;
+use business::application::ticket::list_tickets::ListTicketsUseCaseImpl;
 use business::application::ticket::update_ticket::UpdateTicketUseCaseImpl;
 use business::application::ticket::delete_ticket::DeleteTicketUseCaseImpl;
 
@@ -6861,27 +6861,27 @@ pub async fn build_app() -> impl poem::Endpoint {
     let product_repo: Arc<dyn ProductRepositoryTrait> = Arc::new(PgProductRepository::new(pool.clone()));
     let create_product = Arc::new(CreateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
     let get_product = Arc::new(GetProductUseCaseImpl { repository: Arc::clone(&product_repo) });
-    let list_product = Arc::new(ListProductUseCaseImpl { repository: Arc::clone(&product_repo) });
+    let list_products = Arc::new(ListProductsUseCaseImpl { repository: Arc::clone(&product_repo) });
     let update_product = Arc::new(UpdateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
     let delete_product = Arc::new(DeleteProductUseCaseImpl { repository: Arc::clone(&product_repo) });
     let archive_product = Arc::new(ArchiveProductUseCaseImpl { repository: product_repo });
-    let product_api = ProductApi { create_product, get_product, list_product, update_product, delete_product, archive_product };
+    let product_api = ProductApi { create_product, get_product, list_products, update_product, delete_product, archive_product };
 
     let customer_repo: Arc<dyn CustomerRepositoryTrait> = Arc::new(PgCustomerRepository::new(pool.clone()));
     let create_customer = Arc::new(CreateCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
     let get_customer = Arc::new(GetCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
-    let list_customer = Arc::new(ListCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
+    let list_customers = Arc::new(ListCustomersUseCaseImpl { repository: Arc::clone(&customer_repo) });
     let update_customer = Arc::new(UpdateCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
     let delete_customer = Arc::new(DeleteCustomerUseCaseImpl { repository: customer_repo });
-    let customer_api = CustomerApi { create_customer, get_customer, list_customer, update_customer, delete_customer };
+    let customer_api = CustomerApi { create_customer, get_customer, list_customers, update_customer, delete_customer };
 
     let ticket_repo: Arc<dyn TicketRepositoryTrait> = Arc::new(PgTicketRepository::new(pool.clone()));
     let create_ticket = Arc::new(CreateTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
     let get_ticket = Arc::new(GetTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
-    let list_ticket = Arc::new(ListTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
+    let list_tickets = Arc::new(ListTicketsUseCaseImpl { repository: Arc::clone(&ticket_repo) });
     let update_ticket = Arc::new(UpdateTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
     let delete_ticket = Arc::new(DeleteTicketUseCaseImpl { repository: ticket_repo });
-    let ticket_api = TicketApi { create_ticket, get_ticket, list_ticket, update_ticket, delete_ticket };
+    let ticket_api = TicketApi { create_ticket, get_ticket, list_tickets, update_ticket, delete_ticket };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -6928,7 +6928,7 @@ name = "Product"
 use_cases = [
     "create_product",
     "get_product",
-    "list_product",
+    "list_products",
     "update_product",
     "delete_product",
     "archive_product",
@@ -6994,7 +6994,7 @@ name = "Customer"
 use_cases = [
     "create_customer",
     "get_customer",
-    "list_customer",
+    "list_customers",
     "update_customer",
     "delete_customer",
 ]
@@ -7051,7 +7051,7 @@ name = "Ticket"
 use_cases = [
     "create_ticket",
     "get_ticket",
-    "list_ticket",
+    "list_tickets",
     "update_ticket",
     "delete_ticket",
 ]

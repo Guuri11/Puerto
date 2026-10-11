@@ -429,7 +429,7 @@ mod tests {
     }
 }
 
-=== business/src/application/account/list_account.rs ===
+=== business/src/application/account/list_accounts.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -438,18 +438,18 @@ use crate::domain::account::{
     errors::AccountError,
     model::Account,
     repository::AccountRepositoryTrait,
-    use_cases::list_account::{ListAccountParams, ListAccountUseCaseTrait},
+    use_cases::list_accounts::{ListAccountsParams, ListAccountsUseCaseTrait},
 };
 
-pub struct ListAccountUseCaseImpl {
+pub struct ListAccountsUseCaseImpl {
     pub repository: Arc<dyn AccountRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListAccountUseCaseTrait for ListAccountUseCaseImpl {
-    async fn execute(&self, _params: ListAccountParams) -> Result<Vec<Account>, AccountError> {
-        tracing::info!("list_account: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_account: repository failed"))
+impl ListAccountsUseCaseTrait for ListAccountsUseCaseImpl {
+    async fn execute(&self, _params: ListAccountsParams) -> Result<Vec<Account>, AccountError> {
+        tracing::info!("list_accounts: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_accounts: repository failed"))
     }
 }
 
@@ -496,11 +496,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListAccountUseCaseImpl {
+        let use_case = ListAccountsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListAccountParams).await;
+        let result = use_case.execute(ListAccountsParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -510,11 +510,11 @@ mod tests {
     async fn should_return_empty_list_when_no_accounts_exist() {
         let mut mock_repo = MockAccountRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListAccountUseCaseImpl {
+        let use_case = ListAccountsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListAccountParams).await;
+        let result = use_case.execute(ListAccountsParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -1194,17 +1194,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/account/use_cases/list_account.rs ===
+=== business/src/domain/account/use_cases/list_accounts.rs ===
 use async_trait::async_trait;
 
 use crate::domain::account::{errors::AccountError, model::Account};
 
 #[derive(Debug)]
-pub struct ListAccountParams;
+pub struct ListAccountsParams;
 
 #[async_trait]
-pub trait ListAccountUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListAccountParams) -> Result<Vec<Account>, AccountError>;
+pub trait ListAccountsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListAccountsParams) -> Result<Vec<Account>, AccountError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1214,11 +1214,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListAccountUseCase {}
+        pub ListAccountsUseCase {}
 
         #[async_trait]
-        impl ListAccountUseCaseTrait for ListAccountUseCase {
-            async fn execute(&self, params: ListAccountParams) -> Result<Vec<Account>, AccountError>;
+        impl ListAccountsUseCaseTrait for ListAccountsUseCase {
+            async fn execute(&self, params: ListAccountsParams) -> Result<Vec<Account>, AccountError>;
         }
     }
 }
@@ -1423,7 +1423,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_account;
             pub mod get_account;
-            pub mod list_account;
+            pub mod list_accounts;
             pub mod update_account;
             pub mod delete_account;
         }
@@ -1441,7 +1441,7 @@ pub mod application {
     pub mod account {
         pub mod create_account;
         pub mod get_account;
-        pub mod list_account;
+        pub mod list_accounts;
         pub mod update_account;
         pub mod delete_account;
     }
@@ -1907,7 +1907,7 @@ impl GetAccountResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListAccountResponse {
+pub enum ListAccountsResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<AccountDto>>),
     #[oai(status = 401)]
@@ -1918,7 +1918,7 @@ pub enum ListAccountResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListAccountResponse {
+impl ListAccountsResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -1991,7 +1991,7 @@ use business::domain::account::use_cases::{
     create_account::{CreateAccountParams, CreateAccountUseCaseTrait},
     delete_account::{DeleteAccountParams, DeleteAccountUseCaseTrait},
     get_account::{GetAccountParams, GetAccountUseCaseTrait},
-    list_account::{ListAccountParams, ListAccountUseCaseTrait},
+    list_accounts::{ListAccountsParams, ListAccountsUseCaseTrait},
     update_account::{UpdateAccountParams, UpdateAccountUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -2001,7 +2001,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::account::dto::{CreateAccountRequest, UpdateAccountRequest, AccountDto};
 use crate::api::account::responses::{
-    CreateAccountResponse, DeleteAccountResponse, GetAccountResponse, ListAccountResponse,
+    CreateAccountResponse, DeleteAccountResponse, GetAccountResponse, ListAccountsResponse,
     UpdateAccountResponse,
 };
 
@@ -2009,7 +2009,7 @@ use crate::api::account::responses::{
 pub struct AccountApi {
     pub create_account: Arc<dyn CreateAccountUseCaseTrait>,
     pub get_account: Arc<dyn GetAccountUseCaseTrait>,
-    pub list_account: Arc<dyn ListAccountUseCaseTrait>,
+    pub list_accounts: Arc<dyn ListAccountsUseCaseTrait>,
     pub update_account: Arc<dyn UpdateAccountUseCaseTrait>,
     pub delete_account: Arc<dyn DeleteAccountUseCaseTrait>,
 }
@@ -2062,15 +2062,15 @@ impl AccountApi {
 
     /// List all Accounts
     #[oai(path = "/accounts", method = "get", tag = "ApiTags::Account")]
-    async fn list(&self) -> ListAccountResponse {
-        match self.list_account.execute(ListAccountParams).await {
+    async fn list(&self) -> ListAccountsResponse {
+        match self.list_accounts.execute(ListAccountsParams).await {
             Ok(entities) => {
-                ListAccountResponse::Ok(Json(entities.iter().map(AccountDto::from_domain).collect()))
+                ListAccountsResponse::Ok(Json(entities.iter().map(AccountDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_account failed");
-                ListAccountResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_accounts failed");
+                ListAccountsResponse::from_status(status, error)
             }
         }
     }
@@ -2126,7 +2126,7 @@ mod tests {
     use business::domain::account::errors::AccountError;
     use business::domain::account::use_cases::{
         create_account::mocks::MockCreateAccountUseCase, delete_account::mocks::MockDeleteAccountUseCase,
-        get_account::mocks::MockGetAccountUseCase, list_account::mocks::MockListAccountUseCase,
+        get_account::mocks::MockGetAccountUseCase, list_accounts::mocks::MockListAccountsUseCase,
         update_account::mocks::MockUpdateAccountUseCase,
     };
     use business::tests::mothers::account_mother::AccountMother;
@@ -2141,7 +2141,7 @@ mod tests {
     struct Mocks {
         create: MockCreateAccountUseCase,
         get: MockGetAccountUseCase,
-        list: MockListAccountUseCase,
+        list: MockListAccountsUseCase,
         update: MockUpdateAccountUseCase,
         delete: MockDeleteAccountUseCase,
     }
@@ -2151,7 +2151,7 @@ mod tests {
             let api = AccountApi {
                 create_account: Arc::new(self.create),
                 get_account: Arc::new(self.get),
-                list_account: Arc::new(self.list),
+                list_accounts: Arc::new(self.list),
                 update_account: Arc::new(self.update),
                 delete_account: Arc::new(self.delete),
             };
@@ -2363,7 +2363,7 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::account::create_account::CreateAccountUseCaseImpl;
 use business::application::account::get_account::GetAccountUseCaseImpl;
-use business::application::account::list_account::ListAccountUseCaseImpl;
+use business::application::account::list_accounts::ListAccountsUseCaseImpl;
 use business::application::account::update_account::UpdateAccountUseCaseImpl;
 use business::application::account::delete_account::DeleteAccountUseCaseImpl;
 
@@ -2385,10 +2385,10 @@ pub async fn build_app() -> impl poem::Endpoint {
     let account_repo: Arc<dyn AccountRepositoryTrait> = Arc::new(InMemoryAccountRepository::new());
     let create_account = Arc::new(CreateAccountUseCaseImpl { repository: Arc::clone(&account_repo) });
     let get_account = Arc::new(GetAccountUseCaseImpl { repository: Arc::clone(&account_repo) });
-    let list_account = Arc::new(ListAccountUseCaseImpl { repository: Arc::clone(&account_repo) });
+    let list_accounts = Arc::new(ListAccountsUseCaseImpl { repository: Arc::clone(&account_repo) });
     let update_account = Arc::new(UpdateAccountUseCaseImpl { repository: Arc::clone(&account_repo) });
     let delete_account = Arc::new(DeleteAccountUseCaseImpl { repository: account_repo });
-    let account_api = AccountApi { create_account, get_account, list_account, update_account, delete_account };
+    let account_api = AccountApi { create_account, get_account, list_accounts, update_account, delete_account };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -2431,7 +2431,7 @@ name = "Account"
 use_cases = [
     "create_account",
     "get_account",
-    "list_account",
+    "list_accounts",
     "update_account",
     "delete_account",
 ]

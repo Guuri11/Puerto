@@ -61,7 +61,7 @@ impl Get{{ pascal }}Response {
 }
 
 #[derive(ApiResponse)]
-pub enum List{{ pascal }}Response {
+pub enum List{{ plural_pascal }}Response {
     #[oai(status = 200)]
     Ok(Json<Vec<{{ pascal }}Dto>>),
     #[oai(status = 401)]
@@ -72,7 +72,7 @@ pub enum List{{ pascal }}Response {
     InternalError(Json<ErrorResponse>),
 }
 
-impl List{{ pascal }}Response {
+impl List{{ plural_pascal }}Response {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),

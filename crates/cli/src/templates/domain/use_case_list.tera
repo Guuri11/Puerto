@@ -3,11 +3,11 @@ use async_trait::async_trait;
 use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
 
 #[derive(Debug)]
-pub struct List{{ pascal }}Params;
+pub struct List{{ plural_pascal }}Params;
 
 #[async_trait]
-pub trait List{{ pascal }}UseCaseTrait: Send + Sync {
-    async fn execute(&self, params: List{{ pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error>;
+pub trait List{{ plural_pascal }}UseCaseTrait: Send + Sync {
+    async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -17,11 +17,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub List{{ pascal }}UseCase {}
+        pub List{{ plural_pascal }}UseCase {}
 
         #[async_trait]
-        impl List{{ pascal }}UseCaseTrait for List{{ pascal }}UseCase {
-            async fn execute(&self, params: List{{ pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error>;
+        impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCase {
+            async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error>;
         }
     }
 }

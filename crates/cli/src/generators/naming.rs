@@ -87,11 +87,21 @@ pub fn entity_ctx(pascal: &str, snake: &str) -> tera::Context {
     ctx
 }
 
+/// The module name of one scaffolded use case: `list` is named after the plural
+/// (`list_products`), the others after the entity (`create_product`).
+pub fn crud_use_case(action: &str, snake: &str) -> String {
+    if action == "list" {
+        format!("list_{}", pluralize(snake))
+    } else {
+        format!("{action}_{snake}")
+    }
+}
+
 /// The five use cases `scaffold` and `generate domain` create for an entity.
 pub fn crud_use_cases(snake: &str) -> Vec<String> {
     ["create", "get", "list", "update", "delete"]
         .iter()
-        .map(|action| format!("{action}_{snake}"))
+        .map(|action| crud_use_case(action, snake))
         .collect()
 }
 

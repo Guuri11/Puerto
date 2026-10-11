@@ -1231,7 +1231,7 @@ they now run on the pinned toolchain and edition 2024.
 
 ---
 
-## Phase 8.7 — Breaking batch before the first users (T-26, T-13, T-20)
+## Phase 8.7 — Breaking batch before the first users (T-26, T-13, T-20) ✅ DONE
 
 Three changes to the shape of generated output, done together while no generated project exists
 yet (no migration guide needed — see `puerto_arch_plan.md`). One commit each, `!` in the type.

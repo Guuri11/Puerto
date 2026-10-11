@@ -282,7 +282,7 @@ mod tests {
     }
 }
 
-=== business/src/application/product/list_product.rs ===
+=== business/src/application/product/list_products.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -291,18 +291,18 @@ use crate::domain::product::{
     errors::ProductError,
     model::Product,
     repository::ProductRepositoryTrait,
-    use_cases::list_product::{ListProductParams, ListProductUseCaseTrait},
+    use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
 };
 
-pub struct ListProductUseCaseImpl {
+pub struct ListProductsUseCaseImpl {
     pub repository: Arc<dyn ProductRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListProductUseCaseTrait for ListProductUseCaseImpl {
-    async fn execute(&self, _params: ListProductParams) -> Result<Vec<Product>, ProductError> {
-        tracing::info!("list_product: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_product: repository failed"))
+impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
+    async fn execute(&self, _params: ListProductsParams) -> Result<Vec<Product>, ProductError> {
+        tracing::info!("list_products: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
     }
 }
 
@@ -344,11 +344,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListProductUseCaseImpl {
+        let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductParams).await;
+        let result = use_case.execute(ListProductsParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -358,11 +358,11 @@ mod tests {
     async fn should_return_empty_list_when_no_products_exist() {
         let mut mock_repo = MockProductRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListProductUseCaseImpl {
+        let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductParams).await;
+        let result = use_case.execute(ListProductsParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -807,17 +807,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/product/use_cases/list_product.rs ===
+=== business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
 
 use crate::domain::product::{errors::ProductError, model::Product};
 
 #[derive(Debug)]
-pub struct ListProductParams;
+pub struct ListProductsParams;
 
 #[async_trait]
-pub trait ListProductUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+pub trait ListProductsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -827,11 +827,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListProductUseCase {}
+        pub ListProductsUseCase {}
 
         #[async_trait]
-        impl ListProductUseCaseTrait for ListProductUseCase {
-            async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+        impl ListProductsUseCaseTrait for ListProductsUseCase {
+            async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
         }
     }
 }
@@ -895,7 +895,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_product;
             pub mod get_product;
-            pub mod list_product;
+            pub mod list_products;
             pub mod update_product;
             pub mod delete_product;
         }
@@ -909,7 +909,7 @@ pub mod application {
     pub mod product {
         pub mod create_product;
         pub mod get_product;
-        pub mod list_product;
+        pub mod list_products;
         pub mod update_product;
         pub mod delete_product;
     }
@@ -1284,7 +1284,7 @@ impl GetProductResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListProductResponse {
+pub enum ListProductsResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<ProductDto>>),
     #[oai(status = 401)]
@@ -1295,7 +1295,7 @@ pub enum ListProductResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListProductResponse {
+impl ListProductsResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -1368,7 +1368,7 @@ use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
     delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
     get_product::{GetProductParams, GetProductUseCaseTrait},
-    list_product::{ListProductParams, ListProductUseCaseTrait},
+    list_products::{ListProductsParams, ListProductsUseCaseTrait},
     update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -1378,7 +1378,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::product::dto::{CreateProductRequest, UpdateProductRequest, ProductDto};
 use crate::api::product::responses::{
-    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductResponse,
+    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductsResponse,
     UpdateProductResponse,
 };
 
@@ -1386,7 +1386,7 @@ use crate::api::product::responses::{
 pub struct ProductApi {
     pub create_product: Arc<dyn CreateProductUseCaseTrait>,
     pub get_product: Arc<dyn GetProductUseCaseTrait>,
-    pub list_product: Arc<dyn ListProductUseCaseTrait>,
+    pub list_products: Arc<dyn ListProductsUseCaseTrait>,
     pub update_product: Arc<dyn UpdateProductUseCaseTrait>,
     pub delete_product: Arc<dyn DeleteProductUseCaseTrait>,
 }
@@ -1437,15 +1437,15 @@ impl ProductApi {
 
     /// List all Products
     #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
-    async fn list(&self) -> ListProductResponse {
-        match self.list_product.execute(ListProductParams).await {
+    async fn list(&self) -> ListProductsResponse {
+        match self.list_products.execute(ListProductsParams).await {
             Ok(entities) => {
-                ListProductResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
+                ListProductsResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_product failed");
-                ListProductResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_products failed");
+                ListProductsResponse::from_status(status, error)
             }
         }
     }
@@ -1499,7 +1499,7 @@ mod tests {
     use business::domain::product::errors::ProductError;
     use business::domain::product::use_cases::{
         create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
-        get_product::mocks::MockGetProductUseCase, list_product::mocks::MockListProductUseCase,
+        get_product::mocks::MockGetProductUseCase, list_products::mocks::MockListProductsUseCase,
         update_product::mocks::MockUpdateProductUseCase,
     };
     use business::tests::mothers::product_mother::ProductMother;
@@ -1516,7 +1516,7 @@ mod tests {
     struct Mocks {
         create: MockCreateProductUseCase,
         get: MockGetProductUseCase,
-        list: MockListProductUseCase,
+        list: MockListProductsUseCase,
         update: MockUpdateProductUseCase,
         delete: MockDeleteProductUseCase,
     }
@@ -1526,7 +1526,7 @@ mod tests {
             let api = ProductApi {
                 create_product: Arc::new(self.create),
                 get_product: Arc::new(self.get),
-                list_product: Arc::new(self.list),
+                list_products: Arc::new(self.list),
                 update_product: Arc::new(self.update),
                 delete_product: Arc::new(self.delete),
             };
@@ -1734,7 +1734,7 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::product::create_product::CreateProductUseCaseImpl;
 use business::application::product::get_product::GetProductUseCaseImpl;
-use business::application::product::list_product::ListProductUseCaseImpl;
+use business::application::product::list_products::ListProductsUseCaseImpl;
 use business::application::product::update_product::UpdateProductUseCaseImpl;
 use business::application::product::delete_product::DeleteProductUseCaseImpl;
 
@@ -1756,10 +1756,10 @@ pub async fn build_app() -> impl poem::Endpoint {
     let product_repo: Arc<dyn ProductRepositoryTrait> = Arc::new(InMemoryProductRepository::new());
     let create_product = Arc::new(CreateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
     let get_product = Arc::new(GetProductUseCaseImpl { repository: Arc::clone(&product_repo) });
-    let list_product = Arc::new(ListProductUseCaseImpl { repository: Arc::clone(&product_repo) });
+    let list_products = Arc::new(ListProductsUseCaseImpl { repository: Arc::clone(&product_repo) });
     let update_product = Arc::new(UpdateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
     let delete_product = Arc::new(DeleteProductUseCaseImpl { repository: product_repo });
-    let product_api = ProductApi { create_product, get_product, list_product, update_product, delete_product };
+    let product_api = ProductApi { create_product, get_product, list_products, update_product, delete_product };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -1802,7 +1802,7 @@ name = "Product"
 use_cases = [
     "create_product",
     "get_product",
-    "list_product",
+    "list_products",
     "update_product",
     "delete_product",
 ]

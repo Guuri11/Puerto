@@ -248,7 +248,7 @@ mod tests {
     }
 }
 
-=== business/src/application/persona/list_persona.rs ===
+=== business/src/application/persona/list_personas.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -257,18 +257,18 @@ use crate::domain::persona::{
     errors::PersonaError,
     model::Persona,
     repository::PersonaRepositoryTrait,
-    use_cases::list_persona::{ListPersonaParams, ListPersonaUseCaseTrait},
+    use_cases::list_personas::{ListPersonasParams, ListPersonasUseCaseTrait},
 };
 
-pub struct ListPersonaUseCaseImpl {
+pub struct ListPersonasUseCaseImpl {
     pub repository: Arc<dyn PersonaRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListPersonaUseCaseTrait for ListPersonaUseCaseImpl {
-    async fn execute(&self, _params: ListPersonaParams) -> Result<Vec<Persona>, PersonaError> {
-        tracing::info!("list_persona: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_persona: repository failed"))
+impl ListPersonasUseCaseTrait for ListPersonasUseCaseImpl {
+    async fn execute(&self, _params: ListPersonasParams) -> Result<Vec<Persona>, PersonaError> {
+        tracing::info!("list_personas: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_personas: repository failed"))
     }
 }
 
@@ -295,11 +295,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListPersonaUseCaseImpl {
+        let use_case = ListPersonasUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListPersonaParams).await;
+        let result = use_case.execute(ListPersonasParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -309,11 +309,11 @@ mod tests {
     async fn should_return_empty_list_when_no_personas_exist() {
         let mut mock_repo = MockPersonaRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListPersonaUseCaseImpl {
+        let use_case = ListPersonasUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListPersonaParams).await;
+        let result = use_case.execute(ListPersonasParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -686,17 +686,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/persona/use_cases/list_persona.rs ===
+=== business/src/domain/persona/use_cases/list_personas.rs ===
 use async_trait::async_trait;
 
 use crate::domain::persona::{errors::PersonaError, model::Persona};
 
 #[derive(Debug)]
-pub struct ListPersonaParams;
+pub struct ListPersonasParams;
 
 #[async_trait]
-pub trait ListPersonaUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListPersonaParams) -> Result<Vec<Persona>, PersonaError>;
+pub trait ListPersonasUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListPersonasParams) -> Result<Vec<Persona>, PersonaError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -706,11 +706,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListPersonaUseCase {}
+        pub ListPersonasUseCase {}
 
         #[async_trait]
-        impl ListPersonaUseCaseTrait for ListPersonaUseCase {
-            async fn execute(&self, params: ListPersonaParams) -> Result<Vec<Persona>, PersonaError>;
+        impl ListPersonasUseCaseTrait for ListPersonasUseCase {
+            async fn execute(&self, params: ListPersonasParams) -> Result<Vec<Persona>, PersonaError>;
         }
     }
 }
@@ -758,7 +758,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_persona;
             pub mod get_persona;
-            pub mod list_persona;
+            pub mod list_personas;
             pub mod update_persona;
             pub mod delete_persona;
         }
@@ -769,7 +769,7 @@ pub mod application {
     pub mod persona {
         pub mod create_persona;
         pub mod get_persona;
-        pub mod list_persona;
+        pub mod list_personas;
         pub mod update_persona;
         pub mod delete_persona;
     }
@@ -1082,7 +1082,7 @@ impl GetPersonaResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListPersonaResponse {
+pub enum ListPersonasResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<PersonaDto>>),
     #[oai(status = 401)]
@@ -1093,7 +1093,7 @@ pub enum ListPersonaResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListPersonaResponse {
+impl ListPersonasResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -1166,7 +1166,7 @@ use business::domain::persona::use_cases::{
     create_persona::{CreatePersonaParams, CreatePersonaUseCaseTrait},
     delete_persona::{DeletePersonaParams, DeletePersonaUseCaseTrait},
     get_persona::{GetPersonaParams, GetPersonaUseCaseTrait},
-    list_persona::{ListPersonaParams, ListPersonaUseCaseTrait},
+    list_personas::{ListPersonasParams, ListPersonasUseCaseTrait},
     update_persona::{UpdatePersonaParams, UpdatePersonaUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -1176,7 +1176,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::persona::dto::{CreatePersonaRequest, UpdatePersonaRequest, PersonaDto};
 use crate::api::persona::responses::{
-    CreatePersonaResponse, DeletePersonaResponse, GetPersonaResponse, ListPersonaResponse,
+    CreatePersonaResponse, DeletePersonaResponse, GetPersonaResponse, ListPersonasResponse,
     UpdatePersonaResponse,
 };
 
@@ -1184,7 +1184,7 @@ use crate::api::persona::responses::{
 pub struct PersonaApi {
     pub create_persona: Arc<dyn CreatePersonaUseCaseTrait>,
     pub get_persona: Arc<dyn GetPersonaUseCaseTrait>,
-    pub list_persona: Arc<dyn ListPersonaUseCaseTrait>,
+    pub list_personas: Arc<dyn ListPersonasUseCaseTrait>,
     pub update_persona: Arc<dyn UpdatePersonaUseCaseTrait>,
     pub delete_persona: Arc<dyn DeletePersonaUseCaseTrait>,
 }
@@ -1229,15 +1229,15 @@ impl PersonaApi {
 
     /// List all Personas
     #[oai(path = "/personas", method = "get", tag = "ApiTags::Persona")]
-    async fn list(&self) -> ListPersonaResponse {
-        match self.list_persona.execute(ListPersonaParams).await {
+    async fn list(&self) -> ListPersonasResponse {
+        match self.list_personas.execute(ListPersonasParams).await {
             Ok(entities) => {
-                ListPersonaResponse::Ok(Json(entities.iter().map(PersonaDto::from_domain).collect()))
+                ListPersonasResponse::Ok(Json(entities.iter().map(PersonaDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_persona failed");
-                ListPersonaResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_personas failed");
+                ListPersonasResponse::from_status(status, error)
             }
         }
     }
@@ -1285,7 +1285,7 @@ mod tests {
     use business::domain::persona::errors::PersonaError;
     use business::domain::persona::use_cases::{
         create_persona::mocks::MockCreatePersonaUseCase, delete_persona::mocks::MockDeletePersonaUseCase,
-        get_persona::mocks::MockGetPersonaUseCase, list_persona::mocks::MockListPersonaUseCase,
+        get_persona::mocks::MockGetPersonaUseCase, list_personas::mocks::MockListPersonasUseCase,
         update_persona::mocks::MockUpdatePersonaUseCase,
     };
     use business::tests::mothers::persona_mother::PersonaMother;
@@ -1300,7 +1300,7 @@ mod tests {
     struct Mocks {
         create: MockCreatePersonaUseCase,
         get: MockGetPersonaUseCase,
-        list: MockListPersonaUseCase,
+        list: MockListPersonasUseCase,
         update: MockUpdatePersonaUseCase,
         delete: MockDeletePersonaUseCase,
     }
@@ -1310,7 +1310,7 @@ mod tests {
             let api = PersonaApi {
                 create_persona: Arc::new(self.create),
                 get_persona: Arc::new(self.get),
-                list_persona: Arc::new(self.list),
+                list_personas: Arc::new(self.list),
                 update_persona: Arc::new(self.update),
                 delete_persona: Arc::new(self.delete),
             };
@@ -1504,7 +1504,7 @@ use std::sync::Arc;
 
 use business::application::persona::create_persona::CreatePersonaUseCaseImpl;
 use business::application::persona::get_persona::GetPersonaUseCaseImpl;
-use business::application::persona::list_persona::ListPersonaUseCaseImpl;
+use business::application::persona::list_personas::ListPersonasUseCaseImpl;
 use business::application::persona::update_persona::UpdatePersonaUseCaseImpl;
 use business::application::persona::delete_persona::DeletePersonaUseCaseImpl;
 
@@ -1520,10 +1520,10 @@ pub async fn build_app() -> impl poem::Endpoint {
     let persona_repo: Arc<dyn PersonaRepositoryTrait> = Arc::new(InMemoryPersonaRepository::new());
     let create_persona = Arc::new(CreatePersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
     let get_persona = Arc::new(GetPersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
-    let list_persona = Arc::new(ListPersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
+    let list_personas = Arc::new(ListPersonasUseCaseImpl { repository: Arc::clone(&persona_repo) });
     let update_persona = Arc::new(UpdatePersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
     let delete_persona = Arc::new(DeletePersonaUseCaseImpl { repository: persona_repo });
-    let persona_api = PersonaApi { create_persona, get_persona, list_persona, update_persona, delete_persona };
+    let persona_api = PersonaApi { create_persona, get_persona, list_personas, update_persona, delete_persona };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -1561,7 +1561,7 @@ name = "Persona"
 use_cases = [
     "create_persona",
     "get_persona",
-    "list_persona",
+    "list_personas",
     "update_persona",
     "delete_persona",
 ]

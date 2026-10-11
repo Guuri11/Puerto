@@ -288,7 +288,7 @@ mod tests {
     }
 }
 
-=== business/src/application/customer/list_customer.rs ===
+=== business/src/application/customer/list_customers.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -297,18 +297,18 @@ use crate::domain::customer::{
     errors::CustomerError,
     model::Customer,
     repository::CustomerRepositoryTrait,
-    use_cases::list_customer::{ListCustomerParams, ListCustomerUseCaseTrait},
+    use_cases::list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
 };
 
-pub struct ListCustomerUseCaseImpl {
+pub struct ListCustomersUseCaseImpl {
     pub repository: Arc<dyn CustomerRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListCustomerUseCaseTrait for ListCustomerUseCaseImpl {
-    async fn execute(&self, _params: ListCustomerParams) -> Result<Vec<Customer>, CustomerError> {
-        tracing::info!("list_customer: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_customer: repository failed"))
+impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
+    async fn execute(&self, _params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError> {
+        tracing::info!("list_customers: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
     }
 }
 
@@ -341,11 +341,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListCustomerUseCaseImpl {
+        let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCustomerParams).await;
+        let result = use_case.execute(ListCustomersParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -355,11 +355,11 @@ mod tests {
     async fn should_return_empty_list_when_no_customers_exist() {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListCustomerUseCaseImpl {
+        let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCustomerParams).await;
+        let result = use_case.execute(ListCustomersParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -803,17 +803,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/customer/use_cases/list_customer.rs ===
+=== business/src/domain/customer/use_cases/list_customers.rs ===
 use async_trait::async_trait;
 
 use crate::domain::customer::{errors::CustomerError, model::Customer};
 
 #[derive(Debug)]
-pub struct ListCustomerParams;
+pub struct ListCustomersParams;
 
 #[async_trait]
-pub trait ListCustomerUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListCustomerParams) -> Result<Vec<Customer>, CustomerError>;
+pub trait ListCustomersUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -823,11 +823,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListCustomerUseCase {}
+        pub ListCustomersUseCase {}
 
         #[async_trait]
-        impl ListCustomerUseCaseTrait for ListCustomerUseCase {
-            async fn execute(&self, params: ListCustomerParams) -> Result<Vec<Customer>, CustomerError>;
+        impl ListCustomersUseCaseTrait for ListCustomersUseCase {
+            async fn execute(&self, params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError>;
         }
     }
 }
@@ -941,7 +941,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_customer;
             pub mod get_customer;
-            pub mod list_customer;
+            pub mod list_customers;
             pub mod update_customer;
             pub mod delete_customer;
         }
@@ -957,7 +957,7 @@ pub mod application {
     pub mod customer {
         pub mod create_customer;
         pub mod get_customer;
-        pub mod list_customer;
+        pub mod list_customers;
         pub mod update_customer;
         pub mod delete_customer;
     }
@@ -1303,7 +1303,7 @@ impl GetCustomerResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListCustomerResponse {
+pub enum ListCustomersResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<CustomerDto>>),
     #[oai(status = 401)]
@@ -1314,7 +1314,7 @@ pub enum ListCustomerResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListCustomerResponse {
+impl ListCustomersResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -1387,7 +1387,7 @@ use business::domain::customer::use_cases::{
     create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
     delete_customer::{DeleteCustomerParams, DeleteCustomerUseCaseTrait},
     get_customer::{GetCustomerParams, GetCustomerUseCaseTrait},
-    list_customer::{ListCustomerParams, ListCustomerUseCaseTrait},
+    list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
     update_customer::{UpdateCustomerParams, UpdateCustomerUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -1397,7 +1397,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::customer::dto::{CreateCustomerRequest, UpdateCustomerRequest, CustomerDto};
 use crate::api::customer::responses::{
-    CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomerResponse,
+    CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomersResponse,
     UpdateCustomerResponse,
 };
 
@@ -1405,7 +1405,7 @@ use crate::api::customer::responses::{
 pub struct CustomerApi {
     pub create_customer: Arc<dyn CreateCustomerUseCaseTrait>,
     pub get_customer: Arc<dyn GetCustomerUseCaseTrait>,
-    pub list_customer: Arc<dyn ListCustomerUseCaseTrait>,
+    pub list_customers: Arc<dyn ListCustomersUseCaseTrait>,
     pub update_customer: Arc<dyn UpdateCustomerUseCaseTrait>,
     pub delete_customer: Arc<dyn DeleteCustomerUseCaseTrait>,
 }
@@ -1452,15 +1452,15 @@ impl CustomerApi {
 
     /// List all Customers
     #[oai(path = "/customers", method = "get", tag = "ApiTags::Customer")]
-    async fn list(&self) -> ListCustomerResponse {
-        match self.list_customer.execute(ListCustomerParams).await {
+    async fn list(&self) -> ListCustomersResponse {
+        match self.list_customers.execute(ListCustomersParams).await {
             Ok(entities) => {
-                ListCustomerResponse::Ok(Json(entities.iter().map(CustomerDto::from_domain).collect()))
+                ListCustomersResponse::Ok(Json(entities.iter().map(CustomerDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_customer failed");
-                ListCustomerResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_customers failed");
+                ListCustomersResponse::from_status(status, error)
             }
         }
     }
@@ -1510,7 +1510,7 @@ mod tests {
     use business::domain::customer::errors::CustomerError;
     use business::domain::customer::use_cases::{
         create_customer::mocks::MockCreateCustomerUseCase, delete_customer::mocks::MockDeleteCustomerUseCase,
-        get_customer::mocks::MockGetCustomerUseCase, list_customer::mocks::MockListCustomerUseCase,
+        get_customer::mocks::MockGetCustomerUseCase, list_customers::mocks::MockListCustomersUseCase,
         update_customer::mocks::MockUpdateCustomerUseCase,
     };
     use business::tests::mothers::customer_mother::CustomerMother;
@@ -1525,7 +1525,7 @@ mod tests {
     struct Mocks {
         create: MockCreateCustomerUseCase,
         get: MockGetCustomerUseCase,
-        list: MockListCustomerUseCase,
+        list: MockListCustomersUseCase,
         update: MockUpdateCustomerUseCase,
         delete: MockDeleteCustomerUseCase,
     }
@@ -1535,7 +1535,7 @@ mod tests {
             let api = CustomerApi {
                 create_customer: Arc::new(self.create),
                 get_customer: Arc::new(self.get),
-                list_customer: Arc::new(self.list),
+                list_customers: Arc::new(self.list),
                 update_customer: Arc::new(self.update),
                 delete_customer: Arc::new(self.delete),
             };
@@ -1735,7 +1735,7 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::customer::create_customer::CreateCustomerUseCaseImpl;
 use business::application::customer::get_customer::GetCustomerUseCaseImpl;
-use business::application::customer::list_customer::ListCustomerUseCaseImpl;
+use business::application::customer::list_customers::ListCustomersUseCaseImpl;
 use business::application::customer::update_customer::UpdateCustomerUseCaseImpl;
 use business::application::customer::delete_customer::DeleteCustomerUseCaseImpl;
 
@@ -1757,10 +1757,10 @@ pub async fn build_app() -> impl poem::Endpoint {
     let customer_repo: Arc<dyn CustomerRepositoryTrait> = Arc::new(InMemoryCustomerRepository::new());
     let create_customer = Arc::new(CreateCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
     let get_customer = Arc::new(GetCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
-    let list_customer = Arc::new(ListCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
+    let list_customers = Arc::new(ListCustomersUseCaseImpl { repository: Arc::clone(&customer_repo) });
     let update_customer = Arc::new(UpdateCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
     let delete_customer = Arc::new(DeleteCustomerUseCaseImpl { repository: customer_repo });
-    let customer_api = CustomerApi { create_customer, get_customer, list_customer, update_customer, delete_customer };
+    let customer_api = CustomerApi { create_customer, get_customer, list_customers, update_customer, delete_customer };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -1803,7 +1803,7 @@ name = "Customer"
 use_cases = [
     "create_customer",
     "get_customer",
-    "list_customer",
+    "list_customers",
     "update_customer",
     "delete_customer",
 ]

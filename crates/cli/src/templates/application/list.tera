@@ -6,18 +6,18 @@ use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
     model::{{ pascal }},
     repository::{{ pascal }}RepositoryTrait,
-    use_cases::list_{{ snake }}::{List{{ pascal }}Params, List{{ pascal }}UseCaseTrait},
+    use_cases::list_{{ plural }}::{List{{ plural_pascal }}Params, List{{ plural_pascal }}UseCaseTrait},
 };
 
-pub struct List{{ pascal }}UseCaseImpl {
+pub struct List{{ plural_pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
 }
 
 #[async_trait]
-impl List{{ pascal }}UseCaseTrait for List{{ pascal }}UseCaseImpl {
-    async fn execute(&self, _params: List{{ pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error> {
-        tracing::info!("list_{{ snake }}: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_{{ snake }}: repository failed"))
+impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl {
+    async fn execute(&self, _params: List{{ plural_pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error> {
+        tracing::info!("list_{{ plural }}: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_{{ plural }}: repository failed"))
     }
 }
 
@@ -43,11 +43,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = List{{ pascal }}UseCaseImpl {
+        let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(List{{ pascal }}Params).await;
+        let result = use_case.execute(List{{ plural_pascal }}Params).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -57,11 +57,11 @@ mod tests {
     async fn should_return_empty_list_when_no_{{ plural }}_exist() {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = List{{ pascal }}UseCaseImpl {
+        let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(List{{ pascal }}Params).await;
+        let result = use_case.execute(List{{ plural_pascal }}Params).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());

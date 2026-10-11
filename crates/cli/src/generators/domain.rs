@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use serde_json::json;
 
 use crate::generators::naming::{
-    crud_use_cases, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
+    crud_use_case, crud_use_cases, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
@@ -300,7 +300,7 @@ pub fn write_domain_files(
         "repository.rs".into(),
         render("domain/repository.tera", &ctx)?,
     )?;
-    let use_case = |action: &str| format!("use_cases/{action}_{snake}.rs");
+    let use_case = |action: &str| format!("use_cases/{}.rs", crud_use_case(action, snake));
     write(
         use_case("create"),
         generate_create_use_case_trait(pascal, snake, fields)?,

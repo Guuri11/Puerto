@@ -147,7 +147,7 @@ fn generate_application_creates_use_case_impls() {
     );
     assert!(
         output
-            .join("business/src/application/widget/list_widget.rs")
+            .join("business/src/application/widget/list_widgets.rs")
             .exists()
     );
     assert!(

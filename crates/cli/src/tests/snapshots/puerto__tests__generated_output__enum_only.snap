@@ -248,7 +248,7 @@ mod tests {
     }
 }
 
-=== business/src/application/ticket/list_ticket.rs ===
+=== business/src/application/ticket/list_tickets.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -257,18 +257,18 @@ use crate::domain::ticket::{
     errors::TicketError,
     model::Ticket,
     repository::TicketRepositoryTrait,
-    use_cases::list_ticket::{ListTicketParams, ListTicketUseCaseTrait},
+    use_cases::list_tickets::{ListTicketsParams, ListTicketsUseCaseTrait},
 };
 
-pub struct ListTicketUseCaseImpl {
+pub struct ListTicketsUseCaseImpl {
     pub repository: Arc<dyn TicketRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListTicketUseCaseTrait for ListTicketUseCaseImpl {
-    async fn execute(&self, _params: ListTicketParams) -> Result<Vec<Ticket>, TicketError> {
-        tracing::info!("list_ticket: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_ticket: repository failed"))
+impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
+    async fn execute(&self, _params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError> {
+        tracing::info!("list_tickets: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_tickets: repository failed"))
     }
 }
 
@@ -296,11 +296,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListTicketUseCaseImpl {
+        let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListTicketParams).await;
+        let result = use_case.execute(ListTicketsParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -310,11 +310,11 @@ mod tests {
     async fn should_return_empty_list_when_no_tickets_exist() {
         let mut mock_repo = MockTicketRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListTicketUseCaseImpl {
+        let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListTicketParams).await;
+        let result = use_case.execute(ListTicketsParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -632,17 +632,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/ticket/use_cases/list_ticket.rs ===
+=== business/src/domain/ticket/use_cases/list_tickets.rs ===
 use async_trait::async_trait;
 
 use crate::domain::ticket::{errors::TicketError, model::Ticket};
 
 #[derive(Debug)]
-pub struct ListTicketParams;
+pub struct ListTicketsParams;
 
 #[async_trait]
-pub trait ListTicketUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListTicketParams) -> Result<Vec<Ticket>, TicketError>;
+pub trait ListTicketsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -652,11 +652,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListTicketUseCase {}
+        pub ListTicketsUseCase {}
 
         #[async_trait]
-        impl ListTicketUseCaseTrait for ListTicketUseCase {
-            async fn execute(&self, params: ListTicketParams) -> Result<Vec<Ticket>, TicketError>;
+        impl ListTicketsUseCaseTrait for ListTicketsUseCase {
+            async fn execute(&self, params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError>;
         }
     }
 }
@@ -742,7 +742,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_ticket;
             pub mod get_ticket;
-            pub mod list_ticket;
+            pub mod list_tickets;
             pub mod update_ticket;
             pub mod delete_ticket;
         }
@@ -758,7 +758,7 @@ pub mod application {
     pub mod ticket {
         pub mod create_ticket;
         pub mod get_ticket;
-        pub mod list_ticket;
+        pub mod list_tickets;
         pub mod update_ticket;
         pub mod delete_ticket;
     }
@@ -1073,7 +1073,7 @@ impl GetTicketResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListTicketResponse {
+pub enum ListTicketsResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<TicketDto>>),
     #[oai(status = 401)]
@@ -1084,7 +1084,7 @@ pub enum ListTicketResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListTicketResponse {
+impl ListTicketsResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -1157,7 +1157,7 @@ use business::domain::ticket::use_cases::{
     create_ticket::{CreateTicketParams, CreateTicketUseCaseTrait},
     delete_ticket::{DeleteTicketParams, DeleteTicketUseCaseTrait},
     get_ticket::{GetTicketParams, GetTicketUseCaseTrait},
-    list_ticket::{ListTicketParams, ListTicketUseCaseTrait},
+    list_tickets::{ListTicketsParams, ListTicketsUseCaseTrait},
     update_ticket::{UpdateTicketParams, UpdateTicketUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -1167,7 +1167,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::ticket::dto::{CreateTicketRequest, UpdateTicketRequest, TicketDto};
 use crate::api::ticket::responses::{
-    CreateTicketResponse, DeleteTicketResponse, GetTicketResponse, ListTicketResponse,
+    CreateTicketResponse, DeleteTicketResponse, GetTicketResponse, ListTicketsResponse,
     UpdateTicketResponse,
 };
 
@@ -1175,7 +1175,7 @@ use crate::api::ticket::responses::{
 pub struct TicketApi {
     pub create_ticket: Arc<dyn CreateTicketUseCaseTrait>,
     pub get_ticket: Arc<dyn GetTicketUseCaseTrait>,
-    pub list_ticket: Arc<dyn ListTicketUseCaseTrait>,
+    pub list_tickets: Arc<dyn ListTicketsUseCaseTrait>,
     pub update_ticket: Arc<dyn UpdateTicketUseCaseTrait>,
     pub delete_ticket: Arc<dyn DeleteTicketUseCaseTrait>,
 }
@@ -1220,15 +1220,15 @@ impl TicketApi {
 
     /// List all Tickets
     #[oai(path = "/tickets", method = "get", tag = "ApiTags::Ticket")]
-    async fn list(&self) -> ListTicketResponse {
-        match self.list_ticket.execute(ListTicketParams).await {
+    async fn list(&self) -> ListTicketsResponse {
+        match self.list_tickets.execute(ListTicketsParams).await {
             Ok(entities) => {
-                ListTicketResponse::Ok(Json(entities.iter().map(TicketDto::from_domain).collect()))
+                ListTicketsResponse::Ok(Json(entities.iter().map(TicketDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_ticket failed");
-                ListTicketResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_tickets failed");
+                ListTicketsResponse::from_status(status, error)
             }
         }
     }
@@ -1276,7 +1276,7 @@ mod tests {
     use business::domain::ticket::errors::TicketError;
     use business::domain::ticket::use_cases::{
         create_ticket::mocks::MockCreateTicketUseCase, delete_ticket::mocks::MockDeleteTicketUseCase,
-        get_ticket::mocks::MockGetTicketUseCase, list_ticket::mocks::MockListTicketUseCase,
+        get_ticket::mocks::MockGetTicketUseCase, list_tickets::mocks::MockListTicketsUseCase,
         update_ticket::mocks::MockUpdateTicketUseCase,
     };
     use business::tests::mothers::ticket_mother::TicketMother;
@@ -1291,7 +1291,7 @@ mod tests {
     struct Mocks {
         create: MockCreateTicketUseCase,
         get: MockGetTicketUseCase,
-        list: MockListTicketUseCase,
+        list: MockListTicketsUseCase,
         update: MockUpdateTicketUseCase,
         delete: MockDeleteTicketUseCase,
     }
@@ -1301,7 +1301,7 @@ mod tests {
             let api = TicketApi {
                 create_ticket: Arc::new(self.create),
                 get_ticket: Arc::new(self.get),
-                list_ticket: Arc::new(self.list),
+                list_tickets: Arc::new(self.list),
                 update_ticket: Arc::new(self.update),
                 delete_ticket: Arc::new(self.delete),
             };
@@ -1487,7 +1487,7 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::ticket::create_ticket::CreateTicketUseCaseImpl;
 use business::application::ticket::get_ticket::GetTicketUseCaseImpl;
-use business::application::ticket::list_ticket::ListTicketUseCaseImpl;
+use business::application::ticket::list_tickets::ListTicketsUseCaseImpl;
 use business::application::ticket::update_ticket::UpdateTicketUseCaseImpl;
 use business::application::ticket::delete_ticket::DeleteTicketUseCaseImpl;
 
@@ -1509,10 +1509,10 @@ pub async fn build_app() -> impl poem::Endpoint {
     let ticket_repo: Arc<dyn TicketRepositoryTrait> = Arc::new(InMemoryTicketRepository::new());
     let create_ticket = Arc::new(CreateTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
     let get_ticket = Arc::new(GetTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
-    let list_ticket = Arc::new(ListTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
+    let list_tickets = Arc::new(ListTicketsUseCaseImpl { repository: Arc::clone(&ticket_repo) });
     let update_ticket = Arc::new(UpdateTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
     let delete_ticket = Arc::new(DeleteTicketUseCaseImpl { repository: ticket_repo });
-    let ticket_api = TicketApi { create_ticket, get_ticket, list_ticket, update_ticket, delete_ticket };
+    let ticket_api = TicketApi { create_ticket, get_ticket, list_tickets, update_ticket, delete_ticket };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -1555,7 +1555,7 @@ name = "Ticket"
 use_cases = [
     "create_ticket",
     "get_ticket",
-    "list_ticket",
+    "list_tickets",
     "update_ticket",
     "delete_ticket",
 ]

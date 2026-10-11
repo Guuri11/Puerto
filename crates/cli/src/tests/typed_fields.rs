@@ -689,7 +689,7 @@ name = "test-app"
 
 [[entity]]
 name = "Product"
-use_cases = ["create_product", "get_product", "list_product", "update_product", "delete_product"]
+use_cases = ["create_product", "get_product", "list_products", "update_product", "delete_product"]
 
 [[entity.fields]]
 name = "name"
@@ -836,7 +836,7 @@ fn generate_list_use_case_impl_with_custom_fields() {
     ];
     let result = generate_list_use_case_impl("Product", "product", &fields, &[]).unwrap();
 
-    assert!(result.contains("ListProductUseCaseImpl"));
+    assert!(result.contains("ListProductsUseCaseImpl"));
     assert!(result.contains("Product::new(ProductProps"));
     assert!(result.contains("should_return_all_products"));
     assert!(result.contains("should_return_empty_list_when_no_products_exist"));
@@ -977,8 +977,8 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
     assert!(get_content.contains("title: \"example\".to_string(),"));
 
     let list_content =
-        fs::read_to_string(dir.join("business/src/application/product/list_product.rs")).unwrap();
-    assert!(list_content.contains("ListProductUseCaseImpl"));
+        fs::read_to_string(dir.join("business/src/application/product/list_products.rs")).unwrap();
+    assert!(list_content.contains("ListProductsUseCaseImpl"));
     assert!(list_content.contains("should_return_all_products"));
     assert!(list_content.contains("title: \"first\".to_string(),"));
 

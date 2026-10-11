@@ -4,7 +4,7 @@ use business::domain::{{ snake }}::use_cases::{
     create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
     delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
     get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
-    list_{{ snake }}::{List{{ pascal }}Params, List{{ pascal }}UseCaseTrait},
+    list_{{ plural }}::{List{{ plural_pascal }}Params, List{{ plural_pascal }}UseCaseTrait},
     update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -14,7 +14,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::{{ snake }}::dto::{Create{{ pascal }}Request, Update{{ pascal }}Request, {{ pascal }}Dto};
 use crate::api::{{ snake }}::responses::{
-    Create{{ pascal }}Response, Delete{{ pascal }}Response, Get{{ pascal }}Response, List{{ pascal }}Response,
+    Create{{ pascal }}Response, Delete{{ pascal }}Response, Get{{ pascal }}Response, List{{ plural_pascal }}Response,
     Update{{ pascal }}Response,
 };
 
@@ -22,7 +22,7 @@ use crate::api::{{ snake }}::responses::{
 pub struct {{ pascal }}Api {
     pub create_{{ snake }}: Arc<dyn Create{{ pascal }}UseCaseTrait>,
     pub get_{{ snake }}: Arc<dyn Get{{ pascal }}UseCaseTrait>,
-    pub list_{{ snake }}: Arc<dyn List{{ pascal }}UseCaseTrait>,
+    pub list_{{ plural }}: Arc<dyn List{{ plural_pascal }}UseCaseTrait>,
     pub update_{{ snake }}: Arc<dyn Update{{ pascal }}UseCaseTrait>,
     pub delete_{{ snake }}: Arc<dyn Delete{{ pascal }}UseCaseTrait>,
 }
@@ -67,15 +67,15 @@ impl {{ pascal }}Api {
 
     /// List all {{ plural_pascal }}
     #[oai(path = "/{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
-    async fn list(&self) -> List{{ pascal }}Response {
-        match self.list_{{ snake }}.execute(List{{ pascal }}Params).await {
+    async fn list(&self) -> List{{ plural_pascal }}Response {
+        match self.list_{{ plural }}.execute(List{{ plural_pascal }}Params).await {
             Ok(entities) => {
-                List{{ pascal }}Response::Ok(Json(entities.iter().map({{ pascal }}Dto::from_domain).collect()))
+                List{{ plural_pascal }}Response::Ok(Json(entities.iter().map({{ pascal }}Dto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_{{ snake }} failed");
-                List{{ pascal }}Response::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_{{ plural }} failed");
+                List{{ plural_pascal }}Response::from_status(status, error)
             }
         }
     }
@@ -123,7 +123,7 @@ mod tests {
     use business::domain::{{ snake }}::errors::{{ pascal }}Error;
     use business::domain::{{ snake }}::use_cases::{
         create_{{ snake }}::mocks::MockCreate{{ pascal }}UseCase, delete_{{ snake }}::mocks::MockDelete{{ pascal }}UseCase,
-        get_{{ snake }}::mocks::MockGet{{ pascal }}UseCase, list_{{ snake }}::mocks::MockList{{ pascal }}UseCase,
+        get_{{ snake }}::mocks::MockGet{{ pascal }}UseCase, list_{{ plural }}::mocks::MockList{{ plural_pascal }}UseCase,
         update_{{ snake }}::mocks::MockUpdate{{ pascal }}UseCase,
     };
     use business::tests::mothers::{{ snake }}_mother::{{ pascal }}Mother;
@@ -139,7 +139,7 @@ mod tests {
     struct Mocks {
         create: MockCreate{{ pascal }}UseCase,
         get: MockGet{{ pascal }}UseCase,
-        list: MockList{{ pascal }}UseCase,
+        list: MockList{{ plural_pascal }}UseCase,
         update: MockUpdate{{ pascal }}UseCase,
         delete: MockDelete{{ pascal }}UseCase,
     }
@@ -149,7 +149,7 @@ mod tests {
             let api = {{ pascal }}Api {
                 create_{{ snake }}: Arc::new(self.create),
                 get_{{ snake }}: Arc::new(self.get),
-                list_{{ snake }}: Arc::new(self.list),
+                list_{{ plural }}: Arc::new(self.list),
                 update_{{ snake }}: Arc::new(self.update),
                 delete_{{ snake }}: Arc::new(self.delete),
             };

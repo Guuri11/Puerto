@@ -265,7 +265,7 @@ mod tests {
     }
 }
 
-=== business/src/application/article/list_article.rs ===
+=== business/src/application/article/list_articles.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -274,18 +274,18 @@ use crate::domain::article::{
     errors::ArticleError,
     model::Article,
     repository::ArticleRepositoryTrait,
-    use_cases::list_article::{ListArticleParams, ListArticleUseCaseTrait},
+    use_cases::list_articles::{ListArticlesParams, ListArticlesUseCaseTrait},
 };
 
-pub struct ListArticleUseCaseImpl {
+pub struct ListArticlesUseCaseImpl {
     pub repository: Arc<dyn ArticleRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListArticleUseCaseTrait for ListArticleUseCaseImpl {
-    async fn execute(&self, _params: ListArticleParams) -> Result<Vec<Article>, ArticleError> {
-        tracing::info!("list_article: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_article: repository failed"))
+impl ListArticlesUseCaseTrait for ListArticlesUseCaseImpl {
+    async fn execute(&self, _params: ListArticlesParams) -> Result<Vec<Article>, ArticleError> {
+        tracing::info!("list_articles: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_articles: repository failed"))
     }
 }
 
@@ -320,11 +320,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListArticleUseCaseImpl {
+        let use_case = ListArticlesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListArticleParams).await;
+        let result = use_case.execute(ListArticlesParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -334,11 +334,11 @@ mod tests {
     async fn should_return_empty_list_when_no_articles_exist() {
         let mut mock_repo = MockArticleRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListArticleUseCaseImpl {
+        let use_case = ListArticlesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListArticleParams).await;
+        let result = use_case.execute(ListArticlesParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -751,17 +751,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/article/use_cases/list_article.rs ===
+=== business/src/domain/article/use_cases/list_articles.rs ===
 use async_trait::async_trait;
 
 use crate::domain::article::{errors::ArticleError, model::Article};
 
 #[derive(Debug)]
-pub struct ListArticleParams;
+pub struct ListArticlesParams;
 
 #[async_trait]
-pub trait ListArticleUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListArticleParams) -> Result<Vec<Article>, ArticleError>;
+pub trait ListArticlesUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListArticlesParams) -> Result<Vec<Article>, ArticleError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -771,11 +771,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListArticleUseCase {}
+        pub ListArticlesUseCase {}
 
         #[async_trait]
-        impl ListArticleUseCaseTrait for ListArticleUseCase {
-            async fn execute(&self, params: ListArticleParams) -> Result<Vec<Article>, ArticleError>;
+        impl ListArticlesUseCaseTrait for ListArticlesUseCase {
+            async fn execute(&self, params: ListArticlesParams) -> Result<Vec<Article>, ArticleError>;
         }
     }
 }
@@ -835,7 +835,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_article;
             pub mod get_article;
-            pub mod list_article;
+            pub mod list_articles;
             pub mod update_article;
             pub mod delete_article;
         }
@@ -849,7 +849,7 @@ pub mod application {
     pub mod article {
         pub mod create_article;
         pub mod get_article;
-        pub mod list_article;
+        pub mod list_articles;
         pub mod update_article;
         pub mod delete_article;
     }
@@ -1195,7 +1195,7 @@ impl GetArticleResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListArticleResponse {
+pub enum ListArticlesResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<ArticleDto>>),
     #[oai(status = 401)]
@@ -1206,7 +1206,7 @@ pub enum ListArticleResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListArticleResponse {
+impl ListArticlesResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -1279,7 +1279,7 @@ use business::domain::article::use_cases::{
     create_article::{CreateArticleParams, CreateArticleUseCaseTrait},
     delete_article::{DeleteArticleParams, DeleteArticleUseCaseTrait},
     get_article::{GetArticleParams, GetArticleUseCaseTrait},
-    list_article::{ListArticleParams, ListArticleUseCaseTrait},
+    list_articles::{ListArticlesParams, ListArticlesUseCaseTrait},
     update_article::{UpdateArticleParams, UpdateArticleUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -1289,7 +1289,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::article::dto::{CreateArticleRequest, UpdateArticleRequest, ArticleDto};
 use crate::api::article::responses::{
-    CreateArticleResponse, DeleteArticleResponse, GetArticleResponse, ListArticleResponse,
+    CreateArticleResponse, DeleteArticleResponse, GetArticleResponse, ListArticlesResponse,
     UpdateArticleResponse,
 };
 
@@ -1297,7 +1297,7 @@ use crate::api::article::responses::{
 pub struct ArticleApi {
     pub create_article: Arc<dyn CreateArticleUseCaseTrait>,
     pub get_article: Arc<dyn GetArticleUseCaseTrait>,
-    pub list_article: Arc<dyn ListArticleUseCaseTrait>,
+    pub list_articles: Arc<dyn ListArticlesUseCaseTrait>,
     pub update_article: Arc<dyn UpdateArticleUseCaseTrait>,
     pub delete_article: Arc<dyn DeleteArticleUseCaseTrait>,
 }
@@ -1346,15 +1346,15 @@ impl ArticleApi {
 
     /// List all Articles
     #[oai(path = "/articles", method = "get", tag = "ApiTags::Article")]
-    async fn list(&self) -> ListArticleResponse {
-        match self.list_article.execute(ListArticleParams).await {
+    async fn list(&self) -> ListArticlesResponse {
+        match self.list_articles.execute(ListArticlesParams).await {
             Ok(entities) => {
-                ListArticleResponse::Ok(Json(entities.iter().map(ArticleDto::from_domain).collect()))
+                ListArticlesResponse::Ok(Json(entities.iter().map(ArticleDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_article failed");
-                ListArticleResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_articles failed");
+                ListArticlesResponse::from_status(status, error)
             }
         }
     }
@@ -1406,7 +1406,7 @@ mod tests {
     use business::domain::article::errors::ArticleError;
     use business::domain::article::use_cases::{
         create_article::mocks::MockCreateArticleUseCase, delete_article::mocks::MockDeleteArticleUseCase,
-        get_article::mocks::MockGetArticleUseCase, list_article::mocks::MockListArticleUseCase,
+        get_article::mocks::MockGetArticleUseCase, list_articles::mocks::MockListArticlesUseCase,
         update_article::mocks::MockUpdateArticleUseCase,
     };
     use business::tests::mothers::article_mother::ArticleMother;
@@ -1421,7 +1421,7 @@ mod tests {
     struct Mocks {
         create: MockCreateArticleUseCase,
         get: MockGetArticleUseCase,
-        list: MockListArticleUseCase,
+        list: MockListArticlesUseCase,
         update: MockUpdateArticleUseCase,
         delete: MockDeleteArticleUseCase,
     }
@@ -1431,7 +1431,7 @@ mod tests {
             let api = ArticleApi {
                 create_article: Arc::new(self.create),
                 get_article: Arc::new(self.get),
-                list_article: Arc::new(self.list),
+                list_articles: Arc::new(self.list),
                 update_article: Arc::new(self.update),
                 delete_article: Arc::new(self.delete),
             };
@@ -1635,7 +1635,7 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::article::create_article::CreateArticleUseCaseImpl;
 use business::application::article::get_article::GetArticleUseCaseImpl;
-use business::application::article::list_article::ListArticleUseCaseImpl;
+use business::application::article::list_articles::ListArticlesUseCaseImpl;
 use business::application::article::update_article::UpdateArticleUseCaseImpl;
 use business::application::article::delete_article::DeleteArticleUseCaseImpl;
 
@@ -1657,10 +1657,10 @@ pub async fn build_app() -> impl poem::Endpoint {
     let article_repo: Arc<dyn ArticleRepositoryTrait> = Arc::new(InMemoryArticleRepository::new());
     let create_article = Arc::new(CreateArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
     let get_article = Arc::new(GetArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
-    let list_article = Arc::new(ListArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
+    let list_articles = Arc::new(ListArticlesUseCaseImpl { repository: Arc::clone(&article_repo) });
     let update_article = Arc::new(UpdateArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
     let delete_article = Arc::new(DeleteArticleUseCaseImpl { repository: article_repo });
-    let article_api = ArticleApi { create_article, get_article, list_article, update_article, delete_article };
+    let article_api = ArticleApi { create_article, get_article, list_articles, update_article, delete_article };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -1703,7 +1703,7 @@ name = "Article"
 use_cases = [
     "create_article",
     "get_article",
-    "list_article",
+    "list_articles",
     "update_article",
     "delete_article",
 ]

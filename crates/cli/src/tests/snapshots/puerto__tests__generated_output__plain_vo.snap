@@ -292,7 +292,7 @@ mod tests {
     }
 }
 
-=== business/src/application/item/list_item.rs ===
+=== business/src/application/item/list_items.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -301,18 +301,18 @@ use crate::domain::item::{
     errors::ItemError,
     model::Item,
     repository::ItemRepositoryTrait,
-    use_cases::list_item::{ListItemParams, ListItemUseCaseTrait},
+    use_cases::list_items::{ListItemsParams, ListItemsUseCaseTrait},
 };
 
-pub struct ListItemUseCaseImpl {
+pub struct ListItemsUseCaseImpl {
     pub repository: Arc<dyn ItemRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListItemUseCaseTrait for ListItemUseCaseImpl {
-    async fn execute(&self, _params: ListItemParams) -> Result<Vec<Item>, ItemError> {
-        tracing::info!("list_item: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_item: repository failed"))
+impl ListItemsUseCaseTrait for ListItemsUseCaseImpl {
+    async fn execute(&self, _params: ListItemsParams) -> Result<Vec<Item>, ItemError> {
+        tracing::info!("list_items: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_items: repository failed"))
     }
 }
 
@@ -346,11 +346,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListItemUseCaseImpl {
+        let use_case = ListItemsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListItemParams).await;
+        let result = use_case.execute(ListItemsParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -360,11 +360,11 @@ mod tests {
     async fn should_return_empty_list_when_no_items_exist() {
         let mut mock_repo = MockItemRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListItemUseCaseImpl {
+        let use_case = ListItemsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListItemParams).await;
+        let result = use_case.execute(ListItemsParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -792,17 +792,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/item/use_cases/list_item.rs ===
+=== business/src/domain/item/use_cases/list_items.rs ===
 use async_trait::async_trait;
 
 use crate::domain::item::{errors::ItemError, model::Item};
 
 #[derive(Debug)]
-pub struct ListItemParams;
+pub struct ListItemsParams;
 
 #[async_trait]
-pub trait ListItemUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListItemParams) -> Result<Vec<Item>, ItemError>;
+pub trait ListItemsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListItemsParams) -> Result<Vec<Item>, ItemError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -812,11 +812,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListItemUseCase {}
+        pub ListItemsUseCase {}
 
         #[async_trait]
-        impl ListItemUseCaseTrait for ListItemUseCase {
-            async fn execute(&self, params: ListItemParams) -> Result<Vec<Item>, ItemError>;
+        impl ListItemsUseCaseTrait for ListItemsUseCase {
+            async fn execute(&self, params: ListItemsParams) -> Result<Vec<Item>, ItemError>;
         }
     }
 }
@@ -928,7 +928,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_item;
             pub mod get_item;
-            pub mod list_item;
+            pub mod list_items;
             pub mod update_item;
             pub mod delete_item;
         }
@@ -944,7 +944,7 @@ pub mod application {
     pub mod item {
         pub mod create_item;
         pub mod get_item;
-        pub mod list_item;
+        pub mod list_items;
         pub mod update_item;
         pub mod delete_item;
     }
@@ -1297,7 +1297,7 @@ impl GetItemResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListItemResponse {
+pub enum ListItemsResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<ItemDto>>),
     #[oai(status = 401)]
@@ -1308,7 +1308,7 @@ pub enum ListItemResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListItemResponse {
+impl ListItemsResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -1381,7 +1381,7 @@ use business::domain::item::use_cases::{
     create_item::{CreateItemParams, CreateItemUseCaseTrait},
     delete_item::{DeleteItemParams, DeleteItemUseCaseTrait},
     get_item::{GetItemParams, GetItemUseCaseTrait},
-    list_item::{ListItemParams, ListItemUseCaseTrait},
+    list_items::{ListItemsParams, ListItemsUseCaseTrait},
     update_item::{UpdateItemParams, UpdateItemUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -1391,7 +1391,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::item::dto::{CreateItemRequest, UpdateItemRequest, ItemDto};
 use crate::api::item::responses::{
-    CreateItemResponse, DeleteItemResponse, GetItemResponse, ListItemResponse,
+    CreateItemResponse, DeleteItemResponse, GetItemResponse, ListItemsResponse,
     UpdateItemResponse,
 };
 
@@ -1399,7 +1399,7 @@ use crate::api::item::responses::{
 pub struct ItemApi {
     pub create_item: Arc<dyn CreateItemUseCaseTrait>,
     pub get_item: Arc<dyn GetItemUseCaseTrait>,
-    pub list_item: Arc<dyn ListItemUseCaseTrait>,
+    pub list_items: Arc<dyn ListItemsUseCaseTrait>,
     pub update_item: Arc<dyn UpdateItemUseCaseTrait>,
     pub delete_item: Arc<dyn DeleteItemUseCaseTrait>,
 }
@@ -1446,15 +1446,15 @@ impl ItemApi {
 
     /// List all Items
     #[oai(path = "/items", method = "get", tag = "ApiTags::Item")]
-    async fn list(&self) -> ListItemResponse {
-        match self.list_item.execute(ListItemParams).await {
+    async fn list(&self) -> ListItemsResponse {
+        match self.list_items.execute(ListItemsParams).await {
             Ok(entities) => {
-                ListItemResponse::Ok(Json(entities.iter().map(ItemDto::from_domain).collect()))
+                ListItemsResponse::Ok(Json(entities.iter().map(ItemDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_item failed");
-                ListItemResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_items failed");
+                ListItemsResponse::from_status(status, error)
             }
         }
     }
@@ -1504,7 +1504,7 @@ mod tests {
     use business::domain::item::errors::ItemError;
     use business::domain::item::use_cases::{
         create_item::mocks::MockCreateItemUseCase, delete_item::mocks::MockDeleteItemUseCase,
-        get_item::mocks::MockGetItemUseCase, list_item::mocks::MockListItemUseCase,
+        get_item::mocks::MockGetItemUseCase, list_items::mocks::MockListItemsUseCase,
         update_item::mocks::MockUpdateItemUseCase,
     };
     use business::tests::mothers::item_mother::ItemMother;
@@ -1519,7 +1519,7 @@ mod tests {
     struct Mocks {
         create: MockCreateItemUseCase,
         get: MockGetItemUseCase,
-        list: MockListItemUseCase,
+        list: MockListItemsUseCase,
         update: MockUpdateItemUseCase,
         delete: MockDeleteItemUseCase,
     }
@@ -1529,7 +1529,7 @@ mod tests {
             let api = ItemApi {
                 create_item: Arc::new(self.create),
                 get_item: Arc::new(self.get),
-                list_item: Arc::new(self.list),
+                list_items: Arc::new(self.list),
                 update_item: Arc::new(self.update),
                 delete_item: Arc::new(self.delete),
             };
@@ -1729,7 +1729,7 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::item::create_item::CreateItemUseCaseImpl;
 use business::application::item::get_item::GetItemUseCaseImpl;
-use business::application::item::list_item::ListItemUseCaseImpl;
+use business::application::item::list_items::ListItemsUseCaseImpl;
 use business::application::item::update_item::UpdateItemUseCaseImpl;
 use business::application::item::delete_item::DeleteItemUseCaseImpl;
 
@@ -1751,10 +1751,10 @@ pub async fn build_app() -> impl poem::Endpoint {
     let item_repo: Arc<dyn ItemRepositoryTrait> = Arc::new(InMemoryItemRepository::new());
     let create_item = Arc::new(CreateItemUseCaseImpl { repository: Arc::clone(&item_repo) });
     let get_item = Arc::new(GetItemUseCaseImpl { repository: Arc::clone(&item_repo) });
-    let list_item = Arc::new(ListItemUseCaseImpl { repository: Arc::clone(&item_repo) });
+    let list_items = Arc::new(ListItemsUseCaseImpl { repository: Arc::clone(&item_repo) });
     let update_item = Arc::new(UpdateItemUseCaseImpl { repository: Arc::clone(&item_repo) });
     let delete_item = Arc::new(DeleteItemUseCaseImpl { repository: item_repo });
-    let item_api = ItemApi { create_item, get_item, list_item, update_item, delete_item };
+    let item_api = ItemApi { create_item, get_item, list_items, update_item, delete_item };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -1797,7 +1797,7 @@ name = "Item"
 use_cases = [
     "create_item",
     "get_item",
-    "list_item",
+    "list_items",
     "update_item",
     "delete_item",
 ]

@@ -249,7 +249,7 @@ mod tests {
     }
 }
 
-=== business/src/application/category/list_category.rs ===
+=== business/src/application/category/list_categories.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -258,18 +258,18 @@ use crate::domain::category::{
     errors::CategoryError,
     model::Category,
     repository::CategoryRepositoryTrait,
-    use_cases::list_category::{ListCategoryParams, ListCategoryUseCaseTrait},
+    use_cases::list_categories::{ListCategoriesParams, ListCategoriesUseCaseTrait},
 };
 
-pub struct ListCategoryUseCaseImpl {
+pub struct ListCategoriesUseCaseImpl {
     pub repository: Arc<dyn CategoryRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListCategoryUseCaseTrait for ListCategoryUseCaseImpl {
-    async fn execute(&self, _params: ListCategoryParams) -> Result<Vec<Category>, CategoryError> {
-        tracing::info!("list_category: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_category: repository failed"))
+impl ListCategoriesUseCaseTrait for ListCategoriesUseCaseImpl {
+    async fn execute(&self, _params: ListCategoriesParams) -> Result<Vec<Category>, CategoryError> {
+        tracing::info!("list_categories: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_categories: repository failed"))
     }
 }
 
@@ -297,11 +297,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListCategoryUseCaseImpl {
+        let use_case = ListCategoriesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCategoryParams).await;
+        let result = use_case.execute(ListCategoriesParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -311,11 +311,11 @@ mod tests {
     async fn should_return_empty_list_when_no_categories_exist() {
         let mut mock_repo = MockCategoryRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListCategoryUseCaseImpl {
+        let use_case = ListCategoriesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCategoryParams).await;
+        let result = use_case.execute(ListCategoriesParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -702,7 +702,7 @@ mod tests {
     }
 }
 
-=== business/src/application/product/list_product.rs ===
+=== business/src/application/product/list_products.rs ===
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -711,18 +711,18 @@ use crate::domain::product::{
     errors::ProductError,
     model::Product,
     repository::ProductRepositoryTrait,
-    use_cases::list_product::{ListProductParams, ListProductUseCaseTrait},
+    use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
 };
 
-pub struct ListProductUseCaseImpl {
+pub struct ListProductsUseCaseImpl {
     pub repository: Arc<dyn ProductRepositoryTrait>,
 }
 
 #[async_trait]
-impl ListProductUseCaseTrait for ListProductUseCaseImpl {
-    async fn execute(&self, _params: ListProductParams) -> Result<Vec<Product>, ProductError> {
-        tracing::info!("list_product: start");
-        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_product: repository failed"))
+impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
+    async fn execute(&self, _params: ListProductsParams) -> Result<Vec<Product>, ProductError> {
+        tracing::info!("list_products: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
     }
 }
 
@@ -751,11 +751,11 @@ mod tests {
         mock_repo
             .expect_find_all()
             .returning(move || Ok(entities.clone()));
-        let use_case = ListProductUseCaseImpl {
+        let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductParams).await;
+        let result = use_case.execute(ListProductsParams).await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 2);
@@ -765,11 +765,11 @@ mod tests {
     async fn should_return_empty_list_when_no_products_exist() {
         let mut mock_repo = MockProductRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
-        let use_case = ListProductUseCaseImpl {
+        let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductParams).await;
+        let result = use_case.execute(ListProductsParams).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -1126,17 +1126,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/category/use_cases/list_category.rs ===
+=== business/src/domain/category/use_cases/list_categories.rs ===
 use async_trait::async_trait;
 
 use crate::domain::category::{errors::CategoryError, model::Category};
 
 #[derive(Debug)]
-pub struct ListCategoryParams;
+pub struct ListCategoriesParams;
 
 #[async_trait]
-pub trait ListCategoryUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListCategoryParams) -> Result<Vec<Category>, CategoryError>;
+pub trait ListCategoriesUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListCategoriesParams) -> Result<Vec<Category>, CategoryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1146,11 +1146,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListCategoryUseCase {}
+        pub ListCategoriesUseCase {}
 
         #[async_trait]
-        impl ListCategoryUseCaseTrait for ListCategoryUseCase {
-            async fn execute(&self, params: ListCategoryParams) -> Result<Vec<Category>, CategoryError>;
+        impl ListCategoriesUseCaseTrait for ListCategoriesUseCase {
+            async fn execute(&self, params: ListCategoriesParams) -> Result<Vec<Category>, CategoryError>;
         }
     }
 }
@@ -1437,17 +1437,17 @@ pub mod mocks {
     }
 }
 
-=== business/src/domain/product/use_cases/list_product.rs ===
+=== business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
 
 use crate::domain::product::{errors::ProductError, model::Product};
 
 #[derive(Debug)]
-pub struct ListProductParams;
+pub struct ListProductsParams;
 
 #[async_trait]
-pub trait ListProductUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+pub trait ListProductsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1457,11 +1457,11 @@ pub mod mocks {
     use super::*;
 
     mock! {
-        pub ListProductUseCase {}
+        pub ListProductsUseCase {}
 
         #[async_trait]
-        impl ListProductUseCaseTrait for ListProductUseCase {
-            async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+        impl ListProductsUseCaseTrait for ListProductsUseCase {
+            async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
         }
     }
 }
@@ -1518,7 +1518,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_product;
             pub mod get_product;
-            pub mod list_product;
+            pub mod list_products;
             pub mod update_product;
             pub mod delete_product;
         }
@@ -1531,7 +1531,7 @@ pub mod domain {
         pub mod use_cases {
             pub mod create_category;
             pub mod get_category;
-            pub mod list_category;
+            pub mod list_categories;
             pub mod update_category;
             pub mod delete_category;
         }
@@ -1547,7 +1547,7 @@ pub mod application {
     pub mod product {
         pub mod create_product;
         pub mod get_product;
-        pub mod list_product;
+        pub mod list_products;
         pub mod update_product;
         pub mod delete_product;
     }
@@ -1555,7 +1555,7 @@ pub mod application {
     pub mod category {
         pub mod create_category;
         pub mod get_category;
-        pub mod list_category;
+        pub mod list_categories;
         pub mod update_category;
         pub mod delete_category;
     }
@@ -1964,7 +1964,7 @@ impl GetCategoryResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListCategoryResponse {
+pub enum ListCategoriesResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<CategoryDto>>),
     #[oai(status = 401)]
@@ -1975,7 +1975,7 @@ pub enum ListCategoryResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListCategoryResponse {
+impl ListCategoriesResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -2048,7 +2048,7 @@ use business::domain::category::use_cases::{
     create_category::{CreateCategoryParams, CreateCategoryUseCaseTrait},
     delete_category::{DeleteCategoryParams, DeleteCategoryUseCaseTrait},
     get_category::{GetCategoryParams, GetCategoryUseCaseTrait},
-    list_category::{ListCategoryParams, ListCategoryUseCaseTrait},
+    list_categories::{ListCategoriesParams, ListCategoriesUseCaseTrait},
     update_category::{UpdateCategoryParams, UpdateCategoryUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -2058,7 +2058,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::category::dto::{CreateCategoryRequest, UpdateCategoryRequest, CategoryDto};
 use crate::api::category::responses::{
-    CreateCategoryResponse, DeleteCategoryResponse, GetCategoryResponse, ListCategoryResponse,
+    CreateCategoryResponse, DeleteCategoryResponse, GetCategoryResponse, ListCategoriesResponse,
     UpdateCategoryResponse,
 };
 
@@ -2066,7 +2066,7 @@ use crate::api::category::responses::{
 pub struct CategoryApi {
     pub create_category: Arc<dyn CreateCategoryUseCaseTrait>,
     pub get_category: Arc<dyn GetCategoryUseCaseTrait>,
-    pub list_category: Arc<dyn ListCategoryUseCaseTrait>,
+    pub list_categories: Arc<dyn ListCategoriesUseCaseTrait>,
     pub update_category: Arc<dyn UpdateCategoryUseCaseTrait>,
     pub delete_category: Arc<dyn DeleteCategoryUseCaseTrait>,
 }
@@ -2111,15 +2111,15 @@ impl CategoryApi {
 
     /// List all Categories
     #[oai(path = "/categories", method = "get", tag = "ApiTags::Category")]
-    async fn list(&self) -> ListCategoryResponse {
-        match self.list_category.execute(ListCategoryParams).await {
+    async fn list(&self) -> ListCategoriesResponse {
+        match self.list_categories.execute(ListCategoriesParams).await {
             Ok(entities) => {
-                ListCategoryResponse::Ok(Json(entities.iter().map(CategoryDto::from_domain).collect()))
+                ListCategoriesResponse::Ok(Json(entities.iter().map(CategoryDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_category failed");
-                ListCategoryResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_categories failed");
+                ListCategoriesResponse::from_status(status, error)
             }
         }
     }
@@ -2167,7 +2167,7 @@ mod tests {
     use business::domain::category::errors::CategoryError;
     use business::domain::category::use_cases::{
         create_category::mocks::MockCreateCategoryUseCase, delete_category::mocks::MockDeleteCategoryUseCase,
-        get_category::mocks::MockGetCategoryUseCase, list_category::mocks::MockListCategoryUseCase,
+        get_category::mocks::MockGetCategoryUseCase, list_categories::mocks::MockListCategoriesUseCase,
         update_category::mocks::MockUpdateCategoryUseCase,
     };
     use business::tests::mothers::category_mother::CategoryMother;
@@ -2182,7 +2182,7 @@ mod tests {
     struct Mocks {
         create: MockCreateCategoryUseCase,
         get: MockGetCategoryUseCase,
-        list: MockListCategoryUseCase,
+        list: MockListCategoriesUseCase,
         update: MockUpdateCategoryUseCase,
         delete: MockDeleteCategoryUseCase,
     }
@@ -2192,7 +2192,7 @@ mod tests {
             let api = CategoryApi {
                 create_category: Arc::new(self.create),
                 get_category: Arc::new(self.get),
-                list_category: Arc::new(self.list),
+                list_categories: Arc::new(self.list),
                 update_category: Arc::new(self.update),
                 delete_category: Arc::new(self.delete),
             };
@@ -2556,7 +2556,7 @@ impl GetProductResponse {
 }
 
 #[derive(ApiResponse)]
-pub enum ListProductResponse {
+pub enum ListProductsResponse {
     #[oai(status = 200)]
     Ok(Json<Vec<ProductDto>>),
     #[oai(status = 401)]
@@ -2567,7 +2567,7 @@ pub enum ListProductResponse {
     InternalError(Json<ErrorResponse>),
 }
 
-impl ListProductResponse {
+impl ListProductsResponse {
     pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -2640,7 +2640,7 @@ use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
     delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
     get_product::{GetProductParams, GetProductUseCaseTrait},
-    list_product::{ListProductParams, ListProductUseCaseTrait},
+    list_products::{ListProductsParams, ListProductsUseCaseTrait},
     update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
@@ -2650,7 +2650,7 @@ use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
 use crate::api::product::dto::{CreateProductRequest, UpdateProductRequest, ProductDto};
 use crate::api::product::responses::{
-    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductResponse,
+    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductsResponse,
     UpdateProductResponse,
 };
 
@@ -2658,7 +2658,7 @@ use crate::api::product::responses::{
 pub struct ProductApi {
     pub create_product: Arc<dyn CreateProductUseCaseTrait>,
     pub get_product: Arc<dyn GetProductUseCaseTrait>,
-    pub list_product: Arc<dyn ListProductUseCaseTrait>,
+    pub list_products: Arc<dyn ListProductsUseCaseTrait>,
     pub update_product: Arc<dyn UpdateProductUseCaseTrait>,
     pub delete_product: Arc<dyn DeleteProductUseCaseTrait>,
 }
@@ -2704,15 +2704,15 @@ impl ProductApi {
 
     /// List all Products
     #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
-    async fn list(&self) -> ListProductResponse {
-        match self.list_product.execute(ListProductParams).await {
+    async fn list(&self) -> ListProductsResponse {
+        match self.list_products.execute(ListProductsParams).await {
             Ok(entities) => {
-                ListProductResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
+                ListProductsResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
             }
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_product failed");
-                ListProductResponse::from_status(status, error)
+                tracing::error!(code = %error.0.name, "list_products failed");
+                ListProductsResponse::from_status(status, error)
             }
         }
     }
@@ -2761,7 +2761,7 @@ mod tests {
     use business::domain::product::errors::ProductError;
     use business::domain::product::use_cases::{
         create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
-        get_product::mocks::MockGetProductUseCase, list_product::mocks::MockListProductUseCase,
+        get_product::mocks::MockGetProductUseCase, list_products::mocks::MockListProductsUseCase,
         update_product::mocks::MockUpdateProductUseCase,
     };
     use business::tests::mothers::product_mother::ProductMother;
@@ -2776,7 +2776,7 @@ mod tests {
     struct Mocks {
         create: MockCreateProductUseCase,
         get: MockGetProductUseCase,
-        list: MockListProductUseCase,
+        list: MockListProductsUseCase,
         update: MockUpdateProductUseCase,
         delete: MockDeleteProductUseCase,
     }
@@ -2786,7 +2786,7 @@ mod tests {
             let api = ProductApi {
                 create_product: Arc::new(self.create),
                 get_product: Arc::new(self.get),
-                list_product: Arc::new(self.list),
+                list_products: Arc::new(self.list),
                 update_product: Arc::new(self.update),
                 delete_product: Arc::new(self.delete),
             };
@@ -2985,12 +2985,12 @@ use std::sync::Arc;
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::product::create_product::CreateProductUseCaseImpl;
 use business::application::product::get_product::GetProductUseCaseImpl;
-use business::application::product::list_product::ListProductUseCaseImpl;
+use business::application::product::list_products::ListProductsUseCaseImpl;
 use business::application::product::update_product::UpdateProductUseCaseImpl;
 use business::application::product::delete_product::DeleteProductUseCaseImpl;
 use business::application::category::create_category::CreateCategoryUseCaseImpl;
 use business::application::category::get_category::GetCategoryUseCaseImpl;
-use business::application::category::list_category::ListCategoryUseCaseImpl;
+use business::application::category::list_categories::ListCategoriesUseCaseImpl;
 use business::application::category::update_category::UpdateCategoryUseCaseImpl;
 use business::application::category::delete_category::DeleteCategoryUseCaseImpl;
 
@@ -3015,18 +3015,18 @@ pub async fn build_app() -> impl poem::Endpoint {
     let product_repo: Arc<dyn ProductRepositoryTrait> = Arc::new(InMemoryProductRepository::new());
     let create_product = Arc::new(CreateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
     let get_product = Arc::new(GetProductUseCaseImpl { repository: Arc::clone(&product_repo) });
-    let list_product = Arc::new(ListProductUseCaseImpl { repository: Arc::clone(&product_repo) });
+    let list_products = Arc::new(ListProductsUseCaseImpl { repository: Arc::clone(&product_repo) });
     let update_product = Arc::new(UpdateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
     let delete_product = Arc::new(DeleteProductUseCaseImpl { repository: product_repo });
-    let product_api = ProductApi { create_product, get_product, list_product, update_product, delete_product };
+    let product_api = ProductApi { create_product, get_product, list_products, update_product, delete_product };
 
     let category_repo: Arc<dyn CategoryRepositoryTrait> = Arc::new(InMemoryCategoryRepository::new());
     let create_category = Arc::new(CreateCategoryUseCaseImpl { repository: Arc::clone(&category_repo) });
     let get_category = Arc::new(GetCategoryUseCaseImpl { repository: Arc::clone(&category_repo) });
-    let list_category = Arc::new(ListCategoryUseCaseImpl { repository: Arc::clone(&category_repo) });
+    let list_categories = Arc::new(ListCategoriesUseCaseImpl { repository: Arc::clone(&category_repo) });
     let update_category = Arc::new(UpdateCategoryUseCaseImpl { repository: Arc::clone(&category_repo) });
     let delete_category = Arc::new(DeleteCategoryUseCaseImpl { repository: category_repo });
-    let category_api = CategoryApi { create_category, get_category, list_category, update_category, delete_category };
+    let category_api = CategoryApi { create_category, get_category, list_categories, update_category, delete_category };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
@@ -3069,7 +3069,7 @@ name = "Product"
 use_cases = [
     "create_product",
     "get_product",
-    "list_product",
+    "list_products",
     "update_product",
     "delete_product",
 ]
@@ -3087,7 +3087,7 @@ name = "Category"
 use_cases = [
     "create_category",
     "get_category",
-    "list_category",
+    "list_categories",
     "update_category",
     "delete_category",
 ]

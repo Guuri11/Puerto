@@ -1,5 +1,6 @@
 use std::{fs, path::Path};
 
+use crate::generators::naming::crud_use_cases;
 use crate::patchers::api_rs::patch_api_rs;
 
 /// Find `pub mod <block_name> { ... }` and insert `content` just before the closing `}`.
@@ -96,6 +97,14 @@ pub fn patch_business_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+/// `{indent}pub mod {name};\n` for each name.
+fn mod_lines(names: &[String], indent: &str) -> String {
+    names
+        .iter()
+        .map(|name| format!("{indent}pub mod {name};\n"))
+        .collect()
+}
+
 pub fn patch_business_lib_domain_crud(
     base: &Path,
     snake: &str,
@@ -105,8 +114,9 @@ pub fn patch_business_lib_domain_crud(
     if src.contains(&format!("pub mod {snake} {{\n        pub mod errors;")) {
         return Ok(());
     }
+    let use_case_mods = mod_lines(&crud_use_cases(snake), "            ");
     let domain_mod = format!(
-        "\n    pub mod {snake} {{\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases {{\n            pub mod create_{snake};\n            pub mod get_{snake};\n            pub mod list_{snake};\n            pub mod update_{snake};\n            pub mod delete_{snake};\n        }}\n    }}\n"
+        "\n    pub mod {snake} {{\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases {{\n{use_case_mods}        }}\n    }}\n"
     );
     let patched = insert_before_block_end(&src, "domain", &domain_mod)?;
     fs::write(&path, patched)?;
@@ -123,9 +133,8 @@ pub fn patch_business_lib_application_crud(
     if src.contains(&app_block_marker) {
         return Ok(());
     }
-    let app_mod = format!(
-        "\n    pub mod {snake} {{\n        pub mod create_{snake};\n        pub mod get_{snake};\n        pub mod list_{snake};\n        pub mod update_{snake};\n        pub mod delete_{snake};\n    }}\n"
-    );
+    let use_case_mods = mod_lines(&crud_use_cases(snake), "        ");
+    let app_mod = format!("\n    pub mod {snake} {{\n{use_case_mods}    }}\n");
     let patched = insert_before_block_end(&src, "application", &app_mod)?;
     fs::write(&path, patched)?;
     Ok(())

@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use crate::generators::effective_fields;
-use crate::generators::naming::{entity_ctx, pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::naming::{
+    crud_use_case, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
+};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     FieldCtx, field_ctx, is_value_object, literal_import, literal_names_vo, vo_import_path,
@@ -182,7 +184,10 @@ pub fn write_application_files(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = base.join(format!("business/src/application/{snake}"));
     let write = |action: &str, content: String| {
-        write_file(&dir.join(format!("{action}_{snake}.rs")), &content)
+        write_file(
+            &dir.join(format!("{}.rs", crud_use_case(action, snake))),
+            &content,
+        )
     };
     write(
         "create",

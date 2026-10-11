@@ -143,7 +143,7 @@ fn scaffold_crud_impls_import_model_struct_in_tests() {
 
     for uc in &[
         "get_product",
-        "list_product",
+        "list_products",
         "update_product",
         "delete_product",
     ] {
@@ -360,7 +360,7 @@ fn scaffold_crud_creates_all_domain_use_case_files() {
             .exists()
     );
     assert!(
-        dir.join("business/src/domain/product/use_cases/list_product.rs")
+        dir.join("business/src/domain/product/use_cases/list_products.rs")
             .exists()
     );
     assert!(
@@ -392,7 +392,7 @@ fn scaffold_crud_creates_all_application_use_case_files() {
             .exists()
     );
     assert!(
-        dir.join("business/src/application/product/list_product.rs")
+        dir.join("business/src/application/product/list_products.rs")
             .exists()
     );
     assert!(
@@ -440,7 +440,7 @@ fn scaffold_crud_routes_has_all_http_methods() {
     assert!(content.contains("pub struct ProductApi"));
     assert!(content.contains("pub create_product"));
     assert!(content.contains("pub get_product"));
-    assert!(content.contains("pub list_product"));
+    assert!(content.contains("pub list_products"));
     assert!(content.contains("pub update_product"));
     assert!(content.contains("pub delete_product"));
 
@@ -461,7 +461,7 @@ fn scaffold_crud_patches_business_lib_with_all_use_cases() {
     assert!(content.contains("pub mod use_cases {"));
     assert!(content.contains("pub mod create_product;"));
     assert!(content.contains("pub mod get_product;"));
-    assert!(content.contains("pub mod list_product;"));
+    assert!(content.contains("pub mod list_products;"));
     assert!(content.contains("pub mod update_product;"));
     assert!(content.contains("pub mod delete_product;"));
 
@@ -487,8 +487,8 @@ fn scaffold_crud_patches_business_lib_with_all_use_cases() {
         "application.product missing get_product"
     );
     assert!(
-        product_block.contains("pub mod list_product;"),
-        "application.product missing list_product"
+        product_block.contains("pub mod list_products;"),
+        "application.product missing list_products"
     );
     assert!(
         product_block.contains("pub mod update_product;"),
@@ -519,7 +519,7 @@ fn scaffold_crud_bootstrap_wires_all_use_cases() {
     let content = fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
     assert!(content.contains("CreateProductUseCaseImpl"));
     assert!(content.contains("GetProductUseCaseImpl"));
-    assert!(content.contains("ListProductUseCaseImpl"));
+    assert!(content.contains("ListProductsUseCaseImpl"));
     assert!(content.contains("UpdateProductUseCaseImpl"));
     assert!(content.contains("DeleteProductUseCaseImpl"));
 
@@ -600,7 +600,7 @@ fn scaffold_7_4_always_generates_5_use_cases() {
             .exists()
     );
     assert!(
-        dir.join("business/src/domain/team/use_cases/list_team.rs")
+        dir.join("business/src/domain/team/use_cases/list_teams.rs")
             .exists()
     );
     assert!(
@@ -853,4 +853,67 @@ fn should_name_the_template_and_the_cause_when_a_render_fails() {
         err.contains("not found in context"),
         "carries tera's cause: {err}"
     );
+}
+
+// ── T-20: the list use case is named after the plural ─────────────────────
+
+#[test]
+fn scaffold_names_the_list_use_case_after_the_plural_in_every_layer() {
+    let dir = temp_dir("t20_list_plural");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("t20-list-plural", &dir).unwrap();
+    scaffold::run_scaffold("OrderItem", &output, &[], OverwritePolicy::Ask).unwrap();
+
+    let manifest = fs::read_to_string(output.join("puerto.toml")).unwrap();
+    assert!(manifest.contains("\"list_order_items\""), "{manifest}");
+    assert!(!manifest.contains("\"list_order_item\""), "{manifest}");
+    for path in [
+        "business/src/domain/order_item/use_cases/list_order_items.rs",
+        "business/src/application/order_item/list_order_items.rs",
+    ] {
+        assert!(output.join(path).exists(), "{path}");
+    }
+    assert!(
+        !output
+            .join("business/src/domain/order_item/use_cases/list_order_item.rs")
+            .exists()
+    );
+
+    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    assert_eq!(lib.matches("pub mod list_order_items;").count(), 2, "{lib}");
+
+    let trait_src = fs::read_to_string(
+        output.join("business/src/domain/order_item/use_cases/list_order_items.rs"),
+    )
+    .unwrap();
+    assert!(
+        trait_src.contains("pub struct ListOrderItemsParams;"),
+        "{trait_src}"
+    );
+    assert!(
+        trait_src.contains("pub trait ListOrderItemsUseCaseTrait"),
+        "{trait_src}"
+    );
+
+    let routes =
+        fs::read_to_string(output.join("presentation/src/api/order_item/routes.rs")).unwrap();
+    assert!(
+        routes.contains("pub list_order_items: Arc<dyn ListOrderItemsUseCaseTrait>,"),
+        "{routes}"
+    );
+    assert!(routes.contains("ListOrderItemsResponse"), "{routes}");
+
+    let bootstrap =
+        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    assert!(
+        bootstrap.contains("ListOrderItemsUseCaseImpl"),
+        "{bootstrap}"
+    );
+    assert!(
+        !bootstrap.contains("ListOrderItemUseCaseImpl"),
+        "{bootstrap}"
+    );
+
+    cleanup(&dir);
 }

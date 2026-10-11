@@ -395,7 +395,7 @@ fn scaffold_routes_hold_use_case_ports_not_impls() {
     for uc in [
         "CreateProduct",
         "GetProduct",
-        "ListProduct",
+        "ListProducts",
         "UpdateProduct",
         "DeleteProduct",
     ] {
@@ -414,16 +414,16 @@ fn scaffold_routes_hold_use_case_ports_not_impls() {
 fn scaffold_use_case_traits_ship_a_mock() {
     let (dir, output) = scaffolded_product("t26_trait_mocks");
 
-    for (action, uc) in [
-        ("create", "CreateProduct"),
-        ("get", "GetProduct"),
-        ("list", "ListProduct"),
-        ("update", "UpdateProduct"),
-        ("delete", "DeleteProduct"),
+    for (module, uc) in [
+        ("create_product", "CreateProduct"),
+        ("get_product", "GetProduct"),
+        ("list_products", "ListProducts"),
+        ("update_product", "UpdateProduct"),
+        ("delete_product", "DeleteProduct"),
     ] {
-        let src = fs::read_to_string(output.join(format!(
-            "business/src/domain/product/use_cases/{action}_product.rs"
-        )))
+        let src = fs::read_to_string(
+            output.join(format!("business/src/domain/product/use_cases/{module}.rs")),
+        )
         .unwrap();
         assert!(
             src.contains("#[cfg(any(test, feature = \"test-utils\"))]\npub mod mocks {"),
