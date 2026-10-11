@@ -261,10 +261,7 @@ pub fn run_value_object(
     inner_type: &str,
     base: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let inner_type = match inner_type {
-        "DateTime" => "DateTime<Utc>",
-        t => t,
-    };
+    let inner_type = &crate::puerto_toml::expand_type(inner_type);
     crate::validation::validate_vo_name(name)?;
     crate::validation::validate_shared_vo_inner_type(inner_type)?;
 

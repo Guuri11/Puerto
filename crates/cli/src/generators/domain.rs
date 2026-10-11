@@ -127,10 +127,11 @@ pub fn generate_value_objects(
 
     let mut imports = vec![format!("super::errors::{pascal}Error")];
     for f in vo_fields.iter().filter(|f| !is_enum_vo(f)) {
-        let import = match vo_inner_type(f).as_str() {
-            "Uuid" => "uuid::Uuid",
-            "DateTime<Utc>" => "chrono::{DateTime, Utc}",
-            _ => continue,
+        let Some(import) = resolve_type(&vo_inner_type(f))
+            .ok()
+            .and_then(|m| m.needs_import)
+        else {
+            continue;
         };
         if !imports.iter().any(|i| i == import) {
             imports.push(import.to_string());

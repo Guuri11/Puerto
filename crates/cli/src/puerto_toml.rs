@@ -215,7 +215,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
 
 /// Expands CLI type shorthands to full Rust type strings.
 /// `DateTime` → `DateTime<Utc>`, `map` → `HashMap<String, String>`.
-fn expand_type(t: &str) -> String {
+pub fn expand_type(t: &str) -> String {
     match t {
         "DateTime" => "DateTime<Utc>".to_string(),
         "map" => "HashMap<String, String>".to_string(),
