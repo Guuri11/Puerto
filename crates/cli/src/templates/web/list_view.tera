@@ -1,0 +1,33 @@
+import { Link } from "wouter";
+import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
+
+export function {{ pascal }}ListView({ {{ plural_ident }} }: { {{ plural_ident }}: {{ pascal }}[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+{%- for f in fields %}
+            <th>{{ f.label }}</th>
+{%- endfor %}
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {{ "{" }}{{ plural_ident }}.map(({{ ident }}) => (
+            <tr key={{ "{" }}{{ ident }}.id}>
+{%- for f in fields %}
+              <td>{{ "{" }}{{ f.display }}}</td>
+{%- endfor %}
+              <td className="text-right">
+                <Link href={`/{{ plural }}/${{ "{" }}{{ ident }}.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

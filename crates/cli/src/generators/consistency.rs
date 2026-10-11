@@ -46,6 +46,18 @@ fn has_generated_tree(base: &Path) -> bool {
     base.join("business/src/domain").is_dir()
 }
 
+/// The files the generated code imports for this entity: `bootstrap.rs`'s, plus — in a web
+/// project, for an entity with screens — those `web/src/presentation/core/generated/*` import.
+pub fn required_files(entity: &Entity, web: bool) -> Vec<PathBuf> {
+    let mut files = bootstrap_required_files(entity);
+    if web && crate::generators::web::has_web_slice(entity) {
+        files.extend(crate::generators::web::web_required_files(
+            &pascal_to_snake(&entity.name),
+        ));
+    }
+    files
+}
+
 /// Entities declared in the manifest whose code is missing.
 pub fn missing_entity_files(base: &Path, config: &PuertoConfig) -> Vec<EntityDrift> {
     if !has_generated_tree(base) {
@@ -55,7 +67,7 @@ pub fn missing_entity_files(base: &Path, config: &PuertoConfig) -> Vec<EntityDri
         .entity
         .iter()
         .filter_map(|entity| {
-            let missing: Vec<PathBuf> = bootstrap_required_files(entity)
+            let missing: Vec<PathBuf> = required_files(entity, config.project.web)
                 .into_iter()
                 .filter(|f| !base.join(f).exists())
                 .collect();
@@ -108,8 +120,10 @@ fn suggested_command(entity: &str, missing: &[PathBuf]) -> String {
         format!("puerto generate application {entity}")
     } else if is_missing("infrastructure/src") {
         format!("puerto generate repository {entity}")
-    } else {
+    } else if is_missing("presentation/src") {
         format!("puerto generate presentation {entity}")
+    } else {
+        format!("puerto generate web {entity}")
     }
 }
 
@@ -177,6 +191,12 @@ mod tests {
         assert_eq!(
             suggested_command("Invoice", &only_presentation),
             "puerto generate presentation Invoice"
+        );
+
+        let only_web = vec![PathBuf::from("web/src/domain/invoice/repository.ts")];
+        assert_eq!(
+            suggested_command("Invoice", &only_web),
+            "puerto generate web Invoice"
         );
     }
 

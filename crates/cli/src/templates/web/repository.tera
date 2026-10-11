@@ -1,0 +1,10 @@
+import type { {{ pascal }}, {{ pascal }}Draft } from "./model";
+
+/** The port the screens call. Every method rejects with the `{{ pascal }}Error` the API answered. */
+export interface {{ pascal }}Repository {
+  list(): Promise<{{ pascal }}[]>;
+  get(id: string): Promise<{{ pascal }}>;
+  create(draft: {{ pascal }}Draft): Promise<{{ pascal }}>;
+  update(id: string, draft: {{ pascal }}Draft): Promise<{{ pascal }}>;
+  remove(id: string): Promise<void>;
+}

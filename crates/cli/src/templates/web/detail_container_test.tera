@@ -1,0 +1,49 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
+import { renderScreen } from "../../../../test-support/render";
+import { {{ pascal }}DetailContainer } from "./{{ kebab }}-detail-container";
+
+describe("{{ pascal }}DetailContainer", () => {
+  test("should show the {{ words }} when it exists", async () => {
+    // Arrange
+    const seeded = {{ pascal }}Mother.random();
+    const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
+
+    // Act
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the {{ words }} does not exist", async () => {
+    // Arrange
+    const {{ camel }}Repository = fake{{ pascal }}Repository();
+
+    // Act
+    renderScreen(<{{ pascal }}DetailContainer id={crypto.randomUUID()} />, { {{ camel }}Repository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.not_found");
+  });
+
+  test("should delete the {{ words }} only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = {{ pascal }}Mother.random();
+    const fake = fake{{ pascal }}Repository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
+      {{ camel }}Repository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/{{ plural }}"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});

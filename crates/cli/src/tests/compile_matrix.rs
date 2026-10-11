@@ -214,6 +214,28 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     entities: &[("Product", &["title:String", "price:i64"])],
 };
 
+/// Phase 9.2: an entity whose every field reaches the frontend — each primitive an input holds,
+/// and a value object over one — with a two-word name (`order-item` files, `/order_items`).
+pub(super) const WEB_CRUD: Scenario = Scenario {
+    name: "web_crud",
+    db: false,
+    no_demo: false,
+    no_web: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[(
+        "OrderItem",
+        &[
+            "title:String",
+            "quantity:i64",
+            "rate:f64",
+            "in_stock:bool",
+            "ref_id:Uuid",
+            "sku:Sku:String",
+        ],
+    )],
+};
+
 pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     name: "postgres_every_type",
     db: true,
@@ -347,6 +369,7 @@ pub(super) fn assert_generated_project_is_clean(
 
     if output.join("web").is_dir() {
         assert_spec_export_is_stable(output, dir, name, envs);
+        assert_web_is_clean(output, name);
     }
 }
 
@@ -499,7 +522,11 @@ fn compiles_with_custom_use_case_after_scaffold() {
 
 /// Runs the frontend's own checks inside a generated project: install, wire types from the
 /// exported spec, typecheck, Biome, dependency-cruiser, `bun test` and a production build. Needs
-/// `bun` on `PATH`, and `docs/api/openapi.json` (run `assert_generated_project_is_clean` first).
+/// `bun` on `PATH`, and `docs/api/openapi.json` (`assert_generated_project_is_clean` exports it,
+/// then calls this for every web scenario: a few seconds each, against minutes of `cargo`).
+///
+/// `bun run lint` runs **before** any formatting: the generated TypeScript must come out
+/// Biome-clean. (`make web/sync` formats too — the net for names long enough to wrap a line.)
 fn assert_web_is_clean(output: &Path, name: &str) {
     let web = output.join("web");
     for args in [
@@ -537,7 +564,6 @@ fn web_shell_passes_its_own_checks() {
 
     let output = generate_project("compile-web-shell", &dir).unwrap();
     assert_generated_project_is_clean(&output, &dir, "web_shell", &[]);
-    assert_web_is_clean(&output, "web_shell");
     assert!(
         output
             .join("web/src/infrastructure/http/schema.d.ts")
@@ -545,6 +571,12 @@ fn web_shell_passes_its_own_checks() {
     );
 
     cleanup(&dir);
+}
+
+#[test]
+#[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
+fn web_crud_slice_passes_its_own_checks() {
+    assert_scenario_compiles(&WEB_CRUD);
 }
 
 #[test]

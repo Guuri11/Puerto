@@ -91,7 +91,7 @@ pub fn run_bootstrap_command(
         if !drifts.is_empty() {
             let lines = crate::generators::consistency::drift_lines(&drifts);
             return Err(format!(
-                "refusing to write a bootstrap.rs that will not compile:\n  {}\n\nPass \
+                "refusing to write generated wiring that will not compile:\n  {}\n\nPass \
                  --allow-missing to write it anyway.",
                 lines.join("\n  ")
             )
@@ -100,11 +100,14 @@ pub fn run_bootstrap_command(
     }
     regenerate_bootstrap(base)?;
     println!("✓ bootstrap.rs regenerated.");
+    if crate::puerto_toml::read(base).is_ok_and(|c| c.project.web) {
+        println!("✓ web/src/presentation/core/generated/ regenerated.");
+    }
     Ok(())
 }
 
-/// Read puerto.toml and overwrite `presentation/src/generated/bootstrap.rs`
-/// and `presentation/src/api/tags.rs`.
+/// Read puerto.toml and overwrite `presentation/src/generated/bootstrap.rs`,
+/// `presentation/src/api/tags.rs` and, in a web project, `web/src/presentation/core/generated/*`.
 ///
 /// Warns — rather than refuses — on manifest/filesystem drift: this runs inside `scaffold`, where
 /// the entity being generated is fine and it is some *other* declared entity that is missing.
@@ -131,6 +134,8 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
         fs::create_dir_all(parent)?;
     }
     fs::write(tags_path, generate_tags_content(&config.entity)?)?;
+
+    crate::generators::web::regenerate_web(base, &config)?;
 
     Ok(())
 }

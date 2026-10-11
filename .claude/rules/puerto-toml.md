@@ -213,9 +213,10 @@ presentation/src/api/product/error_mapper.rs
 | `puerto generate scaffold <Name>`               | Upserts the `[[entity]]` block, regenerates bootstrap.rs                          |
 | `puerto generate scaffold <Name> -- name:Type`  | Same, with `[[entity.fields]]` from the trailing arguments                        |
 | `puerto generate domain <Name> -- name:Type`    | Registers the entity **with its fields** so the later layered commands see them   |
-| `puerto generate bootstrap [--allow-missing]`   | Regenerates bootstrap.rs; refuses when a declared entity has no code on disk      |
+| `puerto generate bootstrap [--allow-missing]`   | Regenerates bootstrap.rs (and `web/…/core/generated/*`); refuses when a declared entity has no code on disk |
 | `puerto generate use-case <Entity> <action>`    | Appends action to `use_cases`, adds the field to `{Entity}Api`, regenerates bootstrap.rs. Refuses an action that already exists |
 | `puerto generate value-object <Name> <type>`    | Appends a `[[value_object]]` block. Refuses invalid names/types and duplicates    |
+| `puerto generate web <Name> [--force]`          | Web projects: the entity's frontend slice + `core/generated/*`. Does not touch puerto.toml; refuses an undeclared, non-CRUD or 9.3-typed entity |
 | `puerto generate migration <name>`              | Creates a migration file (`--db` projects only) — does not touch puerto.toml. The version is unique even within one second |
 | `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk |
 

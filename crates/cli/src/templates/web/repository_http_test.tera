@@ -1,0 +1,70 @@
+import { describe, expect, test } from "bun:test";
+import { {{ pascal }}Error } from "../../domain/{{ kebab }}/errors";
+import { {{ pascal }}Mother } from "../../test-support/{{ kebab }}";
+import { createApiClient } from "../http/client";
+import { {{ camel }}RepositoryHttp } from "./{{ kebab }}-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: {{ camel }}RepositoryHttp(api), requests };
+}
+
+describe("{{ camel }}RepositoryHttp", () => {
+  test("should return every {{ words }} when the API lists them", async () => {
+    // Arrange
+    const {{ ident }} = {{ pascal }}Mother.random();
+    const { repository } = answering(200, [{{ ident }}]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([{{ ident }}]);
+  });
+
+  test("should send the draft when creating {{ a_words }}", async () => {
+    // Arrange
+    const draft = {{ pascal }}Mother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the {{ words }} does not exist", async () => {
+    // Arrange
+    const code = "{{ snake }}.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf({{ pascal }}Error);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the {{ words }}", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/{{ plural }}/42");
+  });
+});

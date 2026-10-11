@@ -1691,3 +1691,750 @@ type = "String"
 name = "tenant_id"
 type = "Uuid"
 value_object = "TenantId"
+
+=== web/src/domain/booking/errors.ts ===
+/**
+ * A request about a booking that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `booking.not_found`, `booking.validation_error.<field>_empty`.
+ */
+export class BookingError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "BookingError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/booking/model.ts ===
+export interface Booking {
+  id: string;
+  reference: string;
+  tenantId: string;
+}
+
+/** What a create or an update sends: a booking without its id. */
+export type BookingDraft = Omit<Booking, "id">;
+
+=== web/src/domain/booking/repository.ts ===
+import type { Booking, BookingDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `BookingError` the API answered. */
+export interface BookingRepository {
+  list(): Promise<Booking[]>;
+  get(id: string): Promise<Booking>;
+  create(draft: BookingDraft): Promise<Booking>;
+  update(id: string, draft: BookingDraft): Promise<Booking>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/booking/booking-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { BookingError } from "../../domain/booking/errors";
+import { BookingMother } from "../../test-support/booking";
+import { createApiClient } from "../http/client";
+import { bookingRepositoryHttp } from "./booking-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: bookingRepositoryHttp(api), requests };
+}
+
+describe("bookingRepositoryHttp", () => {
+  test("should return every booking when the API lists them", async () => {
+    // Arrange
+    const booking = BookingMother.random();
+    const { repository } = answering(200, [booking]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([booking]);
+  });
+
+  test("should send the draft when creating a booking", async () => {
+    // Arrange
+    const draft = BookingMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the booking does not exist", async () => {
+    // Arrange
+    const code = "booking.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(BookingError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the booking", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/bookings/42");
+  });
+});
+
+=== web/src/infrastructure/booking/booking-repository-http.ts ===
+import { BookingError } from "../../domain/booking/errors";
+import type { Booking, BookingDraft } from "../../domain/booking/model";
+import type { BookingRepository } from "../../domain/booking/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type BookingDto = components["schemas"]["BookingDto"];
+type BookingRequest = components["schemas"]["CreateBookingRequest"];
+
+function toBooking(dto: BookingDto): Booking {
+  return {
+    id: dto.id,
+    reference: dto.reference,
+    tenantId: dto.tenantId,
+  };
+}
+
+function toRequest(draft: BookingDraft): BookingRequest {
+  return {
+    reference: draft.reference,
+    tenantId: draft.tenantId,
+  };
+}
+
+/** `BookingRepository` over the REST API (`/bookings`). */
+export function bookingRepositoryHttp(api: ApiClient): BookingRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/bookings");
+      if (data === undefined) throw new BookingError(apiErrorCode(error, response));
+      return data.map(toBooking);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/bookings/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new BookingError(apiErrorCode(error, response));
+      return toBooking(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/bookings", { body: toRequest(draft) });
+      if (data === undefined) throw new BookingError(apiErrorCode(error, response));
+      return toBooking(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/bookings/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new BookingError(apiErrorCode(error, response));
+      return toBooking(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/bookings/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new BookingError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/presentation/core/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { BookingRepository } from "../../../domain/booking/repository";
+import { bookingRepositoryHttp } from "../../../infrastructure/booking/booking-repository-http";
+import { createApiClient } from "../../../infrastructure/http/client";
+
+export interface Dependencies {
+  bookingRepository: BookingRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return {
+    bookingRepository: bookingRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { BookingDetailContainer } from "../../features/booking/containers/booking-detail-container";
+import { BookingFormContainer } from "../../features/booking/containers/booking-form-container";
+import { BookingListContainer } from "../../features/booking/containers/booking-list-container";
+import { HomePage } from "../../pages/home";
+import { NotFoundPage } from "../../pages/not-found";
+import type { NavEntry } from "../../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Bookings", href: "/bookings" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/bookings">
+        <BookingListContainer />
+      </Route>
+      <Route path="/bookings/new">
+        <BookingFormContainer />
+      </Route>
+      <Route path="/bookings/:id/edit">{(params) => <BookingFormContainer id={params.id} />}</Route>
+      <Route path="/bookings/:id">{(params) => <BookingDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/presentation/features/booking/containers/booking-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { BookingMother, fakeBookingRepository } from "../../../../test-support/booking";
+import { renderScreen } from "../../../../test-support/render";
+import { BookingDetailContainer } from "./booking-detail-container";
+
+describe("BookingDetailContainer", () => {
+  test("should show the booking when it exists", async () => {
+    // Arrange
+    const seeded = BookingMother.random();
+    const bookingRepository = fakeBookingRepository([seeded]);
+
+    // Act
+    renderScreen(<BookingDetailContainer id={seeded.id} />, { bookingRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the booking does not exist", async () => {
+    // Arrange
+    const bookingRepository = fakeBookingRepository();
+
+    // Act
+    renderScreen(<BookingDetailContainer id={crypto.randomUUID()} />, { bookingRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("booking.not_found");
+  });
+
+  test("should delete the booking only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = BookingMother.random();
+    const fake = fakeBookingRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<BookingDetailContainer id={seeded.id} />, {
+      bookingRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/bookings"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/booking/containers/booking-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { BookingDetailView } from "../views/booking-detail-view";
+
+export function BookingDetailContainer({ id }: { id: string }) {
+  const { bookingRepository } = useDependencies();
+  const booking = useAsync(() => bookingRepository.get(id), [bookingRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await bookingRepository.remove(id);
+      navigate("/bookings");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Booking</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {booking.status === "loading" && <span className="loading loading-spinner" />}
+      {booking.status === "error" && <ErrorAlert error={booking.error} />}
+      {booking.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <BookingDetailView booking={booking.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/bookings/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/bookings" className="link">
+        Back to bookings
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this booking?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/booking/containers/booking-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { BookingError } from "../../../../domain/booking/errors";
+import type { BookingDraft } from "../../../../domain/booking/model";
+import { BookingMother, fakeBookingRepository } from "../../../../test-support/booking";
+import { renderScreen } from "../../../../test-support/render";
+import { BookingFormContainer } from "./booking-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: BookingDraft) {
+  await screen.findByText("Save");
+  type("Reference", draft.reference);
+  type("Tenant id", draft.tenantId);
+}
+
+describe("BookingFormContainer", () => {
+  test("should create the booking from what was typed and show it", async () => {
+    // Arrange
+    const draft = BookingMother.draft();
+    const bookingRepository = fakeBookingRepository();
+    const { history } = renderScreen(<BookingFormContainer />, { bookingRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/bookings/"));
+    const [created] = await bookingRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/bookings/${created?.id}`);
+  });
+
+  test("should save the edited booking when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = BookingMother.random();
+    const bookingRepository = fakeBookingRepository([seeded]);
+    const { history } = renderScreen(<BookingFormContainer id={seeded.id} />, {
+      bookingRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/bookings/${seeded.id}`));
+    expect(await bookingRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the booking", async () => {
+    // Arrange
+    const code = "booking.validation_error.invalid";
+    const bookingRepository = {
+      ...fakeBookingRepository(),
+      create: () => Promise.reject(new BookingError(code)),
+    };
+    renderScreen(<BookingFormContainer />, { bookingRepository });
+    await fillIn(BookingMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/booking/containers/booking-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Booking } from "../../../../domain/booking/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { BookingFormView, toBookingDraft, toBookingForm } from "../views/booking-form-view";
+
+/** Creates a booking, or edits the one with `id`. */
+export function BookingFormContainer({ id }: { id?: string }) {
+  const { bookingRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : bookingRepository.get(id)),
+    [bookingRepository, id],
+  );
+  const title = id === undefined ? "New booking" : "Edit booking";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <BookingForm existing={existing.data} />}
+      <Link href={id === undefined ? "/bookings" : `/bookings/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function BookingForm({ existing }: { existing: Booking | null }) {
+  const { bookingRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toBookingForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toBookingDraft(values);
+      const saved =
+        existing === null
+          ? await bookingRepository.create(draft)
+          : await bookingRepository.update(existing.id, draft);
+      navigate(`/bookings/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <BookingFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/booking/containers/booking-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { BookingError } from "../../../../domain/booking/errors";
+import { BookingMother, fakeBookingRepository } from "../../../../test-support/booking";
+import { renderScreen } from "../../../../test-support/render";
+import { BookingListContainer } from "./booking-list-container";
+
+describe("BookingListContainer", () => {
+  test("should show a row per booking when there are some", async () => {
+    // Arrange
+    const seed = [BookingMother.random(), BookingMother.random()];
+    const bookingRepository = fakeBookingRepository(seed);
+
+    // Act
+    renderScreen(<BookingListContainer />, { bookingRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no booking", async () => {
+    // Arrange
+    const bookingRepository = fakeBookingRepository();
+
+    // Act
+    renderScreen(<BookingListContainer />, { bookingRepository });
+
+    // Assert
+    expect(await screen.findByText("No bookings yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the bookings cannot be listed", async () => {
+    // Arrange
+    const bookingRepository = {
+      ...fakeBookingRepository(),
+      list: () => Promise.reject(new BookingError("booking.repository_error")),
+    };
+
+    // Act
+    renderScreen(<BookingListContainer />, { bookingRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("booking.repository_error");
+  });
+});
+
+=== web/src/presentation/features/booking/containers/booking-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { BookingListView } from "../views/booking-list-view";
+
+export function BookingListContainer() {
+  const { bookingRepository } = useDependencies();
+  const bookings = useAsync(() => bookingRepository.list(), [bookingRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Bookings</h1>
+        <Link href="/bookings/new" className="btn btn-primary">
+          New booking
+        </Link>
+      </div>
+      {bookings.status === "loading" && <span className="loading loading-spinner" />}
+      {bookings.status === "error" && <ErrorAlert error={bookings.error} />}
+      {bookings.status === "ok" &&
+        (bookings.data.length === 0 ? (
+          <EmptyState message="No bookings yet." />
+        ) : (
+          <BookingListView bookings={bookings.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/booking/views/booking-detail-view.tsx ===
+import type { Booking } from "../../../../domain/booking/model";
+
+export function BookingDetailView({ booking }: { booking: Booking }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Reference</dt>
+      <dd>{booking.reference}</dd>
+      <dt className="font-semibold">Tenant id</dt>
+      <dd>{booking.tenantId}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/booking/views/booking-form-view.tsx ===
+import type { Booking, BookingDraft } from "../../../../domain/booking/model";
+
+/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+export interface BookingFormValues {
+  reference: string;
+  tenantId: string;
+}
+
+/** The inputs for `booking`, empty when there is none yet. */
+export function toBookingForm(booking: Booking | null): BookingFormValues {
+  if (booking === null) {
+    return {
+      reference: "",
+      tenantId: "",
+    };
+  }
+  return {
+    reference: booking.reference,
+    tenantId: booking.tenantId,
+  };
+}
+
+export function toBookingDraft(values: BookingFormValues): BookingDraft {
+  return {
+    reference: values.reference,
+    tenantId: values.tenantId,
+  };
+}
+
+export function BookingFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: BookingFormValues;
+  saving: boolean;
+  onChange: (values: BookingFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Reference</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.reference}
+          onChange={(event) => onChange({ ...values, reference: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Tenant id</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.tenantId}
+          onChange={(event) => onChange({ ...values, tenantId: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/booking/views/booking-list-view.tsx ===
+import { Link } from "wouter";
+import type { Booking } from "../../../../domain/booking/model";
+
+export function BookingListView({ bookings }: { bookings: Booking[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Reference</th>
+            <th>Tenant id</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {bookings.map((booking) => (
+            <tr key={booking.id}>
+              <td>{booking.reference}</td>
+              <td>{booking.tenantId}</td>
+              <td className="text-right">
+                <Link href={`/bookings/${booking.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/test-support/booking.ts ===
+import { BookingError } from "../domain/booking/errors";
+import type { Booking, BookingDraft } from "../domain/booking/model";
+import type { BookingRepository } from "../domain/booking/repository";
+
+/** Valid bookings for tests; pass `overrides` for the fields a test is about. */
+export const BookingMother = {
+  draft(overrides: Partial<BookingDraft> = {}): BookingDraft {
+    return {
+      reference: "example",
+      tenantId: crypto.randomUUID(),
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Booking> = {}): Booking {
+    return { id: crypto.randomUUID(), ...BookingMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `BookingRepository`. Override a method to make it fail. */
+export function fakeBookingRepository(seed: Booking[] = []): BookingRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new BookingError("booking.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

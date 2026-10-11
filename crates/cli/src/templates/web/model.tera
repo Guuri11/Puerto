@@ -1,0 +1,9 @@
+export interface {{ pascal }} {
+  id: string;
+{%- for f in fields %}
+  {{ f.camel }}: {{ f.ts_type }};
+{%- endfor %}
+}
+
+/** What a create or an update sends: {{ a_words }} without its id. */
+export type {{ pascal }}Draft = Omit<{{ pascal }}, "id">;

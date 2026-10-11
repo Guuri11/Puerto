@@ -112,8 +112,10 @@ web/lint: ## Typecheck, lint and check the frontend Dependency Rule
 	@echo "${CYAN}Linting frontend...${NC}"
 	cd web && $(BUN) run typecheck && $(BUN) run lint && $(BUN) run lint:arch
 
-web/sync: ## After touching a DTO: export the OpenAPI spec, regenerate the frontend's wire types
+web/sync: ## After a scaffold or a DTO change: export the OpenAPI spec, regenerate the web types
 	@echo "${CYAN}Exporting docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p presentation openapi
 	@echo "${CYAN}Generating web/src/infrastructure/http/schema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
+	@echo "${CYAN}Formatting web/ (Biome, no lint fixes)...${NC}"
+	cd web && $(BUN) run format

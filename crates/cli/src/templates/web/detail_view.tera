@@ -1,0 +1,12 @@
+import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
+
+export function {{ pascal }}DetailView({ {{ ident }} }: { {{ ident }}: {{ pascal }} }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+{%- for f in fields %}
+      <dt className="font-semibold">{{ f.label }}</dt>
+      <dd>{{ "{" }}{{ f.display }}}</dd>
+{%- endfor %}
+    </dl>
+  );
+}

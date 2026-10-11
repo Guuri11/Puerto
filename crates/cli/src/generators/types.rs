@@ -514,6 +514,82 @@ pub fn field_vo_conversion(
     }
 }
 
+// ── Frontend (`web/`) ─────────────────────────────────────────────────────────
+
+/// Whether the frontend generator handles this field yet: the primitives a text, number or
+/// checkbox input holds — directly or wrapped in a non-enum value object, which is its inner
+/// primitive on the wire. `Option`, `Vec`, `HashMap`, `DateTime` and enum VOs are Phase 9.3.
+pub fn web_supported(field: &Field) -> bool {
+    !is_enum_vo(field)
+        && matches!(
+            field.field_type.as_str(),
+            "String" | "Uuid" | "i64" | "f64" | "bool"
+        )
+}
+
+/// What the frontend templates know about one field (ADR-0011, applied to `web/`): its names, its
+/// TypeScript type, its input, and the expressions that move it between the model, the form and a
+/// screen.
+#[derive(Debug, serde::Serialize)]
+pub struct WebFieldCtx {
+    /// The model property and the JSON key: poem-openapi's camelCase (`inStock`).
+    pub camel: String,
+    /// What a screen calls it: `In stock`.
+    pub label: String,
+    pub ts_type: &'static str,
+    /// The `type` of its `<input>`: `text`, `number` or `checkbox`.
+    pub input: &'static str,
+    /// A number input that takes decimals (`step="any"`).
+    pub decimal: bool,
+    /// The form value of a new, empty form.
+    pub empty_form: &'static str,
+    /// The form value read out of `{entity}` (the entity's camelCase name) and out of `draft`.
+    pub to_form: String,
+    pub draft_to_form: String,
+    /// The model value read out of `values` (the form).
+    pub from_form: String,
+    /// What a list or detail screen shows for `{entity}`, as a JSX expression.
+    pub display: String,
+    /// A valid value, for the Object Mother.
+    pub mother: &'static str,
+}
+
+pub fn web_field_ctx(field: &Field, entity_camel: &str) -> WebFieldCtx {
+    let camel = crate::generators::naming::snake_to_camel(&field.name);
+    let words = crate::generators::naming::snake_to_words(&field.name);
+    let (ts_type, input, empty_form, mother) = match field.field_type.as_str() {
+        "i64" => ("number", "number", "\"\"", "42"),
+        "f64" => ("number", "number", "\"\"", "1.5"),
+        "bool" => ("boolean", "checkbox", "false", "true"),
+        "Uuid" => ("string", "text", "\"\"", "crypto.randomUUID()"),
+        _ => ("string", "text", "\"\"", "\"example\""),
+    };
+    let to_form = |owner: &str| match ts_type {
+        "number" => format!("String({owner}.{camel})"),
+        _ => format!("{owner}.{camel}"),
+    };
+    let display = match ts_type {
+        "boolean" => format!("{entity_camel}.{camel} ? \"Yes\" : \"No\""),
+        _ => format!("{entity_camel}.{camel}"),
+    };
+    WebFieldCtx {
+        label: crate::generators::naming::capitalize(&words),
+        ts_type,
+        input,
+        decimal: field.field_type == "f64",
+        empty_form,
+        to_form: to_form(entity_camel),
+        draft_to_form: to_form("draft"),
+        from_form: match ts_type {
+            "number" => format!("Number(values.{camel})"),
+            _ => format!("values.{camel}"),
+        },
+        display,
+        mother,
+        camel,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -952,5 +1028,67 @@ mod tests {
         );
         assert_eq!(seed_literal(&field("Vec<String>", Some("Tag"))), "vec![]");
         assert_eq!(seed_literal(&enum_field()), "Status::Active");
+    }
+
+    // ── Frontend ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn should_support_on_the_web_only_the_primitives_an_input_holds_as_is() {
+        for supported in ["String", "Uuid", "i64", "f64", "bool"] {
+            assert!(web_supported(&field(supported, None)), "{supported}");
+        }
+        assert!(web_supported(&field("String", Some("Name"))));
+        for later in [
+            "Option<String>",
+            "Vec<String>",
+            "HashMap<String, String>",
+            "DateTime<Utc>",
+        ] {
+            assert!(!web_supported(&field(later, None)), "{later}");
+        }
+        assert!(!web_supported(&enum_field()));
+    }
+
+    #[test]
+    fn should_move_a_number_through_the_form_as_text() {
+        let mut price = field("i64", None);
+        price.name = "unit_price".into();
+
+        let ctx = web_field_ctx(&price, "orderItem");
+
+        assert_eq!(ctx.camel, "unitPrice");
+        assert_eq!(ctx.label, "Unit price");
+        assert_eq!(ctx.ts_type, "number");
+        assert_eq!(ctx.input, "number");
+        assert!(!ctx.decimal);
+        assert_eq!(ctx.to_form, "String(orderItem.unitPrice)");
+        assert_eq!(ctx.draft_to_form, "String(draft.unitPrice)");
+        assert_eq!(ctx.from_form, "Number(values.unitPrice)");
+        assert_eq!(ctx.display, "orderItem.unitPrice");
+        assert_eq!(ctx.mother, "42");
+    }
+
+    #[test]
+    fn should_give_decimals_a_step_and_booleans_a_checkbox() {
+        assert!(web_field_ctx(&field("f64", None), "p").decimal);
+
+        let flag = web_field_ctx(&field("bool", None), "p");
+        assert_eq!(flag.input, "checkbox");
+        assert_eq!(flag.empty_form, "false");
+        assert_eq!(flag.to_form, "p.x");
+        assert_eq!(flag.from_form, "values.x");
+        assert_eq!(flag.display, "p.x ? \"Yes\" : \"No\"");
+    }
+
+    #[test]
+    fn should_keep_strings_uuids_and_value_objects_as_text() {
+        let id = web_field_ctx(&field("Uuid", None), "p");
+        assert_eq!((id.ts_type, id.input), ("string", "text"));
+        assert_eq!(id.mother, "crypto.randomUUID()");
+
+        let name = web_field_ctx(&field("String", Some("Name")), "p");
+        assert_eq!((name.ts_type, name.empty_form), ("string", "\"\""));
+        assert_eq!(name.mother, "\"example\"");
+        assert_eq!(name.to_form, "p.x");
     }
 }

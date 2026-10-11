@@ -1,0 +1,45 @@
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
+import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
+import { renderScreen } from "../../../../test-support/render";
+import { {{ pascal }}ListContainer } from "./{{ kebab }}-list-container";
+
+describe("{{ pascal }}ListContainer", () => {
+  test("should show a row per {{ words }} when there are some", async () => {
+    // Arrange
+    const seed = [{{ pascal }}Mother.random(), {{ pascal }}Mother.random()];
+    const {{ camel }}Repository = fake{{ pascal }}Repository(seed);
+
+    // Act
+    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no {{ words }}", async () => {
+    // Arrange
+    const {{ camel }}Repository = fake{{ pascal }}Repository();
+
+    // Act
+    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
+
+    // Assert
+    expect(await screen.findByText("No {{ words_plural }} yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the {{ words_plural }} cannot be listed", async () => {
+    // Arrange
+    const {{ camel }}Repository = {
+      ...fake{{ pascal }}Repository(),
+      list: () => Promise.reject(new {{ pascal }}Error("{{ snake }}.repository_error")),
+    };
+
+    // Act
+    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.repository_error");
+  });
+});

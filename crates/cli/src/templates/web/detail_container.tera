@@ -1,0 +1,58 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { {{ pascal }}DetailView } from "../views/{{ kebab }}-detail-view";
+
+export function {{ pascal }}DetailContainer({ id }: { id: string }) {
+  const { {{ camel }}Repository } = useDependencies();
+  const {{ ident }} = useAsync(() => {{ camel }}Repository.get(id), [{{ camel }}Repository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await {{ camel }}Repository.remove(id);
+      navigate("/{{ plural }}");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{{ label }}</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {{ "{" }}{{ ident }}.status === "loading" && <span className="loading loading-spinner" />}
+      {{ "{" }}{{ ident }}.status === "error" && <ErrorAlert error={{ "{" }}{{ ident }}.error} />}
+      {{ "{" }}{{ ident }}.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <{{ pascal }}DetailView {{ ident }}={{ "{" }}{{ ident }}.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/{{ plural }}/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/{{ plural }}" className="link">
+        Back to {{ words_plural }}
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this {{ words }}?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}

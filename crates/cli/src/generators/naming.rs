@@ -26,6 +26,40 @@ pub fn pascal_to_snake(s: &str) -> String {
     out
 }
 
+/// snake_case to kebab-case, the frontend's file names: `order_item` → `order-item`.
+pub fn snake_to_kebab(snake: &str) -> String {
+    snake.replace('_', "-")
+}
+
+/// snake_case to camelCase, as poem-openapi renames DTO fields on the wire and the frontend names
+/// its variables: `in_stock` → `inStock`, `order_item` → `orderItem`.
+pub fn snake_to_camel(snake: &str) -> String {
+    let pascal = to_pascal_case(snake);
+    let mut chars = pascal.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_lowercase().to_string() + chars.as_str(),
+    }
+}
+
+/// snake_case to the words a screen shows: `in_stock` → `in stock`, `order_items` → `order items`.
+pub fn snake_to_words(snake: &str) -> String {
+    snake
+        .split('_')
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The first letter in upper case: a label (`in stock` → `In stock`).
+pub fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().to_string() + chars.as_str(),
+    }
+}
+
 /// Words whose plural is the word itself.
 const UNCOUNTABLE: &[&str] = &[
     "data",

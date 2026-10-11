@@ -224,6 +224,9 @@ fields = []
 === web/src/test-support/happy-dom.ts ===
 (deleted)
 
+=== web/src/test-support/render.tsx ===
+(deleted)
+
 === web/src/test-support/testing-library.ts ===
 (deleted)
 

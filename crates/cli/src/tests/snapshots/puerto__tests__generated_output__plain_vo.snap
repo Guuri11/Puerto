@@ -1857,3 +1857,773 @@ value_object = "Sku"
 name = "weight"
 type = "i64"
 value_object = "Weight"
+
+=== web/src/domain/item/errors.ts ===
+/**
+ * A request about an item that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `item.not_found`, `item.validation_error.<field>_empty`.
+ */
+export class ItemError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "ItemError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/item/model.ts ===
+export interface Item {
+  id: string;
+  name: string;
+  sku: string;
+  weight: number;
+}
+
+/** What a create or an update sends: an item without its id. */
+export type ItemDraft = Omit<Item, "id">;
+
+=== web/src/domain/item/repository.ts ===
+import type { Item, ItemDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `ItemError` the API answered. */
+export interface ItemRepository {
+  list(): Promise<Item[]>;
+  get(id: string): Promise<Item>;
+  create(draft: ItemDraft): Promise<Item>;
+  update(id: string, draft: ItemDraft): Promise<Item>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/infrastructure/item/item-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { ItemError } from "../../domain/item/errors";
+import { ItemMother } from "../../test-support/item";
+import { createApiClient } from "../http/client";
+import { itemRepositoryHttp } from "./item-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: itemRepositoryHttp(api), requests };
+}
+
+describe("itemRepositoryHttp", () => {
+  test("should return every item when the API lists them", async () => {
+    // Arrange
+    const item = ItemMother.random();
+    const { repository } = answering(200, [item]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([item]);
+  });
+
+  test("should send the draft when creating an item", async () => {
+    // Arrange
+    const draft = ItemMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the item does not exist", async () => {
+    // Arrange
+    const code = "item.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(ItemError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the item", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/items/42");
+  });
+});
+
+=== web/src/infrastructure/item/item-repository-http.ts ===
+import { ItemError } from "../../domain/item/errors";
+import type { Item, ItemDraft } from "../../domain/item/model";
+import type { ItemRepository } from "../../domain/item/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type ItemDto = components["schemas"]["ItemDto"];
+type ItemRequest = components["schemas"]["CreateItemRequest"];
+
+function toItem(dto: ItemDto): Item {
+  return {
+    id: dto.id,
+    name: dto.name,
+    sku: dto.sku,
+    weight: dto.weight,
+  };
+}
+
+function toRequest(draft: ItemDraft): ItemRequest {
+  return {
+    name: draft.name,
+    sku: draft.sku,
+    weight: draft.weight,
+  };
+}
+
+/** `ItemRepository` over the REST API (`/items`). */
+export function itemRepositoryHttp(api: ApiClient): ItemRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/items");
+      if (data === undefined) throw new ItemError(apiErrorCode(error, response));
+      return data.map(toItem);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/items/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new ItemError(apiErrorCode(error, response));
+      return toItem(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/items", { body: toRequest(draft) });
+      if (data === undefined) throw new ItemError(apiErrorCode(error, response));
+      return toItem(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/items/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new ItemError(apiErrorCode(error, response));
+      return toItem(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/items/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new ItemError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/presentation/core/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { ItemRepository } from "../../../domain/item/repository";
+import { createApiClient } from "../../../infrastructure/http/client";
+import { itemRepositoryHttp } from "../../../infrastructure/item/item-repository-http";
+
+export interface Dependencies {
+  itemRepository: ItemRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return {
+    itemRepository: itemRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { ItemDetailContainer } from "../../features/item/containers/item-detail-container";
+import { ItemFormContainer } from "../../features/item/containers/item-form-container";
+import { ItemListContainer } from "../../features/item/containers/item-list-container";
+import { HomePage } from "../../pages/home";
+import { NotFoundPage } from "../../pages/not-found";
+import type { NavEntry } from "../../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Items", href: "/items" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/items">
+        <ItemListContainer />
+      </Route>
+      <Route path="/items/new">
+        <ItemFormContainer />
+      </Route>
+      <Route path="/items/:id/edit">{(params) => <ItemFormContainer id={params.id} />}</Route>
+      <Route path="/items/:id">{(params) => <ItemDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/presentation/features/item/containers/item-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fakeItemRepository, ItemMother } from "../../../../test-support/item";
+import { renderScreen } from "../../../../test-support/render";
+import { ItemDetailContainer } from "./item-detail-container";
+
+describe("ItemDetailContainer", () => {
+  test("should show the item when it exists", async () => {
+    // Arrange
+    const seeded = ItemMother.random();
+    const itemRepository = fakeItemRepository([seeded]);
+
+    // Act
+    renderScreen(<ItemDetailContainer id={seeded.id} />, { itemRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the item does not exist", async () => {
+    // Arrange
+    const itemRepository = fakeItemRepository();
+
+    // Act
+    renderScreen(<ItemDetailContainer id={crypto.randomUUID()} />, { itemRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("item.not_found");
+  });
+
+  test("should delete the item only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = ItemMother.random();
+    const fake = fakeItemRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<ItemDetailContainer id={seeded.id} />, {
+      itemRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/items"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/item/containers/item-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ItemDetailView } from "../views/item-detail-view";
+
+export function ItemDetailContainer({ id }: { id: string }) {
+  const { itemRepository } = useDependencies();
+  const item = useAsync(() => itemRepository.get(id), [itemRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await itemRepository.remove(id);
+      navigate("/items");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Item</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {item.status === "loading" && <span className="loading loading-spinner" />}
+      {item.status === "error" && <ErrorAlert error={item.error} />}
+      {item.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <ItemDetailView item={item.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/items/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/items" className="link">
+        Back to items
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this item?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/item/containers/item-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ItemError } from "../../../../domain/item/errors";
+import type { ItemDraft } from "../../../../domain/item/model";
+import { fakeItemRepository, ItemMother } from "../../../../test-support/item";
+import { renderScreen } from "../../../../test-support/render";
+import { ItemFormContainer } from "./item-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: ItemDraft) {
+  await screen.findByText("Save");
+  type("Name", draft.name);
+  type("Sku", draft.sku);
+  type("Weight", String(draft.weight));
+}
+
+describe("ItemFormContainer", () => {
+  test("should create the item from what was typed and show it", async () => {
+    // Arrange
+    const draft = ItemMother.draft();
+    const itemRepository = fakeItemRepository();
+    const { history } = renderScreen(<ItemFormContainer />, { itemRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/items/"));
+    const [created] = await itemRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/items/${created?.id}`);
+  });
+
+  test("should save the edited item when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = ItemMother.random();
+    const itemRepository = fakeItemRepository([seeded]);
+    const { history } = renderScreen(<ItemFormContainer id={seeded.id} />, {
+      itemRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/items/${seeded.id}`));
+    expect(await itemRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the item", async () => {
+    // Arrange
+    const code = "item.validation_error.invalid";
+    const itemRepository = {
+      ...fakeItemRepository(),
+      create: () => Promise.reject(new ItemError(code)),
+    };
+    renderScreen(<ItemFormContainer />, { itemRepository });
+    await fillIn(ItemMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/item/containers/item-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Item } from "../../../../domain/item/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ItemFormView, toItemDraft, toItemForm } from "../views/item-form-view";
+
+/** Creates an item, or edits the one with `id`. */
+export function ItemFormContainer({ id }: { id?: string }) {
+  const { itemRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : itemRepository.get(id)),
+    [itemRepository, id],
+  );
+  const title = id === undefined ? "New item" : "Edit item";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <ItemForm existing={existing.data} />}
+      <Link href={id === undefined ? "/items" : `/items/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function ItemForm({ existing }: { existing: Item | null }) {
+  const { itemRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toItemForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toItemDraft(values);
+      const saved =
+        existing === null
+          ? await itemRepository.create(draft)
+          : await itemRepository.update(existing.id, draft);
+      navigate(`/items/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <ItemFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/item/containers/item-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { ItemError } from "../../../../domain/item/errors";
+import { fakeItemRepository, ItemMother } from "../../../../test-support/item";
+import { renderScreen } from "../../../../test-support/render";
+import { ItemListContainer } from "./item-list-container";
+
+describe("ItemListContainer", () => {
+  test("should show a row per item when there are some", async () => {
+    // Arrange
+    const seed = [ItemMother.random(), ItemMother.random()];
+    const itemRepository = fakeItemRepository(seed);
+
+    // Act
+    renderScreen(<ItemListContainer />, { itemRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no item", async () => {
+    // Arrange
+    const itemRepository = fakeItemRepository();
+
+    // Act
+    renderScreen(<ItemListContainer />, { itemRepository });
+
+    // Assert
+    expect(await screen.findByText("No items yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the items cannot be listed", async () => {
+    // Arrange
+    const itemRepository = {
+      ...fakeItemRepository(),
+      list: () => Promise.reject(new ItemError("item.repository_error")),
+    };
+
+    // Act
+    renderScreen(<ItemListContainer />, { itemRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("item.repository_error");
+  });
+});
+
+=== web/src/presentation/features/item/containers/item-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ItemListView } from "../views/item-list-view";
+
+export function ItemListContainer() {
+  const { itemRepository } = useDependencies();
+  const items = useAsync(() => itemRepository.list(), [itemRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Items</h1>
+        <Link href="/items/new" className="btn btn-primary">
+          New item
+        </Link>
+      </div>
+      {items.status === "loading" && <span className="loading loading-spinner" />}
+      {items.status === "error" && <ErrorAlert error={items.error} />}
+      {items.status === "ok" &&
+        (items.data.length === 0 ? (
+          <EmptyState message="No items yet." />
+        ) : (
+          <ItemListView items={items.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/item/views/item-detail-view.tsx ===
+import type { Item } from "../../../../domain/item/model";
+
+export function ItemDetailView({ item }: { item: Item }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Name</dt>
+      <dd>{item.name}</dd>
+      <dt className="font-semibold">Sku</dt>
+      <dd>{item.sku}</dd>
+      <dt className="font-semibold">Weight</dt>
+      <dd>{item.weight}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/item/views/item-form-view.tsx ===
+import type { Item, ItemDraft } from "../../../../domain/item/model";
+
+/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+export interface ItemFormValues {
+  name: string;
+  sku: string;
+  weight: string;
+}
+
+/** The inputs for `item`, empty when there is none yet. */
+export function toItemForm(item: Item | null): ItemFormValues {
+  if (item === null) {
+    return {
+      name: "",
+      sku: "",
+      weight: "",
+    };
+  }
+  return {
+    name: item.name,
+    sku: item.sku,
+    weight: String(item.weight),
+  };
+}
+
+export function toItemDraft(values: ItemFormValues): ItemDraft {
+  return {
+    name: values.name,
+    sku: values.sku,
+    weight: Number(values.weight),
+  };
+}
+
+export function ItemFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: ItemFormValues;
+  saving: boolean;
+  onChange: (values: ItemFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Name</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.name}
+          onChange={(event) => onChange({ ...values, name: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Sku</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.sku}
+          onChange={(event) => onChange({ ...values, sku: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Weight</span>
+        <input
+          className="input w-full"
+          type="number"
+          required
+          value={values.weight}
+          onChange={(event) => onChange({ ...values, weight: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/item/views/item-list-view.tsx ===
+import { Link } from "wouter";
+import type { Item } from "../../../../domain/item/model";
+
+export function ItemListView({ items }: { items: Item[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Sku</th>
+            <th>Weight</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id}>
+              <td>{item.name}</td>
+              <td>{item.sku}</td>
+              <td>{item.weight}</td>
+              <td className="text-right">
+                <Link href={`/items/${item.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/test-support/item.ts ===
+import { ItemError } from "../domain/item/errors";
+import type { Item, ItemDraft } from "../domain/item/model";
+import type { ItemRepository } from "../domain/item/repository";
+
+/** Valid items for tests; pass `overrides` for the fields a test is about. */
+export const ItemMother = {
+  draft(overrides: Partial<ItemDraft> = {}): ItemDraft {
+    return {
+      name: "example",
+      sku: "example",
+      weight: 42,
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Item> = {}): Item {
+    return { id: crypto.randomUUID(), ...ItemMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `ItemRepository`. Override a method to make it fail. */
+export function fakeItemRepository(seed: Item[] = []): ItemRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new ItemError("item.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

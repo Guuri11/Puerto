@@ -9,6 +9,7 @@ examine_globs = [
     "crates/cli/src/generators/migration.rs",
     "crates/cli/src/generators/types.rs",
     "crates/cli/src/generators/naming.rs",
+    "crates/cli/src/generators/web.rs",
     "crates/cli/src/patchers/*.rs",
 ]
 # The compile matrix is `#[ignore]`d; a mutant run uses the fast structural suite only.

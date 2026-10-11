@@ -1,0 +1,62 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { {{ pascal }}FormView, to{{ pascal }}Draft, to{{ pascal }}Form } from "../views/{{ kebab }}-form-view";
+
+/** Creates {{ a_words }}, or edits the one with `id`. */
+export function {{ pascal }}FormContainer({ id }: { id?: string }) {
+  const { {{ camel }}Repository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : {{ camel }}Repository.get(id)),
+    [{{ camel }}Repository, id],
+  );
+  const title = id === undefined ? "New {{ words }}" : "Edit {{ words }}";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <{{ pascal }}Form existing={existing.data} />}
+      <Link href={id === undefined ? "/{{ plural }}" : `/{{ plural }}/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function {{ pascal }}Form({ existing }: { existing: {{ pascal }} | null }) {
+  const { {{ camel }}Repository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(to{{ pascal }}Form(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = to{{ pascal }}Draft(values);
+      const saved =
+        existing === null
+          ? await {{ camel }}Repository.create(draft)
+          : await {{ camel }}Repository.update(existing.id, draft);
+      navigate(`/{{ plural }}/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <{{ pascal }}FormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}

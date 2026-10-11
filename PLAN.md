@@ -1288,8 +1288,8 @@ Test scenarios: scaffold writes `list_products.rs` in domain and application; pu
 
 ## Phase 9 — Full-stack (frontend) — `web/`
 
-**Status:** 9.0 ✅ (`33d4113`) · 9.1 ✅ (`4ea452e`) · **next: 9.2** — read "Handoff to 9.2" below
-first.
+**Status:** 9.0 ✅ (`33d4113`) · 9.1 ✅ (`4ea452e`) · 9.2 ✅ · **next: 9.3** — read "Handoff to 9.3"
+below first.
 
 Rails-style: `scaffold` leaves a working CRUD screen per entity, and the project carries the
 structure to grow the frontend by hand. Same Dependency Rule as the backend, but **no layer
@@ -1334,7 +1334,8 @@ web/
     application/
       README.md                                    [T] where use cases go once there is logic
     infrastructure/
-      http/client.ts                               [T] createClient<paths>({ baseUrl: "/api" })
+      http/client.ts                               [S] createApiClient() + apiErrorCode() — written
+                                                       with the first slice, never overwritten
       http/schema.d.ts                             [G] openapi-typescript
       product/product-repository-http.ts (+ .test.ts)  [S] DTO ↔ model, ErrorResponse → ProductError
     presentation/
@@ -1349,6 +1350,7 @@ web/
                     product-form-container.tsx (create + edit)  (+ tests)       [S]
         views/      product-list-view.tsx · product-detail-view.tsx · product-form-view.tsx  [S]
     test-support/product.ts                        [S] ProductMother + fakeProductRepository
+    test-support/render.tsx                        [T] renderScreen(ui, deps, path) for screen tests
 ```
 
 Routes: `/products` · `/products/new` · `/products/:id` · `/products/:id/edit`. `{plural}` comes
@@ -1434,50 +1436,50 @@ generated `application/` use cases.
    scaffold's "Next: make web/sync" hint land here. The `domain-use-case` IDE snippet now ships
    the `mocks` module too — the spec test needs a mock per use case. `client.ts` waits for 9.2,
    its first importer.
-3. **9.2 CRUD slice** — all-primitive entity: domain, infrastructure, presentation, test-support,
+3. ✅ **9.2 CRUD slice** — all-primitive entity: domain, infrastructure, presentation, test-support,
    generated `dependencies.ts` / `routes.tsx`, `generate web`, conflict guard, validate drift.
+   As built: "all-primitive" = `String`, `Uuid`, `i64`, `f64`, `bool`, and non-enum VOs over them
+   (`types::web_supported`). A CRUD entity with any other field type gets **no slice** and no
+   route — scaffold warns, `generate web` refuses, validate does not report it — so every
+   intermediate project still typechecks. `client.ts` is written with the first slice, never
+   overwritten. Tests render screens with `test-support/render.tsx` (`renderScreen(ui, partial
+   deps, path)`, wouter memory location); two dependency-cruiser rules cover `test-support/`.
+   `make web/sync` also runs `bun run format` (Biome, linter off). Decisions: ADR-0013 § Decided
+   in 9.2.
 4. **9.3 Every type** — Option / Vec / HashMap / DateTime / enum VO types and controls.
 
-### Handoff to 9.2 — what 9.0 / 9.1 left in place
+### Handoff to 9.3 — what 9.0 – 9.2 left in place
 
 Already true (do not re-derive):
 
-- The template's `web/` is static (`crates/cli/template/web/`); `apply_no_web` removes it. **Every
-  compile-matrix scenario except `no_web` is a web project**, so once scaffold writes web slices,
-  every CRUD snapshot gains them. Test stubs (`setup_puerto_stubs`) write a puerto.toml without
-  `web` → non-web.
-- `core/generated/dependencies.ts` (`export type Dependencies = Record<string, never>` +
-  `createDependencies()`) and `core/generated/routes.tsx` (`navEntries: NavEntry[]` +
-  `AppRoutes` with `/` → `<HomePage entries={navEntries} />` and a catch-all `NotFoundPage`) are
-  template copies. 9.2 turns them into Tera output and adds a test that the template copies equal
-  the generator's zero-entity output — the `template_bootstrap_is_exactly_what_the_generator_writes`
-  pattern in `tests/conventions.rs`. `NavEntry` lives in `shared/ui/layout.tsx` (generated →
-  shared, never the reverse: `pages/home.tsx` takes entries as props to avoid a cycle).
-- `useDependencies()` / `DependenciesProvider` (`core/dependencies.tsx`), `useAsync` (returns
-  `AsyncState<T> & { reload }`), `ErrorAlert` + `errorCode(error)` (reads `.code`, else
-  `Error.message`), `EmptyState`, `ConfirmDialog` (`open`, `onConfirm`, `onCancel`) exist with
-  tests — the generated containers use them.
-- Test setup: `bunfig.toml` preloads `src/test-support/happy-dom.ts` then `testing-library.ts`
-  (cleanup after each test). No jest-dom matchers: assert with `getBy*` / `textContent`.
-- The spec export test needs a `Mock{Uc}UseCase` for **every** use case in puerto.toml.
-- Scaffold already prints `make web/sync` in web projects. The compile matrix's
-  `assert_generated_project_is_clean` exports the spec for every web scenario;
-  `assert_web_is_clean` (install, `openapi:types`, typecheck, lint, lint:arch, test, build) runs
-  only in `web_shell` today.
-
-Open for 9.2 to decide:
-
-- **`client.ts` and a fresh project's typecheck.** `infrastructure/http/client.ts` imports
-  `schema.d.ts`, which only exists after `make web/sync`. Shipping it in the template makes a
-  fresh `puerto new` fail `bun run typecheck`; writing it with the first scaffolded web entity
-  (whose sync is needed anyway) does not.
-- **Which scenarios run the bun checks.** They add a few seconds per scenario (3.4 s in
-  `web_shell`, install included, warm cache); the spec names `web_crud` and `web_every_type`.
-  Running `assert_web_is_clean` on every CRUD scenario would cover more for the cost of time.
-- **Generated TS must be Biome-clean** (`lineWidth` 100, sorted imports, double quotes) — `bun run
-  lint` checks the generated files like any other.
-- **dependency-cruiser and `test-support/`**: no rule covers it yet; the fake repository should
-  import `domain/` only.
+- **One predicate gates the slice:** `web::has_web_slice(entity)` = the five CRUD use cases +
+  `unsupported_web_types(fields)` empty, where support is `types::web_supported`. Scaffold,
+  `generate web`, the conflict guard (`entity_files(snake, db, web)`), the drift check
+  (`consistency::required_files`) and `core/generated/*` all go through it. 9.3 widens
+  `web_supported` until it is always true — then delete the "no screens for X" warning, the
+  refusal in `web_slice_refusal` and the 9.2 test `an_entity_with_field_types_beyond_9_2_…`.
+  Every scenario with such fields (`primitives`, `opt_vec_*`, `enum_*`, `vo_kitchen_sink`,
+  `postgres_every_type`, …) gains a slice in its snapshot then.
+- **Per-field decisions live in `types::web_field_ctx`** (ADR-0011): `ts_type`, `input`
+  (`text`/`number`/`checkbox`), `decimal`, `empty_form`, `to_form` / `draft_to_form` (model →
+  form text), `from_form` (form text → model), `display` (JSX), `mother`. The form keeps **text**
+  for every input but a checkbox (`{Entity}FormValues`), so `Option` (empty → `null`), `Vec`
+  (comma-separated), `HashMap` (`key=value` lines) and `datetime-local` are new rows there plus
+  one `{% if f.input == … %}` branch in `form_view.tera`. Enum VOs: a `<select>` branch, and
+  `repository_http.tera`'s `to{Entity}` narrows the wire `string` to the union (today it copies
+  every field as-is).
+- **The form test fills inputs by label** (`fillIn(draft)` in `form_container_test.tera`): a new
+  control needs its own fill line there.
+- **Generated TS must be Biome-clean for ordinary names**, checked by the matrix (`bun run lint`
+  before any format). Imports: write them on one line each in the template —
+  `web::organize_imports` sorts and wraps them like Biome. Line width: keep lines name-length
+  independent (see `title` in `form_container.tera`); where impossible, decide in Rust as
+  `generated_ctx` does for routes and `navEntries`. `make web/sync` formats as the net for long
+  names.
+- Variables named after the entity go through `ident` / `plural_ident` (`TAKEN_IDENTIFIERS`:
+  TS reserved words + the templates' own locals; uncountable plurals get `List`).
+- The matrix runs `assert_web_is_clean` in **every** web scenario; `web_crud` (`OrderItem`, every
+  9.2 type) is the snapshot of the slice. 9.3 adds `web_every_type`.
 
 ### Test scenarios
 

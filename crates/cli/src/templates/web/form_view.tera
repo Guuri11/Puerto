@@ -1,0 +1,85 @@
+import type { {{ pascal }}, {{ pascal }}Draft } from "../../../../domain/{{ kebab }}/model";
+
+/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+export interface {{ pascal }}FormValues {
+{%- for f in fields %}
+  {{ f.camel }}: {% if f.input == "checkbox" %}boolean{% else %}string{% endif %};
+{%- endfor %}
+}
+
+/** The inputs for `{{ ident }}`, empty when there is none yet. */
+export function to{{ pascal }}Form({{ ident }}: {{ pascal }} | null): {{ pascal }}FormValues {
+  if ({{ ident }} === null) {
+    return {
+{%- for f in fields %}
+      {{ f.camel }}: {{ f.empty_form }},
+{%- endfor %}
+    };
+  }
+  return {
+{%- for f in fields %}
+    {{ f.camel }}: {{ f.to_form }},
+{%- endfor %}
+  };
+}
+
+export function to{{ pascal }}Draft(values: {{ pascal }}FormValues): {{ pascal }}Draft {
+  return {
+{%- for f in fields %}
+    {{ f.camel }}: {{ f.from_form }},
+{%- endfor %}
+  };
+}
+
+export function {{ pascal }}FormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: {{ pascal }}FormValues;
+  saving: boolean;
+  onChange: (values: {{ pascal }}FormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+{%- for f in fields %}
+{%- if f.input == "checkbox" %}
+      <label className="label">
+        <input
+          className="checkbox"
+          type="checkbox"
+          checked={values.{{ f.camel }}}
+          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.checked })}
+        />
+        {{ f.label }}
+      </label>
+{%- else %}
+      <label className="fieldset">
+        <span className="fieldset-legend">{{ f.label }}</span>
+        <input
+          className="input w-full"
+          type="{{ f.input }}"
+{%- if f.decimal %}
+          step="any"
+{%- endif %}
+          required
+          value={values.{{ f.camel }}}
+          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
+        />
+      </label>
+{%- endif %}
+{%- endfor %}
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}

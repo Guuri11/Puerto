@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "format": "biome check --write --linter-enabled=false .",
     "lint:arch": "bun --bun depcruise src",
     "test": "bun test",
     "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/infrastructure/http/schema.d.ts"

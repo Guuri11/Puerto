@@ -24,7 +24,9 @@ pub enum OverwritePolicy {
 ///
 /// Kept here rather than inferred from the writers so the check runs *before* the first byte is
 /// written: a half-overwritten project is worse than a refused command.
-pub fn entity_files(snake: &str, db: bool) -> Vec<PathBuf> {
+///
+/// `web`: the entity also gets a frontend slice (`web::web_entity_files`).
+pub fn entity_files(snake: &str, db: bool, web: bool) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = vec![
         format!("business/src/domain/{snake}/model.rs"),
         format!("business/src/domain/{snake}/errors.rs"),
@@ -63,6 +65,9 @@ pub fn entity_files(snake: &str, db: bool) -> Vec<PathBuf> {
             "infrastructure/src/{snake}/entity.rs"
         )));
     }
+    if web {
+        files.extend(crate::generators::web::web_entity_files(snake));
+    }
 
     files
 }
@@ -83,13 +88,24 @@ pub fn guard_entity_overwrite(
     base: &Path,
     snake: &str,
     db: bool,
+    web: bool,
+    policy: OverwritePolicy,
+) -> Result<(), Box<dyn std::error::Error>> {
+    guard_files_overwrite(base, snake, &entity_files(snake, db, web), policy)
+}
+
+/// Aborts (or asks) when writing `files` for `snake` would overwrite any of them.
+pub fn guard_files_overwrite(
+    base: &Path,
+    snake: &str,
+    files: &[PathBuf],
     policy: OverwritePolicy,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if policy == OverwritePolicy::Force {
         return Ok(());
     }
 
-    let conflicts = existing(base, &entity_files(snake, db));
+    let conflicts = existing(base, files);
     if conflicts.is_empty() {
         return Ok(());
     }
@@ -131,12 +147,12 @@ mod tests {
     #[test]
     fn entity_files_includes_db_entity_only_with_db() {
         assert!(
-            !entity_files("product", false)
+            !entity_files("product", false, false)
                 .iter()
                 .any(|f| f.ends_with("entity.rs"))
         );
         assert!(
-            entity_files("product", true)
+            entity_files("product", true, false)
                 .iter()
                 .any(|f| f.ends_with("entity.rs"))
         );
@@ -144,14 +160,32 @@ mod tests {
 
     #[test]
     fn entity_files_excludes_auto_generated_files() {
-        let files = entity_files("product", true);
+        let files = entity_files("product", true, true);
         assert!(!files.iter().any(|f| f.ends_with("bootstrap.rs")));
         assert!(!files.iter().any(|f| f.ends_with("tags.rs")));
+        assert!(
+            !files
+                .iter()
+                .any(|f| f.to_string_lossy().contains("generated"))
+        );
+        assert!(!files.iter().any(|f| f.ends_with("client.ts")));
     }
 
     #[test]
     fn force_policy_never_blocks() {
         let dir = std::env::temp_dir();
-        assert!(guard_entity_overwrite(&dir, "product", false, OverwritePolicy::Force).is_ok());
+        assert!(
+            guard_entity_overwrite(&dir, "product", false, false, OverwritePolicy::Force).is_ok()
+        );
+    }
+
+    #[test]
+    fn entity_files_include_the_web_slice_only_in_a_web_project() {
+        let has_web = |files: Vec<PathBuf>| files.iter().any(|f| f.starts_with("web"));
+        assert!(!has_web(entity_files("order_item", false, false)));
+        assert!(
+            entity_files("order_item", false, true)
+                .contains(&PathBuf::from("web/src/test-support/order-item.ts"))
+        );
     }
 }

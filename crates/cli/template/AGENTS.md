@@ -49,9 +49,11 @@ Rule as the crates (`domain` ← `application` ← `infrastructure` ← `present
 `make web/lint`. Its rules — layers, generated files, where use cases go — are in `web/AGENTS.md`.
 
 The OpenAPI spec is the contract between the two halves: `docs/api/openapi.json`, exported by a
-test in `bootstrap.rs`. **After touching a route or a DTO, run `make web/sync`** (it re-exports the
-spec and regenerates the frontend's wire types) and commit both. Until then `make test` fails —
-that failure is the drift check.
+test in `bootstrap.rs`. **After a scaffold and after touching a route or a DTO, run
+`make web/sync`** (it re-exports the spec, regenerates the frontend's wire types and formats
+`web/`) and commit both. Until then `make test` fails — that failure is the drift check.
+`puerto generate scaffold` writes a CRUD entity's screens too; `puerto generate web <Name>` writes
+them alone.
 
 ## Conventions
 

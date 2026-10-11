@@ -1,0 +1,62 @@
+import { {{ pascal }}Error } from "../../domain/{{ kebab }}/errors";
+import type { {{ pascal }}, {{ pascal }}Draft } from "../../domain/{{ kebab }}/model";
+import type { {{ pascal }}Repository } from "../../domain/{{ kebab }}/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type {{ pascal }}Dto = components["schemas"]["{{ pascal }}Dto"];
+type {{ pascal }}Request = components["schemas"]["Create{{ pascal }}Request"];
+
+function to{{ pascal }}(dto: {{ pascal }}Dto): {{ pascal }} {
+  return {
+    id: dto.id,
+{%- for f in fields %}
+    {{ f.camel }}: dto.{{ f.camel }},
+{%- endfor %}
+  };
+}
+
+function toRequest(draft: {{ pascal }}Draft): {{ pascal }}Request {
+  return {
+{%- for f in fields %}
+    {{ f.camel }}: draft.{{ f.camel }},
+{%- endfor %}
+  };
+}
+
+/** `{{ pascal }}Repository` over the REST API (`/{{ plural }}`). */
+export function {{ camel }}RepositoryHttp(api: ApiClient): {{ pascal }}Repository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/{{ plural }}");
+      if (data === undefined) throw new {{ pascal }}Error(apiErrorCode(error, response));
+      return data.map(to{{ pascal }});
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/{{ plural }}/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new {{ pascal }}Error(apiErrorCode(error, response));
+      return to{{ pascal }}(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/{{ plural }}", { body: toRequest(draft) });
+      if (data === undefined) throw new {{ pascal }}Error(apiErrorCode(error, response));
+      return to{{ pascal }}(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/{{ plural }}/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new {{ pascal }}Error(apiErrorCode(error, response));
+      return to{{ pascal }}(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/{{ plural }}/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new {{ pascal }}Error(apiErrorCode(error, response));
+    },
+  };
+}

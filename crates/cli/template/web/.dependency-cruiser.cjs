@@ -38,6 +38,21 @@ module.exports = {
       to: { path: "^src/infrastructure/" },
     },
     {
+      name: "test-support-never-reaches-an-adapter",
+      comment:
+        "Mothers and fakes stand in for adapters: they build domain values, never call the API.",
+      severity: "error",
+      from: { path: "^src/test-support/" },
+      to: { path: "^src/(application|infrastructure)/" },
+    },
+    {
+      name: "only-tests-import-test-support",
+      comment: "Fakes and mothers are for tests; the app never ships them.",
+      severity: "error",
+      from: { path: "^src/", pathNot: ["^src/test-support/", "\\.test\\.tsx?$"] },
+      to: { path: "^src/test-support/" },
+    },
+    {
       name: "no-circular",
       severity: "error",
       from: {},

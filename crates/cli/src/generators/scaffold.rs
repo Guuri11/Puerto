@@ -11,6 +11,7 @@ use crate::generators::{
     naming::{crud_use_cases, pascal_to_snake, to_pascal_case, write_file},
     presentation::write_presentation_files,
     render::render,
+    web::{unsupported_web_types, write_web_files},
 };
 use crate::patchers::lib_rs::{
     patch_business_lib_shared, patch_business_lib_value_objects, patch_libs, patch_mothers_lib,
@@ -141,11 +142,17 @@ pub fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pascal = to_pascal_case(name);
     let snake = pascal_to_snake(&pascal);
+    let web_project = crate::puerto_toml::read(base).is_ok_and(|c| c.project.web);
+    let unsupported_web = unsupported_web_types(fields);
+    let web_slice = web_project && crud && unsupported_web.is_empty();
 
     if crud {
         write_files_crud(&pascal, &snake, base, db, fields, shared_vos)?;
     } else {
         write_files(&pascal, &snake, base, db)?;
+    }
+    if web_slice {
+        write_web_files(&pascal, base, fields)?;
     }
     patch_libs(&snake, base, db, crud)?;
 
@@ -189,8 +196,17 @@ pub fn run(
     println!("✓ business/        — model, errors, repository trait, use cases ({uc_label})");
     println!("✓ infrastructure/  — {repo_name}");
     println!("✓ presentation/    — routes, dto, responses, error mapper");
+    if web_slice {
+        println!("✓ web/             — list, detail and form screens, HTTP repository");
+    } else if web_project && crud {
+        eprintln!(
+            "⚠ web/             — no screens for {pascal}: the frontend generator does not handle {} \
+             fields yet",
+            unsupported_web.join(", ")
+        );
+    }
     println!("✓ Done. Zero manual wiring.");
-    if crate::puerto_toml::read(base).is_ok_and(|c| c.project.web) {
+    if web_project {
         println!(
             "\nThe API changed. Next: make web/sync   (exports the spec, regenerates the web types)"
         );
@@ -238,7 +254,8 @@ pub fn run_scaffold(
     if !vo_conflicts.is_empty() {
         return Err(vo_conflicts.join("\n  ").into());
     }
-    guard_entity_overwrite(base, &pascal_to_snake(&pascal), db, overwrite)?;
+    let web = config.project.web && unsupported_web_types(&fields).is_empty();
+    guard_entity_overwrite(base, &pascal_to_snake(&pascal), db, web, overwrite)?;
 
     run(name, base, db, true, &fields, &shared_vos)?;
     if db {

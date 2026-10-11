@@ -1,0 +1,75 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
+import type { {{ pascal }}Draft } from "../../../../domain/{{ kebab }}/model";
+import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
+import { renderScreen } from "../../../../test-support/render";
+import { {{ pascal }}FormContainer } from "./{{ kebab }}-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: {{ pascal }}Draft) {
+  await screen.findByText("Save");
+{%- for f in fields %}
+{%- if f.input == "checkbox" %}
+  if (draft.{{ f.camel }}) fireEvent.click(screen.getByLabelText("{{ f.label }}"));
+{%- else %}
+  type("{{ f.label }}", {{ f.draft_to_form }});
+{%- endif %}
+{%- endfor %}
+}
+
+describe("{{ pascal }}FormContainer", () => {
+  test("should create the {{ words }} from what was typed and show it", async () => {
+    // Arrange
+    const draft = {{ pascal }}Mother.draft();
+    const {{ camel }}Repository = fake{{ pascal }}Repository();
+    const { history } = renderScreen(<{{ pascal }}FormContainer />, { {{ camel }}Repository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/{{ plural }}/"));
+    const [created] = await {{ camel }}Repository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/{{ plural }}/${created?.id}`);
+  });
+
+  test("should save the edited {{ words }} when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = {{ pascal }}Mother.random();
+    const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
+    const { history } = renderScreen(<{{ pascal }}FormContainer id={seeded.id} />, {
+      {{ camel }}Repository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/{{ plural }}/${seeded.id}`));
+    expect(await {{ camel }}Repository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the {{ words }}", async () => {
+    // Arrange
+    const code = "{{ snake }}.validation_error.invalid";
+    const {{ camel }}Repository = {
+      ...fake{{ pascal }}Repository(),
+      create: () => Promise.reject(new {{ pascal }}Error(code)),
+    };
+    renderScreen(<{{ pascal }}FormContainer />, { {{ camel }}Repository });
+    await fillIn({{ pascal }}Mother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});

@@ -14,7 +14,8 @@ crates/
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
-    src/generators/ — Per-layer generators + bootstrap, conflict (overwrite guard), consistency (drift)
+    src/generators/ — Per-layer generators + bootstrap, conflict (overwrite guard), consistency (drift),
+                      web (the frontend slice + web/src/presentation/core/generated/*)
     src/templates/  — .tera templates the generators render (embedded via include_dir)
     src/patchers/   — lib.rs / api.rs / routes.rs patchers
     src/puerto_toml.rs — puerto.toml serde structs + read/write/add_entity + field parser
@@ -168,6 +169,7 @@ puerto generate domain <Name> -- price:i64 status:Status:enum:Draft/Paid   # Sam
 puerto generate application <Name>         # Application layer only: use case impls
 puerto generate repository <Name>          # Infrastructure layer only: InMemory or Pg repo (inferred from puerto.toml)
 puerto generate presentation <Name>        # Presentation layer only: routes, dto, responses + regenerates bootstrap
+puerto generate web <Name>                 # Web projects: the entity's frontend slice only (+ core/generated/*); --force overwrites
 puerto generate use-case <Entity> <action> # Add a use case (refuses existing actions; adds the field to {Entity}Api)
 puerto generate migration <name>           # Create a new SQLx migration file (--db projects only; versions never collide)
 puerto generate bootstrap                  # Regenerate bootstrap.rs from puerto.toml (refuses on manifest/filesystem drift)
@@ -214,6 +216,8 @@ make format/fix    # cargo fmt --all
 - `/health`, `/health/ready`, graceful shutdown on SIGTERM (ADR-0008)
 - Pinned toolchain + edition 2024 (ADR-0009); root `AGENTS.md` + `CLAUDE.md` (ADR-0010)
 - `web/` frontend unless `--no-web`: `[project] web = true`, `make web/*` targets (ADR-0013);
+  `scaffold` writes a CRUD entity's screens (domain, HTTP repository, list/detail/form, tests) and
+  regenerates `web/src/presentation/core/generated/{dependencies.ts,routes.tsx}`;
   `bootstrap.rs` exports the OpenAPI spec to `docs/api/openapi.json` from mocked use cases, and
   `make web/sync` turns it into the frontend's wire types
 

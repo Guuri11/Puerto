@@ -1,0 +1,30 @@
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { {{ pascal }}ListView } from "../views/{{ kebab }}-list-view";
+
+export function {{ pascal }}ListContainer() {
+  const { {{ camel }}Repository } = useDependencies();
+  const {{ plural_ident }} = useAsync(() => {{ camel }}Repository.list(), [{{ camel }}Repository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">{{ label_plural }}</h1>
+        <Link href="/{{ plural }}/new" className="btn btn-primary">
+          New {{ words }}
+        </Link>
+      </div>
+      {{ "{" }}{{ plural_ident }}.status === "loading" && <span className="loading loading-spinner" />}
+      {{ "{" }}{{ plural_ident }}.status === "error" && <ErrorAlert error={{ "{" }}{{ plural_ident }}.error} />}
+      {{ "{" }}{{ plural_ident }}.status === "ok" &&
+        ({{ plural_ident }}.data.length === 0 ? (
+          <EmptyState message="No {{ words_plural }} yet." />
+        ) : (
+          <{{ pascal }}ListView {{ plural_ident }}={{ "{" }}{{ plural_ident }}.data} />
+        ))}
+    </section>
+  );
+}

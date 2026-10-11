@@ -2,7 +2,7 @@ use super::*;
 use compile_matrix::{
     CUSTOM_USE_CASE, ENUM_ONLY, ENUM_VO, MULTI_ENTITY, NO_DEMO, NO_WEB, OPT_VEC_PRIM, OPT_VEC_VO,
     PLAIN_VO, POSTGRES_EVERY_TYPE, PRIMITIVES, SHARED_VO, Scenario, UUID_VO, VO_KITCHEN_SINK,
-    apply_scenario,
+    WEB_CRUD, apply_scenario,
 };
 use std::collections::BTreeMap;
 
@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 // After an intended change to generated output: `INSTA_UPDATE=always make test`, then read the
 // `.snap` diff in full before committing — it is exactly what lands in users' projects.
 
-fn project_tree(root: &Path) -> BTreeMap<String, String> {
+pub(super) fn project_tree(root: &Path) -> BTreeMap<String, String> {
     fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, String>) {
         let mut entries: Vec<_> = fs::read_dir(dir).unwrap().map(|e| e.unwrap()).collect();
         entries.sort_by_key(|e| e.file_name());
@@ -105,6 +105,7 @@ snapshot_scenarios! {
     snapshot_enum_only => ENUM_ONLY,
     snapshot_custom_use_case => CUSTOM_USE_CASE,
     snapshot_postgres_every_type => POSTGRES_EVERY_TYPE,
+    snapshot_web_crud => WEB_CRUD,
 }
 
 #[test]

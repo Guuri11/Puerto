@@ -3142,3 +3142,1415 @@ use_cases = [
 name = "name"
 type = "String"
 value_object = "Name"
+
+=== web/src/domain/category/errors.ts ===
+/**
+ * A request about a category that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `category.not_found`, `category.validation_error.<field>_empty`.
+ */
+export class CategoryError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "CategoryError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/category/model.ts ===
+export interface Category {
+  id: string;
+  name: string;
+}
+
+/** What a create or an update sends: a category without its id. */
+export type CategoryDraft = Omit<Category, "id">;
+
+=== web/src/domain/category/repository.ts ===
+import type { Category, CategoryDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `CategoryError` the API answered. */
+export interface CategoryRepository {
+  list(): Promise<Category[]>;
+  get(id: string): Promise<Category>;
+  create(draft: CategoryDraft): Promise<Category>;
+  update(id: string, draft: CategoryDraft): Promise<Category>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/domain/product/errors.ts ===
+/**
+ * A request about a product that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `product.not_found`, `product.validation_error.<field>_empty`.
+ */
+export class ProductError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "ProductError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/product/model.ts ===
+export interface Product {
+  id: string;
+  title: string;
+  price: number;
+}
+
+/** What a create or an update sends: a product without its id. */
+export type ProductDraft = Omit<Product, "id">;
+
+=== web/src/domain/product/repository.ts ===
+import type { Product, ProductDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `ProductError` the API answered. */
+export interface ProductRepository {
+  list(): Promise<Product[]>;
+  get(id: string): Promise<Product>;
+  create(draft: ProductDraft): Promise<Product>;
+  update(id: string, draft: ProductDraft): Promise<Product>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/category/category-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { CategoryError } from "../../domain/category/errors";
+import { CategoryMother } from "../../test-support/category";
+import { createApiClient } from "../http/client";
+import { categoryRepositoryHttp } from "./category-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: categoryRepositoryHttp(api), requests };
+}
+
+describe("categoryRepositoryHttp", () => {
+  test("should return every category when the API lists them", async () => {
+    // Arrange
+    const category = CategoryMother.random();
+    const { repository } = answering(200, [category]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([category]);
+  });
+
+  test("should send the draft when creating a category", async () => {
+    // Arrange
+    const draft = CategoryMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the category does not exist", async () => {
+    // Arrange
+    const code = "category.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(CategoryError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the category", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/categories/42");
+  });
+});
+
+=== web/src/infrastructure/category/category-repository-http.ts ===
+import { CategoryError } from "../../domain/category/errors";
+import type { Category, CategoryDraft } from "../../domain/category/model";
+import type { CategoryRepository } from "../../domain/category/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type CategoryDto = components["schemas"]["CategoryDto"];
+type CategoryRequest = components["schemas"]["CreateCategoryRequest"];
+
+function toCategory(dto: CategoryDto): Category {
+  return {
+    id: dto.id,
+    name: dto.name,
+  };
+}
+
+function toRequest(draft: CategoryDraft): CategoryRequest {
+  return {
+    name: draft.name,
+  };
+}
+
+/** `CategoryRepository` over the REST API (`/categories`). */
+export function categoryRepositoryHttp(api: ApiClient): CategoryRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/categories");
+      if (data === undefined) throw new CategoryError(apiErrorCode(error, response));
+      return data.map(toCategory);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/categories/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new CategoryError(apiErrorCode(error, response));
+      return toCategory(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/categories", { body: toRequest(draft) });
+      if (data === undefined) throw new CategoryError(apiErrorCode(error, response));
+      return toCategory(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/categories/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new CategoryError(apiErrorCode(error, response));
+      return toCategory(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/categories/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new CategoryError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/infrastructure/product/product-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { ProductError } from "../../domain/product/errors";
+import { ProductMother } from "../../test-support/product";
+import { createApiClient } from "../http/client";
+import { productRepositoryHttp } from "./product-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: productRepositoryHttp(api), requests };
+}
+
+describe("productRepositoryHttp", () => {
+  test("should return every product when the API lists them", async () => {
+    // Arrange
+    const product = ProductMother.random();
+    const { repository } = answering(200, [product]);
+
+    // Act
+    const listed = await repository.list();
+
+    // Assert
+    expect(listed).toEqual([product]);
+  });
+
+  test("should send the draft when creating a product", async () => {
+    // Arrange
+    const draft = ProductMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the product does not exist", async () => {
+    // Arrange
+    const code = "product.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(ProductError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the product", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/products/42");
+  });
+});
+
+=== web/src/infrastructure/product/product-repository-http.ts ===
+import { ProductError } from "../../domain/product/errors";
+import type { Product, ProductDraft } from "../../domain/product/model";
+import type { ProductRepository } from "../../domain/product/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type ProductDto = components["schemas"]["ProductDto"];
+type ProductRequest = components["schemas"]["CreateProductRequest"];
+
+function toProduct(dto: ProductDto): Product {
+  return {
+    id: dto.id,
+    title: dto.title,
+    price: dto.price,
+  };
+}
+
+function toRequest(draft: ProductDraft): ProductRequest {
+  return {
+    title: draft.title,
+    price: draft.price,
+  };
+}
+
+/** `ProductRepository` over the REST API (`/products`). */
+export function productRepositoryHttp(api: ApiClient): ProductRepository {
+  return {
+    async list() {
+      const { data, error, response } = await api.GET("/products");
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return data.map(toProduct);
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/products/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/products", { body: toRequest(draft) });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/products/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/products/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new ProductError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/presentation/core/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { CategoryRepository } from "../../../domain/category/repository";
+import type { ProductRepository } from "../../../domain/product/repository";
+import { categoryRepositoryHttp } from "../../../infrastructure/category/category-repository-http";
+import { createApiClient } from "../../../infrastructure/http/client";
+import { productRepositoryHttp } from "../../../infrastructure/product/product-repository-http";
+
+export interface Dependencies {
+  categoryRepository: CategoryRepository;
+  productRepository: ProductRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return {
+    categoryRepository: categoryRepositoryHttp(api),
+    productRepository: productRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { CategoryDetailContainer } from "../../features/category/containers/category-detail-container";
+import { CategoryFormContainer } from "../../features/category/containers/category-form-container";
+import { CategoryListContainer } from "../../features/category/containers/category-list-container";
+import { ProductDetailContainer } from "../../features/product/containers/product-detail-container";
+import { ProductFormContainer } from "../../features/product/containers/product-form-container";
+import { ProductListContainer } from "../../features/product/containers/product-list-container";
+import { HomePage } from "../../pages/home";
+import { NotFoundPage } from "../../pages/not-found";
+import type { NavEntry } from "../../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [
+  { label: "Categories", href: "/categories" },
+  { label: "Products", href: "/products" },
+];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/categories">
+        <CategoryListContainer />
+      </Route>
+      <Route path="/categories/new">
+        <CategoryFormContainer />
+      </Route>
+      <Route path="/categories/:id/edit">
+        {(params) => <CategoryFormContainer id={params.id} />}
+      </Route>
+      <Route path="/categories/:id">{(params) => <CategoryDetailContainer id={params.id} />}</Route>
+      <Route path="/products">
+        <ProductListContainer />
+      </Route>
+      <Route path="/products/new">
+        <ProductFormContainer />
+      </Route>
+      <Route path="/products/:id/edit">{(params) => <ProductFormContainer id={params.id} />}</Route>
+      <Route path="/products/:id">{(params) => <ProductDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/presentation/features/category/containers/category-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CategoryMother, fakeCategoryRepository } from "../../../../test-support/category";
+import { renderScreen } from "../../../../test-support/render";
+import { CategoryDetailContainer } from "./category-detail-container";
+
+describe("CategoryDetailContainer", () => {
+  test("should show the category when it exists", async () => {
+    // Arrange
+    const seeded = CategoryMother.random();
+    const categoryRepository = fakeCategoryRepository([seeded]);
+
+    // Act
+    renderScreen(<CategoryDetailContainer id={seeded.id} />, { categoryRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the category does not exist", async () => {
+    // Arrange
+    const categoryRepository = fakeCategoryRepository();
+
+    // Act
+    renderScreen(<CategoryDetailContainer id={crypto.randomUUID()} />, { categoryRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("category.not_found");
+  });
+
+  test("should delete the category only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = CategoryMother.random();
+    const fake = fakeCategoryRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<CategoryDetailContainer id={seeded.id} />, {
+      categoryRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/categories"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/category/containers/category-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CategoryDetailView } from "../views/category-detail-view";
+
+export function CategoryDetailContainer({ id }: { id: string }) {
+  const { categoryRepository } = useDependencies();
+  const category = useAsync(() => categoryRepository.get(id), [categoryRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await categoryRepository.remove(id);
+      navigate("/categories");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Category</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {category.status === "loading" && <span className="loading loading-spinner" />}
+      {category.status === "error" && <ErrorAlert error={category.error} />}
+      {category.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <CategoryDetailView category={category.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/categories/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/categories" className="link">
+        Back to categories
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this category?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/category/containers/category-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CategoryError } from "../../../../domain/category/errors";
+import type { CategoryDraft } from "../../../../domain/category/model";
+import { CategoryMother, fakeCategoryRepository } from "../../../../test-support/category";
+import { renderScreen } from "../../../../test-support/render";
+import { CategoryFormContainer } from "./category-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: CategoryDraft) {
+  await screen.findByText("Save");
+  type("Name", draft.name);
+}
+
+describe("CategoryFormContainer", () => {
+  test("should create the category from what was typed and show it", async () => {
+    // Arrange
+    const draft = CategoryMother.draft();
+    const categoryRepository = fakeCategoryRepository();
+    const { history } = renderScreen(<CategoryFormContainer />, { categoryRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/categories/"));
+    const [created] = await categoryRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/categories/${created?.id}`);
+  });
+
+  test("should save the edited category when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = CategoryMother.random();
+    const categoryRepository = fakeCategoryRepository([seeded]);
+    const { history } = renderScreen(<CategoryFormContainer id={seeded.id} />, {
+      categoryRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/categories/${seeded.id}`));
+    expect(await categoryRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the category", async () => {
+    // Arrange
+    const code = "category.validation_error.invalid";
+    const categoryRepository = {
+      ...fakeCategoryRepository(),
+      create: () => Promise.reject(new CategoryError(code)),
+    };
+    renderScreen(<CategoryFormContainer />, { categoryRepository });
+    await fillIn(CategoryMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/category/containers/category-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Category } from "../../../../domain/category/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CategoryFormView, toCategoryDraft, toCategoryForm } from "../views/category-form-view";
+
+/** Creates a category, or edits the one with `id`. */
+export function CategoryFormContainer({ id }: { id?: string }) {
+  const { categoryRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : categoryRepository.get(id)),
+    [categoryRepository, id],
+  );
+  const title = id === undefined ? "New category" : "Edit category";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <CategoryForm existing={existing.data} />}
+      <Link href={id === undefined ? "/categories" : `/categories/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function CategoryForm({ existing }: { existing: Category | null }) {
+  const { categoryRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toCategoryForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toCategoryDraft(values);
+      const saved =
+        existing === null
+          ? await categoryRepository.create(draft)
+          : await categoryRepository.update(existing.id, draft);
+      navigate(`/categories/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <CategoryFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/category/containers/category-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { CategoryError } from "../../../../domain/category/errors";
+import { CategoryMother, fakeCategoryRepository } from "../../../../test-support/category";
+import { renderScreen } from "../../../../test-support/render";
+import { CategoryListContainer } from "./category-list-container";
+
+describe("CategoryListContainer", () => {
+  test("should show a row per category when there are some", async () => {
+    // Arrange
+    const seed = [CategoryMother.random(), CategoryMother.random()];
+    const categoryRepository = fakeCategoryRepository(seed);
+
+    // Act
+    renderScreen(<CategoryListContainer />, { categoryRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no category", async () => {
+    // Arrange
+    const categoryRepository = fakeCategoryRepository();
+
+    // Act
+    renderScreen(<CategoryListContainer />, { categoryRepository });
+
+    // Assert
+    expect(await screen.findByText("No categories yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the categories cannot be listed", async () => {
+    // Arrange
+    const categoryRepository = {
+      ...fakeCategoryRepository(),
+      list: () => Promise.reject(new CategoryError("category.repository_error")),
+    };
+
+    // Act
+    renderScreen(<CategoryListContainer />, { categoryRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("category.repository_error");
+  });
+});
+
+=== web/src/presentation/features/category/containers/category-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CategoryListView } from "../views/category-list-view";
+
+export function CategoryListContainer() {
+  const { categoryRepository } = useDependencies();
+  const categories = useAsync(() => categoryRepository.list(), [categoryRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Categories</h1>
+        <Link href="/categories/new" className="btn btn-primary">
+          New category
+        </Link>
+      </div>
+      {categories.status === "loading" && <span className="loading loading-spinner" />}
+      {categories.status === "error" && <ErrorAlert error={categories.error} />}
+      {categories.status === "ok" &&
+        (categories.data.length === 0 ? (
+          <EmptyState message="No categories yet." />
+        ) : (
+          <CategoryListView categories={categories.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/category/views/category-detail-view.tsx ===
+import type { Category } from "../../../../domain/category/model";
+
+export function CategoryDetailView({ category }: { category: Category }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Name</dt>
+      <dd>{category.name}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/category/views/category-form-view.tsx ===
+import type { Category, CategoryDraft } from "../../../../domain/category/model";
+
+/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+export interface CategoryFormValues {
+  name: string;
+}
+
+/** The inputs for `category`, empty when there is none yet. */
+export function toCategoryForm(category: Category | null): CategoryFormValues {
+  if (category === null) {
+    return {
+      name: "",
+    };
+  }
+  return {
+    name: category.name,
+  };
+}
+
+export function toCategoryDraft(values: CategoryFormValues): CategoryDraft {
+  return {
+    name: values.name,
+  };
+}
+
+export function CategoryFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: CategoryFormValues;
+  saving: boolean;
+  onChange: (values: CategoryFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Name</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.name}
+          onChange={(event) => onChange({ ...values, name: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/category/views/category-list-view.tsx ===
+import { Link } from "wouter";
+import type { Category } from "../../../../domain/category/model";
+
+export function CategoryListView({ categories }: { categories: Category[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {categories.map((category) => (
+            <tr key={category.id}>
+              <td>{category.name}</td>
+              <td className="text-right">
+                <Link href={`/categories/${category.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductDetailContainer } from "./product-detail-container";
+
+describe("ProductDetailContainer", () => {
+  test("should show the product when it exists", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+
+    // Act
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the product does not exist", async () => {
+    // Arrange
+    const productRepository = fakeProductRepository();
+
+    // Act
+    renderScreen(<ProductDetailContainer id={crypto.randomUUID()} />, { productRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("product.not_found");
+  });
+
+  test("should delete the product only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const fake = fakeProductRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<ProductDetailContainer id={seeded.id} />, {
+      productRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/products"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductDetailView } from "../views/product-detail-view";
+
+export function ProductDetailContainer({ id }: { id: string }) {
+  const { productRepository } = useDependencies();
+  const product = useAsync(() => productRepository.get(id), [productRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await productRepository.remove(id);
+      navigate("/products");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Product</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {product.status === "loading" && <span className="loading loading-spinner" />}
+      {product.status === "error" && <ErrorAlert error={product.error} />}
+      {product.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <ProductDetailView product={product.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/products/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/products" className="link">
+        Back to products
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this product?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import type { ProductDraft } from "../../../../domain/product/model";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductFormContainer } from "./product-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: ProductDraft) {
+  await screen.findByText("Save");
+  type("Title", draft.title);
+  type("Price", String(draft.price));
+}
+
+describe("ProductFormContainer", () => {
+  test("should create the product from what was typed and show it", async () => {
+    // Arrange
+    const draft = ProductMother.draft();
+    const productRepository = fakeProductRepository();
+    const { history } = renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/products/"));
+    const [created] = await productRepository.list();
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/products/${created?.id}`);
+  });
+
+  test("should save the edited product when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+    const { history } = renderScreen(<ProductFormContainer id={seeded.id} />, {
+      productRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/products/${seeded.id}`));
+    expect(await productRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the validation code when the API rejects the product", async () => {
+    // Arrange
+    const code = "product.validation_error.invalid";
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError(code)),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Product } from "../../../../domain/product/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductFormView, toProductDraft, toProductForm } from "../views/product-form-view";
+
+/** Creates a product, or edits the one with `id`. */
+export function ProductFormContainer({ id }: { id?: string }) {
+  const { productRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : productRepository.get(id)),
+    [productRepository, id],
+  );
+  const title = id === undefined ? "New product" : "Edit product";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <ProductForm existing={existing.data} />}
+      <Link href={id === undefined ? "/products" : `/products/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function ProductForm({ existing }: { existing: Product | null }) {
+  const { productRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toProductForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toProductDraft(values);
+      const saved =
+        existing === null
+          ? await productRepository.create(draft)
+          : await productRepository.update(existing.id, draft);
+      navigate(`/products/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {failure !== null && <ErrorAlert error={failure} />}
+        <ProductFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductListContainer } from "./product-list-container";
+
+describe("ProductListContainer", () => {
+  test("should show a row per product when there are some", async () => {
+    // Arrange
+    const seed = [ProductMother.random(), ProductMother.random()];
+    const productRepository = fakeProductRepository(seed);
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should say so when there is no product", async () => {
+    // Arrange
+    const productRepository = fakeProductRepository();
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect(await screen.findByText("No products yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the products cannot be listed", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      list: () => Promise.reject(new ProductError("product.repository_error")),
+    };
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("product.repository_error");
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-list-container.tsx ===
+import { Link } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductListView } from "../views/product-list-view";
+
+export function ProductListContainer() {
+  const { productRepository } = useDependencies();
+  const products = useAsync(() => productRepository.list(), [productRepository]);
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Products</h1>
+        <Link href="/products/new" className="btn btn-primary">
+          New product
+        </Link>
+      </div>
+      {products.status === "loading" && <span className="loading loading-spinner" />}
+      {products.status === "error" && <ErrorAlert error={products.error} />}
+      {products.status === "ok" &&
+        (products.data.length === 0 ? (
+          <EmptyState message="No products yet." />
+        ) : (
+          <ProductListView products={products.data} />
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-detail-view.tsx ===
+import type { Product } from "../../../../domain/product/model";
+
+export function ProductDetailView({ product }: { product: Product }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Title</dt>
+      <dd>{product.title}</dd>
+      <dt className="font-semibold">Price</dt>
+      <dd>{product.price}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-form-view.tsx ===
+import type { Product, ProductDraft } from "../../../../domain/product/model";
+
+/** What the inputs hold: the text of every text and number input, `checked` for a checkbox. */
+export interface ProductFormValues {
+  title: string;
+  price: string;
+}
+
+/** The inputs for `product`, empty when there is none yet. */
+export function toProductForm(product: Product | null): ProductFormValues {
+  if (product === null) {
+    return {
+      title: "",
+      price: "",
+    };
+  }
+  return {
+    title: product.title,
+    price: String(product.price),
+  };
+}
+
+export function toProductDraft(values: ProductFormValues): ProductDraft {
+  return {
+    title: values.title,
+    price: Number(values.price),
+  };
+}
+
+export function ProductFormView({
+  values,
+  saving,
+  onChange,
+  onSubmit,
+}: {
+  values: ProductFormValues;
+  saving: boolean;
+  onChange: (values: ProductFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Title</span>
+        <input
+          className="input w-full"
+          type="text"
+          required
+          value={values.title}
+          onChange={(event) => onChange({ ...values, title: event.target.value })}
+        />
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Price</span>
+        <input
+          className="input w-full"
+          type="number"
+          required
+          value={values.price}
+          onChange={(event) => onChange({ ...values, price: event.target.value })}
+        />
+      </label>
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-list-view.tsx ===
+import { Link } from "wouter";
+import type { Product } from "../../../../domain/product/model";
+
+export function ProductListView({ products }: { products: Product[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Price</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((product) => (
+            <tr key={product.id}>
+              <td>{product.title}</td>
+              <td>{product.price}</td>
+              <td className="text-right">
+                <Link href={`/products/${product.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/test-support/category.ts ===
+import { CategoryError } from "../domain/category/errors";
+import type { Category, CategoryDraft } from "../domain/category/model";
+import type { CategoryRepository } from "../domain/category/repository";
+
+/** Valid categories for tests; pass `overrides` for the fields a test is about. */
+export const CategoryMother = {
+  draft(overrides: Partial<CategoryDraft> = {}): CategoryDraft {
+    return {
+      name: "example",
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Category> = {}): Category {
+    return { id: crypto.randomUUID(), ...CategoryMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `CategoryRepository`. Override a method to make it fail. */
+export function fakeCategoryRepository(seed: Category[] = []): CategoryRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new CategoryError("category.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}
+
+=== web/src/test-support/product.ts ===
+import { ProductError } from "../domain/product/errors";
+import type { Product, ProductDraft } from "../domain/product/model";
+import type { ProductRepository } from "../domain/product/repository";
+
+/** Valid products for tests; pass `overrides` for the fields a test is about. */
+export const ProductMother = {
+  draft(overrides: Partial<ProductDraft> = {}): ProductDraft {
+    return {
+      title: "example",
+      price: 42,
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Product> = {}): Product {
+    return { id: crypto.randomUUID(), ...ProductMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `ProductRepository`. Override a method to make it fail. */
+export function fakeProductRepository(seed: Product[] = []): ProductRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new ProductError("product.not_found");
+    return found;
+  };
+  return {
+    list: async () => [...store.values()],
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

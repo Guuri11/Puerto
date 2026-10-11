@@ -128,6 +128,15 @@ enum GenerateAction {
         /// Entity name in PascalCase (e.g. Product)
         name: String,
     },
+    /// Scaffold only the frontend slice of an existing CRUD entity (web projects; regenerates
+    /// web/src/presentation/core/generated/)
+    Web {
+        /// Entity name in PascalCase (e.g. Product)
+        name: String,
+        /// Overwrite the entity's existing frontend files, discarding hand-written changes
+        #[arg(long)]
+        force: bool,
+    },
     /// Declare a shared value object in puerto.toml (reusable across entities)
     ValueObject {
         /// Value object name in PascalCase (e.g. Email, Money)
@@ -279,6 +288,18 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_presentation(&name, &cwd))
+        }
+        Commands::Generate {
+            action: GenerateAction::Web { name, force },
+        } => {
+            let cwd = std::env::current_dir()?;
+            let policy = if force {
+                crate::generators::conflict::OverwritePolicy::Force
+            } else {
+                crate::generators::conflict::OverwritePolicy::Ask
+            };
+            commands::list::require_puerto_project(&cwd)
+                .and_then(|_| scaffold::run_generate_web(&name, &cwd, policy))
         }
         Commands::Generate {
             action: GenerateAction::ValueObject { name, inner_type },

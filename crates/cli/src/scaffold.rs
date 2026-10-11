@@ -7,6 +7,7 @@ pub use crate::generators::migration::run_generate_migration;
 pub use crate::generators::presentation::run_generate_presentation;
 pub use crate::generators::scaffold::{run_scaffold, run_value_object};
 pub use crate::generators::use_case::run_use_case;
+pub use crate::generators::web::run_generate_web;
 
 // Used only in tests — keep visibility scoped to test builds.
 #[cfg(test)]
