@@ -1,535 +1,97 @@
 use std::path::Path;
 
-use serde_json::json;
-
 use crate::generators::effective_fields;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
-    field_vo_constructor, is_enum_vo, is_option_vo, is_value_object, is_vec_vo, literal_import,
-    literal_names_vo, resolve_type, vo_import_path,
+    FieldCtx, field_ctx, is_value_object, literal_import, literal_names_vo, vo_import_path,
 };
 use crate::patchers::lib_rs::patch_business_lib_application_crud;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Context ───────────────────────────────────────────────────────────────────
 
-fn enum_or_string(f: &Field, fallback: &str) -> String {
-    if is_enum_vo(f) {
-        let first = f.enum_variants.as_deref().unwrap().first().unwrap();
-        format!("\"{first}\".to_string()")
-    } else {
-        format!("\"{fallback}\".to_string()")
-    }
+/// Which imports a use case's test module needs.
+#[derive(Clone, Copy)]
+enum TestImports {
+    /// Create: its tests build `CreateEntityParams` literals only — always primitives — so no VO
+    /// import, which would be unused.
+    ParamsOnly,
+    /// List: its tests build `EntityProps` literals, naming the VOs they construct.
+    Props,
+    /// Get / update / delete: as `Props`, plus the `Uuid::new_v4()` of the not-found cases. Not
+    /// emitted twice for an entity that also *has* a `Uuid` field — a duplicate import (E0252).
+    PropsAndUuid,
 }
 
-fn build_test_props(eff: &[Field], string_override: &str) -> String {
-    eff.iter()
-        .map(|f| {
-            if is_option_vo(f) {
-                format!("            {}: None,", f.name)
-            } else if is_vec_vo(f) {
-                format!("            {}: vec![],", f.name)
-            } else if is_enum_vo(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
-                format!("            {}: {}::{},", f.name, vo, first_variant)
-            } else if is_value_object(f) {
-                let mapping = resolve_type(&f.field_type).unwrap();
-                let vo = f.value_object.as_deref().unwrap();
-                let value = if f.field_type == "String" {
-                    format!("\"{}\".to_string()", string_override)
-                } else {
-                    mapping.default_expr.to_string()
-                };
-                format!(
-                    "            {}: {}::new({}).expect(\"valid {}\"),",
-                    f.name, vo, value, vo
-                )
-            } else {
-                let mapping = resolve_type(&f.field_type).unwrap();
-                let value = if f.field_type == "String" {
-                    format!("\"{}\".to_string()", string_override)
-                } else {
-                    mapping.default_expr.to_string()
-                };
-                format!("            {}: {},", f.name, value)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn build_create_params_vo(eff: &[Field]) -> String {
-    eff.iter()
-        .map(|f| {
-            let mapping = resolve_type(&f.field_type).unwrap();
-            let value = if f.field_type == "String" {
-                enum_or_string(f, "example")
-            } else {
-                mapping.default_expr.to_string()
-            };
-            format!("            {}: {},", f.name, value)
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn build_empty_create_params(eff: &[Field], empty_field: &str) -> String {
-    eff.iter()
-        .map(|f| {
-            if f.name == empty_field {
-                format!("            {}: \"\".to_string(),", f.name)
-            } else {
-                let mapping = resolve_type(&f.field_type).unwrap();
-                let value = if f.field_type == "String" {
-                    enum_or_string(f, "example")
-                } else {
-                    mapping.default_expr.to_string()
-                };
-                format!("            {}: {},", f.name, value)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn build_update_params(eff: &[Field]) -> String {
-    let mut lines = vec!["            id: entity_id,".to_string()];
-    for f in eff.iter() {
-        let value = if f.field_type == "String" {
-            enum_or_string(f, "updated")
-        } else {
-            resolve_type(&f.field_type)
-                .unwrap()
-                .default_expr
-                .to_string()
-        };
-        lines.push(format!("            {}: {},", f.name, value));
-    }
-    lines.join("\n")
-}
-
-fn build_empty_update_params(eff: &[Field], empty_field: &str) -> String {
-    let mut lines = vec!["            id: entity_id,".to_string()];
-    for f in eff.iter() {
-        if f.name == empty_field {
-            lines.push(format!("            {}: \"\".to_string(),", f.name));
-        } else {
-            let value = if f.field_type == "String" {
-                enum_or_string(f, "updated")
-            } else {
-                resolve_type(&f.field_type)
-                    .unwrap()
-                    .default_expr
-                    .to_string()
-            };
-            lines.push(format!("            {}: {},", f.name, value));
-        }
-    }
-    lines.join("\n")
-}
-
-fn build_not_found_params(eff: &[Field]) -> String {
-    let mut lines = vec!["            id: Uuid::new_v4(),".to_string()];
-    for f in eff.iter() {
-        let mapping = resolve_type(&f.field_type).unwrap();
-        let value = if f.field_type == "String" {
-            enum_or_string(f, "new")
-        } else {
-            mapping.default_expr.to_string()
-        };
-        lines.push(format!("            {}: {},", f.name, value));
-    }
-    lines.join("\n")
-}
-
-/// Test-module imports for the use cases whose tests build an `EntityProps` literal
-/// (get / list / update / delete).
+/// The context every application template renders from.
 ///
-/// The impls themselves name no primitive type, so those imports must **not** sit at file level —
-/// there they are dead in a non-test build (`unused_imports`, and `-D warnings` in the generated
-/// project's `make lint`). The test module is where a `Uuid`, `DateTime<Utc>` or
-/// `HashMap<String, String>` field literal needs its type in scope (E0433 otherwise), alongside the
-/// VO types the Props literal constructs.
-///
-/// `always_uuid` covers the templates whose tests name `Uuid` no matter the entity's fields (the
-/// `id: Uuid::new_v4()` of the not-found cases). It must not be emitted twice for an entity that
-/// also *has* a `Uuid` field — that is a duplicate import (E0252).
-fn build_test_imports_block(
-    eff: &[Field],
-    snake: &str,
-    shared_vos: &[ValueObjectDefinition],
-    always_uuid: bool,
-) -> String {
-    let mut imports: Vec<String> = vec![];
-    let mut push = |stmt: String| {
-        if !imports.contains(&stmt) {
-            imports.push(stmt);
-        }
-    };
-    if always_uuid {
-        push("    use uuid::Uuid;".to_string());
-    }
-    for f in eff {
-        if let Some(imp) = literal_import(f) {
-            push(format!("    use {imp};"));
-        }
-    }
-    for f in eff.iter().filter(|f| literal_names_vo(f)) {
-        push(format!("    use {};", vo_import_path(f, snake, shared_vos)));
-    }
-    if imports.is_empty() {
-        String::new()
-    } else {
-        imports.join("\n") + "\n"
-    }
-}
-
-/// Test-module imports for the create use case.
-///
-/// Its tests build `CreateEntityParams` literals only — always primitives — so unlike the Props
-/// builders above it needs no VO import, and adding one would be an unused import.
-fn build_create_test_imports_block(eff: &[Field]) -> String {
-    let mut imports: Vec<String> = vec![];
-    for imp in eff.iter().filter_map(literal_import) {
-        let stmt = format!("    use {imp};");
-        if !imports.contains(&stmt) {
-            imports.push(stmt);
-        }
-    }
-    if imports.is_empty() {
-        String::new()
-    } else {
-        imports.join("\n") + "\n"
-    }
-}
-
-/// File-level imports for the create/update impls: VO types only.
-///
-/// The impl bodies construct VOs (`Name::new(params.name)?`) but never name a primitive type — the
-/// params carry those. A primitive import here is dead code in a non-test build.
-fn build_vo_imports(
-    eff: &[Field],
-    snake: &str,
-    shared_vos: &[ValueObjectDefinition],
-) -> Vec<String> {
-    let mut imports: Vec<String> = vec![];
-    for f in eff.iter().filter(|f| is_value_object(f)) {
-        let stmt = format!("use {};", vo_import_path(f, snake, shared_vos));
-        if !imports.contains(&stmt) {
-            imports.push(stmt);
-        }
-    }
-    imports
-}
-
-// ── Context builders ──────────────────────────────────────────────────────────
-
-fn build_create_context(
+/// Imports are split by where they are used. The impls construct VOs (`Name::new(params.name)?`)
+/// but never name a primitive type — the params carry those — so the file level gets VO imports
+/// only; a primitive import there is dead in a non-test build (`unused_imports`, `-D warnings` in
+/// the generated project's `make lint`). The test module is where a `Uuid`, `DateTime<Utc>` or
+/// `HashMap` literal needs its type in scope (E0433 otherwise).
+fn use_case_context(
     pascal: &str,
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
+    test_imports: TestImports,
 ) -> tera::Context {
     let eff = effective_fields(fields);
-    let extra_imports = build_vo_imports(&eff, snake, shared_vos);
-    let test_imports = build_create_test_imports_block(&eff);
-    let model_import = format!("{{{pascal}, {pascal}Props}}");
 
-    let props_fields = eff
-        .iter()
-        .map(|f| {
-            if is_value_object(f) {
-                // Bound by `vo_constructions` under the field's own name: shorthand init.
-                format!("            {},", f.name)
-            } else {
-                format!("            {}: params.{},", f.name, f.name)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let vo_constr: Vec<String> = eff
+    let mut vo_imports: Vec<String> = vec![];
+    for import in eff
         .iter()
         .filter(|f| is_value_object(f))
-        .map(|f| field_vo_constructor(f, "params.", pascal, shared_vos))
+        .map(|f| vo_import_path(f, snake, shared_vos))
+    {
+        if !vo_imports.contains(&import) {
+            vo_imports.push(import);
+        }
+    }
+
+    let mut tests: Vec<String> = vec![];
+    if matches!(test_imports, TestImports::PropsAndUuid) {
+        tests.push("uuid::Uuid".to_string());
+    }
+    let literal_imports = eff.iter().filter_map(literal_import).map(str::to_string);
+    let named_vos = eff
+        .iter()
+        .filter(|f| !matches!(test_imports, TestImports::ParamsOnly) && literal_names_vo(f))
+        .map(|f| vo_import_path(f, snake, shared_vos));
+    for import in literal_imports.chain(named_vos) {
+        if !tests.contains(&import) {
+            tests.push(import);
+        }
+    }
+
+    let field_ctxs: Vec<FieldCtx> = eff
+        .iter()
+        .map(|f| field_ctx(f, pascal, shared_vos))
         .collect();
-    let vo_constructions = if vo_constr.is_empty() {
-        String::new()
-    } else {
-        vo_constr.join("\n") + "\n"
-    };
-
-    let valid_test_name = if eff.len() == 1
-        && eff[0].name == "name"
-        && eff[0].field_type == "String"
-        && !is_value_object(&eff[0])
-    {
-        format!("should_create_{snake}_when_name_is_valid")
-    } else {
-        format!("should_create_{snake}_when_fields_are_valid")
-    };
-
-    let valid_params = build_create_params_vo(&eff);
-
-    let valid_assertion = if let Some(f) = eff
-        .iter()
-        .find(|f| f.field_type == "String" && !is_value_object(f))
-    {
-        format!(
-            "\n        assert_eq!(result.unwrap().{}, \"example\");",
-            f.name
-        )
-    } else if let Some(f) = eff
-        .iter()
-        .find(|f| is_value_object(f) && !is_enum_vo(f) && f.field_type == "String")
-    {
-        format!(
-            "\n        assert_eq!(result.unwrap().{}.value(), \"example\");",
-            f.name
-        )
-    } else if let Some(f) = eff.iter().find(|f| is_enum_vo(f)) {
-        // Enum VOs expose `as_str()`, not `value()`; the params use the first variant.
-        let first = f.enum_variants.as_deref().unwrap().first().unwrap();
-        format!(
-            "\n        assert_eq!(result.unwrap().{}.as_str(), \"{first}\");",
-            f.name
-        )
-    } else {
-        String::new()
-    };
-
-    let mut validation_test_cases: Vec<serde_json::Value> = vec![];
-    for sf in eff
-        .iter()
-        .filter(|f| f.field_type == "String" && !is_value_object(f))
-    {
-        let empty_params = build_empty_create_params(&eff, &sf.name);
-        validation_test_cases.push(json!({
-            "test_name": format!("should_return_error_when_{}_is_empty", sf.name),
-            "empty_params": empty_params,
-            "error_str": format!("{snake}.validation_error.{}_empty", sf.name),
-        }));
-    }
-    for vf in eff
-        .iter()
-        .filter(|f| is_value_object(f) && f.field_type == "String")
-    {
-        let vo = vf.value_object.as_deref().unwrap();
-        let vo_snake = pascal_to_snake(vo);
-        let empty_params = build_empty_create_params(&eff, &vf.name);
-        validation_test_cases.push(json!({
-            "test_name": format!("should_return_error_when_{}_is_empty", vf.name),
-            "empty_params": empty_params,
-            "error_str": format!("{snake}.invalid_{vo_snake}"),
-        }));
-    }
-
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
-    ctx.insert("extra_imports", &extra_imports);
-    ctx.insert("test_imports", &test_imports);
-    ctx.insert("model_import", &model_import);
-    ctx.insert("vo_constructions", &vo_constructions);
-    ctx.insert("props_fields", &props_fields);
-    ctx.insert("valid_test_name", &valid_test_name);
-    ctx.insert("valid_params", &valid_params);
-    ctx.insert("valid_assertion", &valid_assertion);
-    ctx.insert("validation_test_cases", &validation_test_cases);
+    ctx.insert("fields", &field_ctxs);
+    ctx.insert("vo_imports", &vo_imports);
+    ctx.insert("test_imports", &tests);
     ctx
 }
 
-fn build_get_context(
+fn render_use_case(
+    action: &str,
+    test_imports: TestImports,
     pascal: &str,
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> tera::Context {
-    let eff = effective_fields(fields);
-    let props_fields = build_test_props(&eff, "example");
-    let test_imports = build_test_imports_block(&eff, snake, shared_vos, true);
-
-    let found_assertion = if let Some(f) = eff
-        .iter()
-        .find(|f| f.field_type == "String" && !is_value_object(f))
-    {
-        format!(
-            "\n        assert_eq!(result.unwrap().{}, \"example\");",
-            f.name
-        )
-    } else if let Some(f) = eff
-        .iter()
-        .find(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
-    {
-        format!(
-            "\n        assert_eq!(result.unwrap().{}.value(), \"example\");",
-            f.name
-        )
-    } else {
-        String::new()
-    };
-
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
-    ctx.insert("props_fields", &props_fields);
-    ctx.insert("found_assertion", &found_assertion);
-    ctx.insert("test_imports", &test_imports);
-    ctx
+) -> Result<String, RenderError> {
+    let ctx = use_case_context(pascal, snake, fields, shared_vos, test_imports);
+    render(&format!("application/{action}.tera"), &ctx)
 }
 
-fn build_list_context(
-    pascal: &str,
-    snake: &str,
-    fields: &[Field],
-    shared_vos: &[ValueObjectDefinition],
-) -> tera::Context {
-    let eff = effective_fields(fields);
-    let first_props = build_test_props(&eff, "first");
-    let second_props = build_test_props(&eff, "second");
-    let test_imports = build_test_imports_block(&eff, snake, shared_vos, false);
-
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
-    ctx.insert("first_props", &first_props);
-    ctx.insert("second_props", &second_props);
-    ctx.insert("test_imports", &test_imports);
-    ctx
-}
-
-fn build_update_context(
-    pascal: &str,
-    snake: &str,
-    fields: &[Field],
-    shared_vos: &[ValueObjectDefinition],
-) -> tera::Context {
-    let eff = effective_fields(fields);
-
-    let extra_imports = build_vo_imports(&eff, snake, shared_vos);
-
-    let validations: Vec<String> = eff
-        .iter()
-        .filter(|f| f.field_type == "String" && !is_value_object(f))
-        .map(|f| {
-            format!(
-                "        if params.{}.trim().is_empty() {{\n            let err = {}Error::ValidationError(\"{}_empty\".into());\n            tracing::warn!(error = %err, \"update_{}: rejected\");\n            return Err(err);\n        }}",
-                f.name, pascal, f.name, snake
-            )
-        })
-        .collect();
-    let validations_str = if validations.is_empty() {
-        String::new()
-    } else {
-        validations.join("\n") + "\n"
-    };
-
-    let vo_constr: Vec<String> = eff
-        .iter()
-        .filter(|f| is_value_object(f))
-        .map(|f| field_vo_constructor(f, "params.", pascal, shared_vos))
-        .collect();
-    let vo_constructions = if vo_constr.is_empty() {
-        String::new()
-    } else {
-        vo_constr.join("\n") + "\n"
-    };
-
-    let assignments: Vec<String> = eff
-        .iter()
-        .map(|f| {
-            if is_value_object(f) {
-                format!("        entity.{} = {};", f.name, f.name)
-            } else {
-                format!("        entity.{} = params.{};", f.name, f.name)
-            }
-        })
-        .collect();
-    let assignments_str = assignments.join("\n");
-
-    let original_props = build_test_props(&eff, "original");
-    let update_params = build_update_params(&eff);
-    let not_found_params = build_not_found_params(&eff);
-    let test_imports = build_test_imports_block(&eff, snake, shared_vos, true);
-
-    let primitive_string_fields: Vec<&Field> = eff
-        .iter()
-        .filter(|f| f.field_type == "String" && !is_value_object(f))
-        .collect();
-    let valid_assertion = if let Some(f) = primitive_string_fields.first().copied() {
-        format!("assert_eq!(result.unwrap().{}, \"updated\");", f.name)
-    } else if let Some(f) = eff
-        .iter()
-        .find(|f| is_value_object(f) && f.field_type == "String" && !is_enum_vo(f))
-    {
-        format!(
-            "assert_eq!(result.unwrap().{}.value(), \"updated\");",
-            f.name
-        )
-    } else {
-        "assert!(result.is_ok());".to_string()
-    };
-
-    let mut validation_test_cases: Vec<serde_json::Value> = vec![];
-    for sf in &primitive_string_fields {
-        let empty_params = build_empty_update_params(&eff, &sf.name);
-        validation_test_cases.push(json!({
-            "test_name": format!("should_return_error_when_{}_is_empty", sf.name),
-            "empty_params": empty_params,
-            "error_str": format!("{snake}.validation_error.{}_empty", sf.name),
-        }));
-    }
-    for vf in eff
-        .iter()
-        .filter(|f| f.field_type == "String" && is_value_object(f) && !is_enum_vo(f))
-    {
-        let vo = vf.value_object.as_deref().unwrap();
-        let vo_snake = pascal_to_snake(vo);
-        let empty_params = build_empty_update_params(&eff, &vf.name);
-        validation_test_cases.push(json!({
-            "test_name": format!("should_return_error_when_{}_is_empty", vf.name),
-            "empty_params": empty_params,
-            "error_str": format!("{snake}.invalid_{vo_snake}"),
-        }));
-    }
-
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
-    ctx.insert("extra_imports", &extra_imports);
-    ctx.insert("validations", &validations_str);
-    ctx.insert("vo_constructions", &vo_constructions);
-    ctx.insert("assignments", &assignments_str);
-    ctx.insert("original_props", &original_props);
-    ctx.insert("update_params", &update_params);
-    ctx.insert("not_found_params", &not_found_params);
-    ctx.insert("valid_assertion", &valid_assertion);
-    ctx.insert("test_imports", &test_imports);
-    ctx.insert("validation_test_cases", &validation_test_cases);
-    ctx
-}
-
-fn build_delete_context(
-    pascal: &str,
-    snake: &str,
-    fields: &[Field],
-    shared_vos: &[ValueObjectDefinition],
-) -> tera::Context {
-    let eff = effective_fields(fields);
-    let props_fields = build_test_props(&eff, "example");
-    let test_imports = build_test_imports_block(&eff, snake, shared_vos, true);
-
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
-    ctx.insert("props_fields", &props_fields);
-    ctx.insert("test_imports", &test_imports);
-    ctx
-}
-
-// ── Public generators (context builder + render) ──────────────────────────────
+// ── Public generators ─────────────────────────────────────────────────────────
 
 pub fn generate_create_use_case_impl(
     pascal: &str,
@@ -537,8 +99,14 @@ pub fn generate_create_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    let ctx = build_create_context(pascal, snake, fields, shared_vos);
-    render("application/create.tera", &ctx)
+    render_use_case(
+        "create",
+        TestImports::ParamsOnly,
+        pascal,
+        snake,
+        fields,
+        shared_vos,
+    )
 }
 
 pub fn generate_get_use_case_impl(
@@ -547,8 +115,14 @@ pub fn generate_get_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    let ctx = build_get_context(pascal, snake, fields, shared_vos);
-    render("application/get.tera", &ctx)
+    render_use_case(
+        "get",
+        TestImports::PropsAndUuid,
+        pascal,
+        snake,
+        fields,
+        shared_vos,
+    )
 }
 
 pub fn generate_list_use_case_impl(
@@ -557,8 +131,14 @@ pub fn generate_list_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    let ctx = build_list_context(pascal, snake, fields, shared_vos);
-    render("application/list.tera", &ctx)
+    render_use_case(
+        "list",
+        TestImports::Props,
+        pascal,
+        snake,
+        fields,
+        shared_vos,
+    )
 }
 
 pub fn generate_update_use_case_impl(
@@ -567,8 +147,14 @@ pub fn generate_update_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    let ctx = build_update_context(pascal, snake, fields, shared_vos);
-    render("application/update.tera", &ctx)
+    render_use_case(
+        "update",
+        TestImports::PropsAndUuid,
+        pascal,
+        snake,
+        fields,
+        shared_vos,
+    )
 }
 
 pub fn generate_delete_use_case_impl(
@@ -577,8 +163,14 @@ pub fn generate_delete_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    let ctx = build_delete_context(pascal, snake, fields, shared_vos);
-    render("application/delete.tera", &ctx)
+    render_use_case(
+        "delete",
+        TestImports::PropsAndUuid,
+        pascal,
+        snake,
+        fields,
+        shared_vos,
+    )
 }
 
 // ── File writers ──────────────────────────────────────────────────────────────
@@ -590,31 +182,29 @@ pub fn write_application_files(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    write_file(
-        &base.join(format!(
-            "business/src/application/{snake}/create_{snake}.rs"
-        )),
-        &generate_create_use_case_impl(pascal, snake, fields, shared_vos)?,
+    let dir = base.join(format!("business/src/application/{snake}"));
+    let write = |action: &str, content: String| {
+        write_file(&dir.join(format!("{action}_{snake}.rs")), &content)
+    };
+    write(
+        "create",
+        generate_create_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
-    write_file(
-        &base.join(format!("business/src/application/{snake}/get_{snake}.rs")),
-        &generate_get_use_case_impl(pascal, snake, fields, shared_vos)?,
+    write(
+        "get",
+        generate_get_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
-    write_file(
-        &base.join(format!("business/src/application/{snake}/list_{snake}.rs")),
-        &generate_list_use_case_impl(pascal, snake, fields, shared_vos)?,
+    write(
+        "list",
+        generate_list_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
-    write_file(
-        &base.join(format!(
-            "business/src/application/{snake}/update_{snake}.rs"
-        )),
-        &generate_update_use_case_impl(pascal, snake, fields, shared_vos)?,
+    write(
+        "update",
+        generate_update_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
-    write_file(
-        &base.join(format!(
-            "business/src/application/{snake}/delete_{snake}.rs"
-        )),
-        &generate_delete_use_case_impl(pascal, snake, fields, shared_vos)?,
+    write(
+        "delete",
+        generate_delete_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
     Ok(())
 }

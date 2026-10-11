@@ -287,6 +287,12 @@ pub struct FieldCtx {
     pub accessor: String,
     /// The domain value built from a persistence row (`row.{name}`), see [`field_vo_conversion`].
     pub from_row: String,
+    /// The domain value built from a use case param (`params.{name}`).
+    pub from_params: String,
+    /// The registry default for the primitive type — what Params literals in tests hold.
+    pub default_literal: String,
+    /// An enum VO's first variant (`""` otherwise): the valid value tests pass for it.
+    pub first_variant: String,
     /// Object Mother: what `{Entity}Mother` stores in its `Option<…>` slot, the parameter type of
     /// `with_{field}` (`&str` for strings, converted with `.to_string()`), and the value `build()`
     /// puts in the Props — the slot, or a valid default.
@@ -304,6 +310,16 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         is_map,
         is_array: field.field_type.starts_with("Vec<"),
         accessor: field_value_accessor(field, "entity"),
+        from_params: field_vo_conversion(field, "params.", pascal, shared_vos),
+        default_literal: resolve_type(&field.field_type)
+            .map_or("", |m| m.default_expr)
+            .to_string(),
+        first_variant: field
+            .enum_variants
+            .as_deref()
+            .and_then(<[String]>::first)
+            .cloned()
+            .unwrap_or_default(),
         from_row: if is_map {
             format!("row.{}.0", field.name)
         } else {
@@ -462,25 +478,6 @@ pub fn field_value_accessor(field: &Field, owner: &str) -> String {
         format!("{access}.clone()")
     } else {
         access
-    }
-}
-
-/// The `let` statement a use case impl builds a VO field with, from its primitive param.
-pub fn field_vo_constructor(
-    field: &Field,
-    param_prefix: &str,
-    pascal: &str,
-    shared_vos: &[ValueObjectDefinition],
-) -> String {
-    if !is_value_object(field) {
-        return String::new();
-    }
-    let conversion = field_vo_conversion(field, param_prefix, pascal, shared_vos);
-    if is_vec_vo(field) {
-        let vo = field.value_object.as_deref().unwrap_or_default();
-        format!("let {}: Vec<{vo}> = {conversion};", field.name)
-    } else {
-        format!("let {} = {conversion};", field.name)
     }
 }
 
@@ -669,18 +666,6 @@ mod tests {
         assert!(!literal_names_vo(&field("String", None)));
     }
 
-    #[test]
-    fn should_construct_nothing_for_a_primitive_field() {
-        assert_eq!(
-            field_vo_constructor(&field("String", None), "params.", "Product", &[]),
-            ""
-        );
-        assert_eq!(
-            field_vo_constructor(&field("Option<String>", None), "params.", "Product", &[]),
-            ""
-        );
-    }
-
     fn enum_field() -> crate::puerto_toml::Field {
         crate::puerto_toml::Field {
             value_object_kind: Some("enum".into()),
@@ -805,6 +790,9 @@ mod tests {
 
         let status = field_ctx(&enum_field(), "P", &shared);
         assert!(status.is_enum_vo && status.is_vo && !status.string_vo);
+        assert_eq!(status.first_variant, "Active");
+        assert_eq!(status.from_params, "params.x.parse::<Status>()?");
+        assert_eq!(status.default_literal, "\"example\".to_string()");
 
         let mid = field_ctx(&field("Option<String>", Some("Mid")), "P", &shared);
         assert!(mid.is_option_vo && !mid.is_vec_vo && !mid.string_vo);

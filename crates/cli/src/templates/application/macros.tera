@@ -1,0 +1,7 @@
+{# Test literals. `word` is the value string fields get ("example", "first", "updated", …). #}
+{# An `EntityProps` literal: domain types (VOs constructed, enum VOs as their first variant). #}
+{% macro props(fields, word) %}{% for f in fields %}            {{ f.name }}: {% if f.field_type == "String" and not f.is_enum_vo %}{% if f.is_vo %}{{ f.vo }}::new("{{ word }}".to_string()).expect("valid {{ f.vo }}"){% else %}"{{ word }}".to_string(){% endif %}{% else %}{{ f.props_literal }}{% endif %},
+{% endfor %}{% endmacro props %}
+{# A use case `Params` literal: primitives only. `empty` names the field set to "". #}
+{% macro params(fields, word, empty="") %}{% for f in fields %}            {{ f.name }}: {% if f.name == empty %}"".to_string(){% elif f.field_type == "String" %}"{% if f.is_enum_vo %}{{ f.first_variant }}{% else %}{{ word }}{% endif %}".to_string(){% else %}{{ f.default_literal }}{% endif %},
+{% endfor %}{% endmacro params %}

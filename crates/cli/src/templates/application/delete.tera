@@ -1,4 +1,4 @@
-use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -42,13 +42,13 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
-{{ test_imports }}
+{% for import in test_imports %}    use {{ import }};
+{% endfor %}
 
     #[tokio::test]
     async fn should_soft_delete_{{ snake }}_when_id_exists() {
         let entity = {{ pascal }}::new({{ pascal }}Props {
-{{ props_fields }}
-        }).unwrap();
+{{ macros::props(fields=fields, word="example") }}        }).unwrap();
         let entity_id = entity.id;
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo

@@ -1,11 +1,11 @@
-use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
-{% for imp in extra_imports %}{{ imp }}
+{% for import in vo_imports %}use {{ import }};
 {% endfor %}
 use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
-    model::{{ model_import }},
+    model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
     repository::{{ pascal }}RepositoryTrait,
     use_cases::create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
 };
@@ -18,9 +18,10 @@ pub struct Create{{ pascal }}UseCaseImpl {
 impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
     async fn execute(&self, params: Create{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
         tracing::info!("create_{{ snake }}: start");
-{% if vo_constructions %}{{ vo_constructions }}{% endif %}        let entity = {{ pascal }}::new({{ pascal }}Props {
-{{ props_fields }}
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_{{ snake }}: rejected"))?;
+{% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
+{% endfor %}        let entity = {{ pascal }}::new({{ pascal }}Props {
+{% for f in fields %}            {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
+{% endfor %}        }).inspect_err(|e| tracing::warn!(error = %e, "create_{{ snake }}: rejected"))?;
         self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_{{ snake }}: repository failed"))?;
         tracing::info!(id = %entity.id, "create_{{ snake }}: done");
         Ok(entity)
@@ -31,10 +32,11 @@ impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
-{{ test_imports }}
+{% for import in test_imports %}    use {{ import }};
+{% endfor %}
 
     #[tokio::test]
-    async fn {{ valid_test_name }}() {
+    async fn should_create_{{ snake }}_when_{% if fields | length == 1 and required | length == 1 and fields.0.name == "name" %}name_is_valid{% else %}fields_are_valid{% endif %}() {
         // Arrange
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo.expect_save().returning(|_| Ok(()));
@@ -45,16 +47,18 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ valid_params }}
-            })
+{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
         // Assert
-        assert!(result.is_ok());{{ valid_assertion }}
+        assert!(result.is_ok());{% set enum_vos = fields | filter(attribute="is_enum_vo", value=true) %}{% if required %}
+        assert_eq!(result.unwrap().{{ required.0.name }}, "example");{% elif string_vos %}
+        assert_eq!(result.unwrap().{{ string_vos.0.name }}.value(), "example");{% elif enum_vos %}
+        assert_eq!(result.unwrap().{{ enum_vos.0.name }}.as_str(), "{{ enum_vos.0.first_variant }}");{% endif %}
     }
-{% for tc in validation_test_cases %}
+{% for f in required | concat(with=fields | filter(attribute="is_vo", value=true) | filter(attribute="field_type", value="String")) %}
     #[tokio::test]
-    async fn {{ tc.test_name }}() {
+    async fn should_return_error_when_{{ f.name }}_is_empty() {
         // Arrange
         let mock_repo = Mock{{ pascal }}Repository::new();
         let use_case = Create{{ pascal }}UseCaseImpl {
@@ -64,15 +68,14 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ tc.empty_params }}
-            })
+{{ macros::params(fields=fields, word="example", empty=f.name) }}            })
             .await;
 
         // Assert
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "{{ tc.error_str }}"
+            "{% if f.is_vo %}{{ snake }}.invalid_{{ f.vo_snake }}{% else %}{{ snake }}.validation_error.{{ f.name }}_empty{% endif %}"
         );
     }
 {% endfor %}}

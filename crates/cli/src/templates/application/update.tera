@@ -1,7 +1,7 @@
-use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
-{% for imp in extra_imports %}{{ imp }}
+{% for import in vo_imports %}use {{ import }};
 {% endfor %}
 use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
@@ -28,8 +28,14 @@ impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCaseImpl {
                 tracing::warn!(error = %err, "update_{{ snake }}: rejected");
                 err
             })?;
-{% if validations %}{{ validations }}{% endif %}{% if vo_constructions %}{{ vo_constructions }}{% endif %}{{ assignments }}
-        entity.updated_at = chrono::Utc::now();
+{% for f in required %}        if params.{{ f.name }}.trim().is_empty() {
+            let err = {{ pascal }}Error::ValidationError("{{ f.name }}_empty".into());
+            tracing::warn!(error = %err, "update_{{ snake }}: rejected");
+            return Err(err);
+        }
+{% endfor %}{% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
+{% endfor %}{% for f in fields %}        entity.{{ f.name }} = {% if not f.is_vo %}params.{% endif %}{{ f.name }};
+{% endfor %}        entity.updated_at = chrono::Utc::now();
         self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_{{ snake }}: repository failed"))?;
         Ok(entity)
     }
@@ -42,14 +48,14 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
-{{ test_imports }}
+{% for import in test_imports %}    use {{ import }};
+{% endfor %}
 
     #[tokio::test]
     async fn should_update_{{ snake }}_when_params_are_valid() {
         // Arrange
         let entity = {{ pascal }}::new({{ pascal }}Props {
-{{ original_props }}
-        }).unwrap();
+{{ macros::props(fields=fields, word="original") }}        }).unwrap();
         let entity_id = entity.id;
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
@@ -63,12 +69,12 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-{{ update_params }}
-            })
+            id: entity_id,
+{{ macros::params(fields=fields, word="updated") }}            })
             .await;
 
         // Assert
-        {{ valid_assertion }}
+        {% if required %}assert_eq!(result.unwrap().{{ required.0.name }}, "updated");{% elif string_vos %}assert_eq!(result.unwrap().{{ string_vos.0.name }}.value(), "updated");{% else %}assert!(result.is_ok());{% endif %}
     }
 
     #[tokio::test]
@@ -83,21 +89,20 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-{{ not_found_params }}
-            })
+            id: Uuid::new_v4(),
+{{ macros::params(fields=fields, word="new") }}            })
             .await;
 
         // Assert
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.not_found");
     }
-{% for tc in validation_test_cases %}
+{% for f in required | concat(with=string_vos) %}
     #[tokio::test]
-    async fn {{ tc.test_name }}() {
+    async fn should_return_error_when_{{ f.name }}_is_empty() {
         // Arrange
         let entity = {{ pascal }}::new({{ pascal }}Props {
-{{ original_props }}
-        }).unwrap();
+{{ macros::props(fields=fields, word="original") }}        }).unwrap();
         let entity_id = entity.id;
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
@@ -110,15 +115,15 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-{{ tc.empty_params }}
-            })
+            id: entity_id,
+{{ macros::params(fields=fields, word="updated", empty=f.name) }}            })
             .await;
 
         // Assert
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
-            "{{ tc.error_str }}"
+            "{% if f.is_vo %}{{ snake }}.invalid_{{ f.vo_snake }}{% else %}{{ snake }}.validation_error.{{ f.name }}_empty{% endif %}"
         );
     }
 {% endfor %}}

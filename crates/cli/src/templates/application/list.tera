@@ -1,4 +1,4 @@
-use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -28,17 +28,16 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
-{{ test_imports }}
+{% for import in test_imports %}    use {{ import }};
+{% endfor %}
 
     #[tokio::test]
     async fn should_return_all_{{ snake }}s() {
         let entities = vec![
             {{ pascal }}::new({{ pascal }}Props {
-{{ first_props }}
-        }).unwrap(),
+{{ macros::props(fields=fields, word="first") }}        }).unwrap(),
             {{ pascal }}::new({{ pascal }}Props {
-{{ second_props }}
-        }).unwrap(),
+{{ macros::props(fields=fields, word="second") }}        }).unwrap(),
         ];
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
