@@ -1,0 +1,1445 @@
+---
+source: crates/cli/src/tests/generated_output.rs
+expression: generated_output(& OPT_VEC_VO)
+---
+=== business/src/application/persona/create_persona.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::persona::value_objects::MiddleName;
+use crate::domain::persona::value_objects::Tag;
+
+use crate::domain::persona::{
+    errors::PersonaError,
+    model::{Persona, PersonaProps},
+    repository::PersonaRepositoryTrait,
+    use_cases::create_persona::{CreatePersonaParams, CreatePersonaUseCaseTrait},
+};
+
+pub struct CreatePersonaUseCaseImpl {
+    pub repository: Arc<dyn PersonaRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreatePersonaUseCaseTrait for CreatePersonaUseCaseImpl {
+    async fn execute(&self, params: CreatePersonaParams) -> Result<Persona, PersonaError> {
+        tracing::info!("create_persona: start");
+let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
+let tags: Vec<Tag> = params.tags.into_iter().map(Tag::new).collect::<Result<Vec<_>,_>>()?;
+        let entity = Persona::new(PersonaProps {
+            name: params.name,
+            middle_name,
+            tags,
+        }).inspect_err(|e| tracing::warn!(error = %e, "create_persona: rejected"))?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_persona: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_persona: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::persona::repository::mocks::MockPersonaRepository;
+
+
+    #[tokio::test]
+    async fn should_create_persona_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreatePersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreatePersonaParams {
+            name: "example".to_string(),
+            middle_name: None,
+            tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let mock_repo = MockPersonaRepository::new();
+        let use_case = CreatePersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreatePersonaParams {
+            name: "".to_string(),
+            middle_name: None,
+            tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "persona.validation_error.name_empty"
+        );
+    }
+}
+
+=== business/src/application/persona/delete_persona.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::persona::{
+    errors::PersonaError,
+    repository::PersonaRepositoryTrait,
+    use_cases::delete_persona::{DeletePersonaParams, DeletePersonaUseCaseTrait},
+};
+
+pub struct DeletePersonaUseCaseImpl {
+    pub repository: Arc<dyn PersonaRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeletePersonaUseCaseTrait for DeletePersonaUseCaseImpl {
+    async fn execute(&self, params: DeletePersonaParams) -> Result<(), PersonaError> {
+        tracing::info!(id = %params.id, "delete_persona: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_persona: repository failed"))?
+            .ok_or_else(|| {
+                let err = PersonaError::NotFound;
+                tracing::warn!(error = %err, "delete_persona: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_persona: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::persona::{
+        model::{Persona, PersonaProps},
+        repository::mocks::MockPersonaRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_soft_delete_persona_when_id_exists() {
+        let entity = Persona::new(PersonaProps {
+            name: "example".to_string(),
+            middle_name: None,
+            tags: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeletePersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeletePersonaParams { id: entity_id })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_persona_does_not_exist() {
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeletePersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeletePersonaParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "persona.not_found");
+    }
+}
+
+=== business/src/application/persona/get_persona.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::persona::{
+    errors::PersonaError,
+    model::Persona,
+    repository::PersonaRepositoryTrait,
+    use_cases::get_persona::{GetPersonaParams, GetPersonaUseCaseTrait},
+};
+
+pub struct GetPersonaUseCaseImpl {
+    pub repository: Arc<dyn PersonaRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetPersonaUseCaseTrait for GetPersonaUseCaseImpl {
+    async fn execute(&self, params: GetPersonaParams) -> Result<Persona, PersonaError> {
+        tracing::info!(id = %params.id, "get_persona: start");
+        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_persona: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = PersonaError::NotFound;
+            tracing::warn!(error = %err, "get_persona: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::persona::{
+        model::{Persona, PersonaProps},
+        repository::mocks::MockPersonaRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_return_persona_when_id_exists() {
+        let entity = Persona::new(PersonaProps {
+            name: "example".to_string(),
+            middle_name: None,
+            tags: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetPersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(GetPersonaParams { id: entity_id }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetPersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetPersonaParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "persona.not_found");
+    }
+}
+
+=== business/src/application/persona/list_persona.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::persona::{
+    errors::PersonaError,
+    model::Persona,
+    repository::PersonaRepositoryTrait,
+    use_cases::list_persona::{ListPersonaParams, ListPersonaUseCaseTrait},
+};
+
+pub struct ListPersonaUseCaseImpl {
+    pub repository: Arc<dyn PersonaRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListPersonaUseCaseTrait for ListPersonaUseCaseImpl {
+    async fn execute(&self, _params: ListPersonaParams) -> Result<Vec<Persona>, PersonaError> {
+        tracing::info!("list_persona: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_persona: repository failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::persona::{
+        model::{Persona, PersonaProps},
+        repository::mocks::MockPersonaRepository,
+    };
+
+
+    #[tokio::test]
+    async fn should_return_all_personas() {
+        let entities = vec![
+            Persona::new(PersonaProps {
+            name: "first".to_string(),
+            middle_name: None,
+            tags: vec![],
+        }).unwrap(),
+            Persona::new(PersonaProps {
+            name: "second".to_string(),
+            middle_name: None,
+            tags: vec![],
+        }).unwrap(),
+        ];
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move || Ok(entities.clone()));
+        let use_case = ListPersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListPersonaParams).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_empty_list_when_no_personas_exist() {
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        let use_case = ListPersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListPersonaParams).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+}
+
+=== business/src/application/persona/update_persona.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::persona::value_objects::MiddleName;
+use crate::domain::persona::value_objects::Tag;
+
+use crate::domain::persona::{
+    errors::PersonaError,
+    model::Persona,
+    repository::PersonaRepositoryTrait,
+    use_cases::update_persona::{UpdatePersonaParams, UpdatePersonaUseCaseTrait},
+};
+
+pub struct UpdatePersonaUseCaseImpl {
+    pub repository: Arc<dyn PersonaRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdatePersonaUseCaseTrait for UpdatePersonaUseCaseImpl {
+    async fn execute(&self, params: UpdatePersonaParams) -> Result<Persona, PersonaError> {
+        tracing::info!(id = %params.id, "update_persona: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_persona: repository failed"))?
+            .ok_or_else(|| {
+                let err = PersonaError::NotFound;
+                tracing::warn!(error = %err, "update_persona: rejected");
+                err
+            })?;
+        if params.name.trim().is_empty() {
+            let err = PersonaError::ValidationError("name_empty".into());
+            tracing::warn!(error = %err, "update_persona: rejected");
+            return Err(err);
+        }
+let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
+let tags: Vec<Tag> = params.tags.into_iter().map(Tag::new).collect::<Result<Vec<_>,_>>()?;
+        entity.name = params.name;
+        entity.middle_name = middle_name;
+        entity.tags = tags;
+        entity.updated_at = chrono::Utc::now();
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_persona: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::persona::{
+        model::{Persona, PersonaProps},
+        repository::mocks::MockPersonaRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_update_persona_when_params_are_valid() {
+        // Arrange
+        let entity = Persona::new(PersonaProps {
+            name: "original".to_string(),
+            middle_name: None,
+            tags: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdatePersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdatePersonaParams {
+            id: entity_id,
+            name: "updated".to_string(),
+            middle_name: None,
+            tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().name, "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_persona_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdatePersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdatePersonaParams {
+            id: Uuid::new_v4(),
+            name: "new".to_string(),
+            middle_name: None,
+            tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "persona.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let entity = Persona::new(PersonaProps {
+            name: "original".to_string(),
+            middle_name: None,
+            tags: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdatePersonaUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdatePersonaParams {
+            id: entity_id,
+            name: "".to_string(),
+            middle_name: None,
+            tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "persona.validation_error.name_empty"
+        );
+    }
+}
+
+=== business/src/domain/persona/errors.rs ===
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum PersonaError {
+    #[error("persona.validation_error.{0}")]
+    ValidationError(String),
+    #[error("persona.not_found")]
+    NotFound,
+    #[error("persona.duplicate")]
+    Duplicate,
+    #[error("persona.repository_error")]
+    RepositoryError,
+    #[error("persona.unknown")]
+    Unknown,
+    #[error("persona.invalid_middle_name")]
+    InvalidMiddleName,
+    #[error("persona.invalid_tag")]
+    InvalidTag,
+}
+
+=== business/src/domain/persona/model.rs ===
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+use super::value_objects::MiddleName;
+use super::value_objects::Tag;
+
+use super::errors::PersonaError;
+
+#[derive(Debug, Clone)]
+pub struct PersonaProps {
+    pub name: String,
+    pub middle_name: Option<MiddleName>,
+    pub tags: Vec<Tag>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Persona {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub name: String,
+    pub middle_name: Option<MiddleName>,
+    pub tags: Vec<Tag>,
+}
+
+impl Persona {
+    pub fn new(props: PersonaProps) -> Result<Self, PersonaError> {
+        if props.name.trim().is_empty() {
+            return Err(PersonaError::ValidationError("name_empty".into()));
+        }
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            name: props.name,
+            middle_name: props.middle_name,
+            tags: props.tags,
+        })
+    }
+
+    pub fn from_repository(data: Persona) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_persona_when_fields_are_valid() {
+        let result = Persona::new(PersonaProps {
+            name: "example".to_string(),
+            middle_name: None,
+            tags: vec![],
+        });
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+
+    #[test]
+    fn should_reject_persona_when_name_is_empty() {
+        let result = Persona::new(PersonaProps {
+            name: "".into(),
+            middle_name: None,
+            tags: vec![],
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "persona.validation_error.name_empty"
+        );
+    }
+
+    #[test]
+    fn should_reject_persona_when_name_is_only_whitespace() {
+        let result = Persona::new(PersonaProps {
+            name: "   ".into(),
+            middle_name: None,
+            tags: vec![],
+        });
+        assert!(result.is_err());
+    }
+}
+
+=== business/src/domain/persona/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use super::{errors::PersonaError, model::Persona};
+
+#[async_trait]
+pub trait PersonaRepositoryTrait: Send + Sync {
+    async fn find_all(&self) -> Result<Vec<Persona>, PersonaError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Persona>, PersonaError>;
+    async fn save(&self, entity: &Persona) -> Result<(), PersonaError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+    use uuid::Uuid;
+
+    use super::*;
+
+    mock! {
+        pub PersonaRepository {}
+
+        #[async_trait]
+        impl PersonaRepositoryTrait for PersonaRepository {
+            async fn find_all(&self) -> Result<Vec<Persona>, PersonaError>;
+            async fn find_by_id(&self, id: Uuid) -> Result<Option<Persona>, PersonaError>;
+            async fn save(&self, entity: &Persona) -> Result<(), PersonaError>;
+        }
+    }
+}
+
+=== business/src/domain/persona/use_cases/create_persona.rs ===
+use async_trait::async_trait;
+
+use crate::domain::persona::{errors::PersonaError, model::Persona};
+
+#[derive(Debug, Clone)]
+pub struct CreatePersonaParams {
+    pub name: String,
+    pub middle_name: Option<String>,
+    pub tags: Vec<String>,
+}
+
+#[async_trait]
+pub trait CreatePersonaUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreatePersonaParams) -> Result<Persona, PersonaError>;
+}
+
+=== business/src/domain/persona/use_cases/delete_persona.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::persona::errors::PersonaError;
+
+#[derive(Debug, Clone)]
+pub struct DeletePersonaParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait DeletePersonaUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeletePersonaParams) -> Result<(), PersonaError>;
+}
+
+=== business/src/domain/persona/use_cases/get_persona.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::persona::{errors::PersonaError, model::Persona};
+
+#[derive(Debug, Clone)]
+pub struct GetPersonaParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait GetPersonaUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetPersonaParams) -> Result<Persona, PersonaError>;
+}
+
+=== business/src/domain/persona/use_cases/list_persona.rs ===
+use async_trait::async_trait;
+
+use crate::domain::persona::{errors::PersonaError, model::Persona};
+
+#[derive(Debug)]
+pub struct ListPersonaParams;
+
+#[async_trait]
+pub trait ListPersonaUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListPersonaParams) -> Result<Vec<Persona>, PersonaError>;
+}
+
+=== business/src/domain/persona/use_cases/update_persona.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::persona::{errors::PersonaError, model::Persona};
+
+#[derive(Debug, Clone)]
+pub struct UpdatePersonaParams {
+    pub id: Uuid,
+    pub name: String,
+    pub middle_name: Option<String>,
+    pub tags: Vec<String>,
+}
+
+#[async_trait]
+pub trait UpdatePersonaUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdatePersonaParams) -> Result<Persona, PersonaError>;
+}
+
+=== business/src/domain/persona/value_objects.rs ===
+use super::errors::PersonaError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MiddleName {
+    value: String,
+}
+
+impl MiddleName {
+    pub fn new(value: String) -> Result<Self, PersonaError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(PersonaError::InvalidMiddleName);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tag {
+    value: String,
+}
+
+impl Tag {
+    pub fn new(value: String) -> Result<Self, PersonaError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(PersonaError::InvalidTag);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+=== business/src/lib.rs ===
+pub mod domain {
+  pub mod greeting {
+    pub mod errors;
+    pub mod model;
+    pub mod repository;
+    pub mod use_cases {
+      pub mod get_greeting;
+    }
+  }
+
+    pub mod persona {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_persona;
+            pub mod get_persona;
+            pub mod list_persona;
+            pub mod update_persona;
+            pub mod delete_persona;
+        }
+    
+        pub mod value_objects;
+}
+}
+pub mod application {
+  pub mod greeting {
+    pub mod get_greeting;
+  }
+
+    pub mod persona {
+        pub mod create_persona;
+        pub mod get_persona;
+        pub mod list_persona;
+        pub mod update_persona;
+        pub mod delete_persona;
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    pub mod mothers {
+        pub mod persona_mother;
+    }
+}
+
+=== business/src/tests/mothers/persona_mother.rs ===
+use crate::domain::persona::model::Persona;
+use crate::domain::persona::model::PersonaProps;
+use crate::domain::persona::value_objects::MiddleName;
+use crate::domain::persona::value_objects::Tag;
+
+pub struct PersonaMother {
+    name: Option<String>,
+    middle_name: Option<MiddleName>,
+    tags: Option<Vec<Tag>>,
+}
+
+impl PersonaMother {
+    pub fn new() -> Self {
+        Self { name: None, middle_name: None, tags: None }
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
+        self
+    }
+
+    pub fn with_middle_name(mut self, middle_name: MiddleName) -> Self {
+        self.middle_name = Some(middle_name);
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Vec<Tag>) -> Self {
+        self.tags = Some(tags);
+        self
+    }
+
+    pub fn with_empty_name(mut self) -> Self {
+        self.name = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> Persona {
+        Persona::new(PersonaProps {
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+            middle_name: self.middle_name,
+            tags: self.tags.unwrap_or_default(),
+        })
+        .expect("PersonaMother: failed to build valid Persona")
+    }
+
+    pub fn build_props(self) -> PersonaProps {
+        PersonaProps {
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+            middle_name: self.middle_name,
+            tags: self.tags.unwrap_or_default(),
+        }
+    }
+
+    pub fn random() -> Persona {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Persona> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for PersonaMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== infrastructure/src/lib.rs ===
+pub mod greeting {
+    pub mod repository;
+}
+pub mod persona {
+    pub mod repository;
+}
+
+=== infrastructure/src/persona/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use business::domain::persona::{
+    errors::PersonaError,
+    model::Persona,
+    repository::PersonaRepositoryTrait,
+};
+
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// Postgres repositories).
+#[derive(Default)]
+pub struct InMemoryPersonaRepository;
+
+impl InMemoryPersonaRepository {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl PersonaRepositoryTrait for InMemoryPersonaRepository {
+    async fn find_all(&self) -> Result<Vec<Persona>, PersonaError> {
+        tracing::debug!("find_all");
+        Ok(vec![])
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Persona>, PersonaError> {
+        tracing::debug!(%id, "find_by_id");
+        Ok(None)
+    }
+
+    async fn save(&self, entity: &Persona) -> Result<(), PersonaError> {
+        tracing::debug!(id = %entity.id, "save");
+        Ok(())
+    }
+}
+
+=== presentation/src/api.rs ===
+pub mod error;
+pub mod greeting;
+pub mod tags;
+pub mod persona;
+
+=== presentation/src/api/persona.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/persona/dto.rs ===
+use business::domain::persona::model::Persona;
+use poem_openapi::Object;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PersonaDto {
+    pub id: Uuid,
+    pub name: String,
+    pub middle_name: Option<String>,
+    pub tags: Vec<String>,
+}
+
+impl PersonaDto {
+    pub fn from_domain(entity: &Persona) -> Self {
+        Self {
+            id: entity.id,
+            name: entity.name.clone(),
+            middle_name: entity.middle_name.as_ref().map(|v| v.value().to_string()),
+            tags: entity.tags.iter().map(|v| v.value().to_string()).collect::<Vec<_>>(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreatePersonaRequest {
+    pub name: String,
+    pub middle_name: Option<String>,
+    pub tags: Vec<String>,
+}
+
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdatePersonaRequest {
+    pub name: String,
+    pub middle_name: Option<String>,
+    pub tags: Vec<String>,
+}
+
+
+=== presentation/src/api/persona/error_mapper.rs ===
+use business::domain::persona::errors::PersonaError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+
+use crate::api::error::{ErrorResponse, IntoErrorResponse};
+
+impl IntoErrorResponse for PersonaError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            PersonaError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            PersonaError::NotFound => StatusCode::NOT_FOUND,
+            PersonaError::Duplicate => StatusCode::CONFLICT,
+            PersonaError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            PersonaError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            PersonaError::InvalidMiddleName => StatusCode::UNPROCESSABLE_ENTITY,
+            PersonaError::InvalidTag => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = PersonaError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "persona.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = PersonaError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "persona.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = PersonaError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "persona.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = PersonaError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "persona.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = PersonaError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "persona.unknown");
+    }
+
+    #[test]
+    fn should_map_invalid_middle_name_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = PersonaError::InvalidMiddleName.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "persona.invalid_middle_name");
+    }
+
+    #[test]
+    fn should_map_invalid_tag_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = PersonaError::InvalidTag.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "persona.invalid_tag");
+    }
+}
+
+=== presentation/src/api/persona/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use crate::api::{error::ErrorResponse, persona::dto::PersonaDto};
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+
+#[derive(ApiResponse)]
+pub enum CreatePersonaResponse {
+    #[oai(status = 201)]
+    Created(Json<PersonaDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreatePersonaResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetPersonaResponse {
+    #[oai(status = 200)]
+    Ok(Json<PersonaDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetPersonaResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListPersonaResponse {
+    #[oai(status = 200)]
+    Ok(Json<Vec<PersonaDto>>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListPersonaResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdatePersonaResponse {
+    #[oai(status = 200)]
+    Ok(Json<PersonaDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdatePersonaResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeletePersonaResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeletePersonaResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/persona/routes.rs ===
+use std::sync::Arc;
+
+use business::{
+    application::persona::{
+        create_persona::CreatePersonaUseCaseImpl,
+        delete_persona::DeletePersonaUseCaseImpl,
+        get_persona::GetPersonaUseCaseImpl,
+        list_persona::ListPersonaUseCaseImpl,
+        update_persona::UpdatePersonaUseCaseImpl,
+    },
+    domain::persona::use_cases::{
+        create_persona::{CreatePersonaParams, CreatePersonaUseCaseTrait},
+        delete_persona::{DeletePersonaParams, DeletePersonaUseCaseTrait},
+        get_persona::{GetPersonaParams, GetPersonaUseCaseTrait},
+        list_persona::{ListPersonaParams, ListPersonaUseCaseTrait},
+        update_persona::{UpdatePersonaParams, UpdatePersonaUseCaseTrait},
+    },
+};
+use poem_openapi::{OpenApi, param::Path, payload::Json};
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
+use crate::api::persona::dto::{CreatePersonaRequest, UpdatePersonaRequest, PersonaDto};
+use crate::api::persona::responses::{
+    CreatePersonaResponse, DeletePersonaResponse, GetPersonaResponse, ListPersonaResponse,
+    UpdatePersonaResponse,
+};
+
+pub struct PersonaApi {
+    pub create_persona: Arc<CreatePersonaUseCaseImpl>,
+    pub get_persona: Arc<GetPersonaUseCaseImpl>,
+    pub list_persona: Arc<ListPersonaUseCaseImpl>,
+    pub update_persona: Arc<UpdatePersonaUseCaseImpl>,
+    pub delete_persona: Arc<DeletePersonaUseCaseImpl>,
+}
+
+#[OpenApi]
+impl PersonaApi {
+    /// Create a new Persona
+    #[oai(path = "/personas", method = "post", tag = "ApiTags::Persona")]
+    async fn create(&self, body: Json<CreatePersonaRequest>) -> CreatePersonaResponse {
+        match self
+            .create_persona
+            .execute(CreatePersonaParams {
+                name: body.name.clone(),
+                middle_name: body.middle_name.clone(),
+                tags: body.tags.clone(),
+            })
+            .await
+        {
+            Ok(entity) => CreatePersonaResponse::Created(Json(PersonaDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_persona failed");
+                CreatePersonaResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Persona by ID
+    #[oai(path = "/personas/:id", method = "get", tag = "ApiTags::Persona")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetPersonaResponse {
+        match self
+            .get_persona
+            .execute(GetPersonaParams { id: id.0 })
+            .await
+        {
+            Ok(entity) => GetPersonaResponse::Ok(Json(PersonaDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_persona failed");
+                GetPersonaResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List all Personas
+    #[oai(path = "/personas", method = "get", tag = "ApiTags::Persona")]
+    async fn list(&self) -> ListPersonaResponse {
+        match self.list_persona.execute(ListPersonaParams).await {
+            Ok(entities) => {
+                ListPersonaResponse::Ok(Json(entities.iter().map(PersonaDto::from_domain).collect()))
+            }
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_persona failed");
+                ListPersonaResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Persona
+    #[oai(path = "/personas/:id", method = "put", tag = "ApiTags::Persona")]
+    async fn update(&self, id: Path<Uuid>, body: Json<UpdatePersonaRequest>) -> UpdatePersonaResponse {
+        match self
+            .update_persona
+            .execute(UpdatePersonaParams {
+                id: id.0,
+                name: body.name.clone(),
+                middle_name: body.middle_name.clone(),
+                tags: body.tags.clone(),
+            })
+            .await
+        {
+            Ok(entity) => UpdatePersonaResponse::Ok(Json(PersonaDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_persona failed");
+                UpdatePersonaResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Persona
+    #[oai(path = "/personas/:id", method = "delete", tag = "ApiTags::Persona")]
+    async fn delete(&self, id: Path<Uuid>) -> DeletePersonaResponse {
+        match self
+            .delete_persona
+            .execute(DeletePersonaParams { id: id.0 })
+            .await
+        {
+            Ok(()) => DeletePersonaResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_persona failed");
+                DeletePersonaResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+=== presentation/src/api/tags.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use poem_openapi::Tags;
+
+#[derive(Tags)]
+pub enum ApiTags {
+    Greeting,
+    Persona,
+}
+
+=== presentation/src/generated/bootstrap.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use std::sync::Arc;
+
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
+use business::application::persona::create_persona::CreatePersonaUseCaseImpl;
+use business::application::persona::get_persona::GetPersonaUseCaseImpl;
+use business::application::persona::list_persona::ListPersonaUseCaseImpl;
+use business::application::persona::update_persona::UpdatePersonaUseCaseImpl;
+use business::application::persona::delete_persona::DeletePersonaUseCaseImpl;
+
+use business::domain::greeting::repository::GreetingRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
+use business::domain::persona::repository::PersonaRepositoryTrait;
+use infrastructure::persona::repository::InMemoryPersonaRepository;
+
+use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem_openapi::OpenApiService;
+
+use crate::api::greeting::routes::GreetingApi;
+use crate::api::persona::routes::PersonaApi;
+
+pub async fn build_app() -> impl poem::Endpoint {
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let greeting_api = GreetingApi { get_greeting };
+
+    let persona_repo: Arc<dyn PersonaRepositoryTrait> = Arc::new(InMemoryPersonaRepository::new());
+    let create_persona = Arc::new(CreatePersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
+    let get_persona = Arc::new(GetPersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
+    let list_persona = Arc::new(ListPersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
+    let update_persona = Arc::new(UpdatePersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
+    let delete_persona = Arc::new(DeletePersonaUseCaseImpl { repository: persona_repo });
+    let persona_api = PersonaApi { create_persona, get_persona, list_persona, update_persona, delete_persona };
+
+    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
+    let api_service = OpenApiService::new(
+        (greeting_api, persona_api),
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )
+    .server(format!("http://localhost:{port}/api"));
+    let ui = api_service.swagger_ui();
+
+    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
+    let mut cors = Cors::new();
+    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        cors = cors.allow_origin(origin);
+    }
+
+    Route::new()
+        .at("/health", get(crate::health::liveness))
+        .at(
+            "/health/ready",
+            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
+        )
+        .nest("/api", api_service)
+        .nest("/", ui)
+        .with(Tracing)
+        .with(cors)
+}
+
+=== puerto.toml ===
+[project]
+name = "snapshot"
+
+[[entity]]
+name = "Greeting"
+use_cases = ["get_greeting"]
+fields = []
+
+[[entity]]
+name = "Persona"
+use_cases = [
+    "create_persona",
+    "get_persona",
+    "list_persona",
+    "update_persona",
+    "delete_persona",
+]
+
+[[entity.fields]]
+name = "name"
+type = "String"
+
+[[entity.fields]]
+name = "middle_name"
+type = "Option<String>"
+value_object = "MiddleName"
+
+[[entity.fields]]
+name = "tags"
+type = "Vec<String>"
+value_object = "Tag"

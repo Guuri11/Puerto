@@ -1,0 +1,2534 @@
+---
+source: crates/cli/src/tests/generated_output.rs
+expression: generated_output(& MULTI_ENTITY)
+---
+=== business/src/application/category/create_category.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::category::value_objects::Name;
+
+use crate::domain::category::{
+    errors::CategoryError,
+    model::{Category, CategoryProps},
+    repository::CategoryRepositoryTrait,
+    use_cases::create_category::{CreateCategoryParams, CreateCategoryUseCaseTrait},
+};
+
+pub struct CreateCategoryUseCaseImpl {
+    pub repository: Arc<dyn CategoryRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateCategoryUseCaseTrait for CreateCategoryUseCaseImpl {
+    async fn execute(&self, params: CreateCategoryParams) -> Result<Category, CategoryError> {
+        tracing::info!("create_category: start");
+let name = Name::new(params.name)?;
+        let entity = Category::new(CategoryProps {
+            name,
+        }).inspect_err(|e| tracing::warn!(error = %e, "create_category: rejected"))?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_category: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_category: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::category::repository::mocks::MockCategoryRepository;
+
+
+    #[tokio::test]
+    async fn should_create_category_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCategoryParams {
+            name: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name.value(), "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let mock_repo = MockCategoryRepository::new();
+        let use_case = CreateCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCategoryParams {
+            name: "".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "category.invalid_name"
+        );
+    }
+}
+
+=== business/src/application/category/delete_category.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::category::{
+    errors::CategoryError,
+    repository::CategoryRepositoryTrait,
+    use_cases::delete_category::{DeleteCategoryParams, DeleteCategoryUseCaseTrait},
+};
+
+pub struct DeleteCategoryUseCaseImpl {
+    pub repository: Arc<dyn CategoryRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteCategoryUseCaseTrait for DeleteCategoryUseCaseImpl {
+    async fn execute(&self, params: DeleteCategoryParams) -> Result<(), CategoryError> {
+        tracing::info!(id = %params.id, "delete_category: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_category: repository failed"))?
+            .ok_or_else(|| {
+                let err = CategoryError::NotFound;
+                tracing::warn!(error = %err, "delete_category: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_category: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::category::{
+        model::{Category, CategoryProps},
+        repository::mocks::MockCategoryRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::category::value_objects::Name;
+
+
+    #[tokio::test]
+    async fn should_soft_delete_category_when_id_exists() {
+        let entity = Category::new(CategoryProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteCategoryParams { id: entity_id })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_category_does_not_exist() {
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteCategoryParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "category.not_found");
+    }
+}
+
+=== business/src/application/category/get_category.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::category::{
+    errors::CategoryError,
+    model::Category,
+    repository::CategoryRepositoryTrait,
+    use_cases::get_category::{GetCategoryParams, GetCategoryUseCaseTrait},
+};
+
+pub struct GetCategoryUseCaseImpl {
+    pub repository: Arc<dyn CategoryRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetCategoryUseCaseTrait for GetCategoryUseCaseImpl {
+    async fn execute(&self, params: GetCategoryParams) -> Result<Category, CategoryError> {
+        tracing::info!(id = %params.id, "get_category: start");
+        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_category: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = CategoryError::NotFound;
+            tracing::warn!(error = %err, "get_category: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::category::{
+        model::{Category, CategoryProps},
+        repository::mocks::MockCategoryRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::category::value_objects::Name;
+
+
+    #[tokio::test]
+    async fn should_return_category_when_id_exists() {
+        let entity = Category::new(CategoryProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(GetCategoryParams { id: entity_id }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name.value(), "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetCategoryParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "category.not_found");
+    }
+}
+
+=== business/src/application/category/list_category.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::category::{
+    errors::CategoryError,
+    model::Category,
+    repository::CategoryRepositoryTrait,
+    use_cases::list_category::{ListCategoryParams, ListCategoryUseCaseTrait},
+};
+
+pub struct ListCategoryUseCaseImpl {
+    pub repository: Arc<dyn CategoryRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListCategoryUseCaseTrait for ListCategoryUseCaseImpl {
+    async fn execute(&self, _params: ListCategoryParams) -> Result<Vec<Category>, CategoryError> {
+        tracing::info!("list_category: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_category: repository failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::category::{
+        model::{Category, CategoryProps},
+        repository::mocks::MockCategoryRepository,
+    };
+    use crate::domain::category::value_objects::Name;
+
+
+    #[tokio::test]
+    async fn should_return_all_categorys() {
+        let entities = vec![
+            Category::new(CategoryProps {
+            name: Name::new("first".to_string()).expect("valid Name"),
+        }).unwrap(),
+            Category::new(CategoryProps {
+            name: Name::new("second".to_string()).expect("valid Name"),
+        }).unwrap(),
+        ];
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move || Ok(entities.clone()));
+        let use_case = ListCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListCategoryParams).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_empty_list_when_no_categorys_exist() {
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        let use_case = ListCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListCategoryParams).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+}
+
+=== business/src/application/category/update_category.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::category::value_objects::Name;
+
+use crate::domain::category::{
+    errors::CategoryError,
+    model::Category,
+    repository::CategoryRepositoryTrait,
+    use_cases::update_category::{UpdateCategoryParams, UpdateCategoryUseCaseTrait},
+};
+
+pub struct UpdateCategoryUseCaseImpl {
+    pub repository: Arc<dyn CategoryRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateCategoryUseCaseTrait for UpdateCategoryUseCaseImpl {
+    async fn execute(&self, params: UpdateCategoryParams) -> Result<Category, CategoryError> {
+        tracing::info!(id = %params.id, "update_category: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_category: repository failed"))?
+            .ok_or_else(|| {
+                let err = CategoryError::NotFound;
+                tracing::warn!(error = %err, "update_category: rejected");
+                err
+            })?;
+let name = Name::new(params.name)?;
+        entity.name = name;
+        entity.updated_at = chrono::Utc::now();
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_category: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::category::{
+        model::{Category, CategoryProps},
+        repository::mocks::MockCategoryRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::category::value_objects::Name;
+
+
+    #[tokio::test]
+    async fn should_update_category_when_params_are_valid() {
+        // Arrange
+        let entity = Category::new(CategoryProps {
+            name: Name::new("original".to_string()).expect("valid Name"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCategoryParams {
+            id: entity_id,
+            name: "updated".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().name.value(), "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_category_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCategoryParams {
+            id: Uuid::new_v4(),
+            name: "new".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "category.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let entity = Category::new(CategoryProps {
+            name: Name::new("original".to_string()).expect("valid Name"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCategoryRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateCategoryUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCategoryParams {
+            id: entity_id,
+            name: "".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "category.invalid_name"
+        );
+    }
+}
+
+=== business/src/application/product/create_product.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductProps},
+    repository::ProductRepositoryTrait,
+    use_cases::create_product::{CreateProductParams, CreateProductUseCaseTrait},
+};
+
+pub struct CreateProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
+    async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError> {
+        tracing::info!("create_product: start");
+        let entity = Product::new(ProductProps {
+            title: params.title,
+            price: params.price,
+        }).inspect_err(|e| tracing::warn!(error = %e, "create_product: rejected"))?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_product: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_product: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::repository::mocks::MockProductRepository;
+
+
+    #[tokio::test]
+    async fn should_create_product_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+            title: "example".to_string(),
+            price: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_title_is_empty() {
+        // Arrange
+        let mock_repo = MockProductRepository::new();
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+            title: "".to_string(),
+            price: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.title_empty"
+        );
+    }
+}
+
+=== business/src/application/product/delete_product.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    repository::ProductRepositoryTrait,
+    use_cases::delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
+};
+
+pub struct DeleteProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteProductUseCaseTrait for DeleteProductUseCaseImpl {
+    async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError> {
+        tracing::info!(id = %params.id, "delete_product: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_product: repository failed"))?
+            .ok_or_else(|| {
+                let err = ProductError::NotFound;
+                tracing::warn!(error = %err, "delete_product: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_product: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::{
+        model::{Product, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_soft_delete_product_when_id_exists() {
+        let entity = Product::new(ProductProps {
+            title: "example".to_string(),
+            price: 42,
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteProductParams { id: entity_id })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_product_does_not_exist() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteProductParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.not_found");
+    }
+}
+
+=== business/src/application/product/get_product.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::get_product::{GetProductParams, GetProductUseCaseTrait},
+};
+
+pub struct GetProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetProductUseCaseTrait for GetProductUseCaseImpl {
+    async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError> {
+        tracing::info!(id = %params.id, "get_product: start");
+        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_product: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = ProductError::NotFound;
+            tracing::warn!(error = %err, "get_product: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::{
+        model::{Product, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_return_product_when_id_exists() {
+        let entity = Product::new(ProductProps {
+            title: "example".to_string(),
+            price: 42,
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(GetProductParams { id: entity_id }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetProductParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.not_found");
+    }
+}
+
+=== business/src/application/product/list_product.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::list_product::{ListProductParams, ListProductUseCaseTrait},
+};
+
+pub struct ListProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListProductUseCaseTrait for ListProductUseCaseImpl {
+    async fn execute(&self, _params: ListProductParams) -> Result<Vec<Product>, ProductError> {
+        tracing::info!("list_product: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_product: repository failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::{
+        model::{Product, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+
+
+    #[tokio::test]
+    async fn should_return_all_products() {
+        let entities = vec![
+            Product::new(ProductProps {
+            title: "first".to_string(),
+            price: 42,
+        }).unwrap(),
+            Product::new(ProductProps {
+            title: "second".to_string(),
+            price: 42,
+        }).unwrap(),
+        ];
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move || Ok(entities.clone()));
+        let use_case = ListProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListProductParams).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_empty_list_when_no_products_exist() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        let use_case = ListProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListProductParams).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+}
+
+=== business/src/application/product/update_product.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
+};
+
+pub struct UpdateProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateProductUseCaseTrait for UpdateProductUseCaseImpl {
+    async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError> {
+        tracing::info!(id = %params.id, "update_product: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_product: repository failed"))?
+            .ok_or_else(|| {
+                let err = ProductError::NotFound;
+                tracing::warn!(error = %err, "update_product: rejected");
+                err
+            })?;
+        if params.title.trim().is_empty() {
+            let err = ProductError::ValidationError("title_empty".into());
+            tracing::warn!(error = %err, "update_product: rejected");
+            return Err(err);
+        }
+        entity.title = params.title;
+        entity.price = params.price;
+        entity.updated_at = chrono::Utc::now();
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_product: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::{
+        model::{Product, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_update_product_when_params_are_valid() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            title: "original".to_string(),
+            price: 42,
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+            id: entity_id,
+            title: "updated".to_string(),
+            price: 42,
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().title, "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_product_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+            id: Uuid::new_v4(),
+            title: "new".to_string(),
+            price: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_title_is_empty() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            title: "original".to_string(),
+            price: 42,
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+            id: entity_id,
+            title: "".to_string(),
+            price: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.title_empty"
+        );
+    }
+}
+
+=== business/src/domain/category/errors.rs ===
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum CategoryError {
+    #[error("category.validation_error.{0}")]
+    ValidationError(String),
+    #[error("category.not_found")]
+    NotFound,
+    #[error("category.duplicate")]
+    Duplicate,
+    #[error("category.repository_error")]
+    RepositoryError,
+    #[error("category.unknown")]
+    Unknown,
+    #[error("category.invalid_name")]
+    InvalidName,
+}
+
+=== business/src/domain/category/model.rs ===
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+use super::value_objects::Name;
+
+use super::errors::CategoryError;
+
+#[derive(Debug, Clone)]
+pub struct CategoryProps {
+    pub name: Name,
+}
+
+#[derive(Debug, Clone)]
+pub struct Category {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub name: Name,
+}
+
+impl Category {
+    pub fn new(props: CategoryProps) -> Result<Self, CategoryError> {
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            name: props.name,
+        })
+    }
+
+    pub fn from_repository(data: Category) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_category_when_fields_are_valid() {
+        let result = Category::new(CategoryProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+        });
+        assert!(result.is_ok());
+    }
+
+
+    #[test]
+    fn should_reject_category_when_name_is_empty() {
+        let result = Name::new("".to_string());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "category.invalid_name"
+        );
+    }
+}
+
+=== business/src/domain/category/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use super::{errors::CategoryError, model::Category};
+
+#[async_trait]
+pub trait CategoryRepositoryTrait: Send + Sync {
+    async fn find_all(&self) -> Result<Vec<Category>, CategoryError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Category>, CategoryError>;
+    async fn save(&self, entity: &Category) -> Result<(), CategoryError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+    use uuid::Uuid;
+
+    use super::*;
+
+    mock! {
+        pub CategoryRepository {}
+
+        #[async_trait]
+        impl CategoryRepositoryTrait for CategoryRepository {
+            async fn find_all(&self) -> Result<Vec<Category>, CategoryError>;
+            async fn find_by_id(&self, id: Uuid) -> Result<Option<Category>, CategoryError>;
+            async fn save(&self, entity: &Category) -> Result<(), CategoryError>;
+        }
+    }
+}
+
+=== business/src/domain/category/use_cases/create_category.rs ===
+use async_trait::async_trait;
+
+use crate::domain::category::{errors::CategoryError, model::Category};
+
+#[derive(Debug, Clone)]
+pub struct CreateCategoryParams {
+    pub name: String,
+}
+
+#[async_trait]
+pub trait CreateCategoryUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateCategoryParams) -> Result<Category, CategoryError>;
+}
+
+=== business/src/domain/category/use_cases/delete_category.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::category::errors::CategoryError;
+
+#[derive(Debug, Clone)]
+pub struct DeleteCategoryParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait DeleteCategoryUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteCategoryParams) -> Result<(), CategoryError>;
+}
+
+=== business/src/domain/category/use_cases/get_category.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::category::{errors::CategoryError, model::Category};
+
+#[derive(Debug, Clone)]
+pub struct GetCategoryParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait GetCategoryUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetCategoryParams) -> Result<Category, CategoryError>;
+}
+
+=== business/src/domain/category/use_cases/list_category.rs ===
+use async_trait::async_trait;
+
+use crate::domain::category::{errors::CategoryError, model::Category};
+
+#[derive(Debug)]
+pub struct ListCategoryParams;
+
+#[async_trait]
+pub trait ListCategoryUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListCategoryParams) -> Result<Vec<Category>, CategoryError>;
+}
+
+=== business/src/domain/category/use_cases/update_category.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::category::{errors::CategoryError, model::Category};
+
+#[derive(Debug, Clone)]
+pub struct UpdateCategoryParams {
+    pub id: Uuid,
+    pub name: String,
+}
+
+#[async_trait]
+pub trait UpdateCategoryUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateCategoryParams) -> Result<Category, CategoryError>;
+}
+
+=== business/src/domain/category/value_objects.rs ===
+use super::errors::CategoryError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Name {
+    value: String,
+}
+
+impl Name {
+    pub fn new(value: String) -> Result<Self, CategoryError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(CategoryError::InvalidName);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+=== business/src/domain/product/errors.rs ===
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ProductError {
+    #[error("product.validation_error.{0}")]
+    ValidationError(String),
+    #[error("product.not_found")]
+    NotFound,
+    #[error("product.duplicate")]
+    Duplicate,
+    #[error("product.repository_error")]
+    RepositoryError,
+    #[error("product.unknown")]
+    Unknown,
+}
+
+=== business/src/domain/product/model.rs ===
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use super::errors::ProductError;
+
+#[derive(Debug, Clone)]
+pub struct ProductProps {
+    pub title: String,
+    pub price: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Product {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub title: String,
+    pub price: i64,
+}
+
+impl Product {
+    pub fn new(props: ProductProps) -> Result<Self, ProductError> {
+        if props.title.trim().is_empty() {
+            return Err(ProductError::ValidationError("title_empty".into()));
+        }
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            title: props.title,
+            price: props.price,
+        })
+    }
+
+    pub fn from_repository(data: Product) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_product_when_fields_are_valid() {
+        let result = Product::new(ProductProps {
+            title: "example".to_string(),
+            price: 42,
+        });
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+
+    #[test]
+    fn should_reject_product_when_title_is_empty() {
+        let result = Product::new(ProductProps {
+            title: "".into(),
+            price: 42,
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.title_empty"
+        );
+    }
+
+    #[test]
+    fn should_reject_product_when_title_is_only_whitespace() {
+        let result = Product::new(ProductProps {
+            title: "   ".into(),
+            price: 42,
+        });
+        assert!(result.is_err());
+    }
+}
+
+=== business/src/domain/product/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use super::{errors::ProductError, model::Product};
+
+#[async_trait]
+pub trait ProductRepositoryTrait: Send + Sync {
+    async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError>;
+    async fn save(&self, entity: &Product) -> Result<(), ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+    use uuid::Uuid;
+
+    use super::*;
+
+    mock! {
+        pub ProductRepository {}
+
+        #[async_trait]
+        impl ProductRepositoryTrait for ProductRepository {
+            async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
+            async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError>;
+            async fn save(&self, entity: &Product) -> Result<(), ProductError>;
+        }
+    }
+}
+
+=== business/src/domain/product/use_cases/create_product.rs ===
+use async_trait::async_trait;
+
+use crate::domain::product::{errors::ProductError, model::Product};
+
+#[derive(Debug, Clone)]
+pub struct CreateProductParams {
+    pub title: String,
+    pub price: i64,
+}
+
+#[async_trait]
+pub trait CreateProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError>;
+}
+
+=== business/src/domain/product/use_cases/delete_product.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::product::errors::ProductError;
+
+#[derive(Debug, Clone)]
+pub struct DeleteProductParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait DeleteProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError>;
+}
+
+=== business/src/domain/product/use_cases/get_product.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::product::{errors::ProductError, model::Product};
+
+#[derive(Debug, Clone)]
+pub struct GetProductParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait GetProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError>;
+}
+
+=== business/src/domain/product/use_cases/list_product.rs ===
+use async_trait::async_trait;
+
+use crate::domain::product::{errors::ProductError, model::Product};
+
+#[derive(Debug)]
+pub struct ListProductParams;
+
+#[async_trait]
+pub trait ListProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+}
+
+=== business/src/domain/product/use_cases/update_product.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::product::{errors::ProductError, model::Product};
+
+#[derive(Debug, Clone)]
+pub struct UpdateProductParams {
+    pub id: Uuid,
+    pub title: String,
+    pub price: i64,
+}
+
+#[async_trait]
+pub trait UpdateProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError>;
+}
+
+=== business/src/lib.rs ===
+pub mod domain {
+  pub mod greeting {
+    pub mod errors;
+    pub mod model;
+    pub mod repository;
+    pub mod use_cases {
+      pub mod get_greeting;
+    }
+  }
+
+    pub mod product {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_product;
+            pub mod get_product;
+            pub mod list_product;
+            pub mod update_product;
+            pub mod delete_product;
+        }
+    }
+
+    pub mod category {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_category;
+            pub mod get_category;
+            pub mod list_category;
+            pub mod update_category;
+            pub mod delete_category;
+        }
+    
+        pub mod value_objects;
+}
+}
+pub mod application {
+  pub mod greeting {
+    pub mod get_greeting;
+  }
+
+    pub mod product {
+        pub mod create_product;
+        pub mod get_product;
+        pub mod list_product;
+        pub mod update_product;
+        pub mod delete_product;
+    }
+
+    pub mod category {
+        pub mod create_category;
+        pub mod get_category;
+        pub mod list_category;
+        pub mod update_category;
+        pub mod delete_category;
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    pub mod mothers {
+        pub mod product_mother;
+    
+        pub mod category_mother;
+}
+}
+
+=== business/src/tests/mothers/category_mother.rs ===
+use crate::domain::category::model::Category;
+use crate::domain::category::model::CategoryProps;
+use crate::domain::category::value_objects::Name;
+
+pub struct CategoryMother {
+    name: Option<Name>,
+}
+
+impl CategoryMother {
+    pub fn new() -> Self {
+        Self { name: None }
+    }
+
+    pub fn with_name(mut self, name: Name) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    pub fn build(self) -> Category {
+        Category::new(CategoryProps {
+            name: self.name.unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+        })
+        .expect("CategoryMother: failed to build valid Category")
+    }
+
+    pub fn build_props(self) -> CategoryProps {
+        CategoryProps {
+            name: self.name.unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+        }
+    }
+
+    pub fn random() -> Category {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Category> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for CategoryMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== business/src/tests/mothers/product_mother.rs ===
+use crate::domain::product::model::Product;
+use crate::domain::product::model::ProductProps;
+
+pub struct ProductMother {
+    title: Option<String>,
+    price: Option<i64>,
+}
+
+impl ProductMother {
+    pub fn new() -> Self {
+        Self { title: None, price: None }
+    }
+
+    pub fn with_title(mut self, title: &str) -> Self {
+        self.title = Some(title.to_string());
+        self
+    }
+
+    pub fn with_price(mut self, price: i64) -> Self {
+        self.price = Some(price);
+        self
+    }
+
+    pub fn with_empty_title(mut self) -> Self {
+        self.title = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> Product {
+        Product::new(ProductProps {
+            title: self.title.unwrap_or_else(|| "example".to_string()),
+            price: self.price.unwrap_or(42),
+        })
+        .expect("ProductMother: failed to build valid Product")
+    }
+
+    pub fn build_props(self) -> ProductProps {
+        ProductProps {
+            title: self.title.unwrap_or_else(|| "example".to_string()),
+            price: self.price.unwrap_or(42),
+        }
+    }
+
+    pub fn random() -> Product {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Product> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for ProductMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== infrastructure/src/category/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use business::domain::category::{
+    errors::CategoryError,
+    model::Category,
+    repository::CategoryRepositoryTrait,
+};
+
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// Postgres repositories).
+#[derive(Default)]
+pub struct InMemoryCategoryRepository;
+
+impl InMemoryCategoryRepository {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl CategoryRepositoryTrait for InMemoryCategoryRepository {
+    async fn find_all(&self) -> Result<Vec<Category>, CategoryError> {
+        tracing::debug!("find_all");
+        Ok(vec![])
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Category>, CategoryError> {
+        tracing::debug!(%id, "find_by_id");
+        Ok(None)
+    }
+
+    async fn save(&self, entity: &Category) -> Result<(), CategoryError> {
+        tracing::debug!(id = %entity.id, "save");
+        Ok(())
+    }
+}
+
+=== infrastructure/src/lib.rs ===
+pub mod greeting {
+    pub mod repository;
+}
+pub mod product {
+    pub mod repository;
+}
+pub mod category {
+    pub mod repository;
+}
+
+=== infrastructure/src/product/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use business::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+};
+
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// Postgres repositories).
+#[derive(Default)]
+pub struct InMemoryProductRepository;
+
+impl InMemoryProductRepository {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl ProductRepositoryTrait for InMemoryProductRepository {
+    async fn find_all(&self) -> Result<Vec<Product>, ProductError> {
+        tracing::debug!("find_all");
+        Ok(vec![])
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError> {
+        tracing::debug!(%id, "find_by_id");
+        Ok(None)
+    }
+
+    async fn save(&self, entity: &Product) -> Result<(), ProductError> {
+        tracing::debug!(id = %entity.id, "save");
+        Ok(())
+    }
+}
+
+=== presentation/src/api.rs ===
+pub mod error;
+pub mod greeting;
+pub mod tags;
+pub mod product;
+pub mod category;
+
+=== presentation/src/api/category.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/category/dto.rs ===
+use business::domain::category::model::Category;
+use poem_openapi::Object;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CategoryDto {
+    pub id: Uuid,
+    pub name: String,
+}
+
+impl CategoryDto {
+    pub fn from_domain(entity: &Category) -> Self {
+        Self {
+            id: entity.id,
+            name: entity.name.value().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateCategoryRequest {
+    pub name: String,
+}
+
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateCategoryRequest {
+    pub name: String,
+}
+
+
+=== presentation/src/api/category/error_mapper.rs ===
+use business::domain::category::errors::CategoryError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+
+use crate::api::error::{ErrorResponse, IntoErrorResponse};
+
+impl IntoErrorResponse for CategoryError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            CategoryError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            CategoryError::NotFound => StatusCode::NOT_FOUND,
+            CategoryError::Duplicate => StatusCode::CONFLICT,
+            CategoryError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            CategoryError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            CategoryError::InvalidName => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CategoryError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "category.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = CategoryError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "category.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = CategoryError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "category.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = CategoryError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "category.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = CategoryError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "category.unknown");
+    }
+
+    #[test]
+    fn should_map_invalid_name_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CategoryError::InvalidName.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "category.invalid_name");
+    }
+}
+
+=== presentation/src/api/category/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use crate::api::{error::ErrorResponse, category::dto::CategoryDto};
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+
+#[derive(ApiResponse)]
+pub enum CreateCategoryResponse {
+    #[oai(status = 201)]
+    Created(Json<CategoryDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateCategoryResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetCategoryResponse {
+    #[oai(status = 200)]
+    Ok(Json<CategoryDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetCategoryResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListCategoryResponse {
+    #[oai(status = 200)]
+    Ok(Json<Vec<CategoryDto>>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListCategoryResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateCategoryResponse {
+    #[oai(status = 200)]
+    Ok(Json<CategoryDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateCategoryResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteCategoryResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteCategoryResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/category/routes.rs ===
+use std::sync::Arc;
+
+use business::{
+    application::category::{
+        create_category::CreateCategoryUseCaseImpl,
+        delete_category::DeleteCategoryUseCaseImpl,
+        get_category::GetCategoryUseCaseImpl,
+        list_category::ListCategoryUseCaseImpl,
+        update_category::UpdateCategoryUseCaseImpl,
+    },
+    domain::category::use_cases::{
+        create_category::{CreateCategoryParams, CreateCategoryUseCaseTrait},
+        delete_category::{DeleteCategoryParams, DeleteCategoryUseCaseTrait},
+        get_category::{GetCategoryParams, GetCategoryUseCaseTrait},
+        list_category::{ListCategoryParams, ListCategoryUseCaseTrait},
+        update_category::{UpdateCategoryParams, UpdateCategoryUseCaseTrait},
+    },
+};
+use poem_openapi::{OpenApi, param::Path, payload::Json};
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
+use crate::api::category::dto::{CreateCategoryRequest, UpdateCategoryRequest, CategoryDto};
+use crate::api::category::responses::{
+    CreateCategoryResponse, DeleteCategoryResponse, GetCategoryResponse, ListCategoryResponse,
+    UpdateCategoryResponse,
+};
+
+pub struct CategoryApi {
+    pub create_category: Arc<CreateCategoryUseCaseImpl>,
+    pub get_category: Arc<GetCategoryUseCaseImpl>,
+    pub list_category: Arc<ListCategoryUseCaseImpl>,
+    pub update_category: Arc<UpdateCategoryUseCaseImpl>,
+    pub delete_category: Arc<DeleteCategoryUseCaseImpl>,
+}
+
+#[OpenApi]
+impl CategoryApi {
+    /// Create a new Category
+    #[oai(path = "/categorys", method = "post", tag = "ApiTags::Category")]
+    async fn create(&self, body: Json<CreateCategoryRequest>) -> CreateCategoryResponse {
+        match self
+            .create_category
+            .execute(CreateCategoryParams {
+                name: body.name.clone(),
+            })
+            .await
+        {
+            Ok(entity) => CreateCategoryResponse::Created(Json(CategoryDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_category failed");
+                CreateCategoryResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Category by ID
+    #[oai(path = "/categorys/:id", method = "get", tag = "ApiTags::Category")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetCategoryResponse {
+        match self
+            .get_category
+            .execute(GetCategoryParams { id: id.0 })
+            .await
+        {
+            Ok(entity) => GetCategoryResponse::Ok(Json(CategoryDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_category failed");
+                GetCategoryResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List all Categorys
+    #[oai(path = "/categorys", method = "get", tag = "ApiTags::Category")]
+    async fn list(&self) -> ListCategoryResponse {
+        match self.list_category.execute(ListCategoryParams).await {
+            Ok(entities) => {
+                ListCategoryResponse::Ok(Json(entities.iter().map(CategoryDto::from_domain).collect()))
+            }
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_category failed");
+                ListCategoryResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Category
+    #[oai(path = "/categorys/:id", method = "put", tag = "ApiTags::Category")]
+    async fn update(&self, id: Path<Uuid>, body: Json<UpdateCategoryRequest>) -> UpdateCategoryResponse {
+        match self
+            .update_category
+            .execute(UpdateCategoryParams {
+                id: id.0,
+                name: body.name.clone(),
+            })
+            .await
+        {
+            Ok(entity) => UpdateCategoryResponse::Ok(Json(CategoryDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_category failed");
+                UpdateCategoryResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Category
+    #[oai(path = "/categorys/:id", method = "delete", tag = "ApiTags::Category")]
+    async fn delete(&self, id: Path<Uuid>) -> DeleteCategoryResponse {
+        match self
+            .delete_category
+            .execute(DeleteCategoryParams { id: id.0 })
+            .await
+        {
+            Ok(()) => DeleteCategoryResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_category failed");
+                DeleteCategoryResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+=== presentation/src/api/product.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/product/dto.rs ===
+use business::domain::product::model::Product;
+use poem_openapi::Object;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProductDto {
+    pub id: Uuid,
+    pub title: String,
+    pub price: i64,
+}
+
+impl ProductDto {
+    pub fn from_domain(entity: &Product) -> Self {
+        Self {
+            id: entity.id,
+            title: entity.title.clone(),
+            price: entity.price,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateProductRequest {
+    pub title: String,
+    pub price: i64,
+}
+
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateProductRequest {
+    pub title: String,
+    pub price: i64,
+}
+
+
+=== presentation/src/api/product/error_mapper.rs ===
+use business::domain::product::errors::ProductError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+
+use crate::api::error::{ErrorResponse, IntoErrorResponse};
+
+impl IntoErrorResponse for ProductError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            ProductError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            ProductError::NotFound => StatusCode::NOT_FOUND,
+            ProductError::Duplicate => StatusCode::CONFLICT,
+            ProductError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            ProductError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "product.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "product.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "product.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "product.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "product.unknown");
+    }
+}
+
+=== presentation/src/api/product/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use crate::api::{error::ErrorResponse, product::dto::ProductDto};
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+
+#[derive(ApiResponse)]
+pub enum CreateProductResponse {
+    #[oai(status = 201)]
+    Created(Json<ProductDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetProductResponse {
+    #[oai(status = 200)]
+    Ok(Json<ProductDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListProductResponse {
+    #[oai(status = 200)]
+    Ok(Json<Vec<ProductDto>>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateProductResponse {
+    #[oai(status = 200)]
+    Ok(Json<ProductDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteProductResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/product/routes.rs ===
+use std::sync::Arc;
+
+use business::{
+    application::product::{
+        create_product::CreateProductUseCaseImpl,
+        delete_product::DeleteProductUseCaseImpl,
+        get_product::GetProductUseCaseImpl,
+        list_product::ListProductUseCaseImpl,
+        update_product::UpdateProductUseCaseImpl,
+    },
+    domain::product::use_cases::{
+        create_product::{CreateProductParams, CreateProductUseCaseTrait},
+        delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
+        get_product::{GetProductParams, GetProductUseCaseTrait},
+        list_product::{ListProductParams, ListProductUseCaseTrait},
+        update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
+    },
+};
+use poem_openapi::{OpenApi, param::Path, payload::Json};
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
+use crate::api::product::dto::{CreateProductRequest, UpdateProductRequest, ProductDto};
+use crate::api::product::responses::{
+    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductResponse,
+    UpdateProductResponse,
+};
+
+pub struct ProductApi {
+    pub create_product: Arc<CreateProductUseCaseImpl>,
+    pub get_product: Arc<GetProductUseCaseImpl>,
+    pub list_product: Arc<ListProductUseCaseImpl>,
+    pub update_product: Arc<UpdateProductUseCaseImpl>,
+    pub delete_product: Arc<DeleteProductUseCaseImpl>,
+}
+
+#[OpenApi]
+impl ProductApi {
+    /// Create a new Product
+    #[oai(path = "/products", method = "post", tag = "ApiTags::Product")]
+    async fn create(&self, body: Json<CreateProductRequest>) -> CreateProductResponse {
+        match self
+            .create_product
+            .execute(CreateProductParams {
+                title: body.title.clone(),
+                price: body.price,
+            })
+            .await
+        {
+            Ok(entity) => CreateProductResponse::Created(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_product failed");
+                CreateProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Product by ID
+    #[oai(path = "/products/:id", method = "get", tag = "ApiTags::Product")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
+        match self
+            .get_product
+            .execute(GetProductParams { id: id.0 })
+            .await
+        {
+            Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_product failed");
+                GetProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List all Products
+    #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
+    async fn list(&self) -> ListProductResponse {
+        match self.list_product.execute(ListProductParams).await {
+            Ok(entities) => {
+                ListProductResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
+            }
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_product failed");
+                ListProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Product
+    #[oai(path = "/products/:id", method = "put", tag = "ApiTags::Product")]
+    async fn update(&self, id: Path<Uuid>, body: Json<UpdateProductRequest>) -> UpdateProductResponse {
+        match self
+            .update_product
+            .execute(UpdateProductParams {
+                id: id.0,
+                title: body.title.clone(),
+                price: body.price,
+            })
+            .await
+        {
+            Ok(entity) => UpdateProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_product failed");
+                UpdateProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Product
+    #[oai(path = "/products/:id", method = "delete", tag = "ApiTags::Product")]
+    async fn delete(&self, id: Path<Uuid>) -> DeleteProductResponse {
+        match self
+            .delete_product
+            .execute(DeleteProductParams { id: id.0 })
+            .await
+        {
+            Ok(()) => DeleteProductResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_product failed");
+                DeleteProductResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+=== presentation/src/api/tags.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use poem_openapi::Tags;
+
+#[derive(Tags)]
+pub enum ApiTags {
+    Greeting,
+    Product,
+    Category,
+}
+
+=== presentation/src/generated/bootstrap.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use std::sync::Arc;
+
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
+use business::application::product::create_product::CreateProductUseCaseImpl;
+use business::application::product::get_product::GetProductUseCaseImpl;
+use business::application::product::list_product::ListProductUseCaseImpl;
+use business::application::product::update_product::UpdateProductUseCaseImpl;
+use business::application::product::delete_product::DeleteProductUseCaseImpl;
+use business::application::category::create_category::CreateCategoryUseCaseImpl;
+use business::application::category::get_category::GetCategoryUseCaseImpl;
+use business::application::category::list_category::ListCategoryUseCaseImpl;
+use business::application::category::update_category::UpdateCategoryUseCaseImpl;
+use business::application::category::delete_category::DeleteCategoryUseCaseImpl;
+
+use business::domain::greeting::repository::GreetingRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
+use business::domain::product::repository::ProductRepositoryTrait;
+use infrastructure::product::repository::InMemoryProductRepository;
+use business::domain::category::repository::CategoryRepositoryTrait;
+use infrastructure::category::repository::InMemoryCategoryRepository;
+
+use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem_openapi::OpenApiService;
+
+use crate::api::greeting::routes::GreetingApi;
+use crate::api::product::routes::ProductApi;
+use crate::api::category::routes::CategoryApi;
+
+pub async fn build_app() -> impl poem::Endpoint {
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let greeting_api = GreetingApi { get_greeting };
+
+    let product_repo: Arc<dyn ProductRepositoryTrait> = Arc::new(InMemoryProductRepository::new());
+    let create_product = Arc::new(CreateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
+    let get_product = Arc::new(GetProductUseCaseImpl { repository: Arc::clone(&product_repo) });
+    let list_product = Arc::new(ListProductUseCaseImpl { repository: Arc::clone(&product_repo) });
+    let update_product = Arc::new(UpdateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
+    let delete_product = Arc::new(DeleteProductUseCaseImpl { repository: product_repo });
+    let product_api = ProductApi { create_product, get_product, list_product, update_product, delete_product };
+
+    let category_repo: Arc<dyn CategoryRepositoryTrait> = Arc::new(InMemoryCategoryRepository::new());
+    let create_category = Arc::new(CreateCategoryUseCaseImpl { repository: Arc::clone(&category_repo) });
+    let get_category = Arc::new(GetCategoryUseCaseImpl { repository: Arc::clone(&category_repo) });
+    let list_category = Arc::new(ListCategoryUseCaseImpl { repository: Arc::clone(&category_repo) });
+    let update_category = Arc::new(UpdateCategoryUseCaseImpl { repository: Arc::clone(&category_repo) });
+    let delete_category = Arc::new(DeleteCategoryUseCaseImpl { repository: category_repo });
+    let category_api = CategoryApi { create_category, get_category, list_category, update_category, delete_category };
+
+    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
+    let api_service = OpenApiService::new(
+        (greeting_api, product_api, category_api),
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )
+    .server(format!("http://localhost:{port}/api"));
+    let ui = api_service.swagger_ui();
+
+    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
+    let mut cors = Cors::new();
+    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        cors = cors.allow_origin(origin);
+    }
+
+    Route::new()
+        .at("/health", get(crate::health::liveness))
+        .at(
+            "/health/ready",
+            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
+        )
+        .nest("/api", api_service)
+        .nest("/", ui)
+        .with(Tracing)
+        .with(cors)
+}
+
+=== puerto.toml ===
+[project]
+name = "snapshot"
+
+[[entity]]
+name = "Greeting"
+use_cases = ["get_greeting"]
+fields = []
+
+[[entity]]
+name = "Product"
+use_cases = [
+    "create_product",
+    "get_product",
+    "list_product",
+    "update_product",
+    "delete_product",
+]
+
+[[entity.fields]]
+name = "title"
+type = "String"
+
+[[entity.fields]]
+name = "price"
+type = "i64"
+
+[[entity]]
+name = "Category"
+use_cases = [
+    "create_category",
+    "get_category",
+    "list_category",
+    "update_category",
+    "delete_category",
+]
+
+[[entity.fields]]
+name = "name"
+type = "String"
+value_object = "Name"

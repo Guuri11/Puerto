@@ -183,6 +183,7 @@ make test          # Fast structural tests (verifies generated file structure)
 make test/full     # Slow: generates real projects, runs their `clippy --all-targets -D warnings` + tests
 make test/db       # Slow: a generated --db project against a throwaway Postgres (Docker + sqlx-cli)
 make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
+make test/snapshots # Re-record generated-output snapshots after an intended output change
 make lint          # cargo clippy --workspace --all-targets -- -D warnings
 make check         # cargo check --workspace
 make format        # cargo fmt --all -- --check

@@ -10,9 +10,11 @@ use super::*;
 // They are `#[ignore]`d (slow) and run via `make test/full`.
 
 /// One end-to-end generation scenario.
-struct Scenario<'a> {
-    /// Temp-dir suffix; must be unique per scenario.
-    name: &'a str,
+pub(super) struct Scenario<'a> {
+    /// Temp-dir suffix and snapshot name; must be unique per scenario.
+    pub(super) name: &'a str,
+    /// A `--db` project (`puerto new --db`): Pg repositories, migrations.
+    db: bool,
     /// Strip the Greeting demo before scaffolding (`puerto new --no-demo`).
     no_demo: bool,
     /// Shared VOs declared in puerto.toml before any scaffold (`(name, inner_type)`).
@@ -22,6 +24,213 @@ struct Scenario<'a> {
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
     use_cases: &'a [(&'a str, &'a str)],
 }
+
+// The scenarios, shared with the snapshot tests (`generated_output.rs`): one proves the output
+// compiles, the other that it did not change.
+
+pub(super) const NO_DEMO: Scenario = Scenario {
+    name: "no_demo",
+    db: false,
+    no_demo: true,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[("Persona", &["name:String"])],
+};
+
+pub(super) const PRIMITIVES: Scenario = Scenario {
+    name: "primitives",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[(
+        "Product",
+        &[
+            "title:String",
+            "price:i64",
+            "in_stock:bool",
+            "rate:f64",
+            "released_at:DateTime",
+            "meta:map",
+            // A `Uuid` field (the usual foreign key) was missing from this matrix, which is how
+            // the generators shipped dropping it from every params struct and DTO.
+            "category_id:Uuid",
+        ],
+    )],
+};
+
+pub(super) const UUID_VO: Scenario = Scenario {
+    name: "uuid_vo",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[("Booking", &["reference:String", "tenant_id:TenantId:Uuid"])],
+};
+
+pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
+    name: "opt_vec_prim",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[(
+        "Article",
+        &[
+            "title:String",
+            "summary:opt:String",
+            "views:opt:i64",
+            "tags:vec:String",
+            "scores:vec:i64",
+        ],
+    )],
+};
+
+pub(super) const PLAIN_VO: Scenario = Scenario {
+    name: "plain_vo",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[(
+        "Item",
+        &["name:Name:String", "sku:Sku:String!", "weight:Weight:i64"],
+    )],
+};
+
+pub(super) const OPT_VEC_VO: Scenario = Scenario {
+    name: "opt_vec_vo",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[(
+        "Persona",
+        &[
+            "name:String",
+            "middle_name:MiddleName:opt:String",
+            "tags:Tag:vec:String",
+        ],
+    )],
+};
+
+pub(super) const ENUM_VO: Scenario = Scenario {
+    name: "enum_vo",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[(
+        "Order",
+        &[
+            "reference:String",
+            "status:Status:enum:Pending/Confirmed/Cancelled",
+        ],
+    )],
+};
+
+pub(super) const SHARED_VO: Scenario = Scenario {
+    name: "shared_vo",
+    db: false,
+    no_demo: false,
+    shared_vos: &[("Email", "String"), ("Money", "i64")],
+    use_cases: &[],
+    entities: &[("Customer", &["name:String", "email:Email", "credit:Money"])],
+};
+
+pub(super) const MULTI_ENTITY: Scenario = Scenario {
+    name: "multi_entity",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[
+        ("Product", &["title:String", "price:i64"]),
+        ("Category", &["name:Name:String"]),
+    ],
+};
+
+pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
+    name: "vo_kitchen_sink",
+    db: false,
+    no_demo: false,
+    shared_vos: &[("Email", "String")],
+    use_cases: &[],
+    entities: &[(
+        "Account",
+        &[
+            "title:String",
+            "price:i64",
+            "name:Name:String",
+            "sku:Sku:String!",
+            "note:opt:String",
+            "middle_name:MiddleName:opt:String",
+            "tags:Tag:vec:String",
+            "status:Status:enum:Active/Archived",
+            "email:Email",
+        ],
+    )],
+};
+
+pub(super) const ENUM_ONLY: Scenario = Scenario {
+    name: "enum_only",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[("Ticket", &["state:State:enum:Open/Closed"])],
+};
+
+pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
+    name: "custom_use_case",
+    db: false,
+    no_demo: false,
+    shared_vos: &[],
+    use_cases: &[("Product", "archive_product")],
+    entities: &[("Product", &["title:String", "price:i64"])],
+};
+
+pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
+    name: "postgres_every_type",
+    db: true,
+    no_demo: false,
+    shared_vos: &[("Email", "String")],
+    use_cases: &[("Product", "archive_product")],
+    entities: &[
+        (
+            "Product",
+            &[
+                "title:String",
+                "sku:String!",
+                "price:i64!",
+                "rating:f64",
+                "active:bool",
+                "ref_id:Uuid",
+                "published_at:DateTime",
+                "summary:opt:String",
+                "views:opt:i64",
+                "expires_at:opt:DateTime",
+                "tags:vec:String",
+                "scores:vec:i64",
+                "meta:map",
+            ],
+        ),
+        (
+            "Customer",
+            &[
+                "email:Email",
+                "name:Name:String",
+                "code:Code:String!",
+                "age:Age:i64",
+                "joined:Joined:DateTime",
+                "middle:MiddleName:opt:String",
+                "labels:Label:vec:String",
+                "status:Status:enum:Active/Inactive",
+            ],
+        ),
+        ("Ticket", &["state:State:enum:Open/Closed"]),
+    ],
+};
 
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
 /// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
@@ -39,7 +248,10 @@ fn assert_scenario_compiles(scenario: &Scenario) {
 }
 
 /// Applies the scenario's shared VOs, entities and custom use cases to a generated project.
-fn apply_scenario(scenario: &Scenario, output: &Path) {
+pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
+    if scenario.db {
+        crate::generators::project::apply_db_to_new_project(output).unwrap();
+    }
     if scenario.no_demo {
         scaffold::apply_no_demo(output).unwrap();
     }
@@ -123,175 +335,61 @@ pub(super) fn scenario_workspace(scenario: &str) -> PathBuf {
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_no_demo_then_scaffold() {
-    assert_scenario_compiles(&Scenario {
-        name: "no_demo",
-        no_demo: true,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[("Persona", &["name:String"])],
-    });
+    assert_scenario_compiles(&NO_DEMO);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_all_primitive_field_types() {
-    assert_scenario_compiles(&Scenario {
-        name: "primitives",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[(
-            "Product",
-            &[
-                "title:String",
-                "price:i64",
-                "in_stock:bool",
-                "rate:f64",
-                "released_at:DateTime",
-                "meta:map",
-                // A `Uuid` field (the usual foreign key) was missing from this matrix, which is how
-                // the generators shipped dropping it from every params struct and DTO.
-                "category_id:Uuid",
-            ],
-        )],
-    });
+    assert_scenario_compiles(&PRIMITIVES);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_uuid_value_object() {
-    assert_scenario_compiles(&Scenario {
-        name: "uuid_vo",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[("Booking", &["reference:String", "tenant_id:TenantId:Uuid"])],
-    });
+    assert_scenario_compiles(&UUID_VO);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_option_and_vec_primitives() {
-    assert_scenario_compiles(&Scenario {
-        name: "opt_vec_prim",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[(
-            "Article",
-            &[
-                "title:String",
-                "summary:opt:String",
-                "views:opt:i64",
-                "tags:vec:String",
-                "scores:vec:i64",
-            ],
-        )],
-    });
+    assert_scenario_compiles(&OPT_VEC_PRIM);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_plain_and_unique_value_objects() {
-    assert_scenario_compiles(&Scenario {
-        name: "plain_vo",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[(
-            "Item",
-            &["name:Name:String", "sku:Sku:String!", "weight:Weight:i64"],
-        )],
-    });
+    assert_scenario_compiles(&PLAIN_VO);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_option_and_vec_value_objects() {
-    assert_scenario_compiles(&Scenario {
-        name: "opt_vec_vo",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[(
-            "Persona",
-            &[
-                "name:String",
-                "middle_name:MiddleName:opt:String",
-                "tags:Tag:vec:String",
-            ],
-        )],
-    });
+    assert_scenario_compiles(&OPT_VEC_VO);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_enum_value_object() {
-    assert_scenario_compiles(&Scenario {
-        name: "enum_vo",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[(
-            "Order",
-            &[
-                "reference:String",
-                "status:Status:enum:Pending/Confirmed/Cancelled",
-            ],
-        )],
-    });
+    assert_scenario_compiles(&ENUM_VO);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_shared_value_objects() {
-    assert_scenario_compiles(&Scenario {
-        name: "shared_vo",
-        no_demo: false,
-        shared_vos: &[("Email", "String"), ("Money", "i64")],
-        use_cases: &[],
-        entities: &[("Customer", &["name:String", "email:Email", "credit:Money"])],
-    });
+    assert_scenario_compiles(&SHARED_VO);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_multiple_entities() {
-    assert_scenario_compiles(&Scenario {
-        name: "multi_entity",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[
-            ("Product", &["title:String", "price:i64"]),
-            ("Category", &["name:Name:String"]),
-        ],
-    });
+    assert_scenario_compiles(&MULTI_ENTITY);
 }
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_every_value_object_kind_at_once() {
-    assert_scenario_compiles(&Scenario {
-        name: "vo_kitchen_sink",
-        no_demo: false,
-        shared_vos: &[("Email", "String")],
-        use_cases: &[],
-        entities: &[(
-            "Account",
-            &[
-                "title:String",
-                "price:i64",
-                "name:Name:String",
-                "sku:Sku:String!",
-                "note:opt:String",
-                "middle_name:MiddleName:opt:String",
-                "tags:Tag:vec:String",
-                "status:Status:enum:Active/Archived",
-                "email:Email",
-            ],
-        )],
-    });
+    assert_scenario_compiles(&VO_KITCHEN_SINK);
 }
 
 #[test]
@@ -332,13 +430,7 @@ fn compiles_with_domain_first_layered_flow_and_fields() {
 fn compiles_with_enum_vo_as_only_string_field() {
     // The create test asserted `.value()` on the first String-typed field — an enum VO has
     // `as_str()`, so an entity whose only String was an enum never compiled its tests.
-    assert_scenario_compiles(&Scenario {
-        name: "enum_only",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[],
-        entities: &[("Ticket", &["state:State:enum:Open/Closed"])],
-    });
+    assert_scenario_compiles(&ENUM_ONLY);
 }
 
 #[test]
@@ -346,13 +438,7 @@ fn compiles_with_enum_vo_as_only_string_field() {
 fn compiles_with_custom_use_case_after_scaffold() {
     // `generate use-case` on a scaffolded entity wired the use case into `ProductApi` in
     // bootstrap.rs while routes.rs had no such field (E0560).
-    assert_scenario_compiles(&Scenario {
-        name: "custom_use_case",
-        no_demo: false,
-        shared_vos: &[],
-        use_cases: &[("Product", "archive_product")],
-        entities: &[("Product", &["title:String", "price:i64"])],
-    });
+    assert_scenario_compiles(&CUSTOM_USE_CASE);
 }
 
 /// `PUERTO_TEST_DATABASE_URL` — a Postgres server URL **without** a database name, e.g.
@@ -378,50 +464,7 @@ fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests(
     fs::create_dir_all(&dir).unwrap();
 
     let output = generate_project("compile-postgres", &dir).unwrap();
-    crate::generators::project::apply_db_to_new_project(&output).unwrap();
-    apply_scenario(
-        &Scenario {
-            name: "postgres_every_type",
-            no_demo: false,
-            shared_vos: &[("Email", "String")],
-            use_cases: &[("Product", "archive_product")],
-            entities: &[
-                (
-                    "Product",
-                    &[
-                        "title:String",
-                        "sku:String!",
-                        "price:i64!",
-                        "rating:f64",
-                        "active:bool",
-                        "ref_id:Uuid",
-                        "published_at:DateTime",
-                        "summary:opt:String",
-                        "views:opt:i64",
-                        "expires_at:opt:DateTime",
-                        "tags:vec:String",
-                        "scores:vec:i64",
-                        "meta:map",
-                    ],
-                ),
-                (
-                    "Customer",
-                    &[
-                        "email:Email",
-                        "name:Name:String",
-                        "code:Code:String!",
-                        "age:Age:i64",
-                        "joined:Joined:DateTime",
-                        "middle:MiddleName:opt:String",
-                        "labels:Label:vec:String",
-                        "status:Status:enum:Active/Inactive",
-                    ],
-                ),
-                ("Ticket", &["state:State:enum:Open/Closed"]),
-            ],
-        },
-        &output,
-    );
+    apply_scenario(&POSTGRES_EVERY_TYPE, &output);
 
     let database_url = format!("{server}/puerto_matrix");
     for args in [

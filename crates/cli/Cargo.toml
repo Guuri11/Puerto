@@ -11,6 +11,8 @@ keywords = ["ddd", "scaffold", "framework", "clean-architecture", "code-generato
 categories = ["command-line-utilities", "development-tools"]
 include = [
     "src/**",
+    # Snapshots of generated output (T-18): test data, ~24k lines nobody installing needs.
+    "!src/tests/snapshots/**",
     "template",
     "Cargo.toml",
     "README.md",
@@ -31,3 +33,6 @@ serde_json = "1"
 tempfile = "3"
 tera = "1"
 toml = "0.8"
+
+[dev-dependencies]
+insta = "1"

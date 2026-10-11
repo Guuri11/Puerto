@@ -41,6 +41,7 @@ mod cli_surface;
 mod compile_matrix;
 mod conventions;
 mod field_args;
+mod generated_output;
 mod ide_snippets;
 mod layered_generators;
 mod manifest_validation;

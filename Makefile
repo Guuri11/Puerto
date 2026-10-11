@@ -1,4 +1,4 @@
-.PHONY: help run build install setup test test/full test/db test/mutation lint check format format/fix audit audit/fix
+.PHONY: help run build install setup test test/full test/db test/mutation test/snapshots lint check format format/fix audit audit/fix
 
 CARGO := cargo
 
@@ -40,6 +40,9 @@ test: ## Fast structural tests
 test/full: ## Slow test: generates real projects, compiles them, runs their internal tests
 	@echo "${YELLOW}Running compile matrix (generates + compiles + tests real projects)...${NC}"
 	$(CARGO) nextest run --workspace --run-ignored all --test-threads 3
+
+test/snapshots: ## Re-record the generated-output snapshots after an intended change — then read the .snap diff
+	INSTA_UPDATE=always $(CARGO) nextest run --workspace -E 'test(/^tests::generated_output::/)'
 
 test/db: ## Slow test: generated --db project against a throwaway Postgres (needs Docker + sqlx-cli)
 	@echo "${YELLOW}Starting throwaway Postgres on :55432...${NC}"

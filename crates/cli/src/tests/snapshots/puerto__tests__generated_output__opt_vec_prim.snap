@@ -1,0 +1,1440 @@
+---
+source: crates/cli/src/tests/generated_output.rs
+expression: generated_output(& OPT_VEC_PRIM)
+---
+=== business/src/application/article/create_article.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::article::{
+    errors::ArticleError,
+    model::{Article, ArticleProps},
+    repository::ArticleRepositoryTrait,
+    use_cases::create_article::{CreateArticleParams, CreateArticleUseCaseTrait},
+};
+
+pub struct CreateArticleUseCaseImpl {
+    pub repository: Arc<dyn ArticleRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateArticleUseCaseTrait for CreateArticleUseCaseImpl {
+    async fn execute(&self, params: CreateArticleParams) -> Result<Article, ArticleError> {
+        tracing::info!("create_article: start");
+        let entity = Article::new(ArticleProps {
+            title: params.title,
+            summary: params.summary,
+            views: params.views,
+            tags: params.tags,
+            scores: params.scores,
+        }).inspect_err(|e| tracing::warn!(error = %e, "create_article: rejected"))?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_article: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_article: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::article::repository::mocks::MockArticleRepository;
+
+
+    #[tokio::test]
+    async fn should_create_article_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateArticleParams {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_title_is_empty() {
+        // Arrange
+        let mock_repo = MockArticleRepository::new();
+        let use_case = CreateArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateArticleParams {
+            title: "".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "article.validation_error.title_empty"
+        );
+    }
+}
+
+=== business/src/application/article/delete_article.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::article::{
+    errors::ArticleError,
+    repository::ArticleRepositoryTrait,
+    use_cases::delete_article::{DeleteArticleParams, DeleteArticleUseCaseTrait},
+};
+
+pub struct DeleteArticleUseCaseImpl {
+    pub repository: Arc<dyn ArticleRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteArticleUseCaseTrait for DeleteArticleUseCaseImpl {
+    async fn execute(&self, params: DeleteArticleParams) -> Result<(), ArticleError> {
+        tracing::info!(id = %params.id, "delete_article: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_article: repository failed"))?
+            .ok_or_else(|| {
+                let err = ArticleError::NotFound;
+                tracing::warn!(error = %err, "delete_article: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_article: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::article::{
+        model::{Article, ArticleProps},
+        repository::mocks::MockArticleRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_soft_delete_article_when_id_exists() {
+        let entity = Article::new(ArticleProps {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteArticleParams { id: entity_id })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_article_does_not_exist() {
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteArticleParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "article.not_found");
+    }
+}
+
+=== business/src/application/article/get_article.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::article::{
+    errors::ArticleError,
+    model::Article,
+    repository::ArticleRepositoryTrait,
+    use_cases::get_article::{GetArticleParams, GetArticleUseCaseTrait},
+};
+
+pub struct GetArticleUseCaseImpl {
+    pub repository: Arc<dyn ArticleRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetArticleUseCaseTrait for GetArticleUseCaseImpl {
+    async fn execute(&self, params: GetArticleParams) -> Result<Article, ArticleError> {
+        tracing::info!(id = %params.id, "get_article: start");
+        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_article: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = ArticleError::NotFound;
+            tracing::warn!(error = %err, "get_article: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::article::{
+        model::{Article, ArticleProps},
+        repository::mocks::MockArticleRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_return_article_when_id_exists() {
+        let entity = Article::new(ArticleProps {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(GetArticleParams { id: entity_id }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetArticleParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "article.not_found");
+    }
+}
+
+=== business/src/application/article/list_article.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::article::{
+    errors::ArticleError,
+    model::Article,
+    repository::ArticleRepositoryTrait,
+    use_cases::list_article::{ListArticleParams, ListArticleUseCaseTrait},
+};
+
+pub struct ListArticleUseCaseImpl {
+    pub repository: Arc<dyn ArticleRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListArticleUseCaseTrait for ListArticleUseCaseImpl {
+    async fn execute(&self, _params: ListArticleParams) -> Result<Vec<Article>, ArticleError> {
+        tracing::info!("list_article: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_article: repository failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::article::{
+        model::{Article, ArticleProps},
+        repository::mocks::MockArticleRepository,
+    };
+
+
+    #[tokio::test]
+    async fn should_return_all_articles() {
+        let entities = vec![
+            Article::new(ArticleProps {
+            title: "first".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        }).unwrap(),
+            Article::new(ArticleProps {
+            title: "second".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        }).unwrap(),
+        ];
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move || Ok(entities.clone()));
+        let use_case = ListArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListArticleParams).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_empty_list_when_no_articles_exist() {
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        let use_case = ListArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListArticleParams).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+}
+
+=== business/src/application/article/update_article.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::article::{
+    errors::ArticleError,
+    model::Article,
+    repository::ArticleRepositoryTrait,
+    use_cases::update_article::{UpdateArticleParams, UpdateArticleUseCaseTrait},
+};
+
+pub struct UpdateArticleUseCaseImpl {
+    pub repository: Arc<dyn ArticleRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateArticleUseCaseTrait for UpdateArticleUseCaseImpl {
+    async fn execute(&self, params: UpdateArticleParams) -> Result<Article, ArticleError> {
+        tracing::info!(id = %params.id, "update_article: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_article: repository failed"))?
+            .ok_or_else(|| {
+                let err = ArticleError::NotFound;
+                tracing::warn!(error = %err, "update_article: rejected");
+                err
+            })?;
+        if params.title.trim().is_empty() {
+            let err = ArticleError::ValidationError("title_empty".into());
+            tracing::warn!(error = %err, "update_article: rejected");
+            return Err(err);
+        }
+        entity.title = params.title;
+        entity.summary = params.summary;
+        entity.views = params.views;
+        entity.tags = params.tags;
+        entity.scores = params.scores;
+        entity.updated_at = chrono::Utc::now();
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_article: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::article::{
+        model::{Article, ArticleProps},
+        repository::mocks::MockArticleRepository,
+    };
+    use uuid::Uuid;
+
+
+    #[tokio::test]
+    async fn should_update_article_when_params_are_valid() {
+        // Arrange
+        let entity = Article::new(ArticleProps {
+            title: "original".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateArticleParams {
+            id: entity_id,
+            title: "updated".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().title, "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_article_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateArticleParams {
+            id: Uuid::new_v4(),
+            title: "new".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "article.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_title_is_empty() {
+        // Arrange
+        let entity = Article::new(ArticleProps {
+            title: "original".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateArticleUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateArticleParams {
+            id: entity_id,
+            title: "".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "article.validation_error.title_empty"
+        );
+    }
+}
+
+=== business/src/domain/article/errors.rs ===
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ArticleError {
+    #[error("article.validation_error.{0}")]
+    ValidationError(String),
+    #[error("article.not_found")]
+    NotFound,
+    #[error("article.duplicate")]
+    Duplicate,
+    #[error("article.repository_error")]
+    RepositoryError,
+    #[error("article.unknown")]
+    Unknown,
+}
+
+=== business/src/domain/article/model.rs ===
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use super::errors::ArticleError;
+
+#[derive(Debug, Clone)]
+pub struct ArticleProps {
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Article {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+}
+
+impl Article {
+    pub fn new(props: ArticleProps) -> Result<Self, ArticleError> {
+        if props.title.trim().is_empty() {
+            return Err(ArticleError::ValidationError("title_empty".into()));
+        }
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            title: props.title,
+            summary: props.summary,
+            views: props.views,
+            tags: props.tags,
+            scores: props.scores,
+        })
+    }
+
+    pub fn from_repository(data: Article) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_article_when_fields_are_valid() {
+        let result = Article::new(ArticleProps {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        });
+        assert_eq!(result.unwrap().title, "example");
+    }
+
+
+    #[test]
+    fn should_reject_article_when_title_is_empty() {
+        let result = Article::new(ArticleProps {
+            title: "".into(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "article.validation_error.title_empty"
+        );
+    }
+
+    #[test]
+    fn should_reject_article_when_title_is_only_whitespace() {
+        let result = Article::new(ArticleProps {
+            title: "   ".into(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        });
+        assert!(result.is_err());
+    }
+}
+
+=== business/src/domain/article/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use super::{errors::ArticleError, model::Article};
+
+#[async_trait]
+pub trait ArticleRepositoryTrait: Send + Sync {
+    async fn find_all(&self) -> Result<Vec<Article>, ArticleError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Article>, ArticleError>;
+    async fn save(&self, entity: &Article) -> Result<(), ArticleError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+    use uuid::Uuid;
+
+    use super::*;
+
+    mock! {
+        pub ArticleRepository {}
+
+        #[async_trait]
+        impl ArticleRepositoryTrait for ArticleRepository {
+            async fn find_all(&self) -> Result<Vec<Article>, ArticleError>;
+            async fn find_by_id(&self, id: Uuid) -> Result<Option<Article>, ArticleError>;
+            async fn save(&self, entity: &Article) -> Result<(), ArticleError>;
+        }
+    }
+}
+
+=== business/src/domain/article/use_cases/create_article.rs ===
+use async_trait::async_trait;
+
+use crate::domain::article::{errors::ArticleError, model::Article};
+
+#[derive(Debug, Clone)]
+pub struct CreateArticleParams {
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+}
+
+#[async_trait]
+pub trait CreateArticleUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateArticleParams) -> Result<Article, ArticleError>;
+}
+
+=== business/src/domain/article/use_cases/delete_article.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::article::errors::ArticleError;
+
+#[derive(Debug, Clone)]
+pub struct DeleteArticleParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait DeleteArticleUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteArticleParams) -> Result<(), ArticleError>;
+}
+
+=== business/src/domain/article/use_cases/get_article.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::article::{errors::ArticleError, model::Article};
+
+#[derive(Debug, Clone)]
+pub struct GetArticleParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait GetArticleUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetArticleParams) -> Result<Article, ArticleError>;
+}
+
+=== business/src/domain/article/use_cases/list_article.rs ===
+use async_trait::async_trait;
+
+use crate::domain::article::{errors::ArticleError, model::Article};
+
+#[derive(Debug)]
+pub struct ListArticleParams;
+
+#[async_trait]
+pub trait ListArticleUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListArticleParams) -> Result<Vec<Article>, ArticleError>;
+}
+
+=== business/src/domain/article/use_cases/update_article.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::article::{errors::ArticleError, model::Article};
+
+#[derive(Debug, Clone)]
+pub struct UpdateArticleParams {
+    pub id: Uuid,
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+}
+
+#[async_trait]
+pub trait UpdateArticleUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateArticleParams) -> Result<Article, ArticleError>;
+}
+
+=== business/src/lib.rs ===
+pub mod domain {
+  pub mod greeting {
+    pub mod errors;
+    pub mod model;
+    pub mod repository;
+    pub mod use_cases {
+      pub mod get_greeting;
+    }
+  }
+
+    pub mod article {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_article;
+            pub mod get_article;
+            pub mod list_article;
+            pub mod update_article;
+            pub mod delete_article;
+        }
+    }
+}
+pub mod application {
+  pub mod greeting {
+    pub mod get_greeting;
+  }
+
+    pub mod article {
+        pub mod create_article;
+        pub mod get_article;
+        pub mod list_article;
+        pub mod update_article;
+        pub mod delete_article;
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    pub mod mothers {
+        pub mod article_mother;
+    }
+}
+
+=== business/src/tests/mothers/article_mother.rs ===
+use crate::domain::article::model::Article;
+use crate::domain::article::model::ArticleProps;
+
+pub struct ArticleMother {
+    title: Option<String>,
+    summary: Option<String>,
+    views: Option<i64>,
+    tags: Option<Vec<String>>,
+    scores: Option<Vec<i64>>,
+}
+
+impl ArticleMother {
+    pub fn new() -> Self {
+        Self { title: None, summary: None, views: None, tags: None, scores: None }
+    }
+
+    pub fn with_title(mut self, title: &str) -> Self {
+        self.title = Some(title.to_string());
+        self
+    }
+
+    pub fn with_summary(mut self, summary: &str) -> Self {
+        self.summary = Some(summary.to_string());
+        self
+    }
+
+    pub fn with_views(mut self, views: i64) -> Self {
+        self.views = Some(views);
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = Some(tags);
+        self
+    }
+
+    pub fn with_scores(mut self, scores: Vec<i64>) -> Self {
+        self.scores = Some(scores);
+        self
+    }
+
+    pub fn with_empty_title(mut self) -> Self {
+        self.title = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> Article {
+        Article::new(ArticleProps {
+            title: self.title.unwrap_or_else(|| "example".to_string()),
+            summary: self.summary,
+            views: self.views,
+            tags: self.tags.unwrap_or_default(),
+            scores: self.scores.unwrap_or_default(),
+        })
+        .expect("ArticleMother: failed to build valid Article")
+    }
+
+    pub fn build_props(self) -> ArticleProps {
+        ArticleProps {
+            title: self.title.unwrap_or_else(|| "example".to_string()),
+            summary: self.summary,
+            views: self.views,
+            tags: self.tags.unwrap_or_default(),
+            scores: self.scores.unwrap_or_default(),
+        }
+    }
+
+    pub fn random() -> Article {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Article> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for ArticleMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== infrastructure/src/article/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use business::domain::article::{
+    errors::ArticleError,
+    model::Article,
+    repository::ArticleRepositoryTrait,
+};
+
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// Postgres repositories).
+#[derive(Default)]
+pub struct InMemoryArticleRepository;
+
+impl InMemoryArticleRepository {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl ArticleRepositoryTrait for InMemoryArticleRepository {
+    async fn find_all(&self) -> Result<Vec<Article>, ArticleError> {
+        tracing::debug!("find_all");
+        Ok(vec![])
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Article>, ArticleError> {
+        tracing::debug!(%id, "find_by_id");
+        Ok(None)
+    }
+
+    async fn save(&self, entity: &Article) -> Result<(), ArticleError> {
+        tracing::debug!(id = %entity.id, "save");
+        Ok(())
+    }
+}
+
+=== infrastructure/src/lib.rs ===
+pub mod greeting {
+    pub mod repository;
+}
+pub mod article {
+    pub mod repository;
+}
+
+=== presentation/src/api.rs ===
+pub mod error;
+pub mod greeting;
+pub mod tags;
+pub mod article;
+
+=== presentation/src/api/article.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/article/dto.rs ===
+use business::domain::article::model::Article;
+use poem_openapi::Object;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ArticleDto {
+    pub id: Uuid,
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+}
+
+impl ArticleDto {
+    pub fn from_domain(entity: &Article) -> Self {
+        Self {
+            id: entity.id,
+            title: entity.title.clone(),
+            summary: entity.summary.clone(),
+            views: entity.views,
+            tags: entity.tags.clone(),
+            scores: entity.scores.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateArticleRequest {
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+}
+
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateArticleRequest {
+    pub title: String,
+    pub summary: Option<String>,
+    pub views: Option<i64>,
+    pub tags: Vec<String>,
+    pub scores: Vec<i64>,
+}
+
+
+=== presentation/src/api/article/error_mapper.rs ===
+use business::domain::article::errors::ArticleError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+
+use crate::api::error::{ErrorResponse, IntoErrorResponse};
+
+impl IntoErrorResponse for ArticleError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            ArticleError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            ArticleError::NotFound => StatusCode::NOT_FOUND,
+            ArticleError::Duplicate => StatusCode::CONFLICT,
+            ArticleError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            ArticleError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = ArticleError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "article.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = ArticleError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "article.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = ArticleError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "article.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = ArticleError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "article.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = ArticleError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "article.unknown");
+    }
+}
+
+=== presentation/src/api/article/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use crate::api::{error::ErrorResponse, article::dto::ArticleDto};
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+
+#[derive(ApiResponse)]
+pub enum CreateArticleResponse {
+    #[oai(status = 201)]
+    Created(Json<ArticleDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateArticleResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetArticleResponse {
+    #[oai(status = 200)]
+    Ok(Json<ArticleDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetArticleResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListArticleResponse {
+    #[oai(status = 200)]
+    Ok(Json<Vec<ArticleDto>>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListArticleResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateArticleResponse {
+    #[oai(status = 200)]
+    Ok(Json<ArticleDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateArticleResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteArticleResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteArticleResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/article/routes.rs ===
+use std::sync::Arc;
+
+use business::{
+    application::article::{
+        create_article::CreateArticleUseCaseImpl,
+        delete_article::DeleteArticleUseCaseImpl,
+        get_article::GetArticleUseCaseImpl,
+        list_article::ListArticleUseCaseImpl,
+        update_article::UpdateArticleUseCaseImpl,
+    },
+    domain::article::use_cases::{
+        create_article::{CreateArticleParams, CreateArticleUseCaseTrait},
+        delete_article::{DeleteArticleParams, DeleteArticleUseCaseTrait},
+        get_article::{GetArticleParams, GetArticleUseCaseTrait},
+        list_article::{ListArticleParams, ListArticleUseCaseTrait},
+        update_article::{UpdateArticleParams, UpdateArticleUseCaseTrait},
+    },
+};
+use poem_openapi::{OpenApi, param::Path, payload::Json};
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
+use crate::api::article::dto::{CreateArticleRequest, UpdateArticleRequest, ArticleDto};
+use crate::api::article::responses::{
+    CreateArticleResponse, DeleteArticleResponse, GetArticleResponse, ListArticleResponse,
+    UpdateArticleResponse,
+};
+
+pub struct ArticleApi {
+    pub create_article: Arc<CreateArticleUseCaseImpl>,
+    pub get_article: Arc<GetArticleUseCaseImpl>,
+    pub list_article: Arc<ListArticleUseCaseImpl>,
+    pub update_article: Arc<UpdateArticleUseCaseImpl>,
+    pub delete_article: Arc<DeleteArticleUseCaseImpl>,
+}
+
+#[OpenApi]
+impl ArticleApi {
+    /// Create a new Article
+    #[oai(path = "/articles", method = "post", tag = "ApiTags::Article")]
+    async fn create(&self, body: Json<CreateArticleRequest>) -> CreateArticleResponse {
+        match self
+            .create_article
+            .execute(CreateArticleParams {
+                title: body.title.clone(),
+                summary: body.summary.clone(),
+                views: body.views,
+                tags: body.tags.clone(),
+                scores: body.scores.clone(),
+            })
+            .await
+        {
+            Ok(entity) => CreateArticleResponse::Created(Json(ArticleDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_article failed");
+                CreateArticleResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Article by ID
+    #[oai(path = "/articles/:id", method = "get", tag = "ApiTags::Article")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetArticleResponse {
+        match self
+            .get_article
+            .execute(GetArticleParams { id: id.0 })
+            .await
+        {
+            Ok(entity) => GetArticleResponse::Ok(Json(ArticleDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_article failed");
+                GetArticleResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List all Articles
+    #[oai(path = "/articles", method = "get", tag = "ApiTags::Article")]
+    async fn list(&self) -> ListArticleResponse {
+        match self.list_article.execute(ListArticleParams).await {
+            Ok(entities) => {
+                ListArticleResponse::Ok(Json(entities.iter().map(ArticleDto::from_domain).collect()))
+            }
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_article failed");
+                ListArticleResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Article
+    #[oai(path = "/articles/:id", method = "put", tag = "ApiTags::Article")]
+    async fn update(&self, id: Path<Uuid>, body: Json<UpdateArticleRequest>) -> UpdateArticleResponse {
+        match self
+            .update_article
+            .execute(UpdateArticleParams {
+                id: id.0,
+                title: body.title.clone(),
+                summary: body.summary.clone(),
+                views: body.views,
+                tags: body.tags.clone(),
+                scores: body.scores.clone(),
+            })
+            .await
+        {
+            Ok(entity) => UpdateArticleResponse::Ok(Json(ArticleDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_article failed");
+                UpdateArticleResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Article
+    #[oai(path = "/articles/:id", method = "delete", tag = "ApiTags::Article")]
+    async fn delete(&self, id: Path<Uuid>) -> DeleteArticleResponse {
+        match self
+            .delete_article
+            .execute(DeleteArticleParams { id: id.0 })
+            .await
+        {
+            Ok(()) => DeleteArticleResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_article failed");
+                DeleteArticleResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+=== presentation/src/api/tags.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use poem_openapi::Tags;
+
+#[derive(Tags)]
+pub enum ApiTags {
+    Greeting,
+    Article,
+}
+
+=== presentation/src/generated/bootstrap.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use std::sync::Arc;
+
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
+use business::application::article::create_article::CreateArticleUseCaseImpl;
+use business::application::article::get_article::GetArticleUseCaseImpl;
+use business::application::article::list_article::ListArticleUseCaseImpl;
+use business::application::article::update_article::UpdateArticleUseCaseImpl;
+use business::application::article::delete_article::DeleteArticleUseCaseImpl;
+
+use business::domain::greeting::repository::GreetingRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
+use business::domain::article::repository::ArticleRepositoryTrait;
+use infrastructure::article::repository::InMemoryArticleRepository;
+
+use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem_openapi::OpenApiService;
+
+use crate::api::greeting::routes::GreetingApi;
+use crate::api::article::routes::ArticleApi;
+
+pub async fn build_app() -> impl poem::Endpoint {
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let greeting_api = GreetingApi { get_greeting };
+
+    let article_repo: Arc<dyn ArticleRepositoryTrait> = Arc::new(InMemoryArticleRepository::new());
+    let create_article = Arc::new(CreateArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
+    let get_article = Arc::new(GetArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
+    let list_article = Arc::new(ListArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
+    let update_article = Arc::new(UpdateArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
+    let delete_article = Arc::new(DeleteArticleUseCaseImpl { repository: article_repo });
+    let article_api = ArticleApi { create_article, get_article, list_article, update_article, delete_article };
+
+    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
+    let api_service = OpenApiService::new(
+        (greeting_api, article_api),
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )
+    .server(format!("http://localhost:{port}/api"));
+    let ui = api_service.swagger_ui();
+
+    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
+    let mut cors = Cors::new();
+    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        cors = cors.allow_origin(origin);
+    }
+
+    Route::new()
+        .at("/health", get(crate::health::liveness))
+        .at(
+            "/health/ready",
+            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
+        )
+        .nest("/api", api_service)
+        .nest("/", ui)
+        .with(Tracing)
+        .with(cors)
+}
+
+=== puerto.toml ===
+[project]
+name = "snapshot"
+
+[[entity]]
+name = "Greeting"
+use_cases = ["get_greeting"]
+fields = []
+
+[[entity]]
+name = "Article"
+use_cases = [
+    "create_article",
+    "get_article",
+    "list_article",
+    "update_article",
+    "delete_article",
+]
+
+[[entity.fields]]
+name = "title"
+type = "String"
+
+[[entity.fields]]
+name = "summary"
+type = "Option<String>"
+
+[[entity.fields]]
+name = "views"
+type = "Option<i64>"
+
+[[entity.fields]]
+name = "tags"
+type = "Vec<String>"
+
+[[entity.fields]]
+name = "scores"
+type = "Vec<i64>"

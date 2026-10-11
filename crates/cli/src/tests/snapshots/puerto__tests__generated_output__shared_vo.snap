@@ -1,0 +1,1546 @@
+---
+source: crates/cli/src/tests/generated_output.rs
+expression: generated_output(& SHARED_VO)
+---
+=== business/src/application/customer/create_customer.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::shared::value_objects::Email;
+use crate::domain::shared::value_objects::Money;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::{Customer, CustomerProps},
+    repository::CustomerRepositoryTrait,
+    use_cases::create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
+};
+
+pub struct CreateCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateCustomerUseCaseTrait for CreateCustomerUseCaseImpl {
+    async fn execute(&self, params: CreateCustomerParams) -> Result<Customer, CustomerError> {
+        tracing::info!("create_customer: start");
+let email = Email::new(params.email).map_err(|_| CustomerError::InvalidEmail)?;
+let credit = Money::new(params.credit).map_err(|_| CustomerError::InvalidMoney)?;
+        let entity = Customer::new(CustomerProps {
+            name: params.name,
+            email,
+            credit,
+        }).inspect_err(|e| tracing::warn!(error = %e, "create_customer: rejected"))?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_customer: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_customer: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::repository::mocks::MockCustomerRepository;
+
+
+    #[tokio::test]
+    async fn should_create_customer_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+            name: "example".to_string(),
+            email: "example".to_string(),
+            credit: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let mock_repo = MockCustomerRepository::new();
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+            name: "".to_string(),
+            email: "example".to_string(),
+            credit: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "customer.validation_error.name_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_email_is_empty() {
+        // Arrange
+        let mock_repo = MockCustomerRepository::new();
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+            name: "example".to_string(),
+            email: "".to_string(),
+            credit: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "customer.invalid_email"
+        );
+    }
+}
+
+=== business/src/application/customer/delete_customer.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    repository::CustomerRepositoryTrait,
+    use_cases::delete_customer::{DeleteCustomerParams, DeleteCustomerUseCaseTrait},
+};
+
+pub struct DeleteCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteCustomerUseCaseTrait for DeleteCustomerUseCaseImpl {
+    async fn execute(&self, params: DeleteCustomerParams) -> Result<(), CustomerError> {
+        tracing::info!(id = %params.id, "delete_customer: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_customer: repository failed"))?
+            .ok_or_else(|| {
+                let err = CustomerError::NotFound;
+                tracing::warn!(error = %err, "delete_customer: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_customer: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::{
+        model::{Customer, CustomerProps},
+        repository::mocks::MockCustomerRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::shared::value_objects::Email;
+    use crate::domain::shared::value_objects::Money;
+
+
+    #[tokio::test]
+    async fn should_soft_delete_customer_when_id_exists() {
+        let entity = Customer::new(CustomerProps {
+            name: "example".to_string(),
+            email: Email::new("example".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteCustomerParams { id: entity_id })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_customer_does_not_exist() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteCustomerParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.not_found");
+    }
+}
+
+=== business/src/application/customer/get_customer.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::Customer,
+    repository::CustomerRepositoryTrait,
+    use_cases::get_customer::{GetCustomerParams, GetCustomerUseCaseTrait},
+};
+
+pub struct GetCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetCustomerUseCaseTrait for GetCustomerUseCaseImpl {
+    async fn execute(&self, params: GetCustomerParams) -> Result<Customer, CustomerError> {
+        tracing::info!(id = %params.id, "get_customer: start");
+        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_customer: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = CustomerError::NotFound;
+            tracing::warn!(error = %err, "get_customer: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::{
+        model::{Customer, CustomerProps},
+        repository::mocks::MockCustomerRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::shared::value_objects::Email;
+    use crate::domain::shared::value_objects::Money;
+
+
+    #[tokio::test]
+    async fn should_return_customer_when_id_exists() {
+        let entity = Customer::new(CustomerProps {
+            name: "example".to_string(),
+            email: Email::new("example".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(GetCustomerParams { id: entity_id }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetCustomerParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.not_found");
+    }
+}
+
+=== business/src/application/customer/list_customer.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::Customer,
+    repository::CustomerRepositoryTrait,
+    use_cases::list_customer::{ListCustomerParams, ListCustomerUseCaseTrait},
+};
+
+pub struct ListCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListCustomerUseCaseTrait for ListCustomerUseCaseImpl {
+    async fn execute(&self, _params: ListCustomerParams) -> Result<Vec<Customer>, CustomerError> {
+        tracing::info!("list_customer: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_customer: repository failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::{
+        model::{Customer, CustomerProps},
+        repository::mocks::MockCustomerRepository,
+    };
+    use crate::domain::shared::value_objects::Email;
+    use crate::domain::shared::value_objects::Money;
+
+
+    #[tokio::test]
+    async fn should_return_all_customers() {
+        let entities = vec![
+            Customer::new(CustomerProps {
+            name: "first".to_string(),
+            email: Email::new("first".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        }).unwrap(),
+            Customer::new(CustomerProps {
+            name: "second".to_string(),
+            email: Email::new("second".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        }).unwrap(),
+        ];
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move || Ok(entities.clone()));
+        let use_case = ListCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListCustomerParams).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_empty_list_when_no_customers_exist() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        let use_case = ListCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListCustomerParams).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+}
+
+=== business/src/application/customer/update_customer.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::shared::value_objects::Email;
+use crate::domain::shared::value_objects::Money;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::Customer,
+    repository::CustomerRepositoryTrait,
+    use_cases::update_customer::{UpdateCustomerParams, UpdateCustomerUseCaseTrait},
+};
+
+pub struct UpdateCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateCustomerUseCaseTrait for UpdateCustomerUseCaseImpl {
+    async fn execute(&self, params: UpdateCustomerParams) -> Result<Customer, CustomerError> {
+        tracing::info!(id = %params.id, "update_customer: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_customer: repository failed"))?
+            .ok_or_else(|| {
+                let err = CustomerError::NotFound;
+                tracing::warn!(error = %err, "update_customer: rejected");
+                err
+            })?;
+        if params.name.trim().is_empty() {
+            let err = CustomerError::ValidationError("name_empty".into());
+            tracing::warn!(error = %err, "update_customer: rejected");
+            return Err(err);
+        }
+let email = Email::new(params.email).map_err(|_| CustomerError::InvalidEmail)?;
+let credit = Money::new(params.credit).map_err(|_| CustomerError::InvalidMoney)?;
+        entity.name = params.name;
+        entity.email = email;
+        entity.credit = credit;
+        entity.updated_at = chrono::Utc::now();
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_customer: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::{
+        model::{Customer, CustomerProps},
+        repository::mocks::MockCustomerRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::shared::value_objects::Email;
+    use crate::domain::shared::value_objects::Money;
+
+
+    #[tokio::test]
+    async fn should_update_customer_when_params_are_valid() {
+        // Arrange
+        let entity = Customer::new(CustomerProps {
+            name: "original".to_string(),
+            email: Email::new("original".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCustomerParams {
+            id: entity_id,
+            name: "updated".to_string(),
+            email: "updated".to_string(),
+            credit: 42,
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().name, "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_customer_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCustomerParams {
+            id: Uuid::new_v4(),
+            name: "new".to_string(),
+            email: "new".to_string(),
+            credit: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let entity = Customer::new(CustomerProps {
+            name: "original".to_string(),
+            email: Email::new("original".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCustomerParams {
+            id: entity_id,
+            name: "".to_string(),
+            email: "updated".to_string(),
+            credit: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "customer.validation_error.name_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_email_is_empty() {
+        // Arrange
+        let entity = Customer::new(CustomerProps {
+            name: "original".to_string(),
+            email: Email::new("original".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCustomerParams {
+            id: entity_id,
+            name: "updated".to_string(),
+            email: "".to_string(),
+            credit: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "customer.invalid_email"
+        );
+    }
+}
+
+=== business/src/domain/customer/errors.rs ===
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum CustomerError {
+    #[error("customer.validation_error.{0}")]
+    ValidationError(String),
+    #[error("customer.not_found")]
+    NotFound,
+    #[error("customer.duplicate")]
+    Duplicate,
+    #[error("customer.repository_error")]
+    RepositoryError,
+    #[error("customer.unknown")]
+    Unknown,
+    #[error("customer.invalid_email")]
+    InvalidEmail,
+    #[error("customer.invalid_money")]
+    InvalidMoney,
+}
+
+=== business/src/domain/customer/model.rs ===
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+use crate::domain::shared::value_objects::Email;
+use crate::domain::shared::value_objects::Money;
+
+use super::errors::CustomerError;
+
+#[derive(Debug, Clone)]
+pub struct CustomerProps {
+    pub name: String,
+    pub email: Email,
+    pub credit: Money,
+}
+
+#[derive(Debug, Clone)]
+pub struct Customer {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub name: String,
+    pub email: Email,
+    pub credit: Money,
+}
+
+impl Customer {
+    pub fn new(props: CustomerProps) -> Result<Self, CustomerError> {
+        if props.name.trim().is_empty() {
+            return Err(CustomerError::ValidationError("name_empty".into()));
+        }
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            name: props.name,
+            email: props.email,
+            credit: props.credit,
+        })
+    }
+
+    pub fn from_repository(data: Customer) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_customer_when_fields_are_valid() {
+        let result = Customer::new(CustomerProps {
+            name: "example".to_string(),
+            email: Email::new("example".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        });
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+
+    #[test]
+    fn should_reject_customer_when_name_is_empty() {
+        let result = Customer::new(CustomerProps {
+            name: "".into(),
+            email: Email::new("example".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "customer.validation_error.name_empty"
+        );
+    }
+
+    #[test]
+    fn should_reject_customer_when_name_is_only_whitespace() {
+        let result = Customer::new(CustomerProps {
+            name: "   ".into(),
+            email: Email::new("example".to_string()).expect("valid Email"),
+            credit: Money::new(42).expect("valid Money"),
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn should_reject_customer_when_email_is_empty() {
+        let result = Email::new("".to_string());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "shared.value_object.email.invalid"
+        );
+    }
+}
+
+=== business/src/domain/customer/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use super::{errors::CustomerError, model::Customer};
+
+#[async_trait]
+pub trait CustomerRepositoryTrait: Send + Sync {
+    async fn find_all(&self) -> Result<Vec<Customer>, CustomerError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Customer>, CustomerError>;
+    async fn save(&self, entity: &Customer) -> Result<(), CustomerError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+    use uuid::Uuid;
+
+    use super::*;
+
+    mock! {
+        pub CustomerRepository {}
+
+        #[async_trait]
+        impl CustomerRepositoryTrait for CustomerRepository {
+            async fn find_all(&self) -> Result<Vec<Customer>, CustomerError>;
+            async fn find_by_id(&self, id: Uuid) -> Result<Option<Customer>, CustomerError>;
+            async fn save(&self, entity: &Customer) -> Result<(), CustomerError>;
+        }
+    }
+}
+
+=== business/src/domain/customer/use_cases/create_customer.rs ===
+use async_trait::async_trait;
+
+use crate::domain::customer::{errors::CustomerError, model::Customer};
+
+#[derive(Debug, Clone)]
+pub struct CreateCustomerParams {
+    pub name: String,
+    pub email: String,
+    pub credit: i64,
+}
+
+#[async_trait]
+pub trait CreateCustomerUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateCustomerParams) -> Result<Customer, CustomerError>;
+}
+
+=== business/src/domain/customer/use_cases/delete_customer.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::customer::errors::CustomerError;
+
+#[derive(Debug, Clone)]
+pub struct DeleteCustomerParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait DeleteCustomerUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteCustomerParams) -> Result<(), CustomerError>;
+}
+
+=== business/src/domain/customer/use_cases/get_customer.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::customer::{errors::CustomerError, model::Customer};
+
+#[derive(Debug, Clone)]
+pub struct GetCustomerParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait GetCustomerUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetCustomerParams) -> Result<Customer, CustomerError>;
+}
+
+=== business/src/domain/customer/use_cases/list_customer.rs ===
+use async_trait::async_trait;
+
+use crate::domain::customer::{errors::CustomerError, model::Customer};
+
+#[derive(Debug)]
+pub struct ListCustomerParams;
+
+#[async_trait]
+pub trait ListCustomerUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListCustomerParams) -> Result<Vec<Customer>, CustomerError>;
+}
+
+=== business/src/domain/customer/use_cases/update_customer.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::customer::{errors::CustomerError, model::Customer};
+
+#[derive(Debug, Clone)]
+pub struct UpdateCustomerParams {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+    pub credit: i64,
+}
+
+#[async_trait]
+pub trait UpdateCustomerUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateCustomerParams) -> Result<Customer, CustomerError>;
+}
+
+=== business/src/domain/shared/errors.rs ===
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum EmailError {
+    #[error("shared.value_object.email.invalid")]
+    Invalid,
+}
+
+#[derive(Debug, Error)]
+pub enum MoneyError {
+    #[error("shared.value_object.money.invalid")]
+    Invalid,
+}
+
+=== business/src/domain/shared/mod.rs ===
+pub mod errors;
+pub mod value_objects;
+
+=== business/src/domain/shared/value_objects.rs ===
+use super::errors::EmailError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Email {
+    value: String,
+}
+
+impl Email {
+    pub fn new(value: String) -> Result<Self, EmailError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(EmailError::Invalid);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+use super::errors::MoneyError;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Money(i64);
+
+impl Money {
+    pub fn new(value: i64) -> Result<Self, MoneyError> {
+        Ok(Self(value))
+    }
+
+    pub fn value(&self) -> i64 {
+        self.0
+    }
+}
+
+=== business/src/lib.rs ===
+pub mod domain {
+  pub mod greeting {
+    pub mod errors;
+    pub mod model;
+    pub mod repository;
+    pub mod use_cases {
+      pub mod get_greeting;
+    }
+  }
+
+    pub mod customer {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_customer;
+            pub mod get_customer;
+            pub mod list_customer;
+            pub mod update_customer;
+            pub mod delete_customer;
+        }
+    }
+
+    pub mod shared;
+}
+pub mod application {
+  pub mod greeting {
+    pub mod get_greeting;
+  }
+
+    pub mod customer {
+        pub mod create_customer;
+        pub mod get_customer;
+        pub mod list_customer;
+        pub mod update_customer;
+        pub mod delete_customer;
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    pub mod mothers {
+        pub mod customer_mother;
+    }
+}
+
+=== business/src/tests/mothers/customer_mother.rs ===
+use crate::domain::customer::model::Customer;
+use crate::domain::customer::model::CustomerProps;
+use crate::domain::shared::value_objects::Email;
+use crate::domain::shared::value_objects::Money;
+
+pub struct CustomerMother {
+    name: Option<String>,
+    email: Option<Email>,
+    credit: Option<Money>,
+}
+
+impl CustomerMother {
+    pub fn new() -> Self {
+        Self { name: None, email: None, credit: None }
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
+        self
+    }
+
+    pub fn with_email(mut self, email: Email) -> Self {
+        self.email = Some(email);
+        self
+    }
+
+    pub fn with_credit(mut self, credit: Money) -> Self {
+        self.credit = Some(credit);
+        self
+    }
+
+    pub fn with_empty_name(mut self) -> Self {
+        self.name = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> Customer {
+        Customer::new(CustomerProps {
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+            email: self.email.unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            credit: self.credit.unwrap_or_else(|| Money::new(42).expect("valid Money")),
+        })
+        .expect("CustomerMother: failed to build valid Customer")
+    }
+
+    pub fn build_props(self) -> CustomerProps {
+        CustomerProps {
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+            email: self.email.unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            credit: self.credit.unwrap_or_else(|| Money::new(42).expect("valid Money")),
+        }
+    }
+
+    pub fn random() -> Customer {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Customer> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for CustomerMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== infrastructure/src/customer/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use business::domain::customer::{
+    errors::CustomerError,
+    model::Customer,
+    repository::CustomerRepositoryTrait,
+};
+
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// Postgres repositories).
+#[derive(Default)]
+pub struct InMemoryCustomerRepository;
+
+impl InMemoryCustomerRepository {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl CustomerRepositoryTrait for InMemoryCustomerRepository {
+    async fn find_all(&self) -> Result<Vec<Customer>, CustomerError> {
+        tracing::debug!("find_all");
+        Ok(vec![])
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Customer>, CustomerError> {
+        tracing::debug!(%id, "find_by_id");
+        Ok(None)
+    }
+
+    async fn save(&self, entity: &Customer) -> Result<(), CustomerError> {
+        tracing::debug!(id = %entity.id, "save");
+        Ok(())
+    }
+}
+
+=== infrastructure/src/lib.rs ===
+pub mod greeting {
+    pub mod repository;
+}
+pub mod customer {
+    pub mod repository;
+}
+
+=== presentation/src/api.rs ===
+pub mod error;
+pub mod greeting;
+pub mod tags;
+pub mod customer;
+
+=== presentation/src/api/customer.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/customer/dto.rs ===
+use business::domain::customer::model::Customer;
+use poem_openapi::Object;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CustomerDto {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+    pub credit: i64,
+}
+
+impl CustomerDto {
+    pub fn from_domain(entity: &Customer) -> Self {
+        Self {
+            id: entity.id,
+            name: entity.name.clone(),
+            email: entity.email.value().to_string(),
+            credit: entity.credit.value(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateCustomerRequest {
+    pub name: String,
+    pub email: String,
+    pub credit: i64,
+}
+
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateCustomerRequest {
+    pub name: String,
+    pub email: String,
+    pub credit: i64,
+}
+
+
+=== presentation/src/api/customer/error_mapper.rs ===
+use business::domain::customer::errors::CustomerError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+
+use crate::api::error::{ErrorResponse, IntoErrorResponse};
+
+impl IntoErrorResponse for CustomerError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            CustomerError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            CustomerError::NotFound => StatusCode::NOT_FOUND,
+            CustomerError::Duplicate => StatusCode::CONFLICT,
+            CustomerError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            CustomerError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            CustomerError::InvalidEmail => StatusCode::UNPROCESSABLE_ENTITY,
+            CustomerError::InvalidMoney => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "customer.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "customer.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "customer.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "customer.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "customer.unknown");
+    }
+
+    #[test]
+    fn should_map_invalid_email_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::InvalidEmail.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "customer.invalid_email");
+    }
+
+    #[test]
+    fn should_map_invalid_money_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::InvalidMoney.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "customer.invalid_money");
+    }
+}
+
+=== presentation/src/api/customer/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use crate::api::{error::ErrorResponse, customer::dto::CustomerDto};
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+
+#[derive(ApiResponse)]
+pub enum CreateCustomerResponse {
+    #[oai(status = 201)]
+    Created(Json<CustomerDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateCustomerResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetCustomerResponse {
+    #[oai(status = 200)]
+    Ok(Json<CustomerDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetCustomerResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListCustomerResponse {
+    #[oai(status = 200)]
+    Ok(Json<Vec<CustomerDto>>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListCustomerResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateCustomerResponse {
+    #[oai(status = 200)]
+    Ok(Json<CustomerDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateCustomerResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteCustomerResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteCustomerResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/customer/routes.rs ===
+use std::sync::Arc;
+
+use business::{
+    application::customer::{
+        create_customer::CreateCustomerUseCaseImpl,
+        delete_customer::DeleteCustomerUseCaseImpl,
+        get_customer::GetCustomerUseCaseImpl,
+        list_customer::ListCustomerUseCaseImpl,
+        update_customer::UpdateCustomerUseCaseImpl,
+    },
+    domain::customer::use_cases::{
+        create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
+        delete_customer::{DeleteCustomerParams, DeleteCustomerUseCaseTrait},
+        get_customer::{GetCustomerParams, GetCustomerUseCaseTrait},
+        list_customer::{ListCustomerParams, ListCustomerUseCaseTrait},
+        update_customer::{UpdateCustomerParams, UpdateCustomerUseCaseTrait},
+    },
+};
+use poem_openapi::{OpenApi, param::Path, payload::Json};
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
+use crate::api::customer::dto::{CreateCustomerRequest, UpdateCustomerRequest, CustomerDto};
+use crate::api::customer::responses::{
+    CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomerResponse,
+    UpdateCustomerResponse,
+};
+
+pub struct CustomerApi {
+    pub create_customer: Arc<CreateCustomerUseCaseImpl>,
+    pub get_customer: Arc<GetCustomerUseCaseImpl>,
+    pub list_customer: Arc<ListCustomerUseCaseImpl>,
+    pub update_customer: Arc<UpdateCustomerUseCaseImpl>,
+    pub delete_customer: Arc<DeleteCustomerUseCaseImpl>,
+}
+
+#[OpenApi]
+impl CustomerApi {
+    /// Create a new Customer
+    #[oai(path = "/customers", method = "post", tag = "ApiTags::Customer")]
+    async fn create(&self, body: Json<CreateCustomerRequest>) -> CreateCustomerResponse {
+        match self
+            .create_customer
+            .execute(CreateCustomerParams {
+                name: body.name.clone(),
+                email: body.email.clone(),
+                credit: body.credit,
+            })
+            .await
+        {
+            Ok(entity) => CreateCustomerResponse::Created(Json(CustomerDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_customer failed");
+                CreateCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Customer by ID
+    #[oai(path = "/customers/:id", method = "get", tag = "ApiTags::Customer")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetCustomerResponse {
+        match self
+            .get_customer
+            .execute(GetCustomerParams { id: id.0 })
+            .await
+        {
+            Ok(entity) => GetCustomerResponse::Ok(Json(CustomerDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_customer failed");
+                GetCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List all Customers
+    #[oai(path = "/customers", method = "get", tag = "ApiTags::Customer")]
+    async fn list(&self) -> ListCustomerResponse {
+        match self.list_customer.execute(ListCustomerParams).await {
+            Ok(entities) => {
+                ListCustomerResponse::Ok(Json(entities.iter().map(CustomerDto::from_domain).collect()))
+            }
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_customer failed");
+                ListCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Customer
+    #[oai(path = "/customers/:id", method = "put", tag = "ApiTags::Customer")]
+    async fn update(&self, id: Path<Uuid>, body: Json<UpdateCustomerRequest>) -> UpdateCustomerResponse {
+        match self
+            .update_customer
+            .execute(UpdateCustomerParams {
+                id: id.0,
+                name: body.name.clone(),
+                email: body.email.clone(),
+                credit: body.credit,
+            })
+            .await
+        {
+            Ok(entity) => UpdateCustomerResponse::Ok(Json(CustomerDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_customer failed");
+                UpdateCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Customer
+    #[oai(path = "/customers/:id", method = "delete", tag = "ApiTags::Customer")]
+    async fn delete(&self, id: Path<Uuid>) -> DeleteCustomerResponse {
+        match self
+            .delete_customer
+            .execute(DeleteCustomerParams { id: id.0 })
+            .await
+        {
+            Ok(()) => DeleteCustomerResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_customer failed");
+                DeleteCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+=== presentation/src/api/tags.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use poem_openapi::Tags;
+
+#[derive(Tags)]
+pub enum ApiTags {
+    Greeting,
+    Customer,
+}
+
+=== presentation/src/generated/bootstrap.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use std::sync::Arc;
+
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
+use business::application::customer::create_customer::CreateCustomerUseCaseImpl;
+use business::application::customer::get_customer::GetCustomerUseCaseImpl;
+use business::application::customer::list_customer::ListCustomerUseCaseImpl;
+use business::application::customer::update_customer::UpdateCustomerUseCaseImpl;
+use business::application::customer::delete_customer::DeleteCustomerUseCaseImpl;
+
+use business::domain::greeting::repository::GreetingRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
+use business::domain::customer::repository::CustomerRepositoryTrait;
+use infrastructure::customer::repository::InMemoryCustomerRepository;
+
+use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem_openapi::OpenApiService;
+
+use crate::api::greeting::routes::GreetingApi;
+use crate::api::customer::routes::CustomerApi;
+
+pub async fn build_app() -> impl poem::Endpoint {
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let greeting_api = GreetingApi { get_greeting };
+
+    let customer_repo: Arc<dyn CustomerRepositoryTrait> = Arc::new(InMemoryCustomerRepository::new());
+    let create_customer = Arc::new(CreateCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
+    let get_customer = Arc::new(GetCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
+    let list_customer = Arc::new(ListCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
+    let update_customer = Arc::new(UpdateCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
+    let delete_customer = Arc::new(DeleteCustomerUseCaseImpl { repository: customer_repo });
+    let customer_api = CustomerApi { create_customer, get_customer, list_customer, update_customer, delete_customer };
+
+    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
+    let api_service = OpenApiService::new(
+        (greeting_api, customer_api),
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )
+    .server(format!("http://localhost:{port}/api"));
+    let ui = api_service.swagger_ui();
+
+    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
+    let mut cors = Cors::new();
+    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        cors = cors.allow_origin(origin);
+    }
+
+    Route::new()
+        .at("/health", get(crate::health::liveness))
+        .at(
+            "/health/ready",
+            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
+        )
+        .nest("/api", api_service)
+        .nest("/", ui)
+        .with(Tracing)
+        .with(cors)
+}
+
+=== puerto.toml ===
+[project]
+name = "snapshot"
+
+[[entity]]
+name = "Greeting"
+use_cases = ["get_greeting"]
+fields = []
+
+[[entity]]
+name = "Customer"
+use_cases = [
+    "create_customer",
+    "get_customer",
+    "list_customer",
+    "update_customer",
+    "delete_customer",
+]
+
+[[entity.fields]]
+name = "name"
+type = "String"
+
+[[entity.fields]]
+name = "email"
+type = "String"
+value_object = "Email"
+
+[[entity.fields]]
+name = "credit"
+type = "i64"
+value_object = "Money"
+
+[[value_object]]
+name = "Email"
+type = "String"
+
+[[value_object]]
+name = "Money"
+type = "i64"

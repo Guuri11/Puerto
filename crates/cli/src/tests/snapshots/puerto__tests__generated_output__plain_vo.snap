@@ -1,0 +1,1534 @@
+---
+source: crates/cli/src/tests/generated_output.rs
+expression: generated_output(& PLAIN_VO)
+---
+=== business/src/application/item/create_item.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::item::value_objects::Name;
+use crate::domain::item::value_objects::Sku;
+use crate::domain::item::value_objects::Weight;
+
+use crate::domain::item::{
+    errors::ItemError,
+    model::{Item, ItemProps},
+    repository::ItemRepositoryTrait,
+    use_cases::create_item::{CreateItemParams, CreateItemUseCaseTrait},
+};
+
+pub struct CreateItemUseCaseImpl {
+    pub repository: Arc<dyn ItemRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateItemUseCaseTrait for CreateItemUseCaseImpl {
+    async fn execute(&self, params: CreateItemParams) -> Result<Item, ItemError> {
+        tracing::info!("create_item: start");
+let name = Name::new(params.name)?;
+let sku = Sku::new(params.sku)?;
+let weight = Weight::new(params.weight)?;
+        let entity = Item::new(ItemProps {
+            name,
+            sku,
+            weight,
+        }).inspect_err(|e| tracing::warn!(error = %e, "create_item: rejected"))?;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_item: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_item: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::item::repository::mocks::MockItemRepository;
+
+
+    #[tokio::test]
+    async fn should_create_item_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateItemParams {
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            weight: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name.value(), "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let mock_repo = MockItemRepository::new();
+        let use_case = CreateItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateItemParams {
+            name: "".to_string(),
+            sku: "example".to_string(),
+            weight: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "item.invalid_name"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_sku_is_empty() {
+        // Arrange
+        let mock_repo = MockItemRepository::new();
+        let use_case = CreateItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateItemParams {
+            name: "example".to_string(),
+            sku: "".to_string(),
+            weight: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "item.invalid_sku"
+        );
+    }
+}
+
+=== business/src/application/item/delete_item.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::item::{
+    errors::ItemError,
+    repository::ItemRepositoryTrait,
+    use_cases::delete_item::{DeleteItemParams, DeleteItemUseCaseTrait},
+};
+
+pub struct DeleteItemUseCaseImpl {
+    pub repository: Arc<dyn ItemRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteItemUseCaseTrait for DeleteItemUseCaseImpl {
+    async fn execute(&self, params: DeleteItemParams) -> Result<(), ItemError> {
+        tracing::info!(id = %params.id, "delete_item: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_item: repository failed"))?
+            .ok_or_else(|| {
+                let err = ItemError::NotFound;
+                tracing::warn!(error = %err, "delete_item: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_item: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::item::{
+        model::{Item, ItemProps},
+        repository::mocks::MockItemRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::item::value_objects::Name;
+    use crate::domain::item::value_objects::Sku;
+    use crate::domain::item::value_objects::Weight;
+
+
+    #[tokio::test]
+    async fn should_soft_delete_item_when_id_exists() {
+        let entity = Item::new(ItemProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: Sku::new("example".to_string()).expect("valid Sku"),
+            weight: Weight::new(42).expect("valid Weight"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteItemParams { id: entity_id })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_item_does_not_exist() {
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteItemParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "item.not_found");
+    }
+}
+
+=== business/src/application/item/get_item.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::item::{
+    errors::ItemError,
+    model::Item,
+    repository::ItemRepositoryTrait,
+    use_cases::get_item::{GetItemParams, GetItemUseCaseTrait},
+};
+
+pub struct GetItemUseCaseImpl {
+    pub repository: Arc<dyn ItemRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetItemUseCaseTrait for GetItemUseCaseImpl {
+    async fn execute(&self, params: GetItemParams) -> Result<Item, ItemError> {
+        tracing::info!(id = %params.id, "get_item: start");
+        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_item: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = ItemError::NotFound;
+            tracing::warn!(error = %err, "get_item: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::item::{
+        model::{Item, ItemProps},
+        repository::mocks::MockItemRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::item::value_objects::Name;
+    use crate::domain::item::value_objects::Sku;
+    use crate::domain::item::value_objects::Weight;
+
+
+    #[tokio::test]
+    async fn should_return_item_when_id_exists() {
+        let entity = Item::new(ItemProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: Sku::new("example".to_string()).expect("valid Sku"),
+            weight: Weight::new(42).expect("valid Weight"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(GetItemParams { id: entity_id }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name.value(), "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetItemParams { id: Uuid::new_v4() })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "item.not_found");
+    }
+}
+
+=== business/src/application/item/list_item.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::item::{
+    errors::ItemError,
+    model::Item,
+    repository::ItemRepositoryTrait,
+    use_cases::list_item::{ListItemParams, ListItemUseCaseTrait},
+};
+
+pub struct ListItemUseCaseImpl {
+    pub repository: Arc<dyn ItemRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListItemUseCaseTrait for ListItemUseCaseImpl {
+    async fn execute(&self, _params: ListItemParams) -> Result<Vec<Item>, ItemError> {
+        tracing::info!("list_item: start");
+        self.repository.find_all().await.inspect_err(|e| tracing::error!(error = %e, "list_item: repository failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::item::{
+        model::{Item, ItemProps},
+        repository::mocks::MockItemRepository,
+    };
+    use crate::domain::item::value_objects::Name;
+    use crate::domain::item::value_objects::Sku;
+    use crate::domain::item::value_objects::Weight;
+
+
+    #[tokio::test]
+    async fn should_return_all_items() {
+        let entities = vec![
+            Item::new(ItemProps {
+            name: Name::new("first".to_string()).expect("valid Name"),
+            sku: Sku::new("first".to_string()).expect("valid Sku"),
+            weight: Weight::new(42).expect("valid Weight"),
+        }).unwrap(),
+            Item::new(ItemProps {
+            name: Name::new("second".to_string()).expect("valid Name"),
+            sku: Sku::new("second".to_string()).expect("valid Sku"),
+            weight: Weight::new(42).expect("valid Weight"),
+        }).unwrap(),
+        ];
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move || Ok(entities.clone()));
+        let use_case = ListItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListItemParams).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_empty_list_when_no_items_exist() {
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        let use_case = ListItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(ListItemParams).await;
+
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+}
+
+=== business/src/application/item/update_item.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crate::domain::item::value_objects::Name;
+use crate::domain::item::value_objects::Sku;
+use crate::domain::item::value_objects::Weight;
+
+use crate::domain::item::{
+    errors::ItemError,
+    model::Item,
+    repository::ItemRepositoryTrait,
+    use_cases::update_item::{UpdateItemParams, UpdateItemUseCaseTrait},
+};
+
+pub struct UpdateItemUseCaseImpl {
+    pub repository: Arc<dyn ItemRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateItemUseCaseTrait for UpdateItemUseCaseImpl {
+    async fn execute(&self, params: UpdateItemParams) -> Result<Item, ItemError> {
+        tracing::info!(id = %params.id, "update_item: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_item: repository failed"))?
+            .ok_or_else(|| {
+                let err = ItemError::NotFound;
+                tracing::warn!(error = %err, "update_item: rejected");
+                err
+            })?;
+let name = Name::new(params.name)?;
+let sku = Sku::new(params.sku)?;
+let weight = Weight::new(params.weight)?;
+        entity.name = name;
+        entity.sku = sku;
+        entity.weight = weight;
+        entity.updated_at = chrono::Utc::now();
+        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_item: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::item::{
+        model::{Item, ItemProps},
+        repository::mocks::MockItemRepository,
+    };
+    use uuid::Uuid;
+    use crate::domain::item::value_objects::Name;
+    use crate::domain::item::value_objects::Sku;
+    use crate::domain::item::value_objects::Weight;
+
+
+    #[tokio::test]
+    async fn should_update_item_when_params_are_valid() {
+        // Arrange
+        let entity = Item::new(ItemProps {
+            name: Name::new("original".to_string()).expect("valid Name"),
+            sku: Sku::new("original".to_string()).expect("valid Sku"),
+            weight: Weight::new(42).expect("valid Weight"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateItemParams {
+            id: entity_id,
+            name: "updated".to_string(),
+            sku: "updated".to_string(),
+            weight: 42,
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().name.value(), "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_item_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateItemParams {
+            id: Uuid::new_v4(),
+            name: "new".to_string(),
+            sku: "new".to_string(),
+            weight: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "item.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let entity = Item::new(ItemProps {
+            name: Name::new("original".to_string()).expect("valid Name"),
+            sku: Sku::new("original".to_string()).expect("valid Sku"),
+            weight: Weight::new(42).expect("valid Weight"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateItemParams {
+            id: entity_id,
+            name: "".to_string(),
+            sku: "updated".to_string(),
+            weight: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "item.invalid_name"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_sku_is_empty() {
+        // Arrange
+        let entity = Item::new(ItemProps {
+            name: Name::new("original".to_string()).expect("valid Name"),
+            sku: Sku::new("original".to_string()).expect("valid Sku"),
+            weight: Weight::new(42).expect("valid Weight"),
+        }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateItemUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateItemParams {
+            id: entity_id,
+            name: "updated".to_string(),
+            sku: "".to_string(),
+            weight: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "item.invalid_sku"
+        );
+    }
+}
+
+=== business/src/domain/item/errors.rs ===
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ItemError {
+    #[error("item.validation_error.{0}")]
+    ValidationError(String),
+    #[error("item.not_found")]
+    NotFound,
+    #[error("item.duplicate")]
+    Duplicate,
+    #[error("item.repository_error")]
+    RepositoryError,
+    #[error("item.unknown")]
+    Unknown,
+    #[error("item.invalid_name")]
+    InvalidName,
+    #[error("item.invalid_sku")]
+    InvalidSku,
+    #[error("item.invalid_weight")]
+    InvalidWeight,
+}
+
+=== business/src/domain/item/model.rs ===
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+use super::value_objects::Name;
+use super::value_objects::Sku;
+use super::value_objects::Weight;
+
+use super::errors::ItemError;
+
+#[derive(Debug, Clone)]
+pub struct ItemProps {
+    pub name: Name,
+    pub sku: Sku,
+    pub weight: Weight,
+}
+
+#[derive(Debug, Clone)]
+pub struct Item {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub name: Name,
+    pub sku: Sku,
+    pub weight: Weight,
+}
+
+impl Item {
+    pub fn new(props: ItemProps) -> Result<Self, ItemError> {
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: Uuid::new_v4(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            name: props.name,
+            sku: props.sku,
+            weight: props.weight,
+        })
+    }
+
+    pub fn from_repository(data: Item) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_item_when_fields_are_valid() {
+        let result = Item::new(ItemProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: Sku::new("example".to_string()).expect("valid Sku"),
+            weight: Weight::new(42).expect("valid Weight"),
+        });
+        assert!(result.is_ok());
+    }
+
+
+    #[test]
+    fn should_reject_item_when_name_is_empty() {
+        let result = Name::new("".to_string());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "item.invalid_name"
+        );
+    }
+
+    #[test]
+    fn should_reject_item_when_sku_is_empty() {
+        let result = Sku::new("".to_string());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "item.invalid_sku"
+        );
+    }
+}
+
+=== business/src/domain/item/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use super::{errors::ItemError, model::Item};
+
+#[async_trait]
+pub trait ItemRepositoryTrait: Send + Sync {
+    async fn find_all(&self) -> Result<Vec<Item>, ItemError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Item>, ItemError>;
+    async fn save(&self, entity: &Item) -> Result<(), ItemError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+    use uuid::Uuid;
+
+    use super::*;
+
+    mock! {
+        pub ItemRepository {}
+
+        #[async_trait]
+        impl ItemRepositoryTrait for ItemRepository {
+            async fn find_all(&self) -> Result<Vec<Item>, ItemError>;
+            async fn find_by_id(&self, id: Uuid) -> Result<Option<Item>, ItemError>;
+            async fn save(&self, entity: &Item) -> Result<(), ItemError>;
+        }
+    }
+}
+
+=== business/src/domain/item/use_cases/create_item.rs ===
+use async_trait::async_trait;
+
+use crate::domain::item::{errors::ItemError, model::Item};
+
+#[derive(Debug, Clone)]
+pub struct CreateItemParams {
+    pub name: String,
+    pub sku: String,
+    pub weight: i64,
+}
+
+#[async_trait]
+pub trait CreateItemUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateItemParams) -> Result<Item, ItemError>;
+}
+
+=== business/src/domain/item/use_cases/delete_item.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::item::errors::ItemError;
+
+#[derive(Debug, Clone)]
+pub struct DeleteItemParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait DeleteItemUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteItemParams) -> Result<(), ItemError>;
+}
+
+=== business/src/domain/item/use_cases/get_item.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::item::{errors::ItemError, model::Item};
+
+#[derive(Debug, Clone)]
+pub struct GetItemParams {
+    pub id: Uuid,
+}
+
+#[async_trait]
+pub trait GetItemUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetItemParams) -> Result<Item, ItemError>;
+}
+
+=== business/src/domain/item/use_cases/list_item.rs ===
+use async_trait::async_trait;
+
+use crate::domain::item::{errors::ItemError, model::Item};
+
+#[derive(Debug)]
+pub struct ListItemParams;
+
+#[async_trait]
+pub trait ListItemUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListItemParams) -> Result<Vec<Item>, ItemError>;
+}
+
+=== business/src/domain/item/use_cases/update_item.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use crate::domain::item::{errors::ItemError, model::Item};
+
+#[derive(Debug, Clone)]
+pub struct UpdateItemParams {
+    pub id: Uuid,
+    pub name: String,
+    pub sku: String,
+    pub weight: i64,
+}
+
+#[async_trait]
+pub trait UpdateItemUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateItemParams) -> Result<Item, ItemError>;
+}
+
+=== business/src/domain/item/value_objects.rs ===
+use super::errors::ItemError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Name {
+    value: String,
+}
+
+impl Name {
+    pub fn new(value: String) -> Result<Self, ItemError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(ItemError::InvalidName);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sku {
+    value: String,
+}
+
+impl Sku {
+    pub fn new(value: String) -> Result<Self, ItemError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(ItemError::InvalidSku);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Weight(i64);
+
+impl Weight {
+    pub fn new(value: i64) -> Result<Self, ItemError> {
+        Ok(Self(value))
+    }
+
+    pub fn value(&self) -> i64 {
+        self.0
+    }
+}
+
+=== business/src/lib.rs ===
+pub mod domain {
+  pub mod greeting {
+    pub mod errors;
+    pub mod model;
+    pub mod repository;
+    pub mod use_cases {
+      pub mod get_greeting;
+    }
+  }
+
+    pub mod item {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_item;
+            pub mod get_item;
+            pub mod list_item;
+            pub mod update_item;
+            pub mod delete_item;
+        }
+    
+        pub mod value_objects;
+}
+}
+pub mod application {
+  pub mod greeting {
+    pub mod get_greeting;
+  }
+
+    pub mod item {
+        pub mod create_item;
+        pub mod get_item;
+        pub mod list_item;
+        pub mod update_item;
+        pub mod delete_item;
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    pub mod mothers {
+        pub mod item_mother;
+    }
+}
+
+=== business/src/tests/mothers/item_mother.rs ===
+use crate::domain::item::model::Item;
+use crate::domain::item::model::ItemProps;
+use crate::domain::item::value_objects::Name;
+use crate::domain::item::value_objects::Sku;
+use crate::domain::item::value_objects::Weight;
+
+pub struct ItemMother {
+    name: Option<Name>,
+    sku: Option<Sku>,
+    weight: Option<Weight>,
+}
+
+impl ItemMother {
+    pub fn new() -> Self {
+        Self { name: None, sku: None, weight: None }
+    }
+
+    pub fn with_name(mut self, name: Name) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    pub fn with_sku(mut self, sku: Sku) -> Self {
+        self.sku = Some(sku);
+        self
+    }
+
+    pub fn with_weight(mut self, weight: Weight) -> Self {
+        self.weight = Some(weight);
+        self
+    }
+
+    pub fn build(self) -> Item {
+        Item::new(ItemProps {
+            name: self.name.unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            sku: self.sku.unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
+            weight: self.weight.unwrap_or_else(|| Weight::new(42).expect("valid Weight")),
+        })
+        .expect("ItemMother: failed to build valid Item")
+    }
+
+    pub fn build_props(self) -> ItemProps {
+        ItemProps {
+            name: self.name.unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            sku: self.sku.unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
+            weight: self.weight.unwrap_or_else(|| Weight::new(42).expect("valid Weight")),
+        }
+    }
+
+    pub fn random() -> Item {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Item> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for ItemMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== infrastructure/src/item/repository.rs ===
+use async_trait::async_trait;
+use uuid::Uuid;
+
+use business::domain::item::{
+    errors::ItemError,
+    model::Item,
+    repository::ItemRepositoryTrait,
+};
+
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// Postgres repositories).
+#[derive(Default)]
+pub struct InMemoryItemRepository;
+
+impl InMemoryItemRepository {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl ItemRepositoryTrait for InMemoryItemRepository {
+    async fn find_all(&self) -> Result<Vec<Item>, ItemError> {
+        tracing::debug!("find_all");
+        Ok(vec![])
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Item>, ItemError> {
+        tracing::debug!(%id, "find_by_id");
+        Ok(None)
+    }
+
+    async fn save(&self, entity: &Item) -> Result<(), ItemError> {
+        tracing::debug!(id = %entity.id, "save");
+        Ok(())
+    }
+}
+
+=== infrastructure/src/lib.rs ===
+pub mod greeting {
+    pub mod repository;
+}
+pub mod item {
+    pub mod repository;
+}
+
+=== presentation/src/api.rs ===
+pub mod error;
+pub mod greeting;
+pub mod tags;
+pub mod item;
+
+=== presentation/src/api/item.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/item/dto.rs ===
+use business::domain::item::model::Item;
+use poem_openapi::Object;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ItemDto {
+    pub id: Uuid,
+    pub name: String,
+    pub sku: String,
+    pub weight: i64,
+}
+
+impl ItemDto {
+    pub fn from_domain(entity: &Item) -> Self {
+        Self {
+            id: entity.id,
+            name: entity.name.value().to_string(),
+            sku: entity.sku.value().to_string(),
+            weight: entity.weight.value(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateItemRequest {
+    pub name: String,
+    pub sku: String,
+    pub weight: i64,
+}
+
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateItemRequest {
+    pub name: String,
+    pub sku: String,
+    pub weight: i64,
+}
+
+
+=== presentation/src/api/item/error_mapper.rs ===
+use business::domain::item::errors::ItemError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+
+use crate::api::error::{ErrorResponse, IntoErrorResponse};
+
+impl IntoErrorResponse for ItemError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            ItemError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            ItemError::NotFound => StatusCode::NOT_FOUND,
+            ItemError::Duplicate => StatusCode::CONFLICT,
+            ItemError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            ItemError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            ItemError::InvalidName => StatusCode::UNPROCESSABLE_ENTITY,
+            ItemError::InvalidSku => StatusCode::UNPROCESSABLE_ENTITY,
+            ItemError::InvalidWeight => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = ItemError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "item.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = ItemError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "item.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = ItemError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "item.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = ItemError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "item.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = ItemError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "item.unknown");
+    }
+
+    #[test]
+    fn should_map_invalid_name_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = ItemError::InvalidName.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "item.invalid_name");
+    }
+
+    #[test]
+    fn should_map_invalid_sku_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = ItemError::InvalidSku.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "item.invalid_sku");
+    }
+
+    #[test]
+    fn should_map_invalid_weight_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = ItemError::InvalidWeight.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "item.invalid_weight");
+    }
+}
+
+=== presentation/src/api/item/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use crate::api::{error::ErrorResponse, item::dto::ItemDto};
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+
+#[derive(ApiResponse)]
+pub enum CreateItemResponse {
+    #[oai(status = 201)]
+    Created(Json<ItemDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateItemResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetItemResponse {
+    #[oai(status = 200)]
+    Ok(Json<ItemDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetItemResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListItemResponse {
+    #[oai(status = 200)]
+    Ok(Json<Vec<ItemDto>>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListItemResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateItemResponse {
+    #[oai(status = 200)]
+    Ok(Json<ItemDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateItemResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteItemResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteItemResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/item/routes.rs ===
+use std::sync::Arc;
+
+use business::{
+    application::item::{
+        create_item::CreateItemUseCaseImpl,
+        delete_item::DeleteItemUseCaseImpl,
+        get_item::GetItemUseCaseImpl,
+        list_item::ListItemUseCaseImpl,
+        update_item::UpdateItemUseCaseImpl,
+    },
+    domain::item::use_cases::{
+        create_item::{CreateItemParams, CreateItemUseCaseTrait},
+        delete_item::{DeleteItemParams, DeleteItemUseCaseTrait},
+        get_item::{GetItemParams, GetItemUseCaseTrait},
+        list_item::{ListItemParams, ListItemUseCaseTrait},
+        update_item::{UpdateItemParams, UpdateItemUseCaseTrait},
+    },
+};
+use poem_openapi::{OpenApi, param::Path, payload::Json};
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
+use crate::api::item::dto::{CreateItemRequest, UpdateItemRequest, ItemDto};
+use crate::api::item::responses::{
+    CreateItemResponse, DeleteItemResponse, GetItemResponse, ListItemResponse,
+    UpdateItemResponse,
+};
+
+pub struct ItemApi {
+    pub create_item: Arc<CreateItemUseCaseImpl>,
+    pub get_item: Arc<GetItemUseCaseImpl>,
+    pub list_item: Arc<ListItemUseCaseImpl>,
+    pub update_item: Arc<UpdateItemUseCaseImpl>,
+    pub delete_item: Arc<DeleteItemUseCaseImpl>,
+}
+
+#[OpenApi]
+impl ItemApi {
+    /// Create a new Item
+    #[oai(path = "/items", method = "post", tag = "ApiTags::Item")]
+    async fn create(&self, body: Json<CreateItemRequest>) -> CreateItemResponse {
+        match self
+            .create_item
+            .execute(CreateItemParams {
+                name: body.name.clone(),
+                sku: body.sku.clone(),
+                weight: body.weight,
+            })
+            .await
+        {
+            Ok(entity) => CreateItemResponse::Created(Json(ItemDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_item failed");
+                CreateItemResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Item by ID
+    #[oai(path = "/items/:id", method = "get", tag = "ApiTags::Item")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetItemResponse {
+        match self
+            .get_item
+            .execute(GetItemParams { id: id.0 })
+            .await
+        {
+            Ok(entity) => GetItemResponse::Ok(Json(ItemDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_item failed");
+                GetItemResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List all Items
+    #[oai(path = "/items", method = "get", tag = "ApiTags::Item")]
+    async fn list(&self) -> ListItemResponse {
+        match self.list_item.execute(ListItemParams).await {
+            Ok(entities) => {
+                ListItemResponse::Ok(Json(entities.iter().map(ItemDto::from_domain).collect()))
+            }
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_item failed");
+                ListItemResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Item
+    #[oai(path = "/items/:id", method = "put", tag = "ApiTags::Item")]
+    async fn update(&self, id: Path<Uuid>, body: Json<UpdateItemRequest>) -> UpdateItemResponse {
+        match self
+            .update_item
+            .execute(UpdateItemParams {
+                id: id.0,
+                name: body.name.clone(),
+                sku: body.sku.clone(),
+                weight: body.weight,
+            })
+            .await
+        {
+            Ok(entity) => UpdateItemResponse::Ok(Json(ItemDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_item failed");
+                UpdateItemResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Item
+    #[oai(path = "/items/:id", method = "delete", tag = "ApiTags::Item")]
+    async fn delete(&self, id: Path<Uuid>) -> DeleteItemResponse {
+        match self
+            .delete_item
+            .execute(DeleteItemParams { id: id.0 })
+            .await
+        {
+            Ok(()) => DeleteItemResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_item failed");
+                DeleteItemResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+=== presentation/src/api/tags.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use poem_openapi::Tags;
+
+#[derive(Tags)]
+pub enum ApiTags {
+    Greeting,
+    Item,
+}
+
+=== presentation/src/generated/bootstrap.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+use std::sync::Arc;
+
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
+use business::application::item::create_item::CreateItemUseCaseImpl;
+use business::application::item::get_item::GetItemUseCaseImpl;
+use business::application::item::list_item::ListItemUseCaseImpl;
+use business::application::item::update_item::UpdateItemUseCaseImpl;
+use business::application::item::delete_item::DeleteItemUseCaseImpl;
+
+use business::domain::greeting::repository::GreetingRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
+use business::domain::item::repository::ItemRepositoryTrait;
+use infrastructure::item::repository::InMemoryItemRepository;
+
+use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem_openapi::OpenApiService;
+
+use crate::api::greeting::routes::GreetingApi;
+use crate::api::item::routes::ItemApi;
+
+pub async fn build_app() -> impl poem::Endpoint {
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let greeting_api = GreetingApi { get_greeting };
+
+    let item_repo: Arc<dyn ItemRepositoryTrait> = Arc::new(InMemoryItemRepository::new());
+    let create_item = Arc::new(CreateItemUseCaseImpl { repository: Arc::clone(&item_repo) });
+    let get_item = Arc::new(GetItemUseCaseImpl { repository: Arc::clone(&item_repo) });
+    let list_item = Arc::new(ListItemUseCaseImpl { repository: Arc::clone(&item_repo) });
+    let update_item = Arc::new(UpdateItemUseCaseImpl { repository: Arc::clone(&item_repo) });
+    let delete_item = Arc::new(DeleteItemUseCaseImpl { repository: item_repo });
+    let item_api = ItemApi { create_item, get_item, list_item, update_item, delete_item };
+
+    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
+    let api_service = OpenApiService::new(
+        (greeting_api, item_api),
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    )
+    .server(format!("http://localhost:{port}/api"));
+    let ui = api_service.swagger_ui();
+
+    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
+    let mut cors = Cors::new();
+    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        cors = cors.allow_origin(origin);
+    }
+
+    Route::new()
+        .at("/health", get(crate::health::liveness))
+        .at(
+            "/health/ready",
+            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
+        )
+        .nest("/api", api_service)
+        .nest("/", ui)
+        .with(Tracing)
+        .with(cors)
+}
+
+=== puerto.toml ===
+[project]
+name = "snapshot"
+
+[[entity]]
+name = "Greeting"
+use_cases = ["get_greeting"]
+fields = []
+
+[[entity]]
+name = "Item"
+use_cases = [
+    "create_item",
+    "get_item",
+    "list_item",
+    "update_item",
+    "delete_item",
+]
+
+[[entity.fields]]
+name = "name"
+type = "String"
+value_object = "Name"
+
+[[entity.fields]]
+name = "sku"
+type = "String"
+unique = true
+value_object = "Sku"
+
+[[entity.fields]]
+name = "weight"
+type = "i64"
+value_object = "Weight"

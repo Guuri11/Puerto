@@ -114,6 +114,12 @@ a mistake:
 - **Tier 2 — the gate is enough.** CLI messages, docs, snippets, test-only code, refactors fully
   covered by the compile matrix.
 
+Every change to generated output also shows up as a diff in
+`crates/cli/src/tests/snapshots/*.snap` (one file per compile-matrix scenario: every file the
+generators create, rewrite or delete). `make test` fails on it until the snapshots are re-recorded
+with `make test/snapshots` — and that `.snap` diff is the Tier 1 diff to read. A refactor of the
+generators that should not change their output must leave the snapshots untouched.
+
 A change touching both is Tier 1. Before closing a Tier 1 piece in pure logic (`validation.rs`,
 `migration.rs`, `types.rs`, the patchers), run `make test/mutation` and look at the survivors —
 and at the mutant **count**: zero survivors out of zero mutants proves nothing.
