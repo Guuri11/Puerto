@@ -117,9 +117,9 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
 
           <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">What gets created:</p>
           <div class="mt-3 space-y-2 font-sans text-sm text-puerto-mist">
-            <div class="flex gap-2"><span class="text-puerto-teal font-mono">business/</span><span>model.rs, errors.rs, repository.rs (trait + mockall mock), 5 use cases (create, get, list, update, delete)</span></div>
+            <div class="flex gap-2"><span class="text-puerto-teal font-mono">business/</span><span>model.rs, errors.rs, repository.rs (trait + mockall mock), 5 use cases (create, get, list, update, delete), each trait with its mock</span></div>
             <div class="flex gap-2"><span class="text-puerto-indigo font-mono">infrastructure/</span><span>repository (InMemory or Pg — inferred from puerto.toml)</span></div>
-            <div class="flex gap-2"><span class="text-puerto-rust font-mono">presentation/</span><span>routes.rs, dto.rs, responses.rs, error_mapper.rs</span></div>
+            <div class="flex gap-2"><span class="text-puerto-rust font-mono">presentation/</span><span>routes.rs (holds use case ports, tested per status with mocked use cases), dto.rs, responses.rs, error_mapper.rs</span></div>
           </div>
 
           <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">Running it twice:</p>
@@ -161,7 +161,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <div class="mt-2 rounded-md border border-puerto-steel/40 bg-puerto-navy p-5 font-mono text-sm leading-relaxed">
             <div class="text-puerto-mist/60">[[entity]]</div>
             <div class="text-puerto-ice">name = "Product"</div>
-            <div class="text-puerto-ice">use_cases = ["create_product", "list_product"]</div>
+            <div class="text-puerto-ice">use_cases = ["create_product", "list_products"]</div>
             <div class="mt-2 text-puerto-mist/60">[[entity.fields]]</div>
             <div class="text-puerto-ice">name = "name"</div>
             <div class="text-puerto-ice">type = "String"</div>
@@ -329,7 +329,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <div class="flex gap-2"><span class="text-puerto-teal font-mono flex-none">domain</span><span>model, errors, repository trait, 5 use case traits, <span class="text-puerto-indigo font-mono">ProductMother</span> (Object Mother) — registers entity in puerto.toml</span></div>
             <div class="flex gap-2"><span class="text-puerto-teal font-mono flex-none">application</span><span>5 use case implementations with unit tests</span></div>
             <div class="flex gap-2"><span class="text-puerto-indigo font-mono flex-none">repository</span><span>InMemory or Pg adapter — inferred from <span class="font-mono text-xs text-puerto-rust">puerto.toml</span></span></div>
-            <div class="flex gap-2"><span class="text-puerto-rust font-mono flex-none">presentation</span><span>routes, dto, responses, error mapper — regenerates <span class="font-mono text-xs">bootstrap.rs</span></span></div>
+            <div class="flex gap-2"><span class="text-puerto-rust font-mono flex-none">presentation</span><span>routes with route tests, dto, responses, error mapper — regenerates <span class="font-mono text-xs">bootstrap.rs</span></span></div>
           </div>
           <p class="mt-5 font-sans text-sm text-puerto-mist">
             Each command validates the prior step completed and prints a <span class="font-mono text-xs text-puerto-teal">Next:</span> hint. Use <code class="font-mono text-xs text-puerto-ice">puerto generate scaffold</code> when you want all layers at once.
