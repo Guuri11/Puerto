@@ -1,0 +1,12 @@
+{# One error-mapper test: the error maps to `status` and carries `code` in `name`. #}
+{% macro error_case(name, error, status, code) %}
+    #[test]
+    fn {{ name }}() {
+        // Act
+        let (status, Json(body)) = {{ error }}.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::{{ status }});
+        assert_eq!(body.name, "{{ code }}");
+    }
+{% endmacro error_case %}

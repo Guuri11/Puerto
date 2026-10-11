@@ -5,22 +5,9 @@ use crate::generators::bootstrap::regenerate_bootstrap;
 use crate::generators::effective_fields;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::render;
-use crate::generators::types::{
-    field_needs_clone, field_value_accessor, is_value_object, resolve_type,
-};
+use crate::generators::types::{FieldCtx, field_ctx, resolve_type};
 use crate::patchers::api_rs::patch_api_rs;
 use crate::puerto_toml::Field;
-
-/// Imports `presentation/dto.tera` writes itself.
-const DTO_TEMPLATE_IMPORTS: &[&str] = &["use uuid::Uuid;"];
-
-fn build_dto_from_expr(f: &Field) -> String {
-    format!(
-        "            {}: {},",
-        f.name,
-        field_value_accessor(f, "entity")
-    )
-}
 
 pub(crate) fn build_dto_ctx(
     pascal: &str,
@@ -30,123 +17,46 @@ pub(crate) fn build_dto_ctx(
 ) -> tera::Context {
     let eff = effective_fields(fields);
 
-    let dto_fields_str = eff
-        .iter()
-        .map(|f| format!("    pub {}: {},", f.name, f.field_type))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let dto_from_str = eff
-        .iter()
-        .map(build_dto_from_expr)
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let request_fields_str = eff
-        .iter()
-        .map(|f| format!("    pub {}: {},", f.name, f.field_type))
-        .collect::<Vec<_>>()
-        .join("\n");
-
     // DTO fields keep the primitive type of the field, so the DTO file needs the same imports the
-    // domain model does. `dto.tera` only imports `uuid::Uuid` itself (for the always-present `id`),
-    // so a `DateTime<Utc>` or `HashMap<String, String>` field was written against a type that was
+    // domain model does — except `uuid::Uuid`, which `dto.tera` imports itself for the
+    // always-present `id`. Without them a `DateTime<Utc>` or `HashMap` field names a type that was
     // never in scope (E0425).
-    let mut extra_imports: Vec<String> = vec![];
-    for f in &eff {
-        if let Ok(mapping) = resolve_type(&f.field_type) {
-            if let Some(imp) = mapping.needs_import {
-                let stmt = format!("use {};", imp);
-                if DTO_TEMPLATE_IMPORTS.contains(&stmt.as_str()) {
-                    continue;
-                }
-                if !extra_imports.contains(&stmt) {
-                    extra_imports.push(stmt);
-                }
-            }
+    let mut imports: Vec<&str> = vec![];
+    for import in eff.iter().filter_map(|f| {
+        resolve_type(&f.field_type)
+            .ok()
+            .and_then(|m| m.needs_import)
+    }) {
+        if import != "uuid::Uuid" && !imports.contains(&import) {
+            imports.push(import);
         }
     }
-    let extra_imports_str = if extra_imports.is_empty() {
-        String::new()
-    } else {
-        format!("\n{}", extra_imports.join("\n"))
-    };
 
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
+    let mut ctx = simple_ctx(pascal, snake, &eff);
     ctx.insert("is_crud", &is_crud);
-    ctx.insert("dto_fields_str", &dto_fields_str);
-    ctx.insert("dto_from_str", &dto_from_str);
-    ctx.insert("request_fields_str", &request_fields_str);
-    ctx.insert("extra_imports", &extra_imports_str);
+    ctx.insert("imports", &imports);
     ctx
 }
 
 pub(crate) fn build_error_mapper_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::Context {
     let eff = effective_fields(fields);
-    let mut vo_names: Vec<&str> = vec![];
-    for f in eff.iter().filter(|f| is_value_object(f)) {
-        let vo = f.value_object.as_deref().unwrap();
-        if !vo_names.contains(&vo) {
-            vo_names.push(vo);
+    let mut vos: Vec<serde_json::Value> = vec![];
+    for vo in eff.iter().filter_map(|f| f.value_object.as_deref()) {
+        let entry = json!({ "vo": vo, "vo_snake": pascal_to_snake(vo) });
+        if !vos.contains(&entry) {
+            vos.push(entry);
         }
     }
-    let vo_arms_str: String = vo_names
-        .iter()
-        .map(|vo| {
-            format!("\n            {pascal}Error::Invalid{vo} => StatusCode::UNPROCESSABLE_ENTITY,")
-        })
-        .collect();
+    let mut ctx = build_simple_ctx(pascal, snake);
+    ctx.insert("vos", &vos);
+    ctx
+}
 
-    // One test per arm, so a status cannot drift unnoticed.
-    let mut test_cases = vec![
-        json!({
-            "test_name": "should_map_validation_error_to_422_with_its_code",
-            "error": format!("{pascal}Error::ValidationError(\"name_empty\".into())"),
-            "status": "UNPROCESSABLE_ENTITY",
-            "code": format!("{snake}.validation_error.name_empty"),
-        }),
-        json!({
-            "test_name": "should_map_not_found_to_404_with_its_code",
-            "error": format!("{pascal}Error::NotFound"),
-            "status": "NOT_FOUND",
-            "code": format!("{snake}.not_found"),
-        }),
-        json!({
-            "test_name": "should_map_duplicate_to_409_with_its_code",
-            "error": format!("{pascal}Error::Duplicate"),
-            "status": "CONFLICT",
-            "code": format!("{snake}.duplicate"),
-        }),
-        json!({
-            "test_name": "should_map_repository_error_to_500_with_its_code",
-            "error": format!("{pascal}Error::RepositoryError"),
-            "status": "INTERNAL_SERVER_ERROR",
-            "code": format!("{snake}.repository_error"),
-        }),
-        json!({
-            "test_name": "should_map_unknown_to_500_with_its_code",
-            "error": format!("{pascal}Error::Unknown"),
-            "status": "INTERNAL_SERVER_ERROR",
-            "code": format!("{snake}.unknown"),
-        }),
-    ];
-    for vo in &vo_names {
-        let vo_snake = pascal_to_snake(vo);
-        test_cases.push(json!({
-            "test_name": format!("should_map_invalid_{vo_snake}_to_422_with_its_code"),
-            "error": format!("{pascal}Error::Invalid{vo}"),
-            "status": "UNPROCESSABLE_ENTITY",
-            "code": format!("{snake}.invalid_{vo_snake}"),
-        }));
-    }
-
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
-    ctx.insert("vo_arms_str", &vo_arms_str);
-    ctx.insert("test_cases", &test_cases);
+/// `pascal`, `snake` and one [`FieldCtx`] per field.
+fn simple_ctx(pascal: &str, snake: &str, eff: &[Field]) -> tera::Context {
+    let fields: Vec<FieldCtx> = eff.iter().map(|f| field_ctx(f, pascal, &[])).collect();
+    let mut ctx = build_simple_ctx(pascal, snake);
+    ctx.insert("fields", &fields);
     ctx
 }
 
@@ -158,39 +68,7 @@ pub(crate) fn build_simple_ctx(pascal: &str, snake: &str) -> tera::Context {
 }
 
 fn build_routes_crud_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::Context {
-    let eff = effective_fields(fields);
-
-    let create_params_str = eff
-        .iter()
-        .map(|f| {
-            if field_needs_clone(&f.field_type) {
-                format!("                {}: body.{}.clone(),", f.name, f.name)
-            } else {
-                format!("                {}: body.{},", f.name, f.name)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let mut update_lines = vec!["                id: id.0,".to_string()];
-    for f in eff.iter() {
-        if field_needs_clone(&f.field_type) {
-            update_lines.push(format!(
-                "                {}: body.{}.clone(),",
-                f.name, f.name
-            ));
-        } else {
-            update_lines.push(format!("                {}: body.{},", f.name, f.name));
-        }
-    }
-    let update_params_str = update_lines.join("\n");
-
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
-    ctx.insert("create_params_str", &create_params_str);
-    ctx.insert("update_params_str", &update_params_str);
-    ctx
+    simple_ctx(pascal, snake, &effective_fields(fields))
 }
 
 #[cfg(test)]

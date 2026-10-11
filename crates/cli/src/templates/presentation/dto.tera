@@ -1,33 +1,34 @@
 use business::domain::{{ snake }}::model::{{ pascal }};
 use poem_openapi::Object;
-use uuid::Uuid;{{ extra_imports }}
+use uuid::Uuid;{% for import in imports %}
+use {{ import }};{% endfor %}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct {{ pascal }}Dto {
     pub id: Uuid,
-{{ dto_fields_str }}
-}
+{% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
+{% endfor %}}
 
 impl {{ pascal }}Dto {
     pub fn from_domain(entity: &{{ pascal }}) -> Self {
         Self {
             id: entity.id,
-{{ dto_from_str }}
-        }
+{% for f in fields %}            {{ f.name }}: {{ f.accessor }},
+{% endfor %}        }
     }
 }
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct Create{{ pascal }}Request {
-{{ request_fields_str }}
-}
+{% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
+{% endfor %}}
 {% if is_crud %}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct Update{{ pascal }}Request {
-{{ request_fields_str }}
-}
+{% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
+{% endfor %}}
 {% endif %}

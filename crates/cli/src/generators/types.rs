@@ -285,6 +285,8 @@ pub struct FieldCtx {
     pub is_array: bool,
     /// The primitive read out of a borrowed entity, see [`field_value_accessor`].
     pub accessor: String,
+    /// Reading the primitive out of a borrowed request body needs `.clone()`.
+    pub needs_clone: bool,
     /// The domain value built from a persistence row (`row.{name}`), see [`field_vo_conversion`].
     pub from_row: String,
     /// The domain value built from a use case param (`params.{name}`).
@@ -310,6 +312,7 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         is_map,
         is_array: field.field_type.starts_with("Vec<"),
         accessor: field_value_accessor(field, "entity"),
+        needs_clone: field_needs_clone(&field.field_type),
         from_params: field_vo_conversion(field, "params.", pascal, shared_vos),
         default_literal: resolve_type(&field.field_type)
             .map_or("", |m| m.default_expr)

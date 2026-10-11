@@ -43,8 +43,8 @@ impl {{ pascal }}Api {
         match self
             .create_{{ snake }}
             .execute(Create{{ pascal }}Params {
-{{ create_params_str }}
-            })
+{% for f in fields %}                {{ f.name }}: body.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %},
+{% endfor %}            })
             .await
         {
             Ok(entity) => Create{{ pascal }}Response::Created(Json({{ pascal }}Dto::from_domain(&entity))),
@@ -94,8 +94,9 @@ impl {{ pascal }}Api {
         match self
             .update_{{ snake }}
             .execute(Update{{ pascal }}Params {
-{{ update_params_str }}
-            })
+                id: id.0,
+{% for f in fields %}                {{ f.name }}: body.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %},
+{% endfor %}            })
             .await
         {
             Ok(entity) => Update{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
