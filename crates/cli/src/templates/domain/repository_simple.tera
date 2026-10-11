@@ -1,18 +1,19 @@
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::{{ pascal }}Error, model::{{ pascal }}};
+use super::{
+    errors::{{ pascal }}Error,
+    model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
+};
 
 #[async_trait]
 pub trait {{ pascal }}RepositoryTrait: Send + Sync {
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<{{ pascal }}>, {{ pascal }}Error>;
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, {{ pascal }}Error>;
     async fn save(&self, entity: &{{ pascal }}) -> Result<(), {{ pascal }}Error>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -21,7 +22,7 @@ pub mod mocks {
 
         #[async_trait]
         impl {{ pascal }}RepositoryTrait for {{ pascal }}Repository {
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<{{ pascal }}>, {{ pascal }}Error>;
+            async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, {{ pascal }}Error>;
             async fn save(&self, entity: &{{ pascal }}) -> Result<(), {{ pascal }}Error>;
         }
     }

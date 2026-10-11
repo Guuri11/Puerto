@@ -50,6 +50,7 @@ mod new_project;
 mod patchers;
 mod scaffolding;
 mod typed_fields;
+mod typed_ids;
 mod use_cases;
 mod value_objects;
 mod web_slice;

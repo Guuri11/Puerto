@@ -30,7 +30,7 @@ impl Get{{ pascal }}UseCaseTrait for Get{{ pascal }}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{{ snake }}::{
-        model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
+        model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
 {% for import in test_imports %}    use {{ import }};
@@ -65,7 +65,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(Get{{ pascal }}Params { id: Uuid::new_v4() })
+            .execute(Get{{ pascal }}Params { id: {{ pascal }}Id::generate() })
             .await;
 
         assert!(result.is_err());

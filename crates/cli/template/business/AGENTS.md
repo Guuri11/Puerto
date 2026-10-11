@@ -28,6 +28,8 @@ Adding a use case is one line in `lib.rs` (under both `domain::<entity>::use_cas
 ## Critical Rules
 
 - **Two constructors**: `new(props)` validates and returns `Result<Self, Error>`. `from_repository(data)` bypasses validation — only infrastructure calls this.
+- **Typed ids**: an entity's id is its own type, `ProductId` (`model.rs`): `ProductId::generate()` for
+  a new one, `from_uuid` / `.value()` only at the edges (routes, DTOs, rows). Never pass a bare `Uuid`.
 - **Typed fields**: when `entity.fields` is defined in `puerto.toml`, generated structs include custom fields (Props, Params, DTOs, DB rows). When empty, defaults to `name: String`.
 - **Use case file structure**: exactly `Params struct` + `Trait`. The `Impl` struct lives in the **application layer**.
 - **Dependencies injected as `Arc<dyn Trait>`** — never concrete types.

@@ -8,6 +8,7 @@ use crate::generators::naming::{
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     FieldCtx, field_ctx, is_shared_vo, is_value_object, literal_names_vo, resolve_type,
+    seed_literal,
 };
 use crate::patchers::lib_rs::patch_infra_lib;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
@@ -115,6 +116,11 @@ pub fn generate_crud_infra_db_repository(
         if !test_imports.contains(&import) {
             test_imports.push(import);
         }
+    }
+    // A `Uuid` field and every `unique` seed draw on `Uuid::new_v4()`; the file itself names no
+    // `Uuid` since ids are `{Entity}Id`.
+    if eff.iter().any(|f| seed_literal(f).contains("Uuid::")) {
+        test_imports.push("uuid::Uuid".to_string());
     }
 
     // SQL text stays a Rust computation: the `$n` numbering is index-dependent.

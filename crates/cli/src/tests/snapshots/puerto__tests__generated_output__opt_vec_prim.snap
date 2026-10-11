@@ -136,10 +136,9 @@ impl DeleteArticleUseCaseTrait for DeleteArticleUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::article::{
-        model::{Article, ArticleProps},
+        model::{Article, ArticleId, ArticleProps},
         repository::mocks::MockArticleRepository,
     };
-    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -177,7 +176,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteArticleParams { id: Uuid::new_v4() })
+            .execute(DeleteArticleParams { id: ArticleId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -218,10 +217,9 @@ impl GetArticleUseCaseTrait for GetArticleUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::article::{
-        model::{Article, ArticleProps},
+        model::{Article, ArticleId, ArticleProps},
         repository::mocks::MockArticleRepository,
     };
-    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -257,7 +255,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetArticleParams { id: Uuid::new_v4() })
+            .execute(GetArticleParams { id: ArticleId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -395,10 +393,9 @@ impl UpdateArticleUseCaseTrait for UpdateArticleUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::article::{
-        model::{Article, ArticleProps},
+        model::{Article, ArticleId, ArticleProps},
         repository::mocks::MockArticleRepository,
     };
-    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -449,7 +446,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateArticleParams {
-            id: Uuid::new_v4(),
+            id: ArticleId::generate(),
             title: "new".to_string(),
             summary: None,
             views: None,
@@ -526,6 +523,32 @@ use uuid::Uuid;
 
 use super::errors::ArticleError;
 
+/// The id of every `Article`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ArticleId(Uuid);
+
+impl ArticleId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ArticleId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ArticleProps {
     pub title: String,
@@ -537,7 +560,7 @@ pub struct ArticleProps {
 
 #[derive(Debug, Clone)]
 pub struct Article {
-    pub id: Uuid,
+    pub id: ArticleId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -556,7 +579,7 @@ impl Article {
         }
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: ArticleId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -622,21 +645,22 @@ mod tests {
 
 === business/src/domain/article/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::ArticleError, model::Article};
+use super::{
+    errors::ArticleError,
+    model::{Article, ArticleId},
+};
 
 #[async_trait]
 pub trait ArticleRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Article>, ArticleError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Article>, ArticleError>;
+    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ArticleError>;
     async fn save(&self, entity: &Article) -> Result<(), ArticleError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -646,7 +670,7 @@ pub mod mocks {
         #[async_trait]
         impl ArticleRepositoryTrait for ArticleRepository {
             async fn find_all(&self) -> Result<Vec<Article>, ArticleError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Article>, ArticleError>;
+            async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ArticleError>;
             async fn save(&self, entity: &Article) -> Result<(), ArticleError>;
         }
     }
@@ -689,13 +713,12 @@ pub mod mocks {
 
 === business/src/domain/article/use_cases/delete_article.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::article::errors::ArticleError;
+use crate::domain::article::{errors::ArticleError, model::ArticleId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteArticleParams {
-    pub id: Uuid,
+    pub id: ArticleId,
 }
 
 #[async_trait]
@@ -721,13 +744,15 @@ pub mod mocks {
 
 === business/src/domain/article/use_cases/get_article.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::article::{errors::ArticleError, model::Article};
+use crate::domain::article::{
+    errors::ArticleError,
+    model::{Article, ArticleId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetArticleParams {
-    pub id: Uuid,
+    pub id: ArticleId,
 }
 
 #[async_trait]
@@ -782,13 +807,15 @@ pub mod mocks {
 
 === business/src/domain/article/use_cases/update_article.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::article::{errors::ArticleError, model::Article};
+use crate::domain::article::{
+    errors::ArticleError,
+    model::{Article, ArticleId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateArticleParams {
-    pub id: Uuid,
+    pub id: ArticleId,
     pub title: String,
     pub summary: Option<String>,
     pub views: Option<i64>,
@@ -947,11 +974,10 @@ impl Default for ArticleMother {
 
 === infrastructure/src/article/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
 use business::domain::article::{
     errors::ArticleError,
-    model::Article,
+    model::{Article, ArticleId},
     repository::ArticleRepositoryTrait,
 };
 
@@ -973,7 +999,7 @@ impl ArticleRepositoryTrait for InMemoryArticleRepository {
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Article>, ArticleError> {
+    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ArticleError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
@@ -1023,7 +1049,7 @@ pub struct ArticleDto {
 impl ArticleDto {
     pub fn from_domain(entity: &Article) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             title: entity.title.clone(),
             summary: entity.summary.clone(),
             views: entity.views,
@@ -1275,6 +1301,7 @@ impl DeleteArticleResponse {
 === presentation/src/api/article/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::article::model::ArticleId;
 use business::domain::article::use_cases::{
     create_article::{CreateArticleParams, CreateArticleUseCaseTrait},
     delete_article::{DeleteArticleParams, DeleteArticleUseCaseTrait},
@@ -1332,7 +1359,7 @@ impl ArticleApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetArticleResponse {
         match self
             .get_article
-            .execute(GetArticleParams { id: id.0 })
+            .execute(GetArticleParams { id: ArticleId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetArticleResponse::Ok(Json(ArticleDto::from_domain(&entity))),
@@ -1365,7 +1392,7 @@ impl ArticleApi {
         match self
             .update_article
             .execute(UpdateArticleParams {
-                id: id.0,
+                id: ArticleId::from_uuid(id.0),
                 title: body.title.clone(),
                 summary: body.summary.clone(),
                 views: body.views,
@@ -1388,7 +1415,7 @@ impl ArticleApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteArticleResponse {
         match self
             .delete_article
-            .execute(DeleteArticleParams { id: id.0 })
+            .execute(DeleteArticleParams { id: ArticleId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteArticleResponse::NoContent,

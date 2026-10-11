@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use business::domain::{{ snake }}::model::{{ pascal }}Id;
 use business::domain::{{ snake }}::use_cases::{
     create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
     delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
@@ -53,7 +54,7 @@ impl {{ pascal }}Api {
     async fn get_by_id(&self, id: Path<Uuid>) -> Get{{ pascal }}Response {
         match self
             .get_{{ snake }}
-            .execute(Get{{ pascal }}Params { id: id.0 })
+            .execute(Get{{ pascal }}Params { id: {{ pascal }}Id::from_uuid(id.0) })
             .await
         {
             Ok(entity) => Get{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
@@ -86,7 +87,7 @@ impl {{ pascal }}Api {
         match self
             .update_{{ snake }}
             .execute(Update{{ pascal }}Params {
-                id: id.0,
+                id: {{ pascal }}Id::from_uuid(id.0),
 {% for f in fields %}                {{ f.name }}: body.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %},
 {% endfor %}            })
             .await
@@ -105,7 +106,7 @@ impl {{ pascal }}Api {
     async fn delete(&self, id: Path<Uuid>) -> Delete{{ pascal }}Response {
         match self
             .delete_{{ snake }}
-            .execute(Delete{{ pascal }}Params { id: id.0 })
+            .execute(Delete{{ pascal }}Params { id: {{ pascal }}Id::from_uuid(id.0) })
             .await
         {
             Ok(()) => Delete{{ pascal }}Response::NoContent,

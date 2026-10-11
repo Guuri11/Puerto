@@ -1,12 +1,14 @@
 use async_trait::async_trait;
-use uuid::Uuid;
 {% for imp in extra_imports %}use {{ imp }};
 {% endfor %}
-use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
+use crate::domain::{{ snake }}::{
+    errors::{{ pascal }}Error,
+    model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
+};
 
 #[derive(Debug, Clone)]
 pub struct Update{{ pascal }}Params {
-    pub id: Uuid,
+    pub id: {{ pascal }}Id,
 {% for f in params_fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 

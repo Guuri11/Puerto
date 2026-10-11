@@ -153,10 +153,9 @@ impl DeleteOrderUseCaseTrait for DeleteOrderUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::order::{
-        model::{Order, OrderProps},
+        model::{Order, OrderId, OrderProps},
         repository::mocks::MockOrderRepository,
     };
-    use uuid::Uuid;
     use crate::domain::order::value_objects::Status;
 
 
@@ -192,7 +191,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteOrderParams { id: Uuid::new_v4() })
+            .execute(DeleteOrderParams { id: OrderId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -233,10 +232,9 @@ impl GetOrderUseCaseTrait for GetOrderUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::order::{
-        model::{Order, OrderProps},
+        model::{Order, OrderId, OrderProps},
         repository::mocks::MockOrderRepository,
     };
-    use uuid::Uuid;
     use crate::domain::order::value_objects::Status;
 
 
@@ -270,7 +268,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetOrderParams { id: Uuid::new_v4() })
+            .execute(GetOrderParams { id: OrderId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -402,10 +400,9 @@ let status = params.status.parse::<Status>()?;
 mod tests {
     use super::*;
     use crate::domain::order::{
-        model::{Order, OrderProps},
+        model::{Order, OrderId, OrderProps},
         repository::mocks::MockOrderRepository,
     };
-    use uuid::Uuid;
     use crate::domain::order::value_objects::Status;
 
 
@@ -451,7 +448,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateOrderParams {
-            id: Uuid::new_v4(),
+            id: OrderId::generate(),
             reference: "new".to_string(),
             status: "Pending".to_string(),
             })
@@ -522,6 +519,32 @@ use super::value_objects::Status;
 
 use super::errors::OrderError;
 
+/// The id of every `Order`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OrderId(Uuid);
+
+impl OrderId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for OrderId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OrderProps {
     pub reference: String,
@@ -530,7 +553,7 @@ pub struct OrderProps {
 
 #[derive(Debug, Clone)]
 pub struct Order {
-    pub id: Uuid,
+    pub id: OrderId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -546,7 +569,7 @@ impl Order {
         }
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: OrderId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -610,21 +633,22 @@ mod tests {
 
 === business/src/domain/order/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::OrderError, model::Order};
+use super::{
+    errors::OrderError,
+    model::{Order, OrderId},
+};
 
 #[async_trait]
 pub trait OrderRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Order>, OrderError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Order>, OrderError>;
+    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, OrderError>;
     async fn save(&self, entity: &Order) -> Result<(), OrderError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -634,7 +658,7 @@ pub mod mocks {
         #[async_trait]
         impl OrderRepositoryTrait for OrderRepository {
             async fn find_all(&self) -> Result<Vec<Order>, OrderError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Order>, OrderError>;
+            async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, OrderError>;
             async fn save(&self, entity: &Order) -> Result<(), OrderError>;
         }
     }
@@ -674,13 +698,12 @@ pub mod mocks {
 
 === business/src/domain/order/use_cases/delete_order.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::order::errors::OrderError;
+use crate::domain::order::{errors::OrderError, model::OrderId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteOrderParams {
-    pub id: Uuid,
+    pub id: OrderId,
 }
 
 #[async_trait]
@@ -706,13 +729,15 @@ pub mod mocks {
 
 === business/src/domain/order/use_cases/get_order.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::order::{errors::OrderError, model::Order};
+use crate::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetOrderParams {
-    pub id: Uuid,
+    pub id: OrderId,
 }
 
 #[async_trait]
@@ -767,13 +792,15 @@ pub mod mocks {
 
 === business/src/domain/order/use_cases/update_order.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::order::{errors::OrderError, model::Order};
+use crate::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateOrderParams {
-    pub id: Uuid,
+    pub id: OrderId,
     pub reference: String,
     pub status: String,
 }
@@ -949,11 +976,10 @@ pub mod order {
 
 === infrastructure/src/order/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
 use business::domain::order::{
     errors::OrderError,
-    model::Order,
+    model::{Order, OrderId},
     repository::OrderRepositoryTrait,
 };
 
@@ -975,7 +1001,7 @@ impl OrderRepositoryTrait for InMemoryOrderRepository {
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Order>, OrderError> {
+    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, OrderError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
@@ -1014,7 +1040,7 @@ pub struct OrderDto {
 impl OrderDto {
     pub fn from_domain(entity: &Order) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             reference: entity.reference.clone(),
             status: entity.status.as_str().to_string(),
         }
@@ -1268,6 +1294,7 @@ impl DeleteOrderResponse {
 === presentation/src/api/order/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::order::model::OrderId;
 use business::domain::order::use_cases::{
     create_order::{CreateOrderParams, CreateOrderUseCaseTrait},
     delete_order::{DeleteOrderParams, DeleteOrderUseCaseTrait},
@@ -1322,7 +1349,7 @@ impl OrderApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetOrderResponse {
         match self
             .get_order
-            .execute(GetOrderParams { id: id.0 })
+            .execute(GetOrderParams { id: OrderId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetOrderResponse::Ok(Json(OrderDto::from_domain(&entity))),
@@ -1355,7 +1382,7 @@ impl OrderApi {
         match self
             .update_order
             .execute(UpdateOrderParams {
-                id: id.0,
+                id: OrderId::from_uuid(id.0),
                 reference: body.reference.clone(),
                 status: body.status.clone(),
             })
@@ -1375,7 +1402,7 @@ impl OrderApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteOrderResponse {
         match self
             .delete_order
-            .execute(DeleteOrderParams { id: id.0 })
+            .execute(DeleteOrderParams { id: OrderId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteOrderResponse::NoContent,

@@ -170,7 +170,7 @@ fn generate_model_backward_compat_no_fields() {
     assert!(result.contains("pub struct ProductProps"));
     assert!(result.contains("pub name: String,"));
     assert!(result.contains("pub struct Product"));
-    assert!(result.contains("pub id: Uuid,"));
+    assert!(result.contains("pub id: ProductId,"));
     assert!(result.contains("pub name: String,"));
     assert!(result.contains("if props.name.trim().is_empty()"));
     assert!(result.contains("ProductError::ValidationError(\"name_empty\""));
@@ -211,7 +211,7 @@ fn generate_model_with_custom_fields() {
     assert!(result.contains("pub price: i64,"));
     assert!(result.contains("pub description: Option<String>,"));
     assert!(result.contains("pub struct Product"));
-    assert!(result.contains("pub id: Uuid,"));
+    assert!(result.contains("pub id: ProductId,"));
     assert!(result.contains("pub title: String,"));
     assert!(result.contains("pub price: i64,"));
     assert!(result.contains("pub description: Option<String>,"));
@@ -478,7 +478,7 @@ fn generate_update_use_case_trait_with_custom_fields() {
     let result = generate_update_use_case_trait("Product", "product", &fields).unwrap();
 
     assert!(result.contains("pub struct UpdateProductParams"));
-    assert!(result.contains("pub id: Uuid,"));
+    assert!(result.contains("pub id: ProductId,"));
     assert!(result.contains("pub title: String,"));
     assert!(result.contains("pub price: i64,"));
     assert!(result.contains("pub trait UpdateProductUseCaseTrait"));
@@ -509,14 +509,10 @@ fn generate_update_use_case_trait_includes_uuid_fields() {
     let result = generate_update_use_case_trait("Item", "item", &fields).unwrap();
 
     assert!(result.contains("pub name: String,"));
-    assert!(result.contains("pub id: Uuid,"));
+    assert!(result.contains("pub id: ItemId,"));
     assert!(result.contains("pub category_id: Uuid,"));
-    // The template writes `use uuid::Uuid;` itself for `id` — the field must not add a second one.
-    assert_eq!(
-        result.matches("use uuid::Uuid;").count(),
-        1,
-        "a Uuid field must not duplicate the import the template already writes (E0252)"
-    );
+    // The id is `ItemId`; the `Uuid` field brings the one `use uuid::Uuid;` (no duplicate: E0252).
+    assert_eq!(result.matches("use uuid::Uuid;").count(), 1);
 }
 
 #[test]
@@ -543,7 +539,7 @@ fn generate_create_use_case_trait_includes_uuid_fields() {
     assert!(result.contains("pub name: String,"));
     assert!(result.contains("pub category_id: Uuid,"));
     assert!(
-        !result.contains("pub id: Uuid,"),
+        !result.contains("pub id: "),
         "Create params must not carry the system id"
     );
     assert_eq!(result.matches("use uuid::Uuid;").count(), 1);
@@ -713,13 +709,13 @@ type = "i64"
     assert!(create_trait.contains("pub name: String,"));
     assert!(create_trait.contains("pub price: i64,"));
     assert!(
-        !create_trait.contains("pub id: Uuid,"),
+        !create_trait.contains("pub id: "),
         "Create params should not have id"
     );
 
     let update_trait =
         crate::generators::domain::generate_update_use_case_trait(pascal, snake, &fields).unwrap();
-    assert!(update_trait.contains("pub id: Uuid,"));
+    assert!(update_trait.contains("pub id: ProductId,"));
     assert!(update_trait.contains("pub name: String,"));
     assert!(update_trait.contains("pub price: i64,"));
 
@@ -1340,7 +1336,7 @@ fn generate_crud_routes_with_custom_fields() {
     assert!(result.contains("pub struct ProductApi"));
     assert!(result.contains("title: body.title.clone()"));
     assert!(result.contains("price: body.price,"));
-    assert!(result.contains("id: id.0,"));
+    assert!(result.contains("id: ProductId::from_uuid(id.0),"));
 }
 
 #[test]

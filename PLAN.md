@@ -1500,3 +1500,110 @@ leaves off.
 To decide when it starts (an ADR): opt-in flag vs default; bundle cost (`chrono`, `uuid`);
 wasm-pack in the toolchain and the compile matrix; how a VO error reaches the form (the same
 `ErrorResponse.name` code the server would send).
+
+---
+
+## Phase 11 — Typed ids, one repository error, paged lists (T-24, T-28, T-27)
+
+**Status:** in progress. Backlog items from `puerto_vs_document_api.md` § 2.4, 2.6, 2.7. Each one
+changes generated output (`feat!`); no project generated before this phase is in use, so there is
+no migration guide beyond the changelog. One commit per piece, in this order — 11.1 changes the
+repository's error type and 11.2 rewrites `find_all`, so `find_all` is written once, over
+`RepositoryError`.
+
+### 11.0 — Newtype ids (T-24) ✅
+
+Every CRUD entity's id is its own type, so `find_by_id(company_id)` no longer compiles where a
+`ProductId` is expected.
+
+- `model.rs` declares, above the entity:
+  ```rust
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+  pub struct ProductId(Uuid);
+  impl ProductId {
+      pub fn generate() -> Self;          // Uuid::new_v4
+      pub fn from_uuid(value: Uuid) -> Self;
+      pub fn value(&self) -> Uuid;
+  }
+  impl std::fmt::Display for ProductId   // `%id` in the tracing calls keeps working
+  ```
+  Generated per entity, not a `macro_rules!`: the type is readable where it is defined, and the
+  generator already is the macro. `Product::new` uses `ProductId::generate()`.
+- `Product.id`, `Get/Update/DeleteProductParams.id`, `ProductRepositoryTrait::find_by_id(id)` and
+  its mock take `ProductId`. The custom use case template is unchanged (no id).
+- The edges convert: routes wrap `Path<Uuid>` with `ProductId::from_uuid`, `ProductDto.id` is
+  `entity.id.value()` (the wire stays a `string(uuid)` — `web/` is untouched); `ProductDb.id` stays
+  `Uuid` (`from_uuid` in `TryFrom`, `.value()` in `From`) and the Pg repository binds `id.value()`.
+- Tests that need a missing id use `ProductId::generate()`, not `Uuid::new_v4()`. A `Uuid` import
+  appears only where a `Uuid` *field* needs it.
+- The non-CRUD path (`scaffold::run(…, crud = false, …)`, tests only) gets the same id.
+
+Test scenarios: model declares `ProductId` and `pub id: ProductId`; get/update/delete params and
+`find_by_id` take `ProductId`; routes convert with `ProductId::from_uuid`; DTO uses `.value()`;
+Pg row conversion uses `from_uuid` / `.value()`; no generated file of a fieldless CRUD entity
+imports `uuid::Uuid` without using it (compile matrix, `-D warnings`). Snapshots re-recorded.
+
+### 11.1 — One repository error (T-28)
+
+Repositories speak one error, whatever the entity and the adapter; the entity's error converts
+it. The `23505 → Duplicate` mapping moves out of each repository into one function.
+
+- `business/src/domain/shared.rs` + `business/src/domain/shared/repository_error.rs` ship in the
+  template (`pub mod shared;` in the `domain` block of `lib.rs`), with:
+  ```rust
+  #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+  pub enum RepositoryError {
+      #[error("repository.duplicate")]    Duplicate,    // a unique constraint rejected the write
+      #[error("repository.invalid_data")] InvalidData,  // a stored row fails the domain's rules
+      #[error("repository.unavailable")]  Unavailable,  // the store failed or is unreachable
+  }
+  ```
+  Shared value objects (`generate value-object`) now land next to it: `shared/value_objects.rs`
+  and `shared/errors.rs` are declared by appending to `shared.rs` — no more `shared/mod.rs` (the
+  rule is no `mod.rs`); `shared.rs` is created if missing.
+- Every repository trait (CRUD, non-CRUD, Greeting) returns `Result<_, RepositoryError>`; the
+  mocks follow.
+- `errors.rs` gains `impl From<RepositoryError> for ProductError`: `Duplicate → Duplicate`,
+  `InvalidData | Unavailable → RepositoryError`, with one test per arm. The entity's error codes
+  — the API contract — do not change. Use cases keep `?` (the `From` converts).
+- `infrastructure/src/db.rs` gains `pub fn map_sqlx_error(err: &sqlx::Error) -> RepositoryError`
+  (`23505` → `Duplicate`, anything else → `Unavailable`), unit-tested on non-database errors. Pg
+  repositories log with context and convert with it; a row whose `TryFrom` fails becomes
+  `InvalidData` (logged with the domain error).
+- Pg integration test, when the entity has a `unique` field: saving a second entity with the same
+  value returns `RepositoryError::Duplicate`.
+
+Test scenarios: template ships `shared.rs` + `repository_error.rs` and `lib.rs` declares
+`shared`; `generate value-object` + scaffold writes `shared/value_objects.rs` and `errors.rs`,
+appends both to `shared.rs`, never writes `shared/mod.rs`, and is idempotent; repository traits
+return `RepositoryError`; `errors.rs` has the `From` impl; `db.rs` has `map_sqlx_error` and the
+Pg repositories call it, with no inline `23505`; the `--no-demo` project still declares `shared`.
+
+### 11.2 — Paged lists (T-27)
+
+`list_*` reads one page — never the whole table.
+
+- `business/src/domain/shared/pagination.rs` (template, declared in `shared.rs`):
+  `DEFAULT_PAGE_LIMIT = 20`, `MAX_PAGE_LIMIT = 100`; `PageRequest` with private `limit: u32` /
+  `offset: u32`, `PageRequest::new(limit: Option<u32>, offset: Option<u32>)` clamps the limit to
+  `1..=MAX_PAGE_LIMIT` (absent → default, absent offset → 0) — no route can bypass the cap;
+  `Default`; `Page<T> { items, total: u64, limit: u32, offset: u32 }` with `Page::new(items,
+  total, request)` and `map`. Unit tests on the clamping.
+- `find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>`. Pg: `ORDER BY
+  created_at DESC, id LIMIT $1 OFFSET $2` plus a `COUNT(*)` of the non-deleted rows. InMemory:
+  an empty page. `ListProductsParams { page: PageRequest }`, the use case returns
+  `Page<Product>`.
+- `GET /products?limit=&offset=` (`Query<Option<u32>>` each) answers `ProductPageDto { items,
+  total, limit, offset }` — `limit` is the one actually used, after the cap.
+- `web/`: `src/domain/shared/page.ts` (template: `PageRequest`, `Page<T>`, `PAGE_SIZE = 20`);
+  the port's `list(page)` returns `Page<Product>`; the HTTP adapter sends `limit` / `offset` as
+  the query; the fake repository slices; the list container keeps the offset and renders a new
+  static `shared/ui/pagination.tsx` ("1–20 of 45", Previous / Next, nothing when everything fits
+  on one page). Empty state when `total` is 0.
+
+Test scenarios: domain — the limit is clamped to the max, a zero limit becomes 1, absent values
+take the defaults; application — the use case passes the page to the repository and returns its
+`Page`; routes — `?limit=5&offset=10` reaches the use case as that page, the body carries
+`items` and `total`; Pg — a page of a larger table has `limit` items and the full `total`; web —
+the HTTP adapter sends the query and maps the items, the list container shows the next page when
+Next is pressed, `Pagination` disables Previous on the first page and Next on the last.

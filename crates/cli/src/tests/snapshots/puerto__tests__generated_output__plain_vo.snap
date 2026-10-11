@@ -161,10 +161,9 @@ impl DeleteItemUseCaseTrait for DeleteItemUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::item::{
-        model::{Item, ItemProps},
+        model::{Item, ItemId, ItemProps},
         repository::mocks::MockItemRepository,
     };
-    use uuid::Uuid;
     use crate::domain::item::value_objects::Name;
     use crate::domain::item::value_objects::Sku;
     use crate::domain::item::value_objects::Weight;
@@ -203,7 +202,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteItemParams { id: Uuid::new_v4() })
+            .execute(DeleteItemParams { id: ItemId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -244,10 +243,9 @@ impl GetItemUseCaseTrait for GetItemUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::item::{
-        model::{Item, ItemProps},
+        model::{Item, ItemId, ItemProps},
         repository::mocks::MockItemRepository,
     };
-    use uuid::Uuid;
     use crate::domain::item::value_objects::Name;
     use crate::domain::item::value_objects::Sku;
     use crate::domain::item::value_objects::Weight;
@@ -284,7 +282,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetItemParams { id: Uuid::new_v4() })
+            .execute(GetItemParams { id: ItemId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -420,10 +418,9 @@ let weight = Weight::new(params.weight)?;
 mod tests {
     use super::*;
     use crate::domain::item::{
-        model::{Item, ItemProps},
+        model::{Item, ItemId, ItemProps},
         repository::mocks::MockItemRepository,
     };
-    use uuid::Uuid;
     use crate::domain::item::value_objects::Name;
     use crate::domain::item::value_objects::Sku;
     use crate::domain::item::value_objects::Weight;
@@ -473,7 +470,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateItemParams {
-            id: Uuid::new_v4(),
+            id: ItemId::generate(),
             name: "new".to_string(),
             sku: "new".to_string(),
             weight: 42,
@@ -588,6 +585,32 @@ use super::value_objects::Weight;
 
 use super::errors::ItemError;
 
+/// The id of every `Item`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ItemId(Uuid);
+
+impl ItemId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ItemId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ItemProps {
     pub name: Name,
@@ -597,7 +620,7 @@ pub struct ItemProps {
 
 #[derive(Debug, Clone)]
 pub struct Item {
-    pub id: Uuid,
+    pub id: ItemId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -611,7 +634,7 @@ impl Item {
     pub fn new(props: ItemProps) -> Result<Self, ItemError> {
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: ItemId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -665,21 +688,22 @@ mod tests {
 
 === business/src/domain/item/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::ItemError, model::Item};
+use super::{
+    errors::ItemError,
+    model::{Item, ItemId},
+};
 
 #[async_trait]
 pub trait ItemRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Item>, ItemError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Item>, ItemError>;
+    async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, ItemError>;
     async fn save(&self, entity: &Item) -> Result<(), ItemError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -689,7 +713,7 @@ pub mod mocks {
         #[async_trait]
         impl ItemRepositoryTrait for ItemRepository {
             async fn find_all(&self) -> Result<Vec<Item>, ItemError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Item>, ItemError>;
+            async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, ItemError>;
             async fn save(&self, entity: &Item) -> Result<(), ItemError>;
         }
     }
@@ -730,13 +754,12 @@ pub mod mocks {
 
 === business/src/domain/item/use_cases/delete_item.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::item::errors::ItemError;
+use crate::domain::item::{errors::ItemError, model::ItemId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteItemParams {
-    pub id: Uuid,
+    pub id: ItemId,
 }
 
 #[async_trait]
@@ -762,13 +785,15 @@ pub mod mocks {
 
 === business/src/domain/item/use_cases/get_item.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::item::{errors::ItemError, model::Item};
+use crate::domain::item::{
+    errors::ItemError,
+    model::{Item, ItemId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetItemParams {
-    pub id: Uuid,
+    pub id: ItemId,
 }
 
 #[async_trait]
@@ -823,13 +848,15 @@ pub mod mocks {
 
 === business/src/domain/item/use_cases/update_item.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::item::{errors::ItemError, model::Item};
+use crate::domain::item::{
+    errors::ItemError,
+    model::{Item, ItemId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateItemParams {
-    pub id: Uuid,
+    pub id: ItemId,
     pub name: String,
     pub sku: String,
     pub weight: i64,
@@ -1024,11 +1051,10 @@ impl Default for ItemMother {
 
 === infrastructure/src/item/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
 use business::domain::item::{
     errors::ItemError,
-    model::Item,
+    model::{Item, ItemId},
     repository::ItemRepositoryTrait,
 };
 
@@ -1050,7 +1076,7 @@ impl ItemRepositoryTrait for InMemoryItemRepository {
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Item>, ItemError> {
+    async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, ItemError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
@@ -1098,7 +1124,7 @@ pub struct ItemDto {
 impl ItemDto {
     pub fn from_domain(entity: &Item) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             name: entity.name.value().to_string(),
             sku: entity.sku.value().to_string(),
             weight: entity.weight.value(),
@@ -1377,6 +1403,7 @@ impl DeleteItemResponse {
 === presentation/src/api/item/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::item::model::ItemId;
 use business::domain::item::use_cases::{
     create_item::{CreateItemParams, CreateItemUseCaseTrait},
     delete_item::{DeleteItemParams, DeleteItemUseCaseTrait},
@@ -1432,7 +1459,7 @@ impl ItemApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetItemResponse {
         match self
             .get_item
-            .execute(GetItemParams { id: id.0 })
+            .execute(GetItemParams { id: ItemId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetItemResponse::Ok(Json(ItemDto::from_domain(&entity))),
@@ -1465,7 +1492,7 @@ impl ItemApi {
         match self
             .update_item
             .execute(UpdateItemParams {
-                id: id.0,
+                id: ItemId::from_uuid(id.0),
                 name: body.name.clone(),
                 sku: body.sku.clone(),
                 weight: body.weight,
@@ -1486,7 +1513,7 @@ impl ItemApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteItemResponse {
         match self
             .delete_item
-            .execute(DeleteItemParams { id: id.0 })
+            .execute(DeleteItemParams { id: ItemId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteItemResponse::NoContent,

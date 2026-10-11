@@ -167,15 +167,7 @@ pub fn generate_update_use_case_trait(
     snake: &str,
     fields: &[Field],
 ) -> Result<String, RenderError> {
-    // The template imports `uuid::Uuid` for the always-present `id: Uuid` param. A `Uuid` *field*
-    // resolves to the same import — emitting it again is a duplicate import (E0252).
-    generate_use_case_trait(
-        "domain/use_case_update.tera",
-        &["uuid::Uuid"],
-        pascal,
-        snake,
-        fields,
-    )
+    generate_use_case_trait("domain/use_case_update.tera", &[], pascal, snake, fields)
 }
 
 /// A use case trait whose Params carry every field as its primitive type. `template_imports` are

@@ -99,7 +99,7 @@ pub struct ProductProps {
 
 #[derive(Debug, Clone)]
 pub struct Product {
-    pub id: Uuid,
+    pub id: ProductId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -114,6 +114,26 @@ pub struct Product {
 ```
 
 When `entity.fields` is empty or absent (backward compatible), entities default to a single `name: String` field.
+
+### Typed ids
+
+Every entity's id is its own newtype, declared in `model.rs` above the entity — passing a
+`CustomerId` where a `ProductId` is expected does not compile:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProductId(Uuid);
+
+impl ProductId {
+    pub fn generate() -> Self { Self(Uuid::new_v4()) }   // Product::new
+    pub fn from_uuid(value: Uuid) -> Self { Self(value) } // a path parameter, a row
+    pub fn value(&self) -> Uuid { self.0 }                 // a DTO, a bind
+}
+// + Display, so `tracing::info!(id = %entity.id, …)` works
+```
+
+The id is a `Uuid` only at the edges: `Path<Uuid>` in routes (wrapped with `from_uuid`), `id: Uuid`
+in DTOs and `{Entity}Db` rows (`.value()`). Params, the repository port and tests use the newtype.
 
 ### Validation in `new()`
 
@@ -152,7 +172,7 @@ pub struct CreateProductParams {
 }
 
 pub struct UpdateProductParams {
-    pub id: Uuid,
+    pub id: ProductId,
     pub name: String,
     pub price: i64,
     pub sku: String,
@@ -168,7 +188,7 @@ Custom use cases (added via `puerto generate use-case`) also support typed field
 ```rust
 #[async_trait]
 pub trait EntityRepositoryTrait: Send + Sync {
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Entity>, EntityError>;
+    async fn find_by_id(&self, id: EntityId) -> Result<Option<Entity>, EntityError>;
     async fn save(&self, entity: &Entity) -> Result<(), EntityError>;
 }
 
@@ -181,7 +201,7 @@ pub mod mocks {
         pub EntityRepository {}
         #[async_trait]
         impl EntityRepositoryTrait for EntityRepository {
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Entity>, EntityError>;
+            async fn find_by_id(&self, id: EntityId) -> Result<Option<Entity>, EntityError>;
             async fn save(&self, entity: &Entity) -> Result<(), EntityError>;
         }
     }

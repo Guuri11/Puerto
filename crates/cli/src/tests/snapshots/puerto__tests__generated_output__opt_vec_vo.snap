@@ -134,10 +134,9 @@ impl DeletePersonaUseCaseTrait for DeletePersonaUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::persona::{
-        model::{Persona, PersonaProps},
+        model::{Persona, PersonaId, PersonaProps},
         repository::mocks::MockPersonaRepository,
     };
-    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -173,7 +172,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeletePersonaParams { id: Uuid::new_v4() })
+            .execute(DeletePersonaParams { id: PersonaId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -214,10 +213,9 @@ impl GetPersonaUseCaseTrait for GetPersonaUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::persona::{
-        model::{Persona, PersonaProps},
+        model::{Persona, PersonaId, PersonaProps},
         repository::mocks::MockPersonaRepository,
     };
-    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -251,7 +249,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetPersonaParams { id: Uuid::new_v4() })
+            .execute(GetPersonaParams { id: PersonaId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -387,10 +385,9 @@ let tags: Vec<Tag> = params.tags.into_iter().map(Tag::new).collect::<Result<Vec<
 mod tests {
     use super::*;
     use crate::domain::persona::{
-        model::{Persona, PersonaProps},
+        model::{Persona, PersonaId, PersonaProps},
         repository::mocks::MockPersonaRepository,
     };
-    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -437,7 +434,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdatePersonaParams {
-            id: Uuid::new_v4(),
+            id: PersonaId::generate(),
             name: "new".to_string(),
             middle_name: None,
             tags: vec![],
@@ -514,6 +511,32 @@ use super::value_objects::Tag;
 
 use super::errors::PersonaError;
 
+/// The id of every `Persona`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PersonaId(Uuid);
+
+impl PersonaId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for PersonaId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PersonaProps {
     pub name: String,
@@ -523,7 +546,7 @@ pub struct PersonaProps {
 
 #[derive(Debug, Clone)]
 pub struct Persona {
-    pub id: Uuid,
+    pub id: PersonaId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -540,7 +563,7 @@ impl Persona {
         }
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: PersonaId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -598,21 +621,22 @@ mod tests {
 
 === business/src/domain/persona/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::PersonaError, model::Persona};
+use super::{
+    errors::PersonaError,
+    model::{Persona, PersonaId},
+};
 
 #[async_trait]
 pub trait PersonaRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Persona>, PersonaError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Persona>, PersonaError>;
+    async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, PersonaError>;
     async fn save(&self, entity: &Persona) -> Result<(), PersonaError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -622,7 +646,7 @@ pub mod mocks {
         #[async_trait]
         impl PersonaRepositoryTrait for PersonaRepository {
             async fn find_all(&self) -> Result<Vec<Persona>, PersonaError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Persona>, PersonaError>;
+            async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, PersonaError>;
             async fn save(&self, entity: &Persona) -> Result<(), PersonaError>;
         }
     }
@@ -663,13 +687,12 @@ pub mod mocks {
 
 === business/src/domain/persona/use_cases/delete_persona.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::persona::errors::PersonaError;
+use crate::domain::persona::{errors::PersonaError, model::PersonaId};
 
 #[derive(Debug, Clone)]
 pub struct DeletePersonaParams {
-    pub id: Uuid,
+    pub id: PersonaId,
 }
 
 #[async_trait]
@@ -695,13 +718,15 @@ pub mod mocks {
 
 === business/src/domain/persona/use_cases/get_persona.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::persona::{errors::PersonaError, model::Persona};
+use crate::domain::persona::{
+    errors::PersonaError,
+    model::{Persona, PersonaId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetPersonaParams {
-    pub id: Uuid,
+    pub id: PersonaId,
 }
 
 #[async_trait]
@@ -756,13 +781,15 @@ pub mod mocks {
 
 === business/src/domain/persona/use_cases/update_persona.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::persona::{errors::PersonaError, model::Persona};
+use crate::domain::persona::{
+    errors::PersonaError,
+    model::{Persona, PersonaId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdatePersonaParams {
-    pub id: Uuid,
+    pub id: PersonaId,
     pub name: String,
     pub middle_name: Option<String>,
     pub tags: Vec<String>,
@@ -956,11 +983,10 @@ pub mod persona {
 
 === infrastructure/src/persona/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
 use business::domain::persona::{
     errors::PersonaError,
-    model::Persona,
+    model::{Persona, PersonaId},
     repository::PersonaRepositoryTrait,
 };
 
@@ -982,7 +1008,7 @@ impl PersonaRepositoryTrait for InMemoryPersonaRepository {
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Persona>, PersonaError> {
+    async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, PersonaError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
@@ -1022,7 +1048,7 @@ pub struct PersonaDto {
 impl PersonaDto {
     pub fn from_domain(entity: &Persona) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             name: entity.name.clone(),
             middle_name: entity.middle_name.as_ref().map(|v| v.value().to_string()),
             tags: entity.tags.iter().map(|v| v.value().to_string()).collect::<Vec<_>>(),
@@ -1290,6 +1316,7 @@ impl DeletePersonaResponse {
 === presentation/src/api/persona/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::persona::model::PersonaId;
 use business::domain::persona::use_cases::{
     create_persona::{CreatePersonaParams, CreatePersonaUseCaseTrait},
     delete_persona::{DeletePersonaParams, DeletePersonaUseCaseTrait},
@@ -1345,7 +1372,7 @@ impl PersonaApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetPersonaResponse {
         match self
             .get_persona
-            .execute(GetPersonaParams { id: id.0 })
+            .execute(GetPersonaParams { id: PersonaId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetPersonaResponse::Ok(Json(PersonaDto::from_domain(&entity))),
@@ -1378,7 +1405,7 @@ impl PersonaApi {
         match self
             .update_persona
             .execute(UpdatePersonaParams {
-                id: id.0,
+                id: PersonaId::from_uuid(id.0),
                 name: body.name.clone(),
                 middle_name: body.middle_name.clone(),
                 tags: body.tags.clone(),
@@ -1399,7 +1426,7 @@ impl PersonaApi {
     async fn delete(&self, id: Path<Uuid>) -> DeletePersonaResponse {
         match self
             .delete_persona
-            .execute(DeletePersonaParams { id: id.0 })
+            .execute(DeletePersonaParams { id: PersonaId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeletePersonaResponse::NoContent,

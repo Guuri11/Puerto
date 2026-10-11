@@ -130,7 +130,7 @@ impl DeleteBookingUseCaseTrait for DeleteBookingUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::booking::{
-        model::{Booking, BookingProps},
+        model::{Booking, BookingId, BookingProps},
         repository::mocks::MockBookingRepository,
     };
     use uuid::Uuid;
@@ -169,7 +169,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteBookingParams { id: Uuid::new_v4() })
+            .execute(DeleteBookingParams { id: BookingId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -210,7 +210,7 @@ impl GetBookingUseCaseTrait for GetBookingUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::booking::{
-        model::{Booking, BookingProps},
+        model::{Booking, BookingId, BookingProps},
         repository::mocks::MockBookingRepository,
     };
     use uuid::Uuid;
@@ -247,7 +247,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetBookingParams { id: Uuid::new_v4() })
+            .execute(GetBookingParams { id: BookingId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -380,7 +380,7 @@ let tenant_id = TenantId::new(params.tenant_id)?;
 mod tests {
     use super::*;
     use crate::domain::booking::{
-        model::{Booking, BookingProps},
+        model::{Booking, BookingId, BookingProps},
         repository::mocks::MockBookingRepository,
     };
     use uuid::Uuid;
@@ -429,7 +429,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateBookingParams {
-            id: Uuid::new_v4(),
+            id: BookingId::generate(),
             reference: "new".to_string(),
             tenant_id: Uuid::new_v4(),
             })
@@ -500,6 +500,32 @@ use super::value_objects::TenantId;
 
 use super::errors::BookingError;
 
+/// The id of every `Booking`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BookingId(Uuid);
+
+impl BookingId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for BookingId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BookingProps {
     pub reference: String,
@@ -508,7 +534,7 @@ pub struct BookingProps {
 
 #[derive(Debug, Clone)]
 pub struct Booking {
-    pub id: Uuid,
+    pub id: BookingId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -524,7 +550,7 @@ impl Booking {
         }
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: BookingId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -578,21 +604,22 @@ mod tests {
 
 === business/src/domain/booking/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::BookingError, model::Booking};
+use super::{
+    errors::BookingError,
+    model::{Booking, BookingId},
+};
 
 #[async_trait]
 pub trait BookingRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Booking>, BookingError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Booking>, BookingError>;
+    async fn find_by_id(&self, id: BookingId) -> Result<Option<Booking>, BookingError>;
     async fn save(&self, entity: &Booking) -> Result<(), BookingError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -602,7 +629,7 @@ pub mod mocks {
         #[async_trait]
         impl BookingRepositoryTrait for BookingRepository {
             async fn find_all(&self) -> Result<Vec<Booking>, BookingError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Booking>, BookingError>;
+            async fn find_by_id(&self, id: BookingId) -> Result<Option<Booking>, BookingError>;
             async fn save(&self, entity: &Booking) -> Result<(), BookingError>;
         }
     }
@@ -643,13 +670,12 @@ pub mod mocks {
 
 === business/src/domain/booking/use_cases/delete_booking.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::booking::errors::BookingError;
+use crate::domain::booking::{errors::BookingError, model::BookingId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteBookingParams {
-    pub id: Uuid,
+    pub id: BookingId,
 }
 
 #[async_trait]
@@ -675,13 +701,15 @@ pub mod mocks {
 
 === business/src/domain/booking/use_cases/get_booking.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::booking::{errors::BookingError, model::Booking};
+use crate::domain::booking::{
+    errors::BookingError,
+    model::{Booking, BookingId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetBookingParams {
-    pub id: Uuid,
+    pub id: BookingId,
 }
 
 #[async_trait]
@@ -738,11 +766,14 @@ pub mod mocks {
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use crate::domain::booking::{errors::BookingError, model::Booking};
+use crate::domain::booking::{
+    errors::BookingError,
+    model::{Booking, BookingId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateBookingParams {
-    pub id: Uuid,
+    pub id: BookingId,
     pub reference: String,
     pub tenant_id: Uuid,
 }
@@ -895,11 +926,10 @@ impl Default for BookingMother {
 
 === infrastructure/src/booking/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
 use business::domain::booking::{
     errors::BookingError,
-    model::Booking,
+    model::{Booking, BookingId},
     repository::BookingRepositoryTrait,
 };
 
@@ -921,7 +951,7 @@ impl BookingRepositoryTrait for InMemoryBookingRepository {
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Booking>, BookingError> {
+    async fn find_by_id(&self, id: BookingId) -> Result<Option<Booking>, BookingError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
@@ -968,7 +998,7 @@ pub struct BookingDto {
 impl BookingDto {
     pub fn from_domain(entity: &Booking) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             reference: entity.reference.clone(),
             tenant_id: entity.tenant_id.value(),
         }
@@ -1222,6 +1252,7 @@ impl DeleteBookingResponse {
 === presentation/src/api/booking/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::booking::model::BookingId;
 use business::domain::booking::use_cases::{
     create_booking::{CreateBookingParams, CreateBookingUseCaseTrait},
     delete_booking::{DeleteBookingParams, DeleteBookingUseCaseTrait},
@@ -1276,7 +1307,7 @@ impl BookingApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetBookingResponse {
         match self
             .get_booking
-            .execute(GetBookingParams { id: id.0 })
+            .execute(GetBookingParams { id: BookingId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetBookingResponse::Ok(Json(BookingDto::from_domain(&entity))),
@@ -1309,7 +1340,7 @@ impl BookingApi {
         match self
             .update_booking
             .execute(UpdateBookingParams {
-                id: id.0,
+                id: BookingId::from_uuid(id.0),
                 reference: body.reference.clone(),
                 tenant_id: body.tenant_id,
             })
@@ -1329,7 +1360,7 @@ impl BookingApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteBookingResponse {
         match self
             .delete_booking
-            .execute(DeleteBookingParams { id: id.0 })
+            .execute(DeleteBookingParams { id: BookingId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteBookingResponse::NoContent,

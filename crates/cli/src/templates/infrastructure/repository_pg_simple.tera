@@ -1,10 +1,9 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use business::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
-    model::{{ pascal }},
+    model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{{ pascal }}RepositoryTrait,
 };
 
@@ -22,13 +21,13 @@ impl Pg{{ pascal }}Repository {
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<{{ pascal }}>, {{ pascal }}Error> {
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, {{ pascal }}Error> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             {{ pascal }}Db,
             "SELECT id, created_at, updated_at, deleted, deleted_at, name
              FROM {{ plural }} WHERE id = $1 AND deleted = false",
-            id
+            id.value()
         )
         .fetch_optional(&self.pool)
         .await
@@ -104,7 +103,7 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
-        let result = test_repo(pool).find_by_id(Uuid::new_v4()).await.unwrap();
+        let result = test_repo(pool).find_by_id({{ pascal }}Id::generate()).await.unwrap();
 
         // Assert
         assert!(result.is_none());

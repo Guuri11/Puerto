@@ -1,11 +1,13 @@
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
+use crate::domain::{{ snake }}::{
+    errors::{{ pascal }}Error,
+    model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
+};
 
 #[derive(Debug, Clone)]
 pub struct Get{{ pascal }}Params {
-    pub id: Uuid,
+    pub id: {{ pascal }}Id,
 }
 
 #[async_trait]

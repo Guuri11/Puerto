@@ -39,7 +39,7 @@ impl Delete{{ pascal }}UseCaseTrait for Delete{{ pascal }}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{{ snake }}::{
-        model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
+        model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
 {% for import in test_imports %}    use {{ import }};
@@ -75,7 +75,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(Delete{{ pascal }}Params { id: Uuid::new_v4() })
+            .execute(Delete{{ pascal }}Params { id: {{ pascal }}Id::generate() })
             .await;
 
         assert!(result.is_err());

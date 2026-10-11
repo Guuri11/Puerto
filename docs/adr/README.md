@@ -22,3 +22,4 @@ ADR; supersede it with a new one and link both ways.
 | [0011](0011-templates-own-shape-types-own-decisions.md) | Templates own the shape of generated code; `types.rs` owns per-field decisions | Accepted |
 | [0012](0012-presentation-holds-use-case-ports.md) | Presentation holds use case ports; routes are tested with mocks | Accepted |
 | [0013](0013-web-frontend-react-daisyui-bun.md) | Web frontend: React + daisyUI on Bun; structure by Puerto, wire types from OpenAPI | Accepted |
+| [0014](0014-entity-ids-are-generated-newtypes.md) | Entity ids are generated newtypes | Accepted |

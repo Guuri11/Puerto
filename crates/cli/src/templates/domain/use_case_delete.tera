@@ -1,11 +1,10 @@
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::{{ snake }}::errors::{{ pascal }}Error;
+use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}Id};
 
 #[derive(Debug, Clone)]
 pub struct Delete{{ pascal }}Params {
-    pub id: Uuid,
+    pub id: {{ pascal }}Id,
 }
 
 #[async_trait]

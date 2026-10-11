@@ -150,8 +150,9 @@ fn scaffold_crud_impls_import_model_struct_in_tests() {
         let path = dir.join(format!("business/src/application/product/{uc}.rs"));
         let content = fs::read_to_string(&path).unwrap();
         assert!(
-            content.contains("model::{Product, ProductProps}"),
-            "{uc}.rs test block missing `model::{{Product, ProductProps}}` import"
+            content.contains("model::{Product, ProductProps}")
+                || content.contains("model::{Product, ProductId, ProductProps}"),
+            "{uc}.rs test block missing the `model::{{Product, …ProductProps}}` import"
         );
     }
 

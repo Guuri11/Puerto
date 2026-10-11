@@ -45,7 +45,7 @@ impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{{ snake }}::{
-        model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
+        model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
 {% for import in test_imports %}    use {{ import }};
@@ -89,7 +89,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-            id: Uuid::new_v4(),
+            id: {{ pascal }}Id::generate(),
 {{ macros::params(fields=fields, word="new") }}            })
             .await;
 

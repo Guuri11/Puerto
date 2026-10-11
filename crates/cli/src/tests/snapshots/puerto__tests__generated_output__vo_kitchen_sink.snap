@@ -284,10 +284,9 @@ impl DeleteAccountUseCaseTrait for DeleteAccountUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::account::{
-        model::{Account, AccountProps},
+        model::{Account, AccountId, AccountProps},
         repository::mocks::MockAccountRepository,
     };
-    use uuid::Uuid;
     use crate::domain::account::value_objects::Name;
     use crate::domain::account::value_objects::Sku;
     use crate::domain::account::value_objects::Status;
@@ -333,7 +332,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteAccountParams { id: Uuid::new_v4() })
+            .execute(DeleteAccountParams { id: AccountId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -374,10 +373,9 @@ impl GetAccountUseCaseTrait for GetAccountUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::account::{
-        model::{Account, AccountProps},
+        model::{Account, AccountId, AccountProps},
         repository::mocks::MockAccountRepository,
     };
-    use uuid::Uuid;
     use crate::domain::account::value_objects::Name;
     use crate::domain::account::value_objects::Sku;
     use crate::domain::account::value_objects::Status;
@@ -421,7 +419,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetAccountParams { id: Uuid::new_v4() })
+            .execute(GetAccountParams { id: AccountId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -587,10 +585,9 @@ let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
 mod tests {
     use super::*;
     use crate::domain::account::{
-        model::{Account, AccountProps},
+        model::{Account, AccountId, AccountProps},
         repository::mocks::MockAccountRepository,
     };
-    use uuid::Uuid;
     use crate::domain::account::value_objects::Name;
     use crate::domain::account::value_objects::Sku;
     use crate::domain::account::value_objects::Status;
@@ -653,7 +650,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateAccountParams {
-            id: Uuid::new_v4(),
+            id: AccountId::generate(),
             title: "new".to_string(),
             price: 42,
             name: "new".to_string(),
@@ -901,6 +898,32 @@ use crate::domain::shared::value_objects::Email;
 
 use super::errors::AccountError;
 
+/// The id of every `Account`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AccountId(Uuid);
+
+impl AccountId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for AccountId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AccountProps {
     pub title: String,
@@ -916,7 +939,7 @@ pub struct AccountProps {
 
 #[derive(Debug, Clone)]
 pub struct Account {
-    pub id: Uuid,
+    pub id: AccountId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -939,7 +962,7 @@ impl Account {
         }
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: AccountId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -1061,21 +1084,22 @@ mod tests {
 
 === business/src/domain/account/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::AccountError, model::Account};
+use super::{
+    errors::AccountError,
+    model::{Account, AccountId},
+};
 
 #[async_trait]
 pub trait AccountRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Account>, AccountError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Account>, AccountError>;
+    async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, AccountError>;
     async fn save(&self, entity: &Account) -> Result<(), AccountError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -1085,7 +1109,7 @@ pub mod mocks {
         #[async_trait]
         impl AccountRepositoryTrait for AccountRepository {
             async fn find_all(&self) -> Result<Vec<Account>, AccountError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Account>, AccountError>;
+            async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, AccountError>;
             async fn save(&self, entity: &Account) -> Result<(), AccountError>;
         }
     }
@@ -1132,13 +1156,12 @@ pub mod mocks {
 
 === business/src/domain/account/use_cases/delete_account.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::account::errors::AccountError;
+use crate::domain::account::{errors::AccountError, model::AccountId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteAccountParams {
-    pub id: Uuid,
+    pub id: AccountId,
 }
 
 #[async_trait]
@@ -1164,13 +1187,15 @@ pub mod mocks {
 
 === business/src/domain/account/use_cases/get_account.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::account::{errors::AccountError, model::Account};
+use crate::domain::account::{
+    errors::AccountError,
+    model::{Account, AccountId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetAccountParams {
-    pub id: Uuid,
+    pub id: AccountId,
 }
 
 #[async_trait]
@@ -1225,13 +1250,15 @@ pub mod mocks {
 
 === business/src/domain/account/use_cases/update_account.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::account::{errors::AccountError, model::Account};
+use crate::domain::account::{
+    errors::AccountError,
+    model::{Account, AccountId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateAccountParams {
-    pub id: Uuid,
+    pub id: AccountId,
     pub title: String,
     pub price: i64,
     pub name: String,
@@ -1577,11 +1604,10 @@ impl Default for AccountMother {
 
 === infrastructure/src/account/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
 use business::domain::account::{
     errors::AccountError,
-    model::Account,
+    model::{Account, AccountId},
     repository::AccountRepositoryTrait,
 };
 
@@ -1603,7 +1629,7 @@ impl AccountRepositoryTrait for InMemoryAccountRepository {
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Account>, AccountError> {
+    async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, AccountError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
@@ -1657,7 +1683,7 @@ pub struct AccountDto {
 impl AccountDto {
     pub fn from_domain(entity: &Account) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             title: entity.title.clone(),
             price: entity.price,
             name: entity.name.value().to_string(),
@@ -1987,6 +2013,7 @@ impl DeleteAccountResponse {
 === presentation/src/api/account/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::account::model::AccountId;
 use business::domain::account::use_cases::{
     create_account::{CreateAccountParams, CreateAccountUseCaseTrait},
     delete_account::{DeleteAccountParams, DeleteAccountUseCaseTrait},
@@ -2048,7 +2075,7 @@ impl AccountApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetAccountResponse {
         match self
             .get_account
-            .execute(GetAccountParams { id: id.0 })
+            .execute(GetAccountParams { id: AccountId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetAccountResponse::Ok(Json(AccountDto::from_domain(&entity))),
@@ -2081,7 +2108,7 @@ impl AccountApi {
         match self
             .update_account
             .execute(UpdateAccountParams {
-                id: id.0,
+                id: AccountId::from_uuid(id.0),
                 title: body.title.clone(),
                 price: body.price,
                 name: body.name.clone(),
@@ -2108,7 +2135,7 @@ impl AccountApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteAccountResponse {
         match self
             .delete_account
-            .execute(DeleteAccountParams { id: id.0 })
+            .execute(DeleteAccountParams { id: AccountId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteAccountResponse::NoContent,

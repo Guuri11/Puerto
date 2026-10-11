@@ -87,7 +87,7 @@ puerto generate scaffold Product name:String price:i64! sku:String
 Every entity automatically includes these fields — do **not** add them to `entity.fields`:
 
 ```rust
-pub id: Uuid,
+pub id: ProductId,        // the entity's own id newtype over a Uuid — see architecture.md § Typed ids
 pub created_at: DateTime<Utc>,
 pub updated_at: DateTime<Utc>,
 pub deleted: bool,

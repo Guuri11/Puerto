@@ -52,7 +52,7 @@ presentation/src/
 ```rust
 #[oai(path = "/products/:id", method = "get", tag = "ApiTags::Product")]
 async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
-    match self.get_product.execute(GetProductParams { id: id.0 }).await {
+    match self.get_product.execute(GetProductParams { id: ProductId::from_uuid(id.0) }).await {
         Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
         Err(err) => {
             let (status, error) = err.into_error_response();

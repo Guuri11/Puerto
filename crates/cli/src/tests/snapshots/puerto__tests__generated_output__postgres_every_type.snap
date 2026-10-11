@@ -458,10 +458,9 @@ impl DeleteCustomerUseCaseTrait for DeleteCustomerUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::customer::{
-        model::{Customer, CustomerProps},
+        model::{Customer, CustomerId, CustomerProps},
         repository::mocks::MockCustomerRepository,
     };
-    use uuid::Uuid;
     use chrono::Utc;
     use crate::domain::shared::value_objects::Email;
     use crate::domain::customer::value_objects::Name;
@@ -509,7 +508,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteCustomerParams { id: Uuid::new_v4() })
+            .execute(DeleteCustomerParams { id: CustomerId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -550,10 +549,9 @@ impl GetCustomerUseCaseTrait for GetCustomerUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::customer::{
-        model::{Customer, CustomerProps},
+        model::{Customer, CustomerId, CustomerProps},
         repository::mocks::MockCustomerRepository,
     };
-    use uuid::Uuid;
     use chrono::Utc;
     use crate::domain::shared::value_objects::Email;
     use crate::domain::customer::value_objects::Name;
@@ -599,7 +597,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetCustomerParams { id: Uuid::new_v4() })
+            .execute(GetCustomerParams { id: CustomerId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -764,10 +762,9 @@ let status = params.status.parse::<Status>()?;
 mod tests {
     use super::*;
     use crate::domain::customer::{
-        model::{Customer, CustomerProps},
+        model::{Customer, CustomerId, CustomerProps},
         repository::mocks::MockCustomerRepository,
     };
-    use uuid::Uuid;
     use chrono::Utc;
     use crate::domain::shared::value_objects::Email;
     use crate::domain::customer::value_objects::Name;
@@ -831,7 +828,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateCustomerParams {
-            id: Uuid::new_v4(),
+            id: CustomerId::generate(),
             email: "new".to_string(),
             name: "new".to_string(),
             code: "new".to_string(),
@@ -1224,7 +1221,7 @@ impl DeleteProductUseCaseTrait for DeleteProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::{
-        model::{Product, ProductProps},
+        model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
     use uuid::Uuid;
@@ -1275,7 +1272,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteProductParams { id: Uuid::new_v4() })
+            .execute(DeleteProductParams { id: ProductId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -1316,7 +1313,7 @@ impl GetProductUseCaseTrait for GetProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::{
-        model::{Product, ProductProps},
+        model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
     use uuid::Uuid;
@@ -1365,7 +1362,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetProductParams { id: Uuid::new_v4() })
+            .execute(GetProductParams { id: ProductId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -1535,7 +1532,7 @@ impl UpdateProductUseCaseTrait for UpdateProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::{
-        model::{Product, ProductProps},
+        model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
     use uuid::Uuid;
@@ -1607,7 +1604,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateProductParams {
-            id: Uuid::new_v4(),
+            id: ProductId::generate(),
             title: "new".to_string(),
             sku: "new".to_string(),
             price: 42,
@@ -1864,10 +1861,9 @@ impl DeleteTicketUseCaseTrait for DeleteTicketUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::ticket::{
-        model::{Ticket, TicketProps},
+        model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use uuid::Uuid;
     use crate::domain::ticket::value_objects::State;
 
 
@@ -1902,7 +1898,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteTicketParams { id: Uuid::new_v4() })
+            .execute(DeleteTicketParams { id: TicketId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -1943,10 +1939,9 @@ impl GetTicketUseCaseTrait for GetTicketUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::ticket::{
-        model::{Ticket, TicketProps},
+        model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use uuid::Uuid;
     use crate::domain::ticket::value_objects::State;
 
 
@@ -1978,7 +1973,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetTicketParams { id: Uuid::new_v4() })
+            .execute(GetTicketParams { id: TicketId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -2102,10 +2097,9 @@ let state = params.state.parse::<State>()?;
 mod tests {
     use super::*;
     use crate::domain::ticket::{
-        model::{Ticket, TicketProps},
+        model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use uuid::Uuid;
     use crate::domain::ticket::value_objects::State;
 
 
@@ -2149,7 +2143,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateTicketParams {
-            id: Uuid::new_v4(),
+            id: TicketId::generate(),
             state: "Open".to_string(),
             })
             .await;
@@ -2207,6 +2201,32 @@ use super::value_objects::Status;
 
 use super::errors::CustomerError;
 
+/// The id of every `Customer`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CustomerId(Uuid);
+
+impl CustomerId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for CustomerId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CustomerProps {
     pub email: Email,
@@ -2221,7 +2241,7 @@ pub struct CustomerProps {
 
 #[derive(Debug, Clone)]
 pub struct Customer {
-    pub id: Uuid,
+    pub id: CustomerId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -2240,7 +2260,7 @@ impl Customer {
     pub fn new(props: CustomerProps) -> Result<Self, CustomerError> {
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: CustomerId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -2324,21 +2344,22 @@ mod tests {
 
 === business/src/domain/customer/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::CustomerError, model::Customer};
+use super::{
+    errors::CustomerError,
+    model::{Customer, CustomerId},
+};
 
 #[async_trait]
 pub trait CustomerRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Customer>, CustomerError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Customer>, CustomerError>;
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError>;
     async fn save(&self, entity: &Customer) -> Result<(), CustomerError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -2348,7 +2369,7 @@ pub mod mocks {
         #[async_trait]
         impl CustomerRepositoryTrait for CustomerRepository {
             async fn find_all(&self) -> Result<Vec<Customer>, CustomerError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Customer>, CustomerError>;
+            async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError>;
             async fn save(&self, entity: &Customer) -> Result<(), CustomerError>;
         }
     }
@@ -2395,13 +2416,12 @@ pub mod mocks {
 
 === business/src/domain/customer/use_cases/delete_customer.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::customer::errors::CustomerError;
+use crate::domain::customer::{errors::CustomerError, model::CustomerId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteCustomerParams {
-    pub id: Uuid,
+    pub id: CustomerId,
 }
 
 #[async_trait]
@@ -2427,13 +2447,15 @@ pub mod mocks {
 
 === business/src/domain/customer/use_cases/get_customer.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::customer::{errors::CustomerError, model::Customer};
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::{Customer, CustomerId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetCustomerParams {
-    pub id: Uuid,
+    pub id: CustomerId,
 }
 
 #[async_trait]
@@ -2488,14 +2510,16 @@ pub mod mocks {
 
 === business/src/domain/customer/use_cases/update_customer.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-use crate::domain::customer::{errors::CustomerError, model::Customer};
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::{Customer, CustomerId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateCustomerParams {
-    pub id: Uuid,
+    pub id: CustomerId,
     pub email: String,
     pub name: String,
     pub code: String,
@@ -2684,6 +2708,32 @@ use std::collections::HashMap;
 
 use super::errors::ProductError;
 
+/// The id of every `Product`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProductId(Uuid);
+
+impl ProductId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ProductId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProductProps {
     pub title: String,
@@ -2703,7 +2753,7 @@ pub struct ProductProps {
 
 #[derive(Debug, Clone)]
 pub struct Product {
-    pub id: Uuid,
+    pub id: ProductId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -2733,7 +2783,7 @@ impl Product {
         }
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: ProductId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -2875,21 +2925,22 @@ mod tests {
 
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::ProductError, model::Product};
+use super::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError>;
     async fn save(&self, entity: &Product) -> Result<(), ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -2899,7 +2950,7 @@ pub mod mocks {
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
             async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError>;
             async fn save(&self, entity: &Product) -> Result<(), ProductError>;
         }
     }
@@ -2984,13 +3035,12 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/delete_product.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::product::errors::ProductError;
+use crate::domain::product::{errors::ProductError, model::ProductId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteProductParams {
-    pub id: Uuid,
+    pub id: ProductId,
 }
 
 #[async_trait]
@@ -3016,13 +3066,15 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/get_product.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::product::{errors::ProductError, model::Product};
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetProductParams {
-    pub id: Uuid,
+    pub id: ProductId,
 }
 
 #[async_trait]
@@ -3081,11 +3133,14 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
-use crate::domain::product::{errors::ProductError, model::Product};
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateProductParams {
-    pub id: Uuid,
+    pub id: ProductId,
     pub title: String,
     pub sku: String,
     pub price: i64,
@@ -3183,6 +3238,32 @@ use super::value_objects::State;
 
 use super::errors::TicketError;
 
+/// The id of every `Ticket`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TicketId(Uuid);
+
+impl TicketId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for TicketId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TicketProps {
     pub state: State,
@@ -3190,7 +3271,7 @@ pub struct TicketProps {
 
 #[derive(Debug, Clone)]
 pub struct Ticket {
-    pub id: Uuid,
+    pub id: TicketId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -3202,7 +3283,7 @@ impl Ticket {
     pub fn new(props: TicketProps) -> Result<Self, TicketError> {
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: TicketId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -3242,21 +3323,22 @@ mod tests {
 
 === business/src/domain/ticket/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::TicketError, model::Ticket};
+use super::{
+    errors::TicketError,
+    model::{Ticket, TicketId},
+};
 
 #[async_trait]
 pub trait TicketRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Ticket>, TicketError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Ticket>, TicketError>;
+    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, TicketError>;
     async fn save(&self, entity: &Ticket) -> Result<(), TicketError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -3266,7 +3348,7 @@ pub mod mocks {
         #[async_trait]
         impl TicketRepositoryTrait for TicketRepository {
             async fn find_all(&self) -> Result<Vec<Ticket>, TicketError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Ticket>, TicketError>;
+            async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, TicketError>;
             async fn save(&self, entity: &Ticket) -> Result<(), TicketError>;
         }
     }
@@ -3305,13 +3387,12 @@ pub mod mocks {
 
 === business/src/domain/ticket/use_cases/delete_ticket.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::ticket::errors::TicketError;
+use crate::domain::ticket::{errors::TicketError, model::TicketId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteTicketParams {
-    pub id: Uuid,
+    pub id: TicketId,
 }
 
 #[async_trait]
@@ -3337,13 +3418,15 @@ pub mod mocks {
 
 === business/src/domain/ticket/use_cases/get_ticket.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::ticket::{errors::TicketError, model::Ticket};
+use crate::domain::ticket::{
+    errors::TicketError,
+    model::{Ticket, TicketId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetTicketParams {
-    pub id: Uuid,
+    pub id: TicketId,
 }
 
 #[async_trait]
@@ -3398,13 +3481,15 @@ pub mod mocks {
 
 === business/src/domain/ticket/use_cases/update_ticket.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::ticket::{errors::TicketError, model::Ticket};
+use crate::domain::ticket::{
+    errors::TicketError,
+    model::{Ticket, TicketId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateTicketParams {
-    pub id: Uuid,
+    pub id: TicketId,
     pub state: String,
 }
 
@@ -3993,7 +4078,10 @@ use business::domain::customer::value_objects::MiddleName;
 use business::domain::customer::value_objects::Label;
 use business::domain::customer::value_objects::Status;
 
-use business::domain::customer::{errors::CustomerError, model::Customer};
+use business::domain::customer::{
+    errors::CustomerError,
+    model::{Customer, CustomerId},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct CustomerDb {
@@ -4017,7 +4105,7 @@ impl TryFrom<CustomerDb> for Customer {
 
     fn try_from(row: CustomerDb) -> Result<Self, Self::Error> {
         Ok(Self::from_repository(Customer {
-            id: row.id,
+            id: CustomerId::from_uuid(row.id),
             created_at: row.created_at,
             updated_at: row.updated_at,
             deleted: row.deleted,
@@ -4037,7 +4125,7 @@ impl TryFrom<CustomerDb> for Customer {
 impl From<&Customer> for CustomerDb {
     fn from(entity: &Customer) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             created_at: entity.created_at,
             updated_at: entity.updated_at,
             deleted: entity.deleted,
@@ -4057,11 +4145,10 @@ impl From<&Customer> for CustomerDb {
 === infrastructure/src/customer/repository.rs ===
 use async_trait::async_trait;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use business::domain::customer::{
     errors::CustomerError,
-    model::Customer,
+    model::{Customer, CustomerId},
     repository::CustomerRepositoryTrait,
 };
 
@@ -4096,13 +4183,13 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         rows.into_iter().map(|r| r.try_into()).collect()
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Customer>, CustomerError> {
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, CustomerError> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             CustomerDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, email, name, code, age, joined, middle, labels, status
              FROM customers WHERE id = $1 AND deleted = false",
-            id
+            id.value()
         )
         .fetch_optional(&self.pool)
         .await
@@ -4163,6 +4250,7 @@ mod integration_tests {
     use business::domain::customer::value_objects::Age;
     use business::domain::customer::value_objects::Joined;
     use business::domain::customer::value_objects::Status;
+    use uuid::Uuid;
 
     fn test_repo(pool: PgPool) -> PgCustomerRepository {
         PgCustomerRepository::new(pool)
@@ -4207,7 +4295,7 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
-        let result = test_repo(pool).find_by_id(Uuid::new_v4()).await.unwrap();
+        let result = test_repo(pool).find_by_id(CustomerId::generate()).await.unwrap();
 
         // Assert
         assert!(result.is_none());
@@ -4305,7 +4393,10 @@ use uuid::Uuid;
 use sqlx::types::Json;
 use std::collections::HashMap;
 
-use business::domain::product::{errors::ProductError, model::Product};
+use business::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ProductDb {
@@ -4334,7 +4425,7 @@ impl TryFrom<ProductDb> for Product {
 
     fn try_from(row: ProductDb) -> Result<Self, Self::Error> {
         Ok(Self::from_repository(Product {
-            id: row.id,
+            id: ProductId::from_uuid(row.id),
             created_at: row.created_at,
             updated_at: row.updated_at,
             deleted: row.deleted,
@@ -4359,7 +4450,7 @@ impl TryFrom<ProductDb> for Product {
 impl From<&Product> for ProductDb {
     fn from(entity: &Product) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             created_at: entity.created_at,
             updated_at: entity.updated_at,
             deleted: entity.deleted,
@@ -4384,13 +4475,12 @@ impl From<&Product> for ProductDb {
 === infrastructure/src/product/repository.rs ===
 use async_trait::async_trait;
 use sqlx::PgPool;
-use uuid::Uuid;
 use sqlx::types::Json;
 use std::collections::HashMap;
 
 use business::domain::product::{
     errors::ProductError,
-    model::Product,
+    model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
 
@@ -4425,13 +4515,13 @@ impl ProductRepositoryTrait for PgProductRepository {
         rows.into_iter().map(|r| r.try_into()).collect()
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError> {
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             ProductDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, title, sku, price, rating, active, ref_id, published_at, summary, views, expires_at, tags, scores, meta as \"meta: Json<HashMap<String, String>>\"
              FROM products WHERE id = $1 AND deleted = false",
-            id
+            id.value()
         )
         .fetch_optional(&self.pool)
         .await
@@ -4491,6 +4581,7 @@ mod integration_tests {
     use super::*;
     use business::domain::product::model::ProductProps;
 
+    use uuid::Uuid;
 
     fn test_repo(pool: PgPool) -> PgProductRepository {
         PgProductRepository::new(pool)
@@ -4545,7 +4636,7 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
-        let result = test_repo(pool).find_by_id(Uuid::new_v4()).await.unwrap();
+        let result = test_repo(pool).find_by_id(ProductId::generate()).await.unwrap();
 
         // Assert
         assert!(result.is_none());
@@ -4587,7 +4678,10 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use business::domain::ticket::value_objects::State;
 
-use business::domain::ticket::{errors::TicketError, model::Ticket};
+use business::domain::ticket::{
+    errors::TicketError,
+    model::{Ticket, TicketId},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TicketDb {
@@ -4604,7 +4698,7 @@ impl TryFrom<TicketDb> for Ticket {
 
     fn try_from(row: TicketDb) -> Result<Self, Self::Error> {
         Ok(Self::from_repository(Ticket {
-            id: row.id,
+            id: TicketId::from_uuid(row.id),
             created_at: row.created_at,
             updated_at: row.updated_at,
             deleted: row.deleted,
@@ -4617,7 +4711,7 @@ impl TryFrom<TicketDb> for Ticket {
 impl From<&Ticket> for TicketDb {
     fn from(entity: &Ticket) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             created_at: entity.created_at,
             updated_at: entity.updated_at,
             deleted: entity.deleted,
@@ -4630,11 +4724,10 @@ impl From<&Ticket> for TicketDb {
 === infrastructure/src/ticket/repository.rs ===
 use async_trait::async_trait;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use business::domain::ticket::{
     errors::TicketError,
-    model::Ticket,
+    model::{Ticket, TicketId},
     repository::TicketRepositoryTrait,
 };
 
@@ -4669,13 +4762,13 @@ impl TicketRepositoryTrait for PgTicketRepository {
         rows.into_iter().map(|r| r.try_into()).collect()
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Ticket>, TicketError> {
+    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, TicketError> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             TicketDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, state
              FROM tickets WHERE id = $1 AND deleted = false",
-            id
+            id.value()
         )
         .fetch_optional(&self.pool)
         .await
@@ -4754,7 +4847,7 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
-        let result = test_repo(pool).find_by_id(Uuid::new_v4()).await.unwrap();
+        let result = test_repo(pool).find_by_id(TicketId::generate()).await.unwrap();
 
         // Assert
         assert!(result.is_none());
@@ -4824,7 +4917,7 @@ pub struct CustomerDto {
 impl CustomerDto {
     pub fn from_domain(entity: &Customer) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             email: entity.email.value().to_string(),
             name: entity.name.value().to_string(),
             code: entity.code.value().to_string(),
@@ -5173,6 +5266,7 @@ impl DeleteCustomerResponse {
 === presentation/src/api/customer/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::customer::model::CustomerId;
 use business::domain::customer::use_cases::{
     create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
     delete_customer::{DeleteCustomerParams, DeleteCustomerUseCaseTrait},
@@ -5233,7 +5327,7 @@ impl CustomerApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetCustomerResponse {
         match self
             .get_customer
-            .execute(GetCustomerParams { id: id.0 })
+            .execute(GetCustomerParams { id: CustomerId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetCustomerResponse::Ok(Json(CustomerDto::from_domain(&entity))),
@@ -5266,7 +5360,7 @@ impl CustomerApi {
         match self
             .update_customer
             .execute(UpdateCustomerParams {
-                id: id.0,
+                id: CustomerId::from_uuid(id.0),
                 email: body.email.clone(),
                 name: body.name.clone(),
                 code: body.code.clone(),
@@ -5292,7 +5386,7 @@ impl CustomerApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteCustomerResponse {
         match self
             .delete_customer
-            .execute(DeleteCustomerParams { id: id.0 })
+            .execute(DeleteCustomerParams { id: CustomerId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteCustomerResponse::NoContent,
@@ -5564,7 +5658,7 @@ pub struct ProductDto {
 impl ProductDto {
     pub fn from_domain(entity: &Product) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             title: entity.title.clone(),
             sku: entity.sku.clone(),
             price: entity.price,
@@ -5841,6 +5935,7 @@ impl DeleteProductResponse {
 use business::domain::product::use_cases::archive_product::ArchiveProductUseCaseTrait;
 use std::sync::Arc;
 
+use business::domain::product::model::ProductId;
 use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
     delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
@@ -5909,7 +6004,7 @@ impl ProductApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
         match self
             .get_product
-            .execute(GetProductParams { id: id.0 })
+            .execute(GetProductParams { id: ProductId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
@@ -5942,7 +6037,7 @@ impl ProductApi {
         match self
             .update_product
             .execute(UpdateProductParams {
-                id: id.0,
+                id: ProductId::from_uuid(id.0),
                 title: body.title.clone(),
                 sku: body.sku.clone(),
                 price: body.price,
@@ -5973,7 +6068,7 @@ impl ProductApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteProductResponse {
         match self
             .delete_product
-            .execute(DeleteProductParams { id: id.0 })
+            .execute(DeleteProductParams { id: ProductId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteProductResponse::NoContent,
@@ -6257,7 +6352,7 @@ pub struct TicketDto {
 impl TicketDto {
     pub fn from_domain(entity: &Ticket) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             state: entity.state.as_str().to_string(),
         }
     }
@@ -6508,6 +6603,7 @@ impl DeleteTicketResponse {
 === presentation/src/api/ticket/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::ticket::model::TicketId;
 use business::domain::ticket::use_cases::{
     create_ticket::{CreateTicketParams, CreateTicketUseCaseTrait},
     delete_ticket::{DeleteTicketParams, DeleteTicketUseCaseTrait},
@@ -6561,7 +6657,7 @@ impl TicketApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetTicketResponse {
         match self
             .get_ticket
-            .execute(GetTicketParams { id: id.0 })
+            .execute(GetTicketParams { id: TicketId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetTicketResponse::Ok(Json(TicketDto::from_domain(&entity))),
@@ -6594,7 +6690,7 @@ impl TicketApi {
         match self
             .update_ticket
             .execute(UpdateTicketParams {
-                id: id.0,
+                id: TicketId::from_uuid(id.0),
                 state: body.state.clone(),
             })
             .await
@@ -6613,7 +6709,7 @@ impl TicketApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteTicketResponse {
         match self
             .delete_ticket
-            .execute(DeleteTicketParams { id: id.0 })
+            .execute(DeleteTicketParams { id: TicketId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteTicketResponse::NoContent,

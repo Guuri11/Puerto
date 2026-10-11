@@ -13,7 +13,7 @@ pub struct {{ pascal }}Dto {
 impl {{ pascal }}Dto {
     pub fn from_domain(entity: &{{ pascal }}) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
 {% for f in fields %}            {{ f.name }}: {{ f.accessor }},
 {% endfor %}        }
     }

@@ -19,11 +19,9 @@ enum TestImports {
     /// Create: its tests build `CreateEntityParams` literals only — always primitives — so no VO
     /// import, which would be unused.
     ParamsOnly,
-    /// List: its tests build `EntityProps` literals, naming the VOs they construct.
+    /// Get / list / update / delete: their tests build `EntityProps` literals, naming the VOs they
+    /// construct. A missing id is `EntityId::generate()`, imported by the template.
     Props,
-    /// Get / update / delete: as `Props`, plus the `Uuid::new_v4()` of the not-found cases. Not
-    /// emitted twice for an entity that also *has* a `Uuid` field — a duplicate import (E0252).
-    PropsAndUuid,
 }
 
 /// The context every application template renders from.
@@ -54,9 +52,6 @@ fn use_case_context(
     }
 
     let mut tests: Vec<String> = vec![];
-    if matches!(test_imports, TestImports::PropsAndUuid) {
-        tests.push("uuid::Uuid".to_string());
-    }
     let literal_imports = eff.iter().filter_map(literal_import).map(str::to_string);
     let named_vos = eff
         .iter()
@@ -115,14 +110,7 @@ pub fn generate_get_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    render_use_case(
-        "get",
-        TestImports::PropsAndUuid,
-        pascal,
-        snake,
-        fields,
-        shared_vos,
-    )
+    render_use_case("get", TestImports::Props, pascal, snake, fields, shared_vos)
 }
 
 pub fn generate_list_use_case_impl(
@@ -149,7 +137,7 @@ pub fn generate_update_use_case_impl(
 ) -> Result<String, RenderError> {
     render_use_case(
         "update",
-        TestImports::PropsAndUuid,
+        TestImports::Props,
         pascal,
         snake,
         fields,
@@ -165,7 +153,7 @@ pub fn generate_delete_use_case_impl(
 ) -> Result<String, RenderError> {
     render_use_case(
         "delete",
-        TestImports::PropsAndUuid,
+        TestImports::Props,
         pascal,
         snake,
         fields,

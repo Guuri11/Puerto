@@ -145,12 +145,12 @@ impl DeleteProductUseCaseTrait for DeleteProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::{
-        model::{Product, ProductProps},
+        model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
-    use uuid::Uuid;
     use chrono::Utc;
     use std::collections::HashMap;
+    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -190,7 +190,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteProductParams { id: Uuid::new_v4() })
+            .execute(DeleteProductParams { id: ProductId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -231,12 +231,12 @@ impl GetProductUseCaseTrait for GetProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::{
-        model::{Product, ProductProps},
+        model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
-    use uuid::Uuid;
     use chrono::Utc;
     use std::collections::HashMap;
+    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -274,7 +274,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetProductParams { id: Uuid::new_v4() })
+            .execute(GetProductParams { id: ProductId::generate() })
             .await;
 
         assert!(result.is_err());
@@ -421,12 +421,12 @@ impl UpdateProductUseCaseTrait for UpdateProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::{
-        model::{Product, ProductProps},
+        model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
-    use uuid::Uuid;
     use chrono::Utc;
     use std::collections::HashMap;
+    use uuid::Uuid;
 
 
     #[tokio::test]
@@ -481,7 +481,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateProductParams {
-            id: Uuid::new_v4(),
+            id: ProductId::generate(),
             title: "new".to_string(),
             price: 42,
             in_stock: true,
@@ -565,6 +565,32 @@ use std::collections::HashMap;
 
 use super::errors::ProductError;
 
+/// The id of every `Product`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProductId(Uuid);
+
+impl ProductId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ProductId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProductProps {
     pub title: String,
@@ -578,7 +604,7 @@ pub struct ProductProps {
 
 #[derive(Debug, Clone)]
 pub struct Product {
-    pub id: Uuid,
+    pub id: ProductId,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
@@ -599,7 +625,7 @@ impl Product {
         }
         let now = chrono::Utc::now();
         Ok(Self {
-            id: Uuid::new_v4(),
+            id: ProductId::generate(),
             created_at: now,
             updated_at: now,
             deleted: false,
@@ -673,21 +699,22 @@ mod tests {
 
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use super::{errors::ProductError, model::Product};
+use super::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
     async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError>;
     async fn save(&self, entity: &Product) -> Result<(), ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use mockall::mock;
-    use uuid::Uuid;
 
     use super::*;
 
@@ -697,7 +724,7 @@ pub mod mocks {
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
             async fn find_all(&self) -> Result<Vec<Product>, ProductError>;
-            async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError>;
             async fn save(&self, entity: &Product) -> Result<(), ProductError>;
         }
     }
@@ -745,13 +772,12 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/delete_product.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::product::errors::ProductError;
+use crate::domain::product::{errors::ProductError, model::ProductId};
 
 #[derive(Debug, Clone)]
 pub struct DeleteProductParams {
-    pub id: Uuid,
+    pub id: ProductId,
 }
 
 #[async_trait]
@@ -777,13 +803,15 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/get_product.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
-use crate::domain::product::{errors::ProductError, model::Product};
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
 
 #[derive(Debug, Clone)]
 pub struct GetProductParams {
-    pub id: Uuid,
+    pub id: ProductId,
 }
 
 #[async_trait]
@@ -838,15 +866,18 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/update_product.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use uuid::Uuid;
 
-use crate::domain::product::{errors::ProductError, model::Product};
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
 
 #[derive(Debug, Clone)]
 pub struct UpdateProductParams {
-    pub id: Uuid,
+    pub id: ProductId,
     pub title: String,
     pub price: i64,
     pub in_stock: bool,
@@ -1034,11 +1065,10 @@ pub mod product {
 
 === infrastructure/src/product/repository.rs ===
 use async_trait::async_trait;
-use uuid::Uuid;
 
 use business::domain::product::{
     errors::ProductError,
-    model::Product,
+    model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
 
@@ -1060,7 +1090,7 @@ impl ProductRepositoryTrait for InMemoryProductRepository {
         Ok(vec![])
     }
 
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Product>, ProductError> {
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ProductError> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
@@ -1106,7 +1136,7 @@ pub struct ProductDto {
 impl ProductDto {
     pub fn from_domain(entity: &Product) -> Self {
         Self {
-            id: entity.id,
+            id: entity.id.value(),
             title: entity.title.clone(),
             price: entity.price,
             in_stock: entity.in_stock,
@@ -1364,6 +1394,7 @@ impl DeleteProductResponse {
 === presentation/src/api/product/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::product::model::ProductId;
 use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
     delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
@@ -1423,7 +1454,7 @@ impl ProductApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
         match self
             .get_product
-            .execute(GetProductParams { id: id.0 })
+            .execute(GetProductParams { id: ProductId::from_uuid(id.0) })
             .await
         {
             Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
@@ -1456,7 +1487,7 @@ impl ProductApi {
         match self
             .update_product
             .execute(UpdateProductParams {
-                id: id.0,
+                id: ProductId::from_uuid(id.0),
                 title: body.title.clone(),
                 price: body.price,
                 in_stock: body.in_stock,
@@ -1481,7 +1512,7 @@ impl ProductApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteProductResponse {
         match self
             .delete_product
-            .execute(DeleteProductParams { id: id.0 })
+            .execute(DeleteProductParams { id: ProductId::from_uuid(id.0) })
             .await
         {
             Ok(()) => DeleteProductResponse::NoContent,
