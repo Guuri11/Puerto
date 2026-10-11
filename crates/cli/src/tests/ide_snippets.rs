@@ -357,6 +357,26 @@ fn compose_gadget_from_snippets(output: &Path, db: bool) {
 }
 
 #[test]
+fn use_case_snippet_ships_the_mock_every_use_case_trait_has() {
+    // ADR-0012: every use case trait ships `mocks::Mock{Uc}UseCase`. A web project's bootstrap.rs
+    // builds the spec from those mocks, so a use case written from the snippet without one broke
+    // the presentation crate's tests (E0432).
+    let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
+
+    let body = expand_snippet(
+        &s["domain-use-case"],
+        &[
+            ("entity", "gadget"),
+            ("Entity", "Gadget"),
+            ("Action", "Create"),
+        ],
+    );
+
+    assert!(body.contains("pub mod mocks {"), "{body}");
+    assert!(body.contains("pub CreateGadgetUseCase {}"), "{body}");
+}
+
+#[test]
 fn snippet_expansion_resolves_tab_stops_like_an_ide() {
     assert_eq!(
         expand_snippet(

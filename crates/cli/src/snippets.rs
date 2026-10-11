@@ -153,9 +153,25 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[async_trait]",
       "pub trait ${3:Action}${2:Entity}UseCaseTrait: Send + Sync {",
       "\tasync fn execute(&self, params: ${3:Action}${2:Entity}Params) -> Result<${2:Entity}, ${2:Entity}Error>;",
+      "}",
+      "",
+      "#[cfg(any(test, feature = \"test-utils\"))]",
+      "pub mod mocks {",
+      "\tuse mockall::mock;",
+      "",
+      "\tuse super::*;",
+      "",
+      "\tmock! {",
+      "\t\tpub ${3:Action}${2:Entity}UseCase {}",
+      "",
+      "\t\t#[async_trait]",
+      "\t\timpl ${3:Action}${2:Entity}UseCaseTrait for ${3:Action}${2:Entity}UseCase {",
+      "\t\t\tasync fn execute(&self, params: ${3:Action}${2:Entity}Params) -> Result<${2:Entity}, ${2:Entity}Error>;",
+      "\t\t}",
+      "\t}",
       "}"
     ],
-    "description": "Use case Params struct + UseCaseTrait."
+    "description": "Use case Params struct + UseCaseTrait + mockall mock in pub mod mocks (route tests and the spec export use it)."
   },
   "Application — use case impl + tests": {
     "prefix": "app-use-case",
