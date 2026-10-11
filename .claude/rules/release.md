@@ -123,6 +123,7 @@ Every release — automated or manual — must pass:
 
 - [ ] `make test` — structural tests pass
 - [ ] `make test/full` — generated projects lint clean and internal tests pass ← **most important gate**
+      (needs `bun` on `PATH`: the web scenarios install, lint and test the generated frontend)
 - [ ] `make test/db` — the `--db` scenario against Postgres
 - [ ] `make lint` — zero clippy warnings
 - [ ] `make format` — no formatting diff

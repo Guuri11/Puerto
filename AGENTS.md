@@ -197,7 +197,8 @@ make format/fix    # cargo fmt --all
 ## Completion Checklist
 
 - [ ] `make test` passes (structural tests — fast)
-- [ ] `make test/full` passes (generated projects lint clean + internal tests pass — slow)
+- [ ] `make test/full` passes (generated projects lint clean + internal tests pass — slow; needs
+      `bun` on `PATH` for the web scenarios)
 - [ ] `make test/db` passes when the change touches `--db` generation (Pg repository, migrations, SQL)
 - [ ] Tier 1 change (templates, schema, bootstrap, migrations, patchers): diff read in full —
       see `.claude/rules/workflow.md` § Risk tiers
@@ -212,7 +213,9 @@ make format/fix    # cargo fmt --all
   mapper arm (ADR-0007)
 - `/health`, `/health/ready`, graceful shutdown on SIGTERM (ADR-0008)
 - Pinned toolchain + edition 2024 (ADR-0009); root `AGENTS.md` + `CLAUDE.md` (ADR-0010)
-- `web/` frontend unless `--no-web`: `[project] web = true`, `make web/*` targets (ADR-0013)
+- `web/` frontend unless `--no-web`: `[project] web = true`, `make web/*` targets (ADR-0013);
+  `bootstrap.rs` exports the OpenAPI spec to `docs/api/openapi.json` from mocked use cases, and
+  `make web/sync` turns it into the frontend's wire types
 
 ## Detailed Rules
 

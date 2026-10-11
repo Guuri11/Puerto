@@ -46,6 +46,10 @@ Puerto is a Rust full-stack framework built around DDD + Clean Architecture (Hex
 
 `puerto generate scaffold <Name>` creates all DDD files, patches `lib.rs` files, updates `puerto.toml`, and regenerates `bootstrap.rs` — zero manual wiring.
 
+Since Phase 9 (in progress) a project also gets `web/` — a React + daisyUI frontend shell on Bun
+(`--no-web` skips it) — and, once `cargo test` runs, `docs/api/openapi.json`, the API contract the
+frontend is typed from (`make web/sync`). Per-entity screens arrive with 9.2.
+
 ---
 
 ## Phase 2 — Generators
@@ -1284,6 +1288,9 @@ Test scenarios: scaffold writes `list_products.rs` in domain and application; pu
 
 ## Phase 9 — Full-stack (frontend) — `web/`
 
+**Status:** 9.0 ✅ (`33d4113`) · 9.1 ✅ (`4ea452e`) · **next: 9.2** — read "Handoff to 9.2" below
+first.
+
 Rails-style: `scaffold` leaves a working CRUD screen per entity, and the project carries the
 structure to grow the frontend by hand. Same Dependency Rule as the backend, but **no layer
 without logic**: the generated CRUD has a domain (types + port), an HTTP adapter and the screens —
@@ -1305,8 +1312,8 @@ HTMX / openapi-generator: [ADR-0013](docs/adr/0013-web-frontend-react-daisyui-bu
 | Lint / format | Biome | ESLint + Prettier |
 | Dependency Rule | dependency-cruiser (`bun run lint:arch`), as in bitacora | — |
 
-`bun test` with happy-dom and testing-library is unproven here: 9.0 verifies it first and falls
-back to Vitest (run by Bun) if it does not hold — recorded in ADR-0013 either way.
+`bun test` with happy-dom and testing-library was verified in 9.0 (no Vitest). Tool scripts run as
+`bun --bun <tool>`; TypeScript stays on 5.x — both explained in ADR-0013 § Verified in 9.0.
 
 ### Generated layout (entity `Product`)
 
@@ -1431,6 +1438,47 @@ generated `application/` use cases.
    generated `dependencies.ts` / `routes.tsx`, `generate web`, conflict guard, validate drift.
 4. **9.3 Every type** — Option / Vec / HashMap / DateTime / enum VO types and controls.
 
+### Handoff to 9.2 — what 9.0 / 9.1 left in place
+
+Already true (do not re-derive):
+
+- The template's `web/` is static (`crates/cli/template/web/`); `apply_no_web` removes it. **Every
+  compile-matrix scenario except `no_web` is a web project**, so once scaffold writes web slices,
+  every CRUD snapshot gains them. Test stubs (`setup_puerto_stubs`) write a puerto.toml without
+  `web` → non-web.
+- `core/generated/dependencies.ts` (`export type Dependencies = Record<string, never>` +
+  `createDependencies()`) and `core/generated/routes.tsx` (`navEntries: NavEntry[]` +
+  `AppRoutes` with `/` → `<HomePage entries={navEntries} />` and a catch-all `NotFoundPage`) are
+  template copies. 9.2 turns them into Tera output and adds a test that the template copies equal
+  the generator's zero-entity output — the `template_bootstrap_is_exactly_what_the_generator_writes`
+  pattern in `tests/conventions.rs`. `NavEntry` lives in `shared/ui/layout.tsx` (generated →
+  shared, never the reverse: `pages/home.tsx` takes entries as props to avoid a cycle).
+- `useDependencies()` / `DependenciesProvider` (`core/dependencies.tsx`), `useAsync` (returns
+  `AsyncState<T> & { reload }`), `ErrorAlert` + `errorCode(error)` (reads `.code`, else
+  `Error.message`), `EmptyState`, `ConfirmDialog` (`open`, `onConfirm`, `onCancel`) exist with
+  tests — the generated containers use them.
+- Test setup: `bunfig.toml` preloads `src/test-support/happy-dom.ts` then `testing-library.ts`
+  (cleanup after each test). No jest-dom matchers: assert with `getBy*` / `textContent`.
+- The spec export test needs a `Mock{Uc}UseCase` for **every** use case in puerto.toml.
+- Scaffold already prints `make web/sync` in web projects. The compile matrix's
+  `assert_generated_project_is_clean` exports the spec for every web scenario;
+  `assert_web_is_clean` (install, `openapi:types`, typecheck, lint, lint:arch, test, build) runs
+  only in `web_shell` today.
+
+Open for 9.2 to decide:
+
+- **`client.ts` and a fresh project's typecheck.** `infrastructure/http/client.ts` imports
+  `schema.d.ts`, which only exists after `make web/sync`. Shipping it in the template makes a
+  fresh `puerto new` fail `bun run typecheck`; writing it with the first scaffolded web entity
+  (whose sync is needed anyway) does not.
+- **Which scenarios run the bun checks.** They add a few seconds per scenario (3.4 s in
+  `web_shell`, install included, warm cache); the spec names `web_crud` and `web_every_type`.
+  Running `assert_web_is_clean` on every CRUD scenario would cover more for the cost of time.
+- **Generated TS must be Biome-clean** (`lineWidth` 100, sorted imports, double quotes) — `bun run
+  lint` checks the generated files like any other.
+- **dependency-cruiser and `test-support/`**: no rule covers it yet; the fake repository should
+  import `domain/` only.
+
 ### Test scenarios
 
 - Structural: `puerto new` writes `web/` and `web = true`; `--no-web` writes neither; scaffold in a
@@ -1440,15 +1488,16 @@ generated `application/` use cases.
   undeclared entity; re-scaffold without `--force` refuses when web files exist; validate reports
   a missing feature dir; `OrderItem` → `order-item` files, `/order_items` routes,
   `orderItemRepository`.
-- Snapshots: `web_shell`, `web_crud`, `web_every_type` (`make test/snapshots`).
-- Compile matrix (`make test/full`, needs `bun` on `PATH`): generate, `cargo test` (spec test with
-  `UPDATE_OPENAPI=1`, then without), `bun install`, `bun run openapi:types`, `bun run typecheck`,
+- Snapshots: `no_web` (9.0 — the shell is template, so its snapshot is what `--no-web` deletes),
+  `web_crud`, `web_every_type` (`make test/snapshots`).
+- Compile matrix (`make test/full`, needs `bun` on `PATH`): generate, `cargo test` (writes the
+  missing spec, then a second run compares — 9.1), `bun install`, `bun run openapi:types`, `bun run typecheck`,
   `bun run lint`, `bun run lint:arch`, `bun test`.
 - Generated web tests (shipped in every project): the HTTP repository maps 2xx → model and an
   `ErrorResponse` → `ProductError(code)`, with `fetch` stubbed; list container renders rows /
   empty state / error alert; detail container renders the entity / 404 code; form container
   creates a draft, edits an existing one and shows a 422 code; delete asks for confirmation.
-- CI: `oven-sh/setup-bun` in the `test/full` job.
+- CI: `oven-sh/setup-bun` in the `test/full` job and in `release.yml` (9.0 ✅).
 
 ---
 

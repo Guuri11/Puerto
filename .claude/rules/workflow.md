@@ -75,7 +75,7 @@ Improve structure without changing behavior. Run `make test` after every change.
 
 ```bash
 make test        # All structural tests pass
-make test/full   # Generated projects lint clean (clippy -D warnings) + internal tests pass
+make test/full   # Generated projects lint clean (clippy -D warnings) + internal tests pass (needs bun)
 make test/db     # When touching --db generation: same, against a throwaway Postgres
 make lint        # Zero clippy warnings
 make format      # Code formatted
