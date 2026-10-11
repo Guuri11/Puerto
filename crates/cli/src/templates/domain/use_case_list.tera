@@ -1,13 +1,16 @@
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
 
-#[derive(Debug)]
-pub struct List{{ plural_pascal }}Params;
+#[derive(Debug, Clone)]
+pub struct List{{ plural_pascal }}Params {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait List{{ plural_pascal }}UseCaseTrait: Send + Sync {
-    async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error>;
+    async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Page<{{ pascal }}>, {{ pascal }}Error>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -21,7 +24,7 @@ pub mod mocks {
 
         #[async_trait]
         impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCase {
-            async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error>;
+            async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Page<{{ pascal }}>, {{ pascal }}Error>;
         }
     }
 }

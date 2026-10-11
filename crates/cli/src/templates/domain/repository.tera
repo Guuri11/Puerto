@@ -1,11 +1,12 @@
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{{ "{" }}{{ pascal }}, {{ pascal }}Id};
 
 #[async_trait]
 pub trait {{ pascal }}RepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<{{ pascal }}>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<{{ pascal }}>, RepositoryError>;
     async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
     async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
 }
@@ -21,7 +22,7 @@ pub mod mocks {
 
         #[async_trait]
         impl {{ pascal }}RepositoryTrait for {{ pascal }}Repository {
-            async fn find_all(&self) -> Result<Vec<{{ pascal }}>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<{{ pascal }}>, RepositoryError>;
             async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
             async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
         }

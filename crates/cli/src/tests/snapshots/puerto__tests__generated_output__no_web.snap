@@ -173,6 +173,9 @@ fields = []
 === web/src/application/README.md ===
 (deleted)
 
+=== web/src/domain/shared/page.ts ===
+(deleted)
+
 === web/src/index.css ===
 (deleted)
 
@@ -225,6 +228,12 @@ fields = []
 (deleted)
 
 === web/src/presentation/shared/ui/layout.tsx ===
+(deleted)
+
+=== web/src/presentation/shared/ui/pagination.test.tsx ===
+(deleted)
+
+=== web/src/presentation/shared/ui/pagination.tsx ===
 (deleted)
 
 === web/src/test-support/happy-dom.ts ===

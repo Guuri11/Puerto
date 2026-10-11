@@ -346,6 +346,7 @@ use crate::domain::item::{
     repository::ItemRepositoryTrait,
     use_cases::list_items::{ListItemsParams, ListItemsUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListItemsUseCaseImpl {
     pub repository: Arc<dyn ItemRepositoryTrait>,
@@ -353,10 +354,10 @@ pub struct ListItemsUseCaseImpl {
 
 #[async_trait]
 impl ListItemsUseCaseTrait for ListItemsUseCaseImpl {
-    async fn execute(&self, _params: ListItemsParams) -> Result<Vec<Item>, ItemError> {
-        tracing::info!("list_items: start");
+    async fn execute(&self, params: ListItemsParams) -> Result<Page<Item>, ItemError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_items: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_items: repository failed"))
             .map_err(ItemError::from)
@@ -366,6 +367,7 @@ impl ListItemsUseCaseTrait for ListItemsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::item::{
         model::{Item, ItemProps},
         repository::mocks::MockItemRepository,
@@ -376,7 +378,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_items() {
+    async fn should_return_the_page_of_items() {
         let entities = vec![
             Item::new(ItemProps {
             name: Name::new("first".to_string()).expect("valid Name"),
@@ -392,29 +394,55 @@ mod tests {
         let mut mock_repo = MockItemRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListItemsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListItemsParams).await;
+        let result = use_case
+            .execute(ListItemsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_items_exist() {
+    async fn should_return_an_empty_page_when_no_items_exist() {
         let mut mock_repo = MockItemRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListItemsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListItemsParams).await;
+        let result = use_case
+            .execute(ListItemsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockItemRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListItemsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListItemsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -773,12 +801,13 @@ mod tests {
 === business/src/domain/item/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Item, ItemId};
 
 #[async_trait]
 pub trait ItemRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Item>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Item>, RepositoryError>;
     async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, RepositoryError>;
     async fn save(&self, entity: &Item) -> Result<(), RepositoryError>;
 }
@@ -794,7 +823,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ItemRepositoryTrait for ItemRepository {
-            async fn find_all(&self) -> Result<Vec<Item>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Item>, RepositoryError>;
             async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, RepositoryError>;
             async fn save(&self, entity: &Item) -> Result<(), RepositoryError>;
         }
@@ -902,14 +931,17 @@ pub mod mocks {
 === business/src/domain/item/use_cases/list_items.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::item::{errors::ItemError, model::Item};
 
-#[derive(Debug)]
-pub struct ListItemsParams;
+#[derive(Debug, Clone)]
+pub struct ListItemsParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListItemsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListItemsParams) -> Result<Vec<Item>, ItemError>;
+    async fn execute(&self, params: ListItemsParams) -> Result<Page<Item>, ItemError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -923,7 +955,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListItemsUseCaseTrait for ListItemsUseCase {
-            async fn execute(&self, params: ListItemsParams) -> Result<Vec<Item>, ItemError>;
+            async fn execute(&self, params: ListItemsParams) -> Result<Page<Item>, ItemError>;
         }
     }
 }
@@ -1135,6 +1167,7 @@ impl Default for ItemMother {
 === infrastructure/src/item/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::item::{
     model::{Item, ItemId},
@@ -1154,9 +1187,9 @@ impl InMemoryItemRepository {
 
 #[async_trait]
 impl ItemRepositoryTrait for InMemoryItemRepository {
-    async fn find_all(&self) -> Result<Vec<Item>, RepositoryError> {
-        tracing::debug!("find_all");
-        Ok(vec![])
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Item>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        Ok(Page::new(vec![], 0, page))
     }
 
     async fn find_by_id(&self, id: ItemId) -> Result<Option<Item>, RepositoryError> {
@@ -1191,6 +1224,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/item/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::item::model::Item;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -1223,6 +1257,27 @@ pub struct CreateItemRequest {
     pub weight: i64,
 }
 
+
+/// One page of Items: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ItemPageDto {
+    pub items: Vec<ItemDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl ItemPageDto {
+    pub fn from_domain(page: &Page<Item>) -> Self {
+        Self {
+            items: page.items.iter().map(ItemDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1348,7 +1403,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, item::dto::ItemDto};
+use crate::api::{
+    error::ErrorResponse,
+    item::dto::{ItemDto, ItemPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -1408,7 +1466,7 @@ impl GetItemResponse {
 #[derive(ApiResponse)]
 pub enum ListItemsResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<ItemDto>>),
+    Ok(Json<ItemPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -1486,6 +1544,7 @@ impl DeleteItemResponse {
 === presentation/src/api/item/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::item::model::ItemId;
 use business::domain::item::use_cases::{
     create_item::{CreateItemParams, CreateItemUseCaseTrait},
@@ -1494,12 +1553,18 @@ use business::domain::item::use_cases::{
     list_items::{ListItemsParams, ListItemsUseCaseTrait},
     update_item::{UpdateItemParams, UpdateItemUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::item::dto::{CreateItemRequest, UpdateItemRequest, ItemDto};
+use crate::api::item::dto::{
+    CreateItemRequest, UpdateItemRequest, ItemDto, ItemPageDto,
+};
 use crate::api::item::responses::{
     CreateItemResponse, DeleteItemResponse, GetItemResponse, ListItemsResponse,
     UpdateItemResponse,
@@ -1554,13 +1619,17 @@ impl ItemApi {
         }
     }
 
-    /// List all Items
+    /// List Items, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/items", method = "get", tag = "ApiTags::Item")]
-    async fn list(&self) -> ListItemsResponse {
-        match self.list_items.execute(ListItemsParams).await {
-            Ok(entities) => {
-                ListItemsResponse::Ok(Json(entities.iter().map(ItemDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListItemsResponse {
+        match self
+            .list_items
+            .execute(ListItemsParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListItemsResponse::Ok(Json(ItemPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_items failed");
@@ -1611,6 +1680,7 @@ impl ItemApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::item::errors::ItemError;
     use business::domain::item::use_cases::{
         create_item::mocks::MockCreateItemUseCase, delete_item::mocks::MockDeleteItemUseCase,
@@ -1733,17 +1803,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_item_when_listing() {
+    async fn should_respond_200_with_a_page_of_items_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(ItemMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(ItemMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/items").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/items?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -1995,11 +2088,12 @@ export interface Item {
 export type ItemDraft = Omit<Item, "id">;
 
 === web/src/domain/item/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Item, ItemDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `ItemError` the API answered. */
 export interface ItemRepository {
-  list(): Promise<Item[]>;
+  list(page: PageRequest): Promise<Page<Item>>;
   get(id: string): Promise<Item>;
   create(draft: ItemDraft): Promise<Item>;
   update(id: string, draft: ItemDraft): Promise<Item>;
@@ -2051,16 +2145,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("itemRepositoryHttp", () => {
-  test("should return every item when the API lists them", async () => {
+  test("should ask for the page and return its items", async () => {
     // Arrange
     const item = ItemMother.random();
-    const { repository } = answering(200, [item]);
+    const page = { items: [item], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([item]);
+    expect(requests[0]?.url).toBe("http://localhost/api/items?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating an item", async () => {
@@ -2132,10 +2228,12 @@ function toRequest(draft: ItemDraft): ItemRequest {
 /** `ItemRepository` over the REST API (`/items`). */
 export function itemRepositoryHttp(api: ApiClient): ItemRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/items");
+    async list(page) {
+      const { data, error, response } = await api.GET("/items", {
+        params: { query: page },
+      });
       if (data === undefined) throw new ItemError(apiErrorCode(error, response));
-      return data.map(toItem);
+      return { ...data, items: data.items.map(toItem) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/items/{id}", {
@@ -2366,7 +2464,9 @@ describe("ItemFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/items/"));
-    const [created] = await itemRepository.list();
+    const {
+      items: [created],
+    } = await itemRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/items/${created?.id}`);
   });
@@ -2471,7 +2571,7 @@ function ItemForm({ existing }: { existing: Item | null }) {
 
 === web/src/presentation/features/item/containers/item-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { ItemError } from "../../../../domain/item/errors";
 import { fakeItemRepository, ItemMother } from "../../../../test-support/item";
 import { renderScreen } from "../../../../test-support/render";
@@ -2488,6 +2588,21 @@ describe("ItemListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ItemMother.random());
+    const itemRepository = fakeItemRepository(seed);
+    renderScreen(<ItemListContainer />, { itemRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no item", async () => {
@@ -2517,16 +2632,23 @@ describe("ItemListContainer", () => {
 });
 
 === web/src/presentation/features/item/containers/item-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { ItemListView } from "../views/item-list-view";
 
 export function ItemListContainer() {
   const { itemRepository } = useDependencies();
-  const items = useAsync(() => itemRepository.list(), [itemRepository]);
+  const [offset, setOffset] = useState(0);
+  const items = useAsync(
+    () => itemRepository.list({ limit: PAGE_SIZE, offset }),
+    [itemRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -2539,10 +2661,13 @@ export function ItemListContainer() {
       {items.status === "loading" && <span className="loading loading-spinner" />}
       {items.status === "error" && <ErrorAlert error={items.error} />}
       {items.status === "ok" &&
-        (items.data.length === 0 ? (
+        (items.data.total === 0 ? (
           <EmptyState message="No items yet." />
         ) : (
-          <ItemListView items={items.data} />
+          <>
+            <ItemListView items={items.data.items} />
+            <Pagination {...items.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -2719,7 +2844,10 @@ export function fakeItemRepository(seed: Item[] = []): ItemRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

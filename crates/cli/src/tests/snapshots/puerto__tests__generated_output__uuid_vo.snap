@@ -310,6 +310,7 @@ use crate::domain::booking::{
     repository::BookingRepositoryTrait,
     use_cases::list_bookings::{ListBookingsParams, ListBookingsUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListBookingsUseCaseImpl {
     pub repository: Arc<dyn BookingRepositoryTrait>,
@@ -317,10 +318,10 @@ pub struct ListBookingsUseCaseImpl {
 
 #[async_trait]
 impl ListBookingsUseCaseTrait for ListBookingsUseCaseImpl {
-    async fn execute(&self, _params: ListBookingsParams) -> Result<Vec<Booking>, BookingError> {
-        tracing::info!("list_bookings: start");
+    async fn execute(&self, params: ListBookingsParams) -> Result<Page<Booking>, BookingError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_bookings: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_bookings: repository failed"))
             .map_err(BookingError::from)
@@ -330,6 +331,7 @@ impl ListBookingsUseCaseTrait for ListBookingsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::booking::{
         model::{Booking, BookingProps},
         repository::mocks::MockBookingRepository,
@@ -339,7 +341,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_bookings() {
+    async fn should_return_the_page_of_bookings() {
         let entities = vec![
             Booking::new(BookingProps {
             reference: "first".to_string(),
@@ -353,29 +355,55 @@ mod tests {
         let mut mock_repo = MockBookingRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListBookingsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListBookingsParams).await;
+        let result = use_case
+            .execute(ListBookingsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_bookings_exist() {
+    async fn should_return_an_empty_page_when_no_bookings_exist() {
         let mut mock_repo = MockBookingRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListBookingsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListBookingsParams).await;
+        let result = use_case
+            .execute(ListBookingsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockBookingRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListBookingsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListBookingsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -688,12 +716,13 @@ mod tests {
 === business/src/domain/booking/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Booking, BookingId};
 
 #[async_trait]
 pub trait BookingRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Booking>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Booking>, RepositoryError>;
     async fn find_by_id(&self, id: BookingId) -> Result<Option<Booking>, RepositoryError>;
     async fn save(&self, entity: &Booking) -> Result<(), RepositoryError>;
 }
@@ -709,7 +738,7 @@ pub mod mocks {
 
         #[async_trait]
         impl BookingRepositoryTrait for BookingRepository {
-            async fn find_all(&self) -> Result<Vec<Booking>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Booking>, RepositoryError>;
             async fn find_by_id(&self, id: BookingId) -> Result<Option<Booking>, RepositoryError>;
             async fn save(&self, entity: &Booking) -> Result<(), RepositoryError>;
         }
@@ -817,14 +846,17 @@ pub mod mocks {
 === business/src/domain/booking/use_cases/list_bookings.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::booking::{errors::BookingError, model::Booking};
 
-#[derive(Debug)]
-pub struct ListBookingsParams;
+#[derive(Debug, Clone)]
+pub struct ListBookingsParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListBookingsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListBookingsParams) -> Result<Vec<Booking>, BookingError>;
+    async fn execute(&self, params: ListBookingsParams) -> Result<Page<Booking>, BookingError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -838,7 +870,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListBookingsUseCaseTrait for ListBookingsUseCase {
-            async fn execute(&self, params: ListBookingsParams) -> Result<Vec<Booking>, BookingError>;
+            async fn execute(&self, params: ListBookingsParams) -> Result<Page<Booking>, BookingError>;
         }
     }
 }
@@ -1009,6 +1041,7 @@ impl Default for BookingMother {
 === infrastructure/src/booking/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::booking::{
     model::{Booking, BookingId},
@@ -1028,9 +1061,9 @@ impl InMemoryBookingRepository {
 
 #[async_trait]
 impl BookingRepositoryTrait for InMemoryBookingRepository {
-    async fn find_all(&self) -> Result<Vec<Booking>, RepositoryError> {
-        tracing::debug!("find_all");
-        Ok(vec![])
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Booking>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        Ok(Page::new(vec![], 0, page))
     }
 
     async fn find_by_id(&self, id: BookingId) -> Result<Option<Booking>, RepositoryError> {
@@ -1065,6 +1098,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/booking/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::booking::model::Booking;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -1094,6 +1128,27 @@ pub struct CreateBookingRequest {
     pub tenant_id: Uuid,
 }
 
+
+/// One page of Bookings: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct BookingPageDto {
+    pub items: Vec<BookingDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl BookingPageDto {
+    pub fn from_domain(page: &Page<Booking>) -> Self {
+        Self {
+            items: page.items.iter().map(BookingDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1196,7 +1251,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, booking::dto::BookingDto};
+use crate::api::{
+    error::ErrorResponse,
+    booking::dto::{BookingDto, BookingPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -1256,7 +1314,7 @@ impl GetBookingResponse {
 #[derive(ApiResponse)]
 pub enum ListBookingsResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<BookingDto>>),
+    Ok(Json<BookingPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -1334,6 +1392,7 @@ impl DeleteBookingResponse {
 === presentation/src/api/booking/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::booking::model::BookingId;
 use business::domain::booking::use_cases::{
     create_booking::{CreateBookingParams, CreateBookingUseCaseTrait},
@@ -1342,12 +1401,18 @@ use business::domain::booking::use_cases::{
     list_bookings::{ListBookingsParams, ListBookingsUseCaseTrait},
     update_booking::{UpdateBookingParams, UpdateBookingUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::booking::dto::{CreateBookingRequest, UpdateBookingRequest, BookingDto};
+use crate::api::booking::dto::{
+    CreateBookingRequest, UpdateBookingRequest, BookingDto, BookingPageDto,
+};
 use crate::api::booking::responses::{
     CreateBookingResponse, DeleteBookingResponse, GetBookingResponse, ListBookingsResponse,
     UpdateBookingResponse,
@@ -1401,13 +1466,17 @@ impl BookingApi {
         }
     }
 
-    /// List all Bookings
+    /// List Bookings, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/bookings", method = "get", tag = "ApiTags::Booking")]
-    async fn list(&self) -> ListBookingsResponse {
-        match self.list_bookings.execute(ListBookingsParams).await {
-            Ok(entities) => {
-                ListBookingsResponse::Ok(Json(entities.iter().map(BookingDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListBookingsResponse {
+        match self
+            .list_bookings
+            .execute(ListBookingsParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListBookingsResponse::Ok(Json(BookingPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_bookings failed");
@@ -1457,6 +1526,7 @@ impl BookingApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::booking::errors::BookingError;
     use business::domain::booking::use_cases::{
         create_booking::mocks::MockCreateBookingUseCase, delete_booking::mocks::MockDeleteBookingUseCase,
@@ -1577,17 +1647,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_booking_when_listing() {
+    async fn should_respond_200_with_a_page_of_bookings_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(BookingMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(BookingMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/bookings").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/bookings?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -1831,11 +1924,12 @@ export interface Booking {
 export type BookingDraft = Omit<Booking, "id">;
 
 === web/src/domain/booking/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Booking, BookingDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `BookingError` the API answered. */
 export interface BookingRepository {
-  list(): Promise<Booking[]>;
+  list(page: PageRequest): Promise<Page<Booking>>;
   get(id: string): Promise<Booking>;
   create(draft: BookingDraft): Promise<Booking>;
   update(id: string, draft: BookingDraft): Promise<Booking>;
@@ -1863,16 +1957,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("bookingRepositoryHttp", () => {
-  test("should return every booking when the API lists them", async () => {
+  test("should ask for the page and return its bookings", async () => {
     // Arrange
     const booking = BookingMother.random();
-    const { repository } = answering(200, [booking]);
+    const page = { items: [booking], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([booking]);
+    expect(requests[0]?.url).toBe("http://localhost/api/bookings?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating a booking", async () => {
@@ -1942,10 +2038,12 @@ function toRequest(draft: BookingDraft): BookingRequest {
 /** `BookingRepository` over the REST API (`/bookings`). */
 export function bookingRepositoryHttp(api: ApiClient): BookingRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/bookings");
+    async list(page) {
+      const { data, error, response } = await api.GET("/bookings", {
+        params: { query: page },
+      });
       if (data === undefined) throw new BookingError(apiErrorCode(error, response));
-      return data.map(toBooking);
+      return { ...data, items: data.items.map(toBooking) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/bookings/{id}", {
@@ -2199,7 +2297,9 @@ describe("BookingFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/bookings/"));
-    const [created] = await bookingRepository.list();
+    const {
+      items: [created],
+    } = await bookingRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/bookings/${created?.id}`);
   });
@@ -2304,7 +2404,7 @@ function BookingForm({ existing }: { existing: Booking | null }) {
 
 === web/src/presentation/features/booking/containers/booking-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { BookingError } from "../../../../domain/booking/errors";
 import { BookingMother, fakeBookingRepository } from "../../../../test-support/booking";
 import { renderScreen } from "../../../../test-support/render";
@@ -2321,6 +2421,21 @@ describe("BookingListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => BookingMother.random());
+    const bookingRepository = fakeBookingRepository(seed);
+    renderScreen(<BookingListContainer />, { bookingRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no booking", async () => {
@@ -2350,16 +2465,23 @@ describe("BookingListContainer", () => {
 });
 
 === web/src/presentation/features/booking/containers/booking-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { BookingListView } from "../views/booking-list-view";
 
 export function BookingListContainer() {
   const { bookingRepository } = useDependencies();
-  const bookings = useAsync(() => bookingRepository.list(), [bookingRepository]);
+  const [offset, setOffset] = useState(0);
+  const bookings = useAsync(
+    () => bookingRepository.list({ limit: PAGE_SIZE, offset }),
+    [bookingRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -2372,10 +2494,13 @@ export function BookingListContainer() {
       {bookings.status === "loading" && <span className="loading loading-spinner" />}
       {bookings.status === "error" && <ErrorAlert error={bookings.error} />}
       {bookings.status === "ok" &&
-        (bookings.data.length === 0 ? (
+        (bookings.data.total === 0 ? (
           <EmptyState message="No bookings yet." />
         ) : (
-          <BookingListView bookings={bookings.data} />
+          <>
+            <BookingListView bookings={bookings.data.items} />
+            <Pagination {...bookings.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -2533,7 +2658,10 @@ export function fakeBookingRepository(seed: Booking[] = []): BookingRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

@@ -3,7 +3,10 @@
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, {{ snake }}::dto::{{ pascal }}Dto};
+use crate::api::{
+    error::ErrorResponse,
+    {{ snake }}::dto::{{ "{" }}{{ pascal }}Dto, {{ pascal }}PageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -63,7 +66,7 @@ impl Get{{ pascal }}Response {
 #[derive(ApiResponse)]
 pub enum List{{ plural_pascal }}Response {
     #[oai(status = 200)]
-    Ok(Json<Vec<{{ pascal }}Dto>>),
+    Ok(Json<{{ pascal }}PageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]

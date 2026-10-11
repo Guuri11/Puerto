@@ -489,6 +489,7 @@ use crate::domain::account::{
     repository::AccountRepositoryTrait,
     use_cases::list_accounts::{ListAccountsParams, ListAccountsUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListAccountsUseCaseImpl {
     pub repository: Arc<dyn AccountRepositoryTrait>,
@@ -496,10 +497,10 @@ pub struct ListAccountsUseCaseImpl {
 
 #[async_trait]
 impl ListAccountsUseCaseTrait for ListAccountsUseCaseImpl {
-    async fn execute(&self, _params: ListAccountsParams) -> Result<Vec<Account>, AccountError> {
-        tracing::info!("list_accounts: start");
+    async fn execute(&self, params: ListAccountsParams) -> Result<Page<Account>, AccountError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_accounts: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_accounts: repository failed"))
             .map_err(AccountError::from)
@@ -509,6 +510,7 @@ impl ListAccountsUseCaseTrait for ListAccountsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::account::{
         model::{Account, AccountProps},
         repository::mocks::MockAccountRepository,
@@ -520,7 +522,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_accounts() {
+    async fn should_return_the_page_of_accounts() {
         let entities = vec![
             Account::new(AccountProps {
             title: "first".to_string(),
@@ -548,29 +550,55 @@ mod tests {
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListAccountsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListAccountsParams).await;
+        let result = use_case
+            .execute(ListAccountsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_accounts_exist() {
+    async fn should_return_an_empty_page_when_no_accounts_exist() {
         let mut mock_repo = MockAccountRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListAccountsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListAccountsParams).await;
+        let result = use_case
+            .execute(ListAccountsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockAccountRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListAccountsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListAccountsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -1175,12 +1203,13 @@ mod tests {
 === business/src/domain/account/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Account, AccountId};
 
 #[async_trait]
 pub trait AccountRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Account>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Account>, RepositoryError>;
     async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, RepositoryError>;
     async fn save(&self, entity: &Account) -> Result<(), RepositoryError>;
 }
@@ -1196,7 +1225,7 @@ pub mod mocks {
 
         #[async_trait]
         impl AccountRepositoryTrait for AccountRepository {
-            async fn find_all(&self) -> Result<Vec<Account>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Account>, RepositoryError>;
             async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, RepositoryError>;
             async fn save(&self, entity: &Account) -> Result<(), RepositoryError>;
         }
@@ -1310,14 +1339,17 @@ pub mod mocks {
 === business/src/domain/account/use_cases/list_accounts.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::account::{errors::AccountError, model::Account};
 
-#[derive(Debug)]
-pub struct ListAccountsParams;
+#[derive(Debug, Clone)]
+pub struct ListAccountsParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListAccountsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListAccountsParams) -> Result<Vec<Account>, AccountError>;
+    async fn execute(&self, params: ListAccountsParams) -> Result<Page<Account>, AccountError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1331,7 +1363,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListAccountsUseCaseTrait for ListAccountsUseCase {
-            async fn execute(&self, params: ListAccountsParams) -> Result<Vec<Account>, AccountError>;
+            async fn execute(&self, params: ListAccountsParams) -> Result<Page<Account>, AccountError>;
         }
     }
 }
@@ -1487,6 +1519,7 @@ impl Status {
 
 === business/src/domain/shared.rs ===
 //! What every entity of the domain shares.
+pub mod pagination;
 pub mod repository_error;
 pub mod errors;
 pub mod value_objects;
@@ -1694,6 +1727,7 @@ impl Default for AccountMother {
 === infrastructure/src/account/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::account::{
     model::{Account, AccountId},
@@ -1713,9 +1747,9 @@ impl InMemoryAccountRepository {
 
 #[async_trait]
 impl AccountRepositoryTrait for InMemoryAccountRepository {
-    async fn find_all(&self) -> Result<Vec<Account>, RepositoryError> {
-        tracing::debug!("find_all");
-        Ok(vec![])
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Account>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        Ok(Page::new(vec![], 0, page))
     }
 
     async fn find_by_id(&self, id: AccountId) -> Result<Option<Account>, RepositoryError> {
@@ -1750,6 +1784,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/account/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::account::model::Account;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -1800,6 +1835,27 @@ pub struct CreateAccountRequest {
     pub email: String,
 }
 
+
+/// One page of Accounts: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct AccountPageDto {
+    pub items: Vec<AccountDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl AccountPageDto {
+    pub fn from_domain(page: &Page<Account>) -> Self {
+        Self {
+            items: page.items.iter().map(AccountDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1964,7 +2020,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, account::dto::AccountDto};
+use crate::api::{
+    error::ErrorResponse,
+    account::dto::{AccountDto, AccountPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -2024,7 +2083,7 @@ impl GetAccountResponse {
 #[derive(ApiResponse)]
 pub enum ListAccountsResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<AccountDto>>),
+    Ok(Json<AccountPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -2102,6 +2161,7 @@ impl DeleteAccountResponse {
 === presentation/src/api/account/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::account::model::AccountId;
 use business::domain::account::use_cases::{
     create_account::{CreateAccountParams, CreateAccountUseCaseTrait},
@@ -2110,12 +2170,18 @@ use business::domain::account::use_cases::{
     list_accounts::{ListAccountsParams, ListAccountsUseCaseTrait},
     update_account::{UpdateAccountParams, UpdateAccountUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::account::dto::{CreateAccountRequest, UpdateAccountRequest, AccountDto};
+use crate::api::account::dto::{
+    CreateAccountRequest, UpdateAccountRequest, AccountDto, AccountPageDto,
+};
 use crate::api::account::responses::{
     CreateAccountResponse, DeleteAccountResponse, GetAccountResponse, ListAccountsResponse,
     UpdateAccountResponse,
@@ -2176,13 +2242,17 @@ impl AccountApi {
         }
     }
 
-    /// List all Accounts
+    /// List Accounts, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/accounts", method = "get", tag = "ApiTags::Account")]
-    async fn list(&self) -> ListAccountsResponse {
-        match self.list_accounts.execute(ListAccountsParams).await {
-            Ok(entities) => {
-                ListAccountsResponse::Ok(Json(entities.iter().map(AccountDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListAccountsResponse {
+        match self
+            .list_accounts
+            .execute(ListAccountsParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListAccountsResponse::Ok(Json(AccountPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_accounts failed");
@@ -2239,6 +2309,7 @@ impl AccountApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::account::errors::AccountError;
     use business::domain::account::use_cases::{
         create_account::mocks::MockCreateAccountUseCase, delete_account::mocks::MockDeleteAccountUseCase,
@@ -2373,17 +2444,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_account_when_listing() {
+    async fn should_respond_200_with_a_page_of_accounts_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(AccountMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(AccountMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/accounts").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/accounts?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -2690,11 +2784,12 @@ export function parseStatus(value: string): Status {
 }
 
 === web/src/domain/account/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Account, AccountDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `AccountError` the API answered. */
 export interface AccountRepository {
-  list(): Promise<Account[]>;
+  list(page: PageRequest): Promise<Page<Account>>;
   get(id: string): Promise<Account>;
   create(draft: AccountDraft): Promise<Account>;
   update(id: string, draft: AccountDraft): Promise<Account>;
@@ -2722,16 +2817,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("accountRepositoryHttp", () => {
-  test("should return every account when the API lists them", async () => {
+  test("should ask for the page and return its accounts", async () => {
     // Arrange
     const account = AccountMother.random();
-    const { repository } = answering(200, [account]);
+    const page = { items: [account], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([account]);
+    expect(requests[0]?.url).toBe("http://localhost/api/accounts?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating an account", async () => {
@@ -2815,10 +2912,12 @@ function toRequest(draft: AccountDraft): AccountRequest {
 /** `AccountRepository` over the REST API (`/accounts`). */
 export function accountRepositoryHttp(api: ApiClient): AccountRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/accounts");
+    async list(page) {
+      const { data, error, response } = await api.GET("/accounts", {
+        params: { query: page },
+      });
       if (data === undefined) throw new AccountError(apiErrorCode(error, response));
-      return data.map(toAccount);
+      return { ...data, items: data.items.map(toAccount) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/accounts/{id}", {
@@ -3080,7 +3179,9 @@ describe("AccountFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/accounts/"));
-    const [created] = await accountRepository.list();
+    const {
+      items: [created],
+    } = await accountRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/accounts/${created?.id}`);
   });
@@ -3185,7 +3286,7 @@ function AccountForm({ existing }: { existing: Account | null }) {
 
 === web/src/presentation/features/account/containers/account-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { AccountError } from "../../../../domain/account/errors";
 import { AccountMother, fakeAccountRepository } from "../../../../test-support/account";
 import { renderScreen } from "../../../../test-support/render";
@@ -3202,6 +3303,21 @@ describe("AccountListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => AccountMother.random());
+    const accountRepository = fakeAccountRepository(seed);
+    renderScreen(<AccountListContainer />, { accountRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no account", async () => {
@@ -3231,16 +3347,23 @@ describe("AccountListContainer", () => {
 });
 
 === web/src/presentation/features/account/containers/account-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { AccountListView } from "../views/account-list-view";
 
 export function AccountListContainer() {
   const { accountRepository } = useDependencies();
-  const accounts = useAsync(() => accountRepository.list(), [accountRepository]);
+  const [offset, setOffset] = useState(0);
+  const accounts = useAsync(
+    () => accountRepository.list({ limit: PAGE_SIZE, offset }),
+    [accountRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -3253,10 +3376,13 @@ export function AccountListContainer() {
       {accounts.status === "loading" && <span className="loading loading-spinner" />}
       {accounts.status === "error" && <ErrorAlert error={accounts.error} />}
       {accounts.status === "ok" &&
-        (accounts.data.length === 0 ? (
+        (accounts.data.total === 0 ? (
           <EmptyState message="No accounts yet." />
         ) : (
-          <AccountListView accounts={accounts.data} />
+          <>
+            <AccountListView accounts={accounts.data.items} />
+            <Pagination {...accounts.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -3548,7 +3674,10 @@ export function fakeAccountRepository(seed: Account[] = []): AccountRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

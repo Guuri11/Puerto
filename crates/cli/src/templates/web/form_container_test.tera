@@ -38,7 +38,9 @@ describe("{{ pascal }}FormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/{{ plural }}/"));
-    const [created] = await {{ camel }}Repository.list();
+    const {
+      items: [created],
+    } = await {{ camel }}Repository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/{{ plural }}/${created?.id}`);
   });

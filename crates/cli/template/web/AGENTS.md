@@ -40,6 +40,10 @@ Form inputs hold text; `src/presentation/shared/forms.ts` converts it to the mod
 (`null` for an empty optional input, comma-separated lists, `key=value` lines, `datetime-local`
 in local time). An enum value object is a union type with a `parse…` function in `model.ts`.
 
+Lists are paged: the port's `list(page)` answers a `Page<T>` (`src/domain/shared/page.ts` —
+`items`, `total`, the `limit` the API applied, `offset`); the list container keeps the offset and
+renders `shared/ui/pagination.tsx`. The API caps `limit` at 100 whatever the screen asks.
+
 Routes: `/<plural>`, `/<plural>/new`, `/<plural>/:id`, `/<plural>/:id/edit`. Containers call the
 repository port directly; write a use case in `src/application/` once there is logic to hold.
 `src/test-support/` is for tests: it never reaches an adapter, and only test files import it.

@@ -3,6 +3,7 @@ use sqlx::PgPool;
 {% if has_map %}use sqlx::types::Json;
 use std::collections::HashMap;
 {% endif %}
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::{{ snake }}::{
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
@@ -33,12 +34,15 @@ fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, RepositoryError> {
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
-    async fn find_all(&self) -> Result<Vec<{{ pascal }}>, RepositoryError> {
-        tracing::debug!("find_all");
+    async fn find_all(&self, page: PageRequest) -> Result<Page<{{ pascal }}>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
         let rows = sqlx::query_as!(
             {{ pascal }}Db,
             "SELECT {{ select_cols }}
-             FROM {{ plural }} WHERE deleted = false ORDER BY created_at DESC"
+             FROM {{ plural }} WHERE deleted = false
+             ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
+            i64::from(page.limit()),
+            i64::from(page.offset())
         )
         .fetch_all(&self.pool)
         .await
@@ -46,8 +50,20 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
             tracing::error!(error = %e, "find_all failed");
             map_sqlx_error(&e)
         })?;
+        let total = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) AS "total!" FROM {{ plural }} WHERE deleted = false"#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all count failed");
+            map_sqlx_error(&e)
+        })?;
 
-        rows.into_iter().map(to_domain).collect()
+        let items = rows.into_iter().map(to_domain).collect::<Result<Vec<_>, _>>()?;
+        // COUNT(*) is never negative.
+        let total = u64::try_from(total).unwrap_or_default();
+        Ok(Page::new(items, total, page))
     }
 
     async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError> {
@@ -162,13 +178,36 @@ mod integration_tests {
     async fn should_list_all_{{ plural }}_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
-        seed(&pool).await;
+        let mut deleted = seed(&pool).await;
+        deleted.deleted = true;
+        deleted.deleted_at = Some(deleted.updated_at);
+        test_repo(pool.clone()).save(&deleted).await.unwrap();
 
         // Act
-        let results = test_repo(pool).find_all().await.unwrap();
+        let page = test_repo(pool).find_all(PageRequest::default()).await.unwrap();
 
         // Assert
-        assert_eq!(results.len(), 2);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
+        // Arrange
+        for _ in 0..3 {
+            seed(&pool).await;
+        }
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3);
+        assert_eq!((page.limit, page.offset), (2, 2));
     }
 {% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %}{% set u = uniques.0 %}
 

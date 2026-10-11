@@ -834,8 +834,8 @@ fn generate_list_use_case_impl_with_custom_fields() {
 
     assert!(result.contains("ListProductsUseCaseImpl"));
     assert!(result.contains("Product::new(ProductProps"));
-    assert!(result.contains("should_return_all_products"));
-    assert!(result.contains("should_return_empty_list_when_no_products_exist"));
+    assert!(result.contains("should_return_the_page_of_products"));
+    assert!(result.contains("should_return_an_empty_page_when_no_products_exist"));
     assert!(result.contains("title: \"first\".to_string(),"));
     assert!(result.contains("title: \"second\".to_string(),"));
     assert!(result.contains("price: 42,"));
@@ -975,7 +975,7 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
     let list_content =
         fs::read_to_string(dir.join("business/src/application/product/list_products.rs")).unwrap();
     assert!(list_content.contains("ListProductsUseCaseImpl"));
-    assert!(list_content.contains("should_return_all_products"));
+    assert!(list_content.contains("should_return_the_page_of_products"));
     assert!(list_content.contains("title: \"first\".to_string(),"));
 
     let delete_content =

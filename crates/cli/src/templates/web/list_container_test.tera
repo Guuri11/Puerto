@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
 import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
 import { renderScreen } from "../../../../test-support/render";
@@ -16,6 +16,21 @@ describe("{{ pascal }}ListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => {{ pascal }}Mother.random());
+    const {{ camel }}Repository = fake{{ pascal }}Repository(seed);
+    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no {{ words }}", async () => {

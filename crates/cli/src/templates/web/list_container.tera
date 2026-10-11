@@ -1,13 +1,20 @@
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { {{ pascal }}ListView } from "../views/{{ kebab }}-list-view";
 
 export function {{ pascal }}ListContainer() {
   const { {{ camel }}Repository } = useDependencies();
-  const {{ plural_ident }} = useAsync(() => {{ camel }}Repository.list(), [{{ camel }}Repository]);
+  const [offset, setOffset] = useState(0);
+  const {{ plural_ident }} = useAsync(
+    () => {{ camel }}Repository.list({ limit: PAGE_SIZE, offset }),
+    [{{ camel }}Repository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -20,10 +27,13 @@ export function {{ pascal }}ListContainer() {
       {{ "{" }}{{ plural_ident }}.status === "loading" && <span className="loading loading-spinner" />}
       {{ "{" }}{{ plural_ident }}.status === "error" && <ErrorAlert error={{ "{" }}{{ plural_ident }}.error} />}
       {{ "{" }}{{ plural_ident }}.status === "ok" &&
-        ({{ plural_ident }}.data.length === 0 ? (
+        ({{ plural_ident }}.data.total === 0 ? (
           <EmptyState message="No {{ words_plural }} yet." />
         ) : (
-          <{{ pascal }}ListView {{ plural_ident }}={{ "{" }}{{ plural_ident }}.data} />
+          <>
+            <{{ pascal }}ListView {{ plural_ident }}={{ "{" }}{{ plural_ident }}.data.items} />
+            <Pagination {...{{ plural_ident }}.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );

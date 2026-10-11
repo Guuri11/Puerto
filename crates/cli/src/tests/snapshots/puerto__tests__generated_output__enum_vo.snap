@@ -331,6 +331,7 @@ use crate::domain::order::{
     repository::OrderRepositoryTrait,
     use_cases::list_orders::{ListOrdersParams, ListOrdersUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListOrdersUseCaseImpl {
     pub repository: Arc<dyn OrderRepositoryTrait>,
@@ -338,10 +339,10 @@ pub struct ListOrdersUseCaseImpl {
 
 #[async_trait]
 impl ListOrdersUseCaseTrait for ListOrdersUseCaseImpl {
-    async fn execute(&self, _params: ListOrdersParams) -> Result<Vec<Order>, OrderError> {
-        tracing::info!("list_orders: start");
+    async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_orders: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_orders: repository failed"))
             .map_err(OrderError::from)
@@ -351,6 +352,7 @@ impl ListOrdersUseCaseTrait for ListOrdersUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::order::{
         model::{Order, OrderProps},
         repository::mocks::MockOrderRepository,
@@ -359,7 +361,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_orders() {
+    async fn should_return_the_page_of_orders() {
         let entities = vec![
             Order::new(OrderProps {
             reference: "first".to_string(),
@@ -373,29 +375,55 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListOrdersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListOrdersParams).await;
+        let result = use_case
+            .execute(ListOrdersParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_orders_exist() {
+    async fn should_return_an_empty_page_when_no_orders_exist() {
         let mut mock_repo = MockOrderRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListOrdersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListOrdersParams).await;
+        let result = use_case
+            .execute(ListOrdersParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListOrdersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListOrdersParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -717,12 +745,13 @@ mod tests {
 === business/src/domain/order/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Order, OrderId};
 
 #[async_trait]
 pub trait OrderRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Order>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
     async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
     async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
 }
@@ -738,7 +767,7 @@ pub mod mocks {
 
         #[async_trait]
         impl OrderRepositoryTrait for OrderRepository {
-            async fn find_all(&self) -> Result<Vec<Order>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
             async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
             async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
         }
@@ -845,14 +874,17 @@ pub mod mocks {
 === business/src/domain/order/use_cases/list_orders.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::order::{errors::OrderError, model::Order};
 
-#[derive(Debug)]
-pub struct ListOrdersParams;
+#[derive(Debug, Clone)]
+pub struct ListOrdersParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListOrdersUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListOrdersParams) -> Result<Vec<Order>, OrderError>;
+    async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -866,7 +898,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListOrdersUseCaseTrait for ListOrdersUseCase {
-            async fn execute(&self, params: ListOrdersParams) -> Result<Vec<Order>, OrderError>;
+            async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError>;
         }
     }
 }
@@ -1059,6 +1091,7 @@ pub mod order {
 === infrastructure/src/order/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::order::{
     model::{Order, OrderId},
@@ -1078,9 +1111,9 @@ impl InMemoryOrderRepository {
 
 #[async_trait]
 impl OrderRepositoryTrait for InMemoryOrderRepository {
-    async fn find_all(&self) -> Result<Vec<Order>, RepositoryError> {
-        tracing::debug!("find_all");
-        Ok(vec![])
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        Ok(Page::new(vec![], 0, page))
     }
 
     async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError> {
@@ -1107,6 +1140,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/order/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::order::model::Order;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -1136,6 +1170,27 @@ pub struct CreateOrderRequest {
     pub status: String,
 }
 
+
+/// One page of Orders: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct OrderPageDto {
+    pub items: Vec<OrderDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl OrderPageDto {
+    pub fn from_domain(page: &Page<Order>) -> Self {
+        Self {
+            items: page.items.iter().map(OrderDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1238,7 +1293,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, order::dto::OrderDto};
+use crate::api::{
+    error::ErrorResponse,
+    order::dto::{OrderDto, OrderPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -1298,7 +1356,7 @@ impl GetOrderResponse {
 #[derive(ApiResponse)]
 pub enum ListOrdersResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<OrderDto>>),
+    Ok(Json<OrderPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -1376,6 +1434,7 @@ impl DeleteOrderResponse {
 === presentation/src/api/order/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::order::model::OrderId;
 use business::domain::order::use_cases::{
     create_order::{CreateOrderParams, CreateOrderUseCaseTrait},
@@ -1384,12 +1443,18 @@ use business::domain::order::use_cases::{
     list_orders::{ListOrdersParams, ListOrdersUseCaseTrait},
     update_order::{UpdateOrderParams, UpdateOrderUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::order::dto::{CreateOrderRequest, UpdateOrderRequest, OrderDto};
+use crate::api::order::dto::{
+    CreateOrderRequest, UpdateOrderRequest, OrderDto, OrderPageDto,
+};
 use crate::api::order::responses::{
     CreateOrderResponse, DeleteOrderResponse, GetOrderResponse, ListOrdersResponse,
     UpdateOrderResponse,
@@ -1443,13 +1508,17 @@ impl OrderApi {
         }
     }
 
-    /// List all Orders
+    /// List Orders, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/orders", method = "get", tag = "ApiTags::Order")]
-    async fn list(&self) -> ListOrdersResponse {
-        match self.list_orders.execute(ListOrdersParams).await {
-            Ok(entities) => {
-                ListOrdersResponse::Ok(Json(entities.iter().map(OrderDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListOrdersResponse {
+        match self
+            .list_orders
+            .execute(ListOrdersParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListOrdersResponse::Ok(Json(OrderPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_orders failed");
@@ -1499,6 +1568,7 @@ impl OrderApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::order::errors::OrderError;
     use business::domain::order::use_cases::{
         create_order::mocks::MockCreateOrderUseCase, delete_order::mocks::MockDeleteOrderUseCase,
@@ -1619,17 +1689,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_order_when_listing() {
+    async fn should_respond_200_with_a_page_of_orders_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(OrderMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(OrderMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/orders").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/orders?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -1892,11 +1985,12 @@ export function parseStatus(value: string): Status {
 }
 
 === web/src/domain/order/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Order, OrderDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `OrderError` the API answered. */
 export interface OrderRepository {
-  list(): Promise<Order[]>;
+  list(page: PageRequest): Promise<Page<Order>>;
   get(id: string): Promise<Order>;
   create(draft: OrderDraft): Promise<Order>;
   update(id: string, draft: OrderDraft): Promise<Order>;
@@ -1948,16 +2042,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("orderRepositoryHttp", () => {
-  test("should return every order when the API lists them", async () => {
+  test("should ask for the page and return its orders", async () => {
     // Arrange
     const order = OrderMother.random();
-    const { repository } = answering(200, [order]);
+    const page = { items: [order], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([order]);
+    expect(requests[0]?.url).toBe("http://localhost/api/orders?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating an order", async () => {
@@ -2027,10 +2123,12 @@ function toRequest(draft: OrderDraft): OrderRequest {
 /** `OrderRepository` over the REST API (`/orders`). */
 export function orderRepositoryHttp(api: ApiClient): OrderRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/orders");
+    async list(page) {
+      const { data, error, response } = await api.GET("/orders", {
+        params: { query: page },
+      });
       if (data === undefined) throw new OrderError(apiErrorCode(error, response));
-      return data.map(toOrder);
+      return { ...data, items: data.items.map(toOrder) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/orders/{id}", {
@@ -2260,7 +2358,9 @@ describe("OrderFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/orders/"));
-    const [created] = await orderRepository.list();
+    const {
+      items: [created],
+    } = await orderRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/orders/${created?.id}`);
   });
@@ -2365,7 +2465,7 @@ function OrderForm({ existing }: { existing: Order | null }) {
 
 === web/src/presentation/features/order/containers/order-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { OrderError } from "../../../../domain/order/errors";
 import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
 import { renderScreen } from "../../../../test-support/render";
@@ -2382,6 +2482,21 @@ describe("OrderListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => OrderMother.random());
+    const orderRepository = fakeOrderRepository(seed);
+    renderScreen(<OrderListContainer />, { orderRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no order", async () => {
@@ -2411,16 +2526,23 @@ describe("OrderListContainer", () => {
 });
 
 === web/src/presentation/features/order/containers/order-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { OrderListView } from "../views/order-list-view";
 
 export function OrderListContainer() {
   const { orderRepository } = useDependencies();
-  const orders = useAsync(() => orderRepository.list(), [orderRepository]);
+  const [offset, setOffset] = useState(0);
+  const orders = useAsync(
+    () => orderRepository.list({ limit: PAGE_SIZE, offset }),
+    [orderRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -2433,10 +2555,13 @@ export function OrderListContainer() {
       {orders.status === "loading" && <span className="loading loading-spinner" />}
       {orders.status === "error" && <ErrorAlert error={orders.error} />}
       {orders.status === "ok" &&
-        (orders.data.length === 0 ? (
+        (orders.data.total === 0 ? (
           <EmptyState message="No orders yet." />
         ) : (
-          <OrderListView orders={orders.data} />
+          <>
+            <OrderListView orders={orders.data.items} />
+            <Pagination {...orders.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -2598,7 +2723,10 @@ export function fakeOrderRepository(seed: Order[] = []): OrderRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

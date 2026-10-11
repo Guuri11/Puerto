@@ -342,6 +342,7 @@ use crate::domain::product::{
     repository::ProductRepositoryTrait,
     use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListProductsUseCaseImpl {
     pub repository: Arc<dyn ProductRepositoryTrait>,
@@ -349,10 +350,10 @@ pub struct ListProductsUseCaseImpl {
 
 #[async_trait]
 impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
-    async fn execute(&self, _params: ListProductsParams) -> Result<Vec<Product>, ProductError> {
-        tracing::info!("list_products: start");
+    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_products: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
             .map_err(ProductError::from)
@@ -362,6 +363,7 @@ impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::product::{
         model::{Product, ProductProps},
         repository::mocks::MockProductRepository,
@@ -372,7 +374,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_products() {
+    async fn should_return_the_page_of_products() {
         let entities = vec![
             Product::new(ProductProps {
             title: "first".to_string(),
@@ -396,29 +398,55 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductsParams).await;
+        let result = use_case
+            .execute(ListProductsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_products_exist() {
+    async fn should_return_an_empty_page_when_no_products_exist() {
         let mut mock_repo = MockProductRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductsParams).await;
+        let result = use_case
+            .execute(ListProductsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListProductsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListProductsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -788,12 +816,13 @@ mod tests {
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Product, ProductId};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Product>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
     async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
     async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
 }
@@ -809,7 +838,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
-            async fn find_all(&self) -> Result<Vec<Product>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
             async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
             async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
         }
@@ -924,14 +953,17 @@ pub mod mocks {
 === business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::product::{errors::ProductError, model::Product};
 
-#[derive(Debug)]
-pub struct ListProductsParams;
+#[derive(Debug, Clone)]
+pub struct ListProductsParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListProductsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
+    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -945,7 +977,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListProductsUseCaseTrait for ListProductsUseCase {
-            async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
+            async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
         }
     }
 }
@@ -1153,6 +1185,7 @@ pub mod product {
 === infrastructure/src/product/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::product::{
     model::{Product, ProductId},
@@ -1172,9 +1205,9 @@ impl InMemoryProductRepository {
 
 #[async_trait]
 impl ProductRepositoryTrait for InMemoryProductRepository {
-    async fn find_all(&self) -> Result<Vec<Product>, RepositoryError> {
-        tracing::debug!("find_all");
-        Ok(vec![])
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        Ok(Page::new(vec![], 0, page))
     }
 
     async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError> {
@@ -1201,6 +1234,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/product/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::product::model::Product;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -1247,6 +1281,27 @@ pub struct CreateProductRequest {
     pub category_id: Uuid,
 }
 
+
+/// One page of Products: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProductPageDto {
+    pub items: Vec<ProductDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl ProductPageDto {
+    pub fn from_domain(page: &Page<Product>) -> Self {
+        Self {
+            items: page.items.iter().map(ProductDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1343,7 +1398,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, product::dto::ProductDto};
+use crate::api::{
+    error::ErrorResponse,
+    product::dto::{ProductDto, ProductPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -1403,7 +1461,7 @@ impl GetProductResponse {
 #[derive(ApiResponse)]
 pub enum ListProductsResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<ProductDto>>),
+    Ok(Json<ProductPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -1481,6 +1539,7 @@ impl DeleteProductResponse {
 === presentation/src/api/product/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::product::model::ProductId;
 use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
@@ -1489,12 +1548,18 @@ use business::domain::product::use_cases::{
     list_products::{ListProductsParams, ListProductsUseCaseTrait},
     update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::product::dto::{CreateProductRequest, UpdateProductRequest, ProductDto};
+use crate::api::product::dto::{
+    CreateProductRequest, UpdateProductRequest, ProductDto, ProductPageDto,
+};
 use crate::api::product::responses::{
     CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductsResponse,
     UpdateProductResponse,
@@ -1553,13 +1618,17 @@ impl ProductApi {
         }
     }
 
-    /// List all Products
+    /// List Products, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
-    async fn list(&self) -> ListProductsResponse {
-        match self.list_products.execute(ListProductsParams).await {
-            Ok(entities) => {
-                ListProductsResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListProductsResponse {
+        match self
+            .list_products
+            .execute(ListProductsParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListProductsResponse::Ok(Json(ProductPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_products failed");
@@ -1614,6 +1683,7 @@ impl ProductApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::product::errors::ProductError;
     use business::domain::product::use_cases::{
         create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
@@ -1746,17 +1816,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_product_when_listing() {
+    async fn should_respond_200_with_a_page_of_products_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(ProductMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(ProductMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/products").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/products?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -2024,11 +2117,12 @@ export interface Product {
 export type ProductDraft = Omit<Product, "id">;
 
 === web/src/domain/product/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Product, ProductDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `ProductError` the API answered. */
 export interface ProductRepository {
-  list(): Promise<Product[]>;
+  list(page: PageRequest): Promise<Page<Product>>;
   get(id: string): Promise<Product>;
   create(draft: ProductDraft): Promise<Product>;
   update(id: string, draft: ProductDraft): Promise<Product>;
@@ -2080,16 +2174,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("productRepositoryHttp", () => {
-  test("should return every product when the API lists them", async () => {
+  test("should ask for the page and return its products", async () => {
     // Arrange
     const product = ProductMother.random();
-    const { repository } = answering(200, [product]);
+    const page = { items: [product], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([product]);
+    expect(requests[0]?.url).toBe("http://localhost/api/products?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating a product", async () => {
@@ -2169,10 +2265,12 @@ function toRequest(draft: ProductDraft): ProductRequest {
 /** `ProductRepository` over the REST API (`/products`). */
 export function productRepositoryHttp(api: ApiClient): ProductRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/products");
+    async list(page) {
+      const { data, error, response } = await api.GET("/products", {
+        params: { query: page },
+      });
       if (data === undefined) throw new ProductError(apiErrorCode(error, response));
-      return data.map(toProduct);
+      return { ...data, items: data.items.map(toProduct) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/products/{id}", {
@@ -2408,7 +2506,9 @@ describe("ProductFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/products/"));
-    const [created] = await productRepository.list();
+    const {
+      items: [created],
+    } = await productRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/products/${created?.id}`);
   });
@@ -2513,7 +2613,7 @@ function ProductForm({ existing }: { existing: Product | null }) {
 
 === web/src/presentation/features/product/containers/product-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { ProductError } from "../../../../domain/product/errors";
 import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
 import { renderScreen } from "../../../../test-support/render";
@@ -2530,6 +2630,21 @@ describe("ProductListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ProductMother.random());
+    const productRepository = fakeProductRepository(seed);
+    renderScreen(<ProductListContainer />, { productRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no product", async () => {
@@ -2559,16 +2674,23 @@ describe("ProductListContainer", () => {
 });
 
 === web/src/presentation/features/product/containers/product-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { ProductListView } from "../views/product-list-view";
 
 export function ProductListContainer() {
   const { productRepository } = useDependencies();
-  const products = useAsync(() => productRepository.list(), [productRepository]);
+  const [offset, setOffset] = useState(0);
+  const products = useAsync(
+    () => productRepository.list({ limit: PAGE_SIZE, offset }),
+    [productRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -2581,10 +2703,13 @@ export function ProductListContainer() {
       {products.status === "loading" && <span className="loading loading-spinner" />}
       {products.status === "error" && <ErrorAlert error={products.error} />}
       {products.status === "ok" &&
-        (products.data.length === 0 ? (
+        (products.data.total === 0 ? (
           <EmptyState message="No products yet." />
         ) : (
-          <ProductListView products={products.data} />
+          <>
+            <ProductListView products={products.data.items} />
+            <Pagination {...products.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -2844,7 +2969,10 @@ export function fakeProductRepository(seed: Product[] = []): ProductRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

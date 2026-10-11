@@ -1,4 +1,5 @@
-use business::domain::{{ snake }}::model::{{ pascal }};
+{% if is_crud %}use business::domain::shared::pagination::Page;
+{% endif %}use business::domain::{{ snake }}::model::{{ pascal }};
 use poem_openapi::Object;
 use uuid::Uuid;{% for import in imports %}
 use {{ import }};{% endfor %}
@@ -25,6 +26,27 @@ pub struct Create{{ pascal }}Request {
 {% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 {% if is_crud %}
+
+/// One page of {{ plural_pascal }}: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct {{ pascal }}PageDto {
+    pub items: Vec<{{ pascal }}Dto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl {{ pascal }}PageDto {
+    pub fn from_domain(page: &Page<{{ pascal }}>) -> Self {
+        Self {
+            items: page.items.iter().map({{ pascal }}Dto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]

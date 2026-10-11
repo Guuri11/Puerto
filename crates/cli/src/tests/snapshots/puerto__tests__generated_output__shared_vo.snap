@@ -342,6 +342,7 @@ use crate::domain::customer::{
     repository::CustomerRepositoryTrait,
     use_cases::list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListCustomersUseCaseImpl {
     pub repository: Arc<dyn CustomerRepositoryTrait>,
@@ -349,10 +350,10 @@ pub struct ListCustomersUseCaseImpl {
 
 #[async_trait]
 impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
-    async fn execute(&self, _params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError> {
-        tracing::info!("list_customers: start");
+    async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_customers: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
             .map_err(CustomerError::from)
@@ -362,6 +363,7 @@ impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::customer::{
         model::{Customer, CustomerProps},
         repository::mocks::MockCustomerRepository,
@@ -371,7 +373,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_customers() {
+    async fn should_return_the_page_of_customers() {
         let entities = vec![
             Customer::new(CustomerProps {
             name: "first".to_string(),
@@ -387,29 +389,55 @@ mod tests {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCustomersParams).await;
+        let result = use_case
+            .execute(ListCustomersParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_customers_exist() {
+    async fn should_return_an_empty_page_when_no_customers_exist() {
         let mut mock_repo = MockCustomerRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCustomersParams).await;
+        let result = use_case
+            .execute(ListCustomersParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListCustomersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListCustomersParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -784,12 +812,13 @@ mod tests {
 === business/src/domain/customer/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Customer, CustomerId};
 
 #[async_trait]
 pub trait CustomerRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError>;
     async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
     async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
 }
@@ -805,7 +834,7 @@ pub mod mocks {
 
         #[async_trait]
         impl CustomerRepositoryTrait for CustomerRepository {
-            async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError>;
             async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
             async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
         }
@@ -913,14 +942,17 @@ pub mod mocks {
 === business/src/domain/customer/use_cases/list_customers.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::customer::{errors::CustomerError, model::Customer};
 
-#[derive(Debug)]
-pub struct ListCustomersParams;
+#[derive(Debug, Clone)]
+pub struct ListCustomersParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListCustomersUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError>;
+    async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -934,7 +966,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListCustomersUseCaseTrait for ListCustomersUseCase {
-            async fn execute(&self, params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError>;
+            async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError>;
         }
     }
 }
@@ -978,6 +1010,7 @@ pub mod mocks {
 
 === business/src/domain/shared.rs ===
 //! What every entity of the domain shares.
+pub mod pagination;
 pub mod repository_error;
 pub mod errors;
 pub mod value_objects;
@@ -1152,6 +1185,7 @@ impl Default for CustomerMother {
 === infrastructure/src/customer/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::customer::{
     model::{Customer, CustomerId},
@@ -1171,9 +1205,9 @@ impl InMemoryCustomerRepository {
 
 #[async_trait]
 impl CustomerRepositoryTrait for InMemoryCustomerRepository {
-    async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError> {
-        tracing::debug!("find_all");
-        Ok(vec![])
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        Ok(Page::new(vec![], 0, page))
     }
 
     async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError> {
@@ -1208,6 +1242,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/customer/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::customer::model::Customer;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -1240,6 +1275,27 @@ pub struct CreateCustomerRequest {
     pub credit: i64,
 }
 
+
+/// One page of Customers: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CustomerPageDto {
+    pub items: Vec<CustomerDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl CustomerPageDto {
+    pub fn from_domain(page: &Page<Customer>) -> Self {
+        Self {
+            items: page.items.iter().map(CustomerDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1354,7 +1410,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, customer::dto::CustomerDto};
+use crate::api::{
+    error::ErrorResponse,
+    customer::dto::{CustomerDto, CustomerPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -1414,7 +1473,7 @@ impl GetCustomerResponse {
 #[derive(ApiResponse)]
 pub enum ListCustomersResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<CustomerDto>>),
+    Ok(Json<CustomerPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -1492,6 +1551,7 @@ impl DeleteCustomerResponse {
 === presentation/src/api/customer/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::customer::model::CustomerId;
 use business::domain::customer::use_cases::{
     create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
@@ -1500,12 +1560,18 @@ use business::domain::customer::use_cases::{
     list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
     update_customer::{UpdateCustomerParams, UpdateCustomerUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::customer::dto::{CreateCustomerRequest, UpdateCustomerRequest, CustomerDto};
+use crate::api::customer::dto::{
+    CreateCustomerRequest, UpdateCustomerRequest, CustomerDto, CustomerPageDto,
+};
 use crate::api::customer::responses::{
     CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomersResponse,
     UpdateCustomerResponse,
@@ -1560,13 +1626,17 @@ impl CustomerApi {
         }
     }
 
-    /// List all Customers
+    /// List Customers, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/customers", method = "get", tag = "ApiTags::Customer")]
-    async fn list(&self) -> ListCustomersResponse {
-        match self.list_customers.execute(ListCustomersParams).await {
-            Ok(entities) => {
-                ListCustomersResponse::Ok(Json(entities.iter().map(CustomerDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListCustomersResponse {
+        match self
+            .list_customers
+            .execute(ListCustomersParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListCustomersResponse::Ok(Json(CustomerPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_customers failed");
@@ -1617,6 +1687,7 @@ impl CustomerApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::customer::errors::CustomerError;
     use business::domain::customer::use_cases::{
         create_customer::mocks::MockCreateCustomerUseCase, delete_customer::mocks::MockDeleteCustomerUseCase,
@@ -1739,17 +1810,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_customer_when_listing() {
+    async fn should_respond_200_with_a_page_of_customers_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(CustomerMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(CustomerMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/customers").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/customers?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -2007,11 +2101,12 @@ export interface Customer {
 export type CustomerDraft = Omit<Customer, "id">;
 
 === web/src/domain/customer/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Customer, CustomerDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `CustomerError` the API answered. */
 export interface CustomerRepository {
-  list(): Promise<Customer[]>;
+  list(page: PageRequest): Promise<Page<Customer>>;
   get(id: string): Promise<Customer>;
   create(draft: CustomerDraft): Promise<Customer>;
   update(id: string, draft: CustomerDraft): Promise<Customer>;
@@ -2039,16 +2134,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("customerRepositoryHttp", () => {
-  test("should return every customer when the API lists them", async () => {
+  test("should ask for the page and return its customers", async () => {
     // Arrange
     const customer = CustomerMother.random();
-    const { repository } = answering(200, [customer]);
+    const page = { items: [customer], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([customer]);
+    expect(requests[0]?.url).toBe("http://localhost/api/customers?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating a customer", async () => {
@@ -2120,10 +2217,12 @@ function toRequest(draft: CustomerDraft): CustomerRequest {
 /** `CustomerRepository` over the REST API (`/customers`). */
 export function customerRepositoryHttp(api: ApiClient): CustomerRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/customers");
+    async list(page) {
+      const { data, error, response } = await api.GET("/customers", {
+        params: { query: page },
+      });
       if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
-      return data.map(toCustomer);
+      return { ...data, items: data.items.map(toCustomer) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/customers/{id}", {
@@ -2380,7 +2479,9 @@ describe("CustomerFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/customers/"));
-    const [created] = await customerRepository.list();
+    const {
+      items: [created],
+    } = await customerRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/customers/${created?.id}`);
   });
@@ -2485,7 +2586,7 @@ function CustomerForm({ existing }: { existing: Customer | null }) {
 
 === web/src/presentation/features/customer/containers/customer-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { CustomerError } from "../../../../domain/customer/errors";
 import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
 import { renderScreen } from "../../../../test-support/render";
@@ -2502,6 +2603,21 @@ describe("CustomerListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => CustomerMother.random());
+    const customerRepository = fakeCustomerRepository(seed);
+    renderScreen(<CustomerListContainer />, { customerRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no customer", async () => {
@@ -2531,16 +2647,23 @@ describe("CustomerListContainer", () => {
 });
 
 === web/src/presentation/features/customer/containers/customer-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { CustomerListView } from "../views/customer-list-view";
 
 export function CustomerListContainer() {
   const { customerRepository } = useDependencies();
-  const customers = useAsync(() => customerRepository.list(), [customerRepository]);
+  const [offset, setOffset] = useState(0);
+  const customers = useAsync(
+    () => customerRepository.list({ limit: PAGE_SIZE, offset }),
+    [customerRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -2553,10 +2676,13 @@ export function CustomerListContainer() {
       {customers.status === "loading" && <span className="loading loading-spinner" />}
       {customers.status === "error" && <ErrorAlert error={customers.error} />}
       {customers.status === "ok" &&
-        (customers.data.length === 0 ? (
+        (customers.data.total === 0 ? (
           <EmptyState message="No customers yet." />
         ) : (
-          <CustomerListView customers={customers.data} />
+          <>
+            <CustomerListView customers={customers.data.items} />
+            <Pagination {...customers.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -2733,7 +2859,10 @@ export function fakeCustomerRepository(seed: Customer[] = []): CustomerRepositor
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

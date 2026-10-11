@@ -666,6 +666,7 @@ use crate::domain::customer::{
     repository::CustomerRepositoryTrait,
     use_cases::list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListCustomersUseCaseImpl {
     pub repository: Arc<dyn CustomerRepositoryTrait>,
@@ -673,10 +674,10 @@ pub struct ListCustomersUseCaseImpl {
 
 #[async_trait]
 impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
-    async fn execute(&self, _params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError> {
-        tracing::info!("list_customers: start");
+    async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_customers: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
             .map_err(CustomerError::from)
@@ -686,6 +687,7 @@ impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::customer::{
         model::{Customer, CustomerProps},
         repository::mocks::MockCustomerRepository,
@@ -700,7 +702,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_customers() {
+    async fn should_return_the_page_of_customers() {
         let entities = vec![
             Customer::new(CustomerProps {
             email: Email::new("first".to_string()).expect("valid Email"),
@@ -726,29 +728,55 @@ mod tests {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCustomersParams).await;
+        let result = use_case
+            .execute(ListCustomersParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_customers_exist() {
+    async fn should_return_an_empty_page_when_no_customers_exist() {
         let mut mock_repo = MockCustomerRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListCustomersParams).await;
+        let result = use_case
+            .execute(ListCustomersParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListCustomersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListCustomersParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -1490,6 +1518,7 @@ use crate::domain::product::{
     repository::ProductRepositoryTrait,
     use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListProductsUseCaseImpl {
     pub repository: Arc<dyn ProductRepositoryTrait>,
@@ -1497,10 +1526,10 @@ pub struct ListProductsUseCaseImpl {
 
 #[async_trait]
 impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
-    async fn execute(&self, _params: ListProductsParams) -> Result<Vec<Product>, ProductError> {
-        tracing::info!("list_products: start");
+    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_products: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
             .map_err(ProductError::from)
@@ -1510,6 +1539,7 @@ impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::product::{
         model::{Product, ProductProps},
         repository::mocks::MockProductRepository,
@@ -1520,7 +1550,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_products() {
+    async fn should_return_the_page_of_products() {
         let entities = vec![
             Product::new(ProductProps {
             title: "first".to_string(),
@@ -1556,29 +1586,55 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductsParams).await;
+        let result = use_case
+            .execute(ListProductsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_products_exist() {
+    async fn should_return_an_empty_page_when_no_products_exist() {
         let mut mock_repo = MockProductRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListProductsParams).await;
+        let result = use_case
+            .execute(ListProductsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListProductsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListProductsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -2148,6 +2204,7 @@ use crate::domain::ticket::{
     repository::TicketRepositoryTrait,
     use_cases::list_tickets::{ListTicketsParams, ListTicketsUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListTicketsUseCaseImpl {
     pub repository: Arc<dyn TicketRepositoryTrait>,
@@ -2155,10 +2212,10 @@ pub struct ListTicketsUseCaseImpl {
 
 #[async_trait]
 impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
-    async fn execute(&self, _params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError> {
-        tracing::info!("list_tickets: start");
+    async fn execute(&self, params: ListTicketsParams) -> Result<Page<Ticket>, TicketError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_tickets: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_tickets: repository failed"))
             .map_err(TicketError::from)
@@ -2168,6 +2225,7 @@ impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::ticket::{
         model::{Ticket, TicketProps},
         repository::mocks::MockTicketRepository,
@@ -2176,7 +2234,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_tickets() {
+    async fn should_return_the_page_of_tickets() {
         let entities = vec![
             Ticket::new(TicketProps {
             state: State::Open,
@@ -2188,29 +2246,55 @@ mod tests {
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListTicketsParams).await;
+        let result = use_case
+            .execute(ListTicketsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_tickets_exist() {
+    async fn should_return_an_empty_page_when_no_tickets_exist() {
         let mut mock_repo = MockTicketRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListTicketsParams).await;
+        let result = use_case
+            .execute(ListTicketsParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockTicketRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListTicketsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListTicketsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -2540,12 +2624,13 @@ mod tests {
 === business/src/domain/customer/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Customer, CustomerId};
 
 #[async_trait]
 pub trait CustomerRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError>;
     async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
     async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
 }
@@ -2561,7 +2646,7 @@ pub mod mocks {
 
         #[async_trait]
         impl CustomerRepositoryTrait for CustomerRepository {
-            async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError>;
             async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
             async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
         }
@@ -2675,14 +2760,17 @@ pub mod mocks {
 === business/src/domain/customer/use_cases/list_customers.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::customer::{errors::CustomerError, model::Customer};
 
-#[derive(Debug)]
-pub struct ListCustomersParams;
+#[derive(Debug, Clone)]
+pub struct ListCustomersParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListCustomersUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError>;
+    async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2696,7 +2784,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListCustomersUseCaseTrait for ListCustomersUseCase {
-            async fn execute(&self, params: ListCustomersParams) -> Result<Vec<Customer>, CustomerError>;
+            async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError>;
         }
     }
 }
@@ -3154,12 +3242,13 @@ mod tests {
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Product, ProductId};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Product>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
     async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
     async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
 }
@@ -3175,7 +3264,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
-            async fn find_all(&self) -> Result<Vec<Product>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
             async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
             async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
         }
@@ -3327,14 +3416,17 @@ pub mod mocks {
 === business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::product::{errors::ProductError, model::Product};
 
-#[derive(Debug)]
-pub struct ListProductsParams;
+#[derive(Debug, Clone)]
+pub struct ListProductsParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListProductsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
+    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3348,7 +3440,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListProductsUseCaseTrait for ListProductsUseCase {
-            async fn execute(&self, params: ListProductsParams) -> Result<Vec<Product>, ProductError>;
+            async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
         }
     }
 }
@@ -3405,6 +3497,7 @@ pub mod mocks {
 
 === business/src/domain/shared.rs ===
 //! What every entity of the domain shares.
+pub mod pagination;
 pub mod repository_error;
 pub mod errors;
 pub mod value_objects;
@@ -3587,12 +3680,13 @@ mod tests {
 === business/src/domain/ticket/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Ticket, TicketId};
 
 #[async_trait]
 pub trait TicketRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Ticket>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Ticket>, RepositoryError>;
     async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError>;
     async fn save(&self, entity: &Ticket) -> Result<(), RepositoryError>;
 }
@@ -3608,7 +3702,7 @@ pub mod mocks {
 
         #[async_trait]
         impl TicketRepositoryTrait for TicketRepository {
-            async fn find_all(&self) -> Result<Vec<Ticket>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Ticket>, RepositoryError>;
             async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError>;
             async fn save(&self, entity: &Ticket) -> Result<(), RepositoryError>;
         }
@@ -3714,14 +3808,17 @@ pub mod mocks {
 === business/src/domain/ticket/use_cases/list_tickets.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::ticket::{errors::TicketError, model::Ticket};
 
-#[derive(Debug)]
-pub struct ListTicketsParams;
+#[derive(Debug, Clone)]
+pub struct ListTicketsParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListTicketsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError>;
+    async fn execute(&self, params: ListTicketsParams) -> Result<Page<Ticket>, TicketError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3735,7 +3832,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListTicketsUseCaseTrait for ListTicketsUseCase {
-            async fn execute(&self, params: ListTicketsParams) -> Result<Vec<Ticket>, TicketError>;
+            async fn execute(&self, params: ListTicketsParams) -> Result<Page<Ticket>, TicketError>;
         }
     }
 }
@@ -4406,6 +4503,7 @@ impl From<&Customer> for CustomerDb {
 use async_trait::async_trait;
 use sqlx::PgPool;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::customer::{
     model::{Customer, CustomerId},
@@ -4436,12 +4534,15 @@ fn to_domain(row: CustomerDb) -> Result<Customer, RepositoryError> {
 
 #[async_trait]
 impl CustomerRepositoryTrait for PgCustomerRepository {
-    async fn find_all(&self) -> Result<Vec<Customer>, RepositoryError> {
-        tracing::debug!("find_all");
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
         let rows = sqlx::query_as!(
             CustomerDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, email, name, code, age, joined, middle, labels, status
-             FROM customers WHERE deleted = false ORDER BY created_at DESC"
+             FROM customers WHERE deleted = false
+             ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
+            i64::from(page.limit()),
+            i64::from(page.offset())
         )
         .fetch_all(&self.pool)
         .await
@@ -4449,8 +4550,20 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
             tracing::error!(error = %e, "find_all failed");
             map_sqlx_error(&e)
         })?;
+        let total = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) AS "total!" FROM customers WHERE deleted = false"#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all count failed");
+            map_sqlx_error(&e)
+        })?;
 
-        rows.into_iter().map(to_domain).collect()
+        let items = rows.into_iter().map(to_domain).collect::<Result<Vec<_>, _>>()?;
+        // COUNT(*) is never negative.
+        let total = u64::try_from(total).unwrap_or_default();
+        Ok(Page::new(items, total, page))
     }
 
     async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError> {
@@ -4584,13 +4697,36 @@ mod integration_tests {
     async fn should_list_all_customers_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
-        seed(&pool).await;
+        let mut deleted = seed(&pool).await;
+        deleted.deleted = true;
+        deleted.deleted_at = Some(deleted.updated_at);
+        test_repo(pool.clone()).save(&deleted).await.unwrap();
 
         // Act
-        let results = test_repo(pool).find_all().await.unwrap();
+        let page = test_repo(pool).find_all(PageRequest::default()).await.unwrap();
 
         // Assert
-        assert_eq!(results.len(), 2);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
+        // Arrange
+        for _ in 0..3 {
+            seed(&pool).await;
+        }
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3);
+        assert_eq!((page.limit, page.offset), (2, 2));
     }
 
 
@@ -4789,6 +4925,7 @@ use sqlx::PgPool;
 use sqlx::types::Json;
 use std::collections::HashMap;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::product::{
     model::{Product, ProductId},
@@ -4819,12 +4956,15 @@ fn to_domain(row: ProductDb) -> Result<Product, RepositoryError> {
 
 #[async_trait]
 impl ProductRepositoryTrait for PgProductRepository {
-    async fn find_all(&self) -> Result<Vec<Product>, RepositoryError> {
-        tracing::debug!("find_all");
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
         let rows = sqlx::query_as!(
             ProductDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, title, sku, price, rating, active, ref_id, published_at, summary, views, expires_at, tags, scores, meta as \"meta: Json<HashMap<String, String>>\"
-             FROM products WHERE deleted = false ORDER BY created_at DESC"
+             FROM products WHERE deleted = false
+             ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
+            i64::from(page.limit()),
+            i64::from(page.offset())
         )
         .fetch_all(&self.pool)
         .await
@@ -4832,8 +4972,20 @@ impl ProductRepositoryTrait for PgProductRepository {
             tracing::error!(error = %e, "find_all failed");
             map_sqlx_error(&e)
         })?;
+        let total = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) AS "total!" FROM products WHERE deleted = false"#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all count failed");
+            map_sqlx_error(&e)
+        })?;
 
-        rows.into_iter().map(to_domain).collect()
+        let items = rows.into_iter().map(to_domain).collect::<Result<Vec<_>, _>>()?;
+        // COUNT(*) is never negative.
+        let total = u64::try_from(total).unwrap_or_default();
+        Ok(Page::new(items, total, page))
     }
 
     async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError> {
@@ -4976,13 +5128,36 @@ mod integration_tests {
     async fn should_list_all_products_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
-        seed(&pool).await;
+        let mut deleted = seed(&pool).await;
+        deleted.deleted = true;
+        deleted.deleted_at = Some(deleted.updated_at);
+        test_repo(pool.clone()).save(&deleted).await.unwrap();
 
         // Act
-        let results = test_repo(pool).find_all().await.unwrap();
+        let page = test_repo(pool).find_all(PageRequest::default()).await.unwrap();
 
         // Assert
-        assert_eq!(results.len(), 2);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
+        // Arrange
+        for _ in 0..3 {
+            seed(&pool).await;
+        }
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3);
+        assert_eq!((page.limit, page.offset), (2, 2));
     }
 
 
@@ -5069,6 +5244,7 @@ impl From<&Ticket> for TicketDb {
 use async_trait::async_trait;
 use sqlx::PgPool;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::ticket::{
     model::{Ticket, TicketId},
@@ -5099,12 +5275,15 @@ fn to_domain(row: TicketDb) -> Result<Ticket, RepositoryError> {
 
 #[async_trait]
 impl TicketRepositoryTrait for PgTicketRepository {
-    async fn find_all(&self) -> Result<Vec<Ticket>, RepositoryError> {
-        tracing::debug!("find_all");
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Ticket>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
         let rows = sqlx::query_as!(
             TicketDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, state
-             FROM tickets WHERE deleted = false ORDER BY created_at DESC"
+             FROM tickets WHERE deleted = false
+             ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
+            i64::from(page.limit()),
+            i64::from(page.offset())
         )
         .fetch_all(&self.pool)
         .await
@@ -5112,8 +5291,20 @@ impl TicketRepositoryTrait for PgTicketRepository {
             tracing::error!(error = %e, "find_all failed");
             map_sqlx_error(&e)
         })?;
+        let total = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) AS "total!" FROM tickets WHERE deleted = false"#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all count failed");
+            map_sqlx_error(&e)
+        })?;
 
-        rows.into_iter().map(to_domain).collect()
+        let items = rows.into_iter().map(to_domain).collect::<Result<Vec<_>, _>>()?;
+        // COUNT(*) is never negative.
+        let total = u64::try_from(total).unwrap_or_default();
+        Ok(Page::new(items, total, page))
     }
 
     async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError> {
@@ -5218,13 +5409,36 @@ mod integration_tests {
     async fn should_list_all_tickets_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
-        seed(&pool).await;
+        let mut deleted = seed(&pool).await;
+        deleted.deleted = true;
+        deleted.deleted_at = Some(deleted.updated_at);
+        test_repo(pool.clone()).save(&deleted).await.unwrap();
 
         // Act
-        let results = test_repo(pool).find_all().await.unwrap();
+        let page = test_repo(pool).find_all(PageRequest::default()).await.unwrap();
 
         // Assert
-        assert_eq!(results.len(), 2);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
+        // Arrange
+        for _ in 0..3 {
+            seed(&pool).await;
+        }
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3);
+        assert_eq!((page.limit, page.offset), (2, 2));
     }
 }
 
@@ -5243,6 +5457,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/customer/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::customer::model::Customer;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -5291,6 +5506,27 @@ pub struct CreateCustomerRequest {
     pub status: String,
 }
 
+
+/// One page of Customers: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CustomerPageDto {
+    pub items: Vec<CustomerDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl CustomerPageDto {
+    pub fn from_domain(page: &Page<Customer>) -> Self {
+        Self {
+            items: page.items.iter().map(CustomerDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -5476,7 +5712,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, customer::dto::CustomerDto};
+use crate::api::{
+    error::ErrorResponse,
+    customer::dto::{CustomerDto, CustomerPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -5536,7 +5775,7 @@ impl GetCustomerResponse {
 #[derive(ApiResponse)]
 pub enum ListCustomersResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<CustomerDto>>),
+    Ok(Json<CustomerPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -5614,6 +5853,7 @@ impl DeleteCustomerResponse {
 === presentation/src/api/customer/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::customer::model::CustomerId;
 use business::domain::customer::use_cases::{
     create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
@@ -5622,12 +5862,18 @@ use business::domain::customer::use_cases::{
     list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
     update_customer::{UpdateCustomerParams, UpdateCustomerUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::customer::dto::{CreateCustomerRequest, UpdateCustomerRequest, CustomerDto};
+use crate::api::customer::dto::{
+    CreateCustomerRequest, UpdateCustomerRequest, CustomerDto, CustomerPageDto,
+};
 use crate::api::customer::responses::{
     CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomersResponse,
     UpdateCustomerResponse,
@@ -5687,13 +5933,17 @@ impl CustomerApi {
         }
     }
 
-    /// List all Customers
+    /// List Customers, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/customers", method = "get", tag = "ApiTags::Customer")]
-    async fn list(&self) -> ListCustomersResponse {
-        match self.list_customers.execute(ListCustomersParams).await {
-            Ok(entities) => {
-                ListCustomersResponse::Ok(Json(entities.iter().map(CustomerDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListCustomersResponse {
+        match self
+            .list_customers
+            .execute(ListCustomersParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListCustomersResponse::Ok(Json(CustomerPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_customers failed");
@@ -5749,6 +5999,7 @@ impl CustomerApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::customer::errors::CustomerError;
     use business::domain::customer::use_cases::{
         create_customer::mocks::MockCreateCustomerUseCase, delete_customer::mocks::MockDeleteCustomerUseCase,
@@ -5882,17 +6133,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_customer_when_listing() {
+    async fn should_respond_200_with_a_page_of_customers_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(CustomerMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(CustomerMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/customers").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/customers?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -5978,6 +6252,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/product/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::product::model::Product;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -6042,6 +6317,27 @@ pub struct CreateProductRequest {
     pub meta: HashMap<String, String>,
 }
 
+
+/// One page of Products: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProductPageDto {
+    pub items: Vec<ProductDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl ProductPageDto {
+    pub fn from_domain(page: &Page<Product>) -> Self {
+        Self {
+            items: page.items.iter().map(ProductDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -6144,7 +6440,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, product::dto::ProductDto};
+use crate::api::{
+    error::ErrorResponse,
+    product::dto::{ProductDto, ProductPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -6204,7 +6503,7 @@ impl GetProductResponse {
 #[derive(ApiResponse)]
 pub enum ListProductsResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<ProductDto>>),
+    Ok(Json<ProductPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -6283,6 +6582,7 @@ impl DeleteProductResponse {
 use business::domain::product::use_cases::archive_product::ArchiveProductUseCaseTrait;
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::product::model::ProductId;
 use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
@@ -6291,12 +6591,18 @@ use business::domain::product::use_cases::{
     list_products::{ListProductsParams, ListProductsUseCaseTrait},
     update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::product::dto::{CreateProductRequest, UpdateProductRequest, ProductDto};
+use crate::api::product::dto::{
+    CreateProductRequest, UpdateProductRequest, ProductDto, ProductPageDto,
+};
 use crate::api::product::responses::{
     CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductsResponse,
     UpdateProductResponse,
@@ -6364,13 +6670,17 @@ impl ProductApi {
         }
     }
 
-    /// List all Products
+    /// List Products, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
-    async fn list(&self) -> ListProductsResponse {
-        match self.list_products.execute(ListProductsParams).await {
-            Ok(entities) => {
-                ListProductsResponse::Ok(Json(entities.iter().map(ProductDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListProductsResponse {
+        match self
+            .list_products
+            .execute(ListProductsParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListProductsResponse::Ok(Json(ProductPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_products failed");
@@ -6431,6 +6741,7 @@ impl ProductApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::product::errors::ProductError;
     use business::domain::product::use_cases::{
         create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
@@ -6578,17 +6889,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_product_when_listing() {
+    async fn should_respond_200_with_a_page_of_products_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(ProductMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(ProductMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/products").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/products?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -6686,6 +7020,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/ticket/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::ticket::model::Ticket;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -6712,6 +7047,27 @@ pub struct CreateTicketRequest {
     pub state: String,
 }
 
+
+/// One page of Tickets: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct TicketPageDto {
+    pub items: Vec<TicketDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl TicketPageDto {
+    pub fn from_domain(page: &Page<Ticket>) -> Self {
+        Self {
+            items: page.items.iter().map(TicketDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -6813,7 +7169,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, ticket::dto::TicketDto};
+use crate::api::{
+    error::ErrorResponse,
+    ticket::dto::{TicketDto, TicketPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -6873,7 +7232,7 @@ impl GetTicketResponse {
 #[derive(ApiResponse)]
 pub enum ListTicketsResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<TicketDto>>),
+    Ok(Json<TicketPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -6951,6 +7310,7 @@ impl DeleteTicketResponse {
 === presentation/src/api/ticket/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::ticket::model::TicketId;
 use business::domain::ticket::use_cases::{
     create_ticket::{CreateTicketParams, CreateTicketUseCaseTrait},
@@ -6959,12 +7319,18 @@ use business::domain::ticket::use_cases::{
     list_tickets::{ListTicketsParams, ListTicketsUseCaseTrait},
     update_ticket::{UpdateTicketParams, UpdateTicketUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::ticket::dto::{CreateTicketRequest, UpdateTicketRequest, TicketDto};
+use crate::api::ticket::dto::{
+    CreateTicketRequest, UpdateTicketRequest, TicketDto, TicketPageDto,
+};
 use crate::api::ticket::responses::{
     CreateTicketResponse, DeleteTicketResponse, GetTicketResponse, ListTicketsResponse,
     UpdateTicketResponse,
@@ -7017,13 +7383,17 @@ impl TicketApi {
         }
     }
 
-    /// List all Tickets
+    /// List Tickets, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/tickets", method = "get", tag = "ApiTags::Ticket")]
-    async fn list(&self) -> ListTicketsResponse {
-        match self.list_tickets.execute(ListTicketsParams).await {
-            Ok(entities) => {
-                ListTicketsResponse::Ok(Json(entities.iter().map(TicketDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListTicketsResponse {
+        match self
+            .list_tickets
+            .execute(ListTicketsParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListTicketsResponse::Ok(Json(TicketPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_tickets failed");
@@ -7072,6 +7442,7 @@ impl TicketApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::ticket::errors::TicketError;
     use business::domain::ticket::use_cases::{
         create_ticket::mocks::MockCreateTicketUseCase, delete_ticket::mocks::MockDeleteTicketUseCase,
@@ -7190,17 +7561,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_ticket_when_listing() {
+    async fn should_respond_200_with_a_page_of_tickets_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(TicketMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(TicketMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/tickets").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/tickets?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -7641,11 +8035,12 @@ export function parseStatus(value: string): Status {
 }
 
 === web/src/domain/customer/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Customer, CustomerDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `CustomerError` the API answered. */
 export interface CustomerRepository {
-  list(): Promise<Customer[]>;
+  list(page: PageRequest): Promise<Page<Customer>>;
   get(id: string): Promise<Customer>;
   create(draft: CustomerDraft): Promise<Customer>;
   update(id: string, draft: CustomerDraft): Promise<Customer>;
@@ -7689,11 +8084,12 @@ export interface Product {
 export type ProductDraft = Omit<Product, "id">;
 
 === web/src/domain/product/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Product, ProductDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `ProductError` the API answered. */
 export interface ProductRepository {
-  list(): Promise<Product[]>;
+  list(page: PageRequest): Promise<Page<Product>>;
   get(id: string): Promise<Product>;
   create(draft: ProductDraft): Promise<Product>;
   update(id: string, draft: ProductDraft): Promise<Product>;
@@ -7738,11 +8134,12 @@ export function parseState(value: string): State {
 }
 
 === web/src/domain/ticket/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Ticket, TicketDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `TicketError` the API answered. */
 export interface TicketRepository {
-  list(): Promise<Ticket[]>;
+  list(page: PageRequest): Promise<Page<Ticket>>;
   get(id: string): Promise<Ticket>;
   create(draft: TicketDraft): Promise<Ticket>;
   update(id: string, draft: TicketDraft): Promise<Ticket>;
@@ -7770,16 +8167,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("customerRepositoryHttp", () => {
-  test("should return every customer when the API lists them", async () => {
+  test("should ask for the page and return its customers", async () => {
     // Arrange
     const customer = CustomerMother.random();
-    const { repository } = answering(200, [customer]);
+    const page = { items: [customer], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([customer]);
+    expect(requests[0]?.url).toBe("http://localhost/api/customers?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating a customer", async () => {
@@ -7861,10 +8260,12 @@ function toRequest(draft: CustomerDraft): CustomerRequest {
 /** `CustomerRepository` over the REST API (`/customers`). */
 export function customerRepositoryHttp(api: ApiClient): CustomerRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/customers");
+    async list(page) {
+      const { data, error, response } = await api.GET("/customers", {
+        params: { query: page },
+      });
       if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
-      return data.map(toCustomer);
+      return { ...data, items: data.items.map(toCustomer) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/customers/{id}", {
@@ -7940,16 +8341,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("productRepositoryHttp", () => {
-  test("should return every product when the API lists them", async () => {
+  test("should ask for the page and return its products", async () => {
     // Arrange
     const product = ProductMother.random();
-    const { repository } = answering(200, [product]);
+    const page = { items: [product], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([product]);
+    expect(requests[0]?.url).toBe("http://localhost/api/products?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating a product", async () => {
@@ -8041,10 +8444,12 @@ function toRequest(draft: ProductDraft): ProductRequest {
 /** `ProductRepository` over the REST API (`/products`). */
 export function productRepositoryHttp(api: ApiClient): ProductRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/products");
+    async list(page) {
+      const { data, error, response } = await api.GET("/products", {
+        params: { query: page },
+      });
       if (data === undefined) throw new ProductError(apiErrorCode(error, response));
-      return data.map(toProduct);
+      return { ...data, items: data.items.map(toProduct) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/products/{id}", {
@@ -8096,16 +8501,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("ticketRepositoryHttp", () => {
-  test("should return every ticket when the API lists them", async () => {
+  test("should ask for the page and return its tickets", async () => {
     // Arrange
     const ticket = TicketMother.random();
-    const { repository } = answering(200, [ticket]);
+    const page = { items: [ticket], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([ticket]);
+    expect(requests[0]?.url).toBe("http://localhost/api/tickets?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating a ticket", async () => {
@@ -8173,10 +8580,12 @@ function toRequest(draft: TicketDraft): TicketRequest {
 /** `TicketRepository` over the REST API (`/tickets`). */
 export function ticketRepositoryHttp(api: ApiClient): TicketRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/tickets");
+    async list(page) {
+      const { data, error, response } = await api.GET("/tickets", {
+        params: { query: page },
+      });
       if (data === undefined) throw new TicketError(apiErrorCode(error, response));
-      return data.map(toTicket);
+      return { ...data, items: data.items.map(toTicket) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/tickets/{id}", {
@@ -8449,7 +8858,9 @@ describe("CustomerFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/customers/"));
-    const [created] = await customerRepository.list();
+    const {
+      items: [created],
+    } = await customerRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/customers/${created?.id}`);
   });
@@ -8554,7 +8965,7 @@ function CustomerForm({ existing }: { existing: Customer | null }) {
 
 === web/src/presentation/features/customer/containers/customer-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { CustomerError } from "../../../../domain/customer/errors";
 import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
 import { renderScreen } from "../../../../test-support/render";
@@ -8571,6 +8982,21 @@ describe("CustomerListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => CustomerMother.random());
+    const customerRepository = fakeCustomerRepository(seed);
+    renderScreen(<CustomerListContainer />, { customerRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no customer", async () => {
@@ -8600,16 +9026,23 @@ describe("CustomerListContainer", () => {
 });
 
 === web/src/presentation/features/customer/containers/customer-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { CustomerListView } from "../views/customer-list-view";
 
 export function CustomerListContainer() {
   const { customerRepository } = useDependencies();
-  const customers = useAsync(() => customerRepository.list(), [customerRepository]);
+  const [offset, setOffset] = useState(0);
+  const customers = useAsync(
+    () => customerRepository.list({ limit: PAGE_SIZE, offset }),
+    [customerRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -8622,10 +9055,13 @@ export function CustomerListContainer() {
       {customers.status === "loading" && <span className="loading loading-spinner" />}
       {customers.status === "error" && <ErrorAlert error={customers.error} />}
       {customers.status === "ok" &&
-        (customers.data.length === 0 ? (
+        (customers.data.total === 0 ? (
           <EmptyState message="No customers yet." />
         ) : (
-          <CustomerListView customers={customers.data} />
+          <>
+            <CustomerListView customers={customers.data.items} />
+            <Pagination {...customers.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -9028,7 +9464,9 @@ describe("ProductFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/products/"));
-    const [created] = await productRepository.list();
+    const {
+      items: [created],
+    } = await productRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/products/${created?.id}`);
   });
@@ -9133,7 +9571,7 @@ function ProductForm({ existing }: { existing: Product | null }) {
 
 === web/src/presentation/features/product/containers/product-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { ProductError } from "../../../../domain/product/errors";
 import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
 import { renderScreen } from "../../../../test-support/render";
@@ -9150,6 +9588,21 @@ describe("ProductListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ProductMother.random());
+    const productRepository = fakeProductRepository(seed);
+    renderScreen(<ProductListContainer />, { productRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no product", async () => {
@@ -9179,16 +9632,23 @@ describe("ProductListContainer", () => {
 });
 
 === web/src/presentation/features/product/containers/product-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { ProductListView } from "../views/product-list-view";
 
 export function ProductListContainer() {
   const { productRepository } = useDependencies();
-  const products = useAsync(() => productRepository.list(), [productRepository]);
+  const [offset, setOffset] = useState(0);
+  const products = useAsync(
+    () => productRepository.list({ limit: PAGE_SIZE, offset }),
+    [productRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -9201,10 +9661,13 @@ export function ProductListContainer() {
       {products.status === "loading" && <span className="loading loading-spinner" />}
       {products.status === "error" && <ErrorAlert error={products.error} />}
       {products.status === "ok" &&
-        (products.data.length === 0 ? (
+        (products.data.total === 0 ? (
           <EmptyState message="No products yet." />
         ) : (
-          <ProductListView products={products.data} />
+          <>
+            <ProductListView products={products.data.items} />
+            <Pagination {...products.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -9682,7 +10145,9 @@ describe("TicketFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/tickets/"));
-    const [created] = await ticketRepository.list();
+    const {
+      items: [created],
+    } = await ticketRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/tickets/${created?.id}`);
   });
@@ -9787,7 +10252,7 @@ function TicketForm({ existing }: { existing: Ticket | null }) {
 
 === web/src/presentation/features/ticket/containers/ticket-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { TicketError } from "../../../../domain/ticket/errors";
 import { renderScreen } from "../../../../test-support/render";
 import { fakeTicketRepository, TicketMother } from "../../../../test-support/ticket";
@@ -9804,6 +10269,21 @@ describe("TicketListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => TicketMother.random());
+    const ticketRepository = fakeTicketRepository(seed);
+    renderScreen(<TicketListContainer />, { ticketRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no ticket", async () => {
@@ -9833,16 +10313,23 @@ describe("TicketListContainer", () => {
 });
 
 === web/src/presentation/features/ticket/containers/ticket-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { TicketListView } from "../views/ticket-list-view";
 
 export function TicketListContainer() {
   const { ticketRepository } = useDependencies();
-  const tickets = useAsync(() => ticketRepository.list(), [ticketRepository]);
+  const [offset, setOffset] = useState(0);
+  const tickets = useAsync(
+    () => ticketRepository.list({ limit: PAGE_SIZE, offset }),
+    [ticketRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -9855,10 +10342,13 @@ export function TicketListContainer() {
       {tickets.status === "loading" && <span className="loading loading-spinner" />}
       {tickets.status === "error" && <ErrorAlert error={tickets.error} />}
       {tickets.status === "ok" &&
-        (tickets.data.length === 0 ? (
+        (tickets.data.total === 0 ? (
           <EmptyState message="No tickets yet." />
         ) : (
-          <TicketListView tickets={tickets.data} />
+          <>
+            <TicketListView tickets={tickets.data.items} />
+            <Pagination {...tickets.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -10007,7 +10497,10 @@ export function fakeCustomerRepository(seed: Customer[] = []): CustomerRepositor
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };
@@ -10066,7 +10559,10 @@ export function fakeProductRepository(seed: Product[] = []): ProductRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };
@@ -10113,7 +10609,10 @@ export function fakeTicketRepository(seed: Ticket[] = []): TicketRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

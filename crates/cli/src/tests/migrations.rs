@@ -150,7 +150,10 @@ fn db_scaffold_names_the_table_and_the_paths_with_the_real_plural() {
     let routes = fs::read_to_string(dir.join("presentation/src/api/category/routes.rs")).unwrap();
     assert!(routes.contains(r#"path = "/categories""#), "{routes}");
     assert!(routes.contains(r#"path = "/categories/:id""#), "{routes}");
-    assert!(routes.contains("/// List all Categories"), "{routes}");
+    assert!(
+        routes.contains("/// List Categories, one page at a time"),
+        "{routes}"
+    );
     assert!(!routes.contains("categorys"), "{routes}");
 
     cleanup(&dir);

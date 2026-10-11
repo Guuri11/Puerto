@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::{{ snake }}::model::{{ pascal }}Id;
 use business::domain::{{ snake }}::use_cases::{
     create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
@@ -8,12 +9,18 @@ use business::domain::{{ snake }}::use_cases::{
     list_{{ plural }}::{List{{ plural_pascal }}Params, List{{ plural_pascal }}UseCaseTrait},
     update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::{{ snake }}::dto::{Create{{ pascal }}Request, Update{{ pascal }}Request, {{ pascal }}Dto};
+use crate::api::{{ snake }}::dto::{
+    Create{{ pascal }}Request, Update{{ pascal }}Request, {{ pascal }}Dto, {{ pascal }}PageDto,
+};
 use crate::api::{{ snake }}::responses::{
     Create{{ pascal }}Response, Delete{{ pascal }}Response, Get{{ pascal }}Response, List{{ plural_pascal }}Response,
     Update{{ pascal }}Response,
@@ -66,13 +73,17 @@ impl {{ pascal }}Api {
         }
     }
 
-    /// List all {{ plural_pascal }}
+    /// List {{ plural_pascal }}, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
-    async fn list(&self) -> List{{ plural_pascal }}Response {
-        match self.list_{{ plural }}.execute(List{{ plural_pascal }}Params).await {
-            Ok(entities) => {
-                List{{ plural_pascal }}Response::Ok(Json(entities.iter().map({{ pascal }}Dto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> List{{ plural_pascal }}Response {
+        match self
+            .list_{{ plural }}
+            .execute(List{{ plural_pascal }}Params {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => List{{ plural_pascal }}Response::Ok(Json({{ pascal }}PageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_{{ plural }} failed");
@@ -121,6 +132,7 @@ impl {{ pascal }}Api {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::{{ snake }}::errors::{{ pascal }}Error;
     use business::domain::{{ snake }}::use_cases::{
         create_{{ snake }}::mocks::MockCreate{{ pascal }}UseCase, delete_{{ snake }}::mocks::MockDelete{{ pascal }}UseCase,
@@ -240,17 +252,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_{{ snake }}_when_listing() {
+    async fn should_respond_200_with_a_page_of_{{ plural }}_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok({{ pascal }}Mother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new({{ pascal }}Mother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/{{ plural }}").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/{{ plural }}?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]

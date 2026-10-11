@@ -8,6 +8,7 @@ use crate::domain::{{ snake }}::{
     repository::{{ pascal }}RepositoryTrait,
     use_cases::list_{{ plural }}::{List{{ plural_pascal }}Params, List{{ plural_pascal }}UseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct List{{ plural_pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
@@ -15,10 +16,10 @@ pub struct List{{ plural_pascal }}UseCaseImpl {
 
 #[async_trait]
 impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl {
-    async fn execute(&self, _params: List{{ plural_pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error> {
-        tracing::info!("list_{{ plural }}: start");
+    async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Page<{{ pascal }}>, {{ pascal }}Error> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_{{ plural }}: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_{{ plural }}: repository failed"))
             .map_err({{ pascal }}Error::from)
@@ -28,6 +29,7 @@ impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::{{ snake }}::{
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
@@ -36,7 +38,7 @@ mod tests {
 {% endfor %}
 
     #[tokio::test]
-    async fn should_return_all_{{ plural }}() {
+    async fn should_return_the_page_of_{{ plural }}() {
         let entities = vec![
             {{ pascal }}::new({{ pascal }}Props {
 {{ macros::props(fields=fields, word="first") }}        }).unwrap(),
@@ -46,28 +48,54 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(List{{ plural_pascal }}Params).await;
+        let result = use_case
+            .execute(List{{ plural_pascal }}Params { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_{{ plural }}_exist() {
+    async fn should_return_an_empty_page_when_no_{{ plural }}_exist() {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(List{{ plural_pascal }}Params).await;
+        let result = use_case
+            .execute(List{{ plural_pascal }}Params { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = Mock{{ pascal }}Repository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = List{{ plural_pascal }}UseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(List{{ plural_pascal }}Params { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }

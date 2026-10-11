@@ -246,6 +246,14 @@ Duplicate`, the rest → `RepositoryError`) — so use cases propagate it with `
 answering the entity's codes. `domain/shared.rs` declares `repository_error` (and the shared value
 objects' `errors` / `value_objects`); there is no `shared/mod.rs`.
 
+### Paged lists
+
+`domain/shared/pagination.rs` (template, ADR-0016): `PageRequest::new(limit, offset)` — private
+fields, limit defaults to 20 and is clamped to `1..=100` — and `Page<T> { items, total, limit,
+offset }`. The CRUD port reads `find_all(&self, page: PageRequest) -> Result<Page<Entity>,
+RepositoryError>`, `ListEntitiesParams { page }` returns a `Page`, and `GET /entities?limit=&offset=`
+answers `EntityPageDto`. Pg: `ORDER BY created_at DESC, id LIMIT $1 OFFSET $2` + `COUNT(*)`.
+
 ---
 
 ## Application Layer (`business/src/application/<entity>/`)

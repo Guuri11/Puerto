@@ -1503,9 +1503,9 @@ wasm-pack in the toolchain and the compile matrix; how a VO error reaches the fo
 
 ---
 
-## Phase 11 — Typed ids, one repository error, paged lists (T-24, T-28, T-27)
+## Phase 11 — Typed ids, one repository error, paged lists (T-24, T-28, T-27) ✅ DONE
 
-**Status:** in progress. Backlog items from `puerto_vs_document_api.md` § 2.4, 2.6, 2.7. Each one
+**Status:** ✅ DONE. Backlog items from `puerto_vs_document_api.md` § 2.4, 2.6, 2.7. Each one
 changes generated output (`feat!`); no project generated before this phase is in use, so there is
 no migration guide beyond the changelog. One commit per piece, in this order — 11.1 changes the
 repository's error type and 11.2 rewrites `find_all`, so `find_all` is written once, over
@@ -1579,7 +1579,7 @@ appends both to `shared.rs`, never writes `shared/mod.rs`, and is idempotent; re
 return `RepositoryError`; `errors.rs` has the `From` impl; `db.rs` has `map_sqlx_error` and the
 Pg repositories call it, with no inline `23505`; the `--no-demo` project still declares `shared`.
 
-### 11.2 — Paged lists (T-27)
+### 11.2 — Paged lists (T-27) ✅
 
 `list_*` reads one page — never the whole table.
 

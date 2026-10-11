@@ -321,6 +321,7 @@ use crate::domain::article::{
     repository::ArticleRepositoryTrait,
     use_cases::list_articles::{ListArticlesParams, ListArticlesUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListArticlesUseCaseImpl {
     pub repository: Arc<dyn ArticleRepositoryTrait>,
@@ -328,10 +329,10 @@ pub struct ListArticlesUseCaseImpl {
 
 #[async_trait]
 impl ListArticlesUseCaseTrait for ListArticlesUseCaseImpl {
-    async fn execute(&self, _params: ListArticlesParams) -> Result<Vec<Article>, ArticleError> {
-        tracing::info!("list_articles: start");
+    async fn execute(&self, params: ListArticlesParams) -> Result<Page<Article>, ArticleError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_articles: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_articles: repository failed"))
             .map_err(ArticleError::from)
@@ -341,6 +342,7 @@ impl ListArticlesUseCaseTrait for ListArticlesUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::article::{
         model::{Article, ArticleProps},
         repository::mocks::MockArticleRepository,
@@ -348,7 +350,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_articles() {
+    async fn should_return_the_page_of_articles() {
         let entities = vec![
             Article::new(ArticleProps {
             title: "first".to_string(),
@@ -368,29 +370,55 @@ mod tests {
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListArticlesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListArticlesParams).await;
+        let result = use_case
+            .execute(ListArticlesParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_articles_exist() {
+    async fn should_return_an_empty_page_when_no_articles_exist() {
         let mut mock_repo = MockArticleRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListArticlesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListArticlesParams).await;
+        let result = use_case
+            .execute(ListArticlesParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockArticleRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListArticlesUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListArticlesParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -732,12 +760,13 @@ mod tests {
 === business/src/domain/article/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Article, ArticleId};
 
 #[async_trait]
 pub trait ArticleRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Article>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Article>, RepositoryError>;
     async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError>;
     async fn save(&self, entity: &Article) -> Result<(), RepositoryError>;
 }
@@ -753,7 +782,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ArticleRepositoryTrait for ArticleRepository {
-            async fn find_all(&self) -> Result<Vec<Article>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Article>, RepositoryError>;
             async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError>;
             async fn save(&self, entity: &Article) -> Result<(), RepositoryError>;
         }
@@ -863,14 +892,17 @@ pub mod mocks {
 === business/src/domain/article/use_cases/list_articles.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::article::{errors::ArticleError, model::Article};
 
-#[derive(Debug)]
-pub struct ListArticlesParams;
+#[derive(Debug, Clone)]
+pub struct ListArticlesParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListArticlesUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListArticlesParams) -> Result<Vec<Article>, ArticleError>;
+    async fn execute(&self, params: ListArticlesParams) -> Result<Page<Article>, ArticleError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -884,7 +916,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListArticlesUseCaseTrait for ListArticlesUseCase {
-            async fn execute(&self, params: ListArticlesParams) -> Result<Vec<Article>, ArticleError>;
+            async fn execute(&self, params: ListArticlesParams) -> Result<Page<Article>, ArticleError>;
         }
     }
 }
@@ -1060,6 +1092,7 @@ impl Default for ArticleMother {
 === infrastructure/src/article/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::article::{
     model::{Article, ArticleId},
@@ -1079,9 +1112,9 @@ impl InMemoryArticleRepository {
 
 #[async_trait]
 impl ArticleRepositoryTrait for InMemoryArticleRepository {
-    async fn find_all(&self) -> Result<Vec<Article>, RepositoryError> {
-        tracing::debug!("find_all");
-        Ok(vec![])
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Article>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        Ok(Page::new(vec![], 0, page))
     }
 
     async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError> {
@@ -1116,6 +1149,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/article/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::article::model::Article;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -1154,6 +1188,27 @@ pub struct CreateArticleRequest {
     pub scores: Vec<i64>,
 }
 
+
+/// One page of Articles: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ArticlePageDto {
+    pub items: Vec<ArticleDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl ArticlePageDto {
+    pub fn from_domain(page: &Page<Article>) -> Self {
+        Self {
+            items: page.items.iter().map(ArticleDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1248,7 +1303,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, article::dto::ArticleDto};
+use crate::api::{
+    error::ErrorResponse,
+    article::dto::{ArticleDto, ArticlePageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -1308,7 +1366,7 @@ impl GetArticleResponse {
 #[derive(ApiResponse)]
 pub enum ListArticlesResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<ArticleDto>>),
+    Ok(Json<ArticlePageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -1386,6 +1444,7 @@ impl DeleteArticleResponse {
 === presentation/src/api/article/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::article::model::ArticleId;
 use business::domain::article::use_cases::{
     create_article::{CreateArticleParams, CreateArticleUseCaseTrait},
@@ -1394,12 +1453,18 @@ use business::domain::article::use_cases::{
     list_articles::{ListArticlesParams, ListArticlesUseCaseTrait},
     update_article::{UpdateArticleParams, UpdateArticleUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::article::dto::{CreateArticleRequest, UpdateArticleRequest, ArticleDto};
+use crate::api::article::dto::{
+    CreateArticleRequest, UpdateArticleRequest, ArticleDto, ArticlePageDto,
+};
 use crate::api::article::responses::{
     CreateArticleResponse, DeleteArticleResponse, GetArticleResponse, ListArticlesResponse,
     UpdateArticleResponse,
@@ -1456,13 +1521,17 @@ impl ArticleApi {
         }
     }
 
-    /// List all Articles
+    /// List Articles, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/articles", method = "get", tag = "ApiTags::Article")]
-    async fn list(&self) -> ListArticlesResponse {
-        match self.list_articles.execute(ListArticlesParams).await {
-            Ok(entities) => {
-                ListArticlesResponse::Ok(Json(entities.iter().map(ArticleDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListArticlesResponse {
+        match self
+            .list_articles
+            .execute(ListArticlesParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListArticlesResponse::Ok(Json(ArticlePageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_articles failed");
@@ -1515,6 +1584,7 @@ impl ArticleApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::article::errors::ArticleError;
     use business::domain::article::use_cases::{
         create_article::mocks::MockCreateArticleUseCase, delete_article::mocks::MockDeleteArticleUseCase,
@@ -1641,17 +1711,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_article_when_listing() {
+    async fn should_respond_200_with_a_page_of_articles_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(ArticleMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(ArticleMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/articles").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/articles?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -1909,11 +2002,12 @@ export interface Article {
 export type ArticleDraft = Omit<Article, "id">;
 
 === web/src/domain/article/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Article, ArticleDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `ArticleError` the API answered. */
 export interface ArticleRepository {
-  list(): Promise<Article[]>;
+  list(page: PageRequest): Promise<Page<Article>>;
   get(id: string): Promise<Article>;
   create(draft: ArticleDraft): Promise<Article>;
   update(id: string, draft: ArticleDraft): Promise<Article>;
@@ -1941,16 +2035,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("articleRepositoryHttp", () => {
-  test("should return every article when the API lists them", async () => {
+  test("should ask for the page and return its articles", async () => {
     // Arrange
     const article = ArticleMother.random();
-    const { repository } = answering(200, [article]);
+    const page = { items: [article], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([article]);
+    expect(requests[0]?.url).toBe("http://localhost/api/articles?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating an article", async () => {
@@ -2026,10 +2122,12 @@ function toRequest(draft: ArticleDraft): ArticleRequest {
 /** `ArticleRepository` over the REST API (`/articles`). */
 export function articleRepositoryHttp(api: ApiClient): ArticleRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/articles");
+    async list(page) {
+      const { data, error, response } = await api.GET("/articles", {
+        params: { query: page },
+      });
       if (data === undefined) throw new ArticleError(apiErrorCode(error, response));
-      return data.map(toArticle);
+      return { ...data, items: data.items.map(toArticle) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/articles/{id}", {
@@ -2287,7 +2385,9 @@ describe("ArticleFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/articles/"));
-    const [created] = await articleRepository.list();
+    const {
+      items: [created],
+    } = await articleRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/articles/${created?.id}`);
   });
@@ -2392,7 +2492,7 @@ function ArticleForm({ existing }: { existing: Article | null }) {
 
 === web/src/presentation/features/article/containers/article-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { ArticleError } from "../../../../domain/article/errors";
 import { ArticleMother, fakeArticleRepository } from "../../../../test-support/article";
 import { renderScreen } from "../../../../test-support/render";
@@ -2409,6 +2509,21 @@ describe("ArticleListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ArticleMother.random());
+    const articleRepository = fakeArticleRepository(seed);
+    renderScreen(<ArticleListContainer />, { articleRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no article", async () => {
@@ -2438,16 +2553,23 @@ describe("ArticleListContainer", () => {
 });
 
 === web/src/presentation/features/article/containers/article-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { ArticleListView } from "../views/article-list-view";
 
 export function ArticleListContainer() {
   const { articleRepository } = useDependencies();
-  const articles = useAsync(() => articleRepository.list(), [articleRepository]);
+  const [offset, setOffset] = useState(0);
+  const articles = useAsync(
+    () => articleRepository.list({ limit: PAGE_SIZE, offset }),
+    [articleRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -2460,10 +2582,13 @@ export function ArticleListContainer() {
       {articles.status === "loading" && <span className="loading loading-spinner" />}
       {articles.status === "error" && <ErrorAlert error={articles.error} />}
       {articles.status === "ok" &&
-        (articles.data.length === 0 ? (
+        (articles.data.total === 0 ? (
           <EmptyState message="No articles yet." />
         ) : (
-          <ArticleListView articles={articles.data} />
+          <>
+            <ArticleListView articles={articles.data.items} />
+            <Pagination {...articles.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -2675,7 +2800,10 @@ export function fakeArticleRepository(seed: Article[] = []): ArticleRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

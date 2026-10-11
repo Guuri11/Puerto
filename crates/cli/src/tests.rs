@@ -47,6 +47,7 @@ mod layered_generators;
 mod manifest_validation;
 mod migrations;
 mod new_project;
+mod paged_lists;
 mod patchers;
 mod repository_errors;
 mod scaffolding;

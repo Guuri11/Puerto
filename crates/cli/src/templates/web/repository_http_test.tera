@@ -18,16 +18,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("{{ camel }}RepositoryHttp", () => {
-  test("should return every {{ words }} when the API lists them", async () => {
+  test("should ask for the page and return its {{ words_plural }}", async () => {
     // Arrange
     const {{ ident }} = {{ pascal }}Mother.random();
-    const { repository } = answering(200, [{{ ident }}]);
+    const page = { items: [{{ ident }}], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([{{ ident }}]);
+    expect(requests[0]?.url).toBe("http://localhost/api/{{ plural }}?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating {{ a_words }}", async () => {

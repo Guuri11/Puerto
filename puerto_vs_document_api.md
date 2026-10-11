@@ -271,6 +271,9 @@ a second spine multiplies the surface that currently has no compile coverage.
 require choosing a positioning, and all four are things a `document-api`-grade project needs on
 day 1 and cannot cheaply add on day 100.
 
+> **Status (2026-10-11): T-24, T-26, T-27 and T-28 done** — T-26 in Phase 8.7, the other three in
+> `PLAN.md` § Phase 11 (ADR-0014 … 0016). Open: T-21, T-22, T-23, T-25, T-29, T-30.
+
 **T-23 and T-25 are the ones that decide what Puerto is.** They are not features to slot in between
 bug fixes; they are a second product decision (positioning C above). Do them deliberately or not
 at all — a half-generated event system is worse than none.

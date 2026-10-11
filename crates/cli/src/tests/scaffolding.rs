@@ -889,7 +889,7 @@ fn scaffold_names_the_list_use_case_after_the_plural_in_every_layer() {
     )
     .unwrap();
     assert!(
-        trait_src.contains("pub struct ListOrderItemsParams;"),
+        trait_src.contains("pub struct ListOrderItemsParams {"),
         "{trait_src}"
     );
     assert!(

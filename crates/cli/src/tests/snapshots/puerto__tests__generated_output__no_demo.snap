@@ -300,6 +300,7 @@ use crate::domain::persona::{
     repository::PersonaRepositoryTrait,
     use_cases::list_personas::{ListPersonasParams, ListPersonasUseCaseTrait},
 };
+use crate::domain::shared::pagination::Page;
 
 pub struct ListPersonasUseCaseImpl {
     pub repository: Arc<dyn PersonaRepositoryTrait>,
@@ -307,10 +308,10 @@ pub struct ListPersonasUseCaseImpl {
 
 #[async_trait]
 impl ListPersonasUseCaseTrait for ListPersonasUseCaseImpl {
-    async fn execute(&self, _params: ListPersonasParams) -> Result<Vec<Persona>, PersonaError> {
-        tracing::info!("list_personas: start");
+    async fn execute(&self, params: ListPersonasParams) -> Result<Page<Persona>, PersonaError> {
+        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_personas: start");
         self.repository
-            .find_all()
+            .find_all(params.page)
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_personas: repository failed"))
             .map_err(PersonaError::from)
@@ -320,6 +321,7 @@ impl ListPersonasUseCaseTrait for ListPersonasUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::shared::pagination::PageRequest;
     use crate::domain::persona::{
         model::{Persona, PersonaProps},
         repository::mocks::MockPersonaRepository,
@@ -327,7 +329,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_personas() {
+    async fn should_return_the_page_of_personas() {
         let entities = vec![
             Persona::new(PersonaProps {
             name: "first".to_string(),
@@ -339,29 +341,55 @@ mod tests {
         let mut mock_repo = MockPersonaRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move || Ok(entities.clone()));
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListPersonasUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListPersonasParams).await;
+        let result = use_case
+            .execute(ListPersonasParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 2);
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_personas_exist() {
+    async fn should_return_an_empty_page_when_no_personas_exist() {
         let mut mock_repo = MockPersonaRepository::new();
-        mock_repo.expect_find_all().returning(|| Ok(vec![]));
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
         let use_case = ListPersonasUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(ListPersonasParams).await;
+        let result = use_case
+            .execute(ListPersonasParams { page: PageRequest::default() })
+            .await;
 
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockPersonaRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListPersonasUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListPersonasParams { page: PageRequest::new(Some(5), Some(10)) })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
     }
 }
 
@@ -667,12 +695,13 @@ mod tests {
 === business/src/domain/persona/repository.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Persona, PersonaId};
 
 #[async_trait]
 pub trait PersonaRepositoryTrait: Send + Sync {
-    async fn find_all(&self) -> Result<Vec<Persona>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Persona>, RepositoryError>;
     async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, RepositoryError>;
     async fn save(&self, entity: &Persona) -> Result<(), RepositoryError>;
 }
@@ -688,7 +717,7 @@ pub mod mocks {
 
         #[async_trait]
         impl PersonaRepositoryTrait for PersonaRepository {
-            async fn find_all(&self) -> Result<Vec<Persona>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Persona>, RepositoryError>;
             async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, RepositoryError>;
             async fn save(&self, entity: &Persona) -> Result<(), RepositoryError>;
         }
@@ -794,14 +823,17 @@ pub mod mocks {
 === business/src/domain/persona/use_cases/list_personas.rs ===
 use async_trait::async_trait;
 
+use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::persona::{errors::PersonaError, model::Persona};
 
-#[derive(Debug)]
-pub struct ListPersonasParams;
+#[derive(Debug, Clone)]
+pub struct ListPersonasParams {
+    pub page: PageRequest,
+}
 
 #[async_trait]
 pub trait ListPersonasUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListPersonasParams) -> Result<Vec<Persona>, PersonaError>;
+    async fn execute(&self, params: ListPersonasParams) -> Result<Page<Persona>, PersonaError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -815,7 +847,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListPersonasUseCaseTrait for ListPersonasUseCase {
-            async fn execute(&self, params: ListPersonasParams) -> Result<Vec<Persona>, PersonaError>;
+            async fn execute(&self, params: ListPersonasParams) -> Result<Page<Persona>, PersonaError>;
         }
     }
 }
@@ -953,6 +985,7 @@ pub mod persona {
 === infrastructure/src/persona/repository.rs ===
 use async_trait::async_trait;
 
+use business::domain::shared::pagination::{Page, PageRequest};
 use business::domain::shared::repository_error::RepositoryError;
 use business::domain::persona::{
     model::{Persona, PersonaId},
@@ -972,9 +1005,9 @@ impl InMemoryPersonaRepository {
 
 #[async_trait]
 impl PersonaRepositoryTrait for InMemoryPersonaRepository {
-    async fn find_all(&self) -> Result<Vec<Persona>, RepositoryError> {
-        tracing::debug!("find_all");
-        Ok(vec![])
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Persona>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        Ok(Page::new(vec![], 0, page))
     }
 
     async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, RepositoryError> {
@@ -1015,6 +1048,7 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/persona/dto.rs ===
+use business::domain::shared::pagination::Page;
 use business::domain::persona::model::Persona;
 use poem_openapi::Object;
 use uuid::Uuid;
@@ -1041,6 +1075,27 @@ pub struct CreatePersonaRequest {
     pub name: String,
 }
 
+
+/// One page of Personas: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PersonaPageDto {
+    pub items: Vec<PersonaDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl PersonaPageDto {
+    pub fn from_domain(page: &Page<Persona>) -> Self {
+        Self {
+            items: page.items.iter().map(PersonaDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1131,7 +1186,10 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, persona::dto::PersonaDto};
+use crate::api::{
+    error::ErrorResponse,
+    persona::dto::{PersonaDto, PersonaPageDto},
+};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 
@@ -1191,7 +1249,7 @@ impl GetPersonaResponse {
 #[derive(ApiResponse)]
 pub enum ListPersonasResponse {
     #[oai(status = 200)]
-    Ok(Json<Vec<PersonaDto>>),
+    Ok(Json<PersonaPageDto>),
     #[oai(status = 401)]
     Unauthorized(Json<ErrorResponse>),
     #[oai(status = 403)]
@@ -1269,6 +1327,7 @@ impl DeletePersonaResponse {
 === presentation/src/api/persona/routes.rs ===
 use std::sync::Arc;
 
+use business::domain::shared::pagination::PageRequest;
 use business::domain::persona::model::PersonaId;
 use business::domain::persona::use_cases::{
     create_persona::{CreatePersonaParams, CreatePersonaUseCaseTrait},
@@ -1277,12 +1336,18 @@ use business::domain::persona::use_cases::{
     list_personas::{ListPersonasParams, ListPersonasUseCaseTrait},
     update_persona::{UpdatePersonaParams, UpdatePersonaUseCaseTrait},
 };
-use poem_openapi::{OpenApi, param::Path, payload::Json};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::persona::dto::{CreatePersonaRequest, UpdatePersonaRequest, PersonaDto};
+use crate::api::persona::dto::{
+    CreatePersonaRequest, UpdatePersonaRequest, PersonaDto, PersonaPageDto,
+};
 use crate::api::persona::responses::{
     CreatePersonaResponse, DeletePersonaResponse, GetPersonaResponse, ListPersonasResponse,
     UpdatePersonaResponse,
@@ -1335,13 +1400,17 @@ impl PersonaApi {
         }
     }
 
-    /// List all Personas
+    /// List Personas, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/personas", method = "get", tag = "ApiTags::Persona")]
-    async fn list(&self) -> ListPersonasResponse {
-        match self.list_personas.execute(ListPersonasParams).await {
-            Ok(entities) => {
-                ListPersonasResponse::Ok(Json(entities.iter().map(PersonaDto::from_domain).collect()))
-            }
+    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListPersonasResponse {
+        match self
+            .list_personas
+            .execute(ListPersonasParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListPersonasResponse::Ok(Json(PersonaPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
                 tracing::error!(code = %error.0.name, "list_personas failed");
@@ -1390,6 +1459,7 @@ impl PersonaApi {
 
 #[cfg(test)]
 mod tests {
+    use business::domain::shared::pagination::Page;
     use business::domain::persona::errors::PersonaError;
     use business::domain::persona::use_cases::{
         create_persona::mocks::MockCreatePersonaUseCase, delete_persona::mocks::MockDeletePersonaUseCase,
@@ -1508,17 +1578,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_every_persona_when_listing() {
+    async fn should_respond_200_with_a_page_of_personas_when_listing() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Ok(PersonaMother::random_vec(2)));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(PersonaMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/personas").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().array().assert_len(2);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/personas?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
@@ -1741,11 +1834,12 @@ export interface Persona {
 export type PersonaDraft = Omit<Persona, "id">;
 
 === web/src/domain/persona/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
 import type { Persona, PersonaDraft } from "./model";
 
 /** The port the screens call. Every method rejects with the `PersonaError` the API answered. */
 export interface PersonaRepository {
-  list(): Promise<Persona[]>;
+  list(page: PageRequest): Promise<Page<Persona>>;
   get(id: string): Promise<Persona>;
   create(draft: PersonaDraft): Promise<Persona>;
   update(id: string, draft: PersonaDraft): Promise<Persona>;
@@ -1797,16 +1891,18 @@ function answering(status: number, body?: unknown) {
 }
 
 describe("personaRepositoryHttp", () => {
-  test("should return every persona when the API lists them", async () => {
+  test("should ask for the page and return its personas", async () => {
     // Arrange
     const persona = PersonaMother.random();
-    const { repository } = answering(200, [persona]);
+    const page = { items: [persona], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
 
     // Act
-    const listed = await repository.list();
+    const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(listed).toEqual([persona]);
+    expect(requests[0]?.url).toBe("http://localhost/api/personas?limit=20&offset=20");
+    expect(listed).toEqual(page);
   });
 
   test("should send the draft when creating a persona", async () => {
@@ -1874,10 +1970,12 @@ function toRequest(draft: PersonaDraft): PersonaRequest {
 /** `PersonaRepository` over the REST API (`/personas`). */
 export function personaRepositoryHttp(api: ApiClient): PersonaRepository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/personas");
+    async list(page) {
+      const { data, error, response } = await api.GET("/personas", {
+        params: { query: page },
+      });
       if (data === undefined) throw new PersonaError(apiErrorCode(error, response));
-      return data.map(toPersona);
+      return { ...data, items: data.items.map(toPersona) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/personas/{id}", {
@@ -2106,7 +2204,9 @@ describe("PersonaFormContainer", () => {
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/personas/"));
-    const [created] = await personaRepository.list();
+    const {
+      items: [created],
+    } = await personaRepository.list({ limit: 1, offset: 0 });
     expect(created).toMatchObject(draft);
     expect(history.at(-1)).toBe(`/personas/${created?.id}`);
   });
@@ -2211,7 +2311,7 @@ function PersonaForm({ existing }: { existing: Persona | null }) {
 
 === web/src/presentation/features/persona/containers/persona-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { PersonaError } from "../../../../domain/persona/errors";
 import { fakePersonaRepository, PersonaMother } from "../../../../test-support/persona";
 import { renderScreen } from "../../../../test-support/render";
@@ -2228,6 +2328,21 @@ describe("PersonaListContainer", () => {
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => PersonaMother.random());
+    const personaRepository = fakePersonaRepository(seed);
+    renderScreen(<PersonaListContainer />, { personaRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
   test("should say so when there is no persona", async () => {
@@ -2257,16 +2372,23 @@ describe("PersonaListContainer", () => {
 });
 
 === web/src/presentation/features/persona/containers/persona-list-container.tsx ===
+import { useState } from "react";
 import { Link } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { Pagination } from "../../../shared/ui/pagination";
 import { PersonaListView } from "../views/persona-list-view";
 
 export function PersonaListContainer() {
   const { personaRepository } = useDependencies();
-  const personas = useAsync(() => personaRepository.list(), [personaRepository]);
+  const [offset, setOffset] = useState(0);
+  const personas = useAsync(
+    () => personaRepository.list({ limit: PAGE_SIZE, offset }),
+    [personaRepository, offset],
+  );
 
   return (
     <section className="space-y-4">
@@ -2279,10 +2401,13 @@ export function PersonaListContainer() {
       {personas.status === "loading" && <span className="loading loading-spinner" />}
       {personas.status === "error" && <ErrorAlert error={personas.error} />}
       {personas.status === "ok" &&
-        (personas.data.length === 0 ? (
+        (personas.data.total === 0 ? (
           <EmptyState message="No personas yet." />
         ) : (
-          <PersonaListView personas={personas.data} />
+          <>
+            <PersonaListView personas={personas.data.items} />
+            <Pagination {...personas.data} onOffsetChange={setOffset} />
+          </>
         ))}
     </section>
   );
@@ -2421,7 +2546,10 @@ export function fakePersonaRepository(seed: Persona[] = []): PersonaRepository {
     return found;
   };
   return {
-    list: async () => [...store.values()],
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
     get: async (id) => find(id),
     create: async (draft) => {
       const created = { id: crypto.randomUUID(), ...draft };

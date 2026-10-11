@@ -27,10 +27,12 @@ function toRequest(draft: {{ pascal }}Draft): {{ pascal }}Request {
 /** `{{ pascal }}Repository` over the REST API (`/{{ plural }}`). */
 export function {{ camel }}RepositoryHttp(api: ApiClient): {{ pascal }}Repository {
   return {
-    async list() {
-      const { data, error, response } = await api.GET("/{{ plural }}");
+    async list(page) {
+      const { data, error, response } = await api.GET("/{{ plural }}", {
+        params: { query: page },
+      });
       if (data === undefined) throw new {{ pascal }}Error(apiErrorCode(error, response));
-      return data.map(to{{ pascal }});
+      return { ...data, items: data.items.map(to{{ pascal }}) };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/{{ plural }}/{id}", {
