@@ -50,6 +50,7 @@ pub fn new_project(
     db: bool,
     no_db: bool,
     no_demo: bool,
+    no_web: bool,
     destination: Option<PathBuf>,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     if let Some(name) = &name {
@@ -80,6 +81,17 @@ pub fn new_project(
         false
     };
 
+    let resolved_no_web = if no_web {
+        true
+    } else if dialoguer::console::user_attended() {
+        !dialoguer::Confirm::new()
+            .with_prompt("Include the web frontend (React + daisyUI, needs Bun)?")
+            .default(true)
+            .interact()?
+    } else {
+        false
+    };
+
     eprintln!("Constructing project skeleton...");
 
     let output = generate_new_project(name, destination)?;
@@ -92,6 +104,10 @@ pub fn new_project(
 
     if resolved_no_demo {
         crate::generators::project::apply_no_demo(&output)?;
+    }
+
+    if resolved_no_web {
+        crate::generators::project::apply_no_web(&output)?;
     }
 
     crate::snippets::apply(&output, None)?;

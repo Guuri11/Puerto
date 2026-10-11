@@ -1,7 +1,8 @@
 use super::*;
 use compile_matrix::{
-    CUSTOM_USE_CASE, ENUM_ONLY, ENUM_VO, MULTI_ENTITY, NO_DEMO, OPT_VEC_PRIM, OPT_VEC_VO, PLAIN_VO,
-    POSTGRES_EVERY_TYPE, PRIMITIVES, SHARED_VO, Scenario, UUID_VO, VO_KITCHEN_SINK, apply_scenario,
+    CUSTOM_USE_CASE, ENUM_ONLY, ENUM_VO, MULTI_ENTITY, NO_DEMO, NO_WEB, OPT_VEC_PRIM, OPT_VEC_VO,
+    PLAIN_VO, POSTGRES_EVERY_TYPE, PRIMITIVES, SHARED_VO, Scenario, UUID_VO, VO_KITCHEN_SINK,
+    apply_scenario,
 };
 use std::collections::BTreeMap;
 
@@ -91,6 +92,7 @@ macro_rules! snapshot_scenarios {
 
 snapshot_scenarios! {
     snapshot_no_demo => NO_DEMO,
+    snapshot_no_web => NO_WEB,
     snapshot_primitives => PRIMITIVES,
     snapshot_uuid_vo => UUID_VO,
     snapshot_opt_vec_prim => OPT_VEC_PRIM,

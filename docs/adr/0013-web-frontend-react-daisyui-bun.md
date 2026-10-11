@@ -68,3 +68,13 @@ generated empty five times per entity.
 - `bun test` + happy-dom + testing-library is verified in piece 9.0; if it does not hold, Vitest
   (run by Bun) replaces it and this ADR records why.
 - Puerto now owns templates in two languages; the snapshot files cover both.
+
+## Verified in 9.0
+
+- `bun test` + happy-dom (`@happy-dom/global-registrator`) + Testing Library holds: two preload
+  files in `bunfig.toml`, happy-dom first, because Testing Library builds `screen` from
+  `document` when it is imported. Vitest is not needed.
+- The tool scripts run as `bun --bun <tool>`. dependency-cruiser refuses an odd-numbered Node
+  release (it found Node 25 on `PATH`); under Bun's runtime it needs no Node at all.
+- TypeScript stays on 5.x: `openapi-typescript` declares a `typescript ^5` peer, and TypeScript 7
+  (the native port) has no JS API for dependency-cruiser to parse with.

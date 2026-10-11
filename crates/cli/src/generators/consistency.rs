@@ -186,6 +186,7 @@ mod tests {
             project: crate::puerto_toml::Project {
                 name: "x".into(),
                 db: false,
+                web: false,
             },
             entity: vec![Entity {
                 name: "Ghost".into(),

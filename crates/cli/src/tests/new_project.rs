@@ -589,3 +589,133 @@ fn api_rs_patch_restores_missing_tags_module() {
     assert!(api_rs.contains("pub mod product;"));
     cleanup(&dir);
 }
+
+// ── Phase 9.0: the web frontend shell ────────────────────────────────────
+
+#[test]
+fn new_project_includes_the_web_frontend_by_default() {
+    let dir = temp_dir("new_web_default");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = crate::commands::new::new_project(
+        Some("web-app".into()),
+        false,
+        true,
+        false,
+        false,
+        Some(dir.clone()),
+    )
+    .unwrap();
+
+    for file in [
+        "web/package.json",
+        "web/bunfig.toml",
+        "web/.dependency-cruiser.cjs",
+        "web/src/main.tsx",
+        "web/src/application/README.md",
+        "web/src/presentation/core/generated/dependencies.ts",
+        "web/src/presentation/core/generated/routes.tsx",
+        "web/AGENTS.md",
+    ] {
+        assert!(output.join(file).exists(), "missing {file}");
+    }
+    assert!(puerto_toml::read(&output).unwrap().project.web);
+    let agents = fs::read_to_string(output.join("AGENTS.md")).unwrap();
+    assert!(agents.contains("web/AGENTS.md"), "{agents}");
+    cleanup(&dir);
+}
+
+#[test]
+fn new_project_with_no_web_has_no_frontend_and_does_not_mention_one() {
+    let dir = temp_dir("new_no_web");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = crate::commands::new::new_project(
+        Some("api-only".into()),
+        false,
+        true,
+        false,
+        true,
+        Some(dir.clone()),
+    )
+    .unwrap();
+
+    assert!(!output.join("web").exists());
+    assert!(!puerto_toml::read(&output).unwrap().project.web);
+    let manifest = fs::read_to_string(output.join("puerto.toml")).unwrap();
+    assert!(!manifest.contains("web ="), "{manifest}");
+    let agents = fs::read_to_string(output.join("AGENTS.md")).unwrap();
+    assert!(!agents.contains("web/"), "{agents}");
+    // Only the frontend section goes: what follows it stays.
+    assert!(agents.contains("## Conventions"), "{agents}");
+    cleanup(&dir);
+}
+
+#[test]
+fn web_index_html_is_titled_after_the_project() {
+    let dir = temp_dir("web_title");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("shop-front", &dir).unwrap();
+
+    let index = fs::read_to_string(output.join("web/index.html")).unwrap();
+    assert!(index.contains("<title>shop-front</title>"), "{index}");
+    cleanup(&dir);
+}
+
+#[test]
+fn web_package_pins_exact_versions_and_runs_on_bun() {
+    // A caret range lets a fresh install pick a release the templates were never tested against.
+    let dir = temp_dir("web_pins");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("web-pins", &dir).unwrap();
+
+    let package = fs::read_to_string(output.join("web/package.json")).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&package).unwrap();
+    assert!(json["packageManager"].as_str().unwrap().starts_with("bun@"));
+    for section in ["dependencies", "devDependencies"] {
+        for (name, version) in json[section].as_object().unwrap() {
+            let version = version.as_str().unwrap();
+            assert!(
+                version.chars().next().unwrap().is_ascii_digit(),
+                "{name} is not pinned: {version}"
+            );
+        }
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn template_never_embeds_installed_web_dependencies() {
+    // The template is embedded with include_dir!: a `bun install` run inside it would ship
+    // node_modules inside the puerto binary.
+    for path in ["web/node_modules", "web/dist"] {
+        assert!(
+            crate::TEMPLATE_DIR.get_dir(path).is_none(),
+            "{path} is embedded in the template"
+        );
+    }
+}
+
+#[test]
+fn makefile_runs_the_frontend_checks_when_web_exists() {
+    let dir = temp_dir("web_makefile");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("web-make", &dir).unwrap();
+
+    let makefile = fs::read_to_string(output.join("Makefile")).unwrap();
+    for target in ["web/install:", "web/dev:", "web/test:", "web/lint:"] {
+        assert!(makefile.contains(target), "Makefile misses {target}");
+    }
+    for recipe in ["$(MAKE) web/test", "$(MAKE) web/lint"] {
+        assert!(makefile.contains(recipe), "Makefile misses {recipe}");
+    }
+    cleanup(&dir);
+}

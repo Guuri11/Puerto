@@ -17,6 +17,8 @@ pub(super) struct Scenario<'a> {
     db: bool,
     /// Strip the Greeting demo before scaffolding (`puerto new --no-demo`).
     no_demo: bool,
+    /// Strip the web frontend (`puerto new --no-web`).
+    no_web: bool,
     /// Shared VOs declared in puerto.toml before any scaffold (`(name, inner_type)`).
     shared_vos: &'a [(&'a str, &'a str)],
     /// Entities to scaffold: `(PascalName, CLI field args)`.
@@ -32,15 +34,27 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     name: "no_demo",
     db: false,
     no_demo: true,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[("Persona", &["name:String"])],
+};
+
+pub(super) const NO_WEB: Scenario = Scenario {
+    name: "no_web",
+    db: false,
+    no_demo: false,
+    no_web: true,
+    shared_vos: &[],
+    use_cases: &[],
+    entities: &[],
 };
 
 pub(super) const PRIMITIVES: Scenario = Scenario {
     name: "primitives",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[(
@@ -63,6 +77,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     name: "uuid_vo",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[("Booking", &["reference:String", "tenant_id:TenantId:Uuid"])],
@@ -72,6 +87,7 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
     name: "opt_vec_prim",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[(
@@ -90,6 +106,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
     name: "plain_vo",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[(
@@ -102,6 +119,7 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
     name: "opt_vec_vo",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[(
@@ -118,6 +136,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
     name: "enum_vo",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[(
@@ -133,6 +152,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     name: "shared_vo",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[("Email", "String"), ("Money", "i64")],
     use_cases: &[],
     entities: &[("Customer", &["name:String", "email:Email", "credit:Money"])],
@@ -142,6 +162,7 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
     name: "multi_entity",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[
@@ -154,6 +175,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     name: "vo_kitchen_sink",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[("Email", "String")],
     use_cases: &[],
     entities: &[(
@@ -176,6 +198,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     name: "enum_only",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[],
     entities: &[("Ticket", &["state:State:enum:Open/Closed"])],
@@ -185,6 +208,7 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     name: "custom_use_case",
     db: false,
     no_demo: false,
+    no_web: false,
     shared_vos: &[],
     use_cases: &[("Product", "archive_product")],
     entities: &[("Product", &["title:String", "price:i64"])],
@@ -194,6 +218,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     name: "postgres_every_type",
     db: true,
     no_demo: false,
+    no_web: false,
     shared_vos: &[("Email", "String")],
     use_cases: &[("Product", "archive_product")],
     entities: &[
@@ -254,6 +279,9 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     }
     if scenario.no_demo {
         scaffold::apply_no_demo(output).unwrap();
+    }
+    if scenario.no_web {
+        scaffold::apply_no_web(output).unwrap();
     }
 
     for (vo_name, inner) in scenario.shared_vos {
@@ -439,6 +467,56 @@ fn compiles_with_custom_use_case_after_scaffold() {
     // `generate use-case` on a scaffolded entity wired the use case into `ProductApi` in
     // bootstrap.rs while routes.rs had no such field (E0560).
     assert_scenario_compiles(&CUSTOM_USE_CASE);
+}
+
+// ── Phase 9: the web frontend ─────────────────────────────────────────────
+
+/// Runs the frontend's own checks inside a generated project: install, typecheck, Biome,
+/// dependency-cruiser, `bun test` and a production build. Needs `bun` on `PATH`.
+fn assert_web_is_clean(output: &Path, name: &str) {
+    let web = output.join("web");
+    for args in [
+        &["install"][..],
+        &["run", "typecheck"][..],
+        &["run", "lint"][..],
+        &["run", "lint:arch"][..],
+        &["test"][..],
+        &["run", "build"][..],
+    ] {
+        let result = std::process::Command::new("bun")
+            .args(args)
+            .current_dir(&web)
+            .output()
+            .expect("bun not found — the web scenarios need it on PATH (https://bun.sh)");
+
+        if !result.status.success() {
+            eprintln!("stdout:\n{}", String::from_utf8_lossy(&result.stdout));
+            eprintln!("stderr:\n{}", String::from_utf8_lossy(&result.stderr));
+            panic!(
+                "scenario '{name}': generated frontend failed `bun {}`",
+                args.join(" ")
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "slow: installs, lints and tests a generated frontend"]
+fn web_shell_passes_its_own_checks() {
+    let dir = scenario_workspace("web_shell");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("compile-web-shell", &dir).unwrap();
+    assert_web_is_clean(&output, "web_shell");
+
+    cleanup(&dir);
+}
+
+#[test]
+#[ignore = "slow: compiles and tests a generated project"]
+fn compiles_without_the_web_frontend() {
+    assert_scenario_compiles(&NO_WEB);
 }
 
 /// `PUERTO_TEST_DATABASE_URL` — a Postgres server URL **without** a database name, e.g.

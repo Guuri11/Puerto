@@ -6,4 +6,5 @@ include = [
     "presentation/src/main.rs.liquid",
     "puerto.toml",
     "Makefile",
+    "web/index.html",
 ]

@@ -1,5 +1,6 @@
 [project]
 name = "{{project-name}}"
+web = true
 
 [[entity]]
 name = "Greeting"

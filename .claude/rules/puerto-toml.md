@@ -5,6 +5,7 @@
 ```toml
 [project]
 name = "my-app"          # project name (hyphen-separated, matches Cargo binary name)
+web = true               # web/ frontend present — set by `puerto new`, absent with --no-web
 
 [[entity]]
 name = "Product"         # PascalCase entity name
@@ -204,7 +205,7 @@ presentation/src/api/product/error_mapper.rs
 
 | Command                                         | Effect                                                                            |
 | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| `puerto new [--name] [--db\|--no-db] [--no-demo]` | Creates puerto.toml from template with initial Greeting entity                    |
+| `puerto new [--name] [--db\|--no-db] [--no-demo] [--no-web]` | Creates puerto.toml from template with initial Greeting entity                    |
 | `puerto generate scaffold <Name>`               | Upserts the `[[entity]]` block, regenerates bootstrap.rs                          |
 | `puerto generate scaffold <Name> -- name:Type`  | Same, with `[[entity.fields]]` from the trailing arguments                        |
 | `puerto generate domain <Name> -- name:Type`    | Registers the entity **with its fields** so the later layered commands see them   |

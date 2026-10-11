@@ -1412,8 +1412,13 @@ generated `application/` use cases.
 
 ### Pieces (one commit each)
 
-1. **9.0 Shell** — `[project] web`, `--no-web`, prompt, static `web/` template (no entity),
+1. ✅ **9.0 Shell** — `[project] web`, `--no-web`, prompt, static `web/` template (no entity),
    `bun test` spike, Makefile targets, AGENTS.md section, compile-matrix scenario `web_shell`.
+   As built: `web/` lives in `crates/cli/template/web/` and `--no-web` removes it (with the root
+   `AGENTS.md` section), the way `--no-demo` removes Greeting — so the snapshot is `no_web`
+   (what the flag deletes); `web_shell` is the matrix test. `web/AGENTS.md` holds the frontend
+   rules. `make web/sync` moves to 9.1 (nothing to sync before the spec export). The two
+   `core/generated/*` files are template copies until 9.2 generates them.
 2. **9.1 Spec export** — the `bootstrap.rs` spec test + `docs/api/openapi.json`.
 3. **9.2 CRUD slice** — all-primitive entity: domain, infrastructure, presentation, test-support,
    generated `dependencies.ts` / `routes.tsx`, `generate web`, conflict guard, validate drift.

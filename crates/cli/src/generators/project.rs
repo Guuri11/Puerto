@@ -278,3 +278,61 @@ pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+/// The heading of the root `AGENTS.md` section that describes `web/`.
+const AGENTS_WEB_SECTION: &str = "## Frontend (`web/`)";
+
+/// Strip the web frontend from a freshly generated project (`puerto new --no-web`): the `web/`
+/// directory, `[project] web` and the root `AGENTS.md` section that describes it.
+pub fn apply_no_web(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    ignore_not_found(fs::remove_dir_all(base.join("web")))?;
+
+    let agents_path = base.join("AGENTS.md");
+    let agents = fs::read_to_string(&agents_path)?;
+    fs::write(&agents_path, without_section(&agents, AGENTS_WEB_SECTION))?;
+
+    let mut config = crate::puerto_toml::read(base)?;
+    config.project.web = false;
+    crate::puerto_toml::write(base, &config)?;
+
+    Ok(())
+}
+
+/// `markdown` without the `## ` section that starts at `heading`, up to the next `## ` heading.
+fn without_section(markdown: &str, heading: &str) -> String {
+    let Some(start) = markdown.find(&format!("{heading}\n")) else {
+        return markdown.to_string();
+    };
+    let body = start + heading.len();
+    let end = markdown[body..]
+        .find("\n## ")
+        .map_or(markdown.len(), |offset| body + offset + 1);
+    format!("{}{}", &markdown[..start], &markdown[end..])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::without_section;
+
+    #[test]
+    fn should_keep_the_next_section_when_removing_one_in_the_middle() {
+        let markdown = "# T\n\n## A\n\na\n\n## Web\n\nw\n\n## B\n\nb\n";
+        assert_eq!(
+            without_section(markdown, "## Web"),
+            "# T\n\n## A\n\na\n\n## B\n\nb\n"
+        );
+    }
+
+    #[test]
+    fn should_drop_up_to_the_end_when_the_section_is_the_last_one() {
+        assert_eq!(
+            without_section("## A\n\na\n\n## Web\n\nw\n", "## Web"),
+            "## A\n\na\n\n"
+        );
+    }
+
+    #[test]
+    fn should_leave_the_markdown_alone_when_the_section_is_absent() {
+        assert_eq!(without_section("## A\n\na\n", "## Web"), "## A\n\na\n");
+    }
+}

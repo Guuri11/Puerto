@@ -1792,6 +1792,7 @@ pub async fn build_app() -> impl poem::Endpoint {
 === puerto.toml ===
 [project]
 name = "snapshot"
+web = true
 
 [[entity]]
 name = "Greeting"

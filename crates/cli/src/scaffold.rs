@@ -12,6 +12,6 @@ pub use crate::generators::use_case::run_use_case;
 #[cfg(test)]
 pub use crate::generators::migration::run_migration;
 #[cfg(test)]
-pub use crate::generators::project::{apply_db_to_new_project, apply_no_demo};
+pub use crate::generators::project::{apply_db_to_new_project, apply_no_demo, apply_no_web};
 #[cfg(test)]
 pub use crate::generators::scaffold::run;

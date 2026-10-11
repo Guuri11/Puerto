@@ -26,6 +26,8 @@ crates/
       cargo-generate.toml — Template config (controls which files get substitution)
       rust-toolchain.toml — Pins the toolchain the matrix lints with (ADR-0009)
       AGENTS.md, CLAUDE.md — Agent rules shipped to every project (ADR-0010; tested)
+      web/                — React + daisyUI frontend on Bun (ADR-0013); `--no-web` removes it.
+                            Never `bun install` here: the template is embedded (tested)
       puerto.toml         — Source of truth for entities ({{project-name}} substituted)
       business/           — Domain + Application crate
       infrastructure/     — Adapters crate
@@ -150,6 +152,7 @@ puerto new --db                            # Skip db prompt (enables SQLx/Postgr
 puerto new --name <name> --db              # Fully non-interactive, with database
 puerto new --name <name> --no-db           # Fully non-interactive, no database
 puerto new --name <name> --no-db --destination /tmp/projects  # Control output directory
+puerto new --no-web                        # Skip the web frontend (web/ is included by default)
 
 puerto generate scaffold <Name>                                          # Add a new DDD entity — all layers at once (infers db from puerto.toml)
 puerto generate scaffold <Name> --force                                  # Re-generate an existing entity, overwriting hand-written changes
@@ -181,6 +184,7 @@ puerto validate                            # Validate puerto.toml (field types, 
 make run           # Run puerto CLI (prompts for project name)
 make test          # Fast structural tests (verifies generated file structure)
 make test/full     # Slow: generates real projects, runs their `clippy --all-targets -D warnings` + tests
+                   #       and the generated frontend's checks (needs `bun` on PATH)
 make test/db       # Slow: a generated --db project against a throwaway Postgres (Docker + sqlx-cli)
 make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
 make test/snapshots # Re-record generated-output snapshots after an intended output change
@@ -208,6 +212,7 @@ make format/fix    # cargo fmt --all
   mapper arm (ADR-0007)
 - `/health`, `/health/ready`, graceful shutdown on SIGTERM (ADR-0008)
 - Pinned toolchain + edition 2024 (ADR-0009); root `AGENTS.md` + `CLAUDE.md` (ADR-0010)
+- `web/` frontend unless `--no-web`: `[project] web = true`, `make web/*` targets (ADR-0013)
 
 ## Detailed Rules
 

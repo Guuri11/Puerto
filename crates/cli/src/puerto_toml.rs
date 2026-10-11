@@ -27,6 +27,9 @@ pub struct Project {
     pub name: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub db: bool,
+    /// The project has a `web/` frontend (`puerto new` without `--no-web`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub web: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -56,5 +56,9 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
+      # The web scenarios install, lint and test the generated frontend.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Generate, compile and test projects
         run: make test/full

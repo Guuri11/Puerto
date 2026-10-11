@@ -42,6 +42,12 @@ puerto validate                                               # check puerto.tom
 - `puerto generate scaffold` refuses to overwrite an entity that already has files; `--force`
   discards hand-written changes in them.
 
+## Frontend (`web/`)
+
+A React + daisyUI app on Bun that talks to the API under `/api`. It follows the same Dependency
+Rule as the crates (`domain` ← `application` ← `infrastructure` ← `presentation`), checked by
+`make web/lint`. Its rules — layers, generated files, where use cases go — are in `web/AGENTS.md`.
+
 ## Conventions
 
 - **TDD.** Write the failing test first, then the minimum code. Test names:

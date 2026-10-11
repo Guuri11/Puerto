@@ -2,9 +2,11 @@
         test test/domain test/application test/infrastructure \
         lint format format/fix check clean \
         audit audit/fix \
-        generate/entity generate/use-case generate/bootstrap
+        generate/entity generate/use-case generate/bootstrap \
+        web/install web/dev web/test web/lint
 
 CARGO := cargo
+BUN   := bun
 
 GREEN  := \033[1;32m
 YELLOW := \033[1;33m
@@ -31,6 +33,7 @@ run: ## Run the API server (http://localhost:8080)
 test: ## Run all tests
 	@echo "${YELLOW}Running all tests...${NC}"
 	$(CARGO) nextest run --workspace
+	@if [ -d web ]; then $(MAKE) web/test; fi
 
 test/domain: ## Run domain layer tests
 	@echo "${YELLOW}Running domain tests...${NC}"
@@ -47,6 +50,7 @@ test/infrastructure: ## Run infrastructure layer tests (requires DB)
 lint: ## Clippy with -D warnings
 	@echo "${CYAN}Linting code...${NC}"
 	$(CARGO) clippy --workspace -- -D warnings
+	@if [ -d web ]; then $(MAKE) web/lint; fi
 
 format: ## Check code formatting
 	@echo "${CYAN}Checking code formatting...${NC}"
@@ -91,3 +95,19 @@ generate/use-case: ## Add a use case to an entity — make generate/use-case ENT
 generate/bootstrap: ## Regenerate bootstrap.rs from puerto.toml
 	@echo "${GREEN}Regenerating bootstrap.rs...${NC}"
 	puerto generate bootstrap
+
+web/install: ## Install the frontend dependencies (needs Bun)
+	@echo "${CYAN}Installing frontend dependencies...${NC}"
+	cd web && $(BUN) install
+
+web/dev: ## Run the frontend dev server (http://localhost:5173, /api proxied to :8080)
+	@echo "${GREEN}Starting frontend dev server...${NC}"
+	cd web && $(BUN) run dev
+
+web/test: ## Run the frontend tests
+	@echo "${YELLOW}Running frontend tests...${NC}"
+	cd web && $(BUN) test
+
+web/lint: ## Typecheck, lint and check the frontend Dependency Rule
+	@echo "${CYAN}Linting frontend...${NC}"
+	cd web && $(BUN) run typecheck && $(BUN) run lint && $(BUN) run lint:arch

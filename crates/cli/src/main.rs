@@ -42,6 +42,9 @@ enum Commands {
         /// Skip the Greeting demo entity (creates an empty project)
         #[arg(long)]
         no_demo: bool,
+        /// Skip the web frontend (`web/`: React + daisyUI on Bun)
+        #[arg(long)]
+        no_web: bool,
         /// Directory where the project will be created (defaults to current directory)
         #[arg(long)]
         destination: Option<PathBuf>,
@@ -174,21 +177,34 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             db,
             no_db,
             no_demo,
+            no_web,
             destination,
-        } => commands::new::new_project(name, db, no_db, no_demo, destination).map(|path| {
-            let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            println!("├── business/        (domain logic)");
-            println!("├── infrastructure/  (adapters)");
-            println!("├── presentation/    (openapi routes)");
-            println!("└── Cargo.toml");
-            println!("✓ Project '{project_name}' created.\n");
-            println!("Next steps:");
-            println!("  cd {project_name}");
-            println!("  make run");
-            println!();
-            println!("API docs available at  http://localhost:8080");
-            println!("Add an entity with:    puerto generate scaffold <Name>");
-        }),
+        } => {
+            commands::new::new_project(name, db, no_db, no_demo, no_web, destination).map(|path| {
+                let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                let web = path.join("web").is_dir();
+                println!("├── business/        (domain logic)");
+                println!("├── infrastructure/  (adapters)");
+                println!("├── presentation/    (openapi routes)");
+                if web {
+                    println!("├── web/             (React frontend)");
+                }
+                println!("└── Cargo.toml");
+                println!("✓ Project '{project_name}' created.\n");
+                println!("Next steps:");
+                println!("  cd {project_name}");
+                println!("  make run");
+                if web {
+                    println!("  make web/install && make web/dev   # in another terminal");
+                }
+                println!();
+                println!("API docs available at  http://localhost:8080");
+                if web {
+                    println!("Frontend available at  http://localhost:5173");
+                }
+                println!("Add an entity with:    puerto generate scaffold <Name>");
+            })
+        }
         Commands::Generate {
             action:
                 GenerateAction::Scaffold {
