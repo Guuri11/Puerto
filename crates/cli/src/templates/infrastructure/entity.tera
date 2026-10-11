@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;{{ vo_imports_str }}
+use uuid::Uuid;{% for import in imports %}
+use {{ import }};{% endfor %}
 
 use business::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
 
@@ -12,8 +13,8 @@ pub struct {{ pascal }}Db {
     pub updated_at: DateTime<Utc>,
     pub deleted: bool,
     pub deleted_at: Option<DateTime<Utc>>,
-{{ struct_fields_str }}
-}
+{% for f in fields %}    pub {{ f.name }}: {% if f.is_map %}Json<{{ f.field_type }}>{% else %}{{ f.field_type }}{% endif %},
+{% endfor %}}
 
 impl TryFrom<{{ pascal }}Db> for {{ pascal }} {
     type Error = {{ pascal }}Error;
@@ -25,8 +26,8 @@ impl TryFrom<{{ pascal }}Db> for {{ pascal }} {
             updated_at: row.updated_at,
             deleted: row.deleted,
             deleted_at: row.deleted_at,
-{{ try_from_fields_str }}
-        }))
+{% for f in fields %}            {{ f.name }}: {{ f.from_row }},
+{% endfor %}        }))
     }
 }
 
@@ -38,7 +39,7 @@ impl From<&{{ pascal }}> for {{ pascal }}Db {
             updated_at: entity.updated_at,
             deleted: entity.deleted,
             deleted_at: entity.deleted_at,
-{{ from_fields_str }}
-        }
+{% for f in fields %}            {{ f.name }}: {% if f.is_map %}Json({{ f.accessor }}){% else %}{{ f.accessor }}{% endif %},
+{% endfor %}        }
     }
 }

@@ -54,7 +54,10 @@ pub fn generate_model(
         }
     }
 
-    let field_ctxs: Vec<FieldCtx> = eff.iter().map(|f| field_ctx(f, shared_vos)).collect();
+    let field_ctxs: Vec<FieldCtx> = eff
+        .iter()
+        .map(|f| field_ctx(f, pascal, shared_vos))
+        .collect();
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
@@ -94,7 +97,10 @@ pub fn generate_mother(
         }
     }
 
-    let field_ctxs: Vec<FieldCtx> = eff.iter().map(|f| field_ctx(f, shared_vos)).collect();
+    let field_ctxs: Vec<FieldCtx> = eff
+        .iter()
+        .map(|f| field_ctx(f, pascal, shared_vos))
+        .collect();
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);

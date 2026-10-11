@@ -5,8 +5,7 @@ use crate::generators::migration::run_migration;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
-    field_value_accessor, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
-    resolve_type,
+    FieldCtx, field_ctx, is_shared_vo, is_value_object, literal_names_vo, resolve_type,
 };
 use crate::patchers::lib_rs::patch_infra_lib;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
@@ -70,127 +69,6 @@ fn sql_conflict_set(eff: &[Field]) -> String {
     format!("updated_at = $3, deleted = $4, deleted_at = $5{custom}")
 }
 
-fn db_bindings_str(eff: &[Field]) -> String {
-    let mut lines = vec![
-        "            db.id,".to_string(),
-        "            db.created_at,".to_string(),
-        "            db.updated_at,".to_string(),
-        "            db.deleted,".to_string(),
-        "            db.deleted_at,".to_string(),
-    ];
-    for f in eff {
-        // SQLx requires array fields to be passed as slice references (&[T])
-        let binding = if f.field_type.starts_with("Vec<") {
-            format!("            &db.{},", f.name)
-        } else if f.field_type == MAP_TYPE {
-            // `Json<T>` encodes as JSONB; `as _` opts this one bind out of the macro's
-            // `serde_json::Value` type check.
-            format!("            db.{} as _,", f.name)
-        } else {
-            format!("            db.{},", f.name)
-        };
-        lines.push(binding);
-    }
-    lines.join("\n")
-}
-
-/// A seed value for a field, for the Pg integration tests.
-///
-/// Differs from the type registry's `default_expr` in two ways. Timestamps are a fixed whole
-/// second: `Utc::now()` has nanosecond precision and Postgres stores microseconds, so a seeded
-/// value never compared equal after a round-trip (and `Utc` was not even in scope). And `unique`
-/// fields get a fresh value per call: the list test seeds twice, and a constant hit the unique
-/// index (`Duplicate`).
-fn seed_value_expr(field_type: &str, unique: bool) -> String {
-    const FIXED_TIME: &str = "chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap()";
-    match (field_type, unique) {
-        ("String", true) => "Uuid::new_v4().to_string()".to_string(),
-        ("i64", true) => "(Uuid::new_v4().as_u128() >> 65) as i64".to_string(),
-        ("f64", true) => "(Uuid::new_v4().as_u128() >> 76) as f64".to_string(),
-        ("DateTime<Utc>", true) => {
-            "chrono::DateTime::from_timestamp(1_700_000_000 + (Uuid::new_v4().as_u128() >> 100) as i64, 0).unwrap()".to_string()
-        }
-        ("DateTime<Utc>", false) => FIXED_TIME.to_string(),
-        (MAP_TYPE, _) => "std::collections::HashMap::new()".to_string(),
-        (other, _) => resolve_type(other).unwrap().default_expr.to_string(),
-    }
-}
-
-fn seed_fn_str(pascal: &str, eff: &[Field]) -> String {
-    let props_lines: String = eff
-        .iter()
-        .map(|f| {
-            if is_option_vo(f) {
-                format!("            {}: None,", f.name)
-            } else if is_vec_vo(f) {
-                format!("            {}: vec![],", f.name)
-            } else if is_enum_vo(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
-                format!("            {}: {}::{},", f.name, vo, first_variant)
-            } else if is_value_object(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                format!(
-                    "            {}: {}::new({}).expect(\"valid {}\"),",
-                    f.name,
-                    vo,
-                    seed_value_expr(&f.field_type, f.unique),
-                    vo
-                )
-            } else {
-                format!(
-                    "            {}: {},",
-                    f.name,
-                    seed_value_expr(&f.field_type, f.unique)
-                )
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "    async fn seed(pool: &PgPool) -> {pascal} {{\n        let entity = {pascal}::new({pascal}Props {{\n{props_lines}\n        }}).unwrap();\n        test_repo(pool.clone()).save(&entity).await.unwrap();\n        entity\n    }}\n",
-    )
-}
-
-fn field_asserts_str(eff: &[Field]) -> String {
-    eff.iter()
-        .map(|f| format!("        assert_eq!(found.{}, entity.{});", f.name, f.name))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn update_test_str(eff: &[Field]) -> String {
-    let sf = eff
-        .iter()
-        .find(|f| f.field_type == "String" && !is_value_object(f))
-        .or_else(|| {
-            eff.iter().find(|f| {
-                f.field_type == "String"
-                    && is_value_object(f)
-                    && !is_enum_vo(f)
-                    && !is_option_vo(f)
-                    && !is_vec_vo(f)
-            })
-        });
-    if let Some(sf) = sf {
-        if is_value_object(sf) {
-            let vo = sf.value_object.as_deref().unwrap();
-            format!(
-                "        let mut entity = seed(&pool).await;\n        entity.{field} = {vo}::new(\"updated\".to_string()).unwrap();\n        entity.updated_at = chrono::Utc::now();\n\n        // Act\n        test_repo(pool.clone()).save(&entity).await.unwrap();\n\n        // Assert\n        let found = test_repo(pool).find_by_id(entity.id).await.unwrap().unwrap();\n        assert_eq!(found.{field}.value(), \"updated\");",
-                field = sf.name,
-                vo = vo,
-            )
-        } else {
-            format!(
-                "        let mut entity = seed(&pool).await;\n        entity.{field} = \"updated\".to_string();\n        entity.updated_at = chrono::Utc::now();\n\n        // Act\n        test_repo(pool.clone()).save(&entity).await.unwrap();\n\n        // Assert\n        let found = test_repo(pool).find_by_id(entity.id).await.unwrap().unwrap();\n        assert_eq!(found.{field}, \"updated\");",
-                field = sf.name,
-            )
-        }
-    } else {
-        "        let entity = seed(&pool).await;\n\n        // Act\n        test_repo(pool.clone()).save(&entity).await.unwrap();\n\n        // Assert\n        let found = test_repo(pool).find_by_id(entity.id).await.unwrap();\n        assert!(found.is_some());".to_string()
-    }
-}
-
 // ── Dynamic generators ────────────────────────────────────────────────────────
 
 pub fn generate_infra_entity(
@@ -201,102 +79,23 @@ pub fn generate_infra_entity(
 ) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
 
-    let struct_fields_str: String = eff
-        .iter()
-        .map(|f| {
-            if f.field_type == MAP_TYPE {
-                format!("    pub {}: Json<{MAP_TYPE}>,", f.name)
-            } else {
-                format!("    pub {}: {},", f.name, f.field_type)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let mut vo_imports: Vec<String> = vec![];
+    let mut imports: Vec<String> = vec![];
     if eff.iter().any(|f| f.field_type == MAP_TYPE) {
-        vo_imports.push("use sqlx::types::Json;".to_string());
-        vo_imports.push("use std::collections::HashMap;".to_string());
+        imports.push("sqlx::types::Json".to_string());
+        imports.push("std::collections::HashMap".to_string());
     }
-    if eff.iter().any(is_value_object) {
-        for f in eff.iter().filter(|f| is_value_object(f)) {
-            let vo = f.value_object.as_deref().unwrap();
-            let stmt = if is_shared_vo(f, shared_vos) {
-                format!("use business::domain::shared::value_objects::{};", vo)
-            } else {
-                format!("use business::domain::{}::value_objects::{};", snake, vo)
-            };
-            if !vo_imports.contains(&stmt) {
-                vo_imports.push(stmt);
-            }
+    for f in eff.iter().filter(|f| is_value_object(f)) {
+        let import = business_vo_path(f, snake, shared_vos);
+        if !imports.contains(&import) {
+            imports.push(import);
         }
     }
-    let vo_imports_str = if vo_imports.is_empty() {
-        String::new()
-    } else {
-        format!("\n{}", vo_imports.join("\n"))
-    };
-
-    let try_from_fields_str: String = eff
-        .iter()
-        .map(|f| {
-            if is_enum_vo(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                if is_shared_vo(f, shared_vos) {
-                    format!("            {}: row.{}.parse::<{}>().map_err(|_| {}Error::Invalid{})?,", f.name, f.name, vo, pascal, vo)
-                } else {
-                    format!("            {}: row.{}.parse::<{}>()?,", f.name, f.name, vo)
-                }
-            } else if is_option_vo(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                if is_shared_vo(f, shared_vos) {
-                    format!("            {}: row.{}.map({vo}::new).transpose().map_err(|_| {}Error::Invalid{})?,", f.name, f.name, pascal, vo, vo = vo)
-                } else {
-                    format!("            {}: row.{}.map({vo}::new).transpose()?,", f.name, f.name, vo = vo)
-                }
-            } else if is_vec_vo(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                if is_shared_vo(f, shared_vos) {
-                    format!("            {}: row.{}.into_iter().map({vo}::new).collect::<Result<Vec<_>,_>>().map_err(|_| {}Error::Invalid{})?,", f.name, f.name, pascal, vo, vo = vo)
-                } else {
-                    format!("            {}: row.{}.into_iter().map({vo}::new).collect::<Result<Vec<_>,_>>()?,", f.name, f.name, vo = vo)
-                }
-            } else if is_value_object(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                if is_shared_vo(f, shared_vos) {
-                    format!("            {}: {}::new(row.{}).map_err(|_| {}Error::Invalid{})?,", f.name, vo, f.name, pascal, vo)
-                } else {
-                    format!("            {}: {}::new(row.{})?,", f.name, vo, f.name)
-                }
-            } else if f.field_type == MAP_TYPE {
-                format!("            {}: row.{}.0,", f.name, f.name)
-            } else {
-                format!("            {}: row.{},", f.name, f.name)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let from_fields_str: String = eff
-        .iter()
-        .map(|f| {
-            let value = field_value_accessor(f, "entity");
-            if f.field_type == MAP_TYPE {
-                format!("            {}: Json({value}),", f.name)
-            } else {
-                format!("            {}: {value},", f.name)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
 
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
-    ctx.insert("vo_imports_str", &vo_imports_str);
-    ctx.insert("struct_fields_str", &struct_fields_str);
-    ctx.insert("try_from_fields_str", &try_from_fields_str);
-    ctx.insert("from_fields_str", &from_fields_str);
+    ctx.insert("imports", &imports);
+    ctx.insert("fields", &field_ctxs(&eff, pascal, shared_vos));
     render("infrastructure/entity.tera", &ctx)
 }
 
@@ -304,65 +103,48 @@ pub fn generate_crud_infra_db_repository(
     pascal: &str,
     snake: &str,
     fields: &[Field],
-    shared_vos: &[crate::puerto_toml::ValueObjectDefinition],
+    shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
-    let n = 5 + eff.len();
 
-    let all_cols = sql_col_list(&eff);
-    let select_cols = sql_select_list(&eff);
-    let map_imports = if eff.iter().any(|f| f.field_type == MAP_TYPE) {
-        "use sqlx::types::Json;\nuse std::collections::HashMap;\n"
-    } else {
-        ""
-    };
-    let all_params = sql_params_list(n);
-    let all_updates = sql_conflict_set(&eff);
-    let all_bindings = db_bindings_str(&eff);
-    let seed_fn = seed_fn_str(pascal, &eff);
-    let field_asserts = field_asserts_str(&eff);
-    let update_test = update_test_str(&eff);
-
-    let mut vo_test_imports_vec: Vec<String> = vec![];
     // The seed names every plain and enum VO it constructs (`Name::new(…)`, `Status::Active`);
     // Option/Vec VOs are seeded as `None` / `vec![]` and need no import.
-    for f in eff
-        .iter()
-        .filter(|f| is_value_object(f) && !is_option_vo(f) && !is_vec_vo(f))
-    {
-        let vo = f.value_object.as_deref().unwrap();
-        let stmt = if is_shared_vo(f, shared_vos) {
-            format!("    use business::domain::shared::value_objects::{};", vo)
-        } else {
-            format!(
-                "    use business::domain::{}::value_objects::{};",
-                snake, vo
-            )
-        };
-        if !vo_test_imports_vec.contains(&stmt) {
-            vo_test_imports_vec.push(stmt);
+    let mut test_imports: Vec<String> = vec![];
+    for f in eff.iter().filter(|f| literal_names_vo(f)) {
+        let import = business_vo_path(f, snake, shared_vos);
+        if !test_imports.contains(&import) {
+            test_imports.push(import);
         }
     }
-    let vo_test_imports = if vo_test_imports_vec.is_empty() {
-        String::new()
-    } else {
-        format!("\n{}", vo_test_imports_vec.join("\n"))
-    };
 
+    // SQL text stays a Rust computation: the `$n` numbering is index-dependent.
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
-    ctx.insert("all_cols", &all_cols);
-    ctx.insert("select_cols", &select_cols);
-    ctx.insert("map_imports", map_imports);
-    ctx.insert("all_params", &all_params);
-    ctx.insert("all_updates", &all_updates);
-    ctx.insert("all_bindings", &all_bindings);
-    ctx.insert("seed_fn", &seed_fn);
-    ctx.insert("field_asserts", &field_asserts);
-    ctx.insert("update_test", &update_test);
-    ctx.insert("vo_test_imports", &vo_test_imports);
+    ctx.insert("all_cols", &sql_col_list(&eff));
+    ctx.insert("select_cols", &sql_select_list(&eff));
+    ctx.insert("has_map", &eff.iter().any(|f| f.field_type == MAP_TYPE));
+    ctx.insert("all_params", &sql_params_list(5 + eff.len()));
+    ctx.insert("all_updates", &sql_conflict_set(&eff));
+    ctx.insert("test_imports", &test_imports);
+    ctx.insert("fields", &field_ctxs(&eff, pascal, shared_vos));
     render("infrastructure/repository_pg_crud.tera", &ctx)
+}
+
+/// A VO's path from the infrastructure crate.
+fn business_vo_path(f: &Field, snake: &str, shared_vos: &[ValueObjectDefinition]) -> String {
+    let vo = f.value_object.as_deref().unwrap_or_default();
+    if is_shared_vo(f, shared_vos) {
+        format!("business::domain::shared::value_objects::{vo}")
+    } else {
+        format!("business::domain::{snake}::value_objects::{vo}")
+    }
+}
+
+fn field_ctxs(eff: &[Field], pascal: &str, shared_vos: &[ValueObjectDefinition]) -> Vec<FieldCtx> {
+    eff.iter()
+        .map(|f| field_ctx(f, pascal, shared_vos))
+        .collect()
 }
 
 pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {

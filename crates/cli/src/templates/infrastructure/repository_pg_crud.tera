@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
-{{ map_imports }}
+{% if has_map %}use sqlx::types::Json;
+use std::collections::HashMap;
+{% endif %}
 use business::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
     model::{{ pascal }},
@@ -65,8 +67,13 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
              VALUES ({{ all_params }})
              ON CONFLICT (id) DO UPDATE
              SET {{ all_updates }}",
-{{ all_bindings }}
-        )
+            db.id,
+            db.created_at,
+            db.updated_at,
+            db.deleted,
+            db.deleted_at,
+{% for f in fields %}            {% if f.is_array %}&db.{{ f.name }}{% elif f.is_map %}db.{{ f.name }} as _{% else %}db.{{ f.name }}{% endif %},
+{% endfor %}        )
         .execute(&self.pool)
         .await
         .map_err(|e| {
@@ -87,13 +94,21 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
 mod integration_tests {
     use super::*;
     use business::domain::{{ snake }}::model::{{ pascal }}Props;
-{{ vo_test_imports }}
 
+{% for import in test_imports %}    use {{ import }};
+{% endfor %}
     fn test_repo(pool: PgPool) -> Pg{{ pascal }}Repository {
         Pg{{ pascal }}Repository::new(pool)
     }
 
-{{ seed_fn }}
+    async fn seed(pool: &PgPool) -> {{ pascal }} {
+        let entity = {{ pascal }}::new({{ pascal }}Props {
+{% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
+{% endfor %}        }).unwrap();
+        test_repo(pool.clone()).save(&entity).await.unwrap();
+        entity
+    }
+
     #[sqlx::test(migrations = "./migrations")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
@@ -104,8 +119,8 @@ mod integration_tests {
 
         // Assert
         assert_eq!(found.id, entity.id);
-{{ field_asserts }}
-        assert!(!found.deleted);
+{% for f in fields %}        assert_eq!(found.{{ f.name }}, entity.{{ f.name }});
+{% endfor %}        assert!(!found.deleted);
     }
 
     #[sqlx::test(migrations = "./migrations")]
@@ -120,8 +135,25 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
-{{ update_test }}
-    }
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entity = seed(&pool).await;
+        entity.{{ f.name }} = {% if f.is_vo %}{{ f.vo }}::new("updated".to_string()).unwrap(){% else %}"updated".to_string(){% endif %};
+        entity.updated_at = chrono::Utc::now();
+
+        // Act
+        test_repo(pool.clone()).save(&entity).await.unwrap();
+
+        // Assert
+        let found = test_repo(pool).find_by_id(entity.id).await.unwrap().unwrap();
+        assert_eq!(found.{{ f.name }}{% if f.is_vo %}.value(){% endif %}, "updated");
+{% else %}        let entity = seed(&pool).await;
+
+        // Act
+        test_repo(pool.clone()).save(&entity).await.unwrap();
+
+        // Assert
+        let found = test_repo(pool).find_by_id(entity.id).await.unwrap();
+        assert!(found.is_some());
+{% endif %}    }
 
     #[sqlx::test(migrations = "./migrations")]
     async fn should_list_all_{{ snake }}s_excluding_deleted(pool: PgPool) {

@@ -275,6 +275,18 @@ pub struct FieldCtx {
     pub string_vo: bool,
     /// A valid default value, see [`props_literal`].
     pub props_literal: String,
+    /// The value the Pg integration tests seed, see [`seed_literal`].
+    pub seed_literal: String,
+    /// The primitive (registry) type, as persistence rows and params hold it.
+    pub field_type: String,
+    /// A `HashMap<String, String>` field: a JSONB column wrapped in `sqlx::types::Json`.
+    pub is_map: bool,
+    /// A `Vec<…>` column (primitive or VO): sqlx binds it as a slice.
+    pub is_array: bool,
+    /// The primitive read out of a borrowed entity, see [`field_value_accessor`].
+    pub accessor: String,
+    /// The domain value built from a persistence row (`row.{name}`), see [`field_vo_conversion`].
+    pub from_row: String,
     /// Object Mother: what `{Entity}Mother` stores in its `Option<…>` slot, the parameter type of
     /// `with_{field}` (`&str` for strings, converted with `.to_string()`), and the value `build()`
     /// puts in the Props — the slot, or a valid default.
@@ -283,9 +295,20 @@ pub struct FieldCtx {
     pub mother_build: String,
 }
 
-pub fn field_ctx(field: &Field, shared_vos: &[ValueObjectDefinition]) -> FieldCtx {
+pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinition]) -> FieldCtx {
     let vo = field.value_object.clone().unwrap_or_default();
+    let is_map = field.field_type == "HashMap<String, String>";
     FieldCtx {
+        seed_literal: seed_literal(field),
+        field_type: field.field_type.clone(),
+        is_map,
+        is_array: field.field_type.starts_with("Vec<"),
+        accessor: field_value_accessor(field, "entity"),
+        from_row: if is_map {
+            format!("row.{}.0", field.name)
+        } else {
+            field_vo_conversion(field, "row.", pascal, shared_vos)
+        },
         name: field.name.clone(),
         rust_type: field_rust_type(field),
         is_vo: is_value_object(field),
@@ -351,7 +374,36 @@ fn mother_build(field: &Field) -> String {
 /// branching they omitted `Option`/`Vec`, emitting `Tag::new(vec![])` and `Mid::new(None)` —
 /// generated tests that did not compile.
 pub fn props_literal(field: &Field) -> String {
-    let default = || resolve_type(&field.field_type).map_or("", |m| m.default_expr);
+    literal_with(field, |ty| {
+        resolve_type(ty).map_or("", |m| m.default_expr).to_string()
+    })
+}
+
+/// Like [`props_literal`], with the values the Pg integration tests seed.
+///
+/// Differs from the registry's defaults in two ways. Timestamps are a fixed whole second:
+/// `Utc::now()` has nanosecond precision and Postgres stores microseconds, so a seeded value never
+/// compared equal after a round-trip. And `unique` fields get a fresh value per call: the list test
+/// seeds twice, and a constant hit the unique index (`Duplicate`).
+pub fn seed_literal(field: &Field) -> String {
+    const FIXED_TIME: &str = "chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap()";
+    literal_with(field, |ty| {
+        match (ty, field.unique) {
+        ("String", true) => "Uuid::new_v4().to_string()".to_string(),
+        ("i64", true) => "(Uuid::new_v4().as_u128() >> 65) as i64".to_string(),
+        ("f64", true) => "(Uuid::new_v4().as_u128() >> 76) as f64".to_string(),
+        ("DateTime<Utc>", true) => {
+            "chrono::DateTime::from_timestamp(1_700_000_000 + (Uuid::new_v4().as_u128() >> 100) as i64, 0).unwrap()".to_string()
+        }
+        ("DateTime<Utc>", false) => FIXED_TIME.to_string(),
+        ("HashMap<String, String>", _) => "std::collections::HashMap::new()".to_string(),
+        (other, _) => resolve_type(other).map_or("", |m| m.default_expr).to_string(),
+    }
+    })
+}
+
+/// The value-object shape of a literal around `value(primitive type)`.
+fn literal_with(field: &Field, value: impl Fn(&str) -> String) -> String {
     let vo = field.value_object.as_deref().unwrap_or_default();
     if is_option_vo(field) {
         "None".to_string()
@@ -361,9 +413,12 @@ pub fn props_literal(field: &Field) -> String {
         let first = field.enum_variants.as_deref().and_then(<[String]>::first);
         format!("{vo}::{}", first.map_or("", String::as_str))
     } else if is_value_object(field) {
-        format!("{vo}::new({}).expect(\"valid {vo}\")", default())
+        format!(
+            "{vo}::new({}).expect(\"valid {vo}\")",
+            value(&field.field_type)
+        )
     } else {
-        default().to_string()
+        value(&field.field_type)
     }
 }
 
@@ -410,72 +465,52 @@ pub fn field_value_accessor(field: &Field, owner: &str) -> String {
     }
 }
 
+/// The `let` statement a use case impl builds a VO field with, from its primitive param.
 pub fn field_vo_constructor(
     field: &Field,
     param_prefix: &str,
     pascal: &str,
     shared_vos: &[ValueObjectDefinition],
 ) -> String {
-    // Every branch below names the VO — an enum VO included, whose `value_object` holds its name.
-    if field.value_object.is_none() {
+    if !is_value_object(field) {
         return String::new();
     }
-    let is_shared = is_shared_vo(field, shared_vos);
-    let error_variant = format!("Invalid{}", field.value_object.as_deref().unwrap_or(""));
-    if is_enum_vo(field) {
-        let vo = field.value_object.as_deref().unwrap();
-        if is_shared {
-            format!(
-                "let {} = {}{}.parse::<{}>().map_err(|_| {}Error::{})?;",
-                field.name, param_prefix, field.name, vo, pascal, error_variant
-            )
-        } else {
-            format!(
-                "let {} = {}{}.parse::<{}>()?;",
-                field.name, param_prefix, field.name, vo
-            )
-        }
-    } else if is_option_vo(field) {
-        let vo = field.value_object.as_deref().unwrap();
-        if is_shared {
-            format!(
-                "let {} = {}{}.map({}::new).transpose().map_err(|_| {}Error::{})?;",
-                field.name, param_prefix, field.name, vo, pascal, error_variant
-            )
-        } else {
-            format!(
-                "let {} = {}{}.map({}::new).transpose()?;",
-                field.name, param_prefix, field.name, vo
-            )
-        }
-    } else if is_vec_vo(field) {
-        let vo = field.value_object.as_deref().unwrap();
-        if is_shared {
-            format!(
-                "let {}: Vec<{}> = {}{}.into_iter().map({}::new).collect::<Result<Vec<_>,_>>().map_err(|_| {}Error::{})?;",
-                field.name, vo, param_prefix, field.name, vo, pascal, error_variant
-            )
-        } else {
-            format!(
-                "let {}: Vec<{}> = {}{}.into_iter().map({}::new).collect::<Result<Vec<_>,_>>()?;",
-                field.name, vo, param_prefix, field.name, vo
-            )
-        }
-    } else if is_value_object(field) {
-        let vo = field.value_object.as_deref().unwrap();
-        if is_shared {
-            format!(
-                "let {} = {}::new({}{}).map_err(|_| {}Error::{})?;",
-                field.name, vo, param_prefix, field.name, pascal, error_variant
-            )
-        } else {
-            format!(
-                "let {} = {}::new({}{})?;",
-                field.name, vo, param_prefix, field.name
-            )
-        }
+    let conversion = field_vo_conversion(field, param_prefix, pascal, shared_vos);
+    if is_vec_vo(field) {
+        let vo = field.value_object.as_deref().unwrap_or_default();
+        format!("let {}: Vec<{vo}> = {conversion};", field.name)
     } else {
-        String::new()
+        format!("let {} = {conversion};", field.name)
+    }
+}
+
+/// The expression that turns `{source}{field}` (a primitive: a use case param, a DB row column)
+/// into the field's domain type — parsing an enum VO, mapping over `Option` / `Vec`, constructing
+/// a plain VO — with `?`. A shared VO has its own error type, mapped to the entity's
+/// `Invalid{Vo}`. A primitive field is the source itself.
+pub fn field_vo_conversion(
+    field: &Field,
+    source: &str,
+    pascal: &str,
+    shared_vos: &[ValueObjectDefinition],
+) -> String {
+    let value = format!("{source}{}", field.name);
+    let Some(vo) = field.value_object.as_deref() else {
+        return value;
+    };
+    let conversion = if is_enum_vo(field) {
+        format!("{value}.parse::<{vo}>()")
+    } else if is_option_vo(field) {
+        format!("{value}.map({vo}::new).transpose()")
+    } else if is_vec_vo(field) {
+        format!("{value}.into_iter().map({vo}::new).collect::<Result<Vec<_>,_>>()")
+    } else {
+        format!("{vo}::new({value})")
+    };
+    if is_shared_vo(field, shared_vos) {
+        format!("{conversion}.map_err(|_| {pascal}Error::Invalid{vo})?")
+    } else {
+        format!("{conversion}?")
     }
 }
 
@@ -751,34 +786,34 @@ mod tests {
             inner_type: "String".into(),
         }];
 
-        let plain = field_ctx(&field("String", None), &shared);
+        let plain = field_ctx(&field("String", None), "P", &shared);
         assert!(plain.required_string && !plain.is_vo && !plain.string_vo);
         assert_eq!(
             (plain.rust_type.as_str(), plain.vo.as_str()),
             ("String", "")
         );
 
-        let name = field_ctx(&field("String", Some("FullName")), &shared);
+        let name = field_ctx(&field("String", Some("FullName")), "P", &shared);
         assert!(name.is_vo && name.string_vo && !name.required_string && !name.is_shared_vo);
         assert_eq!(
             (name.vo.as_str(), name.vo_snake.as_str()),
             ("FullName", "full_name")
         );
 
-        let email = field_ctx(&field("String", Some("Email")), &shared);
+        let email = field_ctx(&field("String", Some("Email")), "P", &shared);
         assert!(email.is_shared_vo && email.string_vo);
 
-        let status = field_ctx(&enum_field(), &shared);
+        let status = field_ctx(&enum_field(), "P", &shared);
         assert!(status.is_enum_vo && status.is_vo && !status.string_vo);
 
-        let mid = field_ctx(&field("Option<String>", Some("Mid")), &shared);
+        let mid = field_ctx(&field("Option<String>", Some("Mid")), "P", &shared);
         assert!(mid.is_option_vo && !mid.is_vec_vo && !mid.string_vo);
         assert_eq!(mid.rust_type, "Option<Mid>");
 
-        let tags = field_ctx(&field("Vec<String>", Some("Tag")), &shared);
+        let tags = field_ctx(&field("Vec<String>", Some("Tag")), "P", &shared);
         assert!(tags.is_vec_vo && !tags.is_option_vo && !tags.string_vo);
 
-        let count = field_ctx(&field("i64", None), &shared);
+        let count = field_ctx(&field("i64", None), "P", &shared);
         assert!(!count.required_string && !count.is_vo);
     }
 
@@ -856,10 +891,75 @@ mod tests {
             ),
         ];
         for (f, storage, param, build) in cases {
-            let ctx = field_ctx(&f, &[]);
+            let ctx = field_ctx(&f, "P", &[]);
             assert_eq!(ctx.mother_storage, storage, "{}", f.field_type);
             assert_eq!(ctx.mother_param, param, "{}", f.field_type);
             assert_eq!(ctx.mother_build, build, "{}", f.field_type);
         }
+    }
+
+    #[test]
+    fn should_convert_a_primitive_source_into_every_value_object_shape() {
+        let shared = [ValueObjectDefinition {
+            name: "V".into(),
+            inner_type: "String".into(),
+        }];
+        let local = |ty: &str| field_vo_conversion(&field(ty, Some("V")), "row.", "P", &[]);
+        let shared_ = |ty: &str| field_vo_conversion(&field(ty, Some("V")), "row.", "P", &shared);
+
+        assert_eq!(local("String"), "V::new(row.x)?");
+        assert_eq!(local("Option<String>"), "row.x.map(V::new).transpose()?");
+        assert_eq!(
+            local("Vec<String>"),
+            "row.x.into_iter().map(V::new).collect::<Result<Vec<_>,_>>()?"
+        );
+        assert_eq!(
+            field_vo_conversion(&enum_field(), "row.", "P", &[]),
+            "row.x.parse::<Status>()?"
+        );
+        assert_eq!(
+            shared_("String"),
+            "V::new(row.x).map_err(|_| PError::InvalidV)?"
+        );
+        assert_eq!(
+            shared_("Option<String>"),
+            "row.x.map(V::new).transpose().map_err(|_| PError::InvalidV)?"
+        );
+        assert_eq!(
+            field_vo_conversion(&field("i64", None), "row.", "P", &[]),
+            "row.x"
+        );
+    }
+
+    #[test]
+    fn should_seed_fixed_timestamps_and_fresh_unique_values() {
+        let unique = |ty: &str| crate::puerto_toml::Field {
+            unique: true,
+            ..field(ty, None)
+        };
+        let fixed = "chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap()";
+        assert_eq!(seed_literal(&field("DateTime<Utc>", None)), fixed);
+        assert_eq!(
+            seed_literal(&unique("String")),
+            "Uuid::new_v4().to_string()"
+        );
+        assert_eq!(
+            seed_literal(&unique("i64")),
+            "(Uuid::new_v4().as_u128() >> 65) as i64"
+        );
+        assert_eq!(
+            seed_literal(&field("String", None)),
+            "\"example\".to_string()"
+        );
+        assert_eq!(
+            seed_literal(&field("HashMap<String, String>", None)),
+            "std::collections::HashMap::new()"
+        );
+        assert_eq!(
+            seed_literal(&field("DateTime<Utc>", Some("Joined"))),
+            format!("Joined::new({fixed}).expect(\"valid Joined\")")
+        );
+        assert_eq!(seed_literal(&field("Vec<String>", Some("Tag"))), "vec![]");
+        assert_eq!(seed_literal(&enum_field()), "Status::Active");
     }
 }
