@@ -5,8 +5,8 @@ use serde_json::json;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
-    FieldCtx, field_ctx, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
-    literal_import, resolve_type, vo_import_path, vo_inner_type,
+    FieldCtx, field_ctx, is_enum_vo, is_shared_vo, is_value_object, literal_import, resolve_type,
+    vo_import_path, vo_inner_type,
 };
 use crate::patchers::lib_rs::{
     patch_business_lib_domain_crud, patch_business_lib_shared, patch_business_lib_value_objects,
@@ -78,195 +78,33 @@ pub fn generate_mother(
     // A primitive field's *type* appears in the Mother struct (`Option<DateTime<Utc>>`); a VO
     // field's type is the VO, and only its default literal (`Joined::new(Utc::now())`) names a
     // primitive.
-    let mut mother_imports: Vec<String> = vec![];
-    for f in &eff {
-        let imp = if is_value_object(f) {
+    let mut imports: Vec<String> = vec![];
+    let primitive_imports = eff.iter().filter_map(|f| {
+        if is_value_object(f) {
             literal_import(f)
         } else {
             resolve_type(&f.field_type)
                 .ok()
                 .and_then(|m| m.needs_import)
-        };
-        if let Some(imp) = imp {
-            let stmt = format!("use {imp};");
-            if !mother_imports.contains(&stmt) {
-                mother_imports.push(stmt);
-            }
+        }
+    });
+    let vo_imports = eff
+        .iter()
+        .filter(|f| is_value_object(f))
+        .map(|f| vo_import_path(f, snake, shared_vos));
+    for import in primitive_imports.map(str::to_string).chain(vo_imports) {
+        if !imports.contains(&import) {
+            imports.push(import);
         }
     }
-    for vf in eff.iter().filter(|f| is_value_object(f)) {
-        let import_path = vo_import_path(vf, snake, shared_vos);
-        let stmt = format!("use {};", import_path);
-        if !mother_imports.contains(&stmt) {
-            mother_imports.push(stmt);
-        }
-    }
-    let imports_str = if mother_imports.is_empty() {
-        String::new()
-    } else {
-        format!("\n{}", mother_imports.join("\n"))
-    };
 
-    let required_string_fields: Vec<&Field> = eff
-        .iter()
-        .filter(|f| f.field_type == "String" && !is_value_object(f))
-        .collect();
-
-    let fields_str = eff
-        .iter()
-        .map(|f| {
-            if is_vec_vo(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                format!("    {}: Option<Vec<{}>>,", f.name, vo)
-            } else if is_value_object(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                format!("    {}: Option<{}>,", f.name, vo)
-            } else {
-                format!(
-                    "    {}: Option<{}>,",
-                    f.name,
-                    mother_storage_type(&f.field_type)
-                )
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let with_methods_str = eff
-        .iter()
-        .map(|f| {
-            if is_vec_vo(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                format!(
-                    "    pub fn with_{field}(mut self, {field}: Vec<{vo}>) -> Self {{\n        self.{field} = Some({field});\n        self\n    }}",
-                    field = f.name, vo = vo,
-                )
-            } else if is_value_object(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                format!(
-                    "    pub fn with_{field}(mut self, {field}: {vo}) -> Self {{\n        self.{field} = Some({field});\n        self\n    }}",
-                    field = f.name, vo = vo,
-                )
-            } else {
-                let (param_type, conversion) = mother_with_param(&f.field_type, &f.name);
-                format!(
-                    "    pub fn with_{field}(mut self, {field}: {param_type}) -> Self {{\n        self.{field} = Some({conversion});\n        self\n    }}",
-                    field = f.name, param_type = param_type, conversion = conversion,
-                )
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    let empty_methods = required_string_fields
-        .iter()
-        .map(|f| format!(
-            "    pub fn with_empty_{field}(mut self) -> Self {{\n        self.{field} = Some(String::new());\n        self\n    }}",
-            field = f.name,
-        ))
-        .collect::<Vec<_>>();
-    let empty_methods_str = if empty_methods.is_empty() {
-        String::new()
-    } else {
-        format!("\n\n{}", empty_methods.join("\n\n"))
-    };
-
-    let build_assignments_str = eff
-        .iter()
-        .map(|f| {
-            if is_option_vo(f) {
-                format!("            {}: self.{},", f.name, f.name)
-            } else if is_vec_vo(f) {
-                format!("            {}: self.{}.unwrap_or_default(),", f.name, f.name)
-            } else if is_enum_vo(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                let first_variant = f.enum_variants.as_deref().unwrap().first().unwrap();
-                format!("            {}: self.{}.unwrap_or({}::{}),", f.name, f.name, vo, first_variant)
-            } else if is_value_object(f) {
-                let vo = f.value_object.as_deref().unwrap();
-                let mapping = resolve_type(&f.field_type).unwrap();
-                match mapping.rust_type {
-                    "String" => format!("            {}: self.{}.unwrap_or_else(|| {}::new(\"example\".to_string()).expect(\"valid {}\")),", f.name, f.name, vo, vo),
-                    "i64" => format!("            {}: self.{}.unwrap_or_else(|| {}::new(42).expect(\"valid {}\")),", f.name, f.name, vo, vo),
-                    "bool" => format!("            {}: self.{}.unwrap_or_else(|| {}::new(true).expect(\"valid {}\")),", f.name, f.name, vo, vo),
-                    "f64" => format!("            {}: self.{}.unwrap_or_else(|| {}::new(1.5).expect(\"valid {}\")),", f.name, f.name, vo, vo),
-                    "Uuid" => format!("            {}: self.{}.unwrap_or_else(|| {}::new(Uuid::new_v4()).expect(\"valid {}\")),", f.name, f.name, vo, vo),
-                    "DateTime<Utc>" => format!("            {}: self.{}.unwrap_or_else(|| {}::new(Utc::now()).expect(\"valid {}\")),", f.name, f.name, vo, vo),
-                    _ => format!("            {}: self.{}.unwrap_or_default(),", f.name, f.name),
-                }
-            } else if is_option_type(&f.field_type) {
-                format!("            {}: self.{},", f.name, f.name)
-            } else {
-                let mapping = resolve_type(&f.field_type).unwrap();
-                match mapping.rust_type {
-                    "String" => format!("            {}: self.{}.unwrap_or_else(|| \"example\".to_string()),", f.name, f.name),
-                    "i64" => format!("            {}: self.{}.unwrap_or(42),", f.name, f.name),
-                    "bool" => format!("            {}: self.{}.unwrap_or(true),", f.name, f.name),
-                    "f64" => format!("            {}: self.{}.unwrap_or(1.5),", f.name, f.name),
-                    "Uuid" => format!("            {}: self.{}.unwrap_or_else(Uuid::new_v4),", f.name, f.name),
-                    "DateTime<Utc>" => format!("            {}: self.{}.unwrap_or_else(Utc::now),", f.name, f.name),
-                    _ => format!("            {}: self.{}.unwrap_or_default(),", f.name, f.name),
-                }
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let defaults = eff
-        .iter()
-        .map(|f| format!("{}: None", f.name))
-        .collect::<Vec<_>>()
-        .join(", ");
-
+    let field_ctxs: Vec<FieldCtx> = eff.iter().map(|f| field_ctx(f, shared_vos)).collect();
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
-    ctx.insert("imports", &imports_str);
-    ctx.insert("fields_str", &fields_str);
-    ctx.insert("defaults", &defaults);
-    ctx.insert("with_methods_str", &with_methods_str);
-    ctx.insert("empty_methods_str", &empty_methods_str);
-    ctx.insert("build_assignments_str", &build_assignments_str);
-    ctx.insert("props_assignments_str", &build_assignments_str);
+    ctx.insert("imports", &imports);
+    ctx.insert("fields", &field_ctxs);
     render("domain/mother.tera", &ctx)
-}
-
-fn is_option_type(field_type: &str) -> bool {
-    field_type.starts_with("Option<")
-}
-
-fn mother_storage_type(field_type: &str) -> String {
-    if is_option_type(field_type) {
-        let inner = field_type
-            .strip_prefix("Option<")
-            .unwrap()
-            .strip_suffix('>')
-            .unwrap();
-        inner.to_string()
-    } else {
-        field_type.to_string()
-    }
-}
-
-fn mother_with_param(field_type: &str, field_name: &str) -> (String, String) {
-    if is_option_type(field_type) {
-        let inner = field_type
-            .strip_prefix("Option<")
-            .unwrap()
-            .strip_suffix('>')
-            .unwrap();
-        match inner {
-            "String" => ("&str".to_string(), format!("{}.to_string()", field_name)),
-            "DateTime<Utc>" => ("DateTime<Utc>".to_string(), field_name.to_string()),
-            _ => (inner.to_string(), field_name.to_string()),
-        }
-    } else {
-        match field_type {
-            "String" => ("&str".to_string(), format!("{}.to_string()", field_name)),
-            "DateTime<Utc>" => ("DateTime<Utc>".to_string(), field_name.to_string()),
-            _ => (field_type.to_string(), field_name.to_string()),
-        }
-    }
 }
 
 pub fn generate_value_objects(

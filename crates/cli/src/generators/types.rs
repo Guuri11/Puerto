@@ -275,6 +275,12 @@ pub struct FieldCtx {
     pub string_vo: bool,
     /// A valid default value, see [`props_literal`].
     pub props_literal: String,
+    /// Object Mother: what `{Entity}Mother` stores in its `Option<…>` slot, the parameter type of
+    /// `with_{field}` (`&str` for strings, converted with `.to_string()`), and the value `build()`
+    /// puts in the Props — the slot, or a valid default.
+    pub mother_storage: String,
+    pub mother_param: String,
+    pub mother_build: String,
 }
 
 pub fn field_ctx(field: &Field, shared_vos: &[ValueObjectDefinition]) -> FieldCtx {
@@ -292,6 +298,48 @@ pub fn field_ctx(field: &Field, shared_vos: &[ValueObjectDefinition]) -> FieldCt
         required_string: field.field_type == "String" && !is_value_object(field),
         string_vo: is_value_object(field) && field.field_type == "String" && !is_enum_vo(field),
         props_literal: props_literal(field),
+        mother_storage: mother_storage(field),
+        mother_param: match mother_storage(field).as_str() {
+            "String" if !is_value_object(field) => "&str".to_string(),
+            storage => storage.to_string(),
+        },
+        mother_build: mother_build(field),
+    }
+}
+
+/// The Object Mother stores every field as `Option<…>`, so an `Option` primitive is stored as its
+/// inner type and an `Option<Vo>` as the VO.
+fn mother_storage(field: &Field) -> String {
+    if is_value_object(field) && !is_vec_vo(field) {
+        field.value_object.clone().unwrap_or_default()
+    } else if !is_value_object(field) && field.field_type.starts_with("Option<") {
+        vo_inner_type(field)
+    } else {
+        field_rust_type(field)
+    }
+}
+
+fn mother_build(field: &Field) -> String {
+    let slot = format!("self.{}", field.name);
+    if field.field_type.starts_with("Option<") {
+        return slot;
+    }
+    if is_vec_vo(field) {
+        return format!("{slot}.unwrap_or_default()");
+    }
+    if is_value_object(field) {
+        return if is_enum_vo(field) {
+            format!("{slot}.unwrap_or({})", props_literal(field))
+        } else {
+            format!("{slot}.unwrap_or_else(|| {})", props_literal(field))
+        };
+    }
+    match field.field_type.as_str() {
+        "String" => format!("{slot}.unwrap_or_else(|| {})", props_literal(field)),
+        "i64" | "bool" | "f64" => format!("{slot}.unwrap_or({})", props_literal(field)),
+        "Uuid" => format!("{slot}.unwrap_or_else(Uuid::new_v4)"),
+        "DateTime<Utc>" => format!("{slot}.unwrap_or_else(Utc::now)"),
+        _ => format!("{slot}.unwrap_or_default()"),
     }
 }
 
@@ -748,5 +796,70 @@ mod tests {
             props_literal(&field("i64", Some("Age"))),
             "Age::new(42).expect(\"valid Age\")"
         );
+    }
+
+    #[test]
+    fn should_store_build_and_set_every_field_shape_in_the_object_mother() {
+        // (field, storage type, `with_` parameter, `build()` value)
+        let cases = [
+            (
+                field("String", None),
+                "String",
+                "&str",
+                "self.x.unwrap_or_else(|| \"example\".to_string())",
+            ),
+            (field("i64", None), "i64", "i64", "self.x.unwrap_or(42)"),
+            (
+                field("Uuid", None),
+                "Uuid",
+                "Uuid",
+                "self.x.unwrap_or_else(Uuid::new_v4)",
+            ),
+            (
+                field("DateTime<Utc>", None),
+                "DateTime<Utc>",
+                "DateTime<Utc>",
+                "self.x.unwrap_or_else(Utc::now)",
+            ),
+            (field("Option<String>", None), "String", "&str", "self.x"),
+            (field("Option<i64>", None), "i64", "i64", "self.x"),
+            (
+                field("Vec<String>", None),
+                "Vec<String>",
+                "Vec<String>",
+                "self.x.unwrap_or_default()",
+            ),
+            (
+                field("HashMap<String, String>", None),
+                "HashMap<String, String>",
+                "HashMap<String, String>",
+                "self.x.unwrap_or_default()",
+            ),
+            (
+                field("String", Some("Name")),
+                "Name",
+                "Name",
+                "self.x.unwrap_or_else(|| Name::new(\"example\".to_string()).expect(\"valid Name\"))",
+            ),
+            (field("Option<String>", Some("Mid")), "Mid", "Mid", "self.x"),
+            (
+                field("Vec<String>", Some("Tag")),
+                "Vec<Tag>",
+                "Vec<Tag>",
+                "self.x.unwrap_or_default()",
+            ),
+            (
+                enum_field(),
+                "Status",
+                "Status",
+                "self.x.unwrap_or(Status::Active)",
+            ),
+        ];
+        for (f, storage, param, build) in cases {
+            let ctx = field_ctx(&f, &[]);
+            assert_eq!(ctx.mother_storage, storage, "{}", f.field_type);
+            assert_eq!(ctx.mother_param, param, "{}", f.field_type);
+            assert_eq!(ctx.mother_build, build, "{}", f.field_type);
+        }
     }
 }

@@ -1,28 +1,37 @@
 use crate::domain::{{ snake }}::model::{{ pascal }};
-use crate::domain::{{ snake }}::model::{{ pascal }}Props;{{ imports }}
+use crate::domain::{{ snake }}::model::{{ pascal }}Props;{% for import in imports %}
+use {{ import }};{% endfor %}
 
 pub struct {{ pascal }}Mother {
-{{ fields_str }}
-}
+{% for f in fields %}    {{ f.name }}: Option<{{ f.mother_storage }}>,
+{% endfor %}}
 
 impl {{ pascal }}Mother {
     pub fn new() -> Self {
-        Self { {{ defaults }} }
+        Self { {% for f in fields %}{{ f.name }}: None{% if not loop.last %}, {% endif %}{% endfor %} }
     }
-
-{{ with_methods_str }}{{ empty_methods_str }}
-
+{% for f in fields %}
+    pub fn with_{{ f.name }}(mut self, {{ f.name }}: {{ f.mother_param }}) -> Self {
+        self.{{ f.name }} = Some({{ f.name }}{% if f.mother_param == "&str" %}.to_string(){% endif %});
+        self
+    }
+{% endfor %}{% for f in fields | filter(attribute="required_string", value=true) %}
+    pub fn with_empty_{{ f.name }}(mut self) -> Self {
+        self.{{ f.name }} = Some(String::new());
+        self
+    }
+{% endfor %}
     pub fn build(self) -> {{ pascal }} {
         {{ pascal }}::new({{ pascal }}Props {
-{{ build_assignments_str }}
-        })
+{% for f in fields %}            {{ f.name }}: {{ f.mother_build }},
+{% endfor %}        })
         .expect("{{ pascal }}Mother: failed to build valid {{ pascal }}")
     }
 
     pub fn build_props(self) -> {{ pascal }}Props {
         {{ pascal }}Props {
-{{ props_assignments_str }}
-        }
+{% for f in fields %}            {{ f.name }}: {{ f.mother_build }},
+{% endfor %}        }
     }
 
     pub fn random() -> {{ pascal }} {
