@@ -671,6 +671,22 @@ pub trait CreateArticleUseCaseTrait: Send + Sync {
     async fn execute(&self, params: CreateArticleParams) -> Result<Article, ArticleError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateArticleUseCase {}
+
+        #[async_trait]
+        impl CreateArticleUseCaseTrait for CreateArticleUseCase {
+            async fn execute(&self, params: CreateArticleParams) -> Result<Article, ArticleError>;
+        }
+    }
+}
+
 === business/src/domain/article/use_cases/delete_article.rs ===
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -685,6 +701,22 @@ pub struct DeleteArticleParams {
 #[async_trait]
 pub trait DeleteArticleUseCaseTrait: Send + Sync {
     async fn execute(&self, params: DeleteArticleParams) -> Result<(), ArticleError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteArticleUseCase {}
+
+        #[async_trait]
+        impl DeleteArticleUseCaseTrait for DeleteArticleUseCase {
+            async fn execute(&self, params: DeleteArticleParams) -> Result<(), ArticleError>;
+        }
+    }
 }
 
 === business/src/domain/article/use_cases/get_article.rs ===
@@ -703,6 +735,22 @@ pub trait GetArticleUseCaseTrait: Send + Sync {
     async fn execute(&self, params: GetArticleParams) -> Result<Article, ArticleError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetArticleUseCase {}
+
+        #[async_trait]
+        impl GetArticleUseCaseTrait for GetArticleUseCase {
+            async fn execute(&self, params: GetArticleParams) -> Result<Article, ArticleError>;
+        }
+    }
+}
+
 === business/src/domain/article/use_cases/list_article.rs ===
 use async_trait::async_trait;
 
@@ -714,6 +762,22 @@ pub struct ListArticleParams;
 #[async_trait]
 pub trait ListArticleUseCaseTrait: Send + Sync {
     async fn execute(&self, params: ListArticleParams) -> Result<Vec<Article>, ArticleError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListArticleUseCase {}
+
+        #[async_trait]
+        impl ListArticleUseCaseTrait for ListArticleUseCase {
+            async fn execute(&self, params: ListArticleParams) -> Result<Vec<Article>, ArticleError>;
+        }
+    }
 }
 
 === business/src/domain/article/use_cases/update_article.rs ===
@@ -735,6 +799,22 @@ pub struct UpdateArticleParams {
 #[async_trait]
 pub trait UpdateArticleUseCaseTrait: Send + Sync {
     async fn execute(&self, params: UpdateArticleParams) -> Result<Article, ArticleError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateArticleUseCase {}
+
+        #[async_trait]
+        impl UpdateArticleUseCaseTrait for UpdateArticleUseCase {
+            async fn execute(&self, params: UpdateArticleParams) -> Result<Article, ArticleError>;
+        }
+    }
 }
 
 === business/src/lib.rs ===
@@ -775,7 +855,7 @@ pub mod application {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod tests {
     pub mod mothers {
         pub mod article_mother;
@@ -1195,21 +1275,12 @@ impl DeleteArticleResponse {
 === presentation/src/api/article/routes.rs ===
 use std::sync::Arc;
 
-use business::{
-    application::article::{
-        create_article::CreateArticleUseCaseImpl,
-        delete_article::DeleteArticleUseCaseImpl,
-        get_article::GetArticleUseCaseImpl,
-        list_article::ListArticleUseCaseImpl,
-        update_article::UpdateArticleUseCaseImpl,
-    },
-    domain::article::use_cases::{
-        create_article::{CreateArticleParams, CreateArticleUseCaseTrait},
-        delete_article::{DeleteArticleParams, DeleteArticleUseCaseTrait},
-        get_article::{GetArticleParams, GetArticleUseCaseTrait},
-        list_article::{ListArticleParams, ListArticleUseCaseTrait},
-        update_article::{UpdateArticleParams, UpdateArticleUseCaseTrait},
-    },
+use business::domain::article::use_cases::{
+    create_article::{CreateArticleParams, CreateArticleUseCaseTrait},
+    delete_article::{DeleteArticleParams, DeleteArticleUseCaseTrait},
+    get_article::{GetArticleParams, GetArticleUseCaseTrait},
+    list_article::{ListArticleParams, ListArticleUseCaseTrait},
+    update_article::{UpdateArticleParams, UpdateArticleUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use uuid::Uuid;
@@ -1222,12 +1293,13 @@ use crate::api::article::responses::{
     UpdateArticleResponse,
 };
 
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct ArticleApi {
-    pub create_article: Arc<CreateArticleUseCaseImpl>,
-    pub get_article: Arc<GetArticleUseCaseImpl>,
-    pub list_article: Arc<ListArticleUseCaseImpl>,
-    pub update_article: Arc<UpdateArticleUseCaseImpl>,
-    pub delete_article: Arc<DeleteArticleUseCaseImpl>,
+    pub create_article: Arc<dyn CreateArticleUseCaseTrait>,
+    pub get_article: Arc<dyn GetArticleUseCaseTrait>,
+    pub list_article: Arc<dyn ListArticleUseCaseTrait>,
+    pub update_article: Arc<dyn UpdateArticleUseCaseTrait>,
+    pub delete_article: Arc<dyn DeleteArticleUseCaseTrait>,
 }
 
 #[OpenApi]
@@ -1326,6 +1398,223 @@ impl ArticleApi {
                 DeleteArticleResponse::from_status(status, error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::article::errors::ArticleError;
+    use business::domain::article::use_cases::{
+        create_article::mocks::MockCreateArticleUseCase, delete_article::mocks::MockDeleteArticleUseCase,
+        get_article::mocks::MockGetArticleUseCase, list_article::mocks::MockListArticleUseCase,
+        update_article::mocks::MockUpdateArticleUseCase,
+    };
+    use business::tests::mothers::article_mother::ArticleMother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateArticleUseCase,
+        get: MockGetArticleUseCase,
+        list: MockListArticleUseCase,
+        update: MockUpdateArticleUseCase,
+        delete: MockDeleteArticleUseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = ArticleApi {
+                create_article: Arc::new(self.create),
+                get_article: Arc::new(self.get),
+                list_article: Arc::new(self.list),
+                update_article: Arc::new(self.update),
+                delete_article: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> CreateArticleRequest {
+        CreateArticleRequest {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        }
+    }
+
+    fn update_request() -> UpdateArticleRequest {
+        UpdateArticleRequest {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            tags: vec![],
+            scores: vec![],
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/articles/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_article_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| Ok(ArticleMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/articles")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_article_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(ArticleError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/articles")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_article_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Ok(ArticleMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_article_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Err(ArticleError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_every_article_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Ok(ArticleMother::random_vec(2)));
+
+        // Act
+        let response = mocks.client().get("/articles").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        response.json().await.value().array().assert_len(2);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Err(ArticleError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/articles").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_article_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Ok(ArticleMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_article() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Err(ArticleError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_article_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_article() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Err(ArticleError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
     }
 }
 

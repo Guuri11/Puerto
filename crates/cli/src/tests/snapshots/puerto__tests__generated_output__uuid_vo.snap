@@ -625,6 +625,22 @@ pub trait CreateBookingUseCaseTrait: Send + Sync {
     async fn execute(&self, params: CreateBookingParams) -> Result<Booking, BookingError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateBookingUseCase {}
+
+        #[async_trait]
+        impl CreateBookingUseCaseTrait for CreateBookingUseCase {
+            async fn execute(&self, params: CreateBookingParams) -> Result<Booking, BookingError>;
+        }
+    }
+}
+
 === business/src/domain/booking/use_cases/delete_booking.rs ===
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -639,6 +655,22 @@ pub struct DeleteBookingParams {
 #[async_trait]
 pub trait DeleteBookingUseCaseTrait: Send + Sync {
     async fn execute(&self, params: DeleteBookingParams) -> Result<(), BookingError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteBookingUseCase {}
+
+        #[async_trait]
+        impl DeleteBookingUseCaseTrait for DeleteBookingUseCase {
+            async fn execute(&self, params: DeleteBookingParams) -> Result<(), BookingError>;
+        }
+    }
 }
 
 === business/src/domain/booking/use_cases/get_booking.rs ===
@@ -657,6 +689,22 @@ pub trait GetBookingUseCaseTrait: Send + Sync {
     async fn execute(&self, params: GetBookingParams) -> Result<Booking, BookingError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetBookingUseCase {}
+
+        #[async_trait]
+        impl GetBookingUseCaseTrait for GetBookingUseCase {
+            async fn execute(&self, params: GetBookingParams) -> Result<Booking, BookingError>;
+        }
+    }
+}
+
 === business/src/domain/booking/use_cases/list_booking.rs ===
 use async_trait::async_trait;
 
@@ -668,6 +716,22 @@ pub struct ListBookingParams;
 #[async_trait]
 pub trait ListBookingUseCaseTrait: Send + Sync {
     async fn execute(&self, params: ListBookingParams) -> Result<Vec<Booking>, BookingError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListBookingUseCase {}
+
+        #[async_trait]
+        impl ListBookingUseCaseTrait for ListBookingUseCase {
+            async fn execute(&self, params: ListBookingParams) -> Result<Vec<Booking>, BookingError>;
+        }
+    }
 }
 
 === business/src/domain/booking/use_cases/update_booking.rs ===
@@ -686,6 +750,22 @@ pub struct UpdateBookingParams {
 #[async_trait]
 pub trait UpdateBookingUseCaseTrait: Send + Sync {
     async fn execute(&self, params: UpdateBookingParams) -> Result<Booking, BookingError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateBookingUseCase {}
+
+        #[async_trait]
+        impl UpdateBookingUseCaseTrait for UpdateBookingUseCase {
+            async fn execute(&self, params: UpdateBookingParams) -> Result<Booking, BookingError>;
+        }
+    }
 }
 
 === business/src/domain/booking/value_objects.rs ===
@@ -745,7 +825,7 @@ pub mod application {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod tests {
     pub mod mothers {
         pub mod booking_mother;
@@ -1142,21 +1222,12 @@ impl DeleteBookingResponse {
 === presentation/src/api/booking/routes.rs ===
 use std::sync::Arc;
 
-use business::{
-    application::booking::{
-        create_booking::CreateBookingUseCaseImpl,
-        delete_booking::DeleteBookingUseCaseImpl,
-        get_booking::GetBookingUseCaseImpl,
-        list_booking::ListBookingUseCaseImpl,
-        update_booking::UpdateBookingUseCaseImpl,
-    },
-    domain::booking::use_cases::{
-        create_booking::{CreateBookingParams, CreateBookingUseCaseTrait},
-        delete_booking::{DeleteBookingParams, DeleteBookingUseCaseTrait},
-        get_booking::{GetBookingParams, GetBookingUseCaseTrait},
-        list_booking::{ListBookingParams, ListBookingUseCaseTrait},
-        update_booking::{UpdateBookingParams, UpdateBookingUseCaseTrait},
-    },
+use business::domain::booking::use_cases::{
+    create_booking::{CreateBookingParams, CreateBookingUseCaseTrait},
+    delete_booking::{DeleteBookingParams, DeleteBookingUseCaseTrait},
+    get_booking::{GetBookingParams, GetBookingUseCaseTrait},
+    list_booking::{ListBookingParams, ListBookingUseCaseTrait},
+    update_booking::{UpdateBookingParams, UpdateBookingUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use uuid::Uuid;
@@ -1169,12 +1240,13 @@ use crate::api::booking::responses::{
     UpdateBookingResponse,
 };
 
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct BookingApi {
-    pub create_booking: Arc<CreateBookingUseCaseImpl>,
-    pub get_booking: Arc<GetBookingUseCaseImpl>,
-    pub list_booking: Arc<ListBookingUseCaseImpl>,
-    pub update_booking: Arc<UpdateBookingUseCaseImpl>,
-    pub delete_booking: Arc<DeleteBookingUseCaseImpl>,
+    pub create_booking: Arc<dyn CreateBookingUseCaseTrait>,
+    pub get_booking: Arc<dyn GetBookingUseCaseTrait>,
+    pub list_booking: Arc<dyn ListBookingUseCaseTrait>,
+    pub update_booking: Arc<dyn UpdateBookingUseCaseTrait>,
+    pub delete_booking: Arc<dyn DeleteBookingUseCaseTrait>,
 }
 
 #[OpenApi]
@@ -1267,6 +1339,217 @@ impl BookingApi {
                 DeleteBookingResponse::from_status(status, error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::booking::errors::BookingError;
+    use business::domain::booking::use_cases::{
+        create_booking::mocks::MockCreateBookingUseCase, delete_booking::mocks::MockDeleteBookingUseCase,
+        get_booking::mocks::MockGetBookingUseCase, list_booking::mocks::MockListBookingUseCase,
+        update_booking::mocks::MockUpdateBookingUseCase,
+    };
+    use business::tests::mothers::booking_mother::BookingMother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateBookingUseCase,
+        get: MockGetBookingUseCase,
+        list: MockListBookingUseCase,
+        update: MockUpdateBookingUseCase,
+        delete: MockDeleteBookingUseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = BookingApi {
+                create_booking: Arc::new(self.create),
+                get_booking: Arc::new(self.get),
+                list_booking: Arc::new(self.list),
+                update_booking: Arc::new(self.update),
+                delete_booking: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> CreateBookingRequest {
+        CreateBookingRequest {
+            reference: "example".to_string(),
+            tenant_id: Uuid::new_v4(),
+        }
+    }
+
+    fn update_request() -> UpdateBookingRequest {
+        UpdateBookingRequest {
+            reference: "example".to_string(),
+            tenant_id: Uuid::new_v4(),
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/bookings/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_booking_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| Ok(BookingMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/bookings")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_booking_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(BookingError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/bookings")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_booking_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Ok(BookingMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_booking_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Err(BookingError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_every_booking_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Ok(BookingMother::random_vec(2)));
+
+        // Act
+        let response = mocks.client().get("/bookings").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        response.json().await.value().array().assert_len(2);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Err(BookingError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/bookings").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_booking_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Ok(BookingMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_booking() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Err(BookingError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_booking_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_booking() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Err(BookingError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
     }
 }
 

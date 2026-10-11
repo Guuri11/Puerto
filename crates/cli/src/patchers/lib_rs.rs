@@ -270,8 +270,9 @@ pub fn patch_libs(
     Ok(())
 }
 
-/// Declares `{snake}_mother` in the `#[cfg(test)] tests::mothers` block of business/src/lib.rs,
-/// creating the block when the project has none yet.
+/// Declares `{snake}_mother` in the `tests::mothers` block of business/src/lib.rs, creating the
+/// block when the project has none yet. The block is compiled under `test-utils` too, so the route
+/// tests in `presentation` can build entities with the same mothers.
 pub fn patch_mothers_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("business/src/lib.rs");
     let src = fs::read_to_string(&path)?;
@@ -292,7 +293,7 @@ pub fn patch_mothers_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::er
         content.push('\n');
     }
     content.push_str(&format!(
-        "\n#[cfg(test)]\npub mod tests {{\n    pub mod mothers {{\n        pub mod {snake}_mother;\n    }}\n}}\n"
+        "\n#[cfg(any(test, feature = \"test-utils\"))]\npub mod tests {{\n    pub mod mothers {{\n        pub mod {snake}_mother;\n    }}\n}}\n"
     ));
     fs::write(&path, content)?;
     Ok(())

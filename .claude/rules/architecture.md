@@ -404,10 +404,16 @@ Each OpenAPI type derives from the type registry mapping (e.g., `i64` → `integ
   in `--db` projects) and answers 503 when one is down. SIGTERM drains in-flight requests for
   `SHUTDOWN_DEADLINE` (ADR-0008)
 - DI wiring lives in `generated/bootstrap.rs` — never in `main.rs`
+- `{Entity}Api` holds **ports**: `Arc<dyn {Uc}UseCaseTrait>`. Only `bootstrap.rs` (the
+  composition root) names `business::application::*`; its `Arc<{Uc}UseCaseImpl>` coerces at the
+  struct literal
+- Every use case trait ships `mocks::Mock{Uc}UseCase` (same gate as the repository mocks), and the
+  CRUD `routes.rs` is generated with route tests: `poem::test::TestClient` over the real
+  `OpenApiService`, one mocked use case per test, one test per status path (ADR-0012)
 
 ```rust
 pub struct EntityApi {
-    pub create_entity: Arc<CreateEntityUseCaseImpl>,
+    pub create_entity: Arc<dyn CreateEntityUseCaseTrait>,
 }
 
 #[OpenApi]

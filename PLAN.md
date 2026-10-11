@@ -1231,6 +1231,57 @@ they now run on the pinned toolchain and edition 2024.
 
 ---
 
+## Phase 8.7 — Breaking batch before the first users (T-26, T-13, T-20)
+
+Three changes to the shape of generated output, done together while no generated project exists
+yet (no migration guide needed — see `puerto_arch_plan.md`). One commit each, `!` in the type.
+
+### T-26 — Presentation holds ports, routes are tested
+
+- `{Entity}Api` fields are `Arc<dyn {Uc}UseCaseTrait>`; `routes.rs` no longer imports
+  `business::application::*` (only `bootstrap.rs`, the composition root, does). `bootstrap.rs`
+  is unchanged: `Arc<{Uc}UseCaseImpl>` coerces at the struct literal.
+- Every use case trait file (scaffolded CRUD, `generate use-case`, the template's `get_greeting`)
+  ships a `mocks` module behind `#[cfg(any(test, feature = "test-utils"))]` with
+  `Mock{Uc}UseCase` — same shape as the repository mocks.
+- Object Mothers are compiled under `#[cfg(any(test, feature = "test-utils"))]` so other crates'
+  tests can build entities.
+- `presentation/Cargo.toml` dev-dependencies: `business` with `test-utils`, `poem` with `test`.
+- `generate use-case` adds `pub {uc}: Arc<dyn {Uc}UseCaseTrait>` (and imports the trait).
+- CRUD `routes.rs` gets a `#[cfg(test)]` module driving the real `OpenApiService` through
+  `poem::test::TestClient` with mocked use cases, one test per status path: create 201 / 422,
+  get 200 / 404, list 200 / 500, update 200 / 404, delete 204 / 404. The template's
+  `GreetingApi` gets 200 / 422.
+
+Test scenarios: structural — routes hold `Arc<dyn …UseCaseTrait>` and import no
+`application::`; every trait template has `Mock{Uc}UseCase`; mothers block gated on
+`test-utils`; presentation dev-dependencies; patched custom use case field is `dyn`; routes test
+module present with each status. Compile matrix runs the route tests in every scenario.
+
+### T-13 — Real plurals for tables and paths
+
+- `naming::pluralize(snake)` pluralises the last word: `category` → `categories`, `box` →
+  `boxes`, `person` → `people`, `order_item` → `order_items`, `status` → `statuses`; a few
+  uncountables (`data`, `information`, `equipment`, `news`, `series`, `species`) stay as they are.
+- Used for the SQL table (migration + Pg repository queries) and the REST paths (`/categories`,
+  `/categories/:id`) and the list endpoint doc comment.
+
+Test scenarios: unit tests for each rule; migration `CREATE TABLE categories`; Pg repository
+queries `FROM categories`; routes path `/categories`.
+
+### T-20 — `list_{plural}` use case
+
+- The list use case is `list_{plural}` (`list_products`, `ListProductsUseCaseTrait`,
+  `ListProductsParams`, `ListProductsUseCaseImpl`, `ProductApi.list_products`) — in puerto.toml,
+  file names, lib.rs patches, conflict guard and every template. One helper
+  (`naming::crud_use_cases`) is the single source of the five names.
+
+Test scenarios: scaffold writes `list_products.rs` in domain and application; puerto.toml lists
+`list_products`; lib.rs declares `pub mod list_products;`; routes/bootstrap name
+`list_products`; `OrderItem` → `list_order_items`.
+
+---
+
 ## Phase 9 — Full-stack (frontend)
 
 TBD. Options to evaluate:

@@ -255,10 +255,11 @@ fn use_case_adds_its_field_to_the_entity_api_struct() {
     scaffold::run_use_case("Product", "archive_product", &output).unwrap();
 
     let routes = fs::read_to_string(output.join("presentation/src/api/product/routes.rs")).unwrap();
-    assert!(routes.contains("pub archive_product: Arc<ArchiveProductUseCaseImpl>,"));
+    assert!(routes.contains("pub archive_product: Arc<dyn ArchiveProductUseCaseTrait>,"));
     assert!(routes.contains(
-        "use business::application::product::archive_product::ArchiveProductUseCaseImpl;"
+        "use business::domain::product::use_cases::archive_product::ArchiveProductUseCaseTrait;"
     ));
+    assert!(!routes.contains("UseCaseImpl"), "{routes}");
 
     cleanup(&dir);
 }
@@ -280,7 +281,7 @@ fn rescaffold_with_force_keeps_custom_use_case_in_the_api_struct() {
     let routes = fs::read_to_string(output.join("presentation/src/api/product/routes.rs")).unwrap();
     assert_eq!(
         routes
-            .matches("pub archive_product: Arc<ArchiveProductUseCaseImpl>,")
+            .matches("pub archive_product: Arc<dyn ArchiveProductUseCaseTrait>,")
             .count(),
         1
     );

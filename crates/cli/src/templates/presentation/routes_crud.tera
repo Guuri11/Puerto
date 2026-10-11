@@ -1,20 +1,11 @@
 use std::sync::Arc;
 
-use business::{
-    application::{{ snake }}::{
-        create_{{ snake }}::Create{{ pascal }}UseCaseImpl,
-        delete_{{ snake }}::Delete{{ pascal }}UseCaseImpl,
-        get_{{ snake }}::Get{{ pascal }}UseCaseImpl,
-        list_{{ snake }}::List{{ pascal }}UseCaseImpl,
-        update_{{ snake }}::Update{{ pascal }}UseCaseImpl,
-    },
-    domain::{{ snake }}::use_cases::{
-        create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
-        delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
-        get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
-        list_{{ snake }}::{List{{ pascal }}Params, List{{ pascal }}UseCaseTrait},
-        update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
-    },
+use business::domain::{{ snake }}::use_cases::{
+    create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
+    delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
+    get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
+    list_{{ snake }}::{List{{ pascal }}Params, List{{ pascal }}UseCaseTrait},
+    update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use uuid::Uuid;
@@ -27,12 +18,13 @@ use crate::api::{{ snake }}::responses::{
     Update{{ pascal }}Response,
 };
 
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct {{ pascal }}Api {
-    pub create_{{ snake }}: Arc<Create{{ pascal }}UseCaseImpl>,
-    pub get_{{ snake }}: Arc<Get{{ pascal }}UseCaseImpl>,
-    pub list_{{ snake }}: Arc<List{{ pascal }}UseCaseImpl>,
-    pub update_{{ snake }}: Arc<Update{{ pascal }}UseCaseImpl>,
-    pub delete_{{ snake }}: Arc<Delete{{ pascal }}UseCaseImpl>,
+    pub create_{{ snake }}: Arc<dyn Create{{ pascal }}UseCaseTrait>,
+    pub get_{{ snake }}: Arc<dyn Get{{ pascal }}UseCaseTrait>,
+    pub list_{{ snake }}: Arc<dyn List{{ pascal }}UseCaseTrait>,
+    pub update_{{ snake }}: Arc<dyn Update{{ pascal }}UseCaseTrait>,
+    pub delete_{{ snake }}: Arc<dyn Delete{{ pascal }}UseCaseTrait>,
 }
 
 #[OpenApi]
@@ -123,5 +115,215 @@ impl {{ pascal }}Api {
                 Delete{{ pascal }}Response::from_status(status, error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::{{ snake }}::errors::{{ pascal }}Error;
+    use business::domain::{{ snake }}::use_cases::{
+        create_{{ snake }}::mocks::MockCreate{{ pascal }}UseCase, delete_{{ snake }}::mocks::MockDelete{{ pascal }}UseCase,
+        get_{{ snake }}::mocks::MockGet{{ pascal }}UseCase, list_{{ snake }}::mocks::MockList{{ pascal }}UseCase,
+        update_{{ snake }}::mocks::MockUpdate{{ pascal }}UseCase,
+    };
+    use business::tests::mothers::{{ snake }}_mother::{{ pascal }}Mother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};{% for import in test_imports %}
+    use {{ import }};{% endfor %}
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreate{{ pascal }}UseCase,
+        get: MockGet{{ pascal }}UseCase,
+        list: MockList{{ pascal }}UseCase,
+        update: MockUpdate{{ pascal }}UseCase,
+        delete: MockDelete{{ pascal }}UseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = {{ pascal }}Api {
+                create_{{ snake }}: Arc::new(self.create),
+                get_{{ snake }}: Arc::new(self.get),
+                list_{{ snake }}: Arc::new(self.list),
+                update_{{ snake }}: Arc::new(self.update),
+                delete_{{ snake }}: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> Create{{ pascal }}Request {
+        Create{{ pascal }}Request {
+{% for f in fields %}            {{ f.name }}: {{ f.default_literal }},
+{% endfor %}        }
+    }
+
+    fn update_request() -> Update{{ pascal }}Request {
+        Update{{ pascal }}Request {
+{% for f in fields %}            {{ f.name }}: {{ f.default_literal }},
+{% endfor %}        }
+    }
+
+    fn item_path() -> String {
+        format!("/{{ snake }}s/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_{{ snake }}_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| Ok({{ pascal }}Mother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/{{ snake }}s")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_{{ snake }}_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err({{ pascal }}Error::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/{{ snake }}s")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_{{ snake }}_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Ok({{ pascal }}Mother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_{{ snake }}_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Err({{ pascal }}Error::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_every_{{ snake }}_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Ok({{ pascal }}Mother::random_vec(2)));
+
+        // Act
+        let response = mocks.client().get("/{{ snake }}s").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        response.json().await.value().array().assert_len(2);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Err({{ pascal }}Error::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/{{ snake }}s").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_{{ snake }}_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Ok({{ pascal }}Mother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_{{ snake }}() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Err({{ pascal }}Error::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_{{ snake }}_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_{{ snake }}() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Err({{ pascal }}Error::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
     }
 }

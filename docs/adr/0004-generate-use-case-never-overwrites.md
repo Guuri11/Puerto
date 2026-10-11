@@ -1,6 +1,6 @@
 # 0004 — `generate use-case` never overwrites and patches `routes.rs`
 
-**Status:** Accepted (2026-10-10)
+**Status:** Accepted (2026-10-10) — field type amended by [0012](0012-presentation-holds-use-case-ports.md)
 
 ## Context
 

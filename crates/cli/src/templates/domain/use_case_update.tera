@@ -14,3 +14,19 @@ pub struct Update{{ pascal }}Params {
 pub trait Update{{ pascal }}UseCaseTrait: Send + Sync {
     async fn execute(&self, params: Update{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
 }
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub Update{{ pascal }}UseCase {}
+
+        #[async_trait]
+        impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCase {
+            async fn execute(&self, params: Update{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
+        }
+    }
+}

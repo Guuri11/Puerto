@@ -24,38 +24,71 @@ pub fn patch_routes_use_cases(
     let mut src = fs::read_to_string(&path)?;
     let original = src.clone();
 
-    let struct_open = format!("pub struct {pascal}Api {{\n");
-
     for uc in use_cases {
-        let Some(struct_start) = src.find(&struct_open) else {
-            break;
-        };
-        let body_start = struct_start + struct_open.len();
-        let Some(body_len) = src[body_start..].find("\n}") else {
-            break;
-        };
-        let body = &src[body_start..body_start + body_len];
-        if body.contains(&format!("pub {uc}:")) {
-            continue;
-        }
-
         let uc_pascal = to_pascal_case(uc);
-        let field = format!(
-            "    /// Wired by bootstrap.rs. Call it from an endpoint in the `#[OpenApi]` impl below.\n    #[allow(dead_code)]\n    pub {uc}: Arc<{uc_pascal}UseCaseImpl>,\n"
-        );
-        // Appended as the last field, right before the struct's closing brace.
-        src.insert_str(body_start + body_len + 1, &field);
-
-        let import = format!("use business::application::{snake}::{uc}::{uc_pascal}UseCaseImpl;\n");
-        if !src.contains(&import) {
-            src.insert_str(0, &import);
-        }
+        add_api_field(&mut src, pascal, snake, uc, &uc_pascal);
+        add_test_literal_field(&mut src, pascal, snake, uc, &uc_pascal);
     }
 
     if src != original {
         fs::write(&path, src)?;
     }
     Ok(())
+}
+
+fn add_api_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pascal: &str) {
+    let struct_open = format!("pub struct {pascal}Api {{\n");
+    let Some(struct_start) = src.find(&struct_open) else {
+        return;
+    };
+    let body_start = struct_start + struct_open.len();
+    let Some(body_len) = src[body_start..].find("\n}") else {
+        return;
+    };
+    if src[body_start..body_start + body_len].contains(&format!("pub {uc}:")) {
+        return;
+    }
+
+    let field = format!(
+        "    /// Wired by bootstrap.rs. Call it from an endpoint in the `#[OpenApi]` impl below.\n    #[allow(dead_code)]\n    pub {uc}: Arc<dyn {uc_pascal}UseCaseTrait>,\n"
+    );
+    // Appended as the last field, right before the struct's closing brace.
+    src.insert_str(body_start + body_len + 1, &field);
+
+    let import =
+        format!("use business::domain::{snake}::use_cases::{uc}::{uc_pascal}UseCaseTrait;\n");
+    if !src.contains(&import) {
+        src.insert_str(0, &import);
+    }
+}
+
+/// The route tests build `{Pascal}Api` with a struct literal (`let api = {Pascal}Api {`): a new
+/// field makes it stop compiling (E0063). It gets a mock with no expectations — a route that
+/// calls it panics. Spelled out in full: the `mocks` module exists only under test, so a
+/// file-level import would break the non-test build.
+fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pascal: &str) {
+    let literal_open = format!("let api = {pascal}Api {{\n");
+    let Some(open) = src.find(&literal_open) else {
+        return;
+    };
+    let body_start = open + literal_open.len();
+    let Some(close) = src[body_start..].find("};").map(|i| body_start + i) else {
+        return;
+    };
+    let body = &src[body_start..close];
+    if body
+        .lines()
+        .any(|l| l.trim_start().starts_with(&format!("{uc}:")))
+    {
+        return;
+    }
+
+    let line_start = src[..close].rfind('\n').map_or(0, |i| i + 1);
+    let indent = format!("{}    ", &src[line_start..close]);
+    let field = format!(
+        "{indent}{uc}: Arc::new(\n{indent}    business::domain::{snake}::use_cases::{uc}::mocks::Mock{uc_pascal}UseCase::new(),\n{indent}),\n"
+    );
+    src.insert_str(line_start, &field);
 }
 
 /// [`patch_routes_use_cases`] with the entity's use cases read from puerto.toml.

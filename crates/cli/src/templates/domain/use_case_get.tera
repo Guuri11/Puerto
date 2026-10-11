@@ -12,3 +12,19 @@ pub struct Get{{ pascal }}Params {
 pub trait Get{{ pascal }}UseCaseTrait: Send + Sync {
     async fn execute(&self, params: Get{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
 }
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub Get{{ pascal }}UseCase {}
+
+        #[async_trait]
+        impl Get{{ pascal }}UseCaseTrait for Get{{ pascal }}UseCase {
+            async fn execute(&self, params: Get{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
+        }
+    }
+}

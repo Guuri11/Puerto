@@ -20,3 +20,4 @@ ADR; supersede it with a new one and link both ways.
 | [0009](0009-generated-projects-pin-their-toolchain.md) | Generated projects pin their toolchain and use edition 2024 | Accepted |
 | [0010](0010-generated-agent-rules-are-tested.md) | Generated agent rules have a root entry point and are tested | Accepted |
 | [0011](0011-templates-own-shape-types-own-decisions.md) | Templates own the shape of generated code; `types.rs` owns per-field decisions | Accepted |
+| [0012](0012-presentation-holds-use-case-ports.md) | Presentation holds use case ports; routes are tested with mocks | Accepted |

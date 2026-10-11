@@ -73,7 +73,9 @@ Each command validates that the prior step completed (entity must be in `puerto.
 
 ## Object Mother
 
-Every entity gets a test fixture in `business/src/tests/mothers/<entity>_mother.rs`:
+Every entity gets a test fixture in `business/src/tests/mothers/<entity>_mother.rs`. The
+`tests` module is compiled under `#[cfg(any(test, feature = "test-utils"))]`, so presentation's
+route tests use the same mothers — and the use case mocks (`use_cases::<action>::mocks`):
 
 ```rust
 let widget = WidgetMother::random();

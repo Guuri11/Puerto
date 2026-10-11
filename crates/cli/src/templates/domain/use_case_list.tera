@@ -9,3 +9,19 @@ pub struct List{{ pascal }}Params;
 pub trait List{{ pascal }}UseCaseTrait: Send + Sync {
     async fn execute(&self, params: List{{ pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error>;
 }
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub List{{ pascal }}UseCase {}
+
+        #[async_trait]
+        impl List{{ pascal }}UseCaseTrait for List{{ pascal }}UseCase {
+            async fn execute(&self, params: List{{ pascal }}Params) -> Result<Vec<{{ pascal }}>, {{ pascal }}Error>;
+        }
+    }
+}

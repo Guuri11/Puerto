@@ -645,6 +645,22 @@ pub trait CreatePersonaUseCaseTrait: Send + Sync {
     async fn execute(&self, params: CreatePersonaParams) -> Result<Persona, PersonaError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreatePersonaUseCase {}
+
+        #[async_trait]
+        impl CreatePersonaUseCaseTrait for CreatePersonaUseCase {
+            async fn execute(&self, params: CreatePersonaParams) -> Result<Persona, PersonaError>;
+        }
+    }
+}
+
 === business/src/domain/persona/use_cases/delete_persona.rs ===
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -659,6 +675,22 @@ pub struct DeletePersonaParams {
 #[async_trait]
 pub trait DeletePersonaUseCaseTrait: Send + Sync {
     async fn execute(&self, params: DeletePersonaParams) -> Result<(), PersonaError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeletePersonaUseCase {}
+
+        #[async_trait]
+        impl DeletePersonaUseCaseTrait for DeletePersonaUseCase {
+            async fn execute(&self, params: DeletePersonaParams) -> Result<(), PersonaError>;
+        }
+    }
 }
 
 === business/src/domain/persona/use_cases/get_persona.rs ===
@@ -677,6 +709,22 @@ pub trait GetPersonaUseCaseTrait: Send + Sync {
     async fn execute(&self, params: GetPersonaParams) -> Result<Persona, PersonaError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetPersonaUseCase {}
+
+        #[async_trait]
+        impl GetPersonaUseCaseTrait for GetPersonaUseCase {
+            async fn execute(&self, params: GetPersonaParams) -> Result<Persona, PersonaError>;
+        }
+    }
+}
+
 === business/src/domain/persona/use_cases/list_persona.rs ===
 use async_trait::async_trait;
 
@@ -688,6 +736,22 @@ pub struct ListPersonaParams;
 #[async_trait]
 pub trait ListPersonaUseCaseTrait: Send + Sync {
     async fn execute(&self, params: ListPersonaParams) -> Result<Vec<Persona>, PersonaError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListPersonaUseCase {}
+
+        #[async_trait]
+        impl ListPersonaUseCaseTrait for ListPersonaUseCase {
+            async fn execute(&self, params: ListPersonaParams) -> Result<Vec<Persona>, PersonaError>;
+        }
+    }
 }
 
 === business/src/domain/persona/use_cases/update_persona.rs ===
@@ -707,6 +771,22 @@ pub struct UpdatePersonaParams {
 #[async_trait]
 pub trait UpdatePersonaUseCaseTrait: Send + Sync {
     async fn execute(&self, params: UpdatePersonaParams) -> Result<Persona, PersonaError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdatePersonaUseCase {}
+
+        #[async_trait]
+        impl UpdatePersonaUseCaseTrait for UpdatePersonaUseCase {
+            async fn execute(&self, params: UpdatePersonaParams) -> Result<Persona, PersonaError>;
+        }
+    }
 }
 
 === business/src/domain/persona/value_objects.rs ===
@@ -790,7 +870,7 @@ pub mod application {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod tests {
     pub mod mothers {
         pub mod persona_mother;
@@ -1210,21 +1290,12 @@ impl DeletePersonaResponse {
 === presentation/src/api/persona/routes.rs ===
 use std::sync::Arc;
 
-use business::{
-    application::persona::{
-        create_persona::CreatePersonaUseCaseImpl,
-        delete_persona::DeletePersonaUseCaseImpl,
-        get_persona::GetPersonaUseCaseImpl,
-        list_persona::ListPersonaUseCaseImpl,
-        update_persona::UpdatePersonaUseCaseImpl,
-    },
-    domain::persona::use_cases::{
-        create_persona::{CreatePersonaParams, CreatePersonaUseCaseTrait},
-        delete_persona::{DeletePersonaParams, DeletePersonaUseCaseTrait},
-        get_persona::{GetPersonaParams, GetPersonaUseCaseTrait},
-        list_persona::{ListPersonaParams, ListPersonaUseCaseTrait},
-        update_persona::{UpdatePersonaParams, UpdatePersonaUseCaseTrait},
-    },
+use business::domain::persona::use_cases::{
+    create_persona::{CreatePersonaParams, CreatePersonaUseCaseTrait},
+    delete_persona::{DeletePersonaParams, DeletePersonaUseCaseTrait},
+    get_persona::{GetPersonaParams, GetPersonaUseCaseTrait},
+    list_persona::{ListPersonaParams, ListPersonaUseCaseTrait},
+    update_persona::{UpdatePersonaParams, UpdatePersonaUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use uuid::Uuid;
@@ -1237,12 +1308,13 @@ use crate::api::persona::responses::{
     UpdatePersonaResponse,
 };
 
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct PersonaApi {
-    pub create_persona: Arc<CreatePersonaUseCaseImpl>,
-    pub get_persona: Arc<GetPersonaUseCaseImpl>,
-    pub list_persona: Arc<ListPersonaUseCaseImpl>,
-    pub update_persona: Arc<UpdatePersonaUseCaseImpl>,
-    pub delete_persona: Arc<DeletePersonaUseCaseImpl>,
+    pub create_persona: Arc<dyn CreatePersonaUseCaseTrait>,
+    pub get_persona: Arc<dyn GetPersonaUseCaseTrait>,
+    pub list_persona: Arc<dyn ListPersonaUseCaseTrait>,
+    pub update_persona: Arc<dyn UpdatePersonaUseCaseTrait>,
+    pub delete_persona: Arc<dyn DeletePersonaUseCaseTrait>,
 }
 
 #[OpenApi]
@@ -1337,6 +1409,219 @@ impl PersonaApi {
                 DeletePersonaResponse::from_status(status, error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::persona::errors::PersonaError;
+    use business::domain::persona::use_cases::{
+        create_persona::mocks::MockCreatePersonaUseCase, delete_persona::mocks::MockDeletePersonaUseCase,
+        get_persona::mocks::MockGetPersonaUseCase, list_persona::mocks::MockListPersonaUseCase,
+        update_persona::mocks::MockUpdatePersonaUseCase,
+    };
+    use business::tests::mothers::persona_mother::PersonaMother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreatePersonaUseCase,
+        get: MockGetPersonaUseCase,
+        list: MockListPersonaUseCase,
+        update: MockUpdatePersonaUseCase,
+        delete: MockDeletePersonaUseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = PersonaApi {
+                create_persona: Arc::new(self.create),
+                get_persona: Arc::new(self.get),
+                list_persona: Arc::new(self.list),
+                update_persona: Arc::new(self.update),
+                delete_persona: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> CreatePersonaRequest {
+        CreatePersonaRequest {
+            name: "example".to_string(),
+            middle_name: None,
+            tags: vec![],
+        }
+    }
+
+    fn update_request() -> UpdatePersonaRequest {
+        UpdatePersonaRequest {
+            name: "example".to_string(),
+            middle_name: None,
+            tags: vec![],
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/personas/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_persona_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| Ok(PersonaMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/personas")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_persona_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(PersonaError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/personas")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_persona_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Ok(PersonaMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_persona_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Err(PersonaError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_every_persona_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Ok(PersonaMother::random_vec(2)));
+
+        // Act
+        let response = mocks.client().get("/personas").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        response.json().await.value().array().assert_len(2);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Err(PersonaError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/personas").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_persona_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Ok(PersonaMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_persona() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Err(PersonaError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_persona_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_persona() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Err(PersonaError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
     }
 }
 

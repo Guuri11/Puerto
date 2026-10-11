@@ -12,3 +12,19 @@ pub struct Delete{{ pascal }}Params {
 pub trait Delete{{ pascal }}UseCaseTrait: Send + Sync {
     async fn execute(&self, params: Delete{{ pascal }}Params) -> Result<(), {{ pascal }}Error>;
 }
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub Delete{{ pascal }}UseCase {}
+
+        #[async_trait]
+        impl Delete{{ pascal }}UseCaseTrait for Delete{{ pascal }}UseCase {
+            async fn execute(&self, params: Delete{{ pascal }}Params) -> Result<(), {{ pascal }}Error>;
+        }
+    }
+}

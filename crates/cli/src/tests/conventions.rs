@@ -369,3 +369,154 @@ fn template_bootstrap_is_exactly_what_the_generator_writes() {
     );
     cleanup(&dir);
 }
+
+// ── T-26: presentation holds ports, routes are tested ──────────────────────
+
+fn scaffolded_product(name: &str) -> (PathBuf, PathBuf) {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project(name, &dir).unwrap();
+    scaffold::run_scaffold(
+        "Product",
+        &output,
+        &[scaffold_test_field("title", "String")],
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+    (dir, output)
+}
+
+#[test]
+fn scaffold_routes_hold_use_case_ports_not_impls() {
+    let (dir, output) = scaffolded_product("t26_routes_ports");
+
+    let routes = fs::read_to_string(output.join("presentation/src/api/product/routes.rs")).unwrap();
+    for uc in [
+        "CreateProduct",
+        "GetProduct",
+        "ListProduct",
+        "UpdateProduct",
+        "DeleteProduct",
+    ] {
+        assert!(
+            routes.contains(&format!("Arc<dyn {uc}UseCaseTrait>")),
+            "{routes}"
+        );
+    }
+    assert!(!routes.contains("UseCaseImpl"), "{routes}");
+    assert!(!routes.contains("application::"), "{routes}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_use_case_traits_ship_a_mock() {
+    let (dir, output) = scaffolded_product("t26_trait_mocks");
+
+    for (action, uc) in [
+        ("create", "CreateProduct"),
+        ("get", "GetProduct"),
+        ("list", "ListProduct"),
+        ("update", "UpdateProduct"),
+        ("delete", "DeleteProduct"),
+    ] {
+        let src = fs::read_to_string(output.join(format!(
+            "business/src/domain/product/use_cases/{action}_product.rs"
+        )))
+        .unwrap();
+        assert!(
+            src.contains("#[cfg(any(test, feature = \"test-utils\"))]\npub mod mocks {"),
+            "{src}"
+        );
+        assert!(src.contains(&format!("pub {uc}UseCase {{}}")), "{src}");
+    }
+
+    cleanup(&dir);
+}
+
+#[test]
+fn object_mothers_are_available_to_other_crates_tests() {
+    let (dir, output) = scaffolded_product("t26_mothers_feature");
+
+    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    assert!(
+        lib.contains("#[cfg(any(test, feature = \"test-utils\"))]\npub mod tests {"),
+        "{lib}"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_routes_test_every_status_path_with_mocked_use_cases() {
+    let (dir, output) = scaffolded_product("t26_routes_tests");
+
+    let routes = fs::read_to_string(output.join("presentation/src/api/product/routes.rs")).unwrap();
+    assert!(routes.contains("#[cfg(test)]\nmod tests {"), "{routes}");
+    assert!(routes.contains("poem::test::TestClient") || routes.contains("test::TestClient"));
+    for status in [
+        "CREATED",
+        "UNPROCESSABLE_ENTITY",
+        "OK",
+        "NOT_FOUND",
+        "INTERNAL_SERVER_ERROR",
+        "NO_CONTENT",
+    ] {
+        assert!(
+            routes.contains(&format!("StatusCode::{status}")),
+            "{status}: {routes}"
+        );
+    }
+    assert!(routes.contains("MockCreateProductUseCase"), "{routes}");
+    assert!(routes.contains("ProductMother::random()"), "{routes}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn template_greeting_api_holds_a_port_and_is_tested() {
+    let dir = temp_dir("t26_greeting");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("t26-greeting", &dir).unwrap();
+
+    let routes =
+        fs::read_to_string(output.join("presentation/src/api/greeting/routes.rs")).unwrap();
+    assert!(
+        routes.contains("Arc<dyn GetGreetingUseCaseTrait>"),
+        "{routes}"
+    );
+    assert!(!routes.contains("UseCaseImpl"), "{routes}");
+    assert!(routes.contains("MockGetGreetingUseCase"), "{routes}");
+    let uc =
+        fs::read_to_string(output.join("business/src/domain/greeting/use_cases/get_greeting.rs"))
+            .unwrap();
+    assert!(uc.contains("pub GetGreetingUseCase {}"), "{uc}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn presentation_tests_get_business_test_utils_and_the_poem_test_client() {
+    let dir = temp_dir("t26_presentation_deps");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("t26-presentation-deps", &dir).unwrap();
+
+    let manifest = fs::read_to_string(output.join("presentation/Cargo.toml")).unwrap();
+    let dev = manifest
+        .split("[dev-dependencies]")
+        .nth(1)
+        .expect("presentation has [dev-dependencies]");
+    assert!(
+        dev.contains(r#"business = { path = "../business", features = ["test-utils"] }"#),
+        "{manifest}"
+    );
+    assert!(
+        dev.contains(r#"poem = { version = "3", features = ["test"] }"#),
+        "{manifest}"
+    );
+
+    cleanup(&dir);
+}

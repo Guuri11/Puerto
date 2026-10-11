@@ -21,3 +21,9 @@ dotenvy = "0.15"
 uuid = { version = "1", features = ["v4"] }
 # DTOs mirror the domain's field types, so any entity with a DateTime<Utc> field needs chrono here.
 chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+# Route tests: use case mocks and Object Mothers come from business behind `test-utils`, and
+# `poem::test::TestClient` drives the real OpenApiService.
+business = { path = "../business", features = ["test-utils"] }
+poem = { version = "3", features = ["test"] }

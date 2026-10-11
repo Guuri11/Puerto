@@ -35,6 +35,8 @@ presentation/src/
 - **Every `ApiResponse` enum** has a `from_status(StatusCode, Json<ErrorResponse>) -> Self` helper.
 - **DI wiring lives in `generated/bootstrap.rs`**, rewritten from `puerto.toml` by
   `puerto generate bootstrap` — never wire by hand.
+- **`<Entity>Api` holds ports** — `Arc<dyn CreateProductUseCaseTrait>`, never the `…UseCaseImpl`.
+  `routes.rs` imports nothing from `business::application`; only `bootstrap.rs` does.
 - Log failures with `tracing::warn!(code = %error.0.name, "<use_case> failed")`.
 
 ## Health and shutdown
@@ -58,6 +60,28 @@ async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
             GetProductResponse::from_status(status, error)
         }
     }
+}
+```
+
+## Route Tests
+
+`routes.rs` ends with a `#[cfg(test)]` module that drives the real `OpenApiService` through
+`poem::test::TestClient`, with every use case mocked (`Mock<Uc>UseCase`, from `business` under the
+`test-utils` dev-dependency feature) and entities built by the Object Mothers. One test per status
+path. A new endpoint gets its tests here, the same way:
+
+```rust
+#[tokio::test]
+async fn should_respond_404_when_product_does_not_exist() {
+    // Arrange
+    let mut mocks = Mocks::default();
+    mocks.get.expect_execute().returning(|_| Err(ProductError::NotFound));
+
+    // Act
+    let response = mocks.client().get(item_path()).send().await;
+
+    // Assert
+    response.assert_status(StatusCode::NOT_FOUND);
 }
 ```
 

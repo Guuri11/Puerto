@@ -712,6 +712,22 @@ pub trait CreateItemUseCaseTrait: Send + Sync {
     async fn execute(&self, params: CreateItemParams) -> Result<Item, ItemError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateItemUseCase {}
+
+        #[async_trait]
+        impl CreateItemUseCaseTrait for CreateItemUseCase {
+            async fn execute(&self, params: CreateItemParams) -> Result<Item, ItemError>;
+        }
+    }
+}
+
 === business/src/domain/item/use_cases/delete_item.rs ===
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -726,6 +742,22 @@ pub struct DeleteItemParams {
 #[async_trait]
 pub trait DeleteItemUseCaseTrait: Send + Sync {
     async fn execute(&self, params: DeleteItemParams) -> Result<(), ItemError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteItemUseCase {}
+
+        #[async_trait]
+        impl DeleteItemUseCaseTrait for DeleteItemUseCase {
+            async fn execute(&self, params: DeleteItemParams) -> Result<(), ItemError>;
+        }
+    }
 }
 
 === business/src/domain/item/use_cases/get_item.rs ===
@@ -744,6 +776,22 @@ pub trait GetItemUseCaseTrait: Send + Sync {
     async fn execute(&self, params: GetItemParams) -> Result<Item, ItemError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetItemUseCase {}
+
+        #[async_trait]
+        impl GetItemUseCaseTrait for GetItemUseCase {
+            async fn execute(&self, params: GetItemParams) -> Result<Item, ItemError>;
+        }
+    }
+}
+
 === business/src/domain/item/use_cases/list_item.rs ===
 use async_trait::async_trait;
 
@@ -755,6 +803,22 @@ pub struct ListItemParams;
 #[async_trait]
 pub trait ListItemUseCaseTrait: Send + Sync {
     async fn execute(&self, params: ListItemParams) -> Result<Vec<Item>, ItemError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListItemUseCase {}
+
+        #[async_trait]
+        impl ListItemUseCaseTrait for ListItemUseCase {
+            async fn execute(&self, params: ListItemParams) -> Result<Vec<Item>, ItemError>;
+        }
+    }
 }
 
 === business/src/domain/item/use_cases/update_item.rs ===
@@ -774,6 +838,22 @@ pub struct UpdateItemParams {
 #[async_trait]
 pub trait UpdateItemUseCaseTrait: Send + Sync {
     async fn execute(&self, params: UpdateItemParams) -> Result<Item, ItemError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateItemUseCase {}
+
+        #[async_trait]
+        impl UpdateItemUseCaseTrait for UpdateItemUseCase {
+            async fn execute(&self, params: UpdateItemParams) -> Result<Item, ItemError>;
+        }
+    }
 }
 
 === business/src/domain/item/value_objects.rs ===
@@ -870,7 +950,7 @@ pub mod application {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod tests {
     pub mod mothers {
         pub mod item_mother;
@@ -1297,21 +1377,12 @@ impl DeleteItemResponse {
 === presentation/src/api/item/routes.rs ===
 use std::sync::Arc;
 
-use business::{
-    application::item::{
-        create_item::CreateItemUseCaseImpl,
-        delete_item::DeleteItemUseCaseImpl,
-        get_item::GetItemUseCaseImpl,
-        list_item::ListItemUseCaseImpl,
-        update_item::UpdateItemUseCaseImpl,
-    },
-    domain::item::use_cases::{
-        create_item::{CreateItemParams, CreateItemUseCaseTrait},
-        delete_item::{DeleteItemParams, DeleteItemUseCaseTrait},
-        get_item::{GetItemParams, GetItemUseCaseTrait},
-        list_item::{ListItemParams, ListItemUseCaseTrait},
-        update_item::{UpdateItemParams, UpdateItemUseCaseTrait},
-    },
+use business::domain::item::use_cases::{
+    create_item::{CreateItemParams, CreateItemUseCaseTrait},
+    delete_item::{DeleteItemParams, DeleteItemUseCaseTrait},
+    get_item::{GetItemParams, GetItemUseCaseTrait},
+    list_item::{ListItemParams, ListItemUseCaseTrait},
+    update_item::{UpdateItemParams, UpdateItemUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use uuid::Uuid;
@@ -1324,12 +1395,13 @@ use crate::api::item::responses::{
     UpdateItemResponse,
 };
 
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct ItemApi {
-    pub create_item: Arc<CreateItemUseCaseImpl>,
-    pub get_item: Arc<GetItemUseCaseImpl>,
-    pub list_item: Arc<ListItemUseCaseImpl>,
-    pub update_item: Arc<UpdateItemUseCaseImpl>,
-    pub delete_item: Arc<DeleteItemUseCaseImpl>,
+    pub create_item: Arc<dyn CreateItemUseCaseTrait>,
+    pub get_item: Arc<dyn GetItemUseCaseTrait>,
+    pub list_item: Arc<dyn ListItemUseCaseTrait>,
+    pub update_item: Arc<dyn UpdateItemUseCaseTrait>,
+    pub delete_item: Arc<dyn DeleteItemUseCaseTrait>,
 }
 
 #[OpenApi]
@@ -1424,6 +1496,219 @@ impl ItemApi {
                 DeleteItemResponse::from_status(status, error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::item::errors::ItemError;
+    use business::domain::item::use_cases::{
+        create_item::mocks::MockCreateItemUseCase, delete_item::mocks::MockDeleteItemUseCase,
+        get_item::mocks::MockGetItemUseCase, list_item::mocks::MockListItemUseCase,
+        update_item::mocks::MockUpdateItemUseCase,
+    };
+    use business::tests::mothers::item_mother::ItemMother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateItemUseCase,
+        get: MockGetItemUseCase,
+        list: MockListItemUseCase,
+        update: MockUpdateItemUseCase,
+        delete: MockDeleteItemUseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = ItemApi {
+                create_item: Arc::new(self.create),
+                get_item: Arc::new(self.get),
+                list_item: Arc::new(self.list),
+                update_item: Arc::new(self.update),
+                delete_item: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> CreateItemRequest {
+        CreateItemRequest {
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            weight: 42,
+        }
+    }
+
+    fn update_request() -> UpdateItemRequest {
+        UpdateItemRequest {
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            weight: 42,
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/items/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_item_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| Ok(ItemMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/items")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_item_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(ItemError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/items")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_item_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Ok(ItemMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_item_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Err(ItemError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_every_item_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Ok(ItemMother::random_vec(2)));
+
+        // Act
+        let response = mocks.client().get("/items").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        response.json().await.value().array().assert_len(2);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Err(ItemError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/items").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_item_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Ok(ItemMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_item() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Err(ItemError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_item_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_item() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Err(ItemError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
     }
 }
 

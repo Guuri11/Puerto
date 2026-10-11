@@ -1114,6 +1114,22 @@ pub trait CreateAccountUseCaseTrait: Send + Sync {
     async fn execute(&self, params: CreateAccountParams) -> Result<Account, AccountError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateAccountUseCase {}
+
+        #[async_trait]
+        impl CreateAccountUseCaseTrait for CreateAccountUseCase {
+            async fn execute(&self, params: CreateAccountParams) -> Result<Account, AccountError>;
+        }
+    }
+}
+
 === business/src/domain/account/use_cases/delete_account.rs ===
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -1128,6 +1144,22 @@ pub struct DeleteAccountParams {
 #[async_trait]
 pub trait DeleteAccountUseCaseTrait: Send + Sync {
     async fn execute(&self, params: DeleteAccountParams) -> Result<(), AccountError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteAccountUseCase {}
+
+        #[async_trait]
+        impl DeleteAccountUseCaseTrait for DeleteAccountUseCase {
+            async fn execute(&self, params: DeleteAccountParams) -> Result<(), AccountError>;
+        }
+    }
 }
 
 === business/src/domain/account/use_cases/get_account.rs ===
@@ -1146,6 +1178,22 @@ pub trait GetAccountUseCaseTrait: Send + Sync {
     async fn execute(&self, params: GetAccountParams) -> Result<Account, AccountError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetAccountUseCase {}
+
+        #[async_trait]
+        impl GetAccountUseCaseTrait for GetAccountUseCase {
+            async fn execute(&self, params: GetAccountParams) -> Result<Account, AccountError>;
+        }
+    }
+}
+
 === business/src/domain/account/use_cases/list_account.rs ===
 use async_trait::async_trait;
 
@@ -1157,6 +1205,22 @@ pub struct ListAccountParams;
 #[async_trait]
 pub trait ListAccountUseCaseTrait: Send + Sync {
     async fn execute(&self, params: ListAccountParams) -> Result<Vec<Account>, AccountError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListAccountUseCase {}
+
+        #[async_trait]
+        impl ListAccountUseCaseTrait for ListAccountUseCase {
+            async fn execute(&self, params: ListAccountParams) -> Result<Vec<Account>, AccountError>;
+        }
+    }
 }
 
 === business/src/domain/account/use_cases/update_account.rs ===
@@ -1182,6 +1246,22 @@ pub struct UpdateAccountParams {
 #[async_trait]
 pub trait UpdateAccountUseCaseTrait: Send + Sync {
     async fn execute(&self, params: UpdateAccountParams) -> Result<Account, AccountError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateAccountUseCase {}
+
+        #[async_trait]
+        impl UpdateAccountUseCaseTrait for UpdateAccountUseCase {
+            async fn execute(&self, params: UpdateAccountParams) -> Result<Account, AccountError>;
+        }
+    }
 }
 
 === business/src/domain/account/value_objects.rs ===
@@ -1367,7 +1447,7 @@ pub mod application {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod tests {
     pub mod mothers {
         pub mod account_mother;
@@ -1907,21 +1987,12 @@ impl DeleteAccountResponse {
 === presentation/src/api/account/routes.rs ===
 use std::sync::Arc;
 
-use business::{
-    application::account::{
-        create_account::CreateAccountUseCaseImpl,
-        delete_account::DeleteAccountUseCaseImpl,
-        get_account::GetAccountUseCaseImpl,
-        list_account::ListAccountUseCaseImpl,
-        update_account::UpdateAccountUseCaseImpl,
-    },
-    domain::account::use_cases::{
-        create_account::{CreateAccountParams, CreateAccountUseCaseTrait},
-        delete_account::{DeleteAccountParams, DeleteAccountUseCaseTrait},
-        get_account::{GetAccountParams, GetAccountUseCaseTrait},
-        list_account::{ListAccountParams, ListAccountUseCaseTrait},
-        update_account::{UpdateAccountParams, UpdateAccountUseCaseTrait},
-    },
+use business::domain::account::use_cases::{
+    create_account::{CreateAccountParams, CreateAccountUseCaseTrait},
+    delete_account::{DeleteAccountParams, DeleteAccountUseCaseTrait},
+    get_account::{GetAccountParams, GetAccountUseCaseTrait},
+    list_account::{ListAccountParams, ListAccountUseCaseTrait},
+    update_account::{UpdateAccountParams, UpdateAccountUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use uuid::Uuid;
@@ -1934,12 +2005,13 @@ use crate::api::account::responses::{
     UpdateAccountResponse,
 };
 
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct AccountApi {
-    pub create_account: Arc<CreateAccountUseCaseImpl>,
-    pub get_account: Arc<GetAccountUseCaseImpl>,
-    pub list_account: Arc<ListAccountUseCaseImpl>,
-    pub update_account: Arc<UpdateAccountUseCaseImpl>,
-    pub delete_account: Arc<DeleteAccountUseCaseImpl>,
+    pub create_account: Arc<dyn CreateAccountUseCaseTrait>,
+    pub get_account: Arc<dyn GetAccountUseCaseTrait>,
+    pub list_account: Arc<dyn ListAccountUseCaseTrait>,
+    pub update_account: Arc<dyn UpdateAccountUseCaseTrait>,
+    pub delete_account: Arc<dyn DeleteAccountUseCaseTrait>,
 }
 
 #[OpenApi]
@@ -2046,6 +2118,231 @@ impl AccountApi {
                 DeleteAccountResponse::from_status(status, error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::account::errors::AccountError;
+    use business::domain::account::use_cases::{
+        create_account::mocks::MockCreateAccountUseCase, delete_account::mocks::MockDeleteAccountUseCase,
+        get_account::mocks::MockGetAccountUseCase, list_account::mocks::MockListAccountUseCase,
+        update_account::mocks::MockUpdateAccountUseCase,
+    };
+    use business::tests::mothers::account_mother::AccountMother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateAccountUseCase,
+        get: MockGetAccountUseCase,
+        list: MockListAccountUseCase,
+        update: MockUpdateAccountUseCase,
+        delete: MockDeleteAccountUseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = AccountApi {
+                create_account: Arc::new(self.create),
+                get_account: Arc::new(self.get),
+                list_account: Arc::new(self.list),
+                update_account: Arc::new(self.update),
+                delete_account: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> CreateAccountRequest {
+        CreateAccountRequest {
+            title: "example".to_string(),
+            price: 42,
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            note: None,
+            middle_name: None,
+            tags: vec![],
+            status: "example".to_string(),
+            email: "example".to_string(),
+        }
+    }
+
+    fn update_request() -> UpdateAccountRequest {
+        UpdateAccountRequest {
+            title: "example".to_string(),
+            price: 42,
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            note: None,
+            middle_name: None,
+            tags: vec![],
+            status: "example".to_string(),
+            email: "example".to_string(),
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/accounts/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_account_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| Ok(AccountMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/accounts")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_account_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(AccountError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/accounts")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_account_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Ok(AccountMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_account_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Err(AccountError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_every_account_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Ok(AccountMother::random_vec(2)));
+
+        // Act
+        let response = mocks.client().get("/accounts").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        response.json().await.value().array().assert_len(2);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Err(AccountError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/accounts").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_account_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Ok(AccountMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_account() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Err(AccountError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_account_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_account() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Err(AccountError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
     }
 }
 

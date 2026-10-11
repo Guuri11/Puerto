@@ -727,6 +727,22 @@ pub trait CreateProductUseCaseTrait: Send + Sync {
     async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateProductUseCase {}
+
+        #[async_trait]
+        impl CreateProductUseCaseTrait for CreateProductUseCase {
+            async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError>;
+        }
+    }
+}
+
 === business/src/domain/product/use_cases/delete_product.rs ===
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -741,6 +757,22 @@ pub struct DeleteProductParams {
 #[async_trait]
 pub trait DeleteProductUseCaseTrait: Send + Sync {
     async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteProductUseCase {}
+
+        #[async_trait]
+        impl DeleteProductUseCaseTrait for DeleteProductUseCase {
+            async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError>;
+        }
+    }
 }
 
 === business/src/domain/product/use_cases/get_product.rs ===
@@ -759,6 +791,22 @@ pub trait GetProductUseCaseTrait: Send + Sync {
     async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError>;
 }
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetProductUseCase {}
+
+        #[async_trait]
+        impl GetProductUseCaseTrait for GetProductUseCase {
+            async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError>;
+        }
+    }
+}
+
 === business/src/domain/product/use_cases/list_product.rs ===
 use async_trait::async_trait;
 
@@ -770,6 +818,22 @@ pub struct ListProductParams;
 #[async_trait]
 pub trait ListProductUseCaseTrait: Send + Sync {
     async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListProductUseCase {}
+
+        #[async_trait]
+        impl ListProductUseCaseTrait for ListProductUseCase {
+            async fn execute(&self, params: ListProductParams) -> Result<Vec<Product>, ProductError>;
+        }
+    }
 }
 
 === business/src/domain/product/use_cases/update_product.rs ===
@@ -795,6 +859,22 @@ pub struct UpdateProductParams {
 #[async_trait]
 pub trait UpdateProductUseCaseTrait: Send + Sync {
     async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateProductUseCase {}
+
+        #[async_trait]
+        impl UpdateProductUseCaseTrait for UpdateProductUseCase {
+            async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError>;
+        }
+    }
 }
 
 === business/src/lib.rs ===
@@ -835,7 +915,7 @@ pub mod application {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-utils"))]
 pub mod tests {
     pub mod mothers {
         pub mod product_mother;
@@ -1284,21 +1364,12 @@ impl DeleteProductResponse {
 === presentation/src/api/product/routes.rs ===
 use std::sync::Arc;
 
-use business::{
-    application::product::{
-        create_product::CreateProductUseCaseImpl,
-        delete_product::DeleteProductUseCaseImpl,
-        get_product::GetProductUseCaseImpl,
-        list_product::ListProductUseCaseImpl,
-        update_product::UpdateProductUseCaseImpl,
-    },
-    domain::product::use_cases::{
-        create_product::{CreateProductParams, CreateProductUseCaseTrait},
-        delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
-        get_product::{GetProductParams, GetProductUseCaseTrait},
-        list_product::{ListProductParams, ListProductUseCaseTrait},
-        update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
-    },
+use business::domain::product::use_cases::{
+    create_product::{CreateProductParams, CreateProductUseCaseTrait},
+    delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
+    get_product::{GetProductParams, GetProductUseCaseTrait},
+    list_product::{ListProductParams, ListProductUseCaseTrait},
+    update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
 };
 use poem_openapi::{OpenApi, param::Path, payload::Json};
 use uuid::Uuid;
@@ -1311,12 +1382,13 @@ use crate::api::product::responses::{
     UpdateProductResponse,
 };
 
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct ProductApi {
-    pub create_product: Arc<CreateProductUseCaseImpl>,
-    pub get_product: Arc<GetProductUseCaseImpl>,
-    pub list_product: Arc<ListProductUseCaseImpl>,
-    pub update_product: Arc<UpdateProductUseCaseImpl>,
-    pub delete_product: Arc<DeleteProductUseCaseImpl>,
+    pub create_product: Arc<dyn CreateProductUseCaseTrait>,
+    pub get_product: Arc<dyn GetProductUseCaseTrait>,
+    pub list_product: Arc<dyn ListProductUseCaseTrait>,
+    pub update_product: Arc<dyn UpdateProductUseCaseTrait>,
+    pub delete_product: Arc<dyn DeleteProductUseCaseTrait>,
 }
 
 #[OpenApi]
@@ -1419,6 +1491,229 @@ impl ProductApi {
                 DeleteProductResponse::from_status(status, error)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::product::errors::ProductError;
+    use business::domain::product::use_cases::{
+        create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
+        get_product::mocks::MockGetProductUseCase, list_product::mocks::MockListProductUseCase,
+        update_product::mocks::MockUpdateProductUseCase,
+    };
+    use business::tests::mothers::product_mother::ProductMother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use chrono::Utc;
+    use std::collections::HashMap;
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateProductUseCase,
+        get: MockGetProductUseCase,
+        list: MockListProductUseCase,
+        update: MockUpdateProductUseCase,
+        delete: MockDeleteProductUseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = ProductApi {
+                create_product: Arc::new(self.create),
+                get_product: Arc::new(self.get),
+                list_product: Arc::new(self.list),
+                update_product: Arc::new(self.update),
+                delete_product: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> CreateProductRequest {
+        CreateProductRequest {
+            title: "example".to_string(),
+            price: 42,
+            in_stock: true,
+            rate: 1.5,
+            released_at: Utc::now(),
+            meta: HashMap::new(),
+            category_id: Uuid::new_v4(),
+        }
+    }
+
+    fn update_request() -> UpdateProductRequest {
+        UpdateProductRequest {
+            title: "example".to_string(),
+            price: 42,
+            in_stock: true,
+            rate: 1.5,
+            released_at: Utc::now(),
+            meta: HashMap::new(),
+            category_id: Uuid::new_v4(),
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/products/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_product_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_product_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(ProductError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_product_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_product_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.get.expect_execute().returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_every_product_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Ok(ProductMother::random_vec(2)));
+
+        // Act
+        let response = mocks.client().get("/products").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        response.json().await.value().array().assert_len(2);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.list.expect_execute().returning(|_| Err(ProductError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/products").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_product_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_product() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.update.expect_execute().returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_product_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_product() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
     }
 }
 

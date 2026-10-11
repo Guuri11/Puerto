@@ -80,7 +80,7 @@ fn routes_patch_appends_the_field_as_the_last_member_of_the_api_struct() {
     fs::create_dir_all(dir.join("presentation/src/api/product")).unwrap();
     fs::write(
         dir.join("presentation/src/api/product/routes.rs"),
-        "use std::sync::Arc;\n\npub struct ProductApi {\n    pub get_product: Arc<GetProductUseCaseImpl>,\n}\n\nimpl ProductApi {}\n",
+        "use std::sync::Arc;\n\npub struct ProductApi {\n    pub get_product: Arc<dyn GetProductUseCaseTrait>,\n}\n\nimpl ProductApi {}\n",
     )
     .unwrap();
 
@@ -94,12 +94,45 @@ fn routes_patch_appends_the_field_as_the_last_member_of_the_api_struct() {
 
     assert_eq!(
         fs::read_to_string(dir.join("presentation/src/api/product/routes.rs")).unwrap(),
-        "use business::application::product::archive_product::ArchiveProductUseCaseImpl;\n\
+        "use business::domain::product::use_cases::archive_product::ArchiveProductUseCaseTrait;\n\
          use std::sync::Arc;\n\n\
-         pub struct ProductApi {\n    pub get_product: Arc<GetProductUseCaseImpl>,\n    \
+         pub struct ProductApi {\n    pub get_product: Arc<dyn GetProductUseCaseTrait>,\n    \
          /// Wired by bootstrap.rs. Call it from an endpoint in the `#[OpenApi]` impl below.\n    \
-         #[allow(dead_code)]\n    pub archive_product: Arc<ArchiveProductUseCaseImpl>,\n}\n\n\
+         #[allow(dead_code)]\n    pub archive_product: Arc<dyn ArchiveProductUseCaseTrait>,\n}\n\n\
          impl ProductApi {}\n"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn routes_patch_gives_the_route_tests_api_literal_an_unexpecting_mock() {
+    // The route tests build `{Entity}Api` with a struct literal: without the new field it stops
+    // compiling (E0063). The mock is spelled out in full — its module only exists under test.
+    let dir = temp_dir("routes_patch_test_literal");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("presentation/src/api/product")).unwrap();
+    let before = "use std::sync::Arc;\n\npub struct ProductApi {\n    pub get_product: Arc<dyn GetProductUseCaseTrait>,\n}\n\n\
+                  #[cfg(test)]\nmod tests {\n    fn client() {\n        let api = ProductApi {\n            \
+                  get_product: Arc::new(self.get),\n        };\n    }\n}\n";
+    fs::write(dir.join("presentation/src/api/product/routes.rs"), before).unwrap();
+
+    for _ in 0..2 {
+        crate::patchers::routes_rs::patch_routes_use_cases(
+            &dir,
+            "Product",
+            "product",
+            &["archive_product".to_string()],
+        )
+        .unwrap();
+    }
+
+    let after = fs::read_to_string(dir.join("presentation/src/api/product/routes.rs")).unwrap();
+    assert!(
+        after.contains(
+            "        let api = ProductApi {\n            get_product: Arc::new(self.get),\n            \
+             archive_product: Arc::new(\n                business::domain::product::use_cases::archive_product::mocks::MockArchiveProductUseCase::new(),\n            ),\n        };\n"
+        ),
+        "{after}"
     );
     cleanup(&dir);
 }
