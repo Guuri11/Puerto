@@ -85,6 +85,11 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </div>
             <div class="flex items-center gap-2">
               <span class="text-puerto-mist/40">├──</span>
+              <span class="text-puerto-teal font-bold">web/</span>
+              <span class="text-puerto-mist/40 text-xs">(React + daisyUI on Bun)</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-puerto-mist/40">├──</span>
               <span class="text-puerto-mist/60">AGENTS.md</span>
               <span class="text-puerto-mist/40 text-xs">(rules for coding agents)</span>
             </div>
@@ -103,6 +108,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <div>✓ <span class="text-puerto-teal">business/</span> — model, errors, repository trait, use cases</div>
             <div>✓ <span class="text-puerto-indigo-light">infrastructure/</span> — InMemoryUserRepository</div>
             <div>✓ <span class="text-puerto-rust">presentation/</span> — routes + route tests, dto, responses, error mapper</div>
+            <div>✓ <span class="text-puerto-teal">web/</span> — list, detail and form screens, HTTP repository</div>
           </div>
           <div class="mt-2 text-green-400">✓ Done in 0.3s. Zero manual wiring.</div>
         </div>
@@ -118,11 +124,11 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           Clean Architecture, Zero Decisions
         </h2>
         <p class="arch-subtitle mt-4 font-sans text-lg text-puerto-mist">
-          Every Puerto project ships with a battle-tested 3-layer DDD structure.
+          A battle-tested 3-layer DDD backend — and a frontend that follows the same rule.
         </p>
       </div>
 
-      <div class="arch-cards grid gap-6 md:grid-cols-3">
+      <div class="arch-cards grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <!-- Business layer -->
         <div class="rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card border-l-4 border-l-puerto-teal">
           <div class="mb-3 font-mono text-lg font-semibold text-puerto-teal">business/</div>
@@ -147,6 +153,15 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <div class="mb-3 inline-block rounded bg-puerto-rust/10 px-2 py-0.5 font-mono text-xs text-puerto-rust">HTTP API</div>
           <p class="font-sans text-sm text-puerto-mist leading-relaxed">
             poem-openapi routes with auto-generated Swagger UI. Dependency injection wired automatically.
+          </p>
+        </div>
+
+        <!-- Web frontend -->
+        <div class="rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card border-l-4 border-l-puerto-teal">
+          <div class="mb-3 font-mono text-lg font-semibold text-puerto-teal">web/</div>
+          <div class="mb-3 inline-block rounded bg-puerto-teal/10 px-2 py-0.5 font-mono text-xs text-puerto-teal">React Frontend</div>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">
+            Typed from the OpenAPI spec. Domain, HTTP adapter and screens, with the Dependency Rule checked by dependency-cruiser.
           </p>
         </div>
       </div>
@@ -346,7 +361,18 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </svg>
           </div>
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Lint-Clean by Construction</h3>
-          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Every release generates real projects — Postgres included — and runs their clippy <code class="text-puerto-indigo-light text-xs">-D warnings</code> and tests. Pinned toolchain, edition 2024.</p>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Every release generates real projects — Postgres included — and runs their clippy <code class="text-puerto-indigo-light text-xs">-D warnings</code>, Biome, typecheck and tests. Pinned toolchain, edition 2024.</p>
+        </div>
+
+        <!-- Full-stack scaffold -->
+        <div class="feature-card group rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card transition-colors hover:border-puerto-teal">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-puerto-teal/10">
+            <svg class="h-5 w-5 text-puerto-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Full-Stack Scaffold</h3>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Rails-style: <code class="text-puerto-teal text-xs">scaffold</code> also writes the entity's list, detail and form screens in React + daisyUI, typed from the API spec and tested with <code class="text-puerto-teal text-xs">bun test</code>.</p>
         </div>
       </div>
     </div>
