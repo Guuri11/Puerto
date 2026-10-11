@@ -21,3 +21,4 @@ ADR; supersede it with a new one and link both ways.
 | [0010](0010-generated-agent-rules-are-tested.md) | Generated agent rules have a root entry point and are tested | Accepted |
 | [0011](0011-templates-own-shape-types-own-decisions.md) | Templates own the shape of generated code; `types.rs` owns per-field decisions | Accepted |
 | [0012](0012-presentation-holds-use-case-ports.md) | Presentation holds use case ports; routes are tested with mocks | Accepted |
+| [0013](0013-web-frontend-react-daisyui-bun.md) | Web frontend: React + daisyUI on Bun; structure by Puerto, wire types from OpenAPI | Proposed |

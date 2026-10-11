@@ -533,6 +533,6 @@ Generated at `business/src/domain/shared/value_objects.rs`. Each shared VO has i
 ## Future Scope (V3+)
 
 - ✅ Snippet generation for VO patterns (`puerto generate snippets` extended for VOs) — `vo-string`, `vo-numeric`, `vo-enum`, `vo-option-construct`, `vo-vec-construct`
-- Custom validation rules in CLI (e.g., a `min`/`max` modifier on `name:Name:String`)
+- Custom validation rules in CLI (e.g., a `min`/`max` modifier on `name:Name:String`) — the trigger for sharing the domain with the frontend via WASM (`PLAN.md` § Phase 10)
 - Domain events
 - Unit of Work pattern

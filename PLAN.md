@@ -1282,10 +1282,176 @@ Test scenarios: scaffold writes `list_products.rs` in domain and application; pu
 
 ---
 
-## Phase 9 — Full-stack (frontend)
+## Phase 9 — Full-stack (frontend) — `web/`
 
-TBD. Options to evaluate:
+Rails-style: `scaffold` leaves a working CRUD screen per entity, and the project carries the
+structure to grow the frontend by hand. Same Dependency Rule as the backend, but **no layer
+without logic**: the generated CRUD has a domain (types + port), an HTTP adapter and the screens —
+`application/` exists empty until a real use case appears. Why this stack, and why not WASM /
+HTMX / openapi-generator: [ADR-0013](docs/adr/0013-web-frontend-react-daisyui-bun.md).
 
-- Server-side rendering with a Rust template engine (Askama / Tera)
-- HTMX + Askama for reactive UIs without JS build step
-- API-only + separate frontend (Leptos / Dioxus)
+### Stack (pinned in the template's `package.json`, exact versions)
+
+| Concern | Choice | Not |
+|---|---|---|
+| Runtime + package manager | **Bun** (`packageManager` field) | pnpm / Node |
+| UI | **React 19** + **daisyUI 5** on Tailwind v4 (CSS classes, no JS) | shadcn |
+| Routing | **wouter** (~2 KB, hooks) — route table generated | TanStack Router |
+| Server state | `useAsync` hook in `presentation/core/hooks/` | TanStack Query |
+| Forms | native `<form>` + controlled state | form libraries |
+| Wire types | **openapi-typescript** (types only) + **openapi-fetch** (~6 KB client) | openapi-generator, Orval |
+| Bundler / dev server | Vite (`/api` proxied to `:8080` — no CORS in dev) | — |
+| Tests | `bun test` + happy-dom + `@testing-library/react` | Vitest |
+| Lint / format | Biome | ESLint + Prettier |
+| Dependency Rule | dependency-cruiser (`bun run lint:arch`), as in bitacora | — |
+
+`bun test` with happy-dom and testing-library is unproven here: 9.0 verifies it first and falls
+back to Vitest (run by Bun) if it does not hold — recorded in ADR-0013 either way.
+
+### Generated layout (entity `Product`)
+
+**[G]** regenerated from puerto.toml on every scaffold / `generate bootstrap` — never hand-edit ·
+**[S]** written once by scaffold, then the user's · **[T]** from the `puerto new` template.
+
+```
+docs/api/openapi.json                              [G] written by the Rust spec test
+web/
+  package.json · tsconfig.json · vite.config.ts · biome.json
+  .dependency-cruiser.cjs · index.html             [T]
+  src/
+    main.tsx · index.css                           [T] @import "tailwindcss"; @plugin "daisyui";
+    domain/product/
+      model.ts                                     [S] Product, ProductDraft, enum VO unions
+      errors.ts                                    [S] ProductError { code } — code = ErrorResponse.name
+      repository.ts                                [S] ProductRepository (port): list/get/create/update/remove
+    application/
+      README.md                                    [T] where use cases go once there is logic
+    infrastructure/
+      http/client.ts                               [T] createClient<paths>({ baseUrl: "/api" })
+      http/schema.d.ts                             [G] openapi-typescript
+      product/product-repository-http.ts (+ .test.ts)  [S] DTO ↔ model, ErrorResponse → ProductError
+    presentation/
+      core/generated/dependencies.ts               [G] composition root: Dependencies + createDependencies()
+      core/generated/routes.tsx                    [G] AppRoutes (wouter <Switch>) + nav entries
+      core/dependencies.tsx                        [T] DependenciesProvider + useDependencies()
+      core/hooks/use-async.ts                      [T] AsyncState<T>: loading | error | ok
+      shared/ui/                                   [T] layout · error-alert · empty-state · confirm-dialog
+      pages/home.tsx                               [T] links to each entity and the Swagger UI
+      features/product/
+        containers/ product-list-container.tsx · product-detail-container.tsx
+                    product-form-container.tsx (create + edit)  (+ tests)       [S]
+        views/      product-list-view.tsx · product-detail-view.tsx · product-form-view.tsx  [S]
+    test-support/product.ts                        [S] ProductMother + fakeProductRepository
+```
+
+Routes: `/products` · `/products/new` · `/products/:id` · `/products/:id/edit`. `{plural}` comes
+from `naming::entity_ctx`; TS file names are the kebab-case of the snake ones (`order-item`).
+
+Dependency Rule (`.dependency-cruiser.cjs`): `domain` imports nothing (no npm, no other layer);
+`application` → `domain`; `infrastructure` → `domain`; `presentation` → all; only
+`presentation/core/generated/dependencies.ts` imports `infrastructure`. Containers and views reach
+adapters only through `useDependencies()`.
+
+**Containers call the repository port directly.** A use case class that only delegates is
+ceremony; when real logic arrives (a rule, an orchestration of two repositories) the user writes
+`application/<entity>/<action>.ts` and the container switches to it. Puerto never generates one.
+
+### Behaviour
+
+- **`puerto new` includes `web/` by default.** `--no-web` skips it; the interactive flow asks
+  (default yes). puerto.toml gets `[project] web = true` — absent means `false`, so a project
+  without it generates nothing on the frontend.
+- **`scaffold <Name>`** in a `web = true` project also writes the entity's web slice and
+  regenerates both `core/generated/*` files. `--force` and the conflict guard cover the [S] web
+  files exactly like the Rust ones.
+- **`generate web <Name>`** — layer command (Phase 8 family): the web slice only + regeneration.
+  Refused for an entity that is not in puerto.toml.
+- **`generate bootstrap`** regenerates `bootstrap.rs` **and** the two web [G] files.
+- Only CRUD-scaffolded entities get a web slice (all five CRUD use cases in puerto.toml). The
+  Greeting demo gets none.
+- **`generate use-case`** writes nothing in `web/` — a custom use case has no endpoint (ADR-0012).
+- **`puerto validate`** drift check: in a `web = true` project, a CRUD entity without
+  `web/src/presentation/features/<kebab>/` is reported, like a missing Rust module.
+- **Fields → TS types and form controls** — one decision per field in `types.rs` (ADR-0011):
+
+  | Rust type | TS type | Control |
+  |---|---|---|
+  | `String`, `Uuid` | `string` | `input type=text`, `required` |
+  | `i64`, `f64` | `number` | `input type=number` (`step=any` for `f64`) |
+  | `bool` | `boolean` | `checkbox` |
+  | `DateTime<Utc>` | `string` (ISO 8601) | `input type=datetime-local` |
+  | `Option<T>` | `T \| null` | as `T`, not `required`; empty → `null` |
+  | `Vec<String>`, `Vec<i64>` | `T[]` | text input, comma-separated |
+  | `HashMap<String, String>` | `Record<string, string>` | textarea, `key=value` per line |
+  | enum VO | union of the variants (`"Draft" \| "Paid"`) | `<select>` |
+
+  Non-enum VOs are their inner primitive on the wire, so on the frontend too. Enum VOs are a
+  plain `string` in the spec; the adapter narrows it to the union.
+- **No client-side copy of domain validation.** The server is the authority: a 422's
+  `ErrorResponse.name` (`product.validation_error.name_empty`) becomes `ProductError.code` and the
+  form shows it. HTML `required` / `type` only. Sharing the real rules is Phase 10.
+- **Spec export.** When `web = true`, `bootstrap.rs` carries a `#[cfg(test)]` test that builds
+  every `{Entity}Api` from the `Mock{Uc}UseCase`s (ADR-0012) and compares `spec()` with
+  `docs/api/openapi.json`; `UPDATE_OPENAPI=1` rewrites it. No server, no database. The
+  `OpenApiService` construction is shared between `build_app()` and the test so they cannot
+  differ.
+- **Sync step.** Project `make web/sync` = `UPDATE_OPENAPI=1 cargo test openapi` + `bun run
+  openapi:types` (writes `schema.d.ts`). Puerto never runs `cargo` or `bun` itself; after a
+  scaffold it prints `make web/sync` as the next step. Until then `bun run typecheck` fails —
+  that failure is the drift check.
+- Project Makefile: `web/install`, `web/dev`, `web/test`, `web/lint`, `web/sync`; `make test` and
+  `make lint` include `web/` when the directory exists.
+- Generated `AGENTS.md` gets a frontend section (layers, [G] files, `make web/sync` after
+  touching a DTO, where use cases go); its test (ADR-0010) covers it.
+
+### Out of scope (v1)
+
+Auth · i18n · pagination (the list endpoint has none) · serving `web/dist` from `presentation` in
+production · theme switching beyond daisyUI's defaults · custom use cases on the frontend ·
+generated `application/` use cases.
+
+### Pieces (one commit each)
+
+1. **9.0 Shell** — `[project] web`, `--no-web`, prompt, static `web/` template (no entity),
+   `bun test` spike, Makefile targets, AGENTS.md section, compile-matrix scenario `web_shell`.
+2. **9.1 Spec export** — the `bootstrap.rs` spec test + `docs/api/openapi.json`.
+3. **9.2 CRUD slice** — all-primitive entity: domain, infrastructure, presentation, test-support,
+   generated `dependencies.ts` / `routes.tsx`, `generate web`, conflict guard, validate drift.
+4. **9.3 Every type** — Option / Vec / HashMap / DateTime / enum VO types and controls.
+
+### Test scenarios
+
+- Structural: `puerto new` writes `web/` and `web = true`; `--no-web` writes neither; scaffold in a
+  `web` project writes every [S] file of the layout and no `application/<entity>/`; in a non-`web`
+  project writes nothing under `web/`; `dependencies.ts` / `routes.tsx` list every CRUD entity
+  and skip Greeting; `generate use-case` leaves `web/` untouched; `generate web` refuses an
+  undeclared entity; re-scaffold without `--force` refuses when web files exist; validate reports
+  a missing feature dir; `OrderItem` → `order-item` files, `/order_items` routes,
+  `orderItemRepository`.
+- Snapshots: `web_shell`, `web_crud`, `web_every_type` (`make test/snapshots`).
+- Compile matrix (`make test/full`, needs `bun` on `PATH`): generate, `cargo test` (spec test with
+  `UPDATE_OPENAPI=1`, then without), `bun install`, `bun run openapi:types`, `bun run typecheck`,
+  `bun run lint`, `bun run lint:arch`, `bun test`.
+- Generated web tests (shipped in every project): the HTTP repository maps 2xx → model and an
+  `ErrorResponse` → `ProductError(code)`, with `fetch` stubbed; list container renders rows /
+  empty state / error alert; detail container renders the entity / 404 code; form container
+  creates a draft, edits an existing one and shows a 422 code; delete asks for confirmation.
+- CI: `oven-sh/setup-bun` in the `test/full` job.
+
+---
+
+## Phase 10 — Shared domain rules via WASM (optional, later)
+
+**Not started. Trigger:** custom validation rules on value objects (`min` / `max` modifiers —
+`value_objects.md` § Future scope) or hand-written invariants that the frontend would otherwise
+duplicate. Until then the generated rules are trivial (non-empty string, enum variant) and
+puerto.toml already keeps both sides consistent at generation time.
+
+Idea: compile `business::domain` to WASM (`wasm-bindgen` + `tsify`) and expose the VO
+constructors and enums to `web/src/domain/`, so a form validates with the **same** Rust code the
+API runs. Repository traits, `async-trait` and `mockall` stay behind a feature the WASM build
+leaves off.
+
+To decide when it starts (an ADR): opt-in flag vs default; bundle cost (`chrono`, `uuid`);
+wasm-pack in the toolchain and the compile matrix; how a VO error reaches the form (the same
+`ErrorResponse.name` code the server would send).
