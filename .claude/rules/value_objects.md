@@ -176,7 +176,10 @@ is_enum_vo(field)                               // true if value_object_kind == 
 is_shared_vo(field, shared_vos)                 // true if VO name matches a [[value_object]] entry
 vo_inner_type(field)                            // inner primitive: "String" from Option<String>, Vec<String>
 field_rust_type(field)                          // Rust type to use in structs: VO name, Option<VO>, Vec<VO>, or primitive
-field_vo_constructor(field, pascal, shared_vos) // VO construction expression for use case impls
+field_vo_conversion(field, source, pascal, shared_vos) // primitive → domain value (`Name::new(params.name)?`)
+field_value_accessor(field, owner)              // domain value → primitive (`entity.name.value().to_string()`)
+props_literal(field) / seed_literal(field)      // a valid test value / a Pg-seed value, in the field's VO shape
+field_ctx(field, pascal, shared_vos)            // FieldCtx: everything a template knows about a field (ADR-0011)
 vo_import_path(field, snake, shared_vos)        // import path: local or shared
 literal_import(field)                           // import a value literal needs (chrono::Utc, uuid::Uuid…)
 literal_names_vo(field)                         // whether a literal names the VO (false for Option/Vec VOs)

@@ -342,7 +342,7 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         props_literal: props_literal(field),
         mother_storage: mother_storage(field),
         mother_param: match mother_storage(field).as_str() {
-            "String" if !is_value_object(field) => "&str".to_string(),
+            "String" => "&str".to_string(),
             storage => storage.to_string(),
         },
         mother_build: mother_build(field),
