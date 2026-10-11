@@ -306,7 +306,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </svg>
           </div>
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Type-Safe by Default</h3>
-          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Strict Rust types from domain to API layer. Define fields once in <code class="text-puerto-teal text-xs">puerto.toml</code> — structs, DTOs, and SQL columns are generated with the right types automatically.</p>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Strict Rust types from domain to API layer. Define fields once in <code class="text-puerto-teal text-xs">puerto.toml</code> — structs, DTOs, and SQL columns are generated with the right types automatically. Every entity's id is its own type.</p>
         </div>
 
         <!-- Auto-wired DI -->
@@ -328,7 +328,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </svg>
           </div>
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Built for SQLx</h3>
-          <p class="font-sans text-sm text-puerto-mist leading-relaxed">First-class Postgres support. Enable once with <code class="text-puerto-indigo-light text-xs">--db</code> at project creation — every scaffold infers it automatically.</p>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">First-class Postgres support. Enable once with <code class="text-puerto-indigo-light text-xs">--db</code> at project creation — every scaffold infers it automatically. Lists are paged and capped; unique violations answer <code class="text-puerto-indigo-light text-xs">409</code>.</p>
         </div>
 
         <!-- Production defaults -->

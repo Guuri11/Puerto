@@ -413,6 +413,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           </p>
           <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
             <li>• Every scaffold writes its own migration; versions stay unique even when two entities are scaffolded within the same second.</li>
+            <li>• Driver errors are mapped in one place, <code class="font-mono text-xs text-puerto-rust">db::map_sqlx_error</code>: a unique violation (<code class="font-mono text-xs text-puerto-mist">23505</code>) becomes <code class="font-mono text-xs text-puerto-mist">409</code>, with an integration test per <code class="font-mono text-xs text-puerto-rust">unique</code> field.</li>
             <li>• Deletes are soft, so <code class="font-mono text-xs text-puerto-rust">unique</code> fields get a partial index (<code class="font-mono text-xs text-puerto-mist">WHERE deleted = false</code>): a deleted row never keeps its value taken.</li>
             <li>• Field names that are SQL reserved words (<code class="font-mono text-xs text-puerto-mist">order</code>, <code class="font-mono text-xs text-puerto-mist">user</code>, <code class="font-mono text-xs text-puerto-mist">desc</code>…) are rejected up front instead of breaking the migration.</li>
             <li>• <code class="font-mono text-xs text-puerto-rust">puerto generate migration</code> is only available in <code class="font-mono text-xs text-puerto-rust">--db</code> projects.</li>
@@ -448,6 +449,11 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <p class="mt-4 font-sans text-sm text-puerto-mist">
             Modules are declared inline in each crate's <code class="font-mono text-xs text-puerto-rust">lib.rs</code> — no <code class="font-mono text-xs text-puerto-rust">mod.rs</code> files. Logging goes through <code class="font-mono text-xs text-puerto-rust">tracing</code> directly: no logger to inject or mock.
           </p>
+          <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
+            <li>• <span class="text-puerto-ice">Typed ids</span> — every entity's id is its own type (<code class="font-mono text-xs text-puerto-teal">UserId</code>), so passing another entity's id is a compile error. It is a plain UUID on the wire and in the database.</li>
+            <li>• <span class="text-puerto-ice">One repository error</span> — every repository port returns <code class="font-mono text-xs text-puerto-teal">RepositoryError</code> (<span class="font-mono text-xs">Duplicate</span>, <span class="font-mono text-xs">InvalidData</span>, <span class="font-mono text-xs">Unavailable</span>); each entity's error converts it, so use cases just use <code class="font-mono text-xs text-puerto-teal">?</code>.</li>
+            <li>• <span class="text-puerto-ice">Paged lists</span> — <code class="font-mono text-xs text-puerto-teal">PageRequest</code> caps the page size in the domain: no route, use case or adapter can read an unbounded table.</li>
+          </ul>
         </section>
 
         <!-- Production defaults -->
@@ -464,6 +470,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">SIGTERM / Ctrl-C</td><td class="text-xs">Graceful shutdown — in-flight requests drain before exit</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">Error bodies</td><td class="text-xs"><code class="text-puerto-teal">&#123;"name": "user.not_found", …&#125;</code> — a machine-readable code clients can branch on</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">Status codes</td><td class="text-xs">Validation <code class="text-puerto-teal">422</code> · not found <code class="text-puerto-teal">404</code> · duplicate <code class="text-puerto-teal">409</code> · storage <code class="text-puerto-teal">500</code> — one generated test per mapping</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">GET /users?limit=&amp;offset=</td><td class="text-xs">Paged lists — <code class="text-puerto-teal">&#123;"items", "total", "limit", "offset"&#125;</code>, 20 per page by default, capped at 100 by the domain</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 font-mono text-xs text-puerto-ice">rust-toolchain.toml</td><td class="text-xs">Pinned Rust: the lint gives the same answer on every machine</td></tr>
               </tbody>
             </table>
@@ -527,7 +534,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
               <div class="space-y-1.5">
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">domain-model</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">Entity struct + Props + new(props) + from_repository()</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">EntityId newtype + Entity struct + Props + new(props) + from_repository()</span>
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">domain-errors</code>
@@ -535,7 +542,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">repository-trait</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">RepositoryTrait (find_all, find_by_id, save) + mockall mock</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">RepositoryTrait (paged find_all, find_by_id, save) → RepositoryError + mockall mock</span>
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-teal">domain-use-case</code>
@@ -606,7 +613,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-indigo">persistence-repo</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">PgEntityRepository — SQLx macros, tracing logs, 23505 → Duplicate</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">PgEntityRepository — SQLx macros, LIMIT/OFFSET + COUNT, errors via map_sqlx_error</span>
                 </div>
               </div>
             </div>
@@ -619,7 +626,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
               <div class="space-y-1.5">
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-rust">poem-endpoint-get</code>
-                  <span class="font-sans text-xs text-puerto-mist/70">GET /entities/:id — Path&lt;Uuid&gt; → 200 or mapped error</span>
+                  <span class="font-sans text-xs text-puerto-mist/70">GET /entities/:id — Path&lt;Uuid&gt; → EntityId → 200 or mapped error</span>
                 </div>
                 <div class="flex items-start gap-3 rounded border border-puerto-steel/20 bg-puerto-navy px-4 py-2">
                   <code class="w-44 flex-none font-mono text-xs text-puerto-rust">poem-error-mapper-test</code>
