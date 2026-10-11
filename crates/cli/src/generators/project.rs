@@ -283,7 +283,8 @@ pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
 const AGENTS_WEB_SECTION: &str = "## Frontend (`web/`)";
 
 /// Strip the web frontend from a freshly generated project (`puerto new --no-web`): the `web/`
-/// directory, `[project] web` and the root `AGENTS.md` section that describes it.
+/// directory, `[project] web`, the root `AGENTS.md` section that describes it and the spec export
+/// test in `bootstrap.rs`.
 pub fn apply_no_web(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     ignore_not_found(fs::remove_dir_all(base.join("web")))?;
 
@@ -294,6 +295,8 @@ pub fn apply_no_web(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = crate::puerto_toml::read(base)?;
     config.project.web = false;
     crate::puerto_toml::write(base, &config)?;
+
+    crate::generators::bootstrap::regenerate_bootstrap(base)?;
 
     Ok(())
 }

@@ -11,9 +11,11 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "lint:arch": "bun --bun depcruise src",
-    "test": "bun test"
+    "test": "bun test",
+    "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/infrastructure/http/schema.d.ts"
   },
   "dependencies": {
+    "openapi-fetch": "0.17.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "wouter": "3.13.0"
@@ -30,6 +32,7 @@
     "@vitejs/plugin-react": "6.1.2",
     "daisyui": "5.7.47",
     "dependency-cruiser": "18.5.0",
+    "openapi-typescript": "7.13.0",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
     "vite": "8.3.4"

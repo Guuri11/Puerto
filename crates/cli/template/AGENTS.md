@@ -48,6 +48,11 @@ A React + daisyUI app on Bun that talks to the API under `/api`. It follows the 
 Rule as the crates (`domain` ← `application` ← `infrastructure` ← `presentation`), checked by
 `make web/lint`. Its rules — layers, generated files, where use cases go — are in `web/AGENTS.md`.
 
+The OpenAPI spec is the contract between the two halves: `docs/api/openapi.json`, exported by a
+test in `bootstrap.rs`. **After touching a route or a DTO, run `make web/sync`** (it re-exports the
+spec and regenerates the frontend's wire types) and commit both. Until then `make test` fails —
+that failure is the drift check.
+
 ## Conventions
 
 - **TDD.** Write the failing test first, then the minimum code. Test names:

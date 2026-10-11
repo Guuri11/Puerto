@@ -3,7 +3,7 @@
         lint format format/fix check clean \
         audit audit/fix \
         generate/entity generate/use-case generate/bootstrap \
-        web/install web/dev web/test web/lint
+        web/install web/dev web/test web/lint web/sync
 
 CARGO := cargo
 BUN   := bun
@@ -111,3 +111,9 @@ web/test: ## Run the frontend tests
 web/lint: ## Typecheck, lint and check the frontend Dependency Rule
 	@echo "${CYAN}Linting frontend...${NC}"
 	cd web && $(BUN) run typecheck && $(BUN) run lint && $(BUN) run lint:arch
+
+web/sync: ## After touching a DTO: export the OpenAPI spec, regenerate the frontend's wire types
+	@echo "${CYAN}Exporting docs/api/openapi.json...${NC}"
+	UPDATE_OPENAPI=1 $(CARGO) test -p presentation openapi
+	@echo "${CYAN}Generating web/src/infrastructure/http/schema.d.ts...${NC}"
+	cd web && $(BUN) run openapi:types

@@ -344,6 +344,32 @@ pub(super) fn assert_generated_project_is_clean(
             );
         }
     }
+
+    if output.join("web").is_dir() {
+        assert_spec_export_is_stable(output, dir, name, envs);
+    }
+}
+
+/// The first `cargo test` of a web project wrote `docs/api/openapi.json` (it was missing). A
+/// second run compares against it: the strict path users hit after every scaffold, and proof the
+/// export is deterministic.
+fn assert_spec_export_is_stable(output: &Path, dir: &Path, name: &str, envs: &[(&str, &str)]) {
+    assert!(
+        output.join("docs/api/openapi.json").exists(),
+        "scenario '{name}': `cargo test` did not export docs/api/openapi.json"
+    );
+    let result = std::process::Command::new("cargo")
+        .args(["test", "-p", "presentation", "openapi"])
+        .env("CARGO_TARGET_DIR", dir.join("target"))
+        .envs(envs.iter().copied())
+        .current_dir(output)
+        .output()
+        .expect("failed to run cargo");
+    if !result.status.success() {
+        eprintln!("stdout:\n{}", String::from_utf8_lossy(&result.stdout));
+        eprintln!("stderr:\n{}", String::from_utf8_lossy(&result.stderr));
+        panic!("scenario '{name}': the exported spec differs from the one just written");
+    }
 }
 
 /// Workspace for one scenario: the generated project plus its cargo target dir.
@@ -471,12 +497,14 @@ fn compiles_with_custom_use_case_after_scaffold() {
 
 // ── Phase 9: the web frontend ─────────────────────────────────────────────
 
-/// Runs the frontend's own checks inside a generated project: install, typecheck, Biome,
-/// dependency-cruiser, `bun test` and a production build. Needs `bun` on `PATH`.
+/// Runs the frontend's own checks inside a generated project: install, wire types from the
+/// exported spec, typecheck, Biome, dependency-cruiser, `bun test` and a production build. Needs
+/// `bun` on `PATH`, and `docs/api/openapi.json` (run `assert_generated_project_is_clean` first).
 fn assert_web_is_clean(output: &Path, name: &str) {
     let web = output.join("web");
     for args in [
         &["install"][..],
+        &["run", "openapi:types"][..],
         &["run", "typecheck"][..],
         &["run", "lint"][..],
         &["run", "lint:arch"][..],
@@ -501,14 +529,20 @@ fn assert_web_is_clean(output: &Path, name: &str) {
 }
 
 #[test]
-#[ignore = "slow: installs, lints and tests a generated frontend"]
+#[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
 fn web_shell_passes_its_own_checks() {
     let dir = scenario_workspace("web_shell");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
 
     let output = generate_project("compile-web-shell", &dir).unwrap();
+    assert_generated_project_is_clean(&output, &dir, "web_shell", &[]);
     assert_web_is_clean(&output, "web_shell");
+    assert!(
+        output
+            .join("web/src/infrastructure/http/schema.d.ts")
+            .exists()
+    );
 
     cleanup(&dir);
 }

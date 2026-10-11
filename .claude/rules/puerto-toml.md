@@ -195,9 +195,13 @@ presentation/src/api/product/error_mapper.rs
 5. Wire in `build_app()`:
    - **Single use case**: inline repo
    - **Multiple use cases**: bind repo once, clone for each — `Arc::clone(&{snake}_repo)`
-6. `OpenApiService::new(...)` argument:
+6. `openapi_service(...)` argument — the one place `OpenApiService::new` is called:
    - **Single entity**: `greeting_api`
    - **Multiple entities**: `(greeting_api, product_api, ...)`
+7. **`[project] web = true`** → a `#[cfg(test)]` test `openapi_spec_matches_docs_api_openapi_json`
+   builds every `{Entity}Api` from `Mock{Uc}UseCase`s (every use case trait must ship one) and
+   compares `openapi_service(...).spec()` with `docs/api/openapi.json`: missing → written,
+   `UPDATE_OPENAPI=1` → rewritten, different → fails (`make web/sync`). No server, no database.
 
 ---
 

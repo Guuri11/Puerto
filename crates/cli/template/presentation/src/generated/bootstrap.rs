@@ -16,12 +16,8 @@ pub async fn build_app() -> impl poem::Endpoint {
     let greeting_api = GreetingApi { get_greeting };
 
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
-    let api_service = OpenApiService::new(
-        greeting_api,
-        env!("CARGO_PKG_NAME"),
-        env!("CARGO_PKG_VERSION"),
-    )
-    .server(format!("http://localhost:{port}/api"));
+    let api_service =
+        openapi_service(greeting_api).server(format!("http://localhost:{port}/api"));
     let ui = api_service.swagger_ui();
 
     let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
@@ -40,4 +36,41 @@ pub async fn build_app() -> impl poem::Endpoint {
         .nest("/", ui)
         .with(Tracing)
         .with(cors)
+}
+
+/// The API service, built in one place: whatever else reads its spec (the export test of a project
+/// with `web/`) sees the API the server answers.
+fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
+    OpenApiService::new(api, env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
+
+    /// The API contract the frontend's types are generated from (`make web/sync`).
+    const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
+
+    /// Built from mocked use cases: no server, no database. A missing file is written; a different
+    /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
+    #[test]
+    fn openapi_spec_matches_docs_api_openapi_json() {
+        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
+        let spec = openapi_service(greeting_api).spec();
+
+        let path = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
+            let dir = path.parent().expect("docs/api/openapi.json has a parent");
+            std::fs::create_dir_all(dir).expect("create docs/api");
+            std::fs::write(path, &spec).expect("write docs/api/openapi.json");
+            return;
+        }
+        let committed = std::fs::read_to_string(path).expect("read docs/api/openapi.json");
+        assert!(
+            committed == spec,
+            "docs/api/openapi.json is not the API this code serves: run `make web/sync`"
+        );
+    }
 }

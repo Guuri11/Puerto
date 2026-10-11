@@ -19,7 +19,7 @@ struct BootstrapEntity {
     use_cases: Vec<BootstrapUseCase>,
 }
 
-fn build_context(entities: &[crate::puerto_toml::Entity]) -> tera::Context {
+fn build_context(entities: &[crate::puerto_toml::Entity], web: bool) -> tera::Context {
     let ctx_entities: Vec<BootstrapEntity> = entities
         .iter()
         .map(|entity| BootstrapEntity {
@@ -40,13 +40,30 @@ fn build_context(entities: &[crate::puerto_toml::Entity]) -> tera::Context {
     let mut ctx = tera::Context::new();
     ctx.insert("entities", &ctx_entities);
     ctx.insert("has_db", &entities.iter().any(|e| e.db));
+    ctx.insert("web", &web);
+    ctx.insert("apis", &api_expression(entities));
     ctx
 }
 
+/// What `OpenApiService` serves: `()` with no entity, the one `{snake}_api`, or a tuple of them.
+fn api_expression(entities: &[crate::puerto_toml::Entity]) -> String {
+    let apis: Vec<String> = entities
+        .iter()
+        .map(|e| format!("{}_api", pascal_to_snake(&e.name)))
+        .collect();
+    match apis.as_slice() {
+        [single] => single.clone(),
+        _ => format!("({})", apis.join(", ")),
+    }
+}
+
+/// `web`: the project has a frontend, so `bootstrap.rs` also carries the test that exports the
+/// OpenAPI spec to `docs/api/openapi.json` (ADR-0013).
 pub fn generate_bootstrap_content(
     entities: &[crate::puerto_toml::Entity],
+    web: bool,
 ) -> Result<String, RenderError> {
-    let ctx = build_context(entities);
+    let ctx = build_context(entities, web);
     render("bootstrap/bootstrap.tera", &ctx)
 }
 
@@ -104,7 +121,10 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     if let Some(parent) = bootstrap_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(bootstrap_path, generate_bootstrap_content(&config.entity)?)?;
+    fs::write(
+        bootstrap_path,
+        generate_bootstrap_content(&config.entity, config.project.web)?,
+    )?;
 
     let tags_path = base.join("presentation/src/api/tags.rs");
     if let Some(parent) = tags_path.parent() {

@@ -190,6 +190,11 @@ pub fn run(
     println!("✓ infrastructure/  — {repo_name}");
     println!("✓ presentation/    — routes, dto, responses, error mapper");
     println!("✓ Done. Zero manual wiring.");
+    if crate::puerto_toml::read(base).is_ok_and(|c| c.project.web) {
+        println!(
+            "\nThe API changed. Next: make web/sync   (exports the spec, regenerates the web types)"
+        );
+    }
 
     Ok(())
 }

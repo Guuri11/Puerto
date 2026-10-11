@@ -359,7 +359,11 @@ fn template_bootstrap_is_exactly_what_the_generator_writes() {
 
     assert_eq!(
         shipped,
-        crate::generators::bootstrap::generate_bootstrap_content(&config.entity).unwrap(),
+        crate::generators::bootstrap::generate_bootstrap_content(
+            &config.entity,
+            config.project.web
+        )
+        .unwrap(),
         "template/presentation/src/generated/bootstrap.rs is stale — regenerate it"
     );
     assert_eq!(

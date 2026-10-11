@@ -1419,7 +1419,14 @@ generated `application/` use cases.
    (what the flag deletes); `web_shell` is the matrix test. `web/AGENTS.md` holds the frontend
    rules. `make web/sync` moves to 9.1 (nothing to sync before the spec export). The two
    `core/generated/*` files are template copies until 9.2 generates them.
-2. **9.1 Spec export** — the `bootstrap.rs` spec test + `docs/api/openapi.json`.
+2. ✅ **9.1 Spec export** — the `bootstrap.rs` spec test + `docs/api/openapi.json`.
+   As built: a **missing** `openapi.json` is written and the test passes — a fresh project's
+   `make test` is green with nothing to sync; an existing one that differs fails. The compile
+   matrix runs the test twice per web scenario (writes, then compares: the export is
+   deterministic) and `web_shell` runs `openapi:types` before typecheck. `make web/sync` and the
+   scaffold's "Next: make web/sync" hint land here. The `domain-use-case` IDE snippet now ships
+   the `mocks` module too — the spec test needs a mock per use case. `client.ts` waits for 9.2,
+   its first importer.
 3. **9.2 CRUD slice** — all-primitive entity: domain, infrastructure, presentation, test-support,
    generated `dependencies.ts` / `routes.tsx`, `generate web`, conflict guard, validate drift.
 4. **9.3 Every type** — Option / Vec / HashMap / DateTime / enum VO types and controls.
