@@ -9,130 +9,37 @@ use crate::generators::render::{RenderError, render};
 struct BootstrapUseCase {
     action: String,
     uc_pascal: String,
-    repo_expr: String,
 }
 
 #[derive(Serialize)]
 struct BootstrapEntity {
     pascal: String,
     snake: String,
-    uc_import_lines: Vec<String>,
-    repo_trait_import: String,
-    repo_impl_import: String,
-    api_import: String,
-    needs_repo_var: bool,
-    repo_var_line: String,
+    db: bool,
     use_cases: Vec<BootstrapUseCase>,
-    /// The full `EntityApi { … }` initializer. Built here rather than joined in the template so an
-    /// entity with no use cases emits `EntityApi {}`, not a dangling separator.
-    api_init: String,
-    api_var: String,
 }
 
 fn build_context(entities: &[crate::puerto_toml::Entity]) -> tera::Context {
-    let has_db = entities.iter().any(|e| e.db);
-
-    let api_args = if entities.is_empty() {
-        "()".to_string()
-    } else if entities.len() == 1 {
-        format!("{}_api", pascal_to_snake(&entities[0].name))
-    } else {
-        let apis = entities
-            .iter()
-            .map(|e| format!("{}_api", pascal_to_snake(&e.name)))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("({apis})")
-    };
-
     let ctx_entities: Vec<BootstrapEntity> = entities
         .iter()
-        .map(|entity| {
-            let pascal = &entity.name;
-            let snake = pascal_to_snake(pascal);
-            let uc_count = entity.use_cases.len();
-
-            let repo_init = if entity.db {
-                format!("Pg{pascal}Repository::new(pool.clone())")
-            } else {
-                format!("InMemory{pascal}Repository::new()")
-            };
-
-            let repo_crate_path = if entity.db {
-                format!("infrastructure::{snake}::repository::Pg{pascal}Repository")
-            } else {
-                format!("infrastructure::{snake}::repository::InMemory{pascal}Repository")
-            };
-
-            let uc_import_lines = entity
+        .map(|entity| BootstrapEntity {
+            pascal: entity.name.clone(),
+            snake: pascal_to_snake(&entity.name),
+            db: entity.db,
+            use_cases: entity
                 .use_cases
                 .iter()
-                .map(|uc| {
-                    let uc_pascal = to_pascal_case(uc);
-                    format!(
-                        "use business::application::{snake}::{uc}::{uc_pascal}UseCaseImpl;"
-                    )
+                .map(|uc| BootstrapUseCase {
+                    action: uc.clone(),
+                    uc_pascal: to_pascal_case(uc),
                 })
-                .collect();
-
-            let (needs_repo_var, repo_var_line) = if uc_count <= 1 {
-                (false, String::new())
-            } else {
-                let line = format!(
-                    "    let {snake}_repo: Arc<dyn {pascal}RepositoryTrait> = Arc::new({repo_init});"
-                );
-                (true, line)
-            };
-
-            let use_cases = entity
-                .use_cases
-                .iter()
-                .enumerate()
-                .map(|(i, uc)| {
-                    let uc_pascal = to_pascal_case(uc);
-                    let repo_expr = if uc_count == 1 {
-                        format!(
-                            "Arc::new({repo_init}) as Arc<dyn {pascal}RepositoryTrait>"
-                        )
-                    } else if i < uc_count - 1 {
-                        format!("Arc::clone(&{snake}_repo)")
-                    } else {
-                        format!("{snake}_repo")
-                    };
-                    BootstrapUseCase {
-                        action: uc.clone(),
-                        uc_pascal,
-                        repo_expr,
-                    }
-                })
-                .collect();
-
-            BootstrapEntity {
-                repo_trait_import: format!(
-                    "use business::domain::{snake}::repository::{pascal}RepositoryTrait;"
-                ),
-                repo_impl_import: format!("use {repo_crate_path};"),
-                api_import: format!("use crate::api::{snake}::routes::{pascal}Api;"),
-                api_init: if entity.use_cases.is_empty() {
-                    format!("{pascal}Api {{}}")
-                } else {
-                    format!("{pascal}Api {{ {} }}", entity.use_cases.join(", "))
-                },
-                api_var: format!("{snake}_api"),
-                pascal: pascal.clone(),
-                snake,
-                uc_import_lines,
-                needs_repo_var,
-                repo_var_line,
-                use_cases,
-            }
+                .collect(),
         })
         .collect();
 
     let mut ctx = tera::Context::new();
     ctx.insert("entities", &ctx_entities);
-    ctx.insert("has_db", &has_db);
-    ctx.insert("api_args", &api_args);
+    ctx.insert("has_db", &entities.iter().any(|e| e.db));
     ctx
 }
 

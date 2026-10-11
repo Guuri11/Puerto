@@ -3,20 +3,20 @@
 use std::sync::Arc;
 
 {% for entity in entities -%}
-{% for line in entity.uc_import_lines -%}
-{{ line }}
+{% for uc in entity.use_cases -%}
+use business::application::{{ entity.snake }}::{{ uc.action }}::{{ uc.uc_pascal }}UseCaseImpl;
 {% endfor -%}
 {% endfor %}
 {% for entity in entities -%}
-{{ entity.repo_trait_import }}
-{{ entity.repo_impl_import }}
+use business::domain::{{ entity.snake }}::repository::{{ entity.pascal }}RepositoryTrait;
+use infrastructure::{{ entity.snake }}::repository::{% if entity.db %}Pg{% else %}InMemory{% endif %}{{ entity.pascal }}Repository;
 {% endfor %}
 {% endif -%}
 use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
 use poem_openapi::OpenApiService;
 
 {% for entity in entities -%}
-{{ entity.api_import }}
+use crate::api::{{ entity.snake }}::routes::{{ entity.pascal }}Api;
 {% endfor %}
 pub async fn build_app() -> impl poem::Endpoint {
 {%- if has_db %}
@@ -29,17 +29,18 @@ pub async fn build_app() -> impl poem::Endpoint {
         .expect("Failed to run migrations");
 {% endif %}
 {%- for entity in entities %}
-{%- if entity.needs_repo_var %}
-{{ entity.repo_var_line }}
+{%- if entity.db %}{% set repo = "Pg" ~ entity.pascal ~ "Repository::new(pool.clone())" %}{% else %}{% set repo = "InMemory" ~ entity.pascal ~ "Repository::new()" %}{% endif %}
+{%- if entity.use_cases | length > 1 %}
+    let {{ entity.snake }}_repo: Arc<dyn {{ entity.pascal }}RepositoryTrait> = Arc::new({{ repo }});
 {%- endif %}
 {%- for uc in entity.use_cases %}
-    let {{ uc.action }} = Arc::new({{ uc.uc_pascal }}UseCaseImpl { repository: {{ uc.repo_expr }} });
+    let {{ uc.action }} = Arc::new({{ uc.uc_pascal }}UseCaseImpl { repository: {% if entity.use_cases | length == 1 %}Arc::new({{ repo }}) as Arc<dyn {{ entity.pascal }}RepositoryTrait>{% elif loop.last %}{{ entity.snake }}_repo{% else %}Arc::clone(&{{ entity.snake }}_repo){% endif %} });
 {%- endfor %}
-    let {{ entity.api_var }} = {{ entity.api_init }};
+    let {{ entity.snake }}_api = {{ entity.pascal }}Api {% if entity.use_cases %}{ {% for uc in entity.use_cases %}{{ uc.action }}{% if not loop.last %}, {% endif %}{% endfor %} }{% else %}{}{% endif %};
 {% endfor %}
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
     let api_service = OpenApiService::new(
-        {{ api_args }},
+        {% if entities | length == 1 %}{{ entities.0.snake }}_api{% else %}({% for entity in entities %}{{ entity.snake }}_api{% if not loop.last %}, {% endif %}{% endfor %}){% endif %},
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION"),
     )
