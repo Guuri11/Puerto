@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use serde_json::json;
 
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
-use crate::generators::render::render;
+use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     field_rust_type, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
     literal_import, resolve_type, vo_import_path, vo_inner_type,
@@ -71,7 +71,7 @@ pub fn generate_model(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
 
     let mut extra_imports: Vec<String> = vec![];
@@ -248,7 +248,7 @@ pub fn generate_model(
     ctx.insert("valid_props_str", &valid_props_str);
     ctx.insert("valid_assertion", &valid_assertion);
     ctx.insert("validation_tests_str", &validation_tests_str);
-    render("domain/model.tera", &ctx).expect("model.tera render failed")
+    render("domain/model.tera", &ctx)
 }
 
 pub fn generate_mother(
@@ -256,7 +256,7 @@ pub fn generate_mother(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
 
     // A primitive field's *type* appears in the Mother struct (`Option<DateTime<Utc>>`); a VO
@@ -412,7 +412,7 @@ pub fn generate_mother(
     ctx.insert("empty_methods_str", &empty_methods_str);
     ctx.insert("build_assignments_str", &build_assignments_str);
     ctx.insert("props_assignments_str", &build_assignments_str);
-    render("domain/mother.tera", &ctx).expect("mother.tera render failed")
+    render("domain/mother.tera", &ctx)
 }
 
 fn is_option_type(field_type: &str) -> bool {
@@ -458,7 +458,7 @@ pub fn generate_value_objects(
     _snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
     let vo_fields: Vec<&Field> = eff
         .iter()
@@ -466,7 +466,7 @@ pub fn generate_value_objects(
         .collect();
 
     if vo_fields.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
 
     let mut file_imports: Vec<String> = vec![format!("use super::errors::{}Error;", pascal)];
@@ -537,10 +537,14 @@ pub fn generate_value_objects(
     let mut ctx = tera::Context::new();
     ctx.insert("file_imports", &file_imports_str);
     ctx.insert("vo_structs", &vo_structs_str);
-    render("domain/value_objects.tera", &ctx).expect("value_objects.tera render failed")
+    render("domain/value_objects.tera", &ctx)
 }
 
-pub fn generate_create_use_case_trait(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_create_use_case_trait(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
 
     let mut extra_imports: Vec<String> = vec![];
@@ -566,10 +570,14 @@ pub fn generate_create_use_case_trait(pascal: &str, snake: &str, fields: &[Field
     ctx.insert("extra_imports", &extra_imports);
     ctx.insert("params_fields", &params_fields);
 
-    render("domain/use_case_create.tera", &ctx).expect("use_case_create.tera render failed")
+    render("domain/use_case_create.tera", &ctx)
 }
 
-pub fn generate_update_use_case_trait(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_update_use_case_trait(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
 
     let mut extra_imports: Vec<String> = vec![];
@@ -598,12 +606,12 @@ pub fn generate_update_use_case_trait(pascal: &str, snake: &str, fields: &[Field
     ctx.insert("extra_imports", &extra_imports);
     ctx.insert("params_fields", &params_fields);
 
-    render("domain/use_case_update.tera", &ctx).expect("use_case_update.tera render failed")
+    render("domain/use_case_update.tera", &ctx)
 }
 
-pub fn generate_shared_value_objects(vos: &[ValueObjectDefinition]) -> String {
+pub fn generate_shared_value_objects(vos: &[ValueObjectDefinition]) -> Result<String, RenderError> {
     if vos.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
 
     let mut vo_structs: Vec<String> = vec![];
@@ -632,7 +640,6 @@ pub fn generate_shared_value_objects(vos: &[ValueObjectDefinition]) -> String {
     let mut ctx = tera::Context::new();
     ctx.insert("vo_structs", &vo_structs_str);
     render("domain/shared_value_objects.tera", &ctx)
-        .expect("shared_value_objects.tera render failed")
 }
 
 #[allow(dead_code)]
@@ -669,9 +676,11 @@ pub enum {vo}Error {{
     )
 }
 
-pub fn generate_shared_errors_combined(vos: &[ValueObjectDefinition]) -> String {
+pub fn generate_shared_errors_combined(
+    vos: &[ValueObjectDefinition],
+) -> Result<String, RenderError> {
     if vos.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
 
     let error_defs = vos
@@ -688,7 +697,7 @@ pub fn generate_shared_errors_combined(vos: &[ValueObjectDefinition]) -> String 
 
     let mut ctx = tera::Context::new();
     ctx.insert("error_defs", &error_defs);
-    render("domain/shared_errors.tera", &ctx).expect("shared_errors.tera render failed")
+    render("domain/shared_errors.tera", &ctx)
 }
 
 pub fn write_shared_vo_files(
@@ -704,12 +713,12 @@ pub fn write_shared_vo_files(
 
     write_file(
         &shared_dir.join("value_objects.rs"),
-        &generate_shared_value_objects(shared_vos),
+        &generate_shared_value_objects(shared_vos)?,
     )?;
 
     write_file(
         &shared_dir.join("errors.rs"),
-        &generate_shared_errors_combined(shared_vos),
+        &generate_shared_errors_combined(shared_vos)?,
     )?;
 
     write_file(
@@ -729,7 +738,7 @@ pub fn write_domain_files(
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(format!("business/src/domain/{snake}/model.rs")),
-        &generate_model(pascal, snake, fields, shared_vos),
+        &generate_model(pascal, snake, fields, shared_vos)?,
     )?;
 
     let eff = effective_fields(fields);
@@ -755,7 +764,7 @@ pub fn write_domain_files(
     )?;
 
     if has_local_vo {
-        let vo_content = generate_value_objects(pascal, snake, fields, shared_vos);
+        let vo_content = generate_value_objects(pascal, snake, fields, shared_vos)?;
         write_file(
             &base.join(format!("business/src/domain/{snake}/value_objects.rs")),
             &vo_content,
@@ -773,7 +782,7 @@ pub fn write_domain_files(
         &base.join(format!(
             "business/src/domain/{snake}/use_cases/create_{snake}.rs"
         )),
-        &generate_create_use_case_trait(pascal, snake, fields),
+        &generate_create_use_case_trait(pascal, snake, fields)?,
     )?;
     write_file(
         &base.join(format!(
@@ -791,7 +800,7 @@ pub fn write_domain_files(
         &base.join(format!(
             "business/src/domain/{snake}/use_cases/update_{snake}.rs"
         )),
-        &generate_update_use_case_trait(pascal, snake, fields),
+        &generate_update_use_case_trait(pascal, snake, fields)?,
     )?;
     write_file(
         &base.join(format!(
@@ -811,7 +820,7 @@ pub fn write_mother(
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(format!("business/src/tests/mothers/{snake}_mother.rs")),
-        &generate_mother(pascal, snake, fields, shared_vos),
+        &generate_mother(pascal, snake, fields, shared_vos)?,
     )?;
     Ok(())
 }

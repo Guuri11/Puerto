@@ -245,11 +245,27 @@ pub fn patch_business_lib_value_objects(
     Ok(())
 }
 
-pub fn try_patch_libs(snake: &str, base: &Path, db: bool, crud: bool) -> bool {
-    let business_ok = if crud {
-        patch_business_lib_crud(base, snake).is_ok()
-    } else {
-        patch_business_lib(base, snake).is_ok()
+/// Declares the new entity's modules in the three crates. Each error names the file it was patching:
+/// a project whose lib.rs could not be patched does not compile, so it must not end in `✓ Done`.
+pub fn patch_libs(
+    snake: &str,
+    base: &Path,
+    db: bool,
+    crud: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let in_file = |file: &str| {
+        let file = file.to_string();
+        move |e: Box<dyn std::error::Error>| -> Box<dyn std::error::Error> {
+            format!("cannot patch {file}: {e}").into()
+        }
     };
-    business_ok && patch_infra_lib(base, snake, db).is_ok() && patch_api_rs(base, snake).is_ok()
+    if crud {
+        patch_business_lib_crud(base, snake)
+    } else {
+        patch_business_lib(base, snake)
+    }
+    .map_err(in_file("business/src/lib.rs"))?;
+    patch_infra_lib(base, snake, db).map_err(in_file("infrastructure/src/lib.rs"))?;
+    patch_api_rs(base, snake).map_err(in_file("presentation/src/api.rs"))?;
+    Ok(())
 }

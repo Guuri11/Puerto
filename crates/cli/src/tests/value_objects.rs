@@ -45,7 +45,7 @@ fn generate_shared_value_objects_string() {
         inner_type: "String".to_string(),
     }];
 
-    let result = generate_shared_value_objects(&vos);
+    let result = generate_shared_value_objects(&vos).unwrap();
     assert!(result.contains("pub struct Email"));
     assert!(result.contains("fn new(value: String)"));
     assert!(result.contains("fn value(&self) -> &str"));
@@ -63,7 +63,7 @@ fn generate_shared_value_objects_numeric() {
         inner_type: "i64".to_string(),
     }];
 
-    let result = generate_shared_value_objects(&vos);
+    let result = generate_shared_value_objects(&vos).unwrap();
     assert!(result.contains("pub struct Amount(i64)"));
     assert!(result.contains("fn new(value: i64)"));
     assert!(result.contains("fn value(&self) -> i64"));
@@ -85,7 +85,7 @@ fn generate_shared_errors_combined_output() {
         },
     ];
 
-    let result = generate_shared_errors_combined(&vos);
+    let result = generate_shared_errors_combined(&vos).unwrap();
     assert!(result.contains("pub enum EmailError"));
     assert!(result.contains("pub enum MoneyError"));
     assert!(result.contains("shared.value_object.email.invalid"));
@@ -109,7 +109,7 @@ fn generate_model_with_shared_vo_imports() {
         ..Default::default()
     }];
 
-    let result = generate_model("User", "user", &fields, &shared_vos);
+    let result = generate_model("User", "user", &fields, &shared_vos).unwrap();
     assert!(result.contains("use crate::domain::shared::value_objects::Email"));
     assert!(result.contains("pub email: Email"));
 }
@@ -131,7 +131,7 @@ fn generate_model_local_vo_uses_local_import() {
         ..Default::default()
     }];
 
-    let result = generate_model("User", "user", &fields, &shared_vos);
+    let result = generate_model("User", "user", &fields, &shared_vos).unwrap();
     assert!(result.contains("use super::value_objects::Name"));
     assert!(!result.contains("shared::value_objects::Name"));
 }
@@ -153,7 +153,7 @@ fn generate_create_use_case_shared_vo() {
         ..Default::default()
     }];
 
-    let result = generate_create_use_case_impl("User", "user", &fields, &shared_vos);
+    let result = generate_create_use_case_impl("User", "user", &fields, &shared_vos).unwrap();
     assert!(result.contains("use crate::domain::shared::value_objects::Email"));
     assert!(result.contains(".map_err(|_| UserError::InvalidEmail)?"));
 }
@@ -175,7 +175,7 @@ fn generate_infra_entity_shared_vo_import_path() {
         ..Default::default()
     }];
 
-    let result = generate_infra_entity("User", "user", &fields, &shared_vos);
+    let result = generate_infra_entity("User", "user", &fields, &shared_vos).unwrap();
     assert!(result.contains("use business::domain::shared::value_objects::Email"));
     assert!(!result.contains("use business::domain::user::value_objects::Email"));
 }
@@ -197,7 +197,7 @@ fn generate_infra_entity_shared_vo_try_from_map_err() {
         ..Default::default()
     }];
 
-    let result = generate_infra_entity("User", "user", &fields, &shared_vos);
+    let result = generate_infra_entity("User", "user", &fields, &shared_vos).unwrap();
     assert!(result.contains(".map_err(|_| UserError::InvalidEmail)?"));
 }
 
@@ -215,7 +215,7 @@ fn generate_infra_entity_local_vo_uses_plain_question_mark() {
         ..Default::default()
     }];
 
-    let result = generate_infra_entity("Product", "product", &fields, &shared_vos);
+    let result = generate_infra_entity("Product", "product", &fields, &shared_vos).unwrap();
     assert!(result.contains("Name::new(row.name)?"));
     assert!(!result.contains(".map_err"));
 }
@@ -255,7 +255,7 @@ pub mod application {
 fn scaffold_with_shared_vo_writes_shared_files() {
     let dir = temp_dir("scaffold_shared_vo");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
 
     fs::write(
         dir.join("puerto.toml"),
@@ -264,7 +264,7 @@ name = "my-app"
 
 [[value_object]]
 name = "Email"
-inner_type = "String"
+type = "String"
 "#,
     )
     .unwrap();
@@ -301,7 +301,7 @@ inner_type = "String"
 fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
     let dir = temp_dir("scaffold_shared_vo_no_local");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
 
     fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
 

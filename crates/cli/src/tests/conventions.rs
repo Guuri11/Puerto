@@ -24,7 +24,7 @@ fn new_project_bootstrap_injects_no_logger() {
 fn scaffold_use_case_impl_logs_with_tracing() {
     let dir = temp_dir("logger_scaffold_impl");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content =
@@ -359,12 +359,12 @@ fn template_bootstrap_is_exactly_what_the_generator_writes() {
 
     assert_eq!(
         shipped,
-        crate::generators::bootstrap::generate_bootstrap_content(&config.entity),
+        crate::generators::bootstrap::generate_bootstrap_content(&config.entity).unwrap(),
         "template/presentation/src/generated/bootstrap.rs is stale — regenerate it"
     );
     assert_eq!(
         tags,
-        crate::generators::bootstrap::generate_tags_content(&config.entity),
+        crate::generators::bootstrap::generate_tags_content(&config.entity).unwrap(),
         "template/presentation/src/api/tags.rs is stale — regenerate it"
     );
     cleanup(&dir);

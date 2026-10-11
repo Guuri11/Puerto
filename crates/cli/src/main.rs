@@ -161,8 +161,14 @@ fn parse_cli_fields(
 
 fn main() {
     let cli = Cli::parse();
+    if let Err(e) = run(cli.command) {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+}
 
-    let result: Result<(), Box<dyn std::error::Error>> = match cli.command {
+fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
+    match command {
         Commands::New {
             name,
             db,
@@ -191,7 +197,7 @@ fn main() {
                     fields,
                 },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             let policy = if force {
                 crate::generators::conflict::OverwritePolicy::Force
             } else {
@@ -204,35 +210,35 @@ fn main() {
         Commands::Generate {
             action: GenerateAction::UseCase { entity, action },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_use_case(&entity, &action, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Bootstrap { allow_missing },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_bootstrap_command(&cwd, allow_missing))
         }
         Commands::Generate {
             action: GenerateAction::Migration { name },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_migration(&name, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Snippets { ide },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| snippets::run(&cwd, ide.as_deref()))
         }
         Commands::Generate {
             action: GenerateAction::Domain { name, fields },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
                 .and_then(|parsed| scaffold::run_generate_domain(&name, &cwd, &parsed))
@@ -240,48 +246,43 @@ fn main() {
         Commands::Generate {
             action: GenerateAction::Application { name },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_application(&name, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Repository { name },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_repository(&name, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Presentation { name },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_presentation(&name, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::ValueObject { name, inner_type },
         } => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_value_object(&name, &inner_type, &cwd))
         }
         Commands::List => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::list::run_list(&cwd)
         }
         Commands::Validate => {
-            let cwd = std::env::current_dir().expect("cannot read current directory");
+            let cwd = std::env::current_dir()?;
             commands::validate::run_validate(&cwd)
         }
         Commands::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "puerto", &mut std::io::stdout());
             Ok(())
         }
-    };
-
-    if let Err(e) = result {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
     }
 }
 

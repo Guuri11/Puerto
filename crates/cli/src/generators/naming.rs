@@ -26,9 +26,14 @@ pub fn pascal_to_snake(s: &str) -> String {
     out
 }
 
+/// Writes `content` to `path`, creating parent directories. The error names the path — a bare
+/// `Permission denied (os error 13)` does not tell the user which file.
 pub fn write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
+    let with_path = |e: std::io::Error| {
+        std::io::Error::new(e.kind(), format!("cannot write {}: {e}", path.display()))
+    };
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).map_err(with_path)?;
     }
-    fs::write(path, content)
+    fs::write(path, content).map_err(with_path)
 }

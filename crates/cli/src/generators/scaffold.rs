@@ -15,7 +15,7 @@ use crate::generators::{
     render::render,
 };
 use crate::patchers::lib_rs::{
-    patch_business_lib_shared, patch_business_lib_value_objects, try_patch_libs,
+    patch_business_lib_shared, patch_business_lib_value_objects, patch_libs,
 };
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
@@ -29,7 +29,7 @@ fn write_files(
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(format!("business/src/domain/{snake}/model.rs")),
-        &generate_model(pascal, snake, &[], &[]),
+        &generate_model(pascal, snake, &[], &[])?,
     )?;
     let mut errors_ctx = tera::Context::new();
     errors_ctx.insert("pascal", pascal);
@@ -45,21 +45,20 @@ fn write_files(
         repo_ctx.insert("snake", snake);
         write_file(
             &base.join(format!("business/src/domain/{snake}/repository.rs")),
-            &render("domain/repository_simple.tera", &repo_ctx)
-                .expect("domain/repository_simple.tera render failed"),
+            &render("domain/repository_simple.tera", &repo_ctx)?,
         )?;
     }
     write_file(
         &base.join(format!(
             "business/src/domain/{snake}/use_cases/create_{snake}.rs"
         )),
-        &generate_create_use_case_trait(pascal, snake, &[]),
+        &generate_create_use_case_trait(pascal, snake, &[])?,
     )?;
     write_file(
         &base.join(format!(
             "business/src/application/{snake}/create_{snake}.rs"
         )),
-        &generate_create_use_case_impl(pascal, snake, &[], &[]),
+        &generate_create_use_case_impl(pascal, snake, &[], &[])?,
     )?;
     let infra_ctx = {
         let mut c = tera::Context::new();
@@ -70,18 +69,16 @@ fn write_files(
     if db {
         write_file(
             &base.join(format!("infrastructure/src/{snake}/entity.rs")),
-            &generate_infra_entity(pascal, snake, &[], &[]),
+            &generate_infra_entity(pascal, snake, &[], &[])?,
         )?;
         write_file(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
-            &render("infrastructure/repository_pg_simple.tera", &infra_ctx)
-                .expect("infrastructure/repository_pg_simple.tera render failed"),
+            &render("infrastructure/repository_pg_simple.tera", &infra_ctx)?,
         )?;
     } else {
         write_file(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
-            &render("infrastructure/repository_inmemory_simple.tera", &infra_ctx)
-                .expect("infrastructure/repository_inmemory_simple.tera render failed"),
+            &render("infrastructure/repository_inmemory_simple.tera", &infra_ctx)?,
         )?;
     }
     write_file(
@@ -97,32 +94,28 @@ fn write_files(
             &render(
                 "presentation/dto.tera",
                 &build_dto_ctx(pascal, snake, &[], false),
-            )
-            .expect("presentation/dto.tera render failed"),
+            )?,
         )?;
         write_file(
             &base.join(format!("presentation/src/api/{snake}/responses.rs")),
             &render(
                 "presentation/responses_simple.tera",
                 &build_simple_ctx(pascal, snake),
-            )
-            .expect("presentation/responses_simple.tera render failed"),
+            )?,
         )?;
         write_file(
             &base.join(format!("presentation/src/api/{snake}/error_mapper.rs")),
             &render(
                 "presentation/error_mapper.tera",
                 &build_error_mapper_ctx(pascal, snake, &[]),
-            )
-            .expect("presentation/error_mapper.tera render failed"),
+            )?,
         )?;
         write_file(
             &base.join(format!("presentation/src/api/{snake}/routes.rs")),
             &render(
                 "presentation/routes_simple.tera",
                 &build_simple_ctx(pascal, snake),
-            )
-            .expect("presentation/routes_simple.tera render failed"),
+            )?,
         )?;
     }
     Ok(())
@@ -165,24 +158,24 @@ pub fn run(
     } else {
         write_files(&pascal, &snake, base, db)?;
     }
-    try_patch_libs(&snake, base, db, crud);
+    patch_libs(&snake, base, db, crud)?;
 
     if !fields.is_empty()
         && fields
             .iter()
             .any(|f| is_value_object(f) && !is_shared_vo(f, shared_vos))
     {
-        let _ = patch_business_lib_value_objects(base, &snake);
+        patch_business_lib_value_objects(base, &snake)?;
     }
 
     if !shared_vos.is_empty() {
         use crate::generators::domain::write_shared_vo_files;
-        let _ = write_shared_vo_files(base, shared_vos);
-        let _ = patch_business_lib_shared(base);
+        write_shared_vo_files(base, shared_vos)?;
+        patch_business_lib_shared(base)?;
     }
 
-    let _ = write_mother(&pascal, &snake, base, fields, shared_vos);
-    let _ = patch_mothers_lib(base, &snake);
+    write_mother(&pascal, &snake, base, fields, shared_vos)?;
+    patch_mothers_lib(base, &snake)?;
 
     let use_cases = if crud {
         vec![
@@ -196,13 +189,9 @@ pub fn run(
         vec![format!("create_{snake}")]
     };
 
-    let bootstrapped =
-        crate::puerto_toml::add_entity(base, &pascal, use_cases, db, fields.to_vec())
-            .and_then(|_| {
-                crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)
-            })
-            .and_then(|_| crate::generators::bootstrap::regenerate_bootstrap(base))
-            .is_ok();
+    crate::puerto_toml::add_entity(base, &pascal, use_cases, db, fields.to_vec())?;
+    crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)?;
+    crate::generators::bootstrap::regenerate_bootstrap(base)?;
 
     let repo_name = if db {
         format!("Pg{pascal}Repository")
@@ -217,11 +206,7 @@ pub fn run(
     println!("✓ business/        — model, errors, repository trait, use cases ({uc_label})");
     println!("✓ infrastructure/  — {repo_name}");
     println!("✓ presentation/    — routes, dto, responses, error mapper");
-    if bootstrapped {
-        println!("✓ Done. Zero manual wiring.");
-    } else {
-        println!("✓ Done. Run `puerto generate bootstrap` to wire DI.");
-    }
+    println!("✓ Done. Zero manual wiring.");
 
     Ok(())
 }

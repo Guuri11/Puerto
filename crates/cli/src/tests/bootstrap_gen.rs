@@ -13,7 +13,7 @@ fn bootstrap_with_entity_without_use_cases_is_syntactically_valid() {
         fields: vec![],
     }];
 
-    let content = crate::generators::bootstrap::generate_bootstrap_content(&entities);
+    let content = crate::generators::bootstrap::generate_bootstrap_content(&entities).unwrap();
 
     assert!(!content.contains("{ ,"));
     assert!(content.contains("let invoice_api = InvoiceApi {};"));
@@ -28,7 +28,7 @@ fn bootstrap_with_use_cases_lists_them_in_the_api_initializer() {
         fields: vec![],
     }];
 
-    let content = crate::generators::bootstrap::generate_bootstrap_content(&entities);
+    let content = crate::generators::bootstrap::generate_bootstrap_content(&entities).unwrap();
 
     assert!(content.contains("let product_api = ProductApi { create_product, get_product };"));
 }

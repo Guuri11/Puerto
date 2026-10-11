@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::generators::effective_fields;
 use crate::generators::migration::run_migration;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
-use crate::generators::render::render;
+use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     field_value_accessor, is_enum_vo, is_option_vo, is_shared_vo, is_value_object, is_vec_vo,
     resolve_type,
@@ -198,7 +198,7 @@ pub fn generate_infra_entity(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
 
     let struct_fields_str: String = eff
@@ -297,7 +297,7 @@ pub fn generate_infra_entity(
     ctx.insert("struct_fields_str", &struct_fields_str);
     ctx.insert("try_from_fields_str", &try_from_fields_str);
     ctx.insert("from_fields_str", &from_fields_str);
-    render("infrastructure/entity.tera", &ctx).expect("infrastructure/entity.tera render failed")
+    render("infrastructure/entity.tera", &ctx)
 }
 
 pub fn generate_crud_infra_db_repository(
@@ -305,7 +305,7 @@ pub fn generate_crud_infra_db_repository(
     snake: &str,
     fields: &[Field],
     shared_vos: &[crate::puerto_toml::ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
     let n = 5 + eff.len();
 
@@ -363,7 +363,6 @@ pub fn generate_crud_infra_db_repository(
     ctx.insert("update_test", &update_test);
     ctx.insert("vo_test_imports", &vo_test_imports);
     render("infrastructure/repository_pg_crud.tera", &ctx)
-        .expect("infrastructure/repository_pg_crud.tera render failed")
 }
 
 pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
@@ -409,11 +408,11 @@ pub fn write_repository_files(
     if db {
         write_file(
             &base.join(format!("infrastructure/src/{snake}/entity.rs")),
-            &generate_infra_entity(pascal, snake, fields, shared_vos),
+            &generate_infra_entity(pascal, snake, fields, shared_vos)?,
         )?;
         write_file(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
-            &generate_crud_infra_db_repository(pascal, snake, fields, shared_vos),
+            &generate_crud_infra_db_repository(pascal, snake, fields, shared_vos)?,
         )?;
     } else {
         let mut ctx = tera::Context::new();
@@ -421,8 +420,7 @@ pub fn write_repository_files(
         ctx.insert("snake", snake);
         write_file(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
-            &render("infrastructure/repository_inmemory_crud.tera", &ctx)
-                .expect("infrastructure/repository_inmemory_crud.tera render failed"),
+            &render("infrastructure/repository_inmemory_crud.tera", &ctx)?,
         )?;
     }
     Ok(())

@@ -6,7 +6,7 @@ use super::*;
 fn scaffold_creates_all_files_for_single_word_entity() {
     let dir = temp_dir("scaffold_single_word");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     assert!(dir.join("business/src/domain/product/model.rs").exists());
@@ -46,7 +46,7 @@ fn scaffold_creates_all_files_for_single_word_entity() {
 fn scaffold_creates_all_files_for_multi_word_entity() {
     let dir = temp_dir("scaffold_multi_word");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("OrderItem", &dir, false, false, &[], &[]).unwrap();
 
     assert!(dir.join("business/src/domain/order_item/model.rs").exists());
@@ -74,7 +74,7 @@ fn scaffold_creates_all_files_for_multi_word_entity() {
 fn scaffold_normalizes_lowercase_input() {
     let dir = temp_dir("scaffold_lowercase");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("product", &dir, false, false, &[], &[]).unwrap();
 
     assert!(dir.join("business/src/domain/product/model.rs").exists());
@@ -90,7 +90,7 @@ fn scaffold_normalizes_lowercase_input() {
 fn scaffold_substitutes_pascal_name_in_model() {
     let dir = temp_dir("scaffold_model_content");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
@@ -106,7 +106,7 @@ fn scaffold_substitutes_pascal_name_in_model() {
 fn scaffold_substitutes_pascal_name_in_errors() {
     let dir = temp_dir("scaffold_errors_content");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/domain/product/errors.rs")).unwrap();
@@ -121,7 +121,7 @@ fn scaffold_substitutes_pascal_name_in_errors() {
 fn scaffold_substitutes_pascal_name_in_use_case_impl() {
     let dir = temp_dir("scaffold_impl_content");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content =
@@ -138,7 +138,7 @@ fn scaffold_substitutes_pascal_name_in_use_case_impl() {
 fn scaffold_crud_impls_import_model_struct_in_tests() {
     let dir = temp_dir("scaffold_model_import");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
 
     for uc in &[
@@ -779,4 +779,78 @@ fn rescaffold_preserves_use_cases_added_by_generate_use_case() {
     );
 
     cleanup(&dir);
+}
+
+// ── T-11: generation failures surface, never a silent `✓ Done` ────────────
+
+#[test]
+fn should_fail_naming_the_file_when_the_project_is_read_only() {
+    use std::os::unix::fs::PermissionsExt;
+
+    // Arrange
+    let dir = temp_dir("t11_read_only");
+    cleanup(&dir);
+    setup_puerto_stubs(&dir);
+    let src = dir.join("business/src");
+    fs::set_permissions(&src, fs::Permissions::from_mode(0o555)).unwrap();
+
+    // Act
+    let result = scaffold::run_scaffold("Widget", &dir, &[], OverwritePolicy::Force);
+
+    // Assert
+    fs::set_permissions(&src, fs::Permissions::from_mode(0o755)).unwrap();
+    let err = result
+        .expect_err("a read-only project cannot be scaffolded")
+        .to_string();
+    assert!(
+        err.contains("business/src/domain/widget"),
+        "error names the path: {err}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn should_fail_naming_the_lib_rs_when_it_cannot_be_patched() {
+    // `try_patch_libs` used to return a bool nobody read: a missing lib.rs still ended in
+    // "✓ Done. Zero manual wiring." and a project whose new modules were never declared.
+
+    // Arrange
+    let dir = temp_dir("t11_missing_lib");
+    cleanup(&dir);
+    setup_puerto_stubs(&dir);
+    fs::remove_file(dir.join("infrastructure/src/lib.rs")).unwrap();
+
+    // Act
+    let result = scaffold::run_scaffold("Widget", &dir, &[], OverwritePolicy::Force);
+
+    // Assert
+    let err = result
+        .expect_err("an unpatchable lib.rs is an error")
+        .to_string();
+    assert!(
+        err.contains("infrastructure/src/lib.rs"),
+        "error names the file: {err}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn should_name_the_template_and_the_cause_when_a_render_fails() {
+    // Arrange — model.tera needs `pascal`, which an empty context lacks.
+    let ctx = tera::Context::new();
+
+    // Act
+    let err = crate::generators::render::render("domain/model.tera", &ctx)
+        .expect_err("missing variables fail the render")
+        .to_string();
+
+    // Assert
+    assert!(
+        err.contains("domain/model.tera"),
+        "names the template: {err}"
+    );
+    assert!(
+        err.contains("not found in context"),
+        "carries tera's cause: {err}"
+    );
 }

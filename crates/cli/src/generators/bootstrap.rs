@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use serde::Serialize;
 
 use crate::generators::naming::{pascal_to_snake, to_pascal_case};
-use crate::generators::render::render;
+use crate::generators::render::{RenderError, render};
 
 #[derive(Serialize)]
 struct BootstrapUseCase {
@@ -136,16 +136,20 @@ fn build_context(entities: &[crate::puerto_toml::Entity]) -> tera::Context {
     ctx
 }
 
-pub fn generate_bootstrap_content(entities: &[crate::puerto_toml::Entity]) -> String {
+pub fn generate_bootstrap_content(
+    entities: &[crate::puerto_toml::Entity],
+) -> Result<String, RenderError> {
     let ctx = build_context(entities);
-    render("bootstrap/bootstrap.tera", &ctx).expect("bootstrap/bootstrap.tera render failed")
+    render("bootstrap/bootstrap.tera", &ctx)
 }
 
-pub fn generate_tags_content(entities: &[crate::puerto_toml::Entity]) -> String {
+pub fn generate_tags_content(
+    entities: &[crate::puerto_toml::Entity],
+) -> Result<String, RenderError> {
     let tags: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
     let mut ctx = tera::Context::new();
     ctx.insert("tags_entities", &tags);
-    render("bootstrap/tags.tera", &ctx).expect("bootstrap/tags.tera render failed")
+    render("bootstrap/tags.tera", &ctx)
 }
 
 /// `puerto generate bootstrap` — refuses when the manifest describes code that is not on disk.
@@ -193,13 +197,13 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     if let Some(parent) = bootstrap_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(bootstrap_path, generate_bootstrap_content(&config.entity))?;
+    fs::write(bootstrap_path, generate_bootstrap_content(&config.entity)?)?;
 
     let tags_path = base.join("presentation/src/api/tags.rs");
     if let Some(parent) = tags_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(tags_path, generate_tags_content(&config.entity))?;
+    fs::write(tags_path, generate_tags_content(&config.entity)?)?;
 
     Ok(())
 }

@@ -166,7 +166,7 @@ fn type_registry_rejects_unknown() {
 fn generate_model_backward_compat_no_fields() {
     use crate::generators::domain::generate_model;
 
-    let result = generate_model("Product", "product", &[], &[]);
+    let result = generate_model("Product", "product", &[], &[]).unwrap();
     assert!(result.contains("pub struct ProductProps"));
     assert!(result.contains("pub name: String,"));
     assert!(result.contains("pub struct Product"));
@@ -204,7 +204,7 @@ fn generate_model_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_model("Product", "product", &fields, &[]);
+    let result = generate_model("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("pub struct ProductProps"));
     assert!(result.contains("pub title: String,"));
@@ -241,7 +241,7 @@ fn generate_model_with_uuid_field() {
         unique: false,
         ..Default::default()
     }];
-    let result = generate_model("Item", "item", &fields, &[]);
+    let result = generate_model("Item", "item", &fields, &[]).unwrap();
 
     assert!(result.contains("use uuid::Uuid;"));
     assert!(result.contains("pub category_id: Uuid,"));
@@ -259,7 +259,7 @@ fn generate_model_with_hashmap_field() {
         unique: false,
         ..Default::default()
     }];
-    let result = generate_model("Config", "config", &fields, &[]);
+    let result = generate_model("Config", "config", &fields, &[]).unwrap();
 
     assert!(result.contains("use std::collections::HashMap;"));
     assert!(result.contains("pub metadata: HashMap<String, String>,"));
@@ -290,7 +290,7 @@ fn generate_model_multiple_string_fields_has_validations() {
             ..Default::default()
         },
     ];
-    let result = generate_model("Product", "product", &fields, &[]);
+    let result = generate_model("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("if props.name.trim().is_empty()"));
     assert!(result.contains("name_empty"));
@@ -308,7 +308,7 @@ fn generate_model_multiple_string_fields_has_validations() {
 fn generate_mother_backward_compat_no_fields() {
     use crate::generators::domain::generate_mother;
 
-    let result = generate_mother("Product", "product", &[], &[]);
+    let result = generate_mother("Product", "product", &[], &[]).unwrap();
     assert!(result.contains("pub struct ProductMother"));
     assert!(result.contains("name: Option<String>,"));
     assert!(result.contains("pub fn with_name(mut self, name: &str) -> Self"));
@@ -344,7 +344,7 @@ fn generate_mother_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_mother("Product", "product", &fields, &[]);
+    let result = generate_mother("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("title: Option<String>,"));
     assert!(result.contains("price: Option<i64>,"));
@@ -367,7 +367,7 @@ fn generate_mother_with_custom_fields() {
 fn scaffold_with_empty_fields_produces_backward_compat_model() {
     let dir = temp_dir("scaffold_empty_fields");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
     scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
@@ -432,7 +432,7 @@ fn generate_create_use_case_trait_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_create_use_case_trait("Product", "product", &fields);
+    let result = generate_create_use_case_trait("Product", "product", &fields).unwrap();
 
     assert!(result.contains("pub struct CreateProductParams"));
     assert!(result.contains("pub title: String,"));
@@ -449,7 +449,7 @@ fn generate_create_use_case_trait_with_custom_fields() {
 fn generate_create_use_case_trait_backward_compat_no_fields() {
     use crate::generators::domain::generate_create_use_case_trait;
 
-    let result = generate_create_use_case_trait("Product", "product", &[]);
+    let result = generate_create_use_case_trait("Product", "product", &[]).unwrap();
 
     assert!(result.contains("pub struct CreateProductParams"));
     assert!(result.contains("pub name: String,"));
@@ -475,7 +475,7 @@ fn generate_update_use_case_trait_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_update_use_case_trait("Product", "product", &fields);
+    let result = generate_update_use_case_trait("Product", "product", &fields).unwrap();
 
     assert!(result.contains("pub struct UpdateProductParams"));
     assert!(result.contains("pub id: Uuid,"));
@@ -506,7 +506,7 @@ fn generate_update_use_case_trait_includes_uuid_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_update_use_case_trait("Item", "item", &fields);
+    let result = generate_update_use_case_trait("Item", "item", &fields).unwrap();
 
     assert!(result.contains("pub name: String,"));
     assert!(result.contains("pub id: Uuid,"));
@@ -538,7 +538,7 @@ fn generate_create_use_case_trait_includes_uuid_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_create_use_case_trait("Item", "item", &fields);
+    let result = generate_create_use_case_trait("Item", "item", &fields).unwrap();
 
     assert!(result.contains("pub name: String,"));
     assert!(result.contains("pub category_id: Uuid,"));
@@ -568,7 +568,7 @@ fn generate_create_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_create_use_case_impl("Product", "product", &fields, &[]);
+    let result = generate_create_use_case_impl("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("CreateProductUseCaseImpl"));
     assert!(result.contains("CreateProductParams"));
@@ -597,7 +597,7 @@ fn generate_update_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_update_use_case_impl("Product", "product", &fields, &[]);
+    let result = generate_update_use_case_impl("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("UpdateProductUseCaseImpl"));
     assert!(result.contains("UpdateProductParams"));
@@ -630,7 +630,7 @@ fn generate_update_use_case_impl_assigns_uuid_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_update_use_case_impl("Item", "item", &fields, &[]);
+    let result = generate_update_use_case_impl("Item", "item", &fields, &[]).unwrap();
 
     assert!(result.contains("entity.name = params.name;"));
     assert!(result.contains("entity.category_id = params.category_id;"));
@@ -663,7 +663,7 @@ fn generate_create_use_case_impl_passes_uuid_fields_to_props() {
             ..Default::default()
         },
     ];
-    let result = generate_create_use_case_impl("Item", "item", &fields, &[]);
+    let result = generate_create_use_case_impl("Item", "item", &fields, &[]).unwrap();
 
     assert!(result.contains("category_id: params.category_id,"));
     assert!(result.contains("name: params.name,"));
@@ -709,7 +709,7 @@ type = "i64"
     let snake = "product";
 
     let create_trait =
-        crate::generators::domain::generate_create_use_case_trait(pascal, snake, &fields);
+        crate::generators::domain::generate_create_use_case_trait(pascal, snake, &fields).unwrap();
     assert!(create_trait.contains("pub name: String,"));
     assert!(create_trait.contains("pub price: i64,"));
     assert!(
@@ -718,7 +718,7 @@ type = "i64"
     );
 
     let update_trait =
-        crate::generators::domain::generate_update_use_case_trait(pascal, snake, &fields);
+        crate::generators::domain::generate_update_use_case_trait(pascal, snake, &fields).unwrap();
     assert!(update_trait.contains("pub id: Uuid,"));
     assert!(update_trait.contains("pub name: String,"));
     assert!(update_trait.contains("pub price: i64,"));
@@ -791,7 +791,7 @@ fn generate_get_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_get_use_case_impl("Product", "product", &fields, &[]);
+    let result = generate_get_use_case_impl("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("GetProductUseCaseImpl"));
     assert!(result.contains("GetProductParams"));
@@ -807,7 +807,7 @@ fn generate_get_use_case_impl_with_custom_fields() {
 fn generate_get_use_case_impl_backward_compat_no_fields() {
     use crate::generators::application::generate_get_use_case_impl;
 
-    let result = generate_get_use_case_impl("Product", "product", &[], &[]);
+    let result = generate_get_use_case_impl("Product", "product", &[], &[]).unwrap();
 
     assert!(result.contains("GetProductUseCaseImpl"));
     assert!(result.contains("Product::new(ProductProps"));
@@ -834,7 +834,7 @@ fn generate_list_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_list_use_case_impl("Product", "product", &fields, &[]);
+    let result = generate_list_use_case_impl("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("ListProductUseCaseImpl"));
     assert!(result.contains("Product::new(ProductProps"));
@@ -865,7 +865,7 @@ fn generate_delete_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_delete_use_case_impl("Product", "product", &fields, &[]);
+    let result = generate_delete_use_case_impl("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("DeleteProductUseCaseImpl"));
     assert!(result.contains("Product::new(ProductProps"));
@@ -895,7 +895,7 @@ fn generate_create_use_case_impl_with_custom_fields_has_tests() {
             ..Default::default()
         },
     ];
-    let result = generate_create_use_case_impl("Product", "product", &fields, &[]);
+    let result = generate_create_use_case_impl("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("#[cfg(test)]"));
     assert!(result.contains("should_create_product_when_fields_are_valid"));
@@ -925,7 +925,7 @@ fn generate_update_use_case_impl_with_custom_fields_has_tests() {
             ..Default::default()
         },
     ];
-    let result = generate_update_use_case_impl("Product", "product", &fields, &[]);
+    let result = generate_update_use_case_impl("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("#[cfg(test)]"));
     assert!(result.contains("should_update_product_when_params_are_valid"));
@@ -997,7 +997,7 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
 fn generate_infra_entity_backward_compat() {
     use crate::generators::infrastructure::generate_infra_entity;
 
-    let result = generate_infra_entity("Product", "product", &[], &[]);
+    let result = generate_infra_entity("Product", "product", &[], &[]).unwrap();
 
     assert!(result.contains("pub struct ProductDb"));
     assert!(result.contains("pub id: Uuid"));
@@ -1033,7 +1033,7 @@ fn generate_infra_entity_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_infra_entity("Product", "product", &fields, &[]);
+    let result = generate_infra_entity("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("pub struct ProductDb"));
     assert!(result.contains("pub title: String"));
@@ -1168,7 +1168,7 @@ fn create_table_sql_omits_unique_index_when_no_field_is_unique() {
 fn generate_crud_infra_db_repository_backward_compat() {
     use crate::generators::infrastructure::generate_crud_infra_db_repository;
 
-    let result = generate_crud_infra_db_repository("Product", "product", &[], &[]);
+    let result = generate_crud_infra_db_repository("Product", "product", &[], &[]).unwrap();
 
     assert!(result.contains("pub struct PgProductRepository"));
     assert!(result.contains("async fn find_all"));
@@ -1200,7 +1200,7 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_crud_infra_db_repository("Product", "product", &fields, &[]);
+    let result = generate_crud_infra_db_repository("Product", "product", &fields, &[]).unwrap();
 
     assert!(result.contains("id, created_at, updated_at, deleted, deleted_at, title, price"));
     assert!(result.contains("$1, $2, $3, $4, $5, $6, $7"));
@@ -1220,7 +1220,7 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
 fn generate_crud_dto_backward_compat() {
     use crate::generators::presentation::generate_crud_dto;
 
-    let result = generate_crud_dto("Product", "product", &[]);
+    let result = generate_crud_dto("Product", "product", &[]).unwrap();
 
     assert!(result.contains("pub struct ProductDto"));
     assert!(result.contains("pub id: Uuid"));
@@ -1256,7 +1256,7 @@ fn generate_crud_dto_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_crud_dto("Product", "product", &fields);
+    let result = generate_crud_dto("Product", "product", &fields).unwrap();
 
     assert!(result.contains("pub struct ProductDto"));
     assert!(result.contains("pub id: Uuid"));
@@ -1292,7 +1292,7 @@ fn generate_crud_dto_and_routes_carry_uuid_fields() {
         },
     ];
 
-    let dto = generate_crud_dto("Product", "product", &fields);
+    let dto = generate_crud_dto("Product", "product", &fields).unwrap();
     assert!(dto.contains("pub category_id: Uuid"));
     assert!(dto.contains("category_id: entity.category_id,"));
     let create_request = dto
@@ -1304,7 +1304,7 @@ fn generate_crud_dto_and_routes_carry_uuid_fields() {
         "CreateProductRequest must carry the Uuid field"
     );
 
-    let routes = generate_crud_routes("Product", "product", &fields);
+    let routes = generate_crud_routes("Product", "product", &fields).unwrap();
     assert_eq!(
         routes.matches("category_id: body.category_id,").count(),
         2,
@@ -1331,7 +1331,7 @@ fn generate_crud_routes_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_crud_routes("Product", "product", &fields);
+    let result = generate_crud_routes("Product", "product", &fields).unwrap();
 
     assert!(result.contains("method = \"post\""));
     assert!(result.contains("method = \"get\""));
@@ -1431,7 +1431,8 @@ fn create_impl_logs_start_and_done_without_the_payload() {
         "product",
         &fields,
         &[],
-    );
+    )
+    .unwrap();
 
     assert!(
         content.contains("tracing::info!(\"create_product: start\");"),
@@ -1451,7 +1452,8 @@ fn create_test_asserts_an_enum_vo_with_as_str() {
         "ticket",
         &fields,
         &[],
-    );
+    )
+    .unwrap();
 
     assert!(!content.contains("state.value()"), "{content}");
 }
@@ -1480,13 +1482,15 @@ fn db_entity_maps_hashmap_columns_through_sqlx_json() {
         "product",
         &fields,
         &[],
-    );
+    )
+    .unwrap();
     let repo = crate::generators::infrastructure::generate_crud_infra_db_repository(
         "Product",
         "product",
         &fields,
         &[],
-    );
+    )
+    .unwrap();
 
     assert!(entity.contains("use std::collections::HashMap;"));
     assert!(entity.contains("pub meta: Json<HashMap<String, String>>,"));
@@ -1527,7 +1531,8 @@ fn pg_repository_tests_import_what_their_seed_names() {
         "product",
         &fields,
         &[],
-    );
+    )
+    .unwrap();
 
     assert!(repo.contains("use business::domain::product::value_objects::Status;"));
     assert!(
@@ -1546,7 +1551,8 @@ fn pg_repository_seed_varies_unique_fields() {
         "product",
         &[sku],
         &[],
-    );
+    )
+    .unwrap();
 
     assert!(repo.contains("sku: Uuid::new_v4().to_string(),"), "{repo}");
 }

@@ -4,7 +4,7 @@ use serde_json::json;
 
 use crate::generators::effective_fields;
 use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
-use crate::generators::render::render;
+use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     field_vo_constructor, is_enum_vo, is_option_vo, is_value_object, is_vec_vo, literal_import,
     literal_names_vo, resolve_type, vo_import_path,
@@ -536,9 +536,9 @@ pub fn generate_create_use_case_impl(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let ctx = build_create_context(pascal, snake, fields, shared_vos);
-    render("application/create.tera", &ctx).expect("application/create.tera render failed")
+    render("application/create.tera", &ctx)
 }
 
 pub fn generate_get_use_case_impl(
@@ -546,9 +546,9 @@ pub fn generate_get_use_case_impl(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let ctx = build_get_context(pascal, snake, fields, shared_vos);
-    render("application/get.tera", &ctx).expect("application/get.tera render failed")
+    render("application/get.tera", &ctx)
 }
 
 pub fn generate_list_use_case_impl(
@@ -556,9 +556,9 @@ pub fn generate_list_use_case_impl(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let ctx = build_list_context(pascal, snake, fields, shared_vos);
-    render("application/list.tera", &ctx).expect("application/list.tera render failed")
+    render("application/list.tera", &ctx)
 }
 
 pub fn generate_update_use_case_impl(
@@ -566,9 +566,9 @@ pub fn generate_update_use_case_impl(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let ctx = build_update_context(pascal, snake, fields, shared_vos);
-    render("application/update.tera", &ctx).expect("application/update.tera render failed")
+    render("application/update.tera", &ctx)
 }
 
 pub fn generate_delete_use_case_impl(
@@ -576,9 +576,9 @@ pub fn generate_delete_use_case_impl(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-) -> String {
+) -> Result<String, RenderError> {
     let ctx = build_delete_context(pascal, snake, fields, shared_vos);
-    render("application/delete.tera", &ctx).expect("application/delete.tera render failed")
+    render("application/delete.tera", &ctx)
 }
 
 // ── File writers ──────────────────────────────────────────────────────────────
@@ -594,27 +594,27 @@ pub fn write_application_files(
         &base.join(format!(
             "business/src/application/{snake}/create_{snake}.rs"
         )),
-        &generate_create_use_case_impl(pascal, snake, fields, shared_vos),
+        &generate_create_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
     write_file(
         &base.join(format!("business/src/application/{snake}/get_{snake}.rs")),
-        &generate_get_use_case_impl(pascal, snake, fields, shared_vos),
+        &generate_get_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
     write_file(
         &base.join(format!("business/src/application/{snake}/list_{snake}.rs")),
-        &generate_list_use_case_impl(pascal, snake, fields, shared_vos),
+        &generate_list_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
     write_file(
         &base.join(format!(
             "business/src/application/{snake}/update_{snake}.rs"
         )),
-        &generate_update_use_case_impl(pascal, snake, fields, shared_vos),
+        &generate_update_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
     write_file(
         &base.join(format!(
             "business/src/application/{snake}/delete_{snake}.rs"
         )),
-        &generate_delete_use_case_impl(pascal, snake, fields, shared_vos),
+        &generate_delete_use_case_impl(pascal, snake, fields, shared_vos)?,
     )?;
     Ok(())
 }

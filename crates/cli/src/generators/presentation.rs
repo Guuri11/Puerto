@@ -194,21 +194,27 @@ fn build_routes_crud_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::C
 }
 
 #[cfg(test)]
-pub fn generate_crud_dto(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_crud_dto(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+) -> Result<String, crate::generators::render::RenderError> {
     render(
         "presentation/dto.tera",
         &build_dto_ctx(pascal, snake, fields, true),
     )
-    .expect("presentation/dto.tera render failed")
 }
 
 #[cfg(test)]
-pub fn generate_crud_routes(pascal: &str, snake: &str, fields: &[Field]) -> String {
+pub fn generate_crud_routes(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+) -> Result<String, crate::generators::render::RenderError> {
     render(
         "presentation/routes_crud.tera",
         &build_routes_crud_ctx(pascal, snake, fields),
     )
-    .expect("presentation/routes_crud.tera render failed")
 }
 
 pub fn write_presentation_files(
@@ -226,32 +232,28 @@ pub fn write_presentation_files(
         &render(
             "presentation/dto.tera",
             &build_dto_ctx(pascal, snake, fields, true),
-        )
-        .expect("presentation/dto.tera render failed"),
+        )?,
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/responses.rs")),
         &render(
             "presentation/responses_crud.tera",
             &build_simple_ctx(pascal, snake),
-        )
-        .expect("presentation/responses_crud.tera render failed"),
+        )?,
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/error_mapper.rs")),
         &render(
             "presentation/error_mapper.tera",
             &build_error_mapper_ctx(pascal, snake, fields),
-        )
-        .expect("presentation/error_mapper.tera render failed"),
+        )?,
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/routes.rs")),
         &render(
             "presentation/routes_crud.tera",
             &build_routes_crud_ctx(pascal, snake, fields),
-        )
-        .expect("presentation/routes_crud.tera render failed"),
+        )?,
     )?;
     Ok(())
 }

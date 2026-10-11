@@ -542,7 +542,8 @@ fn model_does_not_reimport_chrono_or_uuid_for_field_types() {
         },
     ];
 
-    let model = crate::generators::domain::generate_model("Product", "product", &fields, &[]);
+    let model =
+        crate::generators::domain::generate_model("Product", "product", &fields, &[]).unwrap();
 
     assert_eq!(model.matches("use chrono::{DateTime, Utc};").count(), 1);
     assert_eq!(model.matches("use uuid::Uuid;").count(), 1);

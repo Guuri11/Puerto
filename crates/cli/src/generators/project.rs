@@ -202,8 +202,7 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
     // infrastructure/src/db.rs
     write_file(
         &base.join("infrastructure/src/db.rs"),
-        &render("infrastructure/db.tera", &tera::Context::new())
-            .expect("infrastructure/db.tera render failed"),
+        &render("infrastructure/db.tera", &tera::Context::new())?,
     )?;
 
     // Patch infrastructure/Cargo.toml to add sqlx
@@ -221,16 +220,30 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
+/// An already-absent file is what a removal wants; any other failure is a real error.
+fn ignore_not_found(result: std::io::Result<()>) -> std::io::Result<()> {
+    match result {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
 /// Strip the Greeting demo entity from a freshly generated project (`puerto new --no-demo`).
 /// Removes greeting files, rewrites the four affected source files, clears puerto.toml entities,
 /// and regenerates bootstrap.rs with an empty API.
 pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // Remove greeting directories and the sibling declaration file.
-    let _ = fs::remove_dir_all(base.join("business/src/domain/greeting"));
-    let _ = fs::remove_dir_all(base.join("business/src/application/greeting"));
-    let _ = fs::remove_dir_all(base.join("infrastructure/src/greeting"));
-    let _ = fs::remove_dir_all(base.join("presentation/src/api/greeting"));
-    let _ = fs::remove_file(base.join("presentation/src/api/greeting.rs"));
+    for dir in [
+        "business/src/domain/greeting",
+        "business/src/application/greeting",
+        "infrastructure/src/greeting",
+        "presentation/src/api/greeting",
+    ] {
+        ignore_not_found(fs::remove_dir_all(base.join(dir)))?;
+    }
+    ignore_not_found(fs::remove_file(
+        base.join("presentation/src/api/greeting.rs"),
+    ))?;
 
     // Minimal business lib.rs: empty domain and application blocks for the patchers to fill.
     fs::write(

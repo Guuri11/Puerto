@@ -46,7 +46,7 @@ T-02 and T-03 before they shipped. Consider doing it first, watching it fail, th
 | ~~T-08~~ | **P1** ✅ | `bootstrap.rs` wires entities whose code does not exist | `generators/consistency.rs`, `generators/bootstrap.rs`, `commands/validate.rs` |
 | ~~T-09~~ | **P2** ✅ | VO accessor logic triplicated across three layers | `types.rs`, `infrastructure.rs`, `presentation.rs` |
 | T-10 | **P2** | Finish the Tera migration — templates receive pre-rendered Rust | all generators + `templates/` |
-| T-11 | **P2** | Errors swallowed (`let _ =`, ignored `bool`, `.expect()` panics) | `generators/scaffold.rs` + all |
+| ~~T-11~~ | **P2** ✅ | Errors swallowed (`let _ =`, ignored `bool`, `.expect()` panics) | `generators/scaffold.rs` + all |
 | ~~T-12~~ | **P2** ✅ | Validation gaps: system-field collisions, Rust keywords | `validation.rs`, `commands/validate.rs`, `puerto_toml.rs` |
 | T-13 | **P2** | Naive pluralization for table names (`categorys`) | `generators/infrastructure.rs` |
 | ~~T-14~~ | **P2** ✅ | Documentation drift (flags, syntax, file paths) | `AGENTS.md`, `.claude/rules/*` |
@@ -528,9 +528,16 @@ own rules forbid `expect()` outside tests.
 - Only print `✓ Done` when everything succeeded
 
 **Acceptance**
-- [ ] No `let _ =` on a fallible call in `generators/`
-- [ ] `grep -rn "expect(" crates/cli/src/generators` returns nothing outside `#[cfg(test)]`
-- [ ] Test: read-only target directory → clear error, no `✓ Done`
+- [x] No `let _ =` on a fallible call in `generators/`
+- [x] `grep -rn "expect(" crates/cli/src/generators` returns nothing outside `#[cfg(test)]` — the
+      remaining hits are string literals of *generated* test code (Object Mothers, seeds)
+- [x] Test: read-only target directory → error naming the path, no `✓ Done`
+- `render` returns a `RenderError` naming the template and tera's whole cause chain (a small
+  hand-written error type, not a `thiserror` dependency); `write_file` errors name the path;
+  `try_patch_libs` → `patch_libs` returning `Result`; `main` dispatches through `run() -> Result`
+- Found by the change: 11 tests scaffolded into empty directories and one wrote an invalid
+  puerto.toml (`inner_type =`), all passing only because the errors were swallowed
+- Mutation run: 337 mutants, 334 caught, 0 survivors, 3 unviable
 
 ---
 
