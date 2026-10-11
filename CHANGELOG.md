@@ -1,3 +1,71 @@
+## [0.11.0] - 2026-10-11
+
+The last batch of shape changes before the first projects are generated for real: the presentation
+layer now depends on use case ports and every CRUD route ships with tests, tables and paths use real
+plurals, and the list use case is named after the plural. Underneath, the generators finished their
+move to Tera templates — a refactor proven byte-identical by new snapshots of every generated file.
+
+### 🐛 Fixed
+
+- **A failed generation step still printed `✓ Done. Zero manual wiring.`** — `scaffold` ignored the
+  results of the `lib.rs` patchers, the Mother and shared VO writers and the puerto.toml / bootstrap
+  update. Every step now propagates its error; render errors name the template, write errors name
+  the path, and no generator panics on a render failure
+- **Plurals:** `Category` was the table and path `categorys`
+
+### 🚀 Features
+
+- **Route tests in every project:** the CRUD `routes.rs` is generated with tests that drive the real
+  `OpenApiService` through `poem::test::TestClient`, one mocked use case per test, one test per
+  status path (create 201 / 422, get 200 / 404, list 200 / 500, update 200 / 404, delete 204 / 404);
+  the demo `GreetingApi` gets 200 / 422
+- **Use case mocks:** every use case trait ships `mocks::Mock{Uc}UseCase` behind
+  `cfg(any(test, feature = "test-utils"))`, like the repository mocks; Object Mothers compile under
+  the same gate, so other crates' tests can build entities
+- **Real plurals** for SQL tables and REST paths: `categories`, `boxes`, `statuses`, `people`,
+  `order_items`; uncountables (`data`, `series`, …) stay as they are
+
+### 🧪 Internal
+
+- **Snapshot of every generated file**, one per compile-matrix scenario (Postgres included), checked
+  by `make test` on every push; `make test/snapshots` re-records them after an intended change
+- **Generators render through Tera templates over a per-field `FieldCtx`** (ADR-0011): templates own
+  the shape of the code, `types.rs` owns every per-field decision; no type name is hard-coded
+  outside it. Snapshots unchanged throughout
+- `make lint` covers test targets; the 6.6k-line `tests.rs` is split into one module per area
+- Mutation testing: 0 survivors
+
+### Breaking
+
+Generated code changes shape:
+
+- **`{Entity}Api` holds ports:** fields are `Arc<dyn {Uc}UseCaseTrait>` (were
+  `Arc<{Uc}UseCaseImpl>`); `routes.rs` no longer imports `business::application::*` (ADR-0012).
+  `presentation` dev-depends on `business` with `test-utils` and on `poem` with `test`
+- **Tables and REST paths use real plurals** — `categorys` → `categories`, `/categorys` →
+  `/categories`
+- **The list use case is `list_{plural}`:** `list_product` → `list_products` (file, module,
+  `ListProductsUseCaseTrait`, `ListProductsParams`, `ListProductsUseCaseImpl`,
+  `ListProductsResponse`, `ProductApi.list_products`, puerto.toml)
+
+### Migration Guide
+
+No project generated with an earlier Puerto is known to be in use. For one that is:
+
+1. In every `routes.rs`, change `Arc<{Uc}UseCaseImpl>` fields to `Arc<dyn {Uc}UseCaseTrait>` and
+   import the trait from `business::domain::{entity}::use_cases::{uc}` instead of the impl. Add
+   `business = { path = "../business", features = ["test-utils"] }` and
+   `poem = { version = "3", features = ["test"] }` to `presentation`'s `[dev-dependencies]` if you
+   want to add route tests.
+2. For each entity, rename `list_{snake}` to `list_{plural}`: the use case files in
+   `domain/{entity}/use_cases/` and `application/{entity}/`, their `pub mod` lines in
+   `business/src/lib.rs`, the type names, the `{Entity}Api` field and the entry in puerto.toml.
+   Then run `puerto generate bootstrap`.
+3. Entities whose plural is irregular (`-y`, `-s`, `-x`, `-ch`, `-sh`, `person`, `child`, …):
+   either rename the table with a migration (`ALTER TABLE categorys RENAME TO categories;`) and tell
+   API clients about the new path, or keep the old name by hand in the repository queries and
+   routes.
+
 ## [0.10.1] - 2026-10-10
 
 ### 🐛 Fixed
