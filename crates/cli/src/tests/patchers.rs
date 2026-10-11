@@ -112,7 +112,7 @@ fn routes_patch_gives_the_route_tests_api_literal_an_unexpecting_mock() {
     cleanup(&dir);
     fs::create_dir_all(dir.join("presentation/src/api/product")).unwrap();
     let before = "use std::sync::Arc;\n\npub struct ProductApi {\n    pub get_product: Arc<dyn GetProductUseCaseTrait>,\n}\n\n\
-                  #[cfg(test)]\nmod tests {\n    fn client() {\n        let api = ProductApi {\n            \
+                  #[cfg(test)]\nmod tests {\n    fn client() {\n        let _ = Mocks {};\n        let api = ProductApi {\n            \
                   get_product: Arc::new(self.get),\n        };\n    }\n}\n";
     fs::write(dir.join("presentation/src/api/product/routes.rs"), before).unwrap();
 
