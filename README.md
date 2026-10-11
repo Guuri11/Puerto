@@ -48,7 +48,8 @@ The result: a codebase where business logic is isolated, always testable, and ne
 
 ## Architecture
 
-Every Puerto project is a Cargo workspace with three crates:
+Every Puerto project is a Cargo workspace with three crates, plus a React frontend (`--no-web`
+skips it):
 
 ```
 my-app/
@@ -58,8 +59,10 @@ my-app/
 │       └── application/ # Use case implementations
 ├── infrastructure/    # Adapters — repositories, HTTP clients, etc.
 │   └── src/
-└── presentation/      # HTTP API — poem-openapi routes, DTOs, error mapping
-    └── src/
+├── presentation/      # HTTP API — poem-openapi routes, DTOs, error mapping
+│   └── src/
+└── web/               # React 19 + daisyUI on Bun — typed from the API's OpenAPI spec
+    └── src/           # domain/ · infrastructure/ (HTTP adapters) · presentation/ (screens)
 ```
 
 **Dependency rule (inward only):**
@@ -68,7 +71,8 @@ my-app/
 Presentation → Infrastructure → Application → Domain
 ```
 
-The domain depends on nothing. Everything else depends on the domain.
+The domain depends on nothing. Everything else depends on the domain. `web/` follows the same
+rule, checked by dependency-cruiser.
 
 ---
 
@@ -91,6 +95,19 @@ Visit `http://localhost:8080` for the Swagger UI, or call the API directly:
 ```bash
 curl http://localhost:8080/api/greetings/World
 ```
+
+### Web frontend
+
+`puerto generate scaffold <Name>` also writes the entity's screens — list, detail and a
+create/edit form, with an HTTP repository and `bun test` tests — and every field type gets its
+input. The OpenAPI spec is the contract between the two halves:
+
+```bash
+make web/sync                    # after a scaffold or a DTO change: export the spec, regenerate the web types
+make web/install && make web/dev # http://localhost:5173, /api proxied to :8080
+```
+
+`puerto generate web <Name>` writes the screens alone, for an entity already in `puerto.toml`.
 
 ### Entity Fields
 

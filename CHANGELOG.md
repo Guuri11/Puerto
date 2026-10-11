@@ -1,3 +1,50 @@
+## [0.12.0] - 2026-10-11
+
+Full-stack: every project now ships a React frontend, and `scaffold` writes each CRUD entity's
+screens next to its Rust layers — Rails-style, but with the same Dependency Rule on both sides and
+the OpenAPI spec as the contract between them.
+
+### 🚀 Features
+
+- **`web/` in every new project** (`puerto new --no-web` skips it; the wizard asks): React 19 +
+  daisyUI 5 on Bun, wouter, Vite with `/api` proxied to `:8080`, `bun test` with happy-dom and
+  Testing Library, Biome, and dependency-cruiser checking `domain` ← `infrastructure` ←
+  `presentation`. `[project] web = true` in puerto.toml; `make web/install`, `web/dev`,
+  `web/test`, `web/lint`; `make test` and `make lint` include the frontend (ADR-0013)
+- **The OpenAPI spec is exported** to `docs/api/openapi.json` by a test in `bootstrap.rs`, built
+  from mocked use cases — no server, no database. `make web/sync` re-exports it, regenerates the
+  frontend's wire types (openapi-typescript) and formats `web/`; until then `bun run typecheck`
+  fails, which is the drift check
+- **Screens per entity:** in a web project, `generate scaffold` writes the domain types, the
+  repository port, an HTTP repository over openapi-fetch, list / detail / form (create + edit)
+  containers and views, an Object Mother and an in-memory fake, all tested. The route table and
+  the composition root (`web/src/presentation/core/generated/`) are regenerated from puerto.toml
+  like `bootstrap.rs`
+- **Every field type has its input:** text, number (`step="any"` for `f64`), checkbox,
+  `datetime-local`, a select for enum value objects (a union type narrowed by `parse<Vo>()`), a
+  —/Yes/No select for `Option<bool>`, comma-separated lists, a `key=value` textarea for maps; an
+  empty optional input is `null`. Server validation is the authority: the form shows the code the
+  API answers
+- **`puerto generate web <Name> [--force]`**: the screens alone, for an entity already in
+  puerto.toml — the last step of the layer-by-layer flow
+- The overwrite guard covers the frontend files; `puerto validate` and `generate bootstrap` report
+  a CRUD entity whose screens are missing
+
+### 🐛 Fixed
+
+- The `domain-use-case` IDE snippet ships the use case mock (`mocks::Mock{Uc}UseCase`)
+
+### Changed
+
+- A project created without `--no-web` needs [Bun](https://bun.sh) for `make test` and `make lint`
+
+### 🧪 Internal
+
+- The compile matrix installs, typechecks, lints (Biome before any formatting), tests and builds
+  the generated frontend of every web scenario; new scenarios `web_crud` and `web_every_type`
+- Generated TypeScript comes out Biome-clean: imports sorted and wrapped like Biome, routes wrapped
+  by width; the per-field frontend decisions live in `types::web_field_ctx`
+
 ## [0.11.0] - 2026-10-11
 
 The last batch of shape changes before the first projects are generated for real: the presentation
