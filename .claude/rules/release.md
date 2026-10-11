@@ -84,36 +84,36 @@ The `## Migration Guide` section is **required** for any release that changes:
 
 ## Release Process
 
-Automated via **release-plz**. When commits land on `main`, release-plz opens a release PR with:
-
-- `Cargo.toml` version bumped
-- `CHANGELOG.md` updated
-
-Merging that PR triggers `cargo publish` automatically via GitHub Actions.
-
-### Manual release (fallback)
+Pushing a `v*` tag publishes: `release.yml` checks the tag matches `crates/cli/Cargo.toml`, runs
+`make test/full` and `cargo publish -p puerto --locked`. A version already on crates.io is skipped,
+so publishing by hand first does not turn the run red.
 
 ```bash
 # 1. Bump version
 #    Edit crates/cli/Cargo.toml — version = "0.x.y"
 
-# 2. Update changelog
-git cliff --unreleased --prepend CHANGELOG.md
+# 2. Update changelog (written by hand from the commits since the last release, same format)
+#    `git cliff --unreleased --prepend CHANGELOG.md` drafts it when git-cliff is installed
 
 # 3. Verify
 make test
 make test/full
+make test/db
 make lint
 make format
-cargo package --list          # confirm template files are included
-cargo publish --dry-run -p puerto-framework
+cargo package --list -p puerto       # confirm template files are included
+cargo publish --dry-run -p puerto
 
-# 4. Tag and publish
+# 4. Commit, push, tag — the tag publishes
 git add -A && git commit -m "chore: release v0.x.y"
-git tag v0.x.y
-git push && git push --tags
-cargo publish -p puerto-framework
+git push
+git tag -a v0.x.y -m "v0.x.y" && git push origin v0.x.y
+
+# Fallback when the workflow cannot publish: cargo publish -p puerto --locked
 ```
+
+The landing (`landing/`) is deployed by Vercel on every push to `main` — update its docs in the
+release commit's push when the release changes what it describes.
 
 ---
 
@@ -146,11 +146,14 @@ make lint
 cargo fmt --check
 ```
 
+**`ci.yml`** also runs `make test/full` as a separate job.
+
 **`release.yml`** — runs on `v*` tag push:
 
 ```
+tag == crate version, skip if already on crates.io
 make test/full
-cargo publish -p puerto-framework
+cargo publish -p puerto --locked
 ```
 
 Binary distribution via **cargo-dist** is not set up yet — future work.
