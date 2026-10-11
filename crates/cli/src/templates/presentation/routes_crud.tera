@@ -30,7 +30,7 @@ pub struct {{ pascal }}Api {
 #[OpenApi]
 impl {{ pascal }}Api {
     /// Create a new {{ pascal }}
-    #[oai(path = "/{{ snake }}s", method = "post", tag = "ApiTags::{{ pascal }}")]
+    #[oai(path = "/{{ plural }}", method = "post", tag = "ApiTags::{{ pascal }}")]
     async fn create(&self, body: Json<Create{{ pascal }}Request>) -> Create{{ pascal }}Response {
         match self
             .create_{{ snake }}
@@ -49,7 +49,7 @@ impl {{ pascal }}Api {
     }
 
     /// Get a {{ pascal }} by ID
-    #[oai(path = "/{{ snake }}s/:id", method = "get", tag = "ApiTags::{{ pascal }}")]
+    #[oai(path = "/{{ plural }}/:id", method = "get", tag = "ApiTags::{{ pascal }}")]
     async fn get_by_id(&self, id: Path<Uuid>) -> Get{{ pascal }}Response {
         match self
             .get_{{ snake }}
@@ -65,8 +65,8 @@ impl {{ pascal }}Api {
         }
     }
 
-    /// List all {{ pascal }}s
-    #[oai(path = "/{{ snake }}s", method = "get", tag = "ApiTags::{{ pascal }}")]
+    /// List all {{ plural_pascal }}
+    #[oai(path = "/{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
     async fn list(&self) -> List{{ pascal }}Response {
         match self.list_{{ snake }}.execute(List{{ pascal }}Params).await {
             Ok(entities) => {
@@ -81,7 +81,7 @@ impl {{ pascal }}Api {
     }
 
     /// Update a {{ pascal }}
-    #[oai(path = "/{{ snake }}s/:id", method = "put", tag = "ApiTags::{{ pascal }}")]
+    #[oai(path = "/{{ plural }}/:id", method = "put", tag = "ApiTags::{{ pascal }}")]
     async fn update(&self, id: Path<Uuid>, body: Json<Update{{ pascal }}Request>) -> Update{{ pascal }}Response {
         match self
             .update_{{ snake }}
@@ -101,7 +101,7 @@ impl {{ pascal }}Api {
     }
 
     /// Delete a {{ pascal }}
-    #[oai(path = "/{{ snake }}s/:id", method = "delete", tag = "ApiTags::{{ pascal }}")]
+    #[oai(path = "/{{ plural }}/:id", method = "delete", tag = "ApiTags::{{ pascal }}")]
     async fn delete(&self, id: Path<Uuid>) -> Delete{{ pascal }}Response {
         match self
             .delete_{{ snake }}
@@ -170,7 +170,7 @@ mod tests {
     }
 
     fn item_path() -> String {
-        format!("/{{ snake }}s/{}", Uuid::new_v4())
+        format!("/{{ plural }}/{}", Uuid::new_v4())
     }
 
     #[tokio::test]
@@ -182,7 +182,7 @@ mod tests {
         // Act
         let response = mocks
             .client()
-            .post("/{{ snake }}s")
+            .post("/{{ plural }}")
             .body_json(&create_request().to_json())
             .send()
             .await;
@@ -203,7 +203,7 @@ mod tests {
         // Act
         let response = mocks
             .client()
-            .post("/{{ snake }}s")
+            .post("/{{ plural }}")
             .body_json(&create_request().to_json())
             .send()
             .await;
@@ -245,7 +245,7 @@ mod tests {
         mocks.list.expect_execute().returning(|_| Ok({{ pascal }}Mother::random_vec(2)));
 
         // Act
-        let response = mocks.client().get("/{{ snake }}s").send().await;
+        let response = mocks.client().get("/{{ plural }}").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -259,7 +259,7 @@ mod tests {
         mocks.list.expect_execute().returning(|_| Err({{ pascal }}Error::RepositoryError));
 
         // Act
-        let response = mocks.client().get("/{{ snake }}s").send().await;
+        let response = mocks.client().get("/{{ plural }}").send().await;
 
         // Assert
         response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);

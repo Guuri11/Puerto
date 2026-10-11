@@ -2,7 +2,9 @@ use std::path::Path;
 
 use crate::generators::effective_fields;
 use crate::generators::migration::run_migration;
-use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::naming::{
+    entity_ctx, pascal_to_snake, pluralize, to_pascal_case, write_file,
+};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     FieldCtx, field_ctx, is_shared_vo, is_value_object, literal_names_vo, resolve_type,
@@ -91,9 +93,7 @@ pub fn generate_infra_entity(
         }
     }
 
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
+    let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("imports", &imports);
     ctx.insert("fields", &field_ctxs(&eff, pascal, shared_vos));
     render("infrastructure/entity.tera", &ctx)
@@ -118,9 +118,7 @@ pub fn generate_crud_infra_db_repository(
     }
 
     // SQL text stays a Rust computation: the `$n` numbering is index-dependent.
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
+    let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("all_cols", &sql_col_list(&eff));
     ctx.insert("select_cols", &sql_select_list(&eff));
     ctx.insert("has_map", &eff.iter().any(|f| f.field_type == MAP_TYPE));
@@ -155,7 +153,7 @@ pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let table = format!("{snake}s");
+    let table = pluralize(snake);
     let mut sql = format!(
         "CREATE TABLE {table} (\n    id UUID PRIMARY KEY,\n{custom_cols}\n    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    deleted BOOLEAN NOT NULL DEFAULT FALSE,\n    deleted_at TIMESTAMPTZ\n);\n",
     );
@@ -197,9 +195,7 @@ pub fn write_repository_files(
             &generate_crud_infra_db_repository(pascal, snake, fields, shared_vos)?,
         )?;
     } else {
-        let mut ctx = tera::Context::new();
-        ctx.insert("pascal", pascal);
-        ctx.insert("snake", snake);
+        let ctx = entity_ctx(pascal, snake);
         write_file(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
             &render("infrastructure/repository_inmemory_crud.tera", &ctx)?,

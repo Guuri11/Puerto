@@ -97,3 +97,61 @@ fn migration_file_carries_the_given_body() {
 
     cleanup(&dir);
 }
+
+// ── T-13: real plurals for tables and REST paths ──────────────────────────
+
+#[test]
+fn pluralize_follows_english_rules_for_the_last_word() {
+    use crate::generators::naming::pluralize;
+    for (singular, plural) in [
+        ("product", "products"),
+        ("category", "categories"),
+        ("day", "days"),
+        ("box", "boxes"),
+        ("status", "statuses"),
+        ("address", "addresses"),
+        ("batch", "batches"),
+        ("wish", "wishes"),
+        ("person", "people"),
+        ("child", "children"),
+        ("data", "data"),
+        ("series", "series"),
+        ("order_item", "order_items"),
+        ("product_category", "product_categories"),
+        ("sales_person", "sales_people"),
+        ("y", "ys"),
+    ] {
+        assert_eq!(pluralize(singular), plural, "{singular}");
+    }
+}
+
+#[test]
+fn db_scaffold_names_the_table_and_the_paths_with_the_real_plural() {
+    let dir = temp_dir("t13_plural_table");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_with_project_db(&dir);
+    scaffold::run_scaffold("Category", &dir, &[], OverwritePolicy::Ask).unwrap();
+
+    let migration = fs::read_dir(dir.join("infrastructure/migrations"))
+        .unwrap()
+        .map(|e| fs::read_to_string(e.unwrap().path()).unwrap())
+        .collect::<String>();
+    assert!(
+        migration.contains("CREATE TABLE categories ("),
+        "{migration}"
+    );
+
+    let repo = fs::read_to_string(dir.join("infrastructure/src/category/repository.rs")).unwrap();
+    assert!(repo.contains("FROM categories WHERE"), "{repo}");
+    assert!(repo.contains("INSERT INTO categories ("), "{repo}");
+    assert!(!repo.contains("categorys"), "{repo}");
+
+    let routes = fs::read_to_string(dir.join("presentation/src/api/category/routes.rs")).unwrap();
+    assert!(routes.contains(r#"path = "/categories""#), "{routes}");
+    assert!(routes.contains(r#"path = "/categories/:id""#), "{routes}");
+    assert!(routes.contains("/// List all Categories"), "{routes}");
+    assert!(!routes.contains("categorys"), "{routes}");
+
+    cleanup(&dir);
+}

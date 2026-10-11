@@ -29,7 +29,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         let rows = sqlx::query_as!(
             {{ pascal }}Db,
             "SELECT {{ select_cols }}
-             FROM {{ snake }}s WHERE deleted = false ORDER BY created_at DESC"
+             FROM {{ plural }} WHERE deleted = false ORDER BY created_at DESC"
         )
         .fetch_all(&self.pool)
         .await
@@ -46,7 +46,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         let row = sqlx::query_as!(
             {{ pascal }}Db,
             "SELECT {{ select_cols }}
-             FROM {{ snake }}s WHERE id = $1 AND deleted = false",
+             FROM {{ plural }} WHERE id = $1 AND deleted = false",
             id
         )
         .fetch_optional(&self.pool)
@@ -63,7 +63,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         tracing::debug!(id = %entity.id, "save");
         let db = {{ pascal }}Db::from(entity);
         sqlx::query!(
-            "INSERT INTO {{ snake }}s ({{ all_cols }})
+            "INSERT INTO {{ plural }} ({{ all_cols }})
              VALUES ({{ all_params }})
              ON CONFLICT (id) DO UPDATE
              SET {{ all_updates }}",
@@ -156,7 +156,7 @@ mod integration_tests {
 {% endif %}    }
 
     #[sqlx::test(migrations = "./migrations")]
-    async fn should_list_all_{{ snake }}s_excluding_deleted(pool: PgPool) {
+    async fn should_list_all_{{ plural }}_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
         seed(&pool).await;

@@ -15,7 +15,7 @@ pub struct {{ pascal }}Api {
 #[OpenApi]
 impl {{ pascal }}Api {
     /// Create a new {{ pascal }}
-    #[oai(path = "/{{ snake }}s", method = "post", tag = "ApiTags::{{ pascal }}")]
+    #[oai(path = "/{{ plural }}", method = "post", tag = "ApiTags::{{ pascal }}")]
     async fn create(&self, body: Json<Create{{ pascal }}Request>) -> Create{{ pascal }}Response {
         match self
             .create_{{ snake }}

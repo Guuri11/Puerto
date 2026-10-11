@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::generators::bootstrap::regenerate_bootstrap;
 use crate::generators::effective_fields;
-use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::naming::{entity_ctx, pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::render;
 use crate::generators::types::{FieldCtx, field_ctx, literal_import, resolve_type};
 use crate::patchers::api_rs::patch_api_rs;
@@ -61,10 +61,7 @@ fn simple_ctx(pascal: &str, snake: &str, eff: &[Field]) -> tera::Context {
 }
 
 pub(crate) fn build_simple_ctx(pascal: &str, snake: &str) -> tera::Context {
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
-    ctx
+    entity_ctx(pascal, snake)
 }
 
 fn build_routes_crud_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::Context {

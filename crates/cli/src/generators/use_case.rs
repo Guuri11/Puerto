@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::generators::bootstrap::regenerate_bootstrap;
-use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::naming::{entity_ctx, pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::render;
 use crate::patchers::lib_rs::patch_business_lib_use_case;
 use crate::patchers::routes_rs::patch_routes_use_cases;
@@ -39,9 +39,7 @@ pub fn run_use_case(
 
     crate::puerto_toml::add_use_case(base, &pascal, &uc)?;
 
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", &pascal);
-    ctx.insert("snake", &snake);
+    let mut ctx = entity_ctx(&pascal, &snake);
     ctx.insert("uc", &uc);
     ctx.insert("uc_pascal", &uc_pascal);
 

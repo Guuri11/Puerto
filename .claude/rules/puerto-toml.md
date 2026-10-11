@@ -116,6 +116,8 @@ Given `name = "OrderItem"` and `use_cases = ["create_order_item"]`:
 | ----------------- | ----------------------------- | ---------------------------------------- |
 | `pascal`          | `OrderItem`                   | Struct names, impl names                 |
 | `snake`           | `order_item`                  | File names, module names, variable names |
+| `plural`          | `order_items`                 | SQL table, REST paths (`/order_items`)    |
+| `plural_pascal`   | `OrderItems`                  | Doc comments                             |
 | `uc`              | `create_order_item`           | Use case field name, file name           |
 | `uc_pascal`       | `CreateOrderItem`             | Use case type prefix                     |
 | `UseCaseTrait`    | `CreateOrderItemUseCaseTrait` | Domain trait                             |
@@ -130,6 +132,7 @@ Given `name = "OrderItem"` and `use_cases = ["create_order_item"]`:
 ```
 pascal  = PascalCase(name)                         // "OrderItem"
 snake   = pascal_to_snake(pascal)                  // "order_item"
+plural  = pluralize(snake)                         // "order_items"
 uc      = use_cases[i]                             // "create_order_item"
 uc_pascal = PascalCase(uc)                         // "CreateOrderItem"
 ```
@@ -138,6 +141,11 @@ uc_pascal = PascalCase(uc)                         // "CreateOrderItem"
 
 - `"order_item"` → `"OrderItem"`
 - `"create-product"` → `"CreateProduct"`
+
+`pluralize` (`generators/naming.rs`) inflects only the last word: consonant + `y` → `ies`
+(`categories`), `s`/`x`/`z`/`ch`/`sh` → `es` (`statuses`, `boxes`), a few irregulars (`people`,
+`children`) and uncountables (`data`, `series`); otherwise `s`. `naming::entity_ctx` puts
+`pascal`, `snake`, `plural` and `plural_pascal` in every template context.
 
 `pascal_to_snake` inserts `_` before each uppercase letter (except first), lowercases all:
 

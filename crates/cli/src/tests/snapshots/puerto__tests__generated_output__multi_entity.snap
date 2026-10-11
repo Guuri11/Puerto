@@ -284,7 +284,7 @@ mod tests {
 
 
     #[tokio::test]
-    async fn should_return_all_categorys() {
+    async fn should_return_all_categories() {
         let entities = vec![
             Category::new(CategoryProps {
             name: Name::new("first".to_string()).expect("valid Name"),
@@ -308,7 +308,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_categorys_exist() {
+    async fn should_return_empty_list_when_no_categories_exist() {
         let mut mock_repo = MockCategoryRepository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
         let use_case = ListCategoryUseCaseImpl {
@@ -2074,7 +2074,7 @@ pub struct CategoryApi {
 #[OpenApi]
 impl CategoryApi {
     /// Create a new Category
-    #[oai(path = "/categorys", method = "post", tag = "ApiTags::Category")]
+    #[oai(path = "/categories", method = "post", tag = "ApiTags::Category")]
     async fn create(&self, body: Json<CreateCategoryRequest>) -> CreateCategoryResponse {
         match self
             .create_category
@@ -2093,7 +2093,7 @@ impl CategoryApi {
     }
 
     /// Get a Category by ID
-    #[oai(path = "/categorys/:id", method = "get", tag = "ApiTags::Category")]
+    #[oai(path = "/categories/:id", method = "get", tag = "ApiTags::Category")]
     async fn get_by_id(&self, id: Path<Uuid>) -> GetCategoryResponse {
         match self
             .get_category
@@ -2109,8 +2109,8 @@ impl CategoryApi {
         }
     }
 
-    /// List all Categorys
-    #[oai(path = "/categorys", method = "get", tag = "ApiTags::Category")]
+    /// List all Categories
+    #[oai(path = "/categories", method = "get", tag = "ApiTags::Category")]
     async fn list(&self) -> ListCategoryResponse {
         match self.list_category.execute(ListCategoryParams).await {
             Ok(entities) => {
@@ -2125,7 +2125,7 @@ impl CategoryApi {
     }
 
     /// Update a Category
-    #[oai(path = "/categorys/:id", method = "put", tag = "ApiTags::Category")]
+    #[oai(path = "/categories/:id", method = "put", tag = "ApiTags::Category")]
     async fn update(&self, id: Path<Uuid>, body: Json<UpdateCategoryRequest>) -> UpdateCategoryResponse {
         match self
             .update_category
@@ -2145,7 +2145,7 @@ impl CategoryApi {
     }
 
     /// Delete a Category
-    #[oai(path = "/categorys/:id", method = "delete", tag = "ApiTags::Category")]
+    #[oai(path = "/categories/:id", method = "delete", tag = "ApiTags::Category")]
     async fn delete(&self, id: Path<Uuid>) -> DeleteCategoryResponse {
         match self
             .delete_category
@@ -2213,7 +2213,7 @@ mod tests {
     }
 
     fn item_path() -> String {
-        format!("/categorys/{}", Uuid::new_v4())
+        format!("/categories/{}", Uuid::new_v4())
     }
 
     #[tokio::test]
@@ -2225,7 +2225,7 @@ mod tests {
         // Act
         let response = mocks
             .client()
-            .post("/categorys")
+            .post("/categories")
             .body_json(&create_request().to_json())
             .send()
             .await;
@@ -2246,7 +2246,7 @@ mod tests {
         // Act
         let response = mocks
             .client()
-            .post("/categorys")
+            .post("/categories")
             .body_json(&create_request().to_json())
             .send()
             .await;
@@ -2288,7 +2288,7 @@ mod tests {
         mocks.list.expect_execute().returning(|_| Ok(CategoryMother::random_vec(2)));
 
         // Act
-        let response = mocks.client().get("/categorys").send().await;
+        let response = mocks.client().get("/categories").send().await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -2302,7 +2302,7 @@ mod tests {
         mocks.list.expect_execute().returning(|_| Err(CategoryError::RepositoryError));
 
         // Act
-        let response = mocks.client().get("/categorys").send().await;
+        let response = mocks.client().get("/categories").send().await;
 
         // Assert
         response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);

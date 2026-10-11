@@ -2,7 +2,9 @@ use std::{fs, path::Path};
 
 use serde_json::json;
 
-use crate::generators::naming::{crud_use_cases, pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::naming::{
+    crud_use_cases, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
+};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     FieldCtx, field_ctx, is_enum_vo, is_shared_vo, is_value_object, literal_import, resolve_type,
@@ -58,9 +60,7 @@ pub fn generate_model(
         .iter()
         .map(|f| field_ctx(f, pascal, shared_vos))
         .collect();
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
+    let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("imports", &imports);
     ctx.insert("fields", &field_ctxs);
     render("domain/model.tera", &ctx)
@@ -101,9 +101,7 @@ pub fn generate_mother(
         .iter()
         .map(|f| field_ctx(f, pascal, shared_vos))
         .collect();
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
+    let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("imports", &imports);
     ctx.insert("fields", &field_ctxs);
     render("domain/mother.tera", &ctx)
@@ -205,9 +203,7 @@ fn generate_use_case_trait(
         .map(|f| json!({ "name": f.name, "field_type": f.field_type }))
         .collect();
 
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
+    let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("extra_imports", &extra_imports);
     ctx.insert("params_fields", &params_fields);
     render(template, &ctx)
@@ -281,13 +277,9 @@ pub fn write_domain_files(
         .filter_map(|f| f.value_object.as_deref())
         .map(|vo| json!({ "vo_pascal": vo, "vo_snake": pascal_to_snake(vo) }))
         .collect();
-    let mut errors_ctx = tera::Context::new();
-    errors_ctx.insert("pascal", pascal);
-    errors_ctx.insert("snake", snake);
+    let mut errors_ctx = entity_ctx(pascal, snake);
     errors_ctx.insert("vo_fields", &vo_fields);
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
+    let ctx = entity_ctx(pascal, snake);
 
     write(
         "model.rs".into(),

@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::generators::conflict::{OverwritePolicy, guard_entity_overwrite};
+use crate::generators::naming::entity_ctx;
 use crate::generators::types::{is_shared_vo, is_value_object};
 use crate::generators::{
     application::{generate_create_use_case_impl, write_application_files},
@@ -28,18 +29,14 @@ fn write_files(
         &base.join(format!("business/src/domain/{snake}/model.rs")),
         &generate_model(pascal, snake, &[], &[])?,
     )?;
-    let mut errors_ctx = tera::Context::new();
-    errors_ctx.insert("pascal", pascal);
-    errors_ctx.insert("snake", snake);
+    let mut errors_ctx = entity_ctx(pascal, snake);
     errors_ctx.insert("vo_fields", &Vec::<String>::new());
     write_file(
         &base.join(format!("business/src/domain/{snake}/errors.rs")),
         &render("domain/errors.tera", &errors_ctx)?,
     )?;
     {
-        let mut repo_ctx = tera::Context::new();
-        repo_ctx.insert("pascal", pascal);
-        repo_ctx.insert("snake", snake);
+        let repo_ctx = entity_ctx(pascal, snake);
         write_file(
             &base.join(format!("business/src/domain/{snake}/repository.rs")),
             &render("domain/repository_simple.tera", &repo_ctx)?,
@@ -57,12 +54,7 @@ fn write_files(
         )),
         &generate_create_use_case_impl(pascal, snake, &[], &[])?,
     )?;
-    let infra_ctx = {
-        let mut c = tera::Context::new();
-        c.insert("pascal", pascal);
-        c.insert("snake", snake);
-        c
-    };
+    let infra_ctx = entity_ctx(pascal, snake);
     if db {
         write_file(
             &base.join(format!("infrastructure/src/{snake}/entity.rs")),

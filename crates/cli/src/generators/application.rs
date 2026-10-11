@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::generators::effective_fields;
-use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::naming::{entity_ctx, pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     FieldCtx, field_ctx, is_value_object, literal_import, literal_names_vo, vo_import_path,
@@ -70,9 +70,7 @@ fn use_case_context(
         .iter()
         .map(|f| field_ctx(f, pascal, shared_vos))
         .collect();
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
+    let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("fields", &field_ctxs);
     ctx.insert("vo_imports", &vo_imports);
     ctx.insert("test_imports", &tests);

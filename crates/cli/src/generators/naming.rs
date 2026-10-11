@@ -26,6 +26,67 @@ pub fn pascal_to_snake(s: &str) -> String {
     out
 }
 
+/// Words whose plural is the word itself.
+const UNCOUNTABLE: &[&str] = &[
+    "data",
+    "metadata",
+    "information",
+    "equipment",
+    "news",
+    "series",
+    "species",
+];
+
+const VOWELS: [char; 5] = ['a', 'e', 'i', 'o', 'u'];
+
+/// Plurals no suffix rule produces.
+const IRREGULAR: &[(&str, &str)] = &[
+    ("person", "people"),
+    ("child", "children"),
+    ("man", "men"),
+    ("woman", "women"),
+    ("mouse", "mice"),
+    ("goose", "geese"),
+    ("foot", "feet"),
+    ("tooth", "teeth"),
+];
+
+/// English plural of a snake_case name, inflecting only its last word: `category` → `categories`,
+/// `order_item` → `order_items`, `person` → `people`, `box` → `boxes`.
+///
+/// Deliberately small — table names and REST paths, not prose. Words ending in `f`/`fe`/`o`
+/// take the regular `s` (`roofs`, `photos`): their irregular forms are not predictable.
+pub fn pluralize(snake: &str) -> String {
+    let (head, word) = match snake.rfind('_') {
+        Some(i) => snake.split_at(i + 1),
+        None => ("", snake),
+    };
+    let plural = if UNCOUNTABLE.contains(&word) {
+        word.to_string()
+    } else if let Some((_, p)) = IRREGULAR.iter().find(|(s, _)| *s == word) {
+        p.to_string()
+    } else if word.len() > 1 && word.ends_with('y') && !word[..word.len() - 1].ends_with(VOWELS) {
+        format!("{}ies", &word[..word.len() - 1])
+    } else if word.ends_with(['s', 'x', 'z']) || word.ends_with("ch") || word.ends_with("sh") {
+        format!("{word}es")
+    } else {
+        format!("{word}s")
+    };
+    format!("{head}{plural}")
+}
+
+/// The names every entity template starts from: `pascal` (`OrderItem`), `snake` (`order_item`),
+/// `plural` (`order_items` — tables and REST paths) and `plural_pascal` (`OrderItems`).
+pub fn entity_ctx(pascal: &str, snake: &str) -> tera::Context {
+    let plural = pluralize(snake);
+    let mut ctx = tera::Context::new();
+    ctx.insert("pascal", pascal);
+    ctx.insert("snake", snake);
+    ctx.insert("plural_pascal", &to_pascal_case(&plural));
+    ctx.insert("plural", &plural);
+    ctx
+}
+
 /// The five use cases `scaffold` and `generate domain` create for an entity.
 pub fn crud_use_cases(snake: &str) -> Vec<String> {
     ["create", "get", "list", "update", "delete"]

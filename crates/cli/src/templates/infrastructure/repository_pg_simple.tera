@@ -27,7 +27,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         let row = sqlx::query_as!(
             {{ pascal }}Db,
             "SELECT id, created_at, updated_at, deleted, deleted_at, name
-             FROM {{ snake }}s WHERE id = $1 AND deleted = false",
+             FROM {{ plural }} WHERE id = $1 AND deleted = false",
             id
         )
         .fetch_optional(&self.pool)
@@ -44,7 +44,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         tracing::debug!(id = %entity.id, "save");
         let db = {{ pascal }}Db::from(entity);
         sqlx::query!(
-            "INSERT INTO {{ snake }}s (id, created_at, updated_at, deleted, deleted_at, name)
+            "INSERT INTO {{ plural }} (id, created_at, updated_at, deleted, deleted_at, name)
              VALUES ($1, $2, $3, $4, $5, $6)
              ON CONFLICT (id) DO UPDATE
              SET updated_at = $3, deleted = $4, deleted_at = $5, name = $6",

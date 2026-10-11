@@ -32,7 +32,7 @@ mod tests {
 {% endfor %}
 
     #[tokio::test]
-    async fn should_return_all_{{ snake }}s() {
+    async fn should_return_all_{{ plural }}() {
         let entities = vec![
             {{ pascal }}::new({{ pascal }}Props {
 {{ macros::props(fields=fields, word="first") }}        }).unwrap(),
@@ -54,7 +54,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_return_empty_list_when_no_{{ snake }}s_exist() {
+    async fn should_return_empty_list_when_no_{{ plural }}_exist() {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo.expect_find_all().returning(|| Ok(vec![]));
         let use_case = List{{ pascal }}UseCaseImpl {
