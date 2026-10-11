@@ -269,3 +269,31 @@ pub fn patch_libs(
     patch_api_rs(base, snake).map_err(in_file("presentation/src/api.rs"))?;
     Ok(())
 }
+
+/// Declares `{snake}_mother` in the `#[cfg(test)] tests::mothers` block of business/src/lib.rs,
+/// creating the block when the project has none yet.
+pub fn patch_mothers_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("business/src/lib.rs");
+    let src = fs::read_to_string(&path)?;
+
+    if src.contains(&format!("pub mod {snake}_mother;")) {
+        return Ok(());
+    }
+
+    let new_mod = format!("\n        pub mod {snake}_mother;\n");
+
+    if let Ok(patched) = patch_lib_block(&src, &["tests", "mothers"], &new_mod) {
+        fs::write(&path, patched)?;
+        return Ok(());
+    }
+
+    let mut content = src;
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push_str(&format!(
+        "\n#[cfg(test)]\npub mod tests {{\n    pub mod mothers {{\n        pub mod {snake}_mother;\n    }}\n}}\n"
+    ));
+    fs::write(&path, content)?;
+    Ok(())
+}

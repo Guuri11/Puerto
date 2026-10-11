@@ -4,18 +4,15 @@ use crate::generators::conflict::{OverwritePolicy, guard_entity_overwrite};
 use crate::generators::types::{is_shared_vo, is_value_object};
 use crate::generators::{
     application::{generate_create_use_case_impl, write_application_files},
-    domain::{
-        generate_create_use_case_trait, generate_model, patch_mothers_lib, write_domain_files,
-        write_mother,
-    },
+    domain::{generate_create_use_case_trait, generate_model, write_domain_files, write_mother},
     infrastructure::{generate_infra_entity, write_repository_files},
     migration::run_migration,
-    naming::{pascal_to_snake, to_pascal_case, write_file},
+    naming::{crud_use_cases, pascal_to_snake, to_pascal_case, write_file},
     presentation::write_presentation_files,
     render::render,
 };
 use crate::patchers::lib_rs::{
-    patch_business_lib_shared, patch_business_lib_value_objects, patch_libs,
+    patch_business_lib_shared, patch_business_lib_value_objects, patch_libs, patch_mothers_lib,
 };
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
@@ -178,13 +175,7 @@ pub fn run(
     patch_mothers_lib(base, &snake)?;
 
     let use_cases = if crud {
-        vec![
-            format!("create_{snake}"),
-            format!("get_{snake}"),
-            format!("list_{snake}"),
-            format!("update_{snake}"),
-            format!("delete_{snake}"),
-        ]
+        crud_use_cases(&snake)
     } else {
         vec![format!("create_{snake}")]
     };

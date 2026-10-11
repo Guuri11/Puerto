@@ -313,7 +313,7 @@ fn compose_gadget_from_snippets(output: &Path, db: bool) {
         "business/src/tests/mothers/gadget_mother.rs",
         expand(&s, "object-mother"),
     );
-    crate::generators::domain::patch_mothers_lib(output, "gadget").unwrap();
+    crate::patchers::lib_rs::patch_mothers_lib(output, "gadget").unwrap();
 
     // Presentation.
     crate::patchers::api_rs::patch_api_rs(output, "gadget").unwrap();

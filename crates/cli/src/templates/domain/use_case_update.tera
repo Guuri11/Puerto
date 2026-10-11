@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use uuid::Uuid;
-{% for imp in extra_imports %}{{ imp }}
+{% for imp in extra_imports %}use {{ imp }};
 {% endfor %}
 use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
 

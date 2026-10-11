@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use serde_json::json;
 
-use crate::generators::naming::{pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::naming::{crud_use_cases, pascal_to_snake, to_pascal_case, write_file};
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     FieldCtx, field_ctx, is_enum_vo, is_shared_vo, is_value_object, literal_import, resolve_type,
@@ -10,7 +10,7 @@ use crate::generators::types::{
 };
 use crate::patchers::lib_rs::{
     patch_business_lib_domain_crud, patch_business_lib_shared, patch_business_lib_value_objects,
-    patch_lib_block,
+    patch_mothers_lib,
 };
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
@@ -19,10 +19,6 @@ use crate::generators::effective_fields;
 /// Imports `domain/model.tera` writes itself, for the always-present system fields. Field-derived
 /// imports matching these must not be emitted again.
 const MODEL_TEMPLATE_IMPORTS: &[&str] = &["chrono::{DateTime, Utc}", "uuid::Uuid"];
-
-/// Imports `domain/use_case_update.tera` writes itself, for the always-present `id: Uuid` param.
-/// A `Uuid` *field* resolves to the same import — emitting it again is a duplicate import (E0252).
-const UPDATE_USE_CASE_TEMPLATE_IMPORTS: &[&str] = &["use uuid::Uuid;"];
 
 pub fn generate_model(
     pascal: &str,
@@ -158,32 +154,7 @@ pub fn generate_create_use_case_trait(
     snake: &str,
     fields: &[Field],
 ) -> Result<String, RenderError> {
-    let eff = effective_fields(fields);
-
-    let mut extra_imports: Vec<String> = vec![];
-    for f in &eff {
-        if let Ok(mapping) = resolve_type(&f.field_type) {
-            if let Some(imp) = mapping.needs_import {
-                let stmt = format!("use {};", imp);
-                if !extra_imports.contains(&stmt) {
-                    extra_imports.push(stmt);
-                }
-            }
-        }
-    }
-
-    let params_fields: Vec<serde_json::Value> = eff
-        .iter()
-        .map(|f| json!({ "name": f.name, "field_type": f.field_type }))
-        .collect();
-
-    let mut ctx = tera::Context::new();
-    ctx.insert("pascal", pascal);
-    ctx.insert("snake", snake);
-    ctx.insert("extra_imports", &extra_imports);
-    ctx.insert("params_fields", &params_fields);
-
-    render("domain/use_case_create.tera", &ctx)
+    generate_use_case_trait("domain/use_case_create.tera", &[], pascal, snake, fields)
 }
 
 pub fn generate_update_use_case_trait(
@@ -191,23 +162,37 @@ pub fn generate_update_use_case_trait(
     snake: &str,
     fields: &[Field],
 ) -> Result<String, RenderError> {
-    let eff = effective_fields(fields);
+    // The template imports `uuid::Uuid` for the always-present `id: Uuid` param. A `Uuid` *field*
+    // resolves to the same import — emitting it again is a duplicate import (E0252).
+    generate_use_case_trait(
+        "domain/use_case_update.tera",
+        &["uuid::Uuid"],
+        pascal,
+        snake,
+        fields,
+    )
+}
 
-    let mut extra_imports: Vec<String> = vec![];
-    for f in &eff {
-        if let Ok(mapping) = resolve_type(&f.field_type) {
-            if let Some(imp) = mapping.needs_import {
-                let stmt = format!("use {};", imp);
-                if UPDATE_USE_CASE_TEMPLATE_IMPORTS.contains(&stmt.as_str()) {
-                    continue;
-                }
-                if !extra_imports.contains(&stmt) {
-                    extra_imports.push(stmt);
-                }
-            }
+/// A use case trait whose Params carry every field as its primitive type. `template_imports` are
+/// the imports the template writes itself.
+fn generate_use_case_trait(
+    template: &str,
+    template_imports: &[&str],
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+) -> Result<String, RenderError> {
+    let eff = effective_fields(fields);
+    let mut extra_imports: Vec<&str> = vec![];
+    for imp in eff.iter().filter_map(|f| {
+        resolve_type(&f.field_type)
+            .ok()
+            .and_then(|m| m.needs_import)
+    }) {
+        if !template_imports.contains(&imp) && !extra_imports.contains(&imp) {
+            extra_imports.push(imp);
         }
     }
-
     let params_fields: Vec<serde_json::Value> = eff
         .iter()
         .map(|f| json!({ "name": f.name, "field_type": f.field_type }))
@@ -218,8 +203,7 @@ pub fn generate_update_use_case_trait(
     ctx.insert("snake", snake);
     ctx.insert("extra_imports", &extra_imports);
     ctx.insert("params_fields", &params_fields);
-
-    render("domain/use_case_update.tera", &ctx)
+    render(template, &ctx)
 }
 
 pub fn generate_shared_value_objects(vos: &[ValueObjectDefinition]) -> Result<String, RenderError> {
@@ -281,77 +265,56 @@ pub fn write_domain_files(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    write_file(
-        &base.join(format!("business/src/domain/{snake}/model.rs")),
-        &generate_model(pascal, snake, fields, shared_vos)?,
-    )?;
+    let dir = base.join(format!("business/src/domain/{snake}"));
+    let write = |file: String, content: String| write_file(&dir.join(file), &content);
 
     let eff = effective_fields(fields);
-    let has_local_vo = eff
-        .iter()
-        .any(|f| is_value_object(f) && !is_shared_vo(f, shared_vos));
-
     let vo_fields: Vec<serde_json::Value> = eff
         .iter()
-        .filter(|f| is_value_object(f))
-        .map(|f| {
-            let vo = f.value_object.as_deref().unwrap();
-            json!({ "vo_pascal": vo, "vo_snake": pascal_to_snake(vo) })
-        })
+        .filter_map(|f| f.value_object.as_deref())
+        .map(|vo| json!({ "vo_pascal": vo, "vo_snake": pascal_to_snake(vo) }))
         .collect();
     let mut errors_ctx = tera::Context::new();
     errors_ctx.insert("pascal", pascal);
     errors_ctx.insert("snake", snake);
     errors_ctx.insert("vo_fields", &vo_fields);
-    write_file(
-        &base.join(format!("business/src/domain/{snake}/errors.rs")),
-        &render("domain/errors.tera", &errors_ctx)?,
-    )?;
-
-    if has_local_vo {
-        let vo_content = generate_value_objects(pascal, snake, fields, shared_vos)?;
-        write_file(
-            &base.join(format!("business/src/domain/{snake}/value_objects.rs")),
-            &vo_content,
-        )?;
-    }
-
     let mut ctx = tera::Context::new();
     ctx.insert("pascal", pascal);
     ctx.insert("snake", snake);
-    write_file(
-        &base.join(format!("business/src/domain/{snake}/repository.rs")),
-        &render("domain/repository.tera", &ctx)?,
+
+    write(
+        "model.rs".into(),
+        generate_model(pascal, snake, fields, shared_vos)?,
     )?;
-    write_file(
-        &base.join(format!(
-            "business/src/domain/{snake}/use_cases/create_{snake}.rs"
-        )),
-        &generate_create_use_case_trait(pascal, snake, fields)?,
+    write(
+        "errors.rs".into(),
+        render("domain/errors.tera", &errors_ctx)?,
     )?;
-    write_file(
-        &base.join(format!(
-            "business/src/domain/{snake}/use_cases/get_{snake}.rs"
-        )),
-        &render("domain/use_case_get.tera", &ctx)?,
+    if eff
+        .iter()
+        .any(|f| is_value_object(f) && !is_shared_vo(f, shared_vos))
+    {
+        let vos = generate_value_objects(pascal, snake, fields, shared_vos)?;
+        write("value_objects.rs".into(), vos)?;
+    }
+    write(
+        "repository.rs".into(),
+        render("domain/repository.tera", &ctx)?,
     )?;
-    write_file(
-        &base.join(format!(
-            "business/src/domain/{snake}/use_cases/list_{snake}.rs"
-        )),
-        &render("domain/use_case_list.tera", &ctx)?,
+    let use_case = |action: &str| format!("use_cases/{action}_{snake}.rs");
+    write(
+        use_case("create"),
+        generate_create_use_case_trait(pascal, snake, fields)?,
     )?;
-    write_file(
-        &base.join(format!(
-            "business/src/domain/{snake}/use_cases/update_{snake}.rs"
-        )),
-        &generate_update_use_case_trait(pascal, snake, fields)?,
+    write(use_case("get"), render("domain/use_case_get.tera", &ctx)?)?;
+    write(use_case("list"), render("domain/use_case_list.tera", &ctx)?)?;
+    write(
+        use_case("update"),
+        generate_update_use_case_trait(pascal, snake, fields)?,
     )?;
-    write_file(
-        &base.join(format!(
-            "business/src/domain/{snake}/use_cases/delete_{snake}.rs"
-        )),
-        &render("domain/use_case_delete.tera", &ctx)?,
+    write(
+        use_case("delete"),
+        render("domain/use_case_delete.tera", &ctx)?,
     )?;
     Ok(())
 }
@@ -367,32 +330,6 @@ pub fn write_mother(
         &base.join(format!("business/src/tests/mothers/{snake}_mother.rs")),
         &generate_mother(pascal, snake, fields, shared_vos)?,
     )?;
-    Ok(())
-}
-
-pub fn patch_mothers_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
-    let src = fs::read_to_string(&path)?;
-
-    if src.contains(&format!("pub mod {snake}_mother;")) {
-        return Ok(());
-    }
-
-    let new_mod = format!("\n        pub mod {snake}_mother;\n");
-
-    if let Ok(patched) = patch_lib_block(&src, &["tests", "mothers"], &new_mod) {
-        fs::write(&path, patched)?;
-        return Ok(());
-    }
-
-    let mut content = src;
-    if !content.ends_with('\n') {
-        content.push('\n');
-    }
-    content.push_str(&format!(
-        "\n#[cfg(test)]\npub mod tests {{\n    pub mod mothers {{\n        pub mod {snake}_mother;\n    }}\n}}\n"
-    ));
-    fs::write(&path, content)?;
     Ok(())
 }
 
@@ -454,13 +391,7 @@ pub fn run_generate_domain(
 
     patch_mothers_lib(base, &snake)?;
 
-    let use_cases = vec![
-        format!("create_{snake}"),
-        format!("get_{snake}"),
-        format!("list_{snake}"),
-        format!("update_{snake}"),
-        format!("delete_{snake}"),
-    ];
+    let use_cases = crud_use_cases(&snake);
     crate::puerto_toml::add_entity(base, &pascal, use_cases, config.project.db, fields.clone())?;
 
     if has_local_vo {

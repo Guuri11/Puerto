@@ -26,6 +26,14 @@ pub fn pascal_to_snake(s: &str) -> String {
     out
 }
 
+/// The five use cases `scaffold` and `generate domain` create for an entity.
+pub fn crud_use_cases(snake: &str) -> Vec<String> {
+    ["create", "get", "list", "update", "delete"]
+        .iter()
+        .map(|action| format!("{action}_{snake}"))
+        .collect()
+}
+
 /// Writes `content` to `path`, creating parent directories. The error names the path — a bare
 /// `Permission denied (os error 13)` does not tell the user which file.
 pub fn write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
