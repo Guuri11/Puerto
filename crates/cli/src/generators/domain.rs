@@ -123,74 +123,33 @@ pub fn generate_value_objects(
         return Ok(String::new());
     }
 
-    let mut file_imports: Vec<String> = vec![format!("use super::errors::{}Error;", pascal)];
-    for f in &vo_fields {
-        if is_enum_vo(f) {
-            continue;
-        }
-        let inner = vo_inner_type(f);
-        let imp = match inner.as_str() {
-            "Uuid" => Some("use uuid::Uuid;".to_string()),
-            "DateTime<Utc>" => Some("use chrono::{DateTime, Utc};".to_string()),
-            _ => None,
-        };
-        if let Some(i) = imp {
-            if !file_imports.contains(&i) {
-                file_imports.push(i);
-            }
-        }
-    }
-
-    let mut vo_structs: Vec<String> = vec![];
-    for f in &vo_fields {
-        let vo = f.value_object.as_deref().unwrap();
-        if is_enum_vo(f) {
-            let variants = f.enum_variants.as_deref().unwrap();
-            let variant_lines = variants
-                .iter()
-                .map(|v| format!("    {},", v))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let from_str_arms = variants
-                .iter()
-                .map(|v| format!("            \"{}\" => Ok(Self::{}),", v, v))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let as_str_arms = variants
-                .iter()
-                .map(|v| format!("            Self::{} => \"{}\",", v, v))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let unknown_arm = format!("            _ => Err({pascal}Error::Invalid{vo}),");
-            vo_structs.push(format!(
-                "#[derive(Debug, Clone, PartialEq)]\npub enum {vo} {{\n{variant_lines}\n}}\n\nimpl std::str::FromStr for {vo} {{\n    type Err = {pascal}Error;\n\n    fn from_str(s: &str) -> Result<Self, Self::Err> {{\n        match s {{\n{from_str_arms}\n{unknown_arm}\n        }}\n    }}\n}}\n\nimpl {vo} {{\n    pub fn as_str(&self) -> &'static str {{\n        match self {{\n{as_str_arms}\n        }}\n    }}\n}}"
-            ));
-            continue;
-        }
-        let inner_type = vo_inner_type(f);
-        let struct_code = match inner_type.as_str() {
-            "String" => format!(
-                "#[derive(Debug, Clone, PartialEq)]\npub struct {vo} {{\n    value: String,\n}}\n\nimpl {vo} {{\n    pub fn new(value: String) -> Result<Self, {pascal}Error> {{\n        let trimmed = value.trim().to_string();\n        if trimmed.is_empty() {{\n            return Err({pascal}Error::Invalid{vo});\n        }}\n        Ok(Self {{ value: trimmed }})\n    }}\n\n    pub fn value(&self) -> &str {{\n        &self.value\n    }}\n}}"
-            ),
-            "i64" | "f64" | "bool" => format!(
-                "#[derive(Debug, Clone, Copy, PartialEq)]\npub struct {vo}({inner_type});\n\nimpl {vo} {{\n    pub fn new(value: {inner_type}) -> Result<Self, {pascal}Error> {{\n        Ok(Self(value))\n    }}\n\n    pub fn value(&self) -> {inner_type} {{\n        self.0\n    }}\n}}"
-            ),
-            "Uuid" => format!(
-                "#[derive(Debug, Clone, Copy, PartialEq)]\npub struct {vo}(Uuid);\n\nimpl {vo} {{\n    pub fn new(value: Uuid) -> Result<Self, {pascal}Error> {{\n        Ok(Self(value))\n    }}\n\n    pub fn value(&self) -> Uuid {{\n        self.0\n    }}\n}}"
-            ),
-            "DateTime<Utc>" => format!(
-                "#[derive(Debug, Clone, PartialEq)]\npub struct {vo}(DateTime<Utc>);\n\nimpl {vo} {{\n    pub fn new(value: DateTime<Utc>) -> Result<Self, {pascal}Error> {{\n        Ok(Self(value))\n    }}\n\n    pub fn value(&self) -> DateTime<Utc> {{\n        self.0\n    }}\n}}"
-            ),
+    let mut imports = vec![format!("super::errors::{pascal}Error")];
+    for f in vo_fields.iter().filter(|f| !is_enum_vo(f)) {
+        let import = match vo_inner_type(f).as_str() {
+            "Uuid" => "uuid::Uuid",
+            "DateTime<Utc>" => "chrono::{DateTime, Utc}",
             _ => continue,
         };
-        vo_structs.push(struct_code);
+        if !imports.iter().any(|i| i == import) {
+            imports.push(import.to_string());
+        }
     }
 
-    let file_imports_str = file_imports.join("\n");
-    let vo_structs_str = vo_structs.join("\n\n");
+    let vos: Vec<serde_json::Value> = vo_fields
+        .iter()
+        .map(|f| {
+            json!({
+                "vo": f.value_object,
+                "inner": vo_inner_type(f),
+                "variants": if is_enum_vo(f) { f.enum_variants.clone() } else { None },
+            })
+        })
+        .collect();
+
     let mut ctx = tera::Context::new();
-    ctx.insert("file_imports", &file_imports_str);
-    ctx.insert("vo_structs", &vo_structs_str);
+    ctx.insert("pascal", pascal);
+    ctx.insert("imports", &imports);
+    ctx.insert("vos", &vos);
     render("domain/value_objects.tera", &ctx)
 }
 
@@ -264,94 +223,26 @@ pub fn generate_update_use_case_trait(
 }
 
 pub fn generate_shared_value_objects(vos: &[ValueObjectDefinition]) -> Result<String, RenderError> {
-    if vos.is_empty() {
-        return Ok(String::new());
-    }
-
-    let mut vo_structs: Vec<String> = vec![];
-    for vo_def in vos {
-        let vo = &vo_def.name;
-        let inner = &vo_def.inner_type;
-        let struct_code = match inner.as_str() {
-            "String" => format!(
-                "use super::errors::{vo}Error;\n\n#[derive(Debug, Clone, PartialEq)]\npub struct {vo} {{\n    value: String,\n}}\n\nimpl {vo} {{\n    pub fn new(value: String) -> Result<Self, {vo}Error> {{\n        let trimmed = value.trim().to_string();\n        if trimmed.is_empty() {{\n            return Err({vo}Error::Invalid);\n        }}\n        Ok(Self {{ value: trimmed }})\n    }}\n\n    pub fn value(&self) -> &str {{\n        &self.value\n    }}\n}}"
-            ),
-            "i64" | "f64" | "bool" => format!(
-                "use super::errors::{vo}Error;\n\n#[derive(Debug, Clone, Copy, PartialEq)]\npub struct {vo}({inner});\n\nimpl {vo} {{\n    pub fn new(value: {inner}) -> Result<Self, {vo}Error> {{\n        Ok(Self(value))\n    }}\n\n    pub fn value(&self) -> {inner} {{\n        self.0\n    }}\n}}"
-            ),
-            "Uuid" => format!(
-                "use super::errors::{vo}Error;\nuse uuid::Uuid;\n\n#[derive(Debug, Clone, Copy, PartialEq)]\npub struct {vo}(Uuid);\n\nimpl {vo} {{\n    pub fn new(value: Uuid) -> Result<Self, {vo}Error> {{\n        Ok(Self(value))\n    }}\n\n    pub fn value(&self) -> Uuid {{\n        self.0\n    }}\n}}"
-            ),
-            "DateTime<Utc>" => format!(
-                "use super::errors::{vo}Error;\nuse chrono::{{DateTime, Utc}};\n\n#[derive(Debug, Clone, PartialEq)]\npub struct {vo}(DateTime<Utc>);\n\nimpl {vo} {{\n    pub fn new(value: DateTime<Utc>) -> Result<Self, {vo}Error> {{\n        Ok(Self(value))\n    }}\n\n    pub fn value(&self) -> DateTime<Utc> {{\n        self.0\n    }}\n}}"
-            ),
-            _ => continue,
-        };
-        vo_structs.push(struct_code);
-    }
-
-    let vo_structs_str = vo_structs.join("\n\n");
-    let mut ctx = tera::Context::new();
-    ctx.insert("vo_structs", &vo_structs_str);
-    render("domain/shared_value_objects.tera", &ctx)
-}
-
-#[allow(dead_code)]
-pub fn generate_shared_errors(vos: &[ValueObjectDefinition]) -> String {
-    if vos.is_empty() {
-        return String::new();
-    }
-
-    let mut error_variants: Vec<String> = vec![];
-    for vo_def in vos {
-        let vo = &vo_def.name;
-        let vo_snake = pascal_to_snake(vo);
-        error_variants.push(format!(
-            "    #[error(\"shared.value_object.{}.invalid\")]\n    Invalid,",
-            vo_snake
-        ));
-    }
-
-    let variants_str = error_variants.join("\n");
-
-    format!(
-        r#"use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum {vo}Error {{
-{variants}
-}}"#,
-        vo = if vos.len() == 1 {
-            vos[0].name.clone()
-        } else {
-            "Shared".to_string()
-        },
-        variants = variants_str,
-    )
+    render_shared("domain/shared_value_objects.tera", vos)
 }
 
 pub fn generate_shared_errors_combined(
     vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
+    render_shared("domain/shared_errors.tera", vos)
+}
+
+fn render_shared(template: &str, vos: &[ValueObjectDefinition]) -> Result<String, RenderError> {
     if vos.is_empty() {
         return Ok(String::new());
     }
-
-    let error_defs = vos
+    let vos: Vec<serde_json::Value> = vos
         .iter()
-        .map(|vo_def| {
-            let vo = &vo_def.name;
-            let vo_snake = pascal_to_snake(vo);
-            format!(
-                "#[derive(Debug, Error)]\npub enum {vo}Error {{\n    #[error(\"shared.value_object.{vo_snake}.invalid\")]\n    Invalid,\n}}"
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
+        .map(|v| json!({ "vo": v.name, "vo_snake": pascal_to_snake(&v.name), "inner": v.inner_type }))
+        .collect();
     let mut ctx = tera::Context::new();
-    ctx.insert("error_defs", &error_defs);
-    render("domain/shared_errors.tera", &ctx)
+    ctx.insert("vos", &vos);
+    render(template, &ctx)
 }
 
 pub fn write_shared_vo_files(

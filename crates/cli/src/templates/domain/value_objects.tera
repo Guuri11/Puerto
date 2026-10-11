@@ -1,3 +1,26 @@
-{{ file_imports }}
+{% import "domain/value_object_macros.tera" as macros %}{% for import in imports %}use {{ import }};
+{% endfor %}{% for v in vos %}
+{% if not loop.first %}
+{% endif %}{% if v.variants %}#[derive(Debug, Clone, PartialEq)]
+pub enum {{ v.vo }} {
+{% for variant in v.variants %}    {{ variant }},
+{% endfor %}}
 
-{{ vo_structs }}
+impl std::str::FromStr for {{ v.vo }} {
+    type Err = {{ pascal }}Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+{% for variant in v.variants %}            "{{ variant }}" => Ok(Self::{{ variant }}),
+{% endfor %}            _ => Err({{ pascal }}Error::Invalid{{ v.vo }}),
+        }
+    }
+}
+
+impl {{ v.vo }} {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+{% for variant in v.variants %}            Self::{{ variant }} => "{{ variant }}",
+{% endfor %}        }
+    }
+}{% else %}{{ macros::value_object(vo=v.vo, inner=v.inner, error=pascal ~ "Error", invalid=pascal ~ "Error::Invalid" ~ v.vo) }}{% endif %}{% endfor %}

@@ -1,0 +1,31 @@
+{# A value object wrapping one primitive. `error` is its error type, `invalid` the full error
+   value (`ProductError::InvalidName`, `EmailError::Invalid`). #}
+{% macro value_object(vo, inner, error, invalid) %}{% if inner == "String" %}#[derive(Debug, Clone, PartialEq)]
+pub struct {{ vo }} {
+    value: String,
+}
+
+impl {{ vo }} {
+    pub fn new(value: String) -> Result<Self, {{ error }}> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err({{ invalid }});
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}{% else %}#[derive(Debug, Clone{% if inner != "DateTime<Utc>" %}, Copy{% endif %}, PartialEq)]
+pub struct {{ vo }}({{ inner }});
+
+impl {{ vo }} {
+    pub fn new(value: {{ inner }}) -> Result<Self, {{ error }}> {
+        Ok(Self(value))
+    }
+
+    pub fn value(&self) -> {{ inner }} {
+        self.0
+    }
+}{% endif %}{% endmacro value_object %}

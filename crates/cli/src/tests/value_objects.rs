@@ -581,3 +581,25 @@ fn value_object_command_expands_datetime_shorthand() {
 
     cleanup(&dir);
 }
+
+#[test]
+fn should_import_uuid_and_chrono_per_shared_value_object_that_wraps_them() {
+    // No matrix scenario declares a shared Uuid / DateTime VO, so no snapshot locks this branch.
+    let vos = [
+        ValueObjectDefinition {
+            name: "Ref".into(),
+            inner_type: "Uuid".into(),
+        },
+        ValueObjectDefinition {
+            name: "Since".into(),
+            inner_type: "DateTime<Utc>".into(),
+        },
+    ];
+
+    let out = crate::generators::domain::generate_shared_value_objects(&vos).unwrap();
+
+    assert_eq!(
+        out,
+        "use super::errors::RefError;\nuse uuid::Uuid;\n\n#[derive(Debug, Clone, Copy, PartialEq)]\npub struct Ref(Uuid);\n\nimpl Ref {\n    pub fn new(value: Uuid) -> Result<Self, RefError> {\n        Ok(Self(value))\n    }\n\n    pub fn value(&self) -> Uuid {\n        self.0\n    }\n}\n\nuse super::errors::SinceError;\nuse chrono::{DateTime, Utc};\n\n#[derive(Debug, Clone, PartialEq)]\npub struct Since(DateTime<Utc>);\n\nimpl Since {\n    pub fn new(value: DateTime<Utc>) -> Result<Self, SinceError> {\n        Ok(Self(value))\n    }\n\n    pub fn value(&self) -> DateTime<Utc> {\n        self.0\n    }\n}\n"
+    );
+}

@@ -1,1 +1,7 @@
-{{ vo_structs }}
+{% import "domain/value_object_macros.tera" as macros %}{% for v in vos %}{% if not loop.first %}
+
+{% endif %}use super::errors::{{ v.vo }}Error;
+{% if v.inner == "Uuid" %}use uuid::Uuid;
+{% elif v.inner == "DateTime<Utc>" %}use chrono::{DateTime, Utc};
+{% endif %}
+{{ macros::value_object(vo=v.vo, inner=v.inner, error=v.vo ~ "Error", invalid=v.vo ~ "Error::Invalid") }}{% endfor %}

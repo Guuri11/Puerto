@@ -1,3 +1,8 @@
 use thiserror::Error;
-
-{{ error_defs }}
+{% for v in vos %}
+{% if not loop.first %}
+{% endif %}#[derive(Debug, Error)]
+pub enum {{ v.vo }}Error {
+    #[error("shared.value_object.{{ v.vo_snake }}.invalid")]
+    Invalid,
+}{% endfor %}

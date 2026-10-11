@@ -1,4 +1,5 @@
 use include_dir::{Dir, include_dir};
+use std::sync::OnceLock;
 use tera::Tera;
 
 static TEMPLATES: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/src/templates");
@@ -40,12 +41,46 @@ pub fn render(template_name: &str, ctx: &tera::Context) -> Result<String, Render
 }
 
 fn render_tera(template_name: &str, ctx: &tera::Context) -> Result<String, tera::Error> {
-    let content = TEMPLATES
-        .get_file(template_name)
-        .ok_or_else(|| tera::Error::msg(format!("template not found: {template_name}")))?
-        .contents_utf8()
-        .ok_or_else(|| tera::Error::msg("template not UTF-8"))?;
-    let mut tera = Tera::default();
-    tera.add_raw_template(template_name, content)?;
-    tera.render(template_name, ctx)
+    match templates() {
+        Ok(tera) => tera.render(template_name, ctx),
+        Err(e) => Err(tera::Error::msg(e)),
+    }
+}
+
+/// Every embedded template, parsed once. One `Tera` instance holds them all so a template can
+/// `{% import %}` macros from another (`domain/value_object_macros.tera`).
+fn templates() -> &'static Result<Tera, String> {
+    static TERA: OnceLock<Result<Tera, String>> = OnceLock::new();
+    TERA.get_or_init(|| {
+        let mut files = vec![];
+        collect(&TEMPLATES, &mut files)?;
+        let mut tera = Tera::default();
+        tera.add_raw_templates(files).map_err(|e| {
+            let mut msg = e.to_string();
+            let mut source = std::error::Error::source(&e);
+            while let Some(s) = source {
+                msg.push_str(&format!(": {s}"));
+                source = s.source();
+            }
+            msg
+        })?;
+        Ok(tera)
+    })
+}
+
+fn collect(
+    dir: &'static Dir<'static>,
+    out: &mut Vec<(String, &'static str)>,
+) -> Result<(), String> {
+    for file in dir.files() {
+        let name = file.path().to_string_lossy().into_owned();
+        let content = file
+            .contents_utf8()
+            .ok_or_else(|| format!("template {name} is not UTF-8"))?;
+        out.push((name, content));
+    }
+    for sub in dir.dirs() {
+        collect(sub, out)?;
+    }
+    Ok(())
 }
