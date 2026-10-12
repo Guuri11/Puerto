@@ -90,7 +90,7 @@ fn on_kafka(config: &PuertoConfig) -> bool {
 }
 
 /// The declared events `consumer` subscribes to, in its order. Errors on one nobody declares.
-fn subscribed(
+pub(crate) fn subscribed(
     consumer: &Consumer,
     declared: &[DeclaredEvent],
 ) -> Result<Vec<DeclaredEvent>, String> {
@@ -127,6 +127,9 @@ struct RegistryConsumer {
     events: Vec<String>,
     /// The aggregates whose topics it reads (Kafka): `product`, sorted.
     aggregates: Vec<String>,
+    /// The handler, as the registry builds it: the unit struct of a `[[consumer]]`, the
+    /// `Send{Mail}Mail { … }` of a mail sent on events.
+    handler: String,
 }
 
 /// `worker/src/generated/registry.rs`: the relay and every `[[consumer]]`, on the project's
@@ -148,13 +151,51 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         let mut aggregates: Vec<String> = events.iter().map(|e| e.entity_snake.clone()).collect();
         aggregates.sort();
         aggregates.dedup();
+        let pascal = to_pascal_case(&consumer.name);
         consumers.push(RegistryConsumer {
             name: consumer.name.clone(),
-            pascal: to_pascal_case(&consumer.name),
+            handler: pascal.clone(),
+            pascal,
             events: events.into_iter().map(|e| e.constant).collect(),
             aggregates,
         });
     }
+    // Each mail sent on events is one more consumer, `mail_<name>` (ADR-0020 § 3).
+    let mut template_mailers: Vec<String> = vec![];
+    for mail in config.mail.iter().filter(|m| !m.on.is_empty()) {
+        let consumer = Consumer {
+            name: format!("mail_{}", mail.name),
+            events: mail.on.clone(),
+        };
+        let events =
+            subscribed(&consumer, &declared).map_err(|e| format!("mail '{}': {e}", mail.name))?;
+        for event in &events {
+            let names = constants.entry(event.entity_snake.clone()).or_default();
+            if !names.contains(&event.constant) {
+                names.push(event.constant.clone());
+            }
+        }
+        let mut aggregates: Vec<String> = events.iter().map(|e| e.entity_snake.clone()).collect();
+        aggregates.sort();
+        aggregates.dedup();
+        let mail_pascal = to_pascal_case(&mail.name);
+        template_mailers.push(format!(
+            "infrastructure::mail::{}::Template{mail_pascal}Mailer",
+            mail.name
+        ));
+        let pascal = format!("Send{mail_pascal}Mail");
+        consumers.push(RegistryConsumer {
+            handler: format!(
+                "{pascal} {{ mailer: Arc::new(Template{mail_pascal}Mailer::new(mailer.clone())), \
+                 sent_mails: sent_mails.clone() }}"
+            ),
+            name: consumer.name,
+            pascal,
+            events: events.into_iter().map(|e| e.constant).collect(),
+            aggregates,
+        });
+    }
+    let mails = !template_mailers.is_empty();
 
     let mut imports: Vec<String> = constants
         .into_iter()
@@ -177,6 +218,10 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
     };
     let adapters: Vec<String> = adapters.iter().map(|a| a.to_string()).collect();
     imports.push(format!("infrastructure::db::events::{}", braced(&adapters)));
+    if mails {
+        imports.push("infrastructure::db::mail::PgSentMails".into());
+        imports.extend(template_mailers);
+    }
     imports.push("puerto_events::{Loops, WorkerConfig}".into());
     if kafka {
         let types = if consumers.is_empty() {
@@ -185,6 +230,9 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
             "{KafkaConfig, KafkaPublisher, KafkaSubscription}"
         };
         imports.push(format!("puerto_kafka::{types}"));
+    }
+    if mails {
+        imports.push("puerto_mail::{MailConfig, SmtpMailer}".into());
     }
 
     let mut modules: Vec<(&str, &str)> = consumers
@@ -197,6 +245,7 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
     ctx.insert("imports", &imports);
     ctx.insert("consumers", &consumers);
     ctx.insert("modules", &modules);
+    ctx.insert("mails", &mails);
     if !kafka {
         return Ok(render("worker/registry.tera", &ctx)?);
     }
@@ -270,7 +319,7 @@ pub fn regenerate_registry(
 
 /// `consumers.rs` with `pub mod {name};` among its module declarations, sorted as rustfmt keeps
 /// them; every other line stays where it was, ahead of them.
-fn with_module(src: &str, name: &str) -> String {
+pub(crate) fn with_module(src: &str, name: &str) -> String {
     let declaration = format!("pub mod {name};");
     let (mut modules, other): (Vec<&str>, Vec<&str>) = src
         .lines()
@@ -465,6 +514,16 @@ pub fn run_generate_consumer(
     }
     if config.consumer.iter().any(|c| c.name == name) {
         return Err(format!("consumer '{name}' is already declared").into());
+    }
+    if let Some(mail) = name
+        .strip_prefix("mail_")
+        .filter(|mail| config.mail.iter().any(|m| m.name == *mail))
+    {
+        return Err(format!(
+            "consumer name '{name}' is reserved: the worker runs mail '{mail}' as the consumer \
+             'mail_{mail}'. Pick another name"
+        )
+        .into());
     }
     if events.is_empty() {
         return Err("a consumer needs at least one event: --on <event_type>".into());

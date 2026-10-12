@@ -139,6 +139,12 @@ from then on (ADR-0020 of Puerto):
 catches every mail — `make mail/ui` — and nothing reaches a real inbox until `SMTP_URL` points at
 a provider.
 
+**Who sends it.** In a project with domain events, `puerto generate mail <name> --on
+<event_type> --to <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
+in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
+per event (`puerto_mail::send_once` keeps a `sent_mails` row — a crash between the send and that
+row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
+
 === Cargo.toml ===
 [workspace]
 members = ["business", "infrastructure", "presentation"]

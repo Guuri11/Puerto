@@ -1,0 +1,173 @@
+//! `mail_{{ name }}`: sends the `{{ name }}` mail on {% for e in events %}`{{ e.event_type }}`{% if not loop.last %}, {% endif %}{% endfor %}. Written once by
+//! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
+//! values the snapshot does not carry.
+//!
+//! Delivery is at-least-once: `send_once` keeps a `sent_mails` row per event, so a redelivered
+//! event does not send the mail again. Keep `MAIL` as it is: renaming it sends every mail again.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use business::domain::mail::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
+{%- for import in imports %}
+use {{ import }};
+{%- endfor %}
+use puerto_core::events::{EventEnvelope, EventHandler, HandlerOutcome, REASON_PAYLOAD_INVALID};
+use puerto_core::mail::SentMails;
+use puerto_mail::send_once;
+
+/// The key of this mail in `sent_mails`.
+const MAIL: &str = "{{ name }}";
+
+pub struct Send{{ pascal }}Mail {
+    pub mailer: Arc<dyn {{ pascal }}Mailer>,
+    pub sent_mails: Arc<dyn SentMails>,
+}
+
+#[async_trait]
+impl EventHandler for Send{{ pascal }}Mail {
+    async fn handle(&self, event: &EventEnvelope) -> HandlerOutcome {
+        let mail = match event.event_type.as_str() {
+{%- for e in events %}
+            {{ e.constant }} => match event.decode::<{{ e.entity_pascal }}Snapshot>() {
+                Ok({{ e.entity_snake }}) => {{ pascal }}Mail {
+                    to: {{ e.entity_snake }}.{{ to }}.clone(),
+{%- for f in fields %}
+                    {{ f.name }}: {{ e.entity_snake }}.{{ f.name }},
+{%- endfor %}
+                },
+                Err(err) => return HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),
+            },
+{%- endfor %}
+            // Not one of its events (puerto.toml `[[mail]] on`): nothing to send.
+            _ => return HandlerOutcome::Ack,
+        };
+        if mail.to.trim().is_empty() {
+            tracing::warn!(event_id = %event.id, "mail_{{ name }}: no recipient, not sent");
+            return HandlerOutcome::Ack;
+        }
+        send_once(self.sent_mails.as_ref(), event.id, MAIL, self.mailer.send(&mail)).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use business::domain::mail::{{ name }}::mocks::Mock{{ pascal }}Mailer;
+    use business::domain::{{ first.entity_snake }}::events::{{ first.entity_pascal }}Event;
+    use business::tests::mothers::{{ first.entity_snake }}_mother::{{ first.entity_pascal }}Mother;
+    use puerto_core::events::REASON_PERMANENT_ERROR;
+    use puerto_core::mail::MailError;
+    use puerto_mail::testing::InMemorySentMails;
+
+    fn {{ first.const_lower }}() -> ({{ first.entity_pascal }}Snapshot, EventEnvelope) {
+        let snapshot = {{ first.entity_pascal }}Snapshot::from_entity(&{{ first.entity_pascal }}Mother::random());
+        let event = EventEnvelope::new(&{{ first.entity_pascal }}Event::{{ first.variant }}(snapshot.clone()));
+        (snapshot, event)
+    }
+
+    /// A mailer expected to send `times` mails, each answering `result`.
+    fn mailer(times: usize, result: Result<(), MailError>) -> Mock{{ pascal }}Mailer {
+        let mut mailer = Mock{{ pascal }}Mailer::new();
+        mailer
+            .expect_send()
+            .times(times)
+            .returning(move |_| result.clone());
+        mailer
+    }
+
+    fn handler(mailer: Mock{{ pascal }}Mailer) -> Send{{ pascal }}Mail {
+        Send{{ pascal }}Mail {
+            mailer: Arc::new(mailer),
+            sent_mails: Arc::new(InMemorySentMails::new()),
+        }
+    }
+
+    #[tokio::test]
+    async fn should_send_the_mail_to_the_{{ to }}_when_a_{{ first.event_type }}_event_arrives() {
+        // Arrange
+        let (snapshot, event) = {{ first.const_lower }}();
+        let mut mock = Mock{{ pascal }}Mailer::new();
+        mock.expect_send()
+            .withf(move |mail| mail.to == snapshot.{{ to }})
+            .times(1)
+            .returning(|_| Ok(()));
+
+        // Act
+        let outcome = handler(mock).handle(&event).await;
+
+        // Assert
+        assert_eq!(outcome, HandlerOutcome::Ack);
+    }
+
+    #[tokio::test]
+    async fn should_send_it_once_when_the_same_event_is_delivered_twice() {
+        // Arrange
+        let (_, event) = {{ first.const_lower }}();
+        let handler = handler(mailer(1, Ok(())));
+
+        // Act
+        let first = handler.handle(&event).await;
+        let second = handler.handle(&event).await;
+
+        // Assert
+        assert_eq!((first, second), (HandlerOutcome::Ack, HandlerOutcome::Ack));
+    }
+
+    #[tokio::test]
+    async fn should_dead_letter_without_sending_when_the_payload_is_malformed() {
+        // Arrange
+        let (_, mut event) = {{ first.const_lower }}();
+        event.payload = serde_json::json!({ "unexpected": true });
+
+        // Act
+        let outcome = handler(mailer(0, Ok(()))).handle(&event).await;
+
+        // Assert
+        assert!(
+            matches!(
+                outcome,
+                HandlerOutcome::DeadLetter {
+                    reason: REASON_PAYLOAD_INVALID,
+                    ..
+                }
+            ),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_retry_when_the_mail_server_is_unavailable() {
+        // Arrange
+        let (_, event) = {{ first.const_lower }}();
+        let refused = Err(MailError::Transient("connection refused".to_string()));
+
+        // Act
+        let outcome = handler(mailer(1, refused)).handle(&event).await;
+
+        // Assert
+        assert_eq!(outcome, HandlerOutcome::Retry);
+    }
+
+    #[tokio::test]
+    async fn should_dead_letter_when_the_mail_is_rejected() {
+        // Arrange
+        let (_, event) = {{ first.const_lower }}();
+        let rejected = Err(MailError::Permanent("550 no such user".to_string()));
+
+        // Act
+        let outcome = handler(mailer(1, rejected)).handle(&event).await;
+
+        // Assert
+        assert!(
+            matches!(
+                outcome,
+                HandlerOutcome::DeadLetter {
+                    reason: REASON_PERMANENT_ERROR,
+                    ..
+                }
+            ),
+            "{outcome:?}"
+        );
+    }
+}

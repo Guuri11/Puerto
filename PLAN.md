@@ -2329,25 +2329,26 @@ Tier 1. New matrix scenarios: `MAIL` (no db, one mail) — `EVENTS_MAIL` comes w
 Structural tests: the files, the lib.rs patches, the toml entry; the compose service and the env
 vars only on the first mail; a non-db project gets a compose file with Mailpit alone; the refusals.
 
-### 14.4 — `--on <event_type>[,…] --to <field>`: sent from the worker (`events` projects)
+### 14.4 — `--on <event_type>[,…] --to <field>`: sent from the worker (`events` projects) ✅
 
-Tier 1. Scenario `EVENTS_MAIL` (`--events db`, one mail on a CRUD event) and the `kafka` scenario
-gains one mail.
-- `--on` needs an `events` project, and `--to` with it: a `String` field (or a VO over one) of
-  every listed event's snapshot. Without fields, the mail takes the first event's snapshot
-  primitive fields that are not `to`.
-- Writes `worker/src/mails/welcome.rs`: `SendWelcomeMail { mailer: Arc<dyn WelcomeMailer>,
-  sent_mails: Arc<dyn SentMails> }`, an `EventHandler` that decodes the snapshot (decode error →
-  `payload_invalid`), builds `WelcomeMail` from it and calls `send_once`. Tests with
-  `MockWelcomeMailer` and an in-memory `SentMails`: a valid event sends once; the same event twice
-  sends once; a malformed payload dead-letters; a `Transient` retries; a `Permanent` dead-letters.
-- `worker/src/mails.rs` (`pub mod`, sorted); the first such mail adds the `sent_mails` migration,
-  `puerto-mail` to `worker`, and `MailConfig::from_env()` + one `SmtpMailer` to `registry.rs`.
-- `registry.rs` (both transports): one consumer `mail_<name>` per `[[mail]]` with `on`, built
-  as `SendWelcomeMail { mailer: Arc::new(TemplateWelcomeMailer::new(mailer.clone())), sent_mails }`.
-  `generate bootstrap` regenerates it as today.
-- `generate mail` without `--on` in an `events` project writes no consumer; adding `--on` later
-  is a hand edit of puerto.toml plus the handler file — `validate` reports the missing file.
+Done as specified, except where noted. What the code settled:
+- The handler is `worker/src/consumers/mail_<name>.rs` (`Send{Name}Mail`), declared in
+  `consumers.rs` next to the hand-written consumers — the file is named after the consumer it is,
+  and `main.rs` (written once) needs no `mod mails;`.
+- With fields named after `--`, each must be a field of **every** event's snapshot, of the same
+  type: the handler builds the mail from the snapshot alone, so it always compiles. Without, the
+  mail takes the first snapshot's fields a template prints (no `Vec`, no map), present in all of
+  them, but the recipient. A mail may then have no field at all.
+- `--to` is a `String` field of every snapshot (a VO over a `String` is one there). An empty
+  recipient is `Ack`, logged. The `Mail` key in `sent_mails` is the mail's name, a `const` in the
+  handler.
+- `generate consumer mail_<mail>` is refused, and so is a mail whose `mail_<name>` a consumer has.
+  A missing handler is drift for `validate` and `generate bootstrap`.
+- The registry builds one `SmtpMailer` (`MailConfig::from_env`) and one `PgSentMails` for all mail
+  consumers; a project with no mail sent on events gets the registry it had.
+- Matrix: new `EVENTS_MAIL` (`make test/db`) and `EVENTS_MAIL_KAFKA` (`make test/kafka`) — two mails
+  on `Product` events and one sent by nothing. `EVENTS_KAFKA` stays as it was: its worker e2e
+  would need `SMTP_URL`, which is 14.5's. No existing snapshot changed.
 
 ### 14.5 — End to end against Mailpit
 

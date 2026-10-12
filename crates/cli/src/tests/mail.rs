@@ -467,3 +467,305 @@ fn validate_does_not_take_the_mail_directory_for_an_orphan_entity() {
     assert!(orphans.is_empty(), "{orphans:?}");
     cleanup(&dir);
 }
+
+// ── Phase 14.4: `--on <event_type> --to <field>`, sent from the worker ────
+
+/// An `events` project with a CRUD `Customer` (no web).
+fn customer_project(name: &str, transport: &str) -> (PathBuf, PathBuf) {
+    let (dir, output) = db_project(name);
+    scaffold::apply_events_to_new_project(&output, transport).unwrap();
+    let fields: Vec<puerto_toml::Field> = [
+        "name:Name:String",
+        "email:String",
+        "seats:i64",
+        "tags:vec:String",
+    ]
+    .iter()
+    .map(|arg| puerto_toml::parse_field_arg(arg).unwrap())
+    .collect();
+    scaffold::run_scaffold("Customer", &output, &fields, OverwritePolicy::Ask).unwrap();
+    (dir, output)
+}
+
+fn on(events: &[&str]) -> Vec<String> {
+    events.iter().map(|e| e.to_string()).collect()
+}
+
+fn welcome_on_created(output: &Path) {
+    scaffold::run_generate_mail_on(
+        "welcome",
+        &[],
+        &on(&["customer_created"]),
+        Some("email"),
+        output,
+    )
+    .unwrap();
+}
+
+#[test]
+fn mail_on_an_event_gets_a_consumer_that_sends_it() {
+    let (dir, output) = customer_project("mail_on_consumer", "db");
+
+    welcome_on_created(&output);
+
+    let handler = read(&output, "worker/src/consumers/mail_welcome.rs");
+    assert!(
+        handler.contains("pub struct SendWelcomeMail {"),
+        "{handler}"
+    );
+    assert!(
+        handler.contains("pub mailer: Arc<dyn WelcomeMailer>,"),
+        "{handler}"
+    );
+    assert!(
+        handler.contains("pub sent_mails: Arc<dyn SentMails>,"),
+        "{handler}"
+    );
+    assert!(handler.contains("CUSTOMER_CREATED => match event.decode::<CustomerSnapshot>()"));
+    assert!(handler.contains("to: customer.email.clone(),"), "{handler}");
+    assert!(handler.contains("send_once("), "{handler}");
+    assert!(handler.contains("REASON_PAYLOAD_INVALID"), "{handler}");
+    assert!(handler.contains("MockWelcomeMailer"), "{handler}");
+    assert!(handler.contains("InMemorySentMails"), "{handler}");
+
+    let consumers = read(&output, "worker/src/consumers.rs");
+    assert!(consumers.contains("pub mod mail_welcome;"), "{consumers}");
+    let toml = read(&output, "puerto.toml");
+    assert!(
+        toml.contains("[[mail]]\nname = \"welcome\"\non = [\"customer_created\"]\n"),
+        "{toml}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn mail_on_an_event_is_a_consumer_of_the_registry() {
+    let (dir, output) = customer_project("mail_on_registry", "db");
+
+    welcome_on_created(&output);
+
+    let registry = read(&output, "worker/src/generated/registry.rs");
+    assert!(
+        registry.contains("use crate::consumers::mail_welcome::SendWelcomeMail;"),
+        "{registry}"
+    );
+    assert!(registry.contains(".route(\"mail_welcome\", &[CUSTOMER_CREATED])"));
+    assert!(registry.contains("MailConfig::from_env()"), "{registry}");
+    assert!(registry.contains("SmtpMailer::new("), "{registry}");
+    assert!(
+        registry.contains("PgSentMails::new(pool.clone())"),
+        "{registry}"
+    );
+    assert!(
+        registry.contains("TemplateWelcomeMailer::new(mailer.clone())"),
+        "{registry}"
+    );
+    assert!(
+        registry.contains("PgSubscription::new(pool.clone(), \"mail_welcome\")"),
+        "{registry}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn mail_on_an_event_is_a_kafka_consumer_on_the_kafka_transport() {
+    let (dir, output) = customer_project("mail_on_kafka", "kafka");
+
+    welcome_on_created(&output);
+
+    let registry = read(&output, "worker/src/generated/registry.rs");
+    assert!(registry.contains("\"mail_welcome\","), "{registry}");
+    assert!(registry.contains("&[\"customer\"]"), "{registry}");
+    assert!(registry.contains("SendWelcomeMail {"), "{registry}");
+    assert!(registry.contains("SmtpMailer::new("), "{registry}");
+    cleanup(&dir);
+}
+
+#[test]
+fn mail_on_an_event_carries_the_snapshot_fields_a_template_prints() {
+    let (dir, output) = customer_project("mail_on_fields", "db");
+
+    welcome_on_created(&output);
+
+    let domain = read(&output, "business/src/domain/mail/welcome.rs");
+    assert!(domain.contains("pub name: String,"), "{domain}");
+    assert!(domain.contains("pub seats: i64,"), "{domain}");
+    // The recipient is `to`, not a field twice; a Vec is not printed.
+    assert!(!domain.contains("pub email:"), "{domain}");
+    assert!(!domain.contains("pub tags:"), "{domain}");
+    let handler = read(&output, "worker/src/consumers/mail_welcome.rs");
+    assert!(handler.contains("name: customer.name,"), "{handler}");
+    assert!(handler.contains("seats: customer.seats,"), "{handler}");
+    cleanup(&dir);
+}
+
+#[test]
+fn mail_on_an_event_takes_only_fields_its_snapshot_has() {
+    let (dir, output) = customer_project("mail_on_named_fields", "db");
+
+    scaffold::run_generate_mail_on(
+        "welcome",
+        &args(&["name:String"]),
+        &on(&["customer_created"]),
+        Some("email"),
+        &output,
+    )
+    .unwrap();
+    let domain = read(&output, "business/src/domain/mail/welcome.rs");
+    assert!(!domain.contains("pub seats:"), "{domain}");
+
+    for (field, reason) in [("nickname:String", "nickname"), ("seats:String", "seats")] {
+        let err = error_of(scaffold::run_generate_mail_on(
+            "receipt",
+            &args(&[field]),
+            &on(&["customer_created"]),
+            Some("email"),
+            &output,
+        ));
+        assert!(err.contains(reason), "{field}: {err}");
+        assert!(err.contains("customer_created"), "{field}: {err}");
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn first_mail_on_an_event_adds_the_sent_log_and_puerto_mail_to_the_worker() {
+    let (dir, output) = customer_project("mail_on_setup", "db");
+
+    welcome_on_created(&output);
+    scaffold::run_generate_mail_on(
+        "farewell",
+        &[],
+        &on(&["customer_deleted"]),
+        Some("email"),
+        &output,
+    )
+    .unwrap();
+
+    let migrations: Vec<String> = fs::read_dir(output.join("infrastructure/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|m| m.ends_with("_sent_mails.sql"))
+        .collect();
+    assert_eq!(migrations.len(), 1, "{migrations:?}");
+    let sql = read(
+        &output,
+        &format!("infrastructure/migrations/{}", migrations[0]),
+    );
+    assert!(sql.ends_with(include_str!("../templates/infrastructure/sent_mails.sql")));
+
+    let worker = read(&output, "worker/Cargo.toml");
+    let (deps, dev) = worker.split_once("[dev-dependencies]").unwrap();
+    assert_eq!(
+        deps.matches("puerto-mail = { workspace = true }").count(),
+        1
+    );
+    assert!(
+        dev.contains("puerto-mail = { workspace = true, features = [\"test-utils\"] }"),
+        "{worker}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn mail_without_on_in_an_events_project_has_no_consumer() {
+    let (dir, output) = customer_project("mail_on_none", "db");
+
+    welcome(&output);
+
+    assert!(!output.join("worker/src/consumers/mail_welcome.rs").exists());
+    let registry = read(&output, "worker/src/generated/registry.rs");
+    assert!(!registry.contains("SmtpMailer"), "{registry}");
+    cleanup(&dir);
+}
+
+#[test]
+fn mail_on_an_event_is_refused_without_what_it_needs() {
+    let (dir, output) = customer_project("mail_on_refusals", "db");
+    let try_mail = |on_events: &[&str], to: Option<&str>| {
+        error_of(scaffold::run_generate_mail_on(
+            "welcome",
+            &[],
+            &on(on_events),
+            to,
+            &output,
+        ))
+    };
+
+    assert!(try_mail(&["customer_created"], None).contains("--to"));
+    assert!(try_mail(&[], Some("email")).contains("--on"));
+    assert!(try_mail(&["customer_archived"], Some("email")).contains("customer_archived"));
+    let not_string = try_mail(&["customer_created"], Some("seats"));
+    assert!(not_string.contains("seats"), "{not_string}");
+    assert!(not_string.contains("String"), "{not_string}");
+    assert!(try_mail(&["customer_created"], Some("phone")).contains("phone"));
+    assert!(!read(&output, "puerto.toml").contains("[[mail]]"));
+    cleanup(&dir);
+}
+
+#[test]
+fn mail_on_an_event_is_refused_in_a_project_without_events() {
+    let (dir, output) = project("mail_on_no_events");
+
+    let err = error_of(scaffold::run_generate_mail_on(
+        "welcome",
+        &[],
+        &on(&["greeting_created"]),
+        Some("name"),
+        &output,
+    ));
+
+    assert!(err.contains("--events"), "{err}");
+    cleanup(&dir);
+}
+
+#[test]
+fn mail_and_consumer_names_never_share_a_consumer() {
+    let (dir, output) = customer_project("mail_on_consumer_clash", "db");
+    scaffold::run_generate_consumer("mail_welcome", &on(&["customer_created"]), &output).unwrap();
+
+    let err = error_of(scaffold::run_generate_mail_on(
+        "welcome",
+        &[],
+        &on(&["customer_created"]),
+        Some("email"),
+        &output,
+    ));
+    assert!(err.contains("mail_welcome"), "{err}");
+
+    scaffold::run_generate_mail_on(
+        "receipt",
+        &[],
+        &on(&["customer_created"]),
+        Some("email"),
+        &output,
+    )
+    .unwrap();
+    let err = error_of(scaffold::run_generate_consumer(
+        "mail_receipt",
+        &on(&["customer_created"]),
+        &output,
+    ));
+    assert!(err.contains("mail 'receipt'"), "{err}");
+    cleanup(&dir);
+}
+
+#[test]
+fn a_missing_mail_consumer_is_drift_for_validate_and_bootstrap() {
+    let (dir, output) = customer_project("mail_on_drift", "db");
+    welcome_on_created(&output);
+    fs::remove_file(output.join("worker/src/consumers/mail_welcome.rs")).unwrap();
+
+    let validate = error_of(validate::run_validate(&output));
+    let bootstrap = error_of(scaffold::run_bootstrap_command(&output, false));
+
+    assert!(
+        validate.contains("worker/src/consumers/mail_welcome.rs"),
+        "{validate}"
+    );
+    assert!(
+        bootstrap.contains("worker/src/consumers/mail_welcome.rs"),
+        "{bootstrap}"
+    );
+    cleanup(&dir);
+}

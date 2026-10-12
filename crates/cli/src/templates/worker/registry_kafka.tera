@@ -31,6 +31,14 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
         .map_err(|e| format!("cannot create the Kafka topics: {e} — is the broker up? `make docker-compose/up`"))?;
 {%- endif %}
     let publisher = KafkaPublisher::new(&kafka).map_err(|e| format!("cannot create the Kafka producer: {e}"))?;
+{%- if mails %}
+    // The mails sent on events (ADR-0020): one SMTP client and one sent log for all of them.
+    let mailer = Arc::new(
+        SmtpMailer::new(&MailConfig::from_env().map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?,
+    );
+    let sent_mails = Arc::new(PgSentMails::new(pool.clone()));
+{%- endif %}
 {% if consumers %}    let dead_letters = Arc::new(PgDeadLetters::new(pool.clone()));
 
     Ok(Loops::new(&config)
@@ -45,7 +53,7 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
                 dead_letters.clone(),
             )
             .map_err(|e| format!("cannot subscribe {{ c.name }} to Kafka: {e}"))?,
-            {{ c.pascal }},
+            {{ c.handler }},
             {% if loop.last %}dead_letters{% else %}dead_letters.clone(){% endif %},
         )
 {%- endfor %})

@@ -64,7 +64,7 @@ first `generate mail` creates one holding only Mailpit.
 ### 3. v1 sends from the worker only
 
 `puerto generate mail welcome --on customer_created --to email` (an `events` project) also writes
-`worker/src/mails/welcome.rs`: a consumer the user owns, which builds `WelcomeMail` from the
+`worker/src/consumers/mail_welcome.rs`: a consumer the user owns, which builds `WelcomeMail` from the
 snapshot and calls `send_once`. `[[mail]] { name, on }` in puerto.toml lists it, so `registry.rs`
 can wire it as the consumer `mail_welcome`, the same way it wires a `[[consumer]]`. The toml
 entry holds only the wiring, never the mail's content.

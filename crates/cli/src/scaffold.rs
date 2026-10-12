@@ -4,7 +4,7 @@ pub use crate::generators::bootstrap::run_bootstrap_command;
 pub use crate::generators::domain::run_generate_domain;
 pub use crate::generators::events::run_generate_event;
 pub use crate::generators::infrastructure::run_generate_repository;
-pub use crate::generators::mail::run_generate_mail;
+pub use crate::generators::mail::run_generate_mail_on;
 pub use crate::generators::migration::run_generate_migration;
 pub use crate::generators::presentation::run_generate_presentation;
 pub use crate::generators::scaffold::{run_scaffold, run_value_object};
@@ -13,6 +13,8 @@ pub use crate::generators::web::run_generate_web;
 pub use crate::generators::worker::run_generate_consumer;
 
 // Used only in tests — keep visibility scoped to test builds.
+#[cfg(test)]
+pub use crate::generators::mail::run_generate_mail;
 #[cfg(test)]
 pub use crate::generators::migration::run_migration;
 #[cfg(test)]

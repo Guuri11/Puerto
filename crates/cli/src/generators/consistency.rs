@@ -109,12 +109,17 @@ pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
     let mut lines = vec![];
     for mail in &config.mail {
         let name = &mail.name;
-        for path in [
+        let mut paths = vec![
             format!("business/src/domain/mail/{name}.rs"),
             format!("infrastructure/src/mail/{name}.rs"),
             format!("infrastructure/mail/{name}/subject.txt"),
             format!("infrastructure/mail/{name}/body.html"),
-        ] {
+        ];
+        // Sent on events: the worker's registry imports its consumer.
+        if !mail.on.is_empty() {
+            paths.push(format!("worker/src/consumers/mail_{name}.rs"));
+        }
+        for path in paths {
             if !base.join(&path).exists() {
                 lines.push(format!(
                     "mail '{name}': {path} is missing — restore it, or remove the [[mail]] block \

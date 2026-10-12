@@ -128,6 +128,9 @@ pub fn run_bootstrap_command(
         lines.extend(crate::generators::consistency::missing_consumer_files(
             base, &config,
         ));
+        lines.extend(crate::generators::consistency::missing_mail_files(
+            base, &config,
+        ));
         if !lines.is_empty() {
             return Err(format!(
                 "refusing to write generated wiring that will not compile:\n  {}\n\nPass \
@@ -158,6 +161,9 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     )
     .into_iter()
     .chain(crate::generators::consistency::missing_consumer_files(
+        base, &config,
+    ))
+    .chain(crate::generators::consistency::missing_mail_files(
         base, &config,
     )) {
         eprintln!("⚠ {line}");

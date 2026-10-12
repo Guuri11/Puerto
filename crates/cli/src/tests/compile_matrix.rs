@@ -31,9 +31,12 @@ pub(super) struct Scenario<'a> {
     pub(super) entity_events: &'a [(&'a str, &'a str)],
     /// Worker consumers added last (`puerto generate consumer`): `(name, event types)`.
     pub(super) consumers: &'a [(&'a str, &'a [&'a str])],
-    /// Mails added after the consumers (`puerto generate mail`): `(name, CLI field args)`.
-    pub(super) mails: &'a [(&'a str, &'a [&'a str])],
+    /// Mails added after the consumers (`puerto generate mail`): `(name, CLI field args, --on,
+    /// --to)`.
+    pub(super) mails: &'a [Mail<'a>],
 }
+
+pub(super) type Mail<'a> = (&'a str, &'a [&'a str], &'a [&'a str], Option<&'a str>);
 
 // The scenarios, shared with the snapshot tests (`generated_output.rs`): one proves the output
 // compiles, the other that it did not change.
@@ -417,6 +420,36 @@ pub(super) const EVENTS_KAFKA: Scenario = Scenario {
     ..EVENTS_DB
 };
 
+/// `events_db` with mails the worker sends (Phase 14.4): one on two events of `Product`, its fields
+/// taken from the snapshot (VO, enum, `Option<DateTime>`; `Vec` and map left out), and one with
+/// fields named after `--`. Plus a mail nothing sends, which the registry leaves out.
+pub(super) const EVENTS_MAIL: Scenario = Scenario {
+    name: "events_mail",
+    mails: &[
+        (
+            "product_live",
+            &[],
+            &["product_created", "product_published"],
+            Some("sku"),
+        ),
+        (
+            "price_alert",
+            &["name:String", "price:i64"],
+            &["product_published"],
+            Some("name"),
+        ),
+        ("digest", &[], &[], None),
+    ],
+    ..EVENTS_DB
+};
+
+/// [`EVENTS_MAIL`] on the `kafka` transport: each mail is a consumer group of its own.
+pub(super) const EVENTS_MAIL_KAFKA: Scenario = Scenario {
+    name: "events_mail_kafka",
+    events: Some("kafka"),
+    ..EVENTS_MAIL
+};
+
 /// `puerto new --db --events db` and nothing else: the worker has to build before the first
 /// scaffold (it named `infrastructure::db`, which only a scaffold declared). No `query!`, so no
 /// database is needed.
@@ -440,7 +473,12 @@ pub(super) const MAIL: Scenario = Scenario {
     no_web: true,
     shared_vos: &[],
     mails: &[
-        ("welcome", &["name:String", "plan:opt:String", "seats:i64"]),
+        (
+            "welcome",
+            &["name:String", "plan:opt:String", "seats:i64"],
+            &[],
+            None,
+        ),
         (
             "receipt",
             &[
@@ -454,6 +492,8 @@ pub(super) const MAIL: Scenario = Scenario {
                 "discount:opt:f64",
                 "shipped_at:opt:DateTime",
             ],
+            &[],
+            None,
         ),
     ],
     use_cases: &[],
@@ -529,9 +569,10 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         format();
     }
 
-    for (name, field_args) in scenario.mails {
+    for (name, field_args, on, to) in scenario.mails {
         let field_args: Vec<String> = field_args.iter().map(|f| f.to_string()).collect();
-        scaffold::run_generate_mail(name, &field_args, output).unwrap();
+        let on: Vec<String> = on.iter().map(|e| e.to_string()).collect();
+        scaffold::run_generate_mail_on(name, &field_args, &on, *to, output).unwrap();
         format();
     }
 }
@@ -885,6 +926,19 @@ fn kafka_events_project_compiles_lints_and_passes_integration_tests() {
     // `event_deliveries` under the Pg unit of work's tests. No broker is needed to build and
     // test it; `make test/kafka` provides the Postgres it compiles against.
     assert_postgres_scenario_is_clean(&EVENTS_KAFKA, "puerto_matrix_events_kafka");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_events_project_with_mails_compiles_lints_and_passes_its_tests() {
+    // Phase 14.4: the mail consumers, their registry wiring and the `sent_mails` migration.
+    assert_postgres_scenario_is_clean(&EVENTS_MAIL, "puerto_matrix_events_mail");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/kafka`"]
+fn kafka_events_project_with_mails_compiles_lints_and_passes_its_tests() {
+    assert_postgres_scenario_is_clean(&EVENTS_MAIL_KAFKA, "puerto_matrix_events_mail_kafka");
 }
 
 /// A `--db` scenario against a real database: `query!` checks its SQL at compile time, so the

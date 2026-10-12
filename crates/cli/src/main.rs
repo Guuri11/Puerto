@@ -115,6 +115,13 @@ enum GenerateAction {
     Mail {
         /// Mail name in snake_case (e.g. welcome, order_shipped)
         name: String,
+        /// Projects created with --events: the worker sends the mail on these event types,
+        /// comma-separated (e.g. customer_created). Its fields come from the events' snapshots
+        #[arg(long, value_delimiter = ',')]
+        on: Vec<String>,
+        /// With --on: the String field of the snapshot that holds the recipient (e.g. email)
+        #[arg(long)]
+        to: Option<String>,
         /// The values its text shows, after --: name:String seats:i64 plan:opt:String.
         /// Primitives and opt:<type> only; the recipient `to` is always there. None: name:String
         #[arg(raw = true)]
@@ -300,11 +307,19 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
-            action: GenerateAction::Mail { name, fields },
+            action:
+                GenerateAction::Mail {
+                    name,
+                    on,
+                    to,
+                    fields,
+                },
         } => {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
-                .and_then(|_| scaffold::run_generate_mail(&name, &fields, &cwd))
+                .and_then(|_| {
+                    scaffold::run_generate_mail_on(&name, &fields, &on, to.as_deref(), &cwd)
+                })
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {

@@ -203,6 +203,7 @@ puerto generate value-object <Name> <type>                    # Declare a shared
 puerto generate event <Entity> <name>      # events projects: a custom event (product_published) + regenerates events.rs
 puerto generate consumer <name> --on product_created,product_published   # events projects: a worker consumer + regenerates registry.rs
 puerto generate mail <name> [-- name:String seats:i64 plan:opt:String]  # a mail: port, template mailer, templates; the first adds Mailpit
+puerto generate mail <name> --on customer_created --to email   # events projects: + the worker consumer mail_<name> that sends it once per event
 puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
 puerto generate domain <Name> -- price:i64 status:Status:enum:Draft/Paid   # Same field syntax as scaffold — fields land in puerto.toml
 puerto generate application <Name>         # Application layer only: use case impls
@@ -295,7 +296,11 @@ make format/fix    # cargo fmt --all
   `infrastructure/mail/<name>/{subject.txt,body.html,body.txt}` — written once, the user's. The
   first mail adds `puerto-mail`, Mailpit to `docker-compose.yml` (created without `--db`),
   `SMTP_URL` / `MAIL_FROM`, `make mail/ui` and a root `AGENTS.md` section. An entity cannot be
-  named `Mail`: mails own the `mail` modules
+  named `Mail`: mails own the `mail` modules. With `--on <event_type> --to <field>` (events
+  projects) also `worker/src/consumers/mail_<name>.rs` (`Send{Name}Mail`: snapshot → mail →
+  `puerto_mail::send_once`), `[[mail]] on`, the consumer `mail_<name>` in `registry.rs` (one
+  `SmtpMailer` + one `PgSentMails`) and, the first time, the `sent_mails` migration (the CLI's
+  `templates/infrastructure/sent_mails.sql`) and `puerto-mail` in `worker`
 
 ## Detailed Rules
 

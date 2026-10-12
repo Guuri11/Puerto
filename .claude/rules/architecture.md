@@ -327,7 +327,10 @@ infrastructure/mail/<name>/             # subject.txt, body.html, body.txt — m
 - The module is `mail` in both crates (`domain { mail { <name> } }`, `mail { <name> }`), so no
   entity may be named `Mail`
 - Code that sends a mail depends on `{Name}Mailer`; in v1 that is a worker consumer (`--on`,
-  `events` projects), through `puerto_mail::send_once` and the `sent_mails` log
+  `events` projects): `worker/src/consumers/mail_<name>.rs` decodes the snapshot, builds
+  `{Name}Mail` and calls `puerto_mail::send_once(sent_mails, event.id, "<name>", …)` — check the
+  `sent_mails` log, send, mark. The registry wires it as the consumer `mail_<name>` with one
+  `SmtpMailer` (`SMTP_URL`, `MAIL_FROM`) and one `PgSentMails` shared by every mail
 
 ---
 
