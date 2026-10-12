@@ -13,11 +13,22 @@
 //! ```
 //!
 //! and its repositories call `crate::db::map_sqlx_error`.
+//!
+//! A project with domain events (ADR-0018) also uses [`uow::PgTransaction`] in its generated units
+//! of work, and its worker the outbox, the `db` transport and the dead-letter sink in [`events`].
+//! Their tables are [`OUTBOX_MIGRATION`], which `puerto new --events` writes into the project.
+
+pub mod events;
+pub mod uow;
 
 use puerto_core::RepositoryError;
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
+
+/// The outbox, delivery and dead-letter tables (`migrations/outbox.sql`). Puerto's CLI ships a
+/// byte-for-byte copy of it as a project migration.
+pub const OUTBOX_MIGRATION: &str = include_str!("../migrations/outbox.sql");
 
 /// Why the database could not be used at startup.
 #[derive(Debug, thiserror::Error)]

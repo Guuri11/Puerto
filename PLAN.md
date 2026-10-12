@@ -1867,7 +1867,19 @@ unique per call; `decode` round-trips the payload and rejects a payload of anoth
 dead-letters); backoff grows and is capped; reason codes are stable strings. `make test/mutation`
 covers `events` with zero survivors.
 
-### 13.2 — `puerto-sqlx`: Pg unit of work, outbox, delivery store
+### 13.2 — `puerto-sqlx`: Pg unit of work, outbox, delivery store ✅
+
+Done as specified, plus what the code settled: `dead_letters` gets
+`UNIQUE (event_id, consumer)` (`dead_letters_event_consumer`) so the sink is
+`ON CONFLICT DO NOTHING` — a message with no `event_id` never conflicts. A claim **counts as a
+delivery**: `next_batch` increments `attempts` and hides the row for a lease
+(`DEFAULT_CLAIM_LEASE`, 60 s, `with_lease`), so a worker that dies mid-handle neither loses the
+event nor gets unlimited tries; `settle(Retry)` only moves `next_attempt_at`. Claims come in
+outbox `seq` order. `PgDeliveries::route(consumer, &[event_type])` is what the worker's registry
+will call per `[[consumer]]`; an event nobody subscribed to is still marked published.
+`PgOutbox::try_lead` keeps the advisory-lock connection detached from the pool;
+`with_lock_key` exists for two projects sharing one database. Tests:
+`crates/sqlx/tests/events_postgres.rs` (`make test/db`).
 
 No generated output changes. Runtime only, tested under `make test/db`.
 

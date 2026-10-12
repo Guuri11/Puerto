@@ -3,7 +3,7 @@ name = "puerto-sqlx"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Puerto runtime — the Postgres adapter every Puerto project with a database shares: the pool, migrations at startup, the readiness ping and the driver-error mapping."
+description = "Puerto runtime — the Postgres adapter every Puerto project with a database shares: the pool, migrations at startup, the readiness ping, the driver-error mapping, and the unit of work, outbox and event delivery store."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -12,8 +12,15 @@ categories = ["database"]
 
 [dependencies]
 puerto-core = { workspace = true }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "uuid", "chrono", "json"] }
 thiserror = "2"
+# Domain events (ADR-0018): the unit of work, the outbox and the db transport.
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v7"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

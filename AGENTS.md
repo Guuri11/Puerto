@@ -19,7 +19,10 @@ crates/
   web/              — `puerto-web`, the presentation runtime: `App` (tracing, CORS, graceful
                       shutdown), `Config::from_env`, the health probes, `ErrorResponse`
   sqlx/             — `puerto-sqlx`, the Postgres runtime (`--db` projects): the pool,
-                      `run_migrations(pool, &MIGRATOR)`, `ping`, `map_sqlx_error`
+                      `run_migrations(pool, &MIGRATOR)`, `ping`, `map_sqlx_error`; for events projects
+                      `uow::PgTransaction`, `events::{PgOutbox, PgDeliveries, PgSubscription,
+                      PgDeadLetters}` and `migrations/outbox.sql` (the CLI's
+                      `templates/infrastructure/outbox.sql` must match it byte for byte — tested)
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)

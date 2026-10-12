@@ -545,3 +545,15 @@ fn compile_matrix_patches_only_the_runtime_crates_a_project_names() {
 
     cleanup(&dir);
 }
+
+// Phase 13.2 (ADR-0018): the outbox tables `puerto new --events` writes are the ones
+// `puerto-sqlx`'s own tests run against (`OUTBOX_MIGRATION` embeds that file).
+#[test]
+fn outbox_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
+    let template = include_str!("../templates/infrastructure/outbox.sql");
+    let runtime = include_str!("../../../sqlx/migrations/outbox.sql");
+    let runtime_lib = include_str!("../../../sqlx/src/lib.rs");
+
+    assert_eq!(template, runtime);
+    assert!(runtime_lib.contains(r#"include_str!("../migrations/outbox.sql")"#));
+}
