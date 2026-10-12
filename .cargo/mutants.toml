@@ -13,7 +13,7 @@ examine_globs = [
     "crates/cli/src/patchers/*.rs",
     "crates/cli/src/runtime.rs",
     # Runtime crates: their code ships in every generated project.
-    "crates/core/src/*.rs",
+    "crates/core/src/**/*.rs",
     "crates/web/src/*.rs",
     "crates/sqlx/src/*.rs",
 ]

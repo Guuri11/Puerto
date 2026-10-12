@@ -1829,7 +1829,15 @@ disk (the same drift check as entities).
 
 ### 13.0 — ADR-0018 + this spec ✅
 
-### 13.1 — `puerto-core`: events, ports and delivery policy
+### 13.1 — `puerto-core`: events, ports and delivery policy ✅
+
+Settled ports (`puerto_core::events::transport`): `Outbox` (`try_lead`, `fetch_unpublished`,
+`mark_published` — the relay's input, so `puerto-events` names no Postgres), `EventPublisher`
+(`publish(&EventEnvelope)`, one event at a time so the relay stops at the first failure),
+`EventSubscription` (`consumer()`, `next_batch(max) -> Vec<Claimed>`, `settle(&Claimed,
+&Delivery)`; `Claimed { envelope, attempt }`), `DeadLetterSink::record(&DeadLetterRecord)`
+(`for_event` / `unreadable`, payload trimmed to 4000 chars) and `TransportError::{Unavailable,
+InvalidData}`. Envelopes read back from a store are built with `EventEnvelope::from_parts`.
 
 No generated output changes. `crates/core` gains an `events` module and the dependencies
 `async-trait`, `serde`, `serde_json`, `uuid`, `chrono` (ADR-0018 extends ADR-0017's table).

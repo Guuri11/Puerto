@@ -7,7 +7,8 @@ Presentation → Infrastructure → Application → Domain
 ```
 
 - **Domain** depends on NOTHING — pure Rust, only `std`, `async-trait`, `thiserror` and the
-  Puerto runtime core `puerto-core` (itself `thiserror` only — ADR-0017)
+  Puerto runtime core `puerto-core` (no driver, no runtime, no I/O: `thiserror`, `async-trait`,
+  `serde_json`, `uuid`, `chrono` — ADR-0017, ADR-0018)
 - **Application** depends on Domain only — use case implementations (plus `tracing` for logs)
 - **Infrastructure** depends on Domain — adapters (DB, HTTP, etc.)
 - **Presentation** depends on all layers via manual dependency injection

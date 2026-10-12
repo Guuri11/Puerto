@@ -12,7 +12,8 @@ Puerto is a Rust CLI tool that scaffolds full-stack DDD projects. It uses `cargo
 ```
 crates/
   core/             — `puerto-core`, a runtime crate (ADR-0017): `RepositoryError`, `PageRequest`,
-                      `Page<T>`. Generated projects depend on it at the CLI's minor; same workspace
+                      `Page<T>`; `events` (ADR-0018): `DomainEvent`, `EventEnvelope`, `EventHandler`,
+                      the delivery policy and the transport ports. Generated projects depend on it at the CLI's minor; same workspace
                       version as `cli/`. The compile matrix builds against this checkout
                       (`[patch.crates-io]`, added by the test harness only)
   web/              — `puerto-web`, the presentation runtime: `App` (tracing, CORS, graceful

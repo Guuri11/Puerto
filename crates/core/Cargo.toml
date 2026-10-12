@@ -3,12 +3,22 @@ name = "puerto-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Puerto runtime — the domain types every Puerto project shares: paged lists and the repository error."
+description = "Puerto runtime — the domain types every Puerto project shares: paged lists, the repository error, domain events and the ports their transports implement."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-keywords = ["ddd", "clean-architecture", "puerto", "pagination", "repository"]
+keywords = ["ddd", "clean-architecture", "puerto", "pagination", "events"]
 categories = ["rust-patterns"]
 
 [dependencies]
 thiserror = "2"
+# Domain events (ADR-0018): the envelope, the handler and transport ports, the delivery policy.
+async-trait = "0.1"
+serde = "1"
+serde_json = "1"
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt"] }
