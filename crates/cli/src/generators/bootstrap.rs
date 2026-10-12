@@ -31,9 +31,9 @@ pub fn uses_unit_of_work(entity: &crate::puerto_toml::Entity, events: bool) -> b
 
 fn build_context(
     entities: &[crate::puerto_toml::Entity],
-    web: bool,
-    events: bool,
+    project: &crate::puerto_toml::Project,
 ) -> tera::Context {
+    let events = project.has_events();
     let ctx_entities: Vec<BootstrapEntity> = entities
         .iter()
         .map(|entity| {
@@ -63,18 +63,27 @@ fn build_context(
 
     let mut ctx = tera::Context::new();
     ctx.insert("entities", &ctx_entities);
-    ctx.insert("has_db", &entities.iter().any(|e| e.db));
-    ctx.insert("web", &web);
-    ctx.insert("apis", &api_expression(entities));
+    let auth = project.has_auth();
+    // An auth project's users live in Postgres whenever the project has a database.
+    let user_db = auth && project.db;
+    ctx.insert("has_db", &(entities.iter().any(|e| e.db) || user_db));
+    ctx.insert("web", &project.web);
+    ctx.insert("auth", &auth);
+    ctx.insert("user_db", &user_db);
+    ctx.insert("apis", &api_expression(entities, auth));
     ctx
 }
 
-/// What `OpenApiService` serves: `()` with no entity, the one `{snake}_api`, or a tuple of them.
-fn api_expression(entities: &[crate::puerto_toml::Entity]) -> String {
-    let apis: Vec<String> = entities
+/// What `OpenApiService` serves: `()` with no API, the one `{snake}_api`, or a tuple of them —
+/// `me_api` last in an auth project.
+fn api_expression(entities: &[crate::puerto_toml::Entity], auth: bool) -> String {
+    let mut apis: Vec<String> = entities
         .iter()
         .map(|e| format!("{}_api", pascal_to_snake(&e.name)))
         .collect();
+    if auth {
+        apis.push("me_api".into());
+    }
     match apis.as_slice() {
         [single] => single.clone(),
         _ => format!("({})", apis.join(", ")),
@@ -88,24 +97,32 @@ pub fn generate_bootstrap_content(
     entities: &[crate::puerto_toml::Entity],
     web: bool,
 ) -> Result<String, RenderError> {
-    generate_bootstrap_content_with_events(entities, web, false)
+    let project = crate::puerto_toml::Project {
+        web,
+        ..Default::default()
+    };
+    generate_bootstrap_for(entities, &project)
 }
 
-/// `events`: the project records domain events, so its CRUD entities are wired with a unit of
-/// work.
-pub fn generate_bootstrap_content_with_events(
+/// `project`: whether it has a frontend (the spec export test), domain events (its CRUD entities
+/// are wired with a unit of work), auth (the authenticator, `GET /me`) and a database.
+pub fn generate_bootstrap_for(
     entities: &[crate::puerto_toml::Entity],
-    web: bool,
-    events: bool,
+    project: &crate::puerto_toml::Project,
 ) -> Result<String, RenderError> {
-    let ctx = build_context(entities, web, events);
+    let ctx = build_context(entities, project);
     render("bootstrap/bootstrap.tera", &ctx)
 }
 
+/// `auth`: `GET /me` is tagged `Me`.
 pub fn generate_tags_content(
     entities: &[crate::puerto_toml::Entity],
+    auth: bool,
 ) -> Result<String, RenderError> {
-    let tags: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
+    let mut tags: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
+    if auth {
+        tags.push("Me");
+    }
     let mut ctx = tera::Context::new();
     ctx.insert("tags_entities", &tags);
     render("bootstrap/tags.tera", &ctx)
@@ -175,18 +192,17 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     }
     fs::write(
         bootstrap_path,
-        generate_bootstrap_content_with_events(
-            &config.entity,
-            config.project.web,
-            config.project.has_events(),
-        )?,
+        generate_bootstrap_for(&config.entity, &config.project)?,
     )?;
 
     let tags_path = base.join("presentation/src/api/tags.rs");
     if let Some(parent) = tags_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(tags_path, generate_tags_content(&config.entity)?)?;
+    fs::write(
+        tags_path,
+        generate_tags_content(&config.entity, config.project.has_auth())?,
+    )?;
 
     crate::generators::events::regenerate_events(base, &config)?;
     crate::generators::worker::regenerate_registry(base, &config)?;

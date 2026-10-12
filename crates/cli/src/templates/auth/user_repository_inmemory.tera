@@ -1,0 +1,114 @@
+use std::collections::HashMap;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use async_trait::async_trait;
+use business::domain::user::{
+    model::{User, UserId},
+    repository::UserRepositoryTrait,
+};
+use puerto_core::RepositoryError;
+
+/// Keeps the users in process memory: they are lost when the process stops, and provisioned again
+/// on their next request. It stands in until there is a database (`puerto new --db`).
+#[derive(Default)]
+pub struct InMemoryUserRepository {
+    rows: RwLock<HashMap<UserId, User>>,
+}
+
+impl InMemoryUserRepository {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // A poisoned lock means a writer panicked; every write is a single insert, so the map is
+    // still whole and is used as it is.
+    fn read(&self) -> RwLockReadGuard<'_, HashMap<UserId, User>> {
+        self.rows.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn write(&self) -> RwLockWriteGuard<'_, HashMap<UserId, User>> {
+        self.rows.write().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+#[async_trait]
+impl UserRepositoryTrait for InMemoryUserRepository {
+    async fn find_by_subject(
+        &self,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<Option<User>, RepositoryError> {
+        Ok(self
+            .read()
+            .values()
+            .find(|user| user.issuer == issuer && user.subject == subject)
+            .cloned())
+    }
+
+    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError> {
+        Ok(self.read().get(&id).cloned())
+    }
+
+    async fn save(&self, user: &User) -> Result<(), RepositoryError> {
+        let mut rows = self.write();
+        let taken = rows.values().any(|other| {
+            other.id != user.id && other.issuer == user.issuer && other.subject == user.subject
+        });
+        if taken {
+            return Err(RepositoryError::Duplicate);
+        }
+        rows.insert(user.id, user.clone());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ada() -> User {
+        User::provision("issuer", "ada", Some("ada@example.com".into()), None)
+    }
+
+    #[tokio::test]
+    async fn should_find_a_saved_user_when_looked_up_by_subject_or_id() {
+        // Arrange
+        let repository = InMemoryUserRepository::new();
+        let user = ada();
+        repository.save(&user).await.expect("saved");
+
+        // Act
+        let by_subject = repository.find_by_subject("issuer", "ada").await;
+        let by_id = repository.find_by_id(user.id).await;
+
+        // Assert
+        assert_eq!(by_subject, Ok(Some(user.clone())));
+        assert_eq!(by_id, Ok(Some(user)));
+    }
+
+    #[tokio::test]
+    async fn should_find_nobody_when_the_subject_is_another_issuers() {
+        // Arrange
+        let repository = InMemoryUserRepository::new();
+        repository.save(&ada()).await.expect("saved");
+
+        // Act
+        let found = repository.find_by_subject("other-issuer", "ada").await;
+
+        // Assert
+        assert_eq!(found, Ok(None));
+    }
+
+    #[tokio::test]
+    async fn should_reject_a_second_user_when_the_subject_is_taken() {
+        // Arrange
+        let repository = InMemoryUserRepository::new();
+        repository.save(&ada()).await.expect("saved");
+
+        // Act
+        let result = repository.save(&ada()).await;
+
+        // Assert
+        assert_eq!(result, Err(RepositoryError::Duplicate));
+    }
+}

@@ -163,6 +163,33 @@ fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>>
     add_workspace_dependency(base, "puerto-sqlx")
 }
 
+/// Adds the service `name` (its YAML, indented as a service) to `docker-compose.yml`: after the
+/// last service, before the top-level volumes. Creates the file when the project has none.
+pub(crate) fn add_compose_service(
+    base: &Path,
+    name: &str,
+    service: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("docker-compose.yml");
+    if !path.exists() {
+        write_file(&path, &format!("services:\n{service}"))?;
+        return Ok(());
+    }
+    let src = fs::read_to_string(&path)?;
+    if src.contains(&format!("\n  {name}:\n")) {
+        return Ok(());
+    }
+    let out = match src.find("\nvolumes:\n") {
+        Some(at) => format!("{}{service}{}", &src[..=at], &src[at..]),
+        None => {
+            let sep = if src.ends_with('\n') { "" } else { "\n" };
+            format!("{src}{sep}{service}")
+        }
+    };
+    fs::write(&path, out)?;
+    Ok(())
+}
+
 /// Adds runtime crate `name` to the root `[workspace.dependencies]`, next to the ones the template
 /// declares and on the same minor as this CLI.
 pub(crate) fn add_workspace_dependency(

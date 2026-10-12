@@ -1,0 +1,243 @@
+//! Yours: `puerto new --auth oidc` writes this file once. Every caller the provider vouches for
+//! becomes a `User` row on their first request (ADR-0021 § 3 of Puerto).
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, Instant};
+
+use async_trait::async_trait;
+use business::domain::user::{
+    model::{User, UserId},
+    repository::UserRepositoryTrait,
+};
+use puerto_core::auth::{AuthError, Authenticator, Principal};
+use puerto_core::RepositoryError;
+
+/// How long a caller's user id is remembered: within it, a request costs no lookup.
+pub const CACHE_TTL: Duration = Duration::from_secs(60);
+
+/// The project's [`Authenticator`]: asks `inner` (the provider) who the caller is, then finds or
+/// creates their `User` and hands the routes a [`Principal`] carrying its id. The roles stay the
+/// token's.
+pub struct ProvisioningAuthenticator {
+    inner: Arc<dyn Authenticator>,
+    users: Arc<dyn UserRepositoryTrait>,
+    issuer: String,
+    /// The user id of each subject seen in the last [`CACHE_TTL`].
+    cache: Mutex<HashMap<String, (UserId, Instant)>>,
+}
+
+impl ProvisioningAuthenticator {
+    /// `issuer`: `AUTH_ISSUER` — with the token's subject, what identifies a user.
+    pub fn new(
+        inner: Arc<dyn Authenticator>,
+        users: Arc<dyn UserRepositoryTrait>,
+        issuer: impl Into<String>,
+    ) -> Self {
+        Self {
+            inner,
+            users,
+            issuer: issuer.into(),
+            cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn cached(&self, subject: &str) -> Option<UserId> {
+        let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        cache
+            .get(subject)
+            .filter(|(_, at)| at.elapsed() < CACHE_TTL)
+            .map(|(id, _)| *id)
+    }
+
+    fn remember(&self, subject: &str, id: UserId) {
+        let mut cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+        cache.retain(|_, (_, at)| at.elapsed() < CACHE_TTL);
+        cache.insert(subject.to_string(), (id, Instant::now()));
+    }
+
+    /// The caller's user, created on their first request.
+    async fn user_id(&self, principal: &Principal) -> Result<UserId, RepositoryError> {
+        if let Some(user) = self
+            .users
+            .find_by_subject(&self.issuer, &principal.subject)
+            .await?
+        {
+            return Ok(user.id);
+        }
+        let user = User::provision(
+            &self.issuer,
+            &principal.subject,
+            principal.email.clone(),
+            principal.name.clone(),
+        );
+        match self.users.save(&user).await {
+            Ok(()) => {
+                tracing::info!(id = %user.id, "user provisioned");
+                Ok(user.id)
+            }
+            // Two first requests at once: the other one created it.
+            Err(RepositoryError::Duplicate) => self
+                .users
+                .find_by_subject(&self.issuer, &principal.subject)
+                .await?
+                .map(|user| user.id)
+                .ok_or(RepositoryError::Unavailable),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+#[async_trait]
+impl Authenticator for ProvisioningAuthenticator {
+    async fn authenticate(&self, token: &str) -> Result<Principal, AuthError> {
+        let principal = self.inner.authenticate(token).await?;
+        let id = match self.cached(&principal.subject) {
+            Some(id) => id,
+            None => {
+                let id = self.user_id(&principal).await.map_err(|err| {
+                    tracing::error!(error = %err, "could not provision the caller");
+                    AuthError::Unavailable
+                })?;
+                self.remember(&principal.subject, id);
+                id
+            }
+        };
+        Ok(principal.with_user_id(id.value()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::user::repository::mocks::MockUserRepository;
+    use puerto_core::auth::mocks::MockAuthenticator;
+    use uuid::Uuid;
+
+    use super::*;
+
+    const ISSUER: &str = "http://localhost:8180/realms/test";
+
+    /// The provider accepts `good` as Ada and rejects anything else as expired.
+    fn provider() -> Arc<dyn Authenticator> {
+        let mut provider = MockAuthenticator::new();
+        provider.expect_authenticate().returning(|token| match token {
+            "good" => Ok(Principal::new(Uuid::nil(), "ada")
+                .with_email("ada@example.com")
+                .with_roles(["admin"])),
+            _ => Err(AuthError::Expired),
+        });
+        Arc::new(provider)
+    }
+
+    fn authenticator(users: MockUserRepository) -> ProvisioningAuthenticator {
+        ProvisioningAuthenticator::new(provider(), Arc::new(users), ISSUER)
+    }
+
+    #[tokio::test]
+    async fn should_create_the_user_when_the_caller_is_new() {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users.expect_find_by_subject().returning(|_, _| Ok(None));
+        users
+            .expect_save()
+            .withf(|user| {
+                user.issuer == ISSUER
+                    && user.subject == "ada"
+                    && user.email.as_deref() == Some("ada@example.com")
+            })
+            .times(1)
+            .returning(|_| Ok(()));
+
+        // Act
+        let principal = authenticator(users).authenticate("good").await;
+
+        // Assert
+        let principal = principal.expect("authenticated");
+        assert_ne!(principal.user_id, Uuid::nil());
+        assert_eq!(principal.roles, vec!["admin"]);
+    }
+
+    #[tokio::test]
+    async fn should_carry_the_existing_user_id_when_the_caller_is_known() {
+        // Arrange
+        let known = User::provision(ISSUER, "ada", None, None);
+        let id = known.id;
+        let mut users = MockUserRepository::new();
+        users
+            .expect_find_by_subject()
+            .returning(move |_, _| Ok(Some(known.clone())));
+        users.expect_save().times(0);
+
+        // Act
+        let principal = authenticator(users).authenticate("good").await;
+
+        // Assert
+        assert_eq!(principal.map(|p| p.user_id), Ok(id.value()));
+    }
+
+    #[tokio::test]
+    async fn should_not_ask_the_repository_again_when_the_caller_is_cached() {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users.expect_find_by_subject().times(1).returning(|_, _| Ok(None));
+        users.expect_save().times(1).returning(|_| Ok(()));
+        let authenticator = authenticator(users);
+        let first = authenticator.authenticate("good").await.expect("first");
+
+        // Act
+        let second = authenticator.authenticate("good").await.expect("second");
+
+        // Assert
+        assert_eq!(first.user_id, second.user_id);
+    }
+
+    #[tokio::test]
+    async fn should_use_the_other_requests_user_when_both_created_it_at_once() {
+        // Arrange
+        let winner = User::provision(ISSUER, "ada", None, None);
+        let id = winner.id;
+        let mut users = MockUserRepository::new();
+        let mut lookups = 0;
+        users.expect_find_by_subject().returning(move |_, _| {
+            lookups += 1;
+            Ok((lookups > 1).then(|| winner.clone()))
+        });
+        users
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+
+        // Act
+        let principal = authenticator(users).authenticate("good").await;
+
+        // Assert
+        assert_eq!(principal.map(|p| p.user_id), Ok(id.value()));
+    }
+
+    #[tokio::test]
+    async fn should_answer_unavailable_when_the_users_cannot_be_read() {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users
+            .expect_find_by_subject()
+            .returning(|_, _| Err(RepositoryError::Unavailable));
+
+        // Act
+        let result = authenticator(users).authenticate("good").await;
+
+        // Assert
+        assert_eq!(result, Err(AuthError::Unavailable));
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_providers_answer_on_when_it_rejects_the_token() {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users.expect_find_by_subject().times(0);
+
+        // Act
+        let result = authenticator(users).authenticate("old").await;
+
+        // Assert
+        assert_eq!(result, Err(AuthError::Expired));
+    }
+}

@@ -1,0 +1,50 @@
+{
+  "realm": "{{ realm }}",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      { "name": "admin", "description": "Passes #[require_role(\"admin\")]" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "web",
+      "name": "{{ project }} web",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:5173/*"],
+      "webOrigins": ["http://localhost:5173"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@{{ host }}.localhost",
+      "firstName": "Admin",
+      "lastName": "{{ project }}",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "{{ password }}", "temporary": false }
+      ],
+      "realmRoles": ["admin", "default-roles-{{ realm }}"]
+    }
+  ]
+}

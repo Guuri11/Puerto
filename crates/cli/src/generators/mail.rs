@@ -257,25 +257,7 @@ fn mailpit_service(project: &str) -> String {
 
 /// Mailpit in `docker-compose.yml`: next to Postgres in a `--db` project, alone otherwise.
 fn add_mailpit_to_compose(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("docker-compose.yml");
-    if !path.exists() {
-        write_file(&path, &format!("services:\n{}", mailpit_service(project)))?;
-        return Ok(());
-    }
-    let src = fs::read_to_string(&path)?;
-    if src.contains("mailpit:") {
-        return Ok(());
-    }
-    let out = match src.find("\nvolumes:\n") {
-        // After the last service, before the top-level volumes.
-        Some(at) => format!("{}{}{}", &src[..=at], mailpit_service(project), &src[at..]),
-        None => {
-            let sep = if src.ends_with('\n') { "" } else { "\n" };
-            format!("{src}{sep}{}", mailpit_service(project))
-        }
-    };
-    fs::write(&path, out)?;
-    Ok(())
+    crate::generators::project::add_compose_service(base, "mailpit", &mailpit_service(project))
 }
 
 fn add_mail_env(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>> {

@@ -63,6 +63,8 @@ pub struct NewOptions {
     pub no_web: bool,
     /// `--events <transport>`: `db` or `kafka`.
     pub events: Option<String>,
+    /// `--auth <mode>`: `oidc` (ADR-0021).
+    pub auth: Option<String>,
 }
 
 pub fn new_project(
@@ -76,12 +78,16 @@ pub fn new_project(
         no_demo,
         no_web,
         events,
+        auth,
     } = options;
     if let Some(name) = &name {
         validate_project_name(name)?;
     }
     if let Some(transport) = &events {
         crate::validation::validate_events_transport(transport)?;
+    }
+    if let Some(mode) = &auth {
+        crate::generators::auth::check_mode(mode)?;
     }
 
     let resolved_db = if db {
@@ -111,6 +117,23 @@ pub fn new_project(
             .default(0)
             .interact()?;
         (choice > 0).then(|| transports[choice].to_string())
+    } else {
+        None
+    };
+
+    let resolved_auth = if auth.is_some() {
+        auth
+    } else if dialoguer::console::user_attended() {
+        let modes = [
+            "none",
+            "oidc (Auth0, Keycloak, any OpenID Connect provider)",
+        ];
+        let choice = dialoguer::Select::new()
+            .with_prompt("Auth?")
+            .items(&modes)
+            .default(0)
+            .interact()?;
+        (choice > 0).then(|| "oidc".to_string())
     } else {
         None
     };
@@ -149,6 +172,12 @@ pub fn new_project(
 
     if let Some(transport) = &resolved_events {
         crate::generators::project::apply_events_to_new_project(&output, transport)?;
+    }
+
+    // Before the demo and the frontend are stripped: both regenerate `bootstrap.rs`, which then
+    // already wires the authenticator.
+    if let Some(mode) = &resolved_auth {
+        crate::generators::auth::apply_auth_to_new_project(&output, mode)?;
     }
 
     if resolved_no_demo {

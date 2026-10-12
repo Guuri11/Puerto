@@ -344,7 +344,7 @@ fn template_bootstrap_is_exactly_what_the_generator_writes() {
     );
     assert_eq!(
         tags,
-        crate::generators::bootstrap::generate_tags_content(&config.entity).unwrap(),
+        crate::generators::bootstrap::generate_tags_content(&config.entity, false).unwrap(),
         "template/presentation/src/api/tags.rs is stale — regenerate it"
     );
     cleanup(&dir);

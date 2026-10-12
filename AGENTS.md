@@ -59,7 +59,9 @@ crates/
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
-    src/generators/ — Per-layer generators + bootstrap, conflict (overwrite guard), consistency (drift),
+    src/generators/ — Per-layer generators + bootstrap, conflict (overwrite guard), consistency (drift,
+                      incl. the textual auth drift of routes.rs), auth (`new --auth`: User, provisioning,
+                      `GET /me`, Keycloak),
                       web (the frontend slice + web/src/presentation/core/generated/*),
                       events (events.rs, the unit of work ports, `generate event`),
                       worker (the `worker/` crate, registry.rs, `generate consumer`)
@@ -204,6 +206,7 @@ puerto new --name <name> --no-db           # Fully non-interactive, no database
 puerto new --name <name> --no-db --destination /tmp/projects  # Control output directory
 puerto new --no-web                        # Skip the web frontend (web/ is included by default)
 puerto new --db --events db                # Domain events (ADR-0018): units of work + outbox (db | kafka)
+puerto new --auth oidc                     # Auth (ADR-0021): an OIDC provider's tokens (Auth0, Keycloak); Keycloak in compose
 
 puerto generate scaffold <Name>                                          # Add a new DDD entity — all layers at once (infers db from puerto.toml)
 puerto generate scaffold <Name> --force                                  # Re-generate an existing entity, overwriting hand-written changes
@@ -305,6 +308,16 @@ make format/fix    # cargo fmt --all
   `KafkaPublisher` (topics created at startup), one `KafkaSubscription` per consumer
   (`puerto-kafka`); the outbox migration has no `event_deliveries`, `docker-compose.yml` gains
   Redpanda and `.env` `KAFKA_BROKERS`
+- `--auth oidc` (ADR-0021): `[project] auth`, written once: the `User` entity
+  (`business/src/domain/user/`, in-memory or `PgUserRepository` over runtime-checked queries, the
+  `users` migration with `UNIQUE (issuer, subject)`), `infrastructure/src/user/provisioning.rs`
+  (`ProvisioningAuthenticator`: the provider, then find-or-create the user, a 60 s cache) and
+  `GET /me` (`presentation/src/api/me/`). `bootstrap.rs` discovers the provider
+  (`puerto_auth::OidcAuthenticator`, a startup error with a hint when it is down) and hands the
+  routes `.data(Arc<dyn Authenticator>)`. Keycloak 26.8 in `docker-compose.yml` with
+  `infrastructure/keycloak/realm.json` (client `web`, audience mapper `api`, user
+  `admin@<project>.localhost`), `AUTH_*` in `.env`, `make auth/ui`, a root `AGENTS.md` section.
+  The Greeting demo is `public`. `--auth local` is refused until 16.6
 - `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
   (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`
   (`Template{Name}Mailer` over `puerto-mail`, with render tests) and

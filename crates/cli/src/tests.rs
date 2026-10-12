@@ -36,6 +36,7 @@ fn generate_project(name: &str, destination: &Path) -> Result<PathBuf, Box<dyn s
     Ok(output_dir)
 }
 
+mod auth;
 mod bootstrap_gen;
 mod cli_surface;
 mod compile_matrix;

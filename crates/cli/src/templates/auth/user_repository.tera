@@ -1,0 +1,39 @@
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+
+use super::model::{User, UserId};
+
+#[async_trait]
+pub trait UserRepositoryTrait: Send + Sync {
+    /// The user the provider `issuer` calls `subject`.
+    async fn find_by_subject(
+        &self,
+        issuer: &str,
+        subject: &str,
+    ) -> Result<Option<User>, RepositoryError>;
+    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError>;
+    /// Inserts or updates by id; another user with the same `(issuer, subject)` is `Duplicate`.
+    async fn save(&self, user: &User) -> Result<(), RepositoryError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UserRepository {}
+
+        #[async_trait]
+        impl UserRepositoryTrait for UserRepository {
+            async fn find_by_subject(
+                &self,
+                issuer: &str,
+                subject: &str,
+            ) -> Result<Option<User>, RepositoryError>;
+            async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError>;
+            async fn save(&self, user: &User) -> Result<(), RepositoryError>;
+        }
+    }
+}

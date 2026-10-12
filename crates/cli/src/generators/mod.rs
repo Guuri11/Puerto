@@ -1,4 +1,5 @@
 pub mod application;
+pub mod auth;
 pub mod bootstrap;
 pub mod conflict;
 pub mod consistency;

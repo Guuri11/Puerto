@@ -17,6 +17,8 @@ pub(super) struct Scenario<'a> {
     pub(super) db: bool,
     /// `puerto new --db --events <transport>`: units of work, `events.rs`, the outbox.
     pub(super) events: Option<&'a str>,
+    /// `puerto new --auth <mode>`: the `User` entity, the provisioning authenticator, `GET /me`.
+    pub(super) auth: Option<&'a str>,
     /// Strip the Greeting demo before scaffolding (`puerto new --no-demo`).
     pub(super) no_demo: bool,
     /// Strip the web frontend (`puerto new --no-web`).
@@ -45,6 +47,7 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     name: "no_demo",
     db: false,
     events: None,
+    auth: None,
     no_demo: true,
     no_web: false,
     shared_vos: &[],
@@ -59,6 +62,7 @@ pub(super) const NO_WEB: Scenario = Scenario {
     name: "no_web",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: true,
     shared_vos: &[],
@@ -73,6 +77,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
     name: "primitives",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -100,6 +105,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     name: "uuid_vo",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -114,6 +120,7 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
     name: "opt_vec_prim",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -137,6 +144,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
     name: "plain_vo",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -154,6 +162,7 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
     name: "opt_vec_vo",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -175,6 +184,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
     name: "enum_vo",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -195,6 +205,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     name: "shared_vo",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String"), ("Money", "i64")],
@@ -209,6 +220,7 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
     name: "multi_entity",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -226,6 +238,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     name: "vo_kitchen_sink",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String")],
@@ -253,6 +266,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     name: "enum_only",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -267,6 +281,7 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     name: "custom_use_case",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -283,6 +298,7 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
     name: "web_crud",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -310,6 +326,7 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
     name: "web_every_type",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -341,6 +358,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     name: "postgres_every_type",
     db: true,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String")],
@@ -388,6 +406,7 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     name: "events_db",
     db: true,
     events: Some("db"),
+    auth: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -469,6 +488,7 @@ pub(super) const MAIL: Scenario = Scenario {
     name: "mail",
     db: false,
     events: None,
+    auth: None,
     no_demo: false,
     no_web: true,
     shared_vos: &[],
@@ -502,6 +522,33 @@ pub(super) const MAIL: Scenario = Scenario {
     entities: &[],
 };
 
+/// `puerto new --auth oidc` (Phase 16.4): the `User` entity in memory, the provisioning
+/// authenticator and its tests, `GET /me` in the spec the frontend is typed from, Keycloak in a
+/// `docker-compose.yml` of its own. The Greeting demo is `public`.
+pub(super) const AUTH_OIDC: Scenario = Scenario {
+    name: "auth_oidc",
+    db: false,
+    events: None,
+    auth: Some("oidc"),
+    no_demo: false,
+    no_web: false,
+    shared_vos: &[],
+    mails: &[],
+    use_cases: &[],
+    entity_events: &[],
+    consumers: &[],
+    entities: &[],
+};
+
+/// [`AUTH_OIDC`] with a database: `PgUserRepository` over runtime-checked queries (no query cache
+/// needed) and the `users` migration; its `#[sqlx::test]`s run under `make test/db`.
+pub(super) const AUTH_OIDC_DB: Scenario = Scenario {
+    name: "auth_oidc_db",
+    db: true,
+    no_web: true,
+    ..AUTH_OIDC
+};
+
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
 /// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
 /// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto new`
@@ -524,6 +571,9 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     }
     if let Some(transport) = scenario.events {
         scaffold::apply_events_to_new_project(output, transport).unwrap();
+    }
+    if let Some(mode) = scenario.auth {
+        crate::generators::auth::apply_auth_to_new_project(output, mode).unwrap();
     }
     if scenario.no_demo {
         scaffold::apply_no_demo(output).unwrap();
@@ -889,6 +939,12 @@ fn compiles_without_the_web_frontend() {
 }
 
 #[test]
+#[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
+fn compiles_an_oidc_auth_project() {
+    assert_scenario_compiles(&AUTH_OIDC);
+}
+
+#[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_a_fresh_events_project_before_any_scaffold() {
     assert_scenario_compiles(&EVENTS_FRESH);
@@ -909,6 +965,12 @@ fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests(
     // Nothing in the matrix generated a `--db` project, which is how `HashMap` columns, the Pg
     // repository test imports, timestamp round-trips and `unique` seeds all shipped broken.
     assert_postgres_scenario_is_clean(&POSTGRES_EVERY_TYPE, "puerto_matrix");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_oidc_auth_project_compiles_lints_and_passes_integration_tests() {
+    assert_postgres_scenario_is_clean(&AUTH_OIDC_DB, "puerto_matrix_auth_oidc");
 }
 
 #[test]

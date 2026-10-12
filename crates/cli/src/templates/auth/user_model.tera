@@ -1,0 +1,109 @@
+//! Yours: `puerto new --auth` writes this file once. Every authenticated caller is a `User` row
+//! (ADR-0021 § 3 of Puerto): what other entities point at (`owner: UserId`), whichever provider
+//! signed the caller in.
+
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+/// The id of every `User`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UserId(Uuid);
+
+impl UserId {
+    /// A new, random id — for a user being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Who signed in, as this project knows them. `(issuer, subject)` is the provider's name for the
+/// person and is unique; `email` and `name` are what the provider said the first time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct User {
+    pub id: UserId,
+    pub issuer: String,
+    pub subject: String,
+    pub email: Option<String>,
+    pub name: Option<String>,
+    /// Not read in an OIDC project: there the roles come from the token only, so one place
+    /// decides.
+    pub roles: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl User {
+    /// The user a first request from `(issuer, subject)` creates (just-in-time provisioning).
+    pub fn provision(
+        issuer: impl Into<String>,
+        subject: impl Into<String>,
+        email: Option<String>,
+        name: Option<String>,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: UserId::generate(),
+            issuer: issuer.into(),
+            subject: subject.into(),
+            email,
+            name,
+            roles: vec![],
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Reconstructs from persistence — no validation. ONLY infrastructure uses this.
+    pub fn from_repository(data: User) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_hold_what_the_provider_said_when_provisioned() {
+        // Act
+        let user = User::provision(
+            "http://localhost:8180/realms/shop",
+            "f81d4fae",
+            Some("ada@example.com".into()),
+            Some("Ada Lovelace".into()),
+        );
+
+        // Assert
+        assert_eq!(user.issuer, "http://localhost:8180/realms/shop");
+        assert_eq!(user.subject, "f81d4fae");
+        assert_eq!(user.email.as_deref(), Some("ada@example.com"));
+        assert_eq!(user.name.as_deref(), Some("Ada Lovelace"));
+        assert!(user.roles.is_empty());
+        assert_eq!(user.created_at, user.updated_at);
+    }
+
+    #[test]
+    fn should_get_a_new_id_when_two_users_are_provisioned() {
+        // Act
+        let ada = User::provision("issuer", "ada", None, None);
+        let bob = User::provision("issuer", "bob", None, None);
+
+        // Assert
+        assert_ne!(ada.id, bob.id);
+    }
+}
