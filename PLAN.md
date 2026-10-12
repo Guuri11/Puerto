@@ -32,7 +32,8 @@ Puerto is a Rust full-stack framework built around DDD + Clean Architecture (Hex
 │       └── repository.rs          # InMemory implementation
 └── presentation/
     └── src/
-        ├── main.rs                # 5-line entry point — never changes
+        ├── main.rs                # Config::from_env() + App::new(config).serve(…) — puerto-web
+        ├── app.rs                 # The user's hook (middleware, routes) — never regenerated
         ├── generated.rs           # pub mod bootstrap; — never changes
         ├── generated/
         │   └── bootstrap.rs       # AUTO-GENERATED from puerto.toml
@@ -45,6 +46,10 @@ Puerto is a Rust full-stack framework built around DDD + Clean Architecture (Hex
 ```
 
 `puerto generate scaffold <Name>` creates all DDD files, patches `lib.rs` files, updates `puerto.toml`, and regenerates `bootstrap.rs` — zero manual wiring.
+
+Since Phase 12 the code identical in every project lives in runtime crates instead of the template
+(ADR-0017): `puerto-core` (repository error, paged lists) and `puerto-web` (server, config, health,
+error body); `puerto-sqlx` is next.
 
 Since Phase 9 a project also gets `web/` — a React + daisyUI frontend on Bun (`--no-web` skips it)
 — and, once `cargo test` runs, `docs/api/openapi.json`, the API contract the frontend is typed from

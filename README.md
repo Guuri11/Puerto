@@ -166,10 +166,16 @@ Puerto is also a Cargo workspace:
 ```
 puerto/
 └── crates/
-    └── cli/                # The puerto binary (cargo-generate wrapper)
-        ├── src/            # CLI source
-        └── template/       # The "basic" project template (edit directly here)
+    ├── cli/                # The puerto binary (cargo-generate wrapper)
+    │   ├── src/            # CLI source
+    │   └── template/       # The "basic" project template (edit directly here)
+    ├── core/               # puerto-core — runtime: RepositoryError, PageRequest / Page<T>
+    └── web/                # puerto-web — runtime: server, Config, health probes, ErrorResponse
 ```
+
+What every generated project shares is not copied into it: it depends on the runtime crates, on the
+same minor as the CLI that generated it, and receives their fixes through `cargo update`
+([ADR-0017](docs/adr/0017-runtime-crates-next-to-the-generator.md)).
 
 | Command          | Description                                                |
 | ---------------- | ---------------------------------------------------------- |
