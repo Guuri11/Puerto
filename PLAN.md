@@ -51,6 +51,13 @@ Since Phase 12 the code identical in every project lives in runtime crates inste
 (ADR-0017): `puerto-core` (repository error, paged lists), `puerto-web` (server, config, health,
 error body) and, in `--db` projects, `puerto-sqlx` (pool, migrations, ping, driver-error mapping).
 
+Since Phase 13 (in progress) `puerto new --db --events db|kafka` makes every CRUD write go through
+a per-entity unit of work that saves the entity and records its event in an `outbox` table in one
+transaction (ADR-0018): `events.rs` is generated from puerto.toml, the repository only reads, and
+`puerto generate event` adds custom events. `puerto-core` holds the envelope, the delivery policy
+and the transport ports; `puerto-sqlx` the Pg unit of work, outbox and `db` transport. The
+`worker/` binary that relays and consumes them is 13.4.
+
 Since Phase 9 a project also gets `web/` — a React + daisyUI frontend on Bun (`--no-web` skips it)
 — and, once `cargo test` runs, `docs/api/openapi.json`, the API contract the frontend is typed from
 (`make web/sync`). `scaffold` writes each CRUD entity's screens (list, detail, form) for every field
@@ -1785,7 +1792,10 @@ T-23 (with T-29's second binary) is Phase 13; the mailer, Phase 14, is the first
 
 ## Phase 13 — Domain events: unit of work, outbox, worker (T-23, T-29)
 
-**Status:** not started. Decision: [ADR-0018](docs/adr/0018-domain-events-outbox-pluggable-transport.md).
+**Status:** in progress — 13.0 (`7b83e3f`) · 13.1 (`9947162`) · 13.2 (`789a0ed`) · 13.3
+(`02578b8`, with `960e01f`) done. Next: **13.4** (`puerto-events`, the `db` transport loops, the
+`worker/` binary, `generate consumer`), then 13.5 (Kafka). Decision:
+[ADR-0018](docs/adr/0018-domain-events-outbox-pluggable-transport.md).
 Every write in an `events` project saves the aggregate and its event in one transaction (outbox).
 A second binary, `worker/`, relays the outbox to a transport and runs the consumers. The transport
 is an adapter: `db` (Postgres, no broker) and `kafka` in this phase. A project without `events`
@@ -2014,6 +2024,25 @@ duplicate `unique` leaves neither.
 ### 13.4 — `puerto-events` + the `db` transport + the `worker/` binary
 
 Tier 1. The `events_db` snapshot grows a `worker/` crate.
+
+Starting point (what 13.1–13.3 left to build on):
+- Ports: `puerto_core::events::transport::{Outbox (try_lead / fetch_unpublished /
+  mark_published), EventPublisher::publish, EventSubscription (consumer / next_batch /
+  settle), Claimed { envelope, attempt }, DeadLetterSink, DeadLetterRecord::{for_event,
+  unreadable}, TransportError}`; policy `puerto_core::events::delivery::{decide, backoff_for}`.
+  The relay and consume loops in `crates/events` are generic over these and test against fakes
+  like the ones in `crates/core/src/events/transport.rs`.
+- `db` adapters: `puerto_sqlx::events::{PgOutbox, PgDeliveries (.route(consumer, &[types])),
+  PgSubscription (.with_lease), PgDeadLetters}` — `PgDeliveries::publish` already marks the row
+  published in its transaction; the relay's `mark_published` after it is a no-op.
+- Generator: `[project] events` / `[[entity]] events` in `puerto_toml.rs`;
+  `generators/events.rs` (`regenerate_events`, `run_generate_event`);
+  `bootstrap::uses_unit_of_work`; `pub const {ENTITY}_{VERB}` event types in each `events.rs`
+  for the consumer stubs to match on. `[[consumer]]` is not in the schema yet.
+- Tests: scenario `EVENTS_DB` (`compile_matrix.rs`, fields `events` / `entity_events`),
+  `tests/domain_events.rs`, and `postgres_events_project_compiles_lints_and_passes_integration_tests`
+  under `make test/db`. `release.yml`, `RUNTIME_CRATES` (`runtime.rs`) and
+  `patch_runtime_crates` must learn `puerto-events`.
 
 - New runtime crate `crates/events` (`puerto-events`), depending on `puerto-core`, `puerto-web`
   (health only), `tokio` and `tracing`:

@@ -1,6 +1,9 @@
 # 0018 — Domain events: unit of work, outbox, pluggable transport
 
 **Status:** Accepted (2026-10-12). Spec: `PLAN.md` § Phase 13. Backlog: T-23 (T-29 is part of it).
+Rollout: 13.1 (`puerto-core` events and ports), 13.2 (`puerto-sqlx` unit of work, outbox, `db`
+transport store) and 13.3 (generated `events.rs` / units of work) done; 13.4 (worker) and 13.5
+(Kafka) pending. The port signatures § 4 left open are settled in `PLAN.md` § 13.1.
 
 ## Context
 

@@ -145,6 +145,21 @@ puerto generate scaffold User -- email:Email   # type inferred from the shared V
 
 Each VO generates a domain struct with private inner value, `new()` returning `Result`, and `value()` / `as_str()` accessors. Enum VOs implement `FromStr` (`"Active".parse::<Status>()`) and `as_str()`. Infrastructure and presentation layers use primitives; VOs are constructed and extracted at the boundary automatically.
 
+### Domain events
+
+A project with a database can record an event with every write — saved with the entity in one
+transaction, in an outbox table ([ADR-0018](docs/adr/0018-domain-events-outbox-pluggable-transport.md)):
+
+```bash
+puerto new --name shop --db --events db        # or --events kafka
+puerto generate scaffold Product -- name:String sku:String!
+puerto generate event Product product_published
+```
+
+Each CRUD entity gets a generated `events.rs` (`ProductEvent::Created(ProductSnapshot)`, …) and a
+unit of work; its repository only reads, so a write that skips the outbox does not compile. The
+worker that relays the outbox and runs consumers is in progress (Phase 13.4).
+
 Validate your `puerto.toml` at any time:
 
 ```bash
@@ -169,9 +184,11 @@ puerto/
     ├── cli/                # The puerto binary (cargo-generate wrapper)
     │   ├── src/            # CLI source
     │   └── template/       # The "basic" project template (edit directly here)
-    ├── core/               # puerto-core — runtime: RepositoryError, PageRequest / Page<T>
+    ├── core/               # puerto-core — runtime: RepositoryError, PageRequest / Page<T>,
+    │                       #   domain events (envelope, delivery policy, transport ports)
     ├── web/                # puerto-web — runtime: server, Config, health probes, ErrorResponse
-    └── sqlx/               # puerto-sqlx — runtime: Postgres pool, migrations, ping, map_sqlx_error
+    └── sqlx/               # puerto-sqlx — runtime: Postgres pool, migrations, ping, map_sqlx_error,
+                            #   unit of work, outbox and the db event transport
 ```
 
 What every generated project shares is not copied into it: it depends on the runtime crates, on the
