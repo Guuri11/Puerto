@@ -291,7 +291,7 @@ A second binary next to `presentation`, and a composition root like it:
 
 ```
 worker/src/
-  main.rs                 # WorkerConfig::from_env() + Worker::new(config).run(build_worker) — never changes
+  main.rs                 # WorkerConfig::from_env() + Worker::new(config).try_run(build_worker) — never changes
   generated/registry.rs   # AUTO-GENERATED from [[consumer]]: relay + one consumer each — never hand-edit
   consumers.rs            # pub mod <consumer>; (sorted)
   consumers/<consumer>.rs # the user's EventHandler, written once by `puerto generate consumer`
@@ -426,7 +426,7 @@ SQL type mappings come from the type registry (see `puerto-toml.md`).
 
 ```
 presentation/src/
-  main.rs                  # puerto_web::Config::from_env() + App::new(config).serve(…) — never changes
+  main.rs                  # puerto_web::Config::from_env() + App::new(config).try_serve(…) — never changes
   app.rs                   # the user's hook: configure(routes) — written once by `new`, never regenerated
   generated.rs             # pub mod bootstrap; — static, never changes
   generated/

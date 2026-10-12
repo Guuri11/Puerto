@@ -1,6 +1,8 @@
 //! The worker process: the relay and every consumer as loops, the health probes and graceful
 //! shutdown (ADR-0018 § 5, ADR-0008).
 
+use std::convert::Infallible;
+use std::fmt::Display;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -75,7 +77,7 @@ impl Loops {
 /// #[tokio::main]
 /// async fn main() -> Result<(), puerto_events::Error> {
 ///     let config = puerto_events::WorkerConfig::from_env()?;
-///     puerto_events::Worker::new(config).run(generated::registry::build_worker).await
+///     puerto_events::Worker::new(config).try_run(generated::registry::build_worker).await
 /// }
 /// ```
 pub struct Worker {
@@ -87,17 +89,34 @@ impl Worker {
         Self { config }
     }
 
-    /// Sets up tracing (`RUST_LOG`), builds the loops with `build` — the project's
-    /// `generated::registry::build_worker` — and runs them, serving `/health` and `/health/ready`
-    /// on `WORKER_PORT`, until Ctrl-C or SIGTERM. The loops then finish the pass they are in,
-    /// for at most `SHUTDOWN_DEADLINE`.
+    /// Sets up tracing (`RUST_LOG`), builds the loops with `build` and runs them, serving
+    /// `/health` and `/health/ready` on `WORKER_PORT`, until Ctrl-C or SIGTERM. The loops then
+    /// finish the pass they are in, for at most `SHUTDOWN_DEADLINE`. For a `build` that cannot
+    /// fail; see [`Worker::try_run`].
     pub async fn run<F, Fut>(self, build: F) -> Result<(), Error>
     where
         F: FnOnce(WorkerConfig) -> Fut,
         Fut: Future<Output = Loops>,
     {
+        self.try_run(|config| async move { Ok::<_, Infallible>(build(config).await) })
+            .await
+    }
+
+    /// [`Worker::run`] with a `build` that can fail — the project's
+    /// `generated::registry::build_worker`, which connects to the database (and the broker). Its
+    /// error is logged and returned as [`Error::Startup`]: `main` prints it and exits 1.
+    pub async fn try_run<F, Fut, X>(self, build: F) -> Result<(), Error>
+    where
+        F: FnOnce(WorkerConfig) -> Fut,
+        Fut: Future<Output = Result<Loops, X>>,
+        X: Display,
+    {
         init_tracing();
-        let loops = build(self.config.clone()).await;
+        let loops = build(self.config.clone()).await.map_err(|e| {
+            let message = e.to_string();
+            tracing::error!(error = %message, "startup failed");
+            Error::Startup(message)
+        })?;
         self.run_until(loops, shutdown_signal()).await
     }
 
@@ -173,6 +192,22 @@ fn stale(heartbeats: &[Arc<Heartbeat>], now: Instant) -> Vec<&str> {
 mod tests {
     use super::*;
     use crate::test_support::{FakeOutbox, FakePublisher, FakeSink, FakeSubscription, Scripted};
+
+    #[tokio::test]
+    async fn should_stop_with_the_build_error_when_the_loops_cannot_be_built() {
+        // Arrange
+        let worker = Worker::new(WorkerConfig::default());
+
+        // Act
+        let result = worker
+            .try_run(|_| async { Err::<Loops, _>("the database is down") })
+            .await;
+
+        // Assert: `main` prints the error with `Debug` and exits 1.
+        let error = result.unwrap_err();
+        assert!(matches!(error, Error::Startup(_)), "{error:?}");
+        assert_eq!(format!("{error:?}"), "the database is down");
+    }
 
     #[test]
     fn should_build_the_relay_and_each_consumer_when_registered() {

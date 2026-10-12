@@ -289,7 +289,7 @@ fn new_project_main_hands_the_server_to_puerto_web() {
     assert!(main.contains("puerto_web::Config::from_env()?"), "{main}");
     assert!(main.contains("puerto_web::App::new(config)"), "{main}");
     assert!(
-        main.contains(".serve(generated::bootstrap::build_app)"),
+        main.contains(".try_serve(generated::bootstrap::build_app)"),
         "{main}"
     );
     assert!(main.contains("mod app;"), "{main}");
@@ -334,11 +334,13 @@ fn bootstrap_builds_the_routes_with_puerto_web_and_hands_them_to_the_app_hook() 
 
     let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
     assert!(
-        bootstrap.contains("pub async fn build_app(config: puerto_web::Config) -> impl Endpoint"),
+        bootstrap.contains(
+            "pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String>"
+        ),
         "{bootstrap}"
     );
     assert!(
-        bootstrap.contains("crate::app::configure(puerto_web::routes("),
+        bootstrap.contains("Ok(crate::app::configure(puerto_web::routes("),
         "{bootstrap}"
     );
     assert!(bootstrap.contains("puerto_web::health::always_ready()"));

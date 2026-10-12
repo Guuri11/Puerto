@@ -9,6 +9,6 @@ mod generated;
 async fn main() -> Result<(), puerto_events::Error> {
     let config = puerto_events::WorkerConfig::from_env()?;
     puerto_events::Worker::new(config)
-        .run(generated::registry::build_worker)
+        .try_run(generated::registry::build_worker)
         .await
 }

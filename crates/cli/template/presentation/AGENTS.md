@@ -7,7 +7,7 @@ no business logic lives here.
 
 ```
 presentation/src/
-├── main.rs                  # `puerto_web::Config::from_env()` + `App::new(config).serve(…)` (never changes)
+├── main.rs                  # `puerto_web::Config::from_env()` + `App::new(config).try_serve(…)` (never changes)
 ├── app.rs                   # Yours: `configure(routes)` — extra middleware and routes; no generator touches it
 ├── generated.rs             # `pub mod bootstrap;`
 ├── generated/bootstrap.rs   # AUTO-GENERATED DI wiring + routes — never hand-edit

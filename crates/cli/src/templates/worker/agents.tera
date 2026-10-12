@@ -9,7 +9,7 @@ business logic lives here — a consumer decodes the event and calls a use case.
 
 ```
 worker/src/
-├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).run(…)` (never changes)
+├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).try_run(…)` (never changes)
 ├── generated.rs             # `pub mod registry;`
 ├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
 ├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`

@@ -855,6 +855,52 @@ pub(super) fn assert_edited_postgres_scenario_is_clean(
         scenario.name,
         &[("DATABASE_URL", &database_url), ("SQLX_OFFLINE", "false")],
     );
+    assert_startup_reports_a_database_that_is_down(&output, &dir, &database_url);
 
     cleanup(&dir);
+}
+
+/// Phase 15.2: the server (and the worker) started against a database that is down end with a
+/// message and a hint — exit code 1, no panic, no password.
+fn assert_startup_reports_a_database_that_is_down(output: &Path, dir: &Path, database_url: &str) {
+    let binaries: Vec<&str> = ["presentation", "worker"]
+        .into_iter()
+        .filter(|b| output.join(b).is_dir())
+        .collect();
+    for binary in &binaries {
+        let built = std::process::Command::new("cargo")
+            .args(["build", "-p", binary])
+            .env("CARGO_TARGET_DIR", dir.join("target"))
+            .env("DATABASE_URL", database_url)
+            .env("SQLX_OFFLINE", "false")
+            .current_dir(output)
+            .status()
+            .expect("failed to run cargo");
+        assert!(built.success(), "cargo build -p {binary}");
+
+        // The executable is the `[[bin]]` name when the member declares one (presentation's is
+        // the project's name), else the package's.
+        let manifest = fs::read_to_string(output.join(binary).join("Cargo.toml")).unwrap();
+        let executable = manifest
+            .split_once("[[bin]]")
+            .and_then(|(_, bin)| bin.lines().find_map(|l| l.strip_prefix("name = ")))
+            .map_or(*binary, |name| name.trim_matches('"'));
+
+        // Nothing listens on port 1.
+        let run = std::process::Command::new(dir.join("target/debug").join(executable))
+            .env("DATABASE_URL", "postgres://devuser:s3cret@127.0.0.1:1/shop")
+            .env("PUERTO_BANNER", "false")
+            .current_dir(output)
+            .output()
+            .expect("failed to start the binary");
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        assert_eq!(run.status.code(), Some(1), "{binary}: {stderr}");
+        assert!(stderr.contains("127.0.0.1:1/shop"), "{binary}: {stderr}");
+        assert!(
+            stderr.contains("is the database up? `make docker-compose/up`"),
+            "{binary}: {stderr}"
+        );
+        assert!(!stderr.contains("panicked"), "{binary}: {stderr}");
+        assert!(!stderr.contains("s3cret"), "{binary}: {stderr}");
+    }
 }

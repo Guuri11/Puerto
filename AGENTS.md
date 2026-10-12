@@ -60,7 +60,7 @@ crates/
       infrastructure/     — Adapters crate
       presentation/       — REST API crate
         src/
-          main.rs.liquid        — Entry point: `puerto_web::Config::from_env()` + `App::new(config).serve(…)`
+          main.rs.liquid        — Entry point: `puerto_web::Config::from_env()` + `App::new(config).try_serve(…)`
           app.rs                — The project's hook: `configure(routes)`, written once, never regenerated
           generated.rs          — pub mod bootstrap; (static, never changes)
           generated/
@@ -243,12 +243,16 @@ make format/fix    # cargo fmt --all
 - Runtime crates instead of copies (ADR-0017): `puerto-core = "<cli minor>"` in the root
   `[workspace.dependencies]`, `{ workspace = true }` in each member; the domain imports
   `puerto_core::{RepositoryError, Page, PageRequest}`. `presentation` also depends on `puerto-web`:
-  `main.rs` is `Config::from_env()` + `App::new(config).serve(build_app)`, `bootstrap.rs` hands its
+  `main.rs` is `Config::from_env()` + `App::new(config).try_serve(build_app)`, `bootstrap.rs` hands its
   API and readiness check to `puerto_web::routes`, then to the user's `app::configure`. A `--db`
   project's `infrastructure` depends on `puerto-sqlx`: `db.rs` is `pub use puerto_sqlx::*;` plus
   the project's `MIGRATOR`
 - Formatted: every command that writes Rust ends with `cargo fmt --all` in the project, so its
   `make format` passes; a failed format only warns (ADR-0019)
+- A startup failure is a message, not a panic: `build_app` / `build_worker` return
+  `Result<_, String>` (`?`, a hint per cause: `.env`, `make docker-compose/up`), `main` hands them
+  to `try_serve` / `try_run`, which log the error and exit 1. `puerto_sqlx::DatabaseError` says
+  `host:port/database` and the driver's cause, never the password
 - Logging through `tracing` directly — no logger port (ADR-0006)
 - Errors: `ErrorResponse { name, message }` with the code in `name`; validation → 422; one test per
   mapper arm (ADR-0007)
@@ -264,7 +268,7 @@ make format/fix    # cargo fmt --all
   `unit_of_work.rs`, a read-only repository port, writes through `Pg{Entity}UnitOfWorkFactory`,
   and a root `AGENTS.md` section saying `events.rs` is never hand-edited
 - `--events` also writes the `worker/` member (ADR-0018 § 5): `main.rs` is
-  `WorkerConfig::from_env()` + `Worker::new(config).run(build_worker)` (`puerto-events`),
+  `WorkerConfig::from_env()` + `Worker::new(config).try_run(build_worker)` (`puerto-events`),
   `generated/registry.rs` (AUTO-GENERATED from `[[consumer]]`), `consumers/<name>.rs` (the
   user's), `make worker`, `make events/dead-letters`, `WORKER_PORT`. On `db` the registry relays
   `PgOutbox` → `PgDeliveries`, one `PgSubscription` per consumer. On `kafka` it relays to

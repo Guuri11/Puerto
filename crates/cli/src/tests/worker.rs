@@ -68,7 +68,7 @@ fn new_with_db_events_writes_the_worker_and_adds_it_to_the_workspace() {
     assert!(manifest.contains("puerto-events = { workspace = true }"));
     let main = read(&output, "worker/src/main.rs");
     assert!(main.contains("puerto_events::Worker::new(config)"));
-    assert!(main.contains(".run(generated::registry::build_worker)"));
+    assert!(main.contains(".try_run(generated::registry::build_worker)"));
     cleanup(&dir);
 }
 

@@ -1,5 +1,7 @@
 //! The server: what `main.rs` starts and `bootstrap.rs` builds the routes for.
 
+use std::convert::Infallible;
+use std::fmt::Display;
 use std::time::Duration;
 
 use poem::{
@@ -56,13 +58,28 @@ impl App {
         Self { config }
     }
 
-    /// Sets up tracing (`RUST_LOG`), prints the banner, builds the routes with `build` — the
-    /// project's `generated::bootstrap::build_app` — and serves them on `SERVICE_PORT` until
-    /// Ctrl-C or SIGTERM, then drains in-flight requests for [`SHUTDOWN_DEADLINE`].
+    /// Sets up tracing (`RUST_LOG`), prints the banner, builds the routes with `build` and serves
+    /// them on `SERVICE_PORT` until Ctrl-C or SIGTERM, then drains in-flight requests for
+    /// [`SHUTDOWN_DEADLINE`]. For a `build` that cannot fail; see [`App::try_serve`].
     pub async fn serve<F, Fut, E>(self, build: F) -> Result<(), Error>
     where
         F: FnOnce(Config) -> Fut,
         Fut: Future<Output = E>,
+        E: IntoEndpoint + 'static,
+        E::Endpoint: 'static,
+    {
+        self.try_serve(|config| async move { Ok::<_, Infallible>(build(config).await) })
+            .await
+    }
+
+    /// [`App::serve`] with a `build` that can fail — the project's
+    /// `generated::bootstrap::build_app`, which connects to the database. Its error is logged and
+    /// returned as [`Error::Startup`]: `main` prints it and exits 1, nothing is bound.
+    pub async fn try_serve<F, Fut, E, X>(self, build: F) -> Result<(), Error>
+    where
+        F: FnOnce(Config) -> Fut,
+        Fut: Future<Output = Result<E, X>>,
+        X: Display,
         E: IntoEndpoint + 'static,
         E::Endpoint: 'static,
     {
@@ -74,7 +91,12 @@ impl App {
         }
 
         let port = self.config.port();
-        let endpoint = wrap(&self.config, build(self.config.clone()).await);
+        let built = build(self.config.clone()).await.map_err(|e| {
+            let message = e.to_string();
+            tracing::error!(error = %message, "startup failed");
+            Error::Startup(message)
+        })?;
+        let endpoint = wrap(&self.config, built);
         Server::new(TcpListener::bind(format!("0.0.0.0:{port}")))
             .run_with_graceful_shutdown(endpoint, shutdown_signal(), Some(SHUTDOWN_DEADLINE))
             .await?;
@@ -153,6 +175,22 @@ mod tests {
 
     fn allowing(origin: &str) -> Config {
         Config::default().with_cors_allowed_origins(vec![origin.to_string()])
+    }
+
+    #[tokio::test]
+    async fn should_stop_with_the_build_error_when_the_app_cannot_be_built() {
+        // Arrange
+        let app = App::new(Config::default());
+
+        // Act
+        let result = app
+            .try_serve(|_| async { Err::<Route, _>("the database is down") })
+            .await;
+
+        // Assert: `main` prints the error with `Debug` and exits 1.
+        let error = result.unwrap_err();
+        assert!(matches!(error, Error::Startup(_)), "{error:?}");
+        assert_eq!(format!("{error:?}"), "the database is down");
     }
 
     #[tokio::test]

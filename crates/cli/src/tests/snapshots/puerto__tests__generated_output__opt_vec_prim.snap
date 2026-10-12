@@ -2043,7 +2043,8 @@ use poem_openapi::OpenApiService;
 use crate::api::article::routes::ArticleApi;
 use crate::api::greeting::routes::GreetingApi;
 
-pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
+/// The routes, wired. An error is what stopped the startup: `main` prints it and exits 1.
+pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
     let get_greeting = Arc::new(GetGreetingUseCaseImpl {
         repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
     });
@@ -2076,11 +2077,11 @@ pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(
+    Ok(crate::app::configure(puerto_web::routes(
         openapi_service((greeting_api, article_api)),
         &config,
         ready,
-    ))
+    )))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project

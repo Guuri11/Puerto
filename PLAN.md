@@ -2237,7 +2237,7 @@ over losses).
 
 ## Phase 15 — Developer experience: what the 2026-10-12 walkthrough found
 
-**Status:** in progress (15.0, 15.1 done). Source: a manual run of every command and option on five generated
+**Status:** in progress (15.0–15.2 done). Source: a manual run of every command and option on five generated
 projects (in-memory, `--db`, `--events db`, `--events kafka`, `--no-demo`), the apps driven in a
 browser. Already fixed outside this phase, one commit each: generated code is formatted
 (ADR-0019); a forced re-scaffold that drops every local value object removes `value_objects.rs`;
@@ -2302,7 +2302,7 @@ after `/`. `generate use-case` puts the custom use case's mock in the route test
 route test, all through clippy and the tests. Frontend snippets: the web scenario pastes each one
 into a generated slice and runs typecheck, Biome and `bun test`.
 
-### 15.2 — A startup failure is an error message, not a panic
+### 15.2 — A startup failure is an error message, not a panic ✅
 
 **Problem.** `bootstrap.rs` and `registry.rs` `expect` on `DATABASE_URL`, the pool and the
 migrations — `make run` with the database down prints a panic and `ConnectionError`, with no
@@ -2317,6 +2317,11 @@ outside tests".
   `Display` names the host of `DATABASE_URL` (never the password).
 - The generated `build_app` / `build_worker` use `?`; a missing `DATABASE_URL` says "set it in
   `.env`", a refused connection says "is the database up? `make docker-compose/up`".
+
+Done as `App::try_serve` / `Worker::try_run` next to `serve` / `run` (one method cannot take both:
+a blanket impl over `IntoEndpoint` and one over `Result` overlap), `Error::Startup`. The pool's own
+`connect` retries a refused connection for its whole acquire timeout and then reports only
+"pool timed out": `create_postgres_pool` opens one connection first, so the cause shows at once.
 
 **Test scenarios.** Runtime unit tests: an `Err` from `build` exits non-zero with the message.
 Matrix: a `--db` scenario starts the binary with `DATABASE_URL` pointing at a closed port and

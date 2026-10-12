@@ -23,30 +23,48 @@ pub mod uow;
 
 use puerto_core::RepositoryError;
 use sqlx::migrate::Migrator;
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::postgres::{PgConnectOptions, PgConnection, PgPoolOptions};
+use sqlx::{Connection, PgPool};
 use std::time::Duration;
 
 /// The outbox, delivery and dead-letter tables (`migrations/outbox.sql`). Puerto's CLI ships a
 /// byte-for-byte copy of it as a project migration.
 pub const OUTBOX_MIGRATION: &str = include_str!("../migrations/outbox.sql");
 
-/// Why the database could not be used at startup.
+/// Why the database could not be used at startup — read by the person starting the process, so
+/// it says where and why, never the password.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum DatabaseError {
-    #[error("database.connection_error")]
-    ConnectionError,
-    #[error("database.migration_error")]
-    MigrationError,
+    /// `target` is the URL's `host[:port]/database`: no user, no password.
+    #[error("cannot connect to the database at {target}: {cause}")]
+    ConnectionError { target: String, cause: String },
+    #[error("cannot apply the database migrations: {cause}")]
+    MigrationError { cause: String },
 }
 
 pub async fn create_postgres_pool(database_url: &str) -> Result<PgPool, DatabaseError> {
-    PgPoolOptions::new()
+    let failed = |e: sqlx::Error| DatabaseError::ConnectionError {
+        target: describe_url(database_url),
+        cause: e.to_string(),
+    };
+    let options: PgConnectOptions = database_url.parse().map_err(failed)?;
+    // One connection first, on its own: the pool retries a refused connection until its acquire
+    // timeout and then reports only that it timed out, not why.
+    let probe = PgConnection::connect_with(&options).await.map_err(failed)?;
+    let _ = probe.close().await;
+    Ok(PgPoolOptions::new()
         .max_connections(5)
         .acquire_timeout(Duration::from_secs(30))
-        .connect(database_url)
-        .await
-        .map_err(|_| DatabaseError::ConnectionError)
+        .connect_lazy_with(options))
+}
+
+/// A connection URL as it can be shown: `host[:port]/database`, without the scheme, the
+/// credentials and the query. A string that is not a URL comes back as it is.
+fn describe_url(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let rest = rest.rsplit_once('@').map_or(rest, |(_, rest)| rest);
+    rest.split('?').next().unwrap_or(rest).to_string()
 }
 
 /// Applies the project's pending migrations — `migrator` is its `sqlx::migrate!("./migrations")`.
@@ -54,7 +72,9 @@ pub async fn run_migrations(pool: &PgPool, migrator: &Migrator) -> Result<(), Da
     migrator
         .run(pool)
         .await
-        .map_err(|_| DatabaseError::MigrationError)
+        .map_err(|e| DatabaseError::MigrationError {
+            cause: e.to_string(),
+        })
 }
 
 /// Whether the database answers a trivial query — what `/health/ready` reports.
@@ -163,19 +183,39 @@ mod tests {
     async fn should_reject_a_database_url_that_is_not_one() {
         let result = create_postgres_pool("not a database url").await;
 
-        assert!(matches!(result, Err(DatabaseError::ConnectionError)));
+        assert!(matches!(result, Err(DatabaseError::ConnectionError { .. })));
+    }
+
+    #[tokio::test]
+    async fn should_say_where_and_why_the_connection_failed_without_the_password() {
+        // Arrange: nothing listens on port 1.
+        let url = "postgres://devuser:s3cret@127.0.0.1:1/shop";
+
+        // Act
+        let started = std::time::Instant::now();
+        let message = create_postgres_pool(url).await.unwrap_err().to_string();
+
+        // Assert
+        assert!(message.contains("127.0.0.1:1/shop"), "{message}");
+        assert!(message.to_lowercase().contains("refused"), "{message}");
+        assert!(!message.contains("s3cret"), "{message}");
+        assert!(!message.contains("devuser"), "{message}");
+        // A database that is down is reported at once, not after the pool's acquire timeout.
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     #[test]
-    fn should_keep_the_machine_readable_codes() {
+    fn should_describe_a_database_url_by_its_host_and_database_only() {
         assert_eq!(
-            DatabaseError::ConnectionError.to_string(),
-            "database.connection_error"
+            describe_url("postgres://u:p@db.internal:5432/shop?sslmode=require"),
+            "db.internal:5432/shop"
         );
-        assert_eq!(
-            DatabaseError::MigrationError.to_string(),
-            "database.migration_error"
-        );
+        assert_eq!(describe_url("postgres://localhost/shop"), "localhost/shop");
+        assert_eq!(describe_url("not a database url"), "not a database url");
     }
 
     // ── Against a real server: `make test/db` ─────────────────────────────

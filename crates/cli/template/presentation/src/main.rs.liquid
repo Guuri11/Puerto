@@ -9,6 +9,6 @@ mod generated;
 async fn main() -> Result<(), puerto_web::Error> {
     let config = puerto_web::Config::from_env()?;
     puerto_web::App::new(config)
-        .serve(generated::bootstrap::build_app)
+        .try_serve(generated::bootstrap::build_app)
         .await
 }

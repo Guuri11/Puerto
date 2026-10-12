@@ -1886,7 +1886,8 @@ use poem_openapi::OpenApiService;
 
 use crate::api::persona::routes::PersonaApi;
 
-pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
+/// The routes, wired. An error is what stopped the startup: `main` prints it and exits 1.
+pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
     let persona_repo: Arc<dyn PersonaRepositoryTrait> = Arc::new(InMemoryPersonaRepository::new());
     let create_persona = Arc::new(CreatePersonaUseCaseImpl {
         repository: Arc::clone(&persona_repo),
@@ -1914,11 +1915,11 @@ pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(
+    Ok(crate::app::configure(puerto_web::routes(
         openapi_service(persona_api),
         &config,
         ready,
-    ))
+    )))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project

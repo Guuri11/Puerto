@@ -7929,14 +7929,17 @@ use crate::api::greeting::routes::GreetingApi;
 use crate::api::product::routes::ProductApi;
 use crate::api::ticket::routes::TicketApi;
 
-pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+/// The routes, wired. An error is what stopped the startup: `main` prints it and exits 1.
+pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string()
+    })?;
     let pool = infrastructure::db::create_postgres_pool(&database_url)
         .await
-        .expect("Failed to connect to database");
+        .map_err(|e| format!("{e} — is the database up? `make docker-compose/up`"))?;
     infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)
         .await
-        .expect("Failed to run migrations");
+        .map_err(|e| e.to_string())?;
 
     let get_greeting = Arc::new(GetGreetingUseCaseImpl {
         repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
@@ -8028,11 +8031,11 @@ pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
     });
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(
+    Ok(crate::app::configure(puerto_web::routes(
         openapi_service((greeting_api, product_api, customer_api, ticket_api)),
         &config,
         ready,
-    ))
+    )))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project

@@ -54,6 +54,7 @@ mod patchers;
 mod repository_errors;
 mod runtime_crates;
 mod scaffolding;
+mod startup_errors;
 mod typed_fields;
 mod typed_ids;
 mod use_cases;

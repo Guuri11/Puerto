@@ -3696,14 +3696,17 @@ use poem_openapi::OpenApiService;
 use crate::api::greeting::routes::GreetingApi;
 use crate::api::product::routes::ProductApi;
 
-pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+/// The routes, wired. An error is what stopped the startup: `main` prints it and exits 1.
+pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string()
+    })?;
     let pool = infrastructure::db::create_postgres_pool(&database_url)
         .await
-        .expect("Failed to connect to database");
+        .map_err(|e| format!("{e} — is the database up? `make docker-compose/up`"))?;
     infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)
         .await
-        .expect("Failed to run migrations");
+        .map_err(|e| e.to_string())?;
 
     let get_greeting = Arc::new(GetGreetingUseCaseImpl {
         repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
@@ -3750,11 +3753,11 @@ pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
     });
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(
+    Ok(crate::app::configure(puerto_web::routes(
         openapi_service((greeting_api, product_api)),
         &config,
         ready,
-    ))
+    )))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -4813,7 +4816,7 @@ business logic lives here — a consumer decodes the event and calls a use case.
 
 ```
 worker/src/
-├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).run(…)` (never changes)
+├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).try_run(…)` (never changes)
 ├── generated.rs             # `pub mod registry;`
 ├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
 ├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
@@ -5014,23 +5017,25 @@ use crate::consumers::notify_new_product::NotifyNewProduct;
 /// The relay and one consumer per `[[consumer]]`, on the `kafka` transport: the relay publishes
 /// each event to its aggregate's topic, `<KAFKA_TOPIC_PREFIX>.<aggregate>`, and each consumer is a
 /// consumer group on the topics of its events. Dead letters stay in Postgres.
-pub async fn build_worker(config: WorkerConfig) -> Loops {
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string()
+    })?;
     let pool = infrastructure::db::create_postgres_pool(&database_url)
         .await
-        .expect("Failed to connect to database");
+        .map_err(|e| format!("{e} — is the database up? `make docker-compose/up`"))?;
     infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)
         .await
-        .expect("Failed to run migrations");
-    let kafka = KafkaConfig::from_env("snapshot").expect("Invalid Kafka configuration");
-    kafka
-        .ensure_topics(&["product"])
-        .await
-        .expect("Failed to create the Kafka topics");
-    let publisher = KafkaPublisher::new(&kafka).expect("Failed to create the Kafka producer");
+        .map_err(|e| e.to_string())?;
+    let kafka = KafkaConfig::from_env("snapshot").map_err(|e| e.to_string())?;
+    kafka.ensure_topics(&["product"]).await.map_err(|e| {
+        format!("cannot create the Kafka topics: {e} — is the broker up? `make docker-compose/up`")
+    })?;
+    let publisher = KafkaPublisher::new(&kafka)
+        .map_err(|e| format!("cannot create the Kafka producer: {e}"))?;
     let dead_letters = Arc::new(PgDeadLetters::new(pool.clone()));
 
-    Loops::new(&config)
+    Ok(Loops::new(&config)
         .relay(PgOutbox::new(pool), publisher)
         .consumer(
             KafkaSubscription::new(
@@ -5040,10 +5045,10 @@ pub async fn build_worker(config: WorkerConfig) -> Loops {
                 &[PRODUCT_CREATED, PRODUCT_PUBLISHED],
                 dead_letters.clone(),
             )
-            .expect("Failed to subscribe notify_new_product to Kafka"),
+            .map_err(|e| format!("cannot subscribe notify_new_product to Kafka: {e}"))?,
             NotifyNewProduct,
             dead_letters,
-        )
+        ))
 }
 
 === worker/src/main.rs ===
@@ -5058,6 +5063,6 @@ mod generated;
 async fn main() -> Result<(), puerto_events::Error> {
     let config = puerto_events::WorkerConfig::from_env()?;
     puerto_events::Worker::new(config)
-        .run(generated::registry::build_worker)
+        .try_run(generated::registry::build_worker)
         .await
 }

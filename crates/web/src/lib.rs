@@ -7,7 +7,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), puerto_web::Error> {
 //!     let config = puerto_web::Config::from_env()?;
-//!     puerto_web::App::new(config).serve(generated::bootstrap::build_app).await
+//!     puerto_web::App::new(config).try_serve(generated::bootstrap::build_app).await
 //! }
 //! ```
 //!
@@ -31,6 +31,10 @@ pub enum Error {
     Config(#[from] ConfigError),
     #[error("server: {0}")]
     Server(#[from] std::io::Error),
+    /// What `build` answered instead of the routes (`App::try_serve`): a database that is down, a
+    /// variable that is missing. Its message is the whole report.
+    #[error("{0}")]
+    Startup(String),
 }
 
 /// `main` returns this error, and Rust prints what `main` returns with `Debug`: the message is what
