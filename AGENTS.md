@@ -13,7 +13,8 @@ Puerto is a Rust CLI tool that scaffolds full-stack DDD projects. It uses `cargo
 crates/
   core/             — `puerto-core`, a runtime crate (ADR-0017): `RepositoryError`, `PageRequest`,
                       `Page<T>`; `events` (ADR-0018): `DomainEvent`, `EventEnvelope`, `EventHandler`,
-                      the delivery policy and the transport ports. Generated projects depend on it at the CLI's minor; same workspace
+                      the delivery policy and the transport ports; `mail` (ADR-0020): `Email`, `Mailer`,
+                      `SentMails`. Generated projects depend on it at the CLI's minor; same workspace
                       version as `cli/`. The compile matrix builds against this checkout
                       (`[patch.crates-io]`, added by the test harness only)
   web/              — `puerto-web`, the presentation runtime: `App` (tracing, CORS, graceful
@@ -33,6 +34,12 @@ crates/
                       the outcome). `make test/kafka` runs it against Redpanda. Building it needs
                       `cmake` and the libcurl headers (librdkafka 2.12 includes `curl/curl.h`
                       even without curl support)
+  mail/             — `puerto-mail`, mail (ADR-0020): `MailConfig` (`SMTP_URL`, `MAIL_FROM`),
+                      `SmtpMailer` (lettre, rustls; 5xx → `Permanent`, the rest → `Transient`),
+                      `Templates` (minijinja, strict, the subject on one line), `send_once` (the
+                      sent log, then the send, then the mark) and, behind `test-utils`,
+                      `RecordingMailer` / `InMemorySentMails`. The ports (`Email`, `Mailer`,
+                      `SentMails`) are `puerto-core`'s. `make test/mail` runs it against Mailpit
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
@@ -218,6 +225,7 @@ make test/full     # Slow: generates real projects, runs their `clippy --all-tar
                    #       and the generated frontend's checks (needs `bun` on PATH)
 make test/db       # Slow: a generated --db project against a throwaway Postgres (Docker + sqlx-cli)
 make test/kafka    # Slow: the Kafka transport against a throwaway Redpanda (+ Postgres; Docker, cmake)
+make test/mail     # Slow: the SMTP adapter against a throwaway Mailpit (Docker)
 make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
 make test/snapshots # Re-record generated-output snapshots after an intended output change
 make lint          # cargo clippy --workspace --all-targets -- -D warnings

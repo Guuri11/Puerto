@@ -2241,7 +2241,21 @@ projects, each a declared event; `mail_<name>` does not collide with a `[[consum
 
 ### 14.0 — ADR-0020 + this spec
 
-### 14.1 — `puerto-core` mail ports + `puerto-mail`
+### 14.1 — `puerto-core` mail ports + `puerto-mail` ✅
+
+Done as specified. What the code settled:
+- `Email` is `#[non_exhaustive]` with `Email::new(to, subject, html).with_text(…)`, like
+  `EventEnvelope`; `Templates` is a `const` (`Templates::new(subject, html).with_text(text)`) and
+  `render(to, context)` returns the `Email`. The HTML body escapes `/` too (`&#x2f;`).
+- `send_once`: a mark that fails **after** the send answers `Ack` (logged as an error) — a retry
+  would send the mail again; ADR-0020 § 4 says so.
+- `MailConfigError::{Missing, Invalid}` is `puerto-mail`'s own: neither it nor `Debug` ever
+  shows `SMTP_URL` (it may carry a password). `puerto-mail` depends on `puerto-core` only.
+- `SmtpMailer::new` opens no connection, but its pool lives on the tokio runtime: build it inside
+  `build_worker`. lettre with `tokio1-rustls-tls` (ring), no OpenSSL.
+- `make test/mail`: Mailpit `v1.31.1` with `MP_SMTP_ALLOWED_RECIPIENTS`, so a 5xx is tested for
+  real. Released after `puerto-kafka`: core → web → sqlx → events → kafka → mail → puerto.
+
 
 - `puerto_core::mail`: `Email { to, subject, html, text: Option<String> }`, `#[async_trait]
   Mailer { send(&self, &Email) -> Result<(), MailError> }`, `MailError::{Transient(String),

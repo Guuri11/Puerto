@@ -1,0 +1,39 @@
+[package]
+name = "puerto-mail"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Puerto runtime — mail for Puerto projects: the SMTP adapter of the mail port, the template renderer each generated mail uses, and the send-once step a worker consumer calls."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["ddd", "puerto", "mail", "smtp", "templates"]
+categories = ["email"]
+
+[features]
+# `RecordingMailer` and `InMemorySentMails`, for a project's tests.
+test-utils = []
+
+[dependencies]
+puerto-core = { workspace = true }
+async-trait = "0.1"
+dotenvy = "0.15"
+# rustls, not native-tls: no OpenSSL headers to install. `pool` reuses SMTP connections.
+lettre = { version = "0.11", default-features = false, features = [
+    "builder",
+    "hostname",
+    "pool",
+    "smtp-transport",
+    "tokio1-rustls-tls",
+] }
+minijinja = { version = "3", features = ["serde"] }
+serde = "1"
+thiserror = "2"
+tracing = "0.1"
+uuid = "1"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread"] }
+uuid = { version = "1", features = ["v7"] }

@@ -1,4 +1,4 @@
-.PHONY: help run build install setup test test/full test/db test/kafka test/mutation test/snapshots lint check format format/fix audit audit/fix
+.PHONY: help run build install setup test test/full test/db test/kafka test/mail test/mutation test/snapshots lint check format format/fix audit audit/fix
 
 CARGO := cargo
 
@@ -63,6 +63,15 @@ test/kafka: ## Slow test: the Kafka transport against a throwaway Redpanda (+ Po
 	PUERTO_TEST_KAFKA_BROKERS=localhost:59092 PUERTO_TEST_DATABASE_URL=postgres://postgres:pg@localhost:55433 \
 		$(CARGO) nextest run --workspace --run-ignored all -E 'test(/(^|::)kafka_/)'; \
 		status=$$?; docker stop puerto-test-redpanda puerto-test-pg-kafka >/dev/null; exit $$status
+
+test/mail: ## Slow test: the SMTP adapter against a throwaway Mailpit (needs Docker)
+	@echo "${YELLOW}Starting throwaway Mailpit on :51025 (SMTP) and :58025 (API)...${NC}"
+	@docker run -d --rm --name puerto-test-mailpit -p 51025:1025 -p 58025:8025 \
+		-e MP_SMTP_ALLOWED_RECIPIENTS='@accepted\.test$$' axllent/mailpit:v1.31.1 >/dev/null
+	@until curl -sf http://localhost:58025/readyz >/dev/null; do sleep 1; done
+	PUERTO_TEST_SMTP_URL=smtp://localhost:51025 PUERTO_TEST_MAILPIT_API=http://localhost:58025 \
+		$(CARGO) test -p puerto-mail --test mailpit -- --ignored; \
+		status=$$?; docker stop puerto-test-mailpit >/dev/null; exit $$status
 
 test/mutation: ## Slow: mutation testing on Puerto's pure logic (see .cargo/mutants.toml)
 	@echo "${YELLOW}Running cargo-mutants...${NC}"

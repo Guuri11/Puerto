@@ -3,11 +3,11 @@ name = "puerto-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Puerto runtime — the domain types every Puerto project shares: paged lists, the repository error, domain events and the ports their transports implement."
+description = "Puerto runtime — the domain types every Puerto project shares: paged lists, the repository error, domain events and the ports their transports implement, and the mail ports."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-keywords = ["ddd", "clean-architecture", "puerto", "pagination", "events"]
+keywords = ["ddd", "clean-architecture", "puerto", "events", "mail"]
 categories = ["rust-patterns"]
 
 [dependencies]

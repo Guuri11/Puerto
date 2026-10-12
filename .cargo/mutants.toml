@@ -19,6 +19,7 @@ examine_globs = [
     "crates/sqlx/src/**/*.rs",
     "crates/events/src/**/*.rs",
     "crates/kafka/src/**/*.rs",
+    "crates/mail/src/**/*.rs",
 ]
 # The process boundary of `puerto-web`: binding a port, waiting for SIGTERM, reading the real
 # environment. A mutant there only shows when a server runs — no unit test can catch it without
@@ -55,6 +56,11 @@ exclude_re = [
     "KafkaSubscription::",
     "for KafkaSubscription>::",
     "Position::of",
+    # `puerto-mail` against a live SMTP server: `make test/mail` (crates/mail/tests/mailpit.rs).
+    # Building the message and `classify` are examined; the config, the templates and
+    # `send_once` are pure.
+    "MailConfig::from_env",
+    "for SmtpMailer>::send",
 ]
 # The compile matrix is `#[ignore]`d; a mutant run uses the fast structural suite only.
 test_tool = "nextest"

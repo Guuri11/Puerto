@@ -87,7 +87,8 @@ redelivery. Marking first would lose it instead, and a lost receipt is worse tha
 | The recipient is empty | `Ack`, logged: there is nobody to send to |
 | SMTP 5xx (`lettre`'s `is_permanent`) | dead letter `permanent_error` |
 | SMTP 4xx, connection refused, timeout, TLS | `Retry` (the delivery policy's backoff, then dead letter) |
-| `sent_mails` unreachable | `Retry` |
+| `sent_mails` unreadable before the send | `Retry` |
+| `sent_mails` not written after the send | `Ack`, logged as an error: a retry would send it again |
 
 ### 5. Development runs against Mailpit
 
