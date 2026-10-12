@@ -23,6 +23,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <a href="#use-case" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Add Use Case</a>
           <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Database (SQLx)</a>
           <a href="#architecture" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Architecture</a>
+          <a href="#runtime" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Runtime crates</a>
           <a href="#production" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Production defaults</a>
           <a href="#ai-agents" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">AI agents</a>
           <a href="#snippets" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">IDE Snippets</a>
@@ -95,12 +96,13 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <div class="pl-8 text-puerto-mist/50">src/greeting/repository.rs</div>
             <div class="pl-4 mt-1"><span class="text-puerto-rust">presentation/</span><span class="text-puerto-mist/40 ml-3">← http api</span></div>
             <div class="pl-8 text-puerto-mist/50">src/api/greeting/routes.rs</div>
-            <div class="pl-8 text-puerto-mist/50">src/health.rs<span class="text-puerto-mist/40 ml-3">← /health + /health/ready</span></div>
+            <div class="pl-8 text-puerto-mist/50">src/main.rs<span class="text-puerto-mist/40 ml-3">← hands the server to puerto-web</span></div>
+            <div class="pl-8 text-puerto-mist/50">src/app.rs<span class="text-puerto-mist/40 ml-3">← your middleware + routes, never regenerated</span></div>
             <div class="pl-4 mt-1"><span class="text-puerto-teal">web/</span><span class="text-puerto-mist/40 ml-3">← React + daisyUI on Bun (--no-web skips it)</span></div>
             <div class="pl-4 mt-1 text-puerto-mist/50">puerto.toml<span class="text-puerto-mist/40 ml-3">← source of truth</span></div>
             <div class="pl-4 text-puerto-mist/50">AGENTS.md + CLAUDE.md<span class="text-puerto-mist/40 ml-3">← rules for coding agents</span></div>
             <div class="pl-4 text-puerto-mist/50">rust-toolchain.toml<span class="text-puerto-mist/40 ml-3">← pinned Rust, reproducible lint</span></div>
-            <div class="pl-4 text-puerto-mist/50">Cargo.toml<span class="text-puerto-mist/40 ml-3">← edition 2024 workspace</span></div>
+            <div class="pl-4 text-puerto-mist/50">Cargo.toml<span class="text-puerto-mist/40 ml-3">← edition 2024 workspace + Puerto runtime crates</span></div>
           </div>
         </section>
 
@@ -413,7 +415,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           </p>
           <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
             <li>• Every scaffold writes its own migration; versions stay unique even when two entities are scaffolded within the same second.</li>
-            <li>• Driver errors are mapped in one place, <code class="font-mono text-xs text-puerto-rust">db::map_sqlx_error</code>: a unique violation (<code class="font-mono text-xs text-puerto-mist">23505</code>) becomes <code class="font-mono text-xs text-puerto-mist">409</code>, with an integration test per <code class="font-mono text-xs text-puerto-rust">unique</code> field.</li>
+            <li>• Driver errors are mapped in one place, <code class="font-mono text-xs text-puerto-rust">map_sqlx_error</code> from the <a href="#runtime" class="text-puerto-teal hover:underline">puerto-sqlx</a> runtime crate: a unique violation (<code class="font-mono text-xs text-puerto-mist">23505</code>) becomes <code class="font-mono text-xs text-puerto-mist">409</code>, with an integration test per <code class="font-mono text-xs text-puerto-rust">unique</code> field.</li>
             <li>• Deletes are soft, so <code class="font-mono text-xs text-puerto-rust">unique</code> fields get a partial index (<code class="font-mono text-xs text-puerto-mist">WHERE deleted = false</code>): a deleted row never keeps its value taken.</li>
             <li>• Field names that are SQL reserved words (<code class="font-mono text-xs text-puerto-mist">order</code>, <code class="font-mono text-xs text-puerto-mist">user</code>, <code class="font-mono text-xs text-puerto-mist">desc</code>…) are rejected up front instead of breaking the migration.</li>
             <li>• <code class="font-mono text-xs text-puerto-rust">puerto generate migration</code> is only available in <code class="font-mono text-xs text-puerto-rust">--db</code> projects.</li>
@@ -454,6 +456,31 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <li>• <span class="text-puerto-ice">One repository error</span> — every repository port returns <code class="font-mono text-xs text-puerto-teal">RepositoryError</code> (<span class="font-mono text-xs">Duplicate</span>, <span class="font-mono text-xs">InvalidData</span>, <span class="font-mono text-xs">Unavailable</span>); each entity's error converts it, so use cases just use <code class="font-mono text-xs text-puerto-teal">?</code>.</li>
             <li>• <span class="text-puerto-ice">Paged lists</span> — <code class="font-mono text-xs text-puerto-teal">PageRequest</code> caps the page size in the domain: no route, use case or adapter can read an unbounded table.</li>
           </ul>
+        </section>
+
+        <!-- Runtime crates -->
+        <section id="runtime" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Runtime crates</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
+            Puerto generates what is yours — entities, use cases, repositories, routes, <code class="font-mono text-xs text-puerto-rust">bootstrap.rs</code>. What is identical in every project and not meant to be edited is not copied in: it is a crate, declared once in the root <code class="font-mono text-xs text-puerto-rust">Cargo.toml</code> on the same minor as the <code class="font-mono text-xs text-puerto-rust">puerto</code> CLI. A fix to the server or the Postgres error mapping reaches your project with <code class="font-mono text-xs text-puerto-ice">cargo update</code>.
+          </p>
+          <div class="mt-6 overflow-x-auto">
+            <table class="w-full font-sans text-sm text-puerto-mist">
+              <thead>
+                <tr class="border-b border-puerto-steel/30 text-left text-xs text-puerto-mist/60">
+                  <th class="py-2 pr-6 font-normal">Crate</th><th class="py-2 pr-6 font-normal">Owns</th><th class="py-2 font-normal">Used by</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">puerto-core</td><td class="py-2 pr-6 text-xs"><code class="text-puerto-ice">RepositoryError</code>, <code class="text-puerto-ice">PageRequest</code>, <code class="text-puerto-ice">Page&lt;T&gt;</code> — depends on nothing but <code class="text-puerto-ice">thiserror</code></td><td class="py-2 font-mono text-xs">business</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-rust">puerto-web</td><td class="py-2 pr-6 text-xs">the server (tracing, CORS, graceful shutdown), <code class="text-puerto-ice">Config::from_env</code>, <code class="text-puerto-ice">/health</code> + <code class="text-puerto-ice">/health/ready</code>, <code class="text-puerto-ice">ErrorResponse</code></td><td class="py-2 font-mono text-xs">presentation</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-indigo-light">puerto-sqlx</td><td class="py-2 pr-6 text-xs">the Postgres pool, migrations at startup, the readiness ping, <code class="text-puerto-ice">map_sqlx_error</code></td><td class="py-2 whitespace-nowrap font-mono text-xs">infrastructure (<span class="text-puerto-teal">--db</span>)</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="mt-4 font-sans text-sm text-puerto-mist">
+            The runtime is a library, not a host: your <code class="font-mono text-xs text-puerto-rust">main.rs</code> calls <code class="font-mono text-xs text-puerto-rust">App::new(config).serve(build_app)</code>, and the generated <code class="font-mono text-xs text-puerto-rust">bootstrap.rs</code> stays plain, readable Rust. Extra middleware and routes go in <code class="font-mono text-xs text-puerto-rust">presentation/src/app.rs</code>, which no generator touches. <code class="font-mono text-xs text-puerto-ice">puerto validate</code> warns when the runtime and the CLI drift apart.
+          </p>
         </section>
 
         <!-- Production defaults -->

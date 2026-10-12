@@ -81,7 +81,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <div class="flex items-center gap-2">
               <span class="text-puerto-mist/40">├──</span>
               <span class="text-puerto-rust font-bold">presentation/</span>
-              <span class="text-puerto-mist/40 text-xs">(openapi routes, health probes)</span>
+              <span class="text-puerto-mist/40 text-xs">(openapi routes, DI wiring)</span>
             </div>
             <div class="flex items-center gap-2">
               <span class="text-puerto-mist/40">├──</span>
@@ -339,7 +339,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </svg>
           </div>
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Production Defaults</h3>
-          <p class="font-sans text-sm text-puerto-mist leading-relaxed"><code class="text-puerto-teal text-xs">/health</code> and <code class="text-puerto-teal text-xs">/health/ready</code> probes, graceful shutdown on SIGTERM and structured <code class="text-puerto-teal text-xs">tracing</code> logs — from the first <code class="text-puerto-teal text-xs">puerto new</code>.</p>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed"><code class="text-puerto-teal text-xs">/health</code> and <code class="text-puerto-teal text-xs">/health/ready</code> probes, graceful shutdown on SIGTERM and structured <code class="text-puerto-teal text-xs">tracing</code> logs — from the first <code class="text-puerto-teal text-xs">puerto new</code>. They live in versioned runtime crates, so fixes arrive with <code class="text-puerto-teal text-xs">cargo update</code>.</p>
         </div>
 
         <!-- Error contract -->
