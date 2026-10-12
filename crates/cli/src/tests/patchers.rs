@@ -19,6 +19,27 @@ fn api_rs_patch_separates_declarations_when_the_file_lacks_a_trailing_newline() 
 }
 
 #[test]
+fn should_remove_only_the_entity_value_objects_line_when_unpatching_lib_rs() {
+    // `customer` loses its local VOs; `product`, declared after it, keeps its own.
+    let dir = temp_dir("unpatch_value_objects");
+    cleanup(&dir);
+    fs::create_dir_all(dir.join("business/src")).unwrap();
+    fs::write(
+        dir.join("business/src/lib.rs"),
+        "pub mod domain {\n    pub mod customer {\n        pub mod model;\n        pub mod value_objects;\n    }\n    pub mod product {\n        pub mod value_objects;\n    }\n}\n",
+    )
+    .unwrap();
+
+    crate::patchers::lib_rs::unpatch_business_lib_value_objects(&dir, "customer").unwrap();
+
+    assert_eq!(
+        fs::read_to_string(dir.join("business/src/lib.rs")).unwrap(),
+        "pub mod domain {\n    pub mod customer {\n        pub mod model;\n    }\n    pub mod product {\n        pub mod value_objects;\n    }\n}\n"
+    );
+    cleanup(&dir);
+}
+
+#[test]
 fn insert_before_block_end_skips_nested_blocks() {
     let source = "pub mod domain {\n    pub mod greeting {\n        pub mod model;\n    }\n}\n";
 

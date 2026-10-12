@@ -45,7 +45,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(
             dir.path().join("Cargo.toml"),
-            "[package]\nname = \"fmt-probe\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            // Its own workspace root, like a generated project: under a TMPDIR inside another
+            // workspace (cargo-mutants) cargo would otherwise attach it to that one.
+            "[package]\nname = \"fmt-probe\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
         )
         .unwrap();
         fs::create_dir_all(dir.path().join("src")).unwrap();
