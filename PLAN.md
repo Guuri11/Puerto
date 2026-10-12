@@ -2208,30 +2208,127 @@ are backend-only).
 
 ---
 
-## Phase 14 — Mailer: email as a consumer of domain events
+## Phase 14 — Mailer: a port per mail, sent from the worker
 
-**Status:** not started; needs Phase 13.4. Its ADR decides the open points below before code.
+**Status:** spec ready — decision:
+[ADR-0020](docs/adr/0020-mail-port-per-mail-sent-from-the-worker.md). One commit per piece, in
+this order. A project with no mail is generated exactly as today: no existing snapshot changes.
 
-Goal: send an email when an event happens, by declaring it, without writing a consumer:
+Glossary, for a mail `welcome` sent on `customer_created`:
+
+| Name | Where | Generated |
+|---|---|---|
+| `WelcomeMail`, `WelcomeMailer` (+ `mocks::MockWelcomeMailer`) | `business/src/domain/mail/welcome.rs` | once, by `generate mail` |
+| `TemplateWelcomeMailer` | `infrastructure/src/mail/welcome.rs` | once |
+| `subject.txt`, `body.html`, `body.txt` | `infrastructure/mail/welcome/` | once |
+| `SendWelcomeMail` (an `EventHandler`) | `worker/src/mails/welcome.rs` | once, with `--on` |
+| `Email`, `Mailer`, `MailError`, `SentMails` | `puerto-core` | runtime |
+| `SmtpMailer`, `MailConfig`, `Templates`, `send_once`, `RecordingMailer` | `puerto-mail` | runtime |
+| `PgSentMails` | `puerto-sqlx` | runtime |
+
+### puerto.toml additions
 
 ```toml
 [[mail]]
-on = "user_created"            # a declared event type
-template = "welcome"           # mail/templates/welcome.html (+ welcome.txt if present)
-to = "email"                   # snapshot field holding the recipient
-subject = "Welcome, {{ name }}"
+name = "welcome"              # snake_case, unique → domain/mail/welcome.rs, mail/welcome/
+on = ["customer_created"]     # optional, events projects: the worker sends it on these events
 ```
 
-Sketch: a `Mailer` port in `puerto-core` and `puerto-mail` with an SMTP adapter (`lettre`) and a
-`log` adapter for development (`MAILER=smtp|log`). Templates are rendered with the snapshot as
-context. Each `[[mail]]` entry becomes a generated consumer (registry entry plus handler): a
-template or render error dead-letters, and an SMTP transient error retries. `puerto validate`
-checks that the event exists, that `to` is a `String` field of its snapshot and that the
-template file exists. Open, for the ADR: the config in puerto.toml (checked at generation time,
-recommended) or in a separate runtime-read file (editable without a rebuild); the template engine
-(`minijinja`); idempotency, because an SMTP send cannot share a transaction with the delivery
-(record a `sent_mails` row keyed by `(event_id, mail)` before sending, accepting rare duplicates
-over losses).
+Additive (minor bump). The entry is wiring only: the mail's data, text and recipient live in its
+files. `puerto validate`: `name` snake_case and unique and not a Rust keyword; its three code
+files and `subject.txt` + `body.html` exist (drift, like an entity's); `on` only in `events`
+projects, each a declared event; `mail_<name>` does not collide with a `[[consumer]]`.
+
+### 14.0 — ADR-0020 + this spec
+
+### 14.1 — `puerto-core` mail ports + `puerto-mail`
+
+- `puerto_core::mail`: `Email { to, subject, html, text: Option<String> }`, `#[async_trait]
+  Mailer { send(&self, &Email) -> Result<(), MailError> }`, `MailError::{Transient(String),
+  Permanent(String)}` (`#[non_exhaustive]`), `SentMails { was_sent(event_id, mail) -> Result<bool,
+  RepositoryError>, mark_sent(event_id, mail) -> Result<(), RepositoryError> }`.
+- New runtime crate `crates/mail` (`puerto-mail`; `lettre` with `tokio1-rustls-tls` + `builder` +
+  `smtp-transport`, `minijinja`), released after `puerto-events`:
+  - `MailConfig::from_env`: `SMTP_URL`, `MAIL_FROM`, both required; an invalid value is an error
+    for `try_run`.
+  - `SmtpMailer::new(&config)`: `AsyncSmtpTransport::from_url`, `from` = `MAIL_FROM`.
+    `is_permanent()` → `Permanent`; any other error → `Transient`.
+  - `Templates { subject, html, text: Option }` (`&'static str`), `render(&self, context) ->
+    Result<Rendered, MailError>`: strict undefined behaviour, subject trimmed to one line, a render
+    error is `Permanent`.
+  - `send_once(sent: &dyn SentMails, event_id, mail, send: impl Future) -> HandlerOutcome`: the
+    table of ADR-0020 § 4 (check → send → mark).
+  - `RecordingMailer` (feature `test-utils`): records every `Email`; `failing_with(MailError)`.
+
+Tests against fakes: every row of ADR-0020 § 4 that `send_once` owns; a mail already sent is not
+sent again; the mark lands only after a successful send; `render` rejects an unknown variable and
+a multi-line subject is trimmed; `MailConfig` rejects a missing `SMTP_URL`. One `#[ignore]` test
+sends through `SmtpMailer` to a Mailpit (`make test/mail`).
+
+### 14.2 — `puerto-sqlx`: `PgSentMails`
+
+`puerto_sqlx::mail::PgSentMails` and `migrations/sent_mails.sql` (`event_id UUID NOT NULL, mail
+TEXT NOT NULL, sent_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (event_id, mail)`;
+`mark_sent` is `ON CONFLICT DO NOTHING`). The CLI's `templates/infrastructure/sent_mails.sql` must
+match byte for byte (tested, like `outbox.sql`). `#[sqlx::test]`: not sent → mark → sent; marking
+twice is not an error.
+
+### 14.3 — `puerto generate mail <name> [-- field:Type …]` (every project)
+
+Tier 1. New matrix scenarios: `MAIL` (no db, one mail) — `EVENTS_MAIL` comes with 14.4.
+- Fields use the scaffold syntax, primitives only (`String`, `i64`, `bool`, `f64`, `Uuid`,
+  `DateTime`, `opt:`); none given → `name:String`. `to: String` is always there and cannot be
+  declared. Refuses an existing mail, a reserved or non-snake_case name, a VO field.
+- Writes the glossary's first three rows. `WelcomeMail` derives `Debug, Clone, PartialEq`;
+  `TemplateWelcomeMailer { mailer: Arc<dyn Mailer> }` builds the context from the mail's fields
+  under their own names and maps `to`. Its tests: renders all three templates from a sample
+  `WelcomeMail`; sends one `Email` to `to` through `RecordingMailer`; a `Permanent` from the client
+  comes back unchanged. The starter templates use every field once.
+- Patches `business/src/lib.rs` (`pub mod mail { pub mod welcome; }` inside `domain`) and
+  `infrastructure/src/lib.rs` (`pub mod mail { pub mod welcome; }`), sorted, idempotent.
+- The first mail of a project also: `puerto-mail` in `[workspace.dependencies]` and
+  `infrastructure` (`test-utils` for its dev-dependencies), `mockall` already in `business`;
+  `mailpit` in `docker-compose.yml` (creating the file when the project has none — `axllent/mailpit`
+  pinned to a release tag, 1025 + 8025); `SMTP_URL` / `MAIL_FROM` in `.env` and `.env.example`;
+  `make mail/ui` (prints `http://localhost:8025`); `make docker-compose/up` for non-db projects; a
+  "Mail" section in the root `AGENTS.md` (tested, ADR-0010).
+- `puerto list` shows the mails; `generate snippets` gains `mail-template-var` only if it earns it.
+
+Structural tests: the files, the lib.rs patches, the toml entry; the compose service and the env
+vars only on the first mail; a non-db project gets a compose file with Mailpit alone; the refusals.
+
+### 14.4 — `--on <event_type>[,…] --to <field>`: sent from the worker (`events` projects)
+
+Tier 1. Scenario `EVENTS_MAIL` (`--events db`, one mail on a CRUD event) and the `kafka` scenario
+gains one mail.
+- `--on` needs an `events` project, and `--to` with it: a `String` field (or a VO over one) of
+  every listed event's snapshot. Without fields, the mail takes the first event's snapshot
+  primitive fields that are not `to`.
+- Writes `worker/src/mails/welcome.rs`: `SendWelcomeMail { mailer: Arc<dyn WelcomeMailer>,
+  sent_mails: Arc<dyn SentMails> }`, an `EventHandler` that decodes the snapshot (decode error →
+  `payload_invalid`), builds `WelcomeMail` from it and calls `send_once`. Tests with
+  `MockWelcomeMailer` and an in-memory `SentMails`: a valid event sends once; the same event twice
+  sends once; a malformed payload dead-letters; a `Transient` retries; a `Permanent` dead-letters.
+- `worker/src/mails.rs` (`pub mod`, sorted); the first such mail adds the `sent_mails` migration,
+  `puerto-mail` to `worker`, and `MailConfig::from_env()` + one `SmtpMailer` to `registry.rs`.
+- `registry.rs` (both transports): one consumer `mail_<name>` per `[[mail]]` with `on`, built
+  as `SendWelcomeMail { mailer: Arc::new(TemplateWelcomeMailer::new(mailer.clone())), sent_mails }`.
+  `generate bootstrap` regenerates it as today.
+- `generate mail` without `--on` in an `events` project writes no consumer; adding `--on` later
+  is a hand edit of puerto.toml plus the handler file — `validate` reports the missing file.
+
+### 14.5 — End to end against Mailpit
+
+`make test/db` and `make test/kafka` start Mailpit next to Postgres (and Redpanda): `POST
+/customers` → `GET :8025/api/v1/messages` holds one message to that address with the rendered
+subject, within a bounded wait. The worker restarted mid-flight → still one message. Mailpit
+stopped → the delivery retries and arrives once it is back.
+
+### Out of scope (Phase 14)
+
+Sending from a use case (`deliver_now`) — next, with how a use case's extra dependencies are wired
+into `bootstrap.rs`; attachments; i18n; providers' HTTP APIs (SES, Postmark…) as `Mailer` adapters;
+pruning `sent_mails`; browser previews of a mail (Mailpit covers development).
 
 ---
 

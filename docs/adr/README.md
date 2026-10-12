@@ -28,3 +28,4 @@ ADR; supersede it with a new one and link both ways.
 | [0017](0017-runtime-crates-next-to-the-generator.md) | Runtime crates next to the generator, one per layer | Accepted |
 | [0018](0018-domain-events-outbox-pluggable-transport.md) | Domain events: unit of work, outbox, pluggable transport (`db`, `kafka`) | Accepted |
 | [0019](0019-generated-code-is-formatted-by-cargo-fmt.md) | Generated code is formatted by `cargo fmt` | Accepted |
+| [0020](0020-mail-port-per-mail-sent-from-the-worker.md) | Mail: a port per mail, templates in infrastructure, sent from the worker | Accepted |
