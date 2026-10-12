@@ -102,7 +102,7 @@ enum GenerateAction {
         name: String,
     },
     /// Add a consumer to the worker: an event handler, its tests and its registry entry
-    /// (projects created with --events db)
+    /// (projects created with --events)
     Consumer {
         /// Consumer name in snake_case (e.g. notify_new_product)
         name: String,

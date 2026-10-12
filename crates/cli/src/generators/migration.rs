@@ -31,10 +31,12 @@ pub fn run_migration(
     fs::write(&path, format!("{header}{body}"))?;
 
     println!("✓ Migration '{normalised}' created in infrastructure/migrations/");
+    // The project builds with SQLX_OFFLINE=true: until the query cache knows the new schema, the
+    // queries that use it do not compile.
     if content.is_some() {
-        println!("  Schema pre-filled — run: make sqlx/migrate");
+        println!("  Schema pre-filled — run: make sqlx/migrate && make sqlx/prepare");
     } else {
-        println!("  Edit the file, then run: make sqlx/migrate");
+        println!("  Edit the file, then run: make sqlx/migrate && make sqlx/prepare");
     }
 
     Ok(())
