@@ -16,6 +16,21 @@ pub struct PuertoConfig {
     /// The worker's consumers (ADR-0018 § 5) — `events` projects.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub consumer: Vec<Consumer>,
+    /// The project's mails (ADR-0020) — wiring only: each one's data, text and recipient live in
+    /// its files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mail: Vec<Mail>,
+}
+
+/// One `[[mail]]`: `business/src/domain/mail/<name>.rs`, `infrastructure/src/mail/<name>.rs` and
+/// `infrastructure/mail/<name>/`.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct Mail {
+    /// snake_case, unique: the modules, the template folder, `{Name}Mail` / `{Name}Mailer`.
+    pub name: String,
+    /// The event types the worker sends it on — `events` projects. Empty: nothing sends it yet.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub on: Vec<String>,
 }
 
 /// One `[[consumer]]`: `worker/src/consumers/<name>.rs`, subscribed to `events`.
@@ -379,6 +394,15 @@ pub fn add_consumer(base: &Path, consumer: Consumer) -> Result<(), Box<dyn std::
         return Err(format!("consumer '{}' is already declared", consumer.name).into());
     }
     config.consumer.push(consumer);
+    write(base, &config)
+}
+
+pub fn add_mail(base: &Path, mail: Mail) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = read(base)?;
+    if config.mail.iter().any(|m| m.name == mail.name) {
+        return Err(format!("mail '{}' is already declared", mail.name).into());
+    }
+    config.mail.push(mail);
     write(base, &config)
 }
 

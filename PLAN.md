@@ -2292,7 +2292,20 @@ TEXT NOT NULL, sent_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (event_id
 match byte for byte (tested, like `outbox.sql`). `#[sqlx::test]`: not sent → mark → sent; marking
 twice is not an error.
 
-### 14.3 — `puerto generate mail <name> [-- field:Type …]` (every project)
+### 14.3 — `puerto generate mail <name> [-- field:Type …]` (every project) ✅
+
+Done as specified. What the code settled:
+- An entity named `Mail` is refused (`mail` joins the reserved module names): mails own the
+  `mail` modules of both crates.
+- The starter templates wrap an `Option` in `{% if x is not none %}` (an `Option<bool>` set to
+  `false` still shows); the render test samples every `Option` as `Some(…)`, so that branch
+  renders too. The subject holds the first `String` field when there is one.
+- `MAIL_FROM` is `no-reply@<project, `_` → `-`>.localhost`: a host name has no `_`.
+- Mailpit has no volume (mails in development are disposable) and no `--db` dependency; a project
+  without `--db` gets `docker-compose/up|down` with it. Snippets: none — nothing earned one yet.
+- Matrix scenario `MAIL` (no db, no web, two mails covering every allowed type); no existing
+  snapshot changed.
+
 
 Tier 1. New matrix scenarios: `MAIL` (no db, one mail) — `EVENTS_MAIL` comes with 14.4.
 - Fields use the scaffold syntax, primitives only (`String`, `i64`, `bool`, `f64`, `Uuid`,

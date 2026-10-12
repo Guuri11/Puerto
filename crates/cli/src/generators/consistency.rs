@@ -104,6 +104,28 @@ pub fn missing_consumer_files(base: &Path, config: &PuertoConfig) -> Vec<String>
         .collect()
 }
 
+/// One line per file of a `[[mail]]` that is not on disk: the mail does not compile without it.
+pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
+    let mut lines = vec![];
+    for mail in &config.mail {
+        let name = &mail.name;
+        for path in [
+            format!("business/src/domain/mail/{name}.rs"),
+            format!("infrastructure/src/mail/{name}.rs"),
+            format!("infrastructure/mail/{name}/subject.txt"),
+            format!("infrastructure/mail/{name}/body.html"),
+        ] {
+            if !base.join(&path).exists() {
+                lines.push(format!(
+                    "mail '{name}': {path} is missing — restore it, or remove the [[mail]] block \
+                     and the mail's other files, then run `puerto generate mail {name}`"
+                ));
+            }
+        }
+    }
+    lines
+}
+
 /// Domain modules on disk with no `[[entity]]` block — the inverse drift. Not an error: the code
 /// compiles, it is just invisible to every Puerto command.
 pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
@@ -124,8 +146,8 @@ pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
         .flatten()
         .filter(|e| e.path().is_dir())
         .filter_map(|e| e.file_name().into_string().ok())
-        // `shared` holds the shared value objects, not an entity.
-        .filter(|name| name != "shared" && !declared.contains(name))
+        // `shared` holds the shared value objects and `mail` the mails: neither is an entity.
+        .filter(|name| name != "shared" && name != "mail" && !declared.contains(name))
         .collect();
     orphans.sort();
     orphans
@@ -244,6 +266,7 @@ mod tests {
             }],
             value_object: vec![],
             consumer: vec![],
+            mail: vec![],
         };
         let dir = std::env::temp_dir();
         assert!(missing_entity_files(&dir, &config).is_empty());

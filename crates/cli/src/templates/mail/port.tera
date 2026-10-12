@@ -1,0 +1,40 @@
+//! The `{{ name }}` mail: what it carries and the port that sends it. Written once by
+//! `puerto generate mail`; it is yours now — add a field, rename one, compute the recipient.
+//! Its text is in `infrastructure/mail/{{ name }}/`, rendered by `Template{{ pascal }}Mailer`.
+
+use async_trait::async_trait;
+use puerto_core::mail::MailError;
+{%- for import in imports %}
+use {{ import }};
+{%- endfor %}
+
+/// What the `{{ name }}` mail says: who it goes to and the values its templates show.
+#[derive(Debug, Clone, PartialEq)]
+pub struct {{ pascal }}Mail {
+    pub to: String,
+{%- for f in fields %}
+    pub {{ f.name }}: {{ f.rust_type }},
+{%- endfor %}
+}
+
+/// Sends the `{{ name }}` mail. `Template{{ pascal }}Mailer` (infrastructure) renders and sends it;
+/// tests use `mocks::Mock{{ pascal }}Mailer`.
+#[async_trait]
+pub trait {{ pascal }}Mailer: Send + Sync {
+    async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), MailError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use super::*;
+    use mockall::mock;
+
+    mock! {
+        pub {{ pascal }}Mailer {}
+
+        #[async_trait]
+        impl {{ pascal }}Mailer for {{ pascal }}Mailer {
+            async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), MailError>;
+        }
+    }
+}

@@ -263,6 +263,49 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         cwd, &config,
     ));
 
+    // Mails (ADR-0020): two modules and a template folder each; `on` is worker wiring.
+    let mut seen_mails: Vec<&str> = vec![];
+    for mail in &config.mail {
+        if let Err(e) = crate::validation::validate_mail_name(&mail.name) {
+            errors.push(format!("mail '{}': {e}", mail.name));
+        }
+        if seen_mails.contains(&mail.name.as_str()) {
+            errors.push(format!("duplicate mail name '{}'", mail.name));
+        }
+        seen_mails.push(&mail.name);
+        if mail.on.is_empty() {
+            continue;
+        }
+        if !config.project.has_events() {
+            errors.push(format!(
+                "mail '{}': sent on events, but project.events is not set",
+                mail.name
+            ));
+        }
+        for event in &mail.on {
+            if !declared.iter().any(|d| d.event_type == *event) {
+                errors.push(format!(
+                    "mail '{}': event '{event}' is not declared by any entity",
+                    mail.name
+                ));
+            }
+        }
+        if config
+            .consumer
+            .iter()
+            .any(|c| c.name == format!("mail_{}", mail.name))
+        {
+            errors.push(format!(
+                "mail '{0}': the worker runs it as the consumer 'mail_{0}', which a [[consumer]] \
+                 already uses",
+                mail.name
+            ));
+        }
+    }
+    errors.extend(crate::generators::consistency::missing_mail_files(
+        cwd, &config,
+    ));
+
     // The manifest can be internally consistent and still describe code that is not there —
     // `generate bootstrap` would then emit imports for modules that do not exist.
     for line in crate::generators::consistency::drift_lines(

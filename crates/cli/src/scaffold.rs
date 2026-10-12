@@ -4,6 +4,7 @@ pub use crate::generators::bootstrap::run_bootstrap_command;
 pub use crate::generators::domain::run_generate_domain;
 pub use crate::generators::events::run_generate_event;
 pub use crate::generators::infrastructure::run_generate_repository;
+pub use crate::generators::mail::run_generate_mail;
 pub use crate::generators::migration::run_generate_migration;
 pub use crate::generators::presentation::run_generate_presentation;
 pub use crate::generators::scaffold::{run_scaffold, run_value_object};

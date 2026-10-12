@@ -156,6 +156,7 @@ const RESERVED_MODULE_NAMES: &[&str] = &[
     "api",       // presentation/src/api.rs
     "mocks",     // repository.rs mock module
     "tests",     // business/src/tests
+    "mail",      // business/src/domain/mail, infrastructure/src/mail — the project's mails
 ];
 
 /// snake_case: lowercase letters, digits and underscores, starting with a letter.
@@ -261,6 +262,23 @@ pub fn validate_consumer_name(name: &str) -> Result<(), String> {
     if RUST_KEYWORDS.contains(&name) {
         return Err(format!(
             "consumer name '{name}' is a Rust keyword. Pick another name"
+        ));
+    }
+    Ok(())
+}
+
+/// A `[[mail]]` name becomes two modules (`domain::mail::<name>`, `mail::<name>`), a template
+/// folder and the types `{Name}Mail` / `{Name}Mailer`.
+pub fn validate_mail_name(name: &str) -> Result<(), String> {
+    if !is_valid_field_name(name) {
+        return Err(format!(
+            "invalid mail name '{name}'. Must be snake_case (lowercase letters, digits and \
+             underscores, starting with a lowercase letter), e.g. 'welcome'"
+        ));
+    }
+    if RUST_KEYWORDS.contains(&name) {
+        return Err(format!(
+            "mail name '{name}' is a Rust keyword. Pick another name"
         ));
     }
     Ok(())

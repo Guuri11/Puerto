@@ -1,8 +1,8 @@
 use super::*;
 use compile_matrix::{
-    CUSTOM_USE_CASE, ENUM_ONLY, ENUM_VO, EVENTS_DB, EVENTS_KAFKA, MULTI_ENTITY, NO_DEMO, NO_WEB,
-    OPT_VEC_PRIM, OPT_VEC_VO, PLAIN_VO, POSTGRES_EVERY_TYPE, PRIMITIVES, SHARED_VO, Scenario,
-    UUID_VO, VO_KITCHEN_SINK, WEB_CRUD, WEB_EVERY_TYPE, apply_scenario,
+    CUSTOM_USE_CASE, ENUM_ONLY, ENUM_VO, EVENTS_DB, EVENTS_KAFKA, MAIL, MULTI_ENTITY, NO_DEMO,
+    NO_WEB, OPT_VEC_PRIM, OPT_VEC_VO, PLAIN_VO, POSTGRES_EVERY_TYPE, PRIMITIVES, SHARED_VO,
+    Scenario, UUID_VO, VO_KITCHEN_SINK, WEB_CRUD, WEB_EVERY_TYPE, apply_scenario,
 };
 use std::collections::BTreeMap;
 
@@ -109,6 +109,7 @@ snapshot_scenarios! {
     snapshot_events_kafka => EVENTS_KAFKA,
     snapshot_web_crud => WEB_CRUD,
     snapshot_web_every_type => WEB_EVERY_TYPE,
+    snapshot_mail => MAIL,
 }
 
 #[test]

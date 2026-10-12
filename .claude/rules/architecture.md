@@ -311,6 +311,24 @@ worker/src/
   (`EventSubscription::max_batch`): a `Retry` is retried in process and holds back its partition,
   never reordered. A record that is not an envelope is dead-lettered (`event_id` NULL)
 
+### Mail (ADR-0020)
+
+`puerto generate mail <name>` writes three pieces, once — the user's from then on:
+
+```
+business/src/domain/mail/<name>.rs      # {Name}Mail (to + primitive fields) + port {Name}Mailer
+                                        #   + mocks::Mock{Name}Mailer — no template engine, no SMTP
+infrastructure/src/mail/<name>.rs       # Template{Name}Mailer { mailer: Arc<dyn Mailer> }: renders
+                                        #   the templates (puerto_mail::Templates), sends the Email
+infrastructure/mail/<name>/             # subject.txt, body.html, body.txt — minijinja, strict,
+                                        #   embedded with include_str!; render tests in the file above
+```
+
+- The module is `mail` in both crates (`domain { mail { <name> } }`, `mail { <name> }`), so no
+  entity may be named `Mail`
+- Code that sends a mail depends on `{Name}Mailer`; in v1 that is a worker consumer (`--on`,
+  `events` projects), through `puerto_mail::send_once` and the `sent_mails` log
+
 ---
 
 ## Application Layer (`business/src/application/<entity>/`)

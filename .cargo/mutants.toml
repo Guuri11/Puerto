@@ -11,6 +11,7 @@ examine_globs = [
     "crates/cli/src/generators/naming.rs",
     "crates/cli/src/generators/web.rs",
     "crates/cli/src/generators/worker.rs",
+    "crates/cli/src/generators/mail.rs",
     "crates/cli/src/patchers/*.rs",
     "crates/cli/src/runtime.rs",
     # Runtime crates: their code ships in every generated project.

@@ -20,6 +20,10 @@ events = ["product_published"]   # optional, `events` projects: custom events be
 name = "notify_new_product"      # snake_case, unique → worker/src/consumers/notify_new_product.rs
 events = ["product_created", "product_published"]   # each declared by some entity (CRUD or custom)
 
+[[mail]]                         # a mail (ADR-0020) — wiring only, its content is in its files
+name = "welcome"                 # snake_case, unique → domain/mail/welcome.rs, mail/welcome/
+on = ["customer_created"]        # optional, `events` projects: the worker sends it on these
+
 [[entity.fields]]
 name = "name"            # snake_case field name
 type = "String"          # Rust type from the type registry
@@ -228,7 +232,8 @@ presentation/src/api/product/error_mapper.rs
 | `puerto generate web <Name> [--force]`          | Web projects: the entity's frontend slice + `core/generated/*`. Does not touch puerto.toml; refuses an undeclared or non-CRUD entity |
 | `puerto generate migration <name>`              | Creates a migration file (`--db` projects only) — does not touch puerto.toml. The version is unique even within one second |
 | `puerto generate consumer <name> --on <type>[,…]` | `events` projects (`db` or `kafka`): appends `[[consumer]]`, writes `worker/src/consumers/<name>.rs` (never overwritten), adds `pub mod` to `consumers.rs` (sorted), regenerates `worker/src/generated/registry.rs`. Refuses an existing name, an undeclared event type, a non-snake_case name or one whose type the worker already uses (`loops`, `product_event`) |
-| `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk; `events` is `db`/`kafka` and needs `db = true`; custom events follow `generate event`'s rules; consumers are snake_case, unique, name declared events and have their file on disk |
+| `puerto generate mail <name> [-- field:Type …]` | Any project: appends `[[mail]]`, writes the domain port, the template mailer and the three templates (never overwritten), adds `pub mod` to both `lib.rs`. The first mail adds `puerto-mail`, Mailpit, `SMTP_URL` / `MAIL_FROM`, `make mail/ui`. Fields: primitives and `opt:` only, not `to` (always there), none → `name:String`. Refuses an existing name, a non-snake_case name or keyword, a VO, `!`, `vec:`/`map` |
+| `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk; `events` is `db`/`kafka` and needs `db = true`; custom events follow `generate event`'s rules; consumers are snake_case, unique, name declared events and have their file on disk; mails are snake_case, unique, have their files on disk, and `on` (events projects only) names declared events |
 
 `db` is a **project-level** setting (`[project] db`), chosen once by `puerto new --db`. There is
 no `--db` flag on `generate scaffold`: it reads the project setting from puerto.toml.

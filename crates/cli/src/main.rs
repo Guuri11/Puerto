@@ -110,6 +110,16 @@ enum GenerateAction {
         #[arg(long, value_delimiter = ',', required = true)]
         on: Vec<String>,
     },
+    /// Add a mail: its port, its template implementation and its templates (subject.txt,
+    /// body.html, body.txt). The first one also adds Mailpit and SMTP_URL / MAIL_FROM to .env
+    Mail {
+        /// Mail name in snake_case (e.g. welcome, order_shipped)
+        name: String,
+        /// The values its text shows, after --: name:String seats:i64 plan:opt:String.
+        /// Primitives and opt:<type> only; the recipient `to` is always there. None: name:String
+        #[arg(raw = true)]
+        fields: Vec<String>,
+    },
     /// Regenerate presentation/src/generated/bootstrap.rs from puerto.toml
     Bootstrap {
         /// Write the file even when puerto.toml declares entities whose code is not on disk
@@ -287,6 +297,14 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_consumer(&name, &on, &cwd))
+                .map(|()| format_after_generation(&cwd))
+        }
+        Commands::Generate {
+            action: GenerateAction::Mail { name, fields },
+        } => {
+            let cwd = std::env::current_dir()?;
+            commands::list::require_puerto_project(&cwd)
+                .and_then(|_| scaffold::run_generate_mail(&name, &fields, &cwd))
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {

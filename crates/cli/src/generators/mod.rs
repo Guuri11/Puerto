@@ -6,6 +6,7 @@ pub mod domain;
 pub mod events;
 pub mod format;
 pub mod infrastructure;
+pub mod mail;
 pub mod migration;
 pub mod naming;
 pub mod presentation;

@@ -31,6 +31,8 @@ pub(super) struct Scenario<'a> {
     pub(super) entity_events: &'a [(&'a str, &'a str)],
     /// Worker consumers added last (`puerto generate consumer`): `(name, event types)`.
     pub(super) consumers: &'a [(&'a str, &'a [&'a str])],
+    /// Mails added after the consumers (`puerto generate mail`): `(name, CLI field args)`.
+    pub(super) mails: &'a [(&'a str, &'a [&'a str])],
 }
 
 // The scenarios, shared with the snapshot tests (`generated_output.rs`): one proves the output
@@ -43,6 +45,7 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     no_demo: true,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -56,6 +59,7 @@ pub(super) const NO_WEB: Scenario = Scenario {
     no_demo: false,
     no_web: true,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -69,6 +73,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -95,6 +100,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -108,6 +114,7 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -130,6 +137,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -146,6 +154,7 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -166,6 +175,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -185,6 +195,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String"), ("Money", "i64")],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -198,6 +209,7 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -214,6 +226,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String")],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -240,6 +253,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -253,6 +267,7 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[("Product", "archive_product")],
     entity_events: &[],
     consumers: &[],
@@ -268,6 +283,7 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -294,6 +310,7 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
@@ -324,6 +341,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String")],
+    mails: &[],
     use_cases: &[("Product", "archive_product")],
     entity_events: &[],
     consumers: &[],
@@ -370,6 +388,7 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     no_demo: false,
     no_web: false,
     shared_vos: &[],
+    mails: &[],
     use_cases: &[("Product", "publish_product")],
     entity_events: &[("Product", "product_published")],
     consumers: &[(
@@ -408,6 +427,39 @@ pub(super) const EVENTS_FRESH: Scenario = Scenario {
     consumers: &[],
     entities: &[],
     ..EVENTS_DB
+};
+
+/// Two mails in a project without a database (Phase 14.3): every field type a mail can carry, the
+/// `mail` blocks of both `lib.rs` opened by the first and extended by the second, `puerto-mail`
+/// and its fakes, and each mail's render tests.
+pub(super) const MAIL: Scenario = Scenario {
+    name: "mail",
+    db: false,
+    events: None,
+    no_demo: false,
+    no_web: true,
+    shared_vos: &[],
+    mails: &[
+        ("welcome", &["name:String", "plan:opt:String", "seats:i64"]),
+        (
+            "receipt",
+            &[
+                "order_id:Uuid",
+                "paid_at:DateTime",
+                "total:f64",
+                "gift:bool",
+                "note:opt:String",
+                "points:opt:i64",
+                "express:opt:bool",
+                "discount:opt:f64",
+                "shipped_at:opt:DateTime",
+            ],
+        ),
+    ],
+    use_cases: &[],
+    entity_events: &[],
+    consumers: &[],
+    entities: &[],
 };
 
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
@@ -474,6 +526,12 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     for (name, events) in scenario.consumers {
         let events: Vec<String> = events.iter().map(|e| e.to_string()).collect();
         scaffold::run_generate_consumer(name, &events, output).unwrap();
+        format();
+    }
+
+    for (name, field_args) in scenario.mails {
+        let field_args: Vec<String> = field_args.iter().map(|f| f.to_string()).collect();
+        scaffold::run_generate_mail(name, &field_args, output).unwrap();
         format();
     }
 }
@@ -698,6 +756,12 @@ fn compiles_with_enum_vo_as_only_string_field() {
     // The create test asserted `.value()` on the first String-typed field — an enum VO has
     // `as_str()`, so an entity whose only String was an enum never compiled its tests.
     assert_scenario_compiles(&ENUM_ONLY);
+}
+
+#[test]
+#[ignore = "slow: compiles and tests a generated project"]
+fn compiles_with_mails_and_renders_their_templates() {
+    assert_scenario_compiles(&MAIL);
 }
 
 #[test]

@@ -17,7 +17,7 @@ pub fn run_list(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// What `puerto list` prints: the project, its entities with their use cases and custom events,
-/// the shared value objects and the worker's consumers. A section with nothing in it is left out.
+/// the shared value objects, the worker's consumers and the mails. A section with nothing in it is left out.
 pub fn list_report(config: &crate::puerto_toml::PuertoConfig) -> String {
     let mut out = format!("Project: {}\n", config.project.name);
     if config.project.db {
@@ -54,6 +54,16 @@ pub fn list_report(config: &crate::puerto_toml::PuertoConfig) -> String {
                 consumer.name,
                 consumer.events.join(", ")
             ));
+        }
+    }
+    if !config.mail.is_empty() {
+        out.push_str("\nMails:\n");
+        for mail in &config.mail {
+            if mail.on.is_empty() {
+                out.push_str(&format!("  {}\n", mail.name));
+            } else {
+                out.push_str(&format!("  {} ← {}\n", mail.name, mail.on.join(", ")));
+            }
         }
     }
     out

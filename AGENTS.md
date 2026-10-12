@@ -202,6 +202,7 @@ puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
 puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String; DateTime shorthand ok)
 puerto generate event <Entity> <name>      # events projects: a custom event (product_published) + regenerates events.rs
 puerto generate consumer <name> --on product_created,product_published   # events projects: a worker consumer + regenerates registry.rs
+puerto generate mail <name> [-- name:String seats:i64 plan:opt:String]  # a mail: port, template mailer, templates; the first adds Mailpit
 puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
 puerto generate domain <Name> -- price:i64 status:Status:enum:Draft/Paid   # Same field syntax as scaffold — fields land in puerto.toml
 puerto generate application <Name>         # Application layer only: use case impls
@@ -288,6 +289,13 @@ make format/fix    # cargo fmt --all
   `KafkaPublisher` (topics created at startup), one `KafkaSubscription` per consumer
   (`puerto-kafka`); the outbox migration has no `event_deliveries`, `docker-compose.yml` gains
   Redpanda and `.env` `KAFKA_BROKERS`
+- `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
+  (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`
+  (`Template{Name}Mailer` over `puerto-mail`, with render tests) and
+  `infrastructure/mail/<name>/{subject.txt,body.html,body.txt}` — written once, the user's. The
+  first mail adds `puerto-mail`, Mailpit to `docker-compose.yml` (created without `--db`),
+  `SMTP_URL` / `MAIL_FROM`, `make mail/ui` and a root `AGENTS.md` section. An entity cannot be
+  named `Mail`: mails own the `mail` modules
 
 ## Detailed Rules
 

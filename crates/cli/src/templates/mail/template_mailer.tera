@@ -1,0 +1,117 @@
+//! Renders the `{{ name }}` mail from its templates and hands it to the mailer. Written once by
+//! `puerto generate mail`; it is yours now. The text is in `infrastructure/mail/{{ name }}/`:
+//! change it there — the tests below render it again, so a typo fails `make test`.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use business::domain::mail::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
+use puerto_mail::{MailError, Mailer, Templates};
+use serde::Serialize;
+{%- for import in imports %}
+use {{ import }};
+{%- endfor %}
+
+const TEMPLATES: Templates = Templates::new(
+    include_str!("../../mail/{{ name }}/subject.txt"),
+    include_str!("../../mail/{{ name }}/body.html"),
+)
+.with_text(include_str!("../../mail/{{ name }}/body.txt"));
+
+/// What the templates see: the mail's fields but the recipient, under their own names.
+#[derive(Serialize)]
+struct Context<'a> {
+{%- for f in fields %}
+    {{ f.name }}: &'a {{ f.rust_type }},
+{%- endfor %}
+}
+
+impl<'a> Context<'a> {
+    fn of(mail: &'a {{ pascal }}Mail) -> Self {
+        Self {
+{%- for f in fields %}
+            {{ f.name }}: &mail.{{ f.name }},
+{%- endfor %}
+        }
+    }
+}
+
+/// The `{{ name }}` mail, rendered from `infrastructure/mail/{{ name }}/` and sent through `mailer`
+/// (`puerto_mail::SmtpMailer` where it runs).
+pub struct Template{{ pascal }}Mailer {
+    mailer: Arc<dyn Mailer>,
+}
+
+impl Template{{ pascal }}Mailer {
+    pub fn new(mailer: Arc<dyn Mailer>) -> Self {
+        Self { mailer }
+    }
+}
+
+#[async_trait]
+impl {{ pascal }}Mailer for Template{{ pascal }}Mailer {
+    async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), MailError> {
+        let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
+        self.mailer.send(&email).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use puerto_mail::testing::RecordingMailer;
+
+    fn {{ name }}() -> {{ pascal }}Mail {
+        {{ pascal }}Mail {
+            to: "ada@example.com".to_string(),
+{%- for f in fields %}
+            {{ f.name }}: {{ f.sample }},
+{%- endfor %}
+        }
+    }
+
+    #[test]
+    fn should_render_every_template_when_the_mail_has_its_fields() {
+        // Act
+        let email = TEMPLATES.render("ada@example.com", Context::of(&{{ name }}()));
+
+        // Assert
+        let email = match email {
+            Ok(email) => email,
+            Err(err) => panic!("infrastructure/mail/{{ name }}/ does not render: {err}"),
+        };
+        assert!(!email.subject.is_empty());
+        assert!(!email.html.is_empty());
+        assert!(email.text.is_some());
+    }
+
+    #[tokio::test]
+    async fn should_send_the_rendered_mail_to_its_recipient() {
+        // Arrange
+        let recorder = Arc::new(RecordingMailer::new());
+        let mailer = Template{{ pascal }}Mailer::new(recorder.clone());
+
+        // Act
+        let result = mailer.send(&{{ name }}()).await;
+
+        // Assert
+        assert_eq!(result, Ok(()));
+        let sent = recorder.sent();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].to, "ada@example.com");
+    }
+
+    #[tokio::test]
+    async fn should_return_the_mailer_error_when_sending_fails() {
+        // Arrange
+        let rejected = MailError::Permanent("550 no such user".to_string());
+        let mailer =
+            Template{{ pascal }}Mailer::new(Arc::new(RecordingMailer::failing_with(rejected.clone())));
+
+        // Act
+        let result = mailer.send(&{{ name }}()).await;
+
+        // Assert
+        assert_eq!(result, Err(rejected));
+    }
+}
