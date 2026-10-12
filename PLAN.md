@@ -2542,7 +2542,14 @@ reserved entity name in auth projects.
 
 ### 16.0 — ADR-0021 + this spec
 
-### 16.1 — Spike: `#[require_role]` inside `#[OpenApi] impl`
+### 16.1 — Spike: `#[require_role]` inside `#[OpenApi] impl` ✅
+
+Works; ADR-0021 § 4 records what it relies on. A throwaway workspace (not committed): no token →
+401, a principal without the role → 403 `auth.forbidden`, with it → 204, in both attribute orders;
+a `BearerAuth`-only route has no role check; the spec lists both routes with the bearer scheme;
+clippy `-D warnings` clean. 16.2 ships the macro, emitting the method unchanged next to its
+compile error.
+
 
 A throwaway proc-macro in a test crate, applied to a handler of a `#[OpenApi] impl` in a
 `puerto-web` test: does poem-openapi pass the attribute through, does the method still register,

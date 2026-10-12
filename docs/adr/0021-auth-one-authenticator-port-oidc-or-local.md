@@ -84,9 +84,16 @@ never reads provider-specific claims. `User` becomes a reserved entity name in a
   `security` requirement, so the frontend's wire types know it.
 - `#[require_role("admin")]` (`puerto-macros`, re-exported by `puerto-web`) on the handler adds a
   `403 auth.forbidden` check at its top. One line, visible, written by the generator and by hand
-  alike. Whether an attribute macro on a method works inside `#[OpenApi] impl` is not proven: the
-  first piece is a spike. If it does not, the generator writes the same three-line check instead —
-  equally visible, only longer — and this section is amended.
+  alike. The 16.1 spike (poem-openapi 5.1.16) proved it works inside `#[OpenApi] impl`:
+  poem-openapi leaves attributes it does not own on the method, so the route still registers and
+  its spec entry still carries `security: [{"BearerAuth": []}]`. That holds whichever of the two
+  attributes comes first, and clippy `-D warnings` is clean on the expansion. What the macro relies on:
+  - the handler has a parameter whose type's last segment is `BearerAuth` (a type alias hides it;
+    no parameter is a compile error naming the attribute), and
+  - the return type has `from_status(StatusCode, Json<ErrorResponse>)`, which every generated
+    response enum has.
+  It does not document the 403: the response enum's `Forbidden` variant does. On error the macro
+  must still emit the method unchanged, or rustc adds a confusing "no method named …" error.
 - Scaffold protects every CRUD route of an auth project. `puerto.toml` records the exceptions:
   `public = [...]` (no `BearerAuth`) and `roles = { use_case = [...] }`.
 - Rules that depend on data ("only the owner edits") are not annotations: protected use cases take
