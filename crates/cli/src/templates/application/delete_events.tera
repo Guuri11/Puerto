@@ -46,7 +46,8 @@ impl Delete{{ pascal }}UseCaseTrait for Delete{{ pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{{ snake }}::{
+{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
+{% endif %}    use crate::domain::{{ snake }}::{
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
@@ -73,7 +74,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(Delete{{ pascal }}Params { id: entity_id })
+            .execute(Delete{{ pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}id: entity_id })
             .await;
 
         // Assert
@@ -99,7 +100,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(Delete{{ pascal }}Params { id: {{ pascal }}Id::generate() })
+            .execute(Delete{{ pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}id: {{ pascal }}Id::generate() })
             .await;
 
         // Assert

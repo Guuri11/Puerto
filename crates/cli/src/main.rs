@@ -84,6 +84,14 @@ enum GenerateAction {
         /// Overwrite an already-generated entity, discarding hand-written changes in its files
         #[arg(long)]
         force: bool,
+        /// Auth projects: use cases whose routes need no token, comma-separated
+        /// (e.g. list_products,get_product). Every other route takes `auth: BearerAuth`
+        #[arg(long, value_delimiter = ',')]
+        public: Vec<String>,
+        /// Auth projects: a role a route requires, <use_case>=<role>, comma-separated
+        /// (e.g. create_product=admin,delete_product=admin) — `#[require_role]` on the handler
+        #[arg(long, value_delimiter = ',')]
+        role: Vec<String>,
         /// Fields after -- separator. Primitives: title:String price:i64! desc:opt:String tags:vec:String
         /// Value Objects: name:Name:String age:Age:i64 status:Status:enum:Active/Inactive mid:Mid:opt:String
         /// Shared VO (type inferred from puerto.toml): email:Email
@@ -274,6 +282,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 GenerateAction::Scaffold {
                     name,
                     force,
+                    public,
+                    role,
                     fields,
                 },
         } => {
@@ -285,7 +295,10 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             };
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
-                .and_then(|parsed| scaffold::run_scaffold(&name, &cwd, &parsed, policy))
+                .and_then(|parsed| {
+                    let access = scaffold::ScaffoldAccess::from_args(&public, &role)?;
+                    scaffold::run_scaffold_with_access(&name, &cwd, &parsed, policy, &access)
+                })
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {

@@ -14,7 +14,9 @@ use poem_openapi::{
     payload::Json,
 };
 use puerto_core::PageRequest;
-use uuid::Uuid;
+{% if auth %}use puerto_web::auth::BearerAuth;
+{% endif %}{% if any_role %}use puerto_web::require_role;
+{% endif %}use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
@@ -39,11 +41,13 @@ pub struct {{ pascal }}Api {
 impl {{ pascal }}Api {
     /// Create a new {{ pascal }}
     #[oai(path = "/{{ plural }}", method = "post", tag = "ApiTags::{{ pascal }}")]
-    async fn create(&self, body: Json<Create{{ pascal }}Request>) -> Create{{ pascal }}Response {
+{% for role in access.create.roles %}    #[require_role("{{ role }}")]
+{% endfor %}    async fn create(&self, {% if access.create.protected %}auth: BearerAuth, {% endif %}body: Json<Create{{ pascal }}Request>) -> Create{{ pascal }}Response {
         match self
             .create_{{ snake }}
             .execute(Create{{ pascal }}Params {
-{% for f in fields %}                {{ f.name }}: body.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %},
+{% if access.create.protected %}                actor: auth.0,
+{% endif %}{% for f in fields %}                {{ f.name }}: body.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %},
 {% endfor %}            })
             .await
         {
@@ -58,10 +62,11 @@ impl {{ pascal }}Api {
 
     /// Get a {{ pascal }} by ID
     #[oai(path = "/{{ plural }}/:id", method = "get", tag = "ApiTags::{{ pascal }}")]
-    async fn get_by_id(&self, id: Path<Uuid>) -> Get{{ pascal }}Response {
+{% for role in access.get.roles %}    #[require_role("{{ role }}")]
+{% endfor %}    async fn get_by_id(&self, {% if access.get.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> Get{{ pascal }}Response {
         match self
             .get_{{ snake }}
-            .execute(Get{{ pascal }}Params { id: {{ pascal }}Id::from_uuid(id.0) })
+            .execute(Get{{ pascal }}Params { {% if access.get.protected %}actor: auth.0, {% endif %}id: {{ pascal }}Id::from_uuid(id.0) })
             .await
         {
             Ok(entity) => Get{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
@@ -75,11 +80,13 @@ impl {{ pascal }}Api {
 
     /// List {{ plural_pascal }}, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> List{{ plural_pascal }}Response {
+{% for role in access.list.roles %}    #[require_role("{{ role }}")]
+{% endfor %}    async fn list(&self, {% if access.list.protected %}auth: BearerAuth, {% endif %}limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> List{{ plural_pascal }}Response {
         match self
             .list_{{ plural }}
             .execute(List{{ plural_pascal }}Params {
-                page: PageRequest::new(limit.0, offset.0),
+{% if access.list.protected %}                actor: auth.0,
+{% endif %}                page: PageRequest::new(limit.0, offset.0),
             })
             .await
         {
@@ -94,11 +101,13 @@ impl {{ pascal }}Api {
 
     /// Update a {{ pascal }}
     #[oai(path = "/{{ plural }}/:id", method = "put", tag = "ApiTags::{{ pascal }}")]
-    async fn update(&self, id: Path<Uuid>, body: Json<Update{{ pascal }}Request>) -> Update{{ pascal }}Response {
+{% for role in access.update.roles %}    #[require_role("{{ role }}")]
+{% endfor %}    async fn update(&self, {% if access.update.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>, body: Json<Update{{ pascal }}Request>) -> Update{{ pascal }}Response {
         match self
             .update_{{ snake }}
             .execute(Update{{ pascal }}Params {
-                id: {{ pascal }}Id::from_uuid(id.0),
+{% if access.update.protected %}                actor: auth.0,
+{% endif %}                id: {{ pascal }}Id::from_uuid(id.0),
 {% for f in fields %}                {{ f.name }}: body.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %},
 {% endfor %}            })
             .await
@@ -114,10 +123,11 @@ impl {{ pascal }}Api {
 
     /// Delete a {{ pascal }}
     #[oai(path = "/{{ plural }}/:id", method = "delete", tag = "ApiTags::{{ pascal }}")]
-    async fn delete(&self, id: Path<Uuid>) -> Delete{{ pascal }}Response {
+{% for role in access.delete.roles %}    #[require_role("{{ role }}")]
+{% endfor %}    async fn delete(&self, {% if access.delete.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> Delete{{ pascal }}Response {
         match self
             .delete_{{ snake }}
-            .execute(Delete{{ pascal }}Params { id: {{ pascal }}Id::from_uuid(id.0) })
+            .execute(Delete{{ pascal }}Params { {% if access.delete.protected %}actor: auth.0, {% endif %}id: {{ pascal }}Id::from_uuid(id.0) })
             .await
         {
             Ok(()) => Delete{{ pascal }}Response::NoContent,
@@ -138,8 +148,12 @@ mod tests {
         get_{{ snake }}::mocks::MockGet{{ pascal }}UseCase, list_{{ plural }}::mocks::MockList{{ plural_pascal }}UseCase,
         update_{{ snake }}::mocks::MockUpdate{{ pascal }}UseCase,
     };
-    use business::tests::mothers::{{ snake }}_mother::{{ pascal }}Mother;
-    use poem::{Route, http::StatusCode, test::TestClient};
+    use business::tests::mothers::{{ snake }}_mother::{{ pascal }}Mother;{% if auth %}
+    use business::tests::mothers::principal_mother::PrincipalMother;
+    use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
+    use puerto_core::auth::mocks::MockAuthenticator;
+    use puerto_core::auth::{AuthError, Authenticator};{% else %}
+    use poem::{Route, http::StatusCode, test::TestClient};{% endif %}
     use poem_openapi::{OpenApiService, types::ToJSON};
     use puerto_core::Page;{% for import in test_imports %}
     use {{ import }};{% endfor %}
@@ -157,17 +171,46 @@ mod tests {
         delete: MockDelete{{ pascal }}UseCase,
     }
 
-    impl Mocks {
-        fn client(self) -> TestClient<Route> {
-            let api = {{ pascal }}Api {
+{% if auth %}    /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
+    fn authenticator() -> Arc<dyn Authenticator> {
+        let mut authenticator = MockAuthenticator::new();
+        authenticator.expect_authenticate().returning(|token| match token {
+            "caller" => Ok({% if caller_roles %}PrincipalMother::new()
+                .with_roles([{% for role in caller_roles %}"{{ role }}"{% if not loop.last %}, {% endif %}{% endfor %}])
+                .build(){% else %}PrincipalMother::random(){% endif %}),
+            "nobody" => Ok(PrincipalMother::random()),
+            _ => Err(AuthError::Invalid),
+        });
+        Arc::new(authenticator)
+    }
+
+{% endif %}    impl Mocks {
+{% if auth %}        /// Every request signed in as `caller`.
+        fn client(self) -> TestClient<impl poem::Endpoint> {
+            self.client_with(Some("Bearer caller"))
+        }
+
+        /// `authorization`: the header every request sends; `None` sends none.
+        fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
+{% else %}        fn client(self) -> TestClient<Route> {
+{% endif %}            let api = {{ pascal }}Api {
                 create_{{ snake }}: Arc::new(self.create),
                 get_{{ snake }}: Arc::new(self.get),
                 list_{{ plural }}: Arc::new(self.list),
                 update_{{ snake }}: Arc::new(self.update),
                 delete_{{ snake }}: Arc::new(self.delete),
             };
-            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
-        }
+{% if auth %}            let client = TestClient::new(
+                Route::new()
+                    .nest("/", OpenApiService::new(api, "test", "1.0"))
+                    .data(authenticator()),
+            );
+            match authorization {
+                Some(value) => client.default_header("Authorization", value),
+                None => client,
+            }
+{% else %}            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+{% endif %}        }
     }
 
     fn create_request() -> Create{{ pascal }}Request {
@@ -362,4 +405,203 @@ mod tests {
         // Assert
         response.assert_status(StatusCode::NOT_FOUND);
     }
-}
+{% if access.create.protected %}
+    #[tokio::test]
+    async fn should_respond_401_when_creating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .post("/{{ plural }}")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+{% endif %}{% if access.create.roles %}
+    #[tokio::test]
+    async fn should_respond_403_when_creating_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .post("/{{ plural }}")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+{% endif %}{% if access.get.protected %}
+    #[tokio::test]
+    async fn should_respond_401_when_getting_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .get(item_path())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+{% endif %}{% if access.get.roles %}
+    #[tokio::test]
+    async fn should_respond_403_when_getting_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .get(item_path())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+{% endif %}{% if access.list.protected %}
+    #[tokio::test]
+    async fn should_respond_401_when_listing_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .get("/{{ plural }}")
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+{% endif %}{% if access.list.roles %}
+    #[tokio::test]
+    async fn should_respond_403_when_listing_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .get("/{{ plural }}")
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+{% endif %}{% if access.update.protected %}
+    #[tokio::test]
+    async fn should_respond_401_when_updating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+{% endif %}{% if access.update.roles %}
+    #[tokio::test]
+    async fn should_respond_403_when_updating_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+{% endif %}{% if access.delete.protected %}
+    #[tokio::test]
+    async fn should_respond_401_when_deleting_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .delete(item_path())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+{% endif %}{% if access.delete.roles %}
+    #[tokio::test]
+    async fn should_respond_403_when_deleting_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .delete(item_path())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+{% endif %}}

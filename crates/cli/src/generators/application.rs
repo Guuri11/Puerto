@@ -82,7 +82,29 @@ fn render_use_case(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    let ctx = use_case_context(pascal, snake, fields, shared_vos, test_imports);
+    render_use_case_as(
+        action,
+        test_imports,
+        pascal,
+        snake,
+        fields,
+        shared_vos,
+        false,
+    )
+}
+
+/// `actor`: a protected use case of an auth project — its tests pass a `PrincipalMother` caller.
+fn render_use_case_as(
+    action: &str,
+    test_imports: TestImports,
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+    actor: bool,
+) -> Result<String, RenderError> {
+    let mut ctx = use_case_context(pascal, snake, fields, shared_vos, test_imports);
+    ctx.insert("actor", &actor);
     render(&format!("application/{action}.tera"), &ctx)
 }
 
@@ -94,8 +116,10 @@ fn render_write_use_case_with_events(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
+    actor: bool,
 ) -> Result<String, RenderError> {
-    let ctx = use_case_context(pascal, snake, fields, shared_vos, test_imports);
+    let mut ctx = use_case_context(pascal, snake, fields, shared_vos, test_imports);
+    ctx.insert("actor", &actor);
     render(&format!("application/{action}_events.tera"), &ctx)
 }
 
@@ -117,6 +141,7 @@ pub fn generate_create_use_case_impl(
     )
 }
 
+#[cfg(test)]
 pub fn generate_get_use_case_impl(
     pascal: &str,
     snake: &str,
@@ -126,6 +151,7 @@ pub fn generate_get_use_case_impl(
     render_use_case("get", TestImports::Props, pascal, snake, fields, shared_vos)
 }
 
+#[cfg(test)]
 pub fn generate_list_use_case_impl(
     pascal: &str,
     snake: &str,
@@ -142,6 +168,7 @@ pub fn generate_list_use_case_impl(
     )
 }
 
+#[cfg(test)]
 pub fn generate_update_use_case_impl(
     pascal: &str,
     snake: &str,
@@ -158,6 +185,7 @@ pub fn generate_update_use_case_impl(
     )
 }
 
+#[cfg(test)]
 pub fn generate_delete_use_case_impl(
     pascal: &str,
     snake: &str,
@@ -184,56 +212,28 @@ pub fn write_application_files(
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = base.join(format!("business/src/application/{snake}"));
-    let write = |action: &str, content: String| {
-        write_file(
-            &dir.join(format!("{}.rs", crud_use_case(action, snake))),
-            &content,
-        )
-    };
-    if crate::puerto_toml::events_enabled(base) {
-        let writes = [
-            ("create", TestImports::ParamsOnly),
-            ("update", TestImports::Props),
-            ("delete", TestImports::Props),
-        ];
-        for (action, imports) in writes {
-            write(
-                action,
-                render_write_use_case_with_events(
-                    action, imports, pascal, snake, fields, shared_vos,
-                )?,
-            )?;
-        }
-        write(
-            "get",
-            generate_get_use_case_impl(pascal, snake, fields, shared_vos)?,
-        )?;
-        write(
-            "list",
-            generate_list_use_case_impl(pascal, snake, fields, shared_vos)?,
-        )?;
-        return Ok(());
+    let access = crate::generators::auth::Access::of(base, pascal);
+    let events = crate::puerto_toml::events_enabled(base);
+    let use_cases = [
+        ("create", TestImports::ParamsOnly),
+        ("get", TestImports::Props),
+        ("list", TestImports::Props),
+        ("update", TestImports::Props),
+        ("delete", TestImports::Props),
+    ];
+    for (action, imports) in use_cases {
+        let use_case = crud_use_case(action, snake);
+        let actor = access.is_protected(&use_case);
+        // An `events` project's writes go through the unit of work, recording their event.
+        let content = if events && matches!(action, "create" | "update" | "delete") {
+            render_write_use_case_with_events(
+                action, imports, pascal, snake, fields, shared_vos, actor,
+            )?
+        } else {
+            render_use_case_as(action, imports, pascal, snake, fields, shared_vos, actor)?
+        };
+        write_file(&dir.join(format!("{use_case}.rs")), &content)?;
     }
-    write(
-        "create",
-        generate_create_use_case_impl(pascal, snake, fields, shared_vos)?,
-    )?;
-    write(
-        "get",
-        generate_get_use_case_impl(pascal, snake, fields, shared_vos)?,
-    )?;
-    write(
-        "list",
-        generate_list_use_case_impl(pascal, snake, fields, shared_vos)?,
-    )?;
-    write(
-        "update",
-        generate_update_use_case_impl(pascal, snake, fields, shared_vos)?,
-    )?;
-    write(
-        "delete",
-        generate_delete_use_case_impl(pascal, snake, fields, shared_vos)?,
-    )?;
     Ok(())
 }
 

@@ -213,6 +213,7 @@ puerto generate scaffold <Name> --force                                  # Re-ge
 puerto generate scaffold <Name> -- name:String price:i64!               # Primitive fields (! = unique)
 puerto generate scaffold <Name> -- desc:opt:String tags:vec:String       # Option / Vec primitives
 puerto generate scaffold <Name> -- name:Name:String age:Age:i64         # VO fields
+puerto generate scaffold <Name> --public list_products --role delete_product=admin   # Auth projects: open routes, required roles
 puerto generate scaffold <Name> -- status:Status:enum:Active/Inactive   # Enum VO
 puerto generate scaffold <Name> -- mid:MiddleName:opt:String            # Option VO
 puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
@@ -317,7 +318,12 @@ make format/fix    # cargo fmt --all
   routes `.data(Arc<dyn Authenticator>)`. Keycloak 26.8 in `docker-compose.yml` with
   `infrastructure/keycloak/realm.json` (client `web`, audience mapper `api`, user
   `admin@<project>.localhost`), `AUTH_*` in `.env`, `make auth/ui`, a root `AGENTS.md` section.
-  The Greeting demo is `public`. `--auth local` is refused until 16.6
+  The Greeting demo is `public`. `--auth local` is refused until 16.6. `scaffold` in an auth
+  project: every CRUD handler takes `auth: BearerAuth` except `--public` ones, `--role` adds
+  `#[require_role]` (both recorded in `[[entity]] public` / `roles`); protected params carry
+  `actor: Principal`, their responses a 503 `Unavailable`; `{Entity}Error::Forbidden` (403) with
+  its mapper test; route tests sign in through a `MockAuthenticator` (`caller` holds every role,
+  `nobody` none) and add a 401 per protected route and a 403 per role-protected one
 - `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
   (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`
   (`Template{Name}Mailer` over `puerto-mail`, with render tests) and

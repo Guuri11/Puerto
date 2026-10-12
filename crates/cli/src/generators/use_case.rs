@@ -45,6 +45,8 @@ pub fn run_use_case(
     ctx.insert("uc", &uc);
     ctx.insert("uc_pascal", &uc_pascal);
     ctx.insert("uow", &uow);
+    // Protected by default, as the routes: its params carry the caller.
+    ctx.insert("actor", &config.project.has_auth());
 
     write_file(&trait_path, &render("use_case/trait.tera", &ctx)?)?;
     write_file(&impl_path, &render("use_case/impl.tera", &ctx)?)?;

@@ -7,7 +7,7 @@ pub use crate::generators::infrastructure::run_generate_repository;
 pub use crate::generators::mail::run_generate_mail_on;
 pub use crate::generators::migration::run_generate_migration;
 pub use crate::generators::presentation::run_generate_presentation;
-pub use crate::generators::scaffold::{run_scaffold, run_value_object};
+pub use crate::generators::scaffold::{ScaffoldAccess, run_scaffold_with_access, run_value_object};
 pub use crate::generators::use_case::run_use_case;
 pub use crate::generators::web::run_generate_web;
 pub use crate::generators::worker::run_generate_consumer;
@@ -22,4 +22,4 @@ pub use crate::generators::project::{
     apply_db_to_new_project, apply_events_to_new_project, apply_no_demo, apply_no_web,
 };
 #[cfg(test)]
-pub use crate::generators::scaffold::run;
+pub use crate::generators::scaffold::{run, run_scaffold};

@@ -29,7 +29,8 @@ impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
+{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
+{% endif %}    use puerto_core::PageRequest;
     use crate::domain::{{ snake }}::{
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
@@ -54,7 +55,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { page: PageRequest::default() })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::default() })
             .await;
 
         let page = result.unwrap();
@@ -73,7 +74,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { page: PageRequest::default() })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::default() })
             .await;
 
         let page = result.unwrap();
@@ -93,7 +94,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::new(Some(5), Some(10)) })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);

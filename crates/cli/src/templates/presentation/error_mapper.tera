@@ -13,7 +13,8 @@ impl IntoErrorResponse for {{ pascal }}Error {
             {{ pascal }}Error::NotFound => StatusCode::NOT_FOUND,
             {{ pascal }}Error::Duplicate => StatusCode::CONFLICT,
             {{ pascal }}Error::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
-            {{ pascal }}Error::Unknown => StatusCode::INTERNAL_SERVER_ERROR,{% for v in vos %}
+            {{ pascal }}Error::Unknown => StatusCode::INTERNAL_SERVER_ERROR,{% if auth %}
+            {{ pascal }}Error::Forbidden => StatusCode::FORBIDDEN,{% endif %}{% for v in vos %}
             {{ pascal }}Error::Invalid{{ v.vo }} => StatusCode::UNPROCESSABLE_ENTITY,{% endfor %}
         };
         (status, Json(ErrorResponse::from_code(self.to_string())))
@@ -29,4 +30,5 @@ mod tests {
 {{- macros::error_case(name="should_map_duplicate_to_409_with_its_code", error=pascal ~ "Error::Duplicate", status="CONFLICT", code=snake ~ ".duplicate") }}
 {{- macros::error_case(name="should_map_repository_error_to_500_with_its_code", error=pascal ~ "Error::RepositoryError", status="INTERNAL_SERVER_ERROR", code=snake ~ ".repository_error") }}
 {{- macros::error_case(name="should_map_unknown_to_500_with_its_code", error=pascal ~ "Error::Unknown", status="INTERNAL_SERVER_ERROR", code=snake ~ ".unknown") }}
+{%- if auth %}{{ macros::error_case(name="should_map_forbidden_to_403_with_its_code", error=pascal ~ "Error::Forbidden", status="FORBIDDEN", code=snake ~ ".forbidden") }}{% endif %}
 {%- for v in vos %}{{ macros::error_case(name="should_map_invalid_" ~ v.vo_snake ~ "_to_422_with_its_code", error=pascal ~ "Error::Invalid" ~ v.vo, status="UNPROCESSABLE_ENTITY", code=snake ~ ".invalid_" ~ v.vo_snake) }}{% endfor %}}

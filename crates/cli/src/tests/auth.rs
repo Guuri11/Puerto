@@ -244,3 +244,173 @@ fn new_refuses_local_auth_until_it_ships() {
     assert!(!dir.join("auth-local").exists(), "nothing is written");
     cleanup(&dir);
 }
+
+// ── Phase 16.4: `scaffold` in an auth project ────────────────────────────────
+
+fn access(public: &[&str], roles: &[&str]) -> scaffold::ScaffoldAccess {
+    let strings = |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+    scaffold::ScaffoldAccess::from_args(&strings(public), &strings(roles)).unwrap()
+}
+
+fn scaffold_product(output: &Path, access: &scaffold::ScaffoldAccess) -> Result<(), String> {
+    scaffold::run_scaffold_with_access(
+        "Product",
+        output,
+        &[scaffold_test_field("title", "String")],
+        OverwritePolicy::Force,
+        access,
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn auth_project(name: &str) -> (PathBuf, PathBuf) {
+    new_auth_project(
+        name,
+        NewOptions {
+            no_db: true,
+            no_web: true,
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn scaffold_in_an_auth_project_protects_every_route_but_the_public_ones() {
+    let (dir, output) = auth_project("auth_scaffold_routes");
+
+    scaffold_product(
+        &output,
+        &access(&["list_products"], &["delete_product=admin"]),
+    )
+    .unwrap();
+
+    let routes = read(&output, "presentation/src/api/product/routes.rs");
+    assert_eq!(routes.matches("auth: BearerAuth").count(), 4, "{routes}");
+    assert_eq!(routes.matches("actor: auth.0").count(), 4, "{routes}");
+    assert_eq!(routes.matches("#[require_role(\"admin\")]").count(), 1);
+    let config = puerto_toml::read(&output).unwrap();
+    let product = config.entity.iter().find(|e| e.name == "Product").unwrap();
+    assert_eq!(product.public, vec!["list_products"]);
+    assert_eq!(
+        product.roles.get("delete_product"),
+        Some(&vec!["admin".to_string()])
+    );
+    // The use cases behind protected routes carry the caller; the public one does not.
+    let use_case = |uc: &str| {
+        read(
+            &output,
+            &format!("business/src/domain/product/use_cases/{uc}.rs"),
+        )
+    };
+    assert!(use_case("create_product").contains("pub actor: Principal,"));
+    assert!(!use_case("list_products").contains("actor"));
+    assert!(read(&output, "business/src/domain/product/errors.rs").contains("product.forbidden"));
+    // What scaffold wrote is what validate checks.
+    assert!(validate::run_validate(&output).is_ok());
+    cleanup(&dir);
+}
+
+#[test]
+fn rescaffold_without_flags_keeps_what_the_manifest_says() {
+    let (dir, output) = auth_project("auth_scaffold_keep");
+    scaffold_product(
+        &output,
+        &access(&["list_products"], &["create_product=admin"]),
+    )
+    .unwrap();
+
+    scaffold_product(&output, &scaffold::ScaffoldAccess::default()).unwrap();
+
+    let product = puerto_toml::read(&output)
+        .unwrap()
+        .entity
+        .into_iter()
+        .find(|e| e.name == "Product")
+        .unwrap();
+    assert_eq!(product.public, vec!["list_products"]);
+    assert!(
+        read(&output, "presentation/src/api/product/routes.rs")
+            .contains("#[require_role(\"admin\")]")
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_refuses_access_naming_another_use_case_before_writing() {
+    let (dir, output) = auth_project("auth_scaffold_refuse");
+
+    let result = scaffold_product(&output, &access(&["list_product"], &[]));
+
+    assert!(result.unwrap_err().contains("'list_product' is not one of"));
+    assert!(!output.join("business/src/domain/product").exists());
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_refuses_a_role_on_a_public_route() {
+    let (dir, output) = auth_project("auth_scaffold_both");
+
+    let result = scaffold_product(
+        &output,
+        &access(&["list_products"], &["list_products=admin"]),
+    );
+
+    assert!(
+        result
+            .unwrap_err()
+            .contains("both public and requires a role")
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_refuses_the_user_entity_in_an_auth_project() {
+    let (dir, output) = auth_project("auth_scaffold_user");
+
+    let result = scaffold::run_scaffold_with_access(
+        "User",
+        &output,
+        &[],
+        OverwritePolicy::Force,
+        &scaffold::ScaffoldAccess::default(),
+    );
+
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("an auth project already uses")
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_refuses_access_flags_outside_an_auth_project() {
+    let (dir, output) = new_auth_project_without_auth("auth_scaffold_noauth");
+
+    let result = scaffold_product(&output, &access(&["list_products"], &[]));
+
+    assert!(result.unwrap_err().contains("need an auth project"));
+    cleanup(&dir);
+}
+
+#[test]
+fn role_args_need_a_use_case_and_a_role() {
+    let result = scaffold::ScaffoldAccess::from_args(&[], &["admin".into()]);
+    assert!(result.unwrap_err().contains("Expected <use_case>=<role>"));
+}
+
+#[test]
+fn a_custom_use_case_of_an_auth_project_takes_the_caller() {
+    let (dir, output) = auth_project("auth_use_case");
+    scaffold_product(&output, &scaffold::ScaffoldAccess::default()).unwrap();
+
+    scaffold::run_use_case("Product", "publish_product", &output).unwrap();
+
+    let params = read(
+        &output,
+        "business/src/domain/product/use_cases/publish_product.rs",
+    );
+    assert!(params.contains("pub actor: Principal,"), "{params}");
+    cleanup(&dir);
+}

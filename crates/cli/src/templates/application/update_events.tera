@@ -52,7 +52,8 @@ impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{{ snake }}::{
+{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
+{% endif %}    use crate::domain::{{ snake }}::{
         model::{{ "{" }}{{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
@@ -84,7 +85,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-            id: entity_id,
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}            id: entity_id,
 {{ macros::params(fields=fields, word="updated") }}            })
             .await;
 
@@ -111,7 +113,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-            id: {{ pascal }}Id::generate(),
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}            id: {{ pascal }}Id::generate(),
 {{ macros::params(fields=fields, word="new") }}            })
             .await;
 
@@ -138,7 +141,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-            id: entity_id,
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}            id: entity_id,
 {{ macros::params(fields=fields, word="updated", empty=f.name) }}            })
             .await;
 

@@ -13,7 +13,10 @@ pub enum {{ pascal }}Error {
     RepositoryError,
     #[error("{{ snake }}.unknown")]
     Unknown,
-{% for f in vo_fields %}    #[error("{{ snake }}.invalid_{{ f.vo_snake }}")]
+{% if auth %}    /// The caller may not do this with this data: a rule of the use case, on its `actor`.
+    #[error("{{ snake }}.forbidden")]
+    Forbidden,
+{% endif %}{% for f in vo_fields %}    #[error("{{ snake }}.invalid_{{ f.vo_snake }}")]
     Invalid{{ f.vo_pascal }},
 {% endfor %}}
 

@@ -31,7 +31,8 @@ impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
+{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
+{% endif %}    use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
     use puerto_core::RepositoryError;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
@@ -48,7 +49,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ macros::params(fields=fields, word="example") }}            })
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
         // Assert
@@ -72,7 +74,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ macros::params(fields=fields, word="example") }}            })
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
         // Assert
@@ -91,7 +94,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ macros::params(fields=fields, word="example", empty=f.name) }}            })
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example", empty=f.name) }}            })
             .await;
 
         // Assert

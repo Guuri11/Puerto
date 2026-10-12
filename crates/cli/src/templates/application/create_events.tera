@@ -37,7 +37,8 @@ impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{{ snake }}::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
+{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
+{% endif %}    use crate::domain::{{ snake }}::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
     use puerto_core::DomainEvent;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
@@ -53,7 +54,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ macros::params(fields=fields, word="example") }}            })
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
         // Assert
@@ -83,7 +85,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ macros::params(fields=fields, word="example") }}            })
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
         // Assert
@@ -105,7 +108,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ macros::params(fields=fields, word="example") }}            })
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
         // Assert
@@ -125,7 +129,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{{ macros::params(fields=fields, word="example", empty=f.name) }}            })
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example", empty=f.name) }}            })
             .await;
 
         // Assert

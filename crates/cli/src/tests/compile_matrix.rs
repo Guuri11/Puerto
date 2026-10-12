@@ -27,6 +27,8 @@ pub(super) struct Scenario<'a> {
     pub(super) shared_vos: &'a [(&'a str, &'a str)],
     /// Entities to scaffold: `(PascalName, CLI field args)`.
     pub(super) entities: &'a [(&'a str, &'a [&'a str])],
+    /// Auth projects: `(PascalName, --public use cases, --role use_case=role)` of a scaffold.
+    pub(super) access: &'a [Access<'a>],
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
     pub(super) use_cases: &'a [(&'a str, &'a str)],
     /// Custom events declared after scaffolding (`puerto generate event`): `(PascalEntity, name)`.
@@ -38,6 +40,8 @@ pub(super) struct Scenario<'a> {
     pub(super) mails: &'a [Mail<'a>],
 }
 
+pub(super) type Access<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
+
 pub(super) type Mail<'a> = (&'a str, &'a [&'a str], &'a [&'a str], Option<&'a str>);
 
 // The scenarios, shared with the snapshot tests (`generated_output.rs`): one proves the output
@@ -48,6 +52,7 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: true,
     no_web: false,
     shared_vos: &[],
@@ -63,6 +68,7 @@ pub(super) const NO_WEB: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: true,
     shared_vos: &[],
@@ -78,6 +84,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -106,6 +113,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -121,6 +129,7 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -145,6 +154,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -163,6 +173,7 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -185,6 +196,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -206,6 +218,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String"), ("Money", "i64")],
@@ -221,6 +234,7 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -239,6 +253,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String")],
@@ -267,6 +282,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -282,6 +298,7 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -299,6 +316,7 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -327,6 +345,7 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -359,6 +378,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     db: true,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String")],
@@ -407,6 +427,7 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     db: true,
     events: Some("db"),
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: false,
     shared_vos: &[],
@@ -429,6 +450,15 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
             "meta:map",
         ],
     )],
+};
+
+/// [`EVENTS_DB`] in an auth project (Phase 16.4): the unit-of-work writes take the caller too,
+/// and the worker builds without one.
+pub(super) const AUTH_OIDC_EVENTS: Scenario = Scenario {
+    name: "auth_oidc_events",
+    auth: Some("oidc"),
+    access: &[("Product", &["list_products"], &["delete_product=admin"])],
+    ..EVENTS_DB
 };
 
 /// `events_db` on the `kafka` transport (Phase 13.5): the worker's registry wires `puerto-kafka`,
@@ -489,6 +519,7 @@ pub(super) const MAIL: Scenario = Scenario {
     db: false,
     events: None,
     auth: None,
+    access: &[],
     no_demo: false,
     no_web: true,
     shared_vos: &[],
@@ -524,7 +555,8 @@ pub(super) const MAIL: Scenario = Scenario {
 
 /// `puerto new --auth oidc` (Phase 16.4): the `User` entity in memory, the provisioning
 /// authenticator and its tests, `GET /me` in the spec the frontend is typed from, Keycloak in a
-/// `docker-compose.yml` of its own. The Greeting demo is `public`.
+/// `docker-compose.yml` of its own. The Greeting demo is `public`. Two scaffolds: protected routes
+/// (`BearerAuth`, `actor`, 401/403/503) and the route tests that prove them.
 pub(super) const AUTH_OIDC: Scenario = Scenario {
     name: "auth_oidc",
     db: false,
@@ -534,10 +566,33 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
     no_web: false,
     shared_vos: &[],
     mails: &[],
-    use_cases: &[],
+    // Protected by default: its params carry the caller.
+    use_cases: &[("Product", "publish_product")],
     entity_events: &[],
     consumers: &[],
-    entities: &[],
+    entities: &[
+        (
+            "Product",
+            &[
+                "name:Name:String",
+                "sku:String!",
+                "price:i64",
+                "status:Status:enum:Draft/Live",
+            ],
+        ),
+        ("Order", &["total:i64"]),
+    ],
+    // Product: public reads, two roles on one route, a protected route with no role. Order: every
+    // route protected, no role.
+    access: &[(
+        "Product",
+        &["list_products", "get_product"],
+        &[
+            "create_product=admin",
+            "delete_product=admin",
+            "delete_product=owner",
+        ],
+    )],
 };
 
 /// [`AUTH_OIDC`] with a database: `PgUserRepository` over runtime-checked queries (no query cache
@@ -599,7 +654,18 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
             .collect();
         let fields = puerto_toml::apply_shared_vo_inference(parsed, &shared_vos);
         crate::generators::types::validate_fields(&fields).unwrap();
-        scaffold::run_scaffold(entity, output, &fields, OverwritePolicy::Ask).unwrap();
+        let access = scenario
+            .access
+            .iter()
+            .find(|(name, _, _)| name == entity)
+            .map(|(_, public, roles)| {
+                let strings =
+                    |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+                scaffold::ScaffoldAccess::from_args(&strings(public), &strings(roles)).unwrap()
+            })
+            .unwrap_or_default();
+        scaffold::run_scaffold_with_access(entity, output, &fields, OverwritePolicy::Ask, &access)
+            .unwrap();
         format();
     }
 
@@ -971,6 +1037,12 @@ fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests(
 #[ignore = "slow: needs Postgres — run via `make test/db`"]
 fn postgres_oidc_auth_project_compiles_lints_and_passes_integration_tests() {
     assert_postgres_scenario_is_clean(&AUTH_OIDC_DB, "puerto_matrix_auth_oidc");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_oidc_auth_events_project_compiles_lints_and_passes_integration_tests() {
+    assert_postgres_scenario_is_clean(&AUTH_OIDC_EVENTS, "puerto_matrix_auth_oidc_events");
 }
 
 #[test]

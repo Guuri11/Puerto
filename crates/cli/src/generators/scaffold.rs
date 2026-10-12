@@ -211,16 +211,116 @@ pub fn run(
     Ok(())
 }
 
-/// CLI entry point for `puerto generate scaffold <Name>`.
+/// `--public` and `--role` of `puerto generate scaffold` in an auth project (ADR-0021 § 4): the
+/// CRUD use cases whose routes take no `BearerAuth`, and the roles a route requires.
+#[derive(Debug, Default, Clone)]
+pub struct ScaffoldAccess {
+    pub public: Vec<String>,
+    pub roles: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+impl ScaffoldAccess {
+    /// `--public list_products,get_product` and `--role create_product=admin,…` as the CLI got them.
+    pub fn from_args(public: &[String], roles: &[String]) -> Result<Self, String> {
+        let mut access = Self {
+            public: public.to_vec(),
+            ..Default::default()
+        };
+        for arg in roles {
+            let (use_case, role) = arg.split_once('=').ok_or_else(|| {
+                format!(
+                    "invalid --role '{arg}'. Expected <use_case>=<role>, e.g. delete_product=admin"
+                )
+            })?;
+            let roles = access.roles.entry(use_case.to_string()).or_default();
+            if !roles.iter().any(|r| r == role) {
+                roles.push(role.to_string());
+            }
+        }
+        Ok(access)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.public.is_empty() && self.roles.is_empty()
+    }
+}
+
+/// Checks `access` against the entity's CRUD use cases and writes it to its `[[entity]]` block,
+/// before any file is rendered: the generators read it back from there. A re-scaffold without
+/// flags keeps what the block says.
+fn record_access(
+    base: &Path,
+    pascal: &str,
+    db: bool,
+    fields: &[Field],
+    access: &ScaffoldAccess,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = crate::puerto_toml::read(base)?;
+    if !config.project.has_auth() {
+        if !access.is_empty() {
+            return Err(
+                "--public and --role need an auth project (`puerto new --auth oidc`)".into(),
+            );
+        }
+        return Ok(());
+    }
+    let snake = pascal_to_snake(pascal);
+    let checked = crate::puerto_toml::Entity {
+        name: pascal.to_string(),
+        use_cases: crud_use_cases(&snake),
+        public: access.public.clone(),
+        roles: access.roles.clone(),
+        ..Default::default()
+    };
+    let errors = crate::validation::validate_entity_access(&checked);
+    if !errors.is_empty() {
+        return Err(format!("{pascal}: {}", errors.join("\n  ")).into());
+    }
+    match config.entity.iter_mut().find(|e| e.name == pascal) {
+        // A re-scaffold: the routes are rewritten as the block already says.
+        Some(_) if access.is_empty() => return Ok(()),
+        Some(entity) => {
+            entity.public = checked.public;
+            entity.roles = checked.roles;
+        }
+        None => config.entity.push(crate::puerto_toml::Entity {
+            db,
+            fields: fields.to_vec(),
+            ..checked
+        }),
+    }
+    crate::puerto_toml::write(base, &config)
+}
+
+/// `puerto generate scaffold <Name>` without `--public` / `--role`.
 /// Reads `project.db` from `puerto.toml`, always generates full CRUD.
 /// `cli_fields` are fields passed from the CLI (e.g. `title:String price:i64`).
 ///
 /// Refuses to overwrite an already-generated entity unless `--force`; see `conflict.rs`.
+#[cfg(test)]
 pub fn run_scaffold(
     name: &str,
     base: &Path,
     cli_fields: &[Field],
     overwrite: OverwritePolicy,
+) -> Result<(), Box<dyn std::error::Error>> {
+    run_scaffold_with_access(
+        name,
+        base,
+        cli_fields,
+        overwrite,
+        &ScaffoldAccess::default(),
+    )
+}
+
+/// [`run_scaffold`] with `--public` / `--role`. In an auth project every CRUD route takes
+/// `BearerAuth` except the `public` ones; outside one, `access` must be empty.
+pub fn run_scaffold_with_access(
+    name: &str,
+    base: &Path,
+    cli_fields: &[Field],
+    overwrite: OverwritePolicy,
+    access: &ScaffoldAccess,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     let db = config.project.db;
@@ -240,6 +340,9 @@ pub fn run_scaffold(
     // Checked before the first byte is written — a half-overwritten project is worse than a
     // refused command.
     crate::validation::validate_entity_name(&pascal)?;
+    if config.project.has_auth() {
+        crate::validation::validate_auth_entity_name(&pascal)?;
+    }
     crate::validation::validate_unique_field_names(&fields)?;
     if db {
         for f in &fields {
@@ -257,6 +360,7 @@ pub fn run_scaffold(
         config.project.web,
         overwrite,
     )?;
+    record_access(base, &pascal, db, &fields, access)?;
 
     run(name, base, db, true, &fields, &shared_vos)?;
     if db {

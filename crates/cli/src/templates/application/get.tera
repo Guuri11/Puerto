@@ -29,7 +29,8 @@ impl Get{{ pascal }}UseCaseTrait for Get{{ pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{{ snake }}::{
+{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
+{% endif %}    use crate::domain::{{ snake }}::{
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
@@ -50,7 +51,7 @@ mod tests {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case.execute(Get{{ pascal }}Params { id: entity_id }).await;
+        let result = use_case.execute(Get{{ pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}id: entity_id }).await;
 
         assert!(result.is_ok());{% if required %}
         assert_eq!(result.unwrap().{{ required.0.name }}, "example");{% elif string_vos %}
@@ -66,7 +67,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(Get{{ pascal }}Params { id: {{ pascal }}Id::generate() })
+            .execute(Get{{ pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}id: {{ pascal }}Id::generate() })
             .await;
 
         assert!(result.is_err());
@@ -84,7 +85,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(Get{{ pascal }}Params { id: {{ pascal }}Id::generate() })
+            .execute(Get{{ pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}id: {{ pascal }}Id::generate() })
             .await;
 
         assert!(result.is_err());

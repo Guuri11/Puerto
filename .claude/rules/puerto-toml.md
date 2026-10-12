@@ -19,7 +19,8 @@ events = ["product_published"]   # optional, `events` projects: custom events be
 public = ["list_products"]       # optional, `auth` projects: routes without BearerAuth
 roles = { create_product = ["admin"] }   # optional, `auth` projects: #[require_role] per route.
                                  # Keys are the entity's use cases, never also public; roles
-                                 # match [a-z][a-z0-9_:-]*. What scaffold wrote: routes.rs is
+                                 # match [a-z][a-z0-9_:-]*; two roles on one use case: both
+                                 # are required. What scaffold wrote: routes.rs is
                                  # the user's after it (`puerto validate` checks it textually)
 
 [[consumer]]                     # `events` projects: a worker consumer (ADR-0018 § 5)
@@ -228,7 +229,7 @@ presentation/src/api/product/error_mapper.rs
 | Command                                         | Effect                                                                            |
 | ----------------------------------------------- | --------------------------------------------------------------------------------- |
 | `puerto new [--name] [--db\|--no-db] [--events db\|kafka] [--auth oidc] [--no-demo] [--no-web]` | Creates puerto.toml from template with initial Greeting entity; `--events` (needs `--db`) writes `[project] events` and the outbox migration; `--auth oidc` writes `[project] auth` and lists the Greeting's use case in `public` |
-| `puerto generate scaffold <Name>`               | Upserts the `[[entity]]` block, regenerates bootstrap.rs                          |
+| `puerto generate scaffold <Name>`               | Upserts the `[[entity]]` block, regenerates bootstrap.rs. Auth projects: `--public <uc>[,…]` and `--role <uc>=<role>[,…]` set `public` / `roles` (checked before writing; a re-scaffold without them keeps the block's) |
 | `puerto generate scaffold <Name> -- name:Type`  | Same, with `[[entity.fields]]` from the trailing arguments                        |
 | `puerto generate domain <Name> -- name:Type`    | Registers the entity **with its fields** so the later layered commands see them   |
 | `puerto generate bootstrap [--allow-missing]`   | Regenerates bootstrap.rs (and `web/…/core/generated/*`); refuses when a declared entity has no code on disk |

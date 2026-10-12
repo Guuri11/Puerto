@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-
+{% if actor %}use puerto_core::auth::Principal;
+{% endif %}
 use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
@@ -7,7 +8,10 @@ use crate::domain::{{ snake }}::{
 
 #[derive(Debug, Clone)]
 pub struct Get{{ pascal }}Params {
-    pub id: {{ pascal }}Id,
+{% if actor %}    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+{% endif %}    pub id: {{ pascal }}Id,
 }
 
 #[async_trait]

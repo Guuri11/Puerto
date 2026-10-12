@@ -33,6 +33,58 @@ pub fn check_mode(mode: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Who may call each use case of an entity: what the templates of an auth project branch on.
+/// Outside an auth project nothing is protected.
+#[derive(Debug, Clone, Default)]
+pub struct Access {
+    auth: bool,
+    public: Vec<String>,
+    roles: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+impl Access {
+    /// The entity `pascal`'s, as `puerto.toml` at `base` records it.
+    pub fn of(base: &Path, pascal: &str) -> Self {
+        let Ok(config) = crate::puerto_toml::read(base) else {
+            return Self::default();
+        };
+        let entity = config.entity.iter().find(|e| e.name == pascal);
+        Self {
+            auth: config.project.has_auth(),
+            public: entity.map(|e| e.public.clone()).unwrap_or_default(),
+            roles: entity.map(|e| e.roles.clone()).unwrap_or_default(),
+        }
+    }
+
+    pub fn is_auth(&self) -> bool {
+        self.auth
+    }
+
+    /// Its route takes `auth: BearerAuth`, its params an `actor`.
+    pub fn is_protected(&self, use_case: &str) -> bool {
+        self.auth && !self.public.iter().any(|p| p == use_case)
+    }
+
+    /// The roles its route requires (`#[require_role]`), none when public.
+    pub fn roles(&self, use_case: &str) -> Vec<String> {
+        if !self.is_protected(use_case) {
+            return vec![];
+        }
+        self.roles.get(use_case).cloned().unwrap_or_default()
+    }
+
+    /// Every role any of `use_cases` requires, once each — what the route tests' caller holds.
+    pub fn all_roles(&self, use_cases: &[String]) -> Vec<String> {
+        let mut all: Vec<String> = vec![];
+        for role in use_cases.iter().flat_map(|uc| self.roles(uc)) {
+            if !all.contains(&role) {
+                all.push(role);
+            }
+        }
+        all
+    }
+}
+
 /// A host name has no `_`: the development user's address has to be one.
 fn host(project: &str) -> String {
     project.replace('_', "-")
@@ -58,6 +110,12 @@ fn write_user_domain(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         &dir.join("repository.rs"),
         &render_static("auth/user_repository.tera")?,
     )?;
+    // The callers the scaffolded tests pass as `actor`.
+    write_file(
+        &base.join("business/src/tests/mothers/principal_mother.rs"),
+        &render_static("auth/principal_mother.tera")?,
+    )?;
+    crate::patchers::lib_rs::patch_mothers_lib(base, "principal")?;
     let lib = base.join("business/src/lib.rs");
     let src = fs::read_to_string(&lib)?;
     if !src.contains("pub mod user {") {
@@ -291,6 +349,12 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 - A handler that takes `auth: BearerAuth` is protected: no or a bad token is answered
   `401 auth.unauthenticated` before it runs. `#[require_role("admin")]` on it adds the
   `403 auth.forbidden` check. Both come from `puerto_web`.
+- `puerto generate scaffold <Name>` protects every CRUD route. `--public list_products,get_product`
+  leaves routes open; `--role delete_product=admin` adds `#[require_role]` (two roles on one route:
+  the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
+  `puerto validate` checks `routes.rs` still says the same — change both together.
+- A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
+  build one with `PrincipalMother`. `generate use-case` adds it too.
 - **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `users.roles` column is not read.
 - Every caller is a `User` (`business/src/domain/user/`), created on their first request by
   `infrastructure/src/user/provisioning.rs`. Point at a person with a `UserId`, never with the
@@ -380,6 +444,46 @@ mod tests {
             insert_after_line(manifest, "[dev-dependencies]", "x = 1"),
             None
         );
+    }
+
+    fn access(auth: bool, public: &[&str], roles: &[(&str, &[&str])]) -> Access {
+        Access {
+            auth,
+            public: public.iter().map(|s| s.to_string()).collect(),
+            roles: roles
+                .iter()
+                .map(|(uc, r)| (uc.to_string(), r.iter().map(|s| s.to_string()).collect()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn should_protect_every_use_case_but_the_public_ones_when_the_project_has_auth() {
+        let access = access(true, &["list_products"], &[]);
+        assert!(access.is_protected("create_product"));
+        assert!(!access.is_protected("list_products"));
+    }
+
+    #[test]
+    fn should_protect_nothing_when_the_project_has_no_auth() {
+        let access = access(false, &[], &[("create_product", &["admin"])]);
+        assert!(!access.is_protected("create_product"));
+        assert_eq!(access.roles("create_product"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn should_collect_each_role_once_when_use_cases_share_it() {
+        let access = access(
+            true,
+            &[],
+            &[
+                ("create_product", &["admin"]),
+                ("delete_product", &["admin", "owner"]),
+            ],
+        );
+        let use_cases = ["create_product".to_string(), "delete_product".to_string()];
+        assert_eq!(access.roles("delete_product"), vec!["admin", "owner"]);
+        assert_eq!(access.all_roles(&use_cases), vec!["admin", "owner"]);
     }
 
     #[test]

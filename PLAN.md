@@ -2501,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3. Next: **16.4**. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, 3/3). Next: **16.5**. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
@@ -2633,7 +2633,27 @@ matrix patches it as soon as a project names it. Keycloak pinned at `26.8.0`; it
   Keycloak container (pinned release tag, realm imported from a fixture): a password-grant token
   of the test client is accepted, a token of another realm is not (`make test/auth`).
 
-### 16.4 — `puerto new --auth oidc` (backend)
+### 16.4 — `puerto new --auth oidc` (backend) ✅
+
+Done in three commits: the schema and `validate` (1/3), `new --auth oidc` (2/3), `scaffold` and
+`generate use-case` in an auth project (3/3). Beyond or apart from the spec:
+- `--auth local` is parsed and refused ("not available yet") until 16.6.
+- `PgUserRepository` uses runtime-checked queries (`query_as`, not `query_as!`): `puerto new`
+  writes it before any database exists, and a fresh `--db --auth` project must build offline.
+- The CRUD response enums already had `Unauthorized`/`Forbidden`; protected routes gain only the
+  503 `Unavailable` (constructed in `from_status`, so it is no dead code).
+- Two roles on one route are two `#[require_role]`s: the caller needs **both** (as stacked
+  `[Authorize]` in ASP.NET). "Any of" would need a macro form of its own.
+- The drift check also flags a protected use case whose handler takes no `BearerAuth` — the
+  dangerous direction of drift.
+- The Greeting demo is `public`; `User`, `Me` and `Auth` are reserved entity names.
+- Route tests sign in through a `MockAuthenticator`: `caller` (every role the API requires) by
+  default, `nobody` for the 403s, no header for the 401s.
+- Matrix: `AUTH_OIDC` (two entities, the access branches, a custom use case), `AUTH_OIDC_DB`
+  and `AUTH_OIDC_EVENTS` (unit-of-work writes with an actor) under `make test/db`.
+- Verified by hand against the generated Keycloak: `make docker-compose/up` gets healthy, a token
+  of the `web` client gets `/api/me` with the provisioned user (once), another audience is 401.
+  The `web` client has no password grant: 16.8 needs a way to get a token (a dev-only client).
 
 Tier 1. New matrix scenarios `AUTH_OIDC` (no db, web) and `AUTH_OIDC_DB` (`make test/db`).
 - `--auth oidc|local` on `new`; interactive flow asks (default none). `[project] auth`.

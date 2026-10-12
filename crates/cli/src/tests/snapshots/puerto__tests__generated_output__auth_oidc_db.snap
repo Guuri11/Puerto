@@ -104,6 +104,12 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 - A handler that takes `auth: BearerAuth` is protected: no or a bad token is answered
   `401 auth.unauthenticated` before it runs. `#[require_role("admin")]` on it adds the
   `403 auth.forbidden` check. Both come from `puerto_web`.
+- `puerto generate scaffold <Name>` protects every CRUD route. `--public list_products,get_product`
+  leaves routes open; `--role delete_product=admin` adds `#[require_role]` (two roles on one route:
+  the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
+  `puerto validate` checks `routes.rs` still says the same — change both together.
+- A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
+  build one with `PrincipalMother`. `generate use-case` adds it too.
 - **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `users.roles` column is not read.
 - Every caller is a `User` (`business/src/domain/user/`), created on their first request by
   `infrastructure/src/user/provisioning.rs`. Point at a person with a `UserId`, never with the
@@ -373,6 +379,2095 @@ auth/ui: docker-compose/up ## The Keycloak console: users, roles, sessions
 	@echo "${GREEN}Keycloak: http://localhost:8180/admin/master/console/#/snapshot (admin / admin)${NC}"
 	@echo "${GREEN}Sign in to the app as admin@snapshot.localhost / admin-dev-only (role admin)${NC}"
 
+=== business/src/application/order/create_order.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderProps},
+    repository::OrderRepositoryTrait,
+    use_cases::create_order::{CreateOrderParams, CreateOrderUseCaseTrait},
+};
+
+pub struct CreateOrderUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateOrderUseCaseTrait for CreateOrderUseCaseImpl {
+    async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError> {
+        tracing::info!("create_order: start");
+        let entity = Order::new(OrderProps {
+            total: params.total,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_order: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_order: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_order: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::repository::mocks::MockOrderRepository;
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+    use puerto_core::RepositoryError;
+
+    #[tokio::test]
+    async fn should_create_order_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateOrderParams {
+                actor: PrincipalMother::random(),
+                total: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateOrderParams {
+                actor: PrincipalMother::random(),
+                total: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.duplicate");
+    }
+}
+
+=== business/src/application/order/delete_order.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::order::{
+    errors::OrderError,
+    repository::OrderRepositoryTrait,
+    use_cases::delete_order::{DeleteOrderParams, DeleteOrderUseCaseTrait},
+};
+
+pub struct DeleteOrderUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteOrderUseCaseTrait for DeleteOrderUseCaseImpl {
+    async fn execute(&self, params: DeleteOrderParams) -> Result<(), OrderError> {
+        tracing::info!(id = %params.id, "delete_order: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_order: repository failed"))?
+            .ok_or_else(|| {
+                let err = OrderError::NotFound;
+                tracing::warn!(error = %err, "delete_order: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_order: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::{
+        model::{Order, OrderId, OrderProps},
+        repository::mocks::MockOrderRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_soft_delete_order_when_id_exists() {
+        let entity = Order::new(OrderProps { total: 42 }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteOrderParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+            })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_order_does_not_exist() {
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteOrderParams {
+                actor: PrincipalMother::random(),
+                id: OrderId::generate(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.not_found");
+    }
+}
+
+=== business/src/application/order/get_order.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::Order,
+    repository::OrderRepositoryTrait,
+    use_cases::get_order::{GetOrderParams, GetOrderUseCaseTrait},
+};
+
+pub struct GetOrderUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetOrderUseCaseTrait for GetOrderUseCaseImpl {
+    async fn execute(&self, params: GetOrderParams) -> Result<Order, OrderError> {
+        tracing::info!(id = %params.id, "get_order: start");
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_order: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = OrderError::NotFound;
+            tracing::warn!(error = %err, "get_order: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::{
+        model::{Order, OrderId, OrderProps},
+        repository::mocks::MockOrderRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+    use puerto_core::RepositoryError;
+
+    #[tokio::test]
+    async fn should_return_order_when_id_exists() {
+        let entity = Order::new(OrderProps { total: 42 }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetOrderParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+            })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetOrderParams {
+                actor: PrincipalMother::random(),
+                id: OrderId::generate(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetOrderParams {
+                actor: PrincipalMother::random(),
+                id: OrderId::generate(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.repository_error");
+    }
+}
+
+=== business/src/application/order/list_orders.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::Page;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::Order,
+    repository::OrderRepositoryTrait,
+    use_cases::list_orders::{ListOrdersParams, ListOrdersUseCaseTrait},
+};
+
+pub struct ListOrdersUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListOrdersUseCaseTrait for ListOrdersUseCaseImpl {
+    async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError> {
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_orders: start"
+        );
+        self.repository
+            .find_all(params.page)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_orders: repository failed"))
+            .map_err(OrderError::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::{
+        model::{Order, OrderProps},
+        repository::mocks::MockOrderRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+    use puerto_core::PageRequest;
+
+    #[tokio::test]
+    async fn should_return_the_page_of_orders() {
+        let entities = vec![
+            Order::new(OrderProps { total: 42 }).unwrap(),
+            Order::new(OrderProps { total: 42 }).unwrap(),
+        ];
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+        let use_case = ListOrdersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListOrdersParams {
+                actor: PrincipalMother::random(),
+                page: PageRequest::default(),
+            })
+            .await;
+
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_an_empty_page_when_no_orders_exist() {
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListOrdersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListOrdersParams {
+                actor: PrincipalMother::random(),
+                page: PageRequest::default(),
+            })
+            .await;
+
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListOrdersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListOrdersParams {
+                actor: PrincipalMother::random(),
+                page: PageRequest::new(Some(5), Some(10)),
+            })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
+    }
+}
+
+=== business/src/application/order/update_order.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::Order,
+    repository::OrderRepositoryTrait,
+    use_cases::update_order::{UpdateOrderParams, UpdateOrderUseCaseTrait},
+};
+
+pub struct UpdateOrderUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateOrderUseCaseTrait for UpdateOrderUseCaseImpl {
+    async fn execute(&self, params: UpdateOrderParams) -> Result<Order, OrderError> {
+        tracing::info!(id = %params.id, "update_order: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_order: repository failed"))?
+            .ok_or_else(|| {
+                let err = OrderError::NotFound;
+                tracing::warn!(error = %err, "update_order: rejected");
+                err
+            })?;
+        entity.total = params.total;
+        entity.updated_at = chrono::Utc::now();
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_order: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::{
+        model::{Order, OrderId, OrderProps},
+        repository::mocks::MockOrderRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_update_order_when_params_are_valid() {
+        // Arrange
+        let entity = Order::new(OrderProps { total: 42 }).unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateOrderParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                total: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_order_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateOrderParams {
+                actor: PrincipalMother::random(),
+                id: OrderId::generate(),
+                total: 42,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.not_found");
+    }
+}
+
+=== business/src/application/product/create_product.rs ===
+use std::sync::Arc;
+
+use crate::domain::product::value_objects::Name;
+use crate::domain::product::value_objects::Status;
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductProps},
+    repository::ProductRepositoryTrait,
+    use_cases::create_product::{CreateProductParams, CreateProductUseCaseTrait},
+};
+
+pub struct CreateProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
+    async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError> {
+        tracing::info!("create_product: start");
+        let name = Name::new(params.name)?;
+        let status = params.status.parse::<Status>()?;
+        let entity = Product::new(ProductProps {
+            name,
+            sku: params.sku,
+            price: params.price,
+            status,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_product: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_product: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_product: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::repository::mocks::MockProductRepository;
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+    use puerto_core::RepositoryError;
+
+    #[tokio::test]
+    async fn should_create_product_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                actor: PrincipalMother::random(),
+                name: "example".to_string(),
+                sku: "example".to_string(),
+                price: 42,
+                status: "Draft".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().sku, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                actor: PrincipalMother::random(),
+                name: "example".to_string(),
+                sku: "example".to_string(),
+                price: 42,
+                status: "Draft".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.duplicate");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_sku_is_empty() {
+        // Arrange
+        let mock_repo = MockProductRepository::new();
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                actor: PrincipalMother::random(),
+                name: "example".to_string(),
+                sku: "".to_string(),
+                price: 42,
+                status: "Draft".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.sku_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let mock_repo = MockProductRepository::new();
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                actor: PrincipalMother::random(),
+                name: "".to_string(),
+                sku: "example".to_string(),
+                price: 42,
+                status: "Draft".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.invalid_name");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_status_is_empty() {
+        // Arrange
+        let mock_repo = MockProductRepository::new();
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                actor: PrincipalMother::random(),
+                name: "example".to_string(),
+                sku: "example".to_string(),
+                price: 42,
+                status: "".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.invalid_status");
+    }
+}
+
+=== business/src/application/product/delete_product.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    repository::ProductRepositoryTrait,
+    use_cases::delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
+};
+
+pub struct DeleteProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteProductUseCaseTrait for DeleteProductUseCaseImpl {
+    async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError> {
+        tracing::info!(id = %params.id, "delete_product: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_product: repository failed"))?
+            .ok_or_else(|| {
+                let err = ProductError::NotFound;
+                tracing::warn!(error = %err, "delete_product: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_product: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::value_objects::Name;
+    use crate::domain::product::value_objects::Status;
+    use crate::domain::product::{
+        model::{Product, ProductId, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_soft_delete_product_when_id_exists() {
+        let entity = Product::new(ProductProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: "example".to_string(),
+            price: 42,
+            status: Status::Draft,
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteProductParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+            })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_product_does_not_exist() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteProductParams {
+                actor: PrincipalMother::random(),
+                id: ProductId::generate(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.not_found");
+    }
+}
+
+=== business/src/application/product/get_product.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::get_product::{GetProductParams, GetProductUseCaseTrait},
+};
+
+pub struct GetProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl GetProductUseCaseTrait for GetProductUseCaseImpl {
+    async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError> {
+        tracing::info!(id = %params.id, "get_product: start");
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_product: repository failed"))?;
+        result.ok_or_else(|| {
+            let err = ProductError::NotFound;
+            tracing::warn!(error = %err, "get_product: rejected");
+            err
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::value_objects::Name;
+    use crate::domain::product::value_objects::Status;
+    use crate::domain::product::{
+        model::{Product, ProductId, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use puerto_core::RepositoryError;
+
+    #[tokio::test]
+    async fn should_return_product_when_id_exists() {
+        let entity = Product::new(ProductProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: "example".to_string(),
+            price: 42,
+            status: Status::Draft,
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = GetProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case.execute(GetProductParams { id: entity_id }).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().sku, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_id_does_not_exist() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = GetProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetProductParams {
+                id: ProductId::generate(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_store_is_unavailable() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = GetProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(GetProductParams {
+                id: ProductId::generate(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.repository_error");
+    }
+}
+
+=== business/src/application/product/list_products.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::Page;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
+};
+
+pub struct ListProductsUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
+    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError> {
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_products: start"
+        );
+        self.repository
+            .find_all(params.page)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
+            .map_err(ProductError::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::value_objects::Name;
+    use crate::domain::product::value_objects::Status;
+    use crate::domain::product::{
+        model::{Product, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use puerto_core::PageRequest;
+
+    #[tokio::test]
+    async fn should_return_the_page_of_products() {
+        let entities = vec![
+            Product::new(ProductProps {
+                name: Name::new("first".to_string()).expect("valid Name"),
+                sku: "first".to_string(),
+                price: 42,
+                status: Status::Draft,
+            })
+            .unwrap(),
+            Product::new(ProductProps {
+                name: Name::new("second".to_string()).expect("valid Name"),
+                sku: "second".to_string(),
+                price: 42,
+                status: Status::Draft,
+            })
+            .unwrap(),
+        ];
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+        let use_case = ListProductsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListProductsParams {
+                page: PageRequest::default(),
+            })
+            .await;
+
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_an_empty_page_when_no_products_exist() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListProductsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListProductsParams {
+                page: PageRequest::default(),
+            })
+            .await;
+
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListProductsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListProductsParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
+    }
+}
+
+=== business/src/application/product/publish_product.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::publish_product::{PublishProductParams, PublishProductUseCaseTrait},
+};
+
+pub struct PublishProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl PublishProductUseCaseTrait for PublishProductUseCaseImpl {
+    async fn execute(&self, _params: PublishProductParams) -> Result<Product, ProductError> {
+        // Log what identifies the work, never the params themselves: they are user data.
+        tracing::info!("publish_product: start");
+        todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::repository::mocks::MockProductRepository;
+
+    #[tokio::test]
+    #[ignore = "write this test"]
+    async fn should_publish_product_when_valid() {
+        // Arrange
+        let mock_repo = MockProductRepository::new();
+        let use_case = PublishProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let _ = &use_case;
+
+        // Assert
+        todo!("call use_case.execute(…) and assert on the outcome")
+    }
+}
+
+=== business/src/application/product/update_product.rs ===
+use std::sync::Arc;
+
+use crate::domain::product::value_objects::Name;
+use crate::domain::product::value_objects::Status;
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
+};
+
+pub struct UpdateProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateProductUseCaseTrait for UpdateProductUseCaseImpl {
+    async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError> {
+        tracing::info!(id = %params.id, "update_product: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_product: repository failed"))?
+            .ok_or_else(|| {
+                let err = ProductError::NotFound;
+                tracing::warn!(error = %err, "update_product: rejected");
+                err
+            })?;
+        if params.sku.trim().is_empty() {
+            let err = ProductError::ValidationError("sku_empty".into());
+            tracing::warn!(error = %err, "update_product: rejected");
+            return Err(err);
+        }
+        let name = Name::new(params.name)?;
+        let status = params.status.parse::<Status>()?;
+        entity.name = name;
+        entity.sku = params.sku;
+        entity.price = params.price;
+        entity.status = status;
+        entity.updated_at = chrono::Utc::now();
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_product: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::value_objects::Name;
+    use crate::domain::product::value_objects::Status;
+    use crate::domain::product::{
+        model::{Product, ProductId, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_update_product_when_params_are_valid() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: Name::new("original".to_string()).expect("valid Name"),
+            sku: "original".to_string(),
+            price: 42,
+            status: Status::Draft,
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                name: "updated".to_string(),
+                sku: "updated".to_string(),
+                price: 42,
+                status: "Draft".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().sku, "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_product_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                actor: PrincipalMother::random(),
+                id: ProductId::generate(),
+                name: "new".to_string(),
+                sku: "new".to_string(),
+                price: 42,
+                status: "Draft".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_sku_is_empty() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: Name::new("original".to_string()).expect("valid Name"),
+            sku: "original".to_string(),
+            price: 42,
+            status: Status::Draft,
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                name: "updated".to_string(),
+                sku: "".to_string(),
+                price: 42,
+                status: "Draft".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.sku_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: Name::new("original".to_string()).expect("valid Name"),
+            sku: "original".to_string(),
+            price: 42,
+            status: Status::Draft,
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                name: "".to_string(),
+                sku: "updated".to_string(),
+                price: 42,
+                status: "Draft".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.invalid_name");
+    }
+}
+
+=== business/src/domain/order/errors.rs ===
+use puerto_core::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum OrderError {
+    #[error("order.validation_error.{0}")]
+    ValidationError(String),
+    #[error("order.not_found")]
+    NotFound,
+    #[error("order.duplicate")]
+    Duplicate,
+    #[error("order.repository_error")]
+    RepositoryError,
+    #[error("order.unknown")]
+    Unknown,
+    /// The caller may not do this with this data: a rule of the use case, on its `actor`.
+    #[error("order.forbidden")]
+    Forbidden,
+}
+
+impl From<RepositoryError> for OrderError {
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = OrderError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "order.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = OrderError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "order.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = OrderError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "order.repository_error");
+    }
+}
+
+=== business/src/domain/order/model.rs ===
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use super::errors::OrderError;
+
+/// The id of every `Order`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OrderId(Uuid);
+
+impl OrderId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for OrderId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OrderProps {
+    pub total: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Order {
+    pub id: OrderId,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub total: i64,
+}
+
+impl Order {
+    pub fn new(props: OrderProps) -> Result<Self, OrderError> {
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: OrderId::generate(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            total: props.total,
+        })
+    }
+
+    pub fn from_repository(data: Order) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_order_when_fields_are_valid() {
+        let result = Order::new(OrderProps { total: 42 });
+        assert!(result.is_ok());
+    }
+}
+
+=== business/src/domain/order/repository.rs ===
+use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
+
+use super::model::{Order, OrderId};
+
+#[async_trait]
+pub trait OrderRepositoryTrait: Send + Sync {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
+    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
+    async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub OrderRepository {}
+
+        #[async_trait]
+        impl OrderRepositoryTrait for OrderRepository {
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
+            async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
+            async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
+        }
+    }
+}
+
+=== business/src/domain/order/use_cases/create_order.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::order::{errors::OrderError, model::Order};
+
+#[derive(Debug, Clone)]
+pub struct CreateOrderParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub total: i64,
+}
+
+#[async_trait]
+pub trait CreateOrderUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateOrderUseCase {}
+
+        #[async_trait]
+        impl CreateOrderUseCaseTrait for CreateOrderUseCase {
+            async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError>;
+        }
+    }
+}
+
+=== business/src/domain/order/use_cases/delete_order.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::order::{errors::OrderError, model::OrderId};
+
+#[derive(Debug, Clone)]
+pub struct DeleteOrderParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub id: OrderId,
+}
+
+#[async_trait]
+pub trait DeleteOrderUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteOrderParams) -> Result<(), OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteOrderUseCase {}
+
+        #[async_trait]
+        impl DeleteOrderUseCaseTrait for DeleteOrderUseCase {
+            async fn execute(&self, params: DeleteOrderParams) -> Result<(), OrderError>;
+        }
+    }
+}
+
+=== business/src/domain/order/use_cases/get_order.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderId},
+};
+
+#[derive(Debug, Clone)]
+pub struct GetOrderParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub id: OrderId,
+}
+
+#[async_trait]
+pub trait GetOrderUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetOrderParams) -> Result<Order, OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetOrderUseCase {}
+
+        #[async_trait]
+        impl GetOrderUseCaseTrait for GetOrderUseCase {
+            async fn execute(&self, params: GetOrderParams) -> Result<Order, OrderError>;
+        }
+    }
+}
+
+=== business/src/domain/order/use_cases/list_orders.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+use puerto_core::{Page, PageRequest};
+
+use crate::domain::order::{errors::OrderError, model::Order};
+
+#[derive(Debug, Clone)]
+pub struct ListOrdersParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub page: PageRequest,
+}
+
+#[async_trait]
+pub trait ListOrdersUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListOrdersUseCase {}
+
+        #[async_trait]
+        impl ListOrdersUseCaseTrait for ListOrdersUseCase {
+            async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError>;
+        }
+    }
+}
+
+=== business/src/domain/order/use_cases/update_order.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderId},
+};
+
+#[derive(Debug, Clone)]
+pub struct UpdateOrderParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub id: OrderId,
+    pub total: i64,
+}
+
+#[async_trait]
+pub trait UpdateOrderUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateOrderParams) -> Result<Order, OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateOrderUseCase {}
+
+        #[async_trait]
+        impl UpdateOrderUseCaseTrait for UpdateOrderUseCase {
+            async fn execute(&self, params: UpdateOrderParams) -> Result<Order, OrderError>;
+        }
+    }
+}
+
+=== business/src/domain/product/errors.rs ===
+use puerto_core::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ProductError {
+    #[error("product.validation_error.{0}")]
+    ValidationError(String),
+    #[error("product.not_found")]
+    NotFound,
+    #[error("product.duplicate")]
+    Duplicate,
+    #[error("product.repository_error")]
+    RepositoryError,
+    #[error("product.unknown")]
+    Unknown,
+    /// The caller may not do this with this data: a rule of the use case, on its `actor`.
+    #[error("product.forbidden")]
+    Forbidden,
+    #[error("product.invalid_name")]
+    InvalidName,
+    #[error("product.invalid_status")]
+    InvalidStatus,
+}
+
+impl From<RepositoryError> for ProductError {
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = ProductError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "product.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = ProductError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "product.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = ProductError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "product.repository_error");
+    }
+}
+
+=== business/src/domain/product/model.rs ===
+use super::value_objects::Name;
+use super::value_objects::Status;
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use super::errors::ProductError;
+
+/// The id of every `Product`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProductId(Uuid);
+
+impl ProductId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ProductId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProductProps {
+    pub name: Name,
+    pub sku: String,
+    pub price: i64,
+    pub status: Status,
+}
+
+#[derive(Debug, Clone)]
+pub struct Product {
+    pub id: ProductId,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub name: Name,
+    pub sku: String,
+    pub price: i64,
+    pub status: Status,
+}
+
+impl Product {
+    pub fn new(props: ProductProps) -> Result<Self, ProductError> {
+        if props.sku.trim().is_empty() {
+            return Err(ProductError::ValidationError("sku_empty".into()));
+        }
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: ProductId::generate(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            name: props.name,
+            sku: props.sku,
+            price: props.price,
+            status: props.status,
+        })
+    }
+
+    pub fn from_repository(data: Product) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_product_when_fields_are_valid() {
+        let result = Product::new(ProductProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: "example".to_string(),
+            price: 42,
+            status: Status::Draft,
+        });
+        assert_eq!(result.unwrap().sku, "example");
+    }
+
+    #[test]
+    fn should_reject_product_when_sku_is_empty() {
+        let result = Product::new(ProductProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: "".into(),
+            price: 42,
+            status: Status::Draft,
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.sku_empty"
+        );
+    }
+
+    #[test]
+    fn should_reject_product_when_sku_is_only_whitespace() {
+        let result = Product::new(ProductProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: "   ".into(),
+            price: 42,
+            status: Status::Draft,
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn should_reject_product_when_name_is_empty() {
+        let result = Name::new("".to_string());
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.invalid_name");
+    }
+
+    #[test]
+    fn should_reject_product_when_status_is_invalid() {
+        let result = "InvalidVariant".parse::<Status>();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.invalid_status");
+    }
+}
+
+=== business/src/domain/product/repository.rs ===
+use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
+
+use super::model::{Product, ProductId};
+
+#[async_trait]
+pub trait ProductRepositoryTrait: Send + Sync {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+    async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ProductRepository {}
+
+        #[async_trait]
+        impl ProductRepositoryTrait for ProductRepository {
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+            async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+        }
+    }
+}
+
+=== business/src/domain/product/use_cases/create_product.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::product::{errors::ProductError, model::Product};
+
+#[derive(Debug, Clone)]
+pub struct CreateProductParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub name: String,
+    pub sku: String,
+    pub price: i64,
+    pub status: String,
+}
+
+#[async_trait]
+pub trait CreateProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateProductUseCase {}
+
+        #[async_trait]
+        impl CreateProductUseCaseTrait for CreateProductUseCase {
+            async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError>;
+        }
+    }
+}
+
+=== business/src/domain/product/use_cases/delete_product.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::product::{errors::ProductError, model::ProductId};
+
+#[derive(Debug, Clone)]
+pub struct DeleteProductParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub id: ProductId,
+}
+
+#[async_trait]
+pub trait DeleteProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteProductUseCase {}
+
+        #[async_trait]
+        impl DeleteProductUseCaseTrait for DeleteProductUseCase {
+            async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError>;
+        }
+    }
+}
+
+=== business/src/domain/product/use_cases/get_product.rs ===
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
+
+#[derive(Debug, Clone)]
+pub struct GetProductParams {
+    pub id: ProductId,
+}
+
+#[async_trait]
+pub trait GetProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetProductUseCase {}
+
+        #[async_trait]
+        impl GetProductUseCaseTrait for GetProductUseCase {
+            async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError>;
+        }
+    }
+}
+
+=== business/src/domain/product/use_cases/list_products.rs ===
+use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
+
+use crate::domain::product::{errors::ProductError, model::Product};
+
+#[derive(Debug, Clone)]
+pub struct ListProductsParams {
+    pub page: PageRequest,
+}
+
+#[async_trait]
+pub trait ListProductsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListProductsUseCase {}
+
+        #[async_trait]
+        impl ListProductsUseCaseTrait for ListProductsUseCase {
+            async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+        }
+    }
+}
+
+=== business/src/domain/product/use_cases/publish_product.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::product::{errors::ProductError, model::Product};
+
+#[derive(Debug, Clone)]
+pub struct PublishProductParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub name: String,
+}
+
+#[async_trait]
+pub trait PublishProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: PublishProductParams) -> Result<Product, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub PublishProductUseCase {}
+
+        #[async_trait]
+        impl PublishProductUseCaseTrait for PublishProductUseCase {
+            async fn execute(&self, params: PublishProductParams) -> Result<Product, ProductError>;
+        }
+    }
+}
+
+=== business/src/domain/product/use_cases/update_product.rs ===
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
+
+#[derive(Debug, Clone)]
+pub struct UpdateProductParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub id: ProductId,
+    pub name: String,
+    pub sku: String,
+    pub price: i64,
+    pub status: String,
+}
+
+#[async_trait]
+pub trait UpdateProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateProductUseCase {}
+
+        #[async_trait]
+        impl UpdateProductUseCaseTrait for UpdateProductUseCase {
+            async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError>;
+        }
+    }
+}
+
+=== business/src/domain/product/value_objects.rs ===
+use super::errors::ProductError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Name {
+    value: String,
+}
+
+impl Name {
+    pub fn new(value: String) -> Result<Self, ProductError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(ProductError::InvalidName);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Status {
+    Draft,
+    Live,
+}
+
+impl std::str::FromStr for Status {
+    type Err = ProductError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Draft" => Ok(Self::Draft),
+            "Live" => Ok(Self::Live),
+            _ => Err(ProductError::InvalidStatus),
+        }
+    }
+}
+
+impl Status {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Draft => "Draft",
+            Self::Live => "Live",
+        }
+    }
+}
+
 === business/src/domain/user/errors.rs ===
 use puerto_core::RepositoryError;
 use thiserror::Error;
@@ -584,10 +2679,244 @@ pub mod domain {
         pub mod model;
         pub mod repository;
     }
+
+    pub mod product {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_product;
+            pub mod delete_product;
+            pub mod get_product;
+            pub mod list_products;
+            pub mod update_product;
+
+            pub mod publish_product;
+        }
+
+        pub mod value_objects;
+    }
+
+    pub mod order {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_order;
+            pub mod delete_order;
+            pub mod get_order;
+            pub mod list_orders;
+            pub mod update_order;
+        }
+    }
 }
 pub mod application {
     pub mod greeting {
         pub mod get_greeting;
+    }
+
+    pub mod product {
+        pub mod create_product;
+        pub mod delete_product;
+        pub mod get_product;
+        pub mod list_products;
+        pub mod update_product;
+
+        pub mod publish_product;
+    }
+
+    pub mod order {
+        pub mod create_order;
+        pub mod delete_order;
+        pub mod get_order;
+        pub mod list_orders;
+        pub mod update_order;
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod tests {
+    pub mod mothers {
+        pub mod principal_mother;
+
+        pub mod product_mother;
+
+        pub mod order_mother;
+    }
+}
+
+=== business/src/tests/mothers/order_mother.rs ===
+use crate::domain::order::model::Order;
+use crate::domain::order::model::OrderProps;
+
+pub struct OrderMother {
+    total: Option<i64>,
+}
+
+impl OrderMother {
+    pub fn new() -> Self {
+        Self { total: None }
+    }
+
+    pub fn with_total(mut self, total: i64) -> Self {
+        self.total = Some(total);
+        self
+    }
+
+    pub fn build(self) -> Order {
+        Order::new(OrderProps {
+            total: self.total.unwrap_or(42),
+        })
+        .expect("OrderMother: failed to build valid Order")
+    }
+
+    pub fn build_props(self) -> OrderProps {
+        OrderProps {
+            total: self.total.unwrap_or(42),
+        }
+    }
+
+    pub fn random() -> Order {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Order> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for OrderMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== business/src/tests/mothers/principal_mother.rs ===
+use puerto_core::auth::Principal;
+use uuid::Uuid;
+
+/// Callers for tests (ADR-0021): a signed-in user with a fresh id, with or without roles.
+pub struct PrincipalMother {
+    roles: Vec<String>,
+}
+
+impl PrincipalMother {
+    pub fn new() -> Self {
+        Self { roles: vec![] }
+    }
+
+    pub fn with_roles<I, S>(mut self, roles: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.roles = roles.into_iter().map(Into::into).collect();
+        self
+    }
+
+    pub fn build(self) -> Principal {
+        let user_id = Uuid::new_v4();
+        Principal::new(user_id, format!("subject-{user_id}"))
+            .with_email(format!("{}@example.com", user_id.simple()))
+            .with_name("Ada Lovelace")
+            .with_roles(self.roles)
+    }
+
+    /// A signed-in caller with no role.
+    pub fn random() -> Principal {
+        Self::new().build()
+    }
+}
+
+impl Default for PrincipalMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== business/src/tests/mothers/product_mother.rs ===
+use crate::domain::product::model::Product;
+use crate::domain::product::model::ProductProps;
+use crate::domain::product::value_objects::Name;
+use crate::domain::product::value_objects::Status;
+
+pub struct ProductMother {
+    name: Option<Name>,
+    sku: Option<String>,
+    price: Option<i64>,
+    status: Option<Status>,
+}
+
+impl ProductMother {
+    pub fn new() -> Self {
+        Self {
+            name: None,
+            sku: None,
+            price: None,
+            status: None,
+        }
+    }
+
+    pub fn with_name(mut self, name: Name) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    pub fn with_sku(mut self, sku: &str) -> Self {
+        self.sku = Some(sku.to_string());
+        self
+    }
+
+    pub fn with_price(mut self, price: i64) -> Self {
+        self.price = Some(price);
+        self
+    }
+
+    pub fn with_status(mut self, status: Status) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    pub fn with_empty_sku(mut self) -> Self {
+        self.sku = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> Product {
+        Product::new(ProductProps {
+            name: self
+                .name
+                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            sku: self.sku.unwrap_or_else(|| "example".to_string()),
+            price: self.price.unwrap_or(42),
+            status: self.status.unwrap_or(Status::Draft),
+        })
+        .expect("ProductMother: failed to build valid Product")
+    }
+
+    pub fn build_props(self) -> ProductProps {
+        ProductProps {
+            name: self
+                .name
+                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            sku: self.sku.unwrap_or_else(|| "example".to_string()),
+            price: self.price.unwrap_or(42),
+            status: self.status.unwrap_or(Status::Draft),
+        }
+    }
+
+    pub fn random() -> Product {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Product> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for ProductMother {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -714,6 +3043,37 @@ tokio = { version = "1", features = ["rt", "macros"] }
   ]
 }
 
+=== infrastructure/migrations/<version>_create_order_table.sql ===
+-- Puerto migration: create_order_table
+-- Run `make sqlx/prepare` after editing this file.
+
+CREATE TABLE orders (
+    id UUID PRIMARY KEY,
+    total BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMPTZ
+);
+
+=== infrastructure/migrations/<version>_create_product_table.sql ===
+-- Puerto migration: create_product_table
+-- Run `make sqlx/prepare` after editing this file.
+
+CREATE TABLE products (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    sku TEXT NOT NULL,
+    price BIGINT NOT NULL,
+    status TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;
+
 === infrastructure/migrations/<version>_create_users_table.sql ===
 -- Puerto migration: create_users_table
 -- Run `make sqlx/prepare` after editing this file.
@@ -748,6 +3108,584 @@ pub mod db;
 pub mod user {
     pub mod provisioning;
     pub mod repository;
+}
+pub mod product {
+    pub mod entity;
+    pub mod repository;
+}
+pub mod order {
+    pub mod entity;
+    pub mod repository;
+}
+
+=== infrastructure/src/order/entity.rs ===
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use business::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderId},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct OrderDb {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub total: i64,
+}
+
+impl TryFrom<OrderDb> for Order {
+    type Error = OrderError;
+
+    fn try_from(row: OrderDb) -> Result<Self, Self::Error> {
+        Ok(Self::from_repository(Order {
+            id: OrderId::from_uuid(row.id),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            deleted: row.deleted,
+            deleted_at: row.deleted_at,
+            total: row.total,
+        }))
+    }
+}
+
+impl From<&Order> for OrderDb {
+    fn from(entity: &Order) -> Self {
+        Self {
+            id: entity.id.value(),
+            created_at: entity.created_at,
+            updated_at: entity.updated_at,
+            deleted: entity.deleted,
+            deleted_at: entity.deleted_at,
+            total: entity.total,
+        }
+    }
+}
+
+=== infrastructure/src/order/repository.rs ===
+use async_trait::async_trait;
+use sqlx::PgPool;
+
+use business::domain::order::{
+    model::{Order, OrderId},
+    repository::OrderRepositoryTrait,
+};
+use puerto_core::{Page, PageRequest, RepositoryError};
+
+use super::entity::OrderDb;
+use crate::db::map_sqlx_error;
+
+pub struct PgOrderRepository {
+    pub pool: PgPool,
+}
+
+impl PgOrderRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
+/// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
+fn to_domain(row: OrderDb) -> Result<Order, RepositoryError> {
+    Order::try_from(row).map_err(|e| {
+        tracing::error!(error = %e, "stored row is not a valid order");
+        RepositoryError::InvalidData
+    })
+}
+
+#[async_trait]
+impl OrderRepositoryTrait for PgOrderRepository {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        let rows = sqlx::query_as!(
+            OrderDb,
+            "SELECT id, created_at, updated_at, deleted, deleted_at, total
+             FROM orders WHERE deleted = false
+             ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
+            i64::from(page.limit()),
+            i64::from(page.offset())
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all failed");
+            map_sqlx_error(&e)
+        })?;
+        let total =
+            sqlx::query_scalar!(r#"SELECT COUNT(*) AS "total!" FROM orders WHERE deleted = false"#)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "find_all count failed");
+                    map_sqlx_error(&e)
+                })?;
+
+        let items = rows
+            .into_iter()
+            .map(to_domain)
+            .collect::<Result<Vec<_>, _>>()?;
+        // COUNT(*) is never negative.
+        let total = u64::try_from(total).unwrap_or_default();
+        Ok(Page::new(items, total, page))
+    }
+
+    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError> {
+        tracing::debug!(%id, "find_by_id");
+        let row = sqlx::query_as!(
+            OrderDb,
+            "SELECT id, created_at, updated_at, deleted, deleted_at, total
+             FROM orders WHERE id = $1 AND deleted = false",
+            id.value()
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_by_id failed");
+            map_sqlx_error(&e)
+        })?;
+
+        row.map(to_domain).transpose()
+    }
+
+    async fn save(&self, entity: &Order) -> Result<(), RepositoryError> {
+        tracing::debug!(id = %entity.id, "save");
+        let db = OrderDb::from(entity);
+        sqlx::query!(
+            "INSERT INTO orders (id, created_at, updated_at, deleted, deleted_at, total)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (id) DO UPDATE
+             SET updated_at = $3, deleted = $4, deleted_at = $5, total = $6",
+            db.id,
+            db.created_at,
+            db.updated_at,
+            db.deleted,
+            db.deleted_at,
+            db.total,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "save failed");
+            map_sqlx_error(&e)
+        })?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use business::domain::order::model::OrderProps;
+
+    fn test_repo(pool: PgPool) -> PgOrderRepository {
+        PgOrderRepository::new(pool)
+    }
+
+    async fn seed(pool: &PgPool) -> Order {
+        let entity = Order::new(OrderProps { total: 42 }).unwrap();
+        test_repo(pool.clone()).save(&entity).await.unwrap();
+        entity
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_persist_and_retrieve_by_id(pool: PgPool) {
+        // Arrange
+        let entity = seed(&pool).await;
+
+        // Act
+        let found = test_repo(pool)
+            .find_by_id(entity.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Assert
+        assert_eq!(found.id, entity.id);
+        assert_eq!(found.total, entity.total);
+        assert!(!found.deleted);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_none_for_nonexistent_id(pool: PgPool) {
+        // Act
+        let result = test_repo(pool)
+            .find_by_id(OrderId::generate())
+            .await
+            .unwrap();
+
+        // Assert
+        assert!(result.is_none());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_update_entity_on_save_conflict(pool: PgPool) {
+        // Arrange
+        let entity = seed(&pool).await;
+
+        // Act
+        test_repo(pool.clone()).save(&entity).await.unwrap();
+
+        // Assert
+        let found = test_repo(pool).find_by_id(entity.id).await.unwrap();
+        assert!(found.is_some());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_list_all_orders_excluding_deleted(pool: PgPool) {
+        // Arrange
+        seed(&pool).await;
+        let mut deleted = seed(&pool).await;
+        deleted.deleted = true;
+        deleted.deleted_at = Some(deleted.updated_at);
+        test_repo(pool.clone()).save(&deleted).await.unwrap();
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::default())
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
+        // Arrange
+        for _ in 0..3 {
+            seed(&pool).await;
+        }
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3);
+        assert_eq!((page.limit, page.offset), (2, 2));
+    }
+}
+
+=== infrastructure/src/product/entity.rs ===
+use business::domain::product::value_objects::Name;
+use business::domain::product::value_objects::Status;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use business::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ProductDb {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub name: String,
+    pub sku: String,
+    pub price: i64,
+    pub status: String,
+}
+
+impl TryFrom<ProductDb> for Product {
+    type Error = ProductError;
+
+    fn try_from(row: ProductDb) -> Result<Self, Self::Error> {
+        Ok(Self::from_repository(Product {
+            id: ProductId::from_uuid(row.id),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            deleted: row.deleted,
+            deleted_at: row.deleted_at,
+            name: Name::new(row.name)?,
+            sku: row.sku,
+            price: row.price,
+            status: row.status.parse::<Status>()?,
+        }))
+    }
+}
+
+impl From<&Product> for ProductDb {
+    fn from(entity: &Product) -> Self {
+        Self {
+            id: entity.id.value(),
+            created_at: entity.created_at,
+            updated_at: entity.updated_at,
+            deleted: entity.deleted,
+            deleted_at: entity.deleted_at,
+            name: entity.name.value().to_string(),
+            sku: entity.sku.clone(),
+            price: entity.price,
+            status: entity.status.as_str().to_string(),
+        }
+    }
+}
+
+=== infrastructure/src/product/repository.rs ===
+use async_trait::async_trait;
+use sqlx::PgPool;
+
+use business::domain::product::{
+    model::{Product, ProductId},
+    repository::ProductRepositoryTrait,
+};
+use puerto_core::{Page, PageRequest, RepositoryError};
+
+use super::entity::ProductDb;
+use crate::db::map_sqlx_error;
+
+pub struct PgProductRepository {
+    pub pool: PgPool,
+}
+
+impl PgProductRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
+/// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
+fn to_domain(row: ProductDb) -> Result<Product, RepositoryError> {
+    Product::try_from(row).map_err(|e| {
+        tracing::error!(error = %e, "stored row is not a valid product");
+        RepositoryError::InvalidData
+    })
+}
+
+#[async_trait]
+impl ProductRepositoryTrait for PgProductRepository {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        let rows = sqlx::query_as!(
+            ProductDb,
+            "SELECT id, created_at, updated_at, deleted, deleted_at, name, sku, price, status
+             FROM products WHERE deleted = false
+             ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
+            i64::from(page.limit()),
+            i64::from(page.offset())
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all failed");
+            map_sqlx_error(&e)
+        })?;
+        let total = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) AS "total!" FROM products WHERE deleted = false"#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all count failed");
+            map_sqlx_error(&e)
+        })?;
+
+        let items = rows
+            .into_iter()
+            .map(to_domain)
+            .collect::<Result<Vec<_>, _>>()?;
+        // COUNT(*) is never negative.
+        let total = u64::try_from(total).unwrap_or_default();
+        Ok(Page::new(items, total, page))
+    }
+
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError> {
+        tracing::debug!(%id, "find_by_id");
+        let row = sqlx::query_as!(
+            ProductDb,
+            "SELECT id, created_at, updated_at, deleted, deleted_at, name, sku, price, status
+             FROM products WHERE id = $1 AND deleted = false",
+            id.value()
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_by_id failed");
+            map_sqlx_error(&e)
+        })?;
+
+        row.map(to_domain).transpose()
+    }
+
+    async fn save(&self, entity: &Product) -> Result<(), RepositoryError> {
+        tracing::debug!(id = %entity.id, "save");
+        let db = ProductDb::from(entity);
+        sqlx::query!(
+            "INSERT INTO products (id, created_at, updated_at, deleted, deleted_at, name, sku, price, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT (id) DO UPDATE
+             SET updated_at = $3, deleted = $4, deleted_at = $5, name = $6, sku = $7, price = $8, status = $9",
+            db.id,
+            db.created_at,
+            db.updated_at,
+            db.deleted,
+            db.deleted_at,
+            db.name,
+            db.sku,
+            db.price,
+            db.status,
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "save failed");
+            map_sqlx_error(&e)
+        })?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use business::domain::product::model::ProductProps;
+
+    use business::domain::product::value_objects::Name;
+    use business::domain::product::value_objects::Status;
+    use uuid::Uuid;
+
+    fn test_repo(pool: PgPool) -> PgProductRepository {
+        PgProductRepository::new(pool)
+    }
+
+    async fn seed(pool: &PgPool) -> Product {
+        let entity = Product::new(ProductProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: Uuid::new_v4().to_string(),
+            price: 42,
+            status: Status::Draft,
+        })
+        .unwrap();
+        test_repo(pool.clone()).save(&entity).await.unwrap();
+        entity
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_persist_and_retrieve_by_id(pool: PgPool) {
+        // Arrange
+        let entity = seed(&pool).await;
+
+        // Act
+        let found = test_repo(pool)
+            .find_by_id(entity.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Assert
+        assert_eq!(found.id, entity.id);
+        assert_eq!(found.name, entity.name);
+        assert_eq!(found.sku, entity.sku);
+        assert_eq!(found.price, entity.price);
+        assert_eq!(found.status, entity.status);
+        assert!(!found.deleted);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_none_for_nonexistent_id(pool: PgPool) {
+        // Act
+        let result = test_repo(pool)
+            .find_by_id(ProductId::generate())
+            .await
+            .unwrap();
+
+        // Assert
+        assert!(result.is_none());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_update_entity_on_save_conflict(pool: PgPool) {
+        // Arrange
+        let mut entity = seed(&pool).await;
+        entity.sku = "updated".to_string();
+        entity.updated_at = chrono::Utc::now();
+
+        // Act
+        test_repo(pool.clone()).save(&entity).await.unwrap();
+
+        // Assert
+        let found = test_repo(pool)
+            .find_by_id(entity.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.sku, "updated");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_list_all_products_excluding_deleted(pool: PgPool) {
+        // Arrange
+        seed(&pool).await;
+        let mut deleted = seed(&pool).await;
+        deleted.deleted = true;
+        deleted.deleted_at = Some(deleted.updated_at);
+        test_repo(pool.clone()).save(&deleted).await.unwrap();
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::default())
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
+        // Arrange
+        for _ in 0..3 {
+            seed(&pool).await;
+        }
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3);
+        assert_eq!((page.limit, page.offset), (2, 2));
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_reject_a_duplicate_sku(pool: PgPool) {
+        // Arrange
+        let first = seed(&pool).await;
+        let mut second = Product::new(ProductProps {
+            name: Name::new("example".to_string()).expect("valid Name"),
+            sku: Uuid::new_v4().to_string(),
+            price: 42,
+            status: Status::Draft,
+        })
+        .unwrap();
+        second.sku = first.sku.clone();
+
+        // Act
+        let result = test_repo(pool).save(&second).await;
+
+        // Assert
+        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+    }
 }
 
 === infrastructure/src/user/provisioning.rs ===
@@ -1200,6 +4138,8 @@ poem = { version = "3", features = ["test"] }
 pub mod error;
 pub mod greeting;
 pub mod me;
+pub mod order;
+pub mod product;
 pub mod tags;
 
 === presentation/src/api/me.rs ===
@@ -1338,6 +4278,1724 @@ mod tests {
     }
 }
 
+=== presentation/src/api/order.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/order/dto.rs ===
+use business::domain::order::model::Order;
+use poem_openapi::Object;
+use puerto_core::Page;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct OrderDto {
+    pub id: Uuid,
+    pub total: i64,
+}
+
+impl OrderDto {
+    pub fn from_domain(entity: &Order) -> Self {
+        Self {
+            id: entity.id.value(),
+            total: entity.total,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateOrderRequest {
+    pub total: i64,
+}
+
+/// One page of Orders: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct OrderPageDto {
+    pub items: Vec<OrderDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl OrderPageDto {
+    pub fn from_domain(page: &Page<Order>) -> Self {
+        Self {
+            items: page.items.iter().map(OrderDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateOrderRequest {
+    pub total: i64,
+}
+
+=== presentation/src/api/order/error_mapper.rs ===
+use business::domain::order::errors::OrderError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
+
+use crate::api::error::IntoErrorResponse;
+
+impl IntoErrorResponse for OrderError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            OrderError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            OrderError::NotFound => StatusCode::NOT_FOUND,
+            OrderError::Duplicate => StatusCode::CONFLICT,
+            OrderError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            OrderError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            OrderError::Forbidden => StatusCode::FORBIDDEN,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) =
+            OrderError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "order.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "order.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "order.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "order.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "order.unknown");
+    }
+
+    #[test]
+    fn should_map_forbidden_to_403_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::Forbidden.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body.name, "order.forbidden");
+    }
+}
+
+=== presentation/src/api/order/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::order::dto::{OrderDto, OrderPageDto};
+
+#[derive(ApiResponse)]
+pub enum CreateOrderResponse {
+    #[oai(status = 201)]
+    Created(Json<OrderDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateOrderResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetOrderResponse {
+    #[oai(status = 200)]
+    Ok(Json<OrderDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetOrderResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListOrdersResponse {
+    #[oai(status = 200)]
+    Ok(Json<OrderPageDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListOrdersResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateOrderResponse {
+    #[oai(status = 200)]
+    Ok(Json<OrderDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateOrderResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteOrderResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteOrderResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/order/routes.rs ===
+use std::sync::Arc;
+
+use business::domain::order::model::OrderId;
+use business::domain::order::use_cases::{
+    create_order::{CreateOrderParams, CreateOrderUseCaseTrait},
+    delete_order::{DeleteOrderParams, DeleteOrderUseCaseTrait},
+    get_order::{GetOrderParams, GetOrderUseCaseTrait},
+    list_orders::{ListOrdersParams, ListOrdersUseCaseTrait},
+    update_order::{UpdateOrderParams, UpdateOrderUseCaseTrait},
+};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_core::PageRequest;
+use puerto_web::auth::BearerAuth;
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::order::dto::{CreateOrderRequest, OrderDto, OrderPageDto, UpdateOrderRequest};
+use crate::api::order::responses::{
+    CreateOrderResponse, DeleteOrderResponse, GetOrderResponse, ListOrdersResponse,
+    UpdateOrderResponse,
+};
+use crate::api::tags::ApiTags;
+
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
+pub struct OrderApi {
+    pub create_order: Arc<dyn CreateOrderUseCaseTrait>,
+    pub get_order: Arc<dyn GetOrderUseCaseTrait>,
+    pub list_orders: Arc<dyn ListOrdersUseCaseTrait>,
+    pub update_order: Arc<dyn UpdateOrderUseCaseTrait>,
+    pub delete_order: Arc<dyn DeleteOrderUseCaseTrait>,
+}
+
+#[OpenApi]
+impl OrderApi {
+    /// Create a new Order
+    #[oai(path = "/orders", method = "post", tag = "ApiTags::Order")]
+    async fn create(
+        &self,
+        auth: BearerAuth,
+        body: Json<CreateOrderRequest>,
+    ) -> CreateOrderResponse {
+        match self
+            .create_order
+            .execute(CreateOrderParams {
+                actor: auth.0,
+                total: body.total,
+            })
+            .await
+        {
+            Ok(entity) => CreateOrderResponse::Created(Json(OrderDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_order failed");
+                CreateOrderResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Order by ID
+    #[oai(path = "/orders/:id", method = "get", tag = "ApiTags::Order")]
+    async fn get_by_id(&self, auth: BearerAuth, id: Path<Uuid>) -> GetOrderResponse {
+        match self
+            .get_order
+            .execute(GetOrderParams {
+                actor: auth.0,
+                id: OrderId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entity) => GetOrderResponse::Ok(Json(OrderDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_order failed");
+                GetOrderResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List Orders, one page at a time (`limit` is capped by the domain)
+    #[oai(path = "/orders", method = "get", tag = "ApiTags::Order")]
+    async fn list(
+        &self,
+        auth: BearerAuth,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListOrdersResponse {
+        match self
+            .list_orders
+            .execute(ListOrdersParams {
+                actor: auth.0,
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListOrdersResponse::Ok(Json(OrderPageDto::from_domain(&page))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_orders failed");
+                ListOrdersResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Order
+    #[oai(path = "/orders/:id", method = "put", tag = "ApiTags::Order")]
+    async fn update(
+        &self,
+        auth: BearerAuth,
+        id: Path<Uuid>,
+        body: Json<UpdateOrderRequest>,
+    ) -> UpdateOrderResponse {
+        match self
+            .update_order
+            .execute(UpdateOrderParams {
+                actor: auth.0,
+                id: OrderId::from_uuid(id.0),
+                total: body.total,
+            })
+            .await
+        {
+            Ok(entity) => UpdateOrderResponse::Ok(Json(OrderDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_order failed");
+                UpdateOrderResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Order
+    #[oai(path = "/orders/:id", method = "delete", tag = "ApiTags::Order")]
+    async fn delete(&self, auth: BearerAuth, id: Path<Uuid>) -> DeleteOrderResponse {
+        match self
+            .delete_order
+            .execute(DeleteOrderParams {
+                actor: auth.0,
+                id: OrderId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => DeleteOrderResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_order failed");
+                DeleteOrderResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::order::errors::OrderError;
+    use business::domain::order::use_cases::{
+        create_order::mocks::MockCreateOrderUseCase, delete_order::mocks::MockDeleteOrderUseCase,
+        get_order::mocks::MockGetOrderUseCase, list_orders::mocks::MockListOrdersUseCase,
+        update_order::mocks::MockUpdateOrderUseCase,
+    };
+    use business::tests::mothers::order_mother::OrderMother;
+    use business::tests::mothers::principal_mother::PrincipalMother;
+    use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
+    use puerto_core::auth::mocks::MockAuthenticator;
+    use puerto_core::auth::{AuthError, Authenticator};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateOrderUseCase,
+        get: MockGetOrderUseCase,
+        list: MockListOrdersUseCase,
+        update: MockUpdateOrderUseCase,
+        delete: MockDeleteOrderUseCase,
+    }
+
+    /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
+    fn authenticator() -> Arc<dyn Authenticator> {
+        let mut authenticator = MockAuthenticator::new();
+        authenticator
+            .expect_authenticate()
+            .returning(|token| match token {
+                "caller" => Ok(PrincipalMother::random()),
+                "nobody" => Ok(PrincipalMother::random()),
+                _ => Err(AuthError::Invalid),
+            });
+        Arc::new(authenticator)
+    }
+
+    impl Mocks {
+        /// Every request signed in as `caller`.
+        fn client(self) -> TestClient<impl poem::Endpoint> {
+            self.client_with(Some("Bearer caller"))
+        }
+
+        /// `authorization`: the header every request sends; `None` sends none.
+        fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
+            let api = OrderApi {
+                create_order: Arc::new(self.create),
+                get_order: Arc::new(self.get),
+                list_orders: Arc::new(self.list),
+                update_order: Arc::new(self.update),
+                delete_order: Arc::new(self.delete),
+            };
+            let client = TestClient::new(
+                Route::new()
+                    .nest("/", OpenApiService::new(api, "test", "1.0"))
+                    .data(authenticator()),
+            );
+            match authorization {
+                Some(value) => client.default_header("Authorization", value),
+                None => client,
+            }
+        }
+    }
+
+    fn create_request() -> CreateOrderRequest {
+        CreateOrderRequest { total: 42 }
+    }
+
+    fn update_request() -> UpdateOrderRequest {
+        UpdateOrderRequest { total: 42 }
+    }
+
+    fn item_path() -> String {
+        format!("/orders/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_order_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/orders")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_order_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(OrderError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/orders")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_order_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_order_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_a_page_of_orders_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(OrderMother::random_vec(2), 7, params.page)));
+
+        // Act
+        let response = mocks.client().get("/orders").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/orders?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(OrderError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/orders").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_order_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_order() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_order_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_order() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_creating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .post("/orders")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_getting_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks.client_with(None).get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_listing_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks.client_with(None).get("/orders").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_updating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_deleting_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks.client_with(None).delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+}
+
+=== presentation/src/api/product.rs ===
+pub mod dto;
+pub mod error_mapper;
+pub mod responses;
+pub mod routes;
+
+=== presentation/src/api/product/dto.rs ===
+use business::domain::product::model::Product;
+use poem_openapi::Object;
+use puerto_core::Page;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProductDto {
+    pub id: Uuid,
+    pub name: String,
+    pub sku: String,
+    pub price: i64,
+    pub status: String,
+}
+
+impl ProductDto {
+    pub fn from_domain(entity: &Product) -> Self {
+        Self {
+            id: entity.id.value(),
+            name: entity.name.value().to_string(),
+            sku: entity.sku.clone(),
+            price: entity.price,
+            status: entity.status.as_str().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateProductRequest {
+    pub name: String,
+    pub sku: String,
+    pub price: i64,
+    pub status: String,
+}
+
+/// One page of Products: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProductPageDto {
+    pub items: Vec<ProductDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl ProductPageDto {
+    pub fn from_domain(page: &Page<Product>) -> Self {
+        Self {
+            items: page.items.iter().map(ProductDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateProductRequest {
+    pub name: String,
+    pub sku: String,
+    pub price: i64,
+    pub status: String,
+}
+
+=== presentation/src/api/product/error_mapper.rs ===
+use business::domain::product::errors::ProductError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
+
+use crate::api::error::IntoErrorResponse;
+
+impl IntoErrorResponse for ProductError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            ProductError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            ProductError::NotFound => StatusCode::NOT_FOUND,
+            ProductError::Duplicate => StatusCode::CONFLICT,
+            ProductError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            ProductError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            ProductError::Forbidden => StatusCode::FORBIDDEN,
+            ProductError::InvalidName => StatusCode::UNPROCESSABLE_ENTITY,
+            ProductError::InvalidStatus => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) =
+            ProductError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "product.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "product.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "product.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "product.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "product.unknown");
+    }
+
+    #[test]
+    fn should_map_forbidden_to_403_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::Forbidden.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body.name, "product.forbidden");
+    }
+
+    #[test]
+    fn should_map_invalid_name_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::InvalidName.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "product.invalid_name");
+    }
+
+    #[test]
+    fn should_map_invalid_status_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = ProductError::InvalidStatus.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "product.invalid_status");
+    }
+}
+
+=== presentation/src/api/product/responses.rs ===
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::product::dto::{ProductDto, ProductPageDto};
+
+#[derive(ApiResponse)]
+pub enum CreateProductResponse {
+    #[oai(status = 201)]
+    Created(Json<ProductDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetProductResponse {
+    #[oai(status = 200)]
+    Ok(Json<ProductDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListProductsResponse {
+    #[oai(status = 200)]
+    Ok(Json<ProductPageDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListProductsResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateProductResponse {
+    #[oai(status = 200)]
+    Ok(Json<ProductDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteProductResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+=== presentation/src/api/product/routes.rs ===
+use business::domain::product::use_cases::publish_product::PublishProductUseCaseTrait;
+use std::sync::Arc;
+
+use business::domain::product::model::ProductId;
+use business::domain::product::use_cases::{
+    create_product::{CreateProductParams, CreateProductUseCaseTrait},
+    delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
+    get_product::{GetProductParams, GetProductUseCaseTrait},
+    list_products::{ListProductsParams, ListProductsUseCaseTrait},
+    update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
+};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_core::PageRequest;
+use puerto_web::auth::BearerAuth;
+use puerto_web::require_role;
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::product::dto::{
+    CreateProductRequest, ProductDto, ProductPageDto, UpdateProductRequest,
+};
+use crate::api::product::responses::{
+    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductsResponse,
+    UpdateProductResponse,
+};
+use crate::api::tags::ApiTags;
+
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
+pub struct ProductApi {
+    pub create_product: Arc<dyn CreateProductUseCaseTrait>,
+    pub get_product: Arc<dyn GetProductUseCaseTrait>,
+    pub list_products: Arc<dyn ListProductsUseCaseTrait>,
+    pub update_product: Arc<dyn UpdateProductUseCaseTrait>,
+    pub delete_product: Arc<dyn DeleteProductUseCaseTrait>,
+    /// Wired by bootstrap.rs. Call it from an endpoint in the `#[OpenApi]` impl below.
+    #[allow(dead_code)]
+    pub publish_product: Arc<dyn PublishProductUseCaseTrait>,
+}
+
+#[OpenApi]
+impl ProductApi {
+    /// Create a new Product
+    #[oai(path = "/products", method = "post", tag = "ApiTags::Product")]
+    #[require_role("admin")]
+    async fn create(
+        &self,
+        auth: BearerAuth,
+        body: Json<CreateProductRequest>,
+    ) -> CreateProductResponse {
+        match self
+            .create_product
+            .execute(CreateProductParams {
+                actor: auth.0,
+                name: body.name.clone(),
+                sku: body.sku.clone(),
+                price: body.price,
+                status: body.status.clone(),
+            })
+            .await
+        {
+            Ok(entity) => CreateProductResponse::Created(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_product failed");
+                CreateProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Product by ID
+    #[oai(path = "/products/:id", method = "get", tag = "ApiTags::Product")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
+        match self
+            .get_product
+            .execute(GetProductParams {
+                id: ProductId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_product failed");
+                GetProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List Products, one page at a time (`limit` is capped by the domain)
+    #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListProductsResponse {
+        match self
+            .list_products
+            .execute(ListProductsParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListProductsResponse::Ok(Json(ProductPageDto::from_domain(&page))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_products failed");
+                ListProductsResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Product
+    #[oai(path = "/products/:id", method = "put", tag = "ApiTags::Product")]
+    async fn update(
+        &self,
+        auth: BearerAuth,
+        id: Path<Uuid>,
+        body: Json<UpdateProductRequest>,
+    ) -> UpdateProductResponse {
+        match self
+            .update_product
+            .execute(UpdateProductParams {
+                actor: auth.0,
+                id: ProductId::from_uuid(id.0),
+                name: body.name.clone(),
+                sku: body.sku.clone(),
+                price: body.price,
+                status: body.status.clone(),
+            })
+            .await
+        {
+            Ok(entity) => UpdateProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_product failed");
+                UpdateProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Product
+    #[oai(path = "/products/:id", method = "delete", tag = "ApiTags::Product")]
+    #[require_role("admin")]
+    #[require_role("owner")]
+    async fn delete(&self, auth: BearerAuth, id: Path<Uuid>) -> DeleteProductResponse {
+        match self
+            .delete_product
+            .execute(DeleteProductParams {
+                actor: auth.0,
+                id: ProductId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => DeleteProductResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_product failed");
+                DeleteProductResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::product::errors::ProductError;
+    use business::domain::product::use_cases::{
+        create_product::mocks::MockCreateProductUseCase,
+        delete_product::mocks::MockDeleteProductUseCase, get_product::mocks::MockGetProductUseCase,
+        list_products::mocks::MockListProductsUseCase,
+        update_product::mocks::MockUpdateProductUseCase,
+    };
+    use business::tests::mothers::principal_mother::PrincipalMother;
+    use business::tests::mothers::product_mother::ProductMother;
+    use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
+    use puerto_core::auth::mocks::MockAuthenticator;
+    use puerto_core::auth::{AuthError, Authenticator};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateProductUseCase,
+        get: MockGetProductUseCase,
+        list: MockListProductsUseCase,
+        update: MockUpdateProductUseCase,
+        delete: MockDeleteProductUseCase,
+        publish_product:
+            business::domain::product::use_cases::publish_product::mocks::MockPublishProductUseCase,
+    }
+
+    /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
+    fn authenticator() -> Arc<dyn Authenticator> {
+        let mut authenticator = MockAuthenticator::new();
+        authenticator
+            .expect_authenticate()
+            .returning(|token| match token {
+                "caller" => Ok(PrincipalMother::new()
+                    .with_roles(["admin", "owner"])
+                    .build()),
+                "nobody" => Ok(PrincipalMother::random()),
+                _ => Err(AuthError::Invalid),
+            });
+        Arc::new(authenticator)
+    }
+
+    impl Mocks {
+        /// Every request signed in as `caller`.
+        fn client(self) -> TestClient<impl poem::Endpoint> {
+            self.client_with(Some("Bearer caller"))
+        }
+
+        /// `authorization`: the header every request sends; `None` sends none.
+        fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
+            let api = ProductApi {
+                create_product: Arc::new(self.create),
+                get_product: Arc::new(self.get),
+                list_products: Arc::new(self.list),
+                update_product: Arc::new(self.update),
+                delete_product: Arc::new(self.delete),
+                publish_product: Arc::new(self.publish_product),
+            };
+            let client = TestClient::new(
+                Route::new()
+                    .nest("/", OpenApiService::new(api, "test", "1.0"))
+                    .data(authenticator()),
+            );
+            match authorization {
+                Some(value) => client.default_header("Authorization", value),
+                None => client,
+            }
+        }
+    }
+
+    fn create_request() -> CreateProductRequest {
+        CreateProductRequest {
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            price: 42,
+            status: "example".to_string(),
+        }
+    }
+
+    fn update_request() -> UpdateProductRequest {
+        UpdateProductRequest {
+            name: "example".to_string(),
+            sku: "example".to_string(),
+            price: 42,
+            status: "example".to_string(),
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/products/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_product_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_product_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(ProductError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_product_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_product_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_a_page_of_products_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(ProductMother::random_vec(2), 7, params.page)));
+
+        // Act
+        let response = mocks.client().get("/products").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks
+            .client()
+            .get("/products?limit=5&offset=10")
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(ProductError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/products").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_product_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_product() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_product_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_product() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_creating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_403_when_creating_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_updating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_deleting_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks.client_with(None).delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_403_when_deleting_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .delete(item_path())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+}
+
 === presentation/src/api/tags.rs ===
 // AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
 use poem_openapi::Tags;
@@ -1345,6 +6003,8 @@ use poem_openapi::Tags;
 #[derive(Tags)]
 pub enum ApiTags {
     Greeting,
+    Product,
+    Order,
     Me,
 }
 
@@ -1353,9 +6013,24 @@ pub enum ApiTags {
 use std::sync::Arc;
 
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
+use business::application::order::create_order::CreateOrderUseCaseImpl;
+use business::application::order::delete_order::DeleteOrderUseCaseImpl;
+use business::application::order::get_order::GetOrderUseCaseImpl;
+use business::application::order::list_orders::ListOrdersUseCaseImpl;
+use business::application::order::update_order::UpdateOrderUseCaseImpl;
+use business::application::product::create_product::CreateProductUseCaseImpl;
+use business::application::product::delete_product::DeleteProductUseCaseImpl;
+use business::application::product::get_product::GetProductUseCaseImpl;
+use business::application::product::list_products::ListProductsUseCaseImpl;
+use business::application::product::publish_product::PublishProductUseCaseImpl;
+use business::application::product::update_product::UpdateProductUseCaseImpl;
 
 use business::domain::greeting::repository::GreetingRepositoryTrait;
+use business::domain::order::repository::OrderRepositoryTrait;
+use business::domain::product::repository::ProductRepositoryTrait;
 use infrastructure::greeting::repository::InMemoryGreetingRepository;
+use infrastructure::order::repository::PgOrderRepository;
+use infrastructure::product::repository::PgProductRepository;
 
 use infrastructure::user::provisioning::ProvisioningAuthenticator;
 use infrastructure::user::repository::PgUserRepository;
@@ -1366,6 +6041,8 @@ use puerto_core::auth::Authenticator;
 
 use crate::api::greeting::routes::GreetingApi;
 use crate::api::me::routes::MeApi;
+use crate::api::order::routes::OrderApi;
+use crate::api::product::routes::ProductApi;
 
 /// The routes, wired. An error is what stopped the startup: `main` prints it and exits 1.
 pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
@@ -1397,6 +6074,59 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
     });
     let greeting_api = GreetingApi { get_greeting };
 
+    let product_repo: Arc<dyn ProductRepositoryTrait> =
+        Arc::new(PgProductRepository::new(pool.clone()));
+    let create_product = Arc::new(CreateProductUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let get_product = Arc::new(GetProductUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let list_products = Arc::new(ListProductsUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let update_product = Arc::new(UpdateProductUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let delete_product = Arc::new(DeleteProductUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let publish_product = Arc::new(PublishProductUseCaseImpl {
+        repository: product_repo,
+    });
+    let product_api = ProductApi {
+        create_product,
+        get_product,
+        list_products,
+        update_product,
+        delete_product,
+        publish_product,
+    };
+
+    let order_repo: Arc<dyn OrderRepositoryTrait> = Arc::new(PgOrderRepository::new(pool.clone()));
+    let create_order = Arc::new(CreateOrderUseCaseImpl {
+        repository: Arc::clone(&order_repo),
+    });
+    let get_order = Arc::new(GetOrderUseCaseImpl {
+        repository: Arc::clone(&order_repo),
+    });
+    let list_orders = Arc::new(ListOrdersUseCaseImpl {
+        repository: Arc::clone(&order_repo),
+    });
+    let update_order = Arc::new(UpdateOrderUseCaseImpl {
+        repository: Arc::clone(&order_repo),
+    });
+    let delete_order = Arc::new(DeleteOrderUseCaseImpl {
+        repository: order_repo,
+    });
+    let order_api = OrderApi {
+        create_order,
+        get_order,
+        list_orders,
+        update_order,
+        delete_order,
+    };
+
     let ready = puerto_web::health::probe(move || {
         let pool = pool.clone();
         async move { infrastructure::db::ping(&pool).await }
@@ -1404,7 +6134,7 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
     Ok(crate::app::configure(puerto_web::routes(
-        openapi_service((greeting_api, me_api)),
+        openapi_service((greeting_api, product_api, order_api, me_api)),
         &config,
         ready,
     ))
@@ -1429,6 +6159,68 @@ name = "Greeting"
 use_cases = ["get_greeting"]
 public = ["get_greeting"]
 fields = []
+
+[[entity]]
+name = "Product"
+use_cases = [
+    "create_product",
+    "get_product",
+    "list_products",
+    "update_product",
+    "delete_product",
+    "publish_product",
+]
+db = true
+public = [
+    "list_products",
+    "get_product",
+]
+
+[entity.roles]
+create_product = ["admin"]
+delete_product = [
+    "admin",
+    "owner",
+]
+
+[[entity.fields]]
+name = "name"
+type = "String"
+value_object = "Name"
+
+[[entity.fields]]
+name = "sku"
+type = "String"
+unique = true
+
+[[entity.fields]]
+name = "price"
+type = "i64"
+
+[[entity.fields]]
+name = "status"
+type = "String"
+value_object = "Status"
+value_object_kind = "enum"
+enum_variants = [
+    "Draft",
+    "Live",
+]
+
+[[entity]]
+name = "Order"
+use_cases = [
+    "create_order",
+    "get_order",
+    "list_orders",
+    "update_order",
+    "delete_order",
+]
+db = true
+
+[[entity.fields]]
+name = "total"
+type = "i64"
 
 === web/.dependency-cruiser.cjs ===
 (deleted)

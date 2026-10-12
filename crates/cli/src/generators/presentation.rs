@@ -1,9 +1,12 @@
 use serde_json::json;
 use std::path::Path;
 
+use crate::generators::auth::Access;
 use crate::generators::bootstrap::regenerate_bootstrap;
 use crate::generators::effective_fields;
-use crate::generators::naming::{entity_ctx, pascal_to_snake, to_pascal_case, write_file};
+use crate::generators::naming::{
+    crud_use_case, crud_use_cases, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
+};
 use crate::generators::render::render;
 use crate::generators::types::{FieldCtx, field_ctx, literal_import, resolve_type};
 use crate::patchers::api_rs::patch_api_rs;
@@ -64,7 +67,34 @@ pub(crate) fn build_simple_ctx(pascal: &str, snake: &str) -> tera::Context {
     entity_ctx(pascal, snake)
 }
 
-fn build_routes_crud_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::Context {
+/// Who may call each CRUD route (ADR-0021): `access.<action>.protected` / `.roles`, `auth` when
+/// one route takes `BearerAuth`, `any_role` when one requires a role, and `caller_roles` — every
+/// role, held by the route tests' caller.
+fn insert_access(ctx: &mut tera::Context, snake: &str, access: &Access) {
+    let mut per_action = serde_json::Map::new();
+    for action in ["create", "get", "list", "update", "delete"] {
+        let use_case = crud_use_case(action, snake);
+        per_action.insert(
+            action.into(),
+            json!({ "protected": access.is_protected(&use_case), "roles": access.roles(&use_case) }),
+        );
+    }
+    let use_cases = crud_use_cases(snake);
+    ctx.insert("access", &per_action);
+    ctx.insert("auth", &use_cases.iter().any(|uc| access.is_protected(uc)));
+    ctx.insert(
+        "any_role",
+        &use_cases.iter().any(|uc| !access.roles(uc).is_empty()),
+    );
+    ctx.insert("caller_roles", &access.all_roles(&use_cases));
+}
+
+fn build_routes_crud_ctx(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    access: &Access,
+) -> tera::Context {
     let eff = effective_fields(fields);
     // The route tests build request bodies from the registry defaults (`Utc::now()`,
     // `HashMap::new()`, …). `uuid::Uuid` is already imported by the routes themselves.
@@ -76,6 +106,7 @@ fn build_routes_crud_ctx(pascal: &str, snake: &str, fields: &[Field]) -> tera::C
     }
     let mut ctx = simple_ctx(pascal, snake, &eff);
     ctx.insert("test_imports", &test_imports);
+    insert_access(&mut ctx, snake, access);
     ctx
 }
 
@@ -99,7 +130,7 @@ pub fn generate_crud_routes(
 ) -> Result<String, crate::generators::render::RenderError> {
     render(
         "presentation/routes_crud.tera",
-        &build_routes_crud_ctx(pascal, snake, fields),
+        &build_routes_crud_ctx(pascal, snake, fields, &Access::default()),
     )
 }
 
@@ -109,6 +140,12 @@ pub fn write_presentation_files(
     base: &Path,
     fields: &[Field],
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let access = Access::of(base, pascal);
+    let mut responses_ctx = build_simple_ctx(pascal, snake);
+    insert_access(&mut responses_ctx, snake, &access);
+    let mut error_mapper_ctx = build_error_mapper_ctx(pascal, snake, fields);
+    // `{Entity}Error::Forbidden` exists in every CRUD entity of an auth project.
+    error_mapper_ctx.insert("auth", &access.is_auth());
     write_file(
         &base.join(format!("presentation/src/api/{snake}.rs")),
         "pub mod dto;\npub mod error_mapper;\npub mod responses;\npub mod routes;\n",
@@ -122,23 +159,17 @@ pub fn write_presentation_files(
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/responses.rs")),
-        &render(
-            "presentation/responses_crud.tera",
-            &build_simple_ctx(pascal, snake),
-        )?,
+        &render("presentation/responses_crud.tera", &responses_ctx)?,
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/error_mapper.rs")),
-        &render(
-            "presentation/error_mapper.tera",
-            &build_error_mapper_ctx(pascal, snake, fields),
-        )?,
+        &render("presentation/error_mapper.tera", &error_mapper_ctx)?,
     )?;
     write_file(
         &base.join(format!("presentation/src/api/{snake}/routes.rs")),
         &render(
             "presentation/routes_crud.tera",
-            &build_routes_crud_ctx(pascal, snake, fields),
+            &build_routes_crud_ctx(pascal, snake, fields, &access),
         )?,
     )?;
     Ok(())

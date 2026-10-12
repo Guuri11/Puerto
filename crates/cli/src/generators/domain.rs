@@ -159,25 +159,42 @@ pub fn generate_create_use_case_trait(
     snake: &str,
     fields: &[Field],
 ) -> Result<String, RenderError> {
-    generate_use_case_trait("domain/use_case_create.tera", &[], pascal, snake, fields)
+    generate_use_case_trait(
+        "domain/use_case_create.tera",
+        &[],
+        pascal,
+        snake,
+        fields,
+        false,
+    )
 }
 
+#[cfg(test)]
 pub fn generate_update_use_case_trait(
     pascal: &str,
     snake: &str,
     fields: &[Field],
 ) -> Result<String, RenderError> {
-    generate_use_case_trait("domain/use_case_update.tera", &[], pascal, snake, fields)
+    generate_use_case_trait(
+        "domain/use_case_update.tera",
+        &[],
+        pascal,
+        snake,
+        fields,
+        false,
+    )
 }
 
 /// A use case trait whose Params carry every field as its primitive type. `template_imports` are
-/// the imports the template writes itself.
+/// the imports the template writes itself. `actor`: a protected use case of an auth project — its
+/// Params also carry the caller.
 fn generate_use_case_trait(
     template: &str,
     template_imports: &[&str],
     pascal: &str,
     snake: &str,
     fields: &[Field],
+    actor: bool,
 ) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
     let mut extra_imports: Vec<&str> = vec![];
@@ -198,6 +215,7 @@ fn generate_use_case_trait(
     let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("extra_imports", &extra_imports);
     ctx.insert("params_fields", &params_fields);
+    ctx.insert("actor", &actor);
     render(template, &ctx)
 }
 
@@ -279,8 +297,10 @@ pub fn write_domain_files(
         .filter_map(|f| f.value_object.as_deref())
         .map(|vo| json!({ "vo_pascal": vo, "vo_snake": pascal_to_snake(vo) }))
         .collect();
+    let access = crate::generators::auth::Access::of(base, pascal);
     let mut errors_ctx = entity_ctx(pascal, snake);
     errors_ctx.insert("vo_fields", &vo_fields);
+    errors_ctx.insert("auth", &access.is_auth());
     let ctx = entity_ctx(pascal, snake);
     let config = crate::puerto_toml::read(base).ok();
     let events = config.as_ref().is_some_and(|c| c.project.has_events());
@@ -326,21 +346,25 @@ pub fn write_domain_files(
             crate::generators::events::generate_domain_unit_of_work(pascal, snake)?,
         )?;
     }
+    let actor = |action: &str| access.is_protected(&crud_use_case(action, snake));
     let use_case = |action: &str| format!("use_cases/{}.rs", crud_use_case(action, snake));
-    write(
-        use_case("create"),
-        generate_create_use_case_trait(pascal, snake, fields)?,
-    )?;
-    write(use_case("get"), render("domain/use_case_get.tera", &ctx)?)?;
-    write(use_case("list"), render("domain/use_case_list.tera", &ctx)?)?;
-    write(
-        use_case("update"),
-        generate_update_use_case_trait(pascal, snake, fields)?,
-    )?;
-    write(
-        use_case("delete"),
-        render("domain/use_case_delete.tera", &ctx)?,
-    )?;
+    for (action, template) in [
+        ("create", "domain/use_case_create.tera"),
+        ("update", "domain/use_case_update.tera"),
+    ] {
+        write(
+            use_case(action),
+            generate_use_case_trait(template, &[], pascal, snake, fields, actor(action))?,
+        )?;
+    }
+    for action in ["get", "list", "delete"] {
+        let mut ctx = ctx.clone();
+        ctx.insert("actor", &actor(action));
+        write(
+            use_case(action),
+            render(&format!("domain/use_case_{action}.tera"), &ctx)?,
+        )?;
+    }
     Ok(())
 }
 
