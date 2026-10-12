@@ -136,6 +136,25 @@ fn pg_crud_ctx(
 ) -> tera::Context {
     let eff = effective_fields(fields);
 
+    // SQL text stays a Rust computation: the `$n` numbering is index-dependent.
+    let mut ctx = seed_ctx(pascal, snake, fields, shared_vos);
+    ctx.insert("all_cols", &sql_col_list(&eff));
+    ctx.insert("select_cols", &sql_select_list(&eff));
+    ctx.insert("has_map", &eff.iter().any(|f| f.field_type == MAP_TYPE));
+    ctx.insert("all_params", &sql_params_list(5 + eff.len()));
+    ctx.insert("all_updates", &sql_conflict_set(&eff));
+    ctx
+}
+
+/// The entity's fields and what a repository test needs to build one from their seeds.
+fn seed_ctx(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> tera::Context {
+    let eff = effective_fields(fields);
+
     // The seed names every plain and enum VO it constructs (`Name::new(…)`, `Status::Active`);
     // Option/Vec VOs are seeded as `None` / `vec![]` and need no import.
     let mut test_imports: Vec<String> = vec![];
@@ -151,13 +170,7 @@ fn pg_crud_ctx(
         test_imports.push("uuid::Uuid".to_string());
     }
 
-    // SQL text stays a Rust computation: the `$n` numbering is index-dependent.
     let mut ctx = entity_ctx(pascal, snake);
-    ctx.insert("all_cols", &sql_col_list(&eff));
-    ctx.insert("select_cols", &sql_select_list(&eff));
-    ctx.insert("has_map", &eff.iter().any(|f| f.field_type == MAP_TYPE));
-    ctx.insert("all_params", &sql_params_list(5 + eff.len()));
-    ctx.insert("all_updates", &sql_conflict_set(&eff));
     ctx.insert("test_imports", &test_imports);
     ctx.insert("fields", &field_ctxs(&eff, pascal, shared_vos));
     ctx
@@ -236,10 +249,12 @@ pub fn write_repository_files(
             )?;
         }
     } else {
-        let ctx = entity_ctx(pascal, snake);
         write_file(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
-            &render("infrastructure/repository_inmemory_crud.tera", &ctx)?,
+            &render(
+                "infrastructure/repository_inmemory_crud.tera",
+                &seed_ctx(pascal, snake, fields, shared_vos),
+            )?,
         )?;
     }
     Ok(())

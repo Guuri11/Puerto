@@ -29,8 +29,10 @@ infrastructure/
 
 ## In-memory (default without `--db`)
 
-`InMemory<Entity>Repository` is a stand-in that stores nothing. Replace it with a real adapter
-when storage is added.
+`InMemory<Entity>Repository` keeps rows in a `RwLock<HashMap<Id, Entity>>`, in process memory:
+they are lost on restart. It behaves like the Postgres adapter — deleted rows hidden, lists newest
+first and paged, a `unique` value held by another live row answers `RepositoryError::Duplicate` —
+and its unit tests say so. Replace it with a real adapter when storage is added.
 
 ## Postgres (`puerto new --db`)
 

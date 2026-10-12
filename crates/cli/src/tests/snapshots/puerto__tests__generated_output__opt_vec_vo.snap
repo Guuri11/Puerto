@@ -1138,6 +1138,9 @@ pub mod persona {
 }
 
 === infrastructure/src/persona/repository.rs ===
+use std::collections::HashMap;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
 use async_trait::async_trait;
 use business::domain::persona::{
     model::{Persona, PersonaId},
@@ -1145,14 +1148,27 @@ use business::domain::persona::{
 };
 use puerto_core::{Page, PageRequest, RepositoryError};
 
-/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
-/// Postgres repositories).
+/// Keeps the personas it is given in process memory: they are lost when the process stops.
+/// Like the Postgres adapter, it hides deleted rows and lists newest first.
+/// It stands in until there is a database (`puerto new --db` generates Postgres repositories).
 #[derive(Default)]
-pub struct InMemoryPersonaRepository;
+pub struct InMemoryPersonaRepository {
+    rows: RwLock<HashMap<PersonaId, Persona>>,
+}
 
 impl InMemoryPersonaRepository {
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    // A poisoned lock means a writer panicked; every write is a single insert, so the map is
+    // still whole and is used as it is.
+    fn read(&self) -> RwLockReadGuard<'_, HashMap<PersonaId, Persona>> {
+        self.rows.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn write(&self) -> RwLockWriteGuard<'_, HashMap<PersonaId, Persona>> {
+        self.rows.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -1160,17 +1176,117 @@ impl InMemoryPersonaRepository {
 impl PersonaRepositoryTrait for InMemoryPersonaRepository {
     async fn find_all(&self, page: PageRequest) -> Result<Page<Persona>, RepositoryError> {
         tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
-        Ok(Page::new(vec![], 0, page))
+        let rows = self.read();
+        let mut live: Vec<&Persona> = rows.values().filter(|row| !row.deleted).collect();
+        live.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| a.id.value().cmp(&b.id.value()))
+        });
+        let total = live.len() as u64;
+        let items = live
+            .into_iter()
+            .skip(page.offset() as usize)
+            .take(page.limit() as usize)
+            .cloned()
+            .collect();
+        Ok(Page::new(items, total, page))
     }
 
     async fn find_by_id(&self, id: PersonaId) -> Result<Option<Persona>, RepositoryError> {
         tracing::debug!(%id, "find_by_id");
-        Ok(None)
+        Ok(self.read().get(&id).filter(|row| !row.deleted).cloned())
     }
 
     async fn save(&self, entity: &Persona) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
+        let mut rows = self.write();
+        rows.insert(entity.id, entity.clone());
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use business::domain::persona::model::PersonaProps;
+
+    fn new_persona() -> Persona {
+        Persona::new(PersonaProps {
+            name: "example".to_string(),
+            middle_name: None,
+            tags: vec![],
+        })
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn should_find_a_saved_persona_by_id() {
+        // Arrange
+        let repo = InMemoryPersonaRepository::new();
+        let entity = new_persona();
+        repo.save(&entity).await.unwrap();
+
+        // Act
+        let found = repo.find_by_id(entity.id).await.unwrap();
+
+        // Assert
+        assert_eq!(found.map(|row| row.id), Some(entity.id));
+    }
+
+    #[tokio::test]
+    async fn should_update_the_row_when_saved_again() {
+        // Arrange
+        let repo = InMemoryPersonaRepository::new();
+        let mut entity = new_persona();
+        repo.save(&entity).await.unwrap();
+        entity.updated_at = chrono::Utc::now();
+
+        // Act
+        repo.save(&entity).await.unwrap();
+
+        // Assert
+        let page = repo.find_all(PageRequest::default()).await.unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].updated_at, entity.updated_at);
+    }
+
+    #[tokio::test]
+    async fn should_not_find_a_deleted_persona() {
+        // Arrange
+        let repo = InMemoryPersonaRepository::new();
+        let mut entity = new_persona();
+        entity.deleted = true;
+        entity.deleted_at = Some(entity.updated_at);
+        repo.save(&entity).await.unwrap();
+
+        // Act
+        let found = repo.find_by_id(entity.id).await.unwrap();
+        let page = repo.find_all(PageRequest::default()).await.unwrap();
+
+        // Assert
+        assert!(found.is_none());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_return_the_requested_page_of_a_larger_list() {
+        // Arrange
+        let repo = InMemoryPersonaRepository::new();
+        for _ in 0..3 {
+            repo.save(&new_persona()).await.unwrap();
+        }
+
+        // Act
+        let page = repo
+            .find_all(PageRequest::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3);
+        assert_eq!((page.limit, page.offset), (2, 2));
     }
 }
 

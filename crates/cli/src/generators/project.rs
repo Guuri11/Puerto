@@ -124,10 +124,16 @@ fn patch_makefile_setup_for_db(base: &Path) -> Result<(), Box<dyn std::error::Er
     if src.contains("sqlx-cli") {
         return Ok(()); // idempotent
     }
-    let patched = src.replace(
-        "\t$(CARGO) install cargo-nextest --locked\n",
-        &format!("\t$(CARGO) install cargo-nextest --locked\n{sqlx_line}"),
-    );
+    let patched = src
+        .replace(
+            "\t$(CARGO) install cargo-nextest --locked\n",
+            &format!("\t$(CARGO) install cargo-nextest --locked\n{sqlx_line}"),
+        )
+        // The template's banner speaks of the in-memory repositories.
+        .replace(
+            "Starting API server (in memory: data is lost on restart)...",
+            "Starting API server...",
+        );
     fs::write(&path, patched)?;
     Ok(())
 }
@@ -147,9 +153,12 @@ fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>>
         "puerto-core = { workspace = true }\n",
         "puerto-core = { workspace = true }\npuerto-sqlx = { workspace = true }\n",
     );
-    src.push_str(
-        "\n[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\", \"json\"]\n",
-    );
+    // Before `[dev-dependencies]`, so the runtime dependencies stay together.
+    let sqlx = "[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\", \"json\"]\n\n";
+    src = match src.find("[dev-dependencies]") {
+        Some(at) => format!("{}{sqlx}{}", &src[..at], &src[at..]),
+        None => format!("{src}\n{}", sqlx.trim_end_matches('\n')) + "\n",
+    };
     fs::write(&path, src)?;
     add_workspace_dependency(base, "puerto-sqlx")
 }

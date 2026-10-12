@@ -4456,6 +4456,9 @@ serde = { version = "1", features = ["derive"] }
 version = "0.8"
 features = ["runtime-tokio-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"]
 
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
+
 === infrastructure/migrations/<version>_create_customer_table.sql ===
 -- Puerto migration: create_customer_table
 -- Run `make sqlx/prepare` after editing this file.

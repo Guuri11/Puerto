@@ -2237,7 +2237,7 @@ over losses).
 
 ## Phase 15 — Developer experience: what the 2026-10-12 walkthrough found
 
-**Status:** not started. Source: a manual run of every command and option on five generated
+**Status:** in progress (15.0 done). Source: a manual run of every command and option on five generated
 projects (in-memory, `--db`, `--events db`, `--events kafka`, `--no-demo`), the apps driven in a
 browser. Already fixed outside this phase, one commit each: generated code is formatted
 (ADR-0019); a forced re-scaffold that drops every local value object removes `value_objects.rs`;
@@ -2246,7 +2246,7 @@ Makefile waits for Postgres, defines each target once, prints colors, and the we
 `make web/install`; the migration hint adds `make sqlx/prepare` and `generate consumer --help`
 says `--events`. One commit per piece below, in this order.
 
-### 15.0 — An in-memory repository that keeps what it is given
+### 15.0 — An in-memory repository that keeps what it is given ✅
 
 **Problem.** Without `--db`, `InMemory{Entity}Repository` stores nothing ("a stand-in"): `POST`
 answers 201, then `GET /…/:id` answers 404 and the list is empty. With the web frontend, which is

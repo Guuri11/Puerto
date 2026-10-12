@@ -77,11 +77,11 @@ fn postgres_repository_limits_offsets_and_counts() {
 }
 
 #[test]
-fn inmemory_repository_answers_an_empty_page() {
+fn inmemory_repository_answers_a_page_of_its_rows() {
     let dir = scaffold_crud_product("paged_inmemory", false);
 
     let repository = read(&dir, "infrastructure/src/product/repository.rs");
-    assert!(repository.contains("Ok(Page::new(vec![], 0, page))"));
+    assert!(repository.contains("Ok(Page::new(items, total, page))"));
 
     cleanup(&dir);
 }

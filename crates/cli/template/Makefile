@@ -28,7 +28,7 @@ setup: ## Install required dev tools (run once after cloning)
 	$(CARGO) install cargo-audit --locked
 
 run: ## Run the API server (http://localhost:8080)
-	@echo "${GREEN}Starting API server...${NC}"
+	@echo "${GREEN}Starting API server (in memory: data is lost on restart)...${NC}"
 	$(CARGO) run -p presentation
 
 test: ## Run all tests

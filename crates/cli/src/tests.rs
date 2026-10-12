@@ -44,6 +44,7 @@ mod domain_events;
 mod field_args;
 mod generated_output;
 mod ide_snippets;
+mod inmemory_repository;
 mod layered_generators;
 mod manifest_validation;
 mod migrations;
