@@ -31,6 +31,18 @@ worker/src/
 - **Decode the snapshot, never the domain model**: `event.decode::<ProductSnapshot>()`. The
   snapshot is the event's public contract.
 
+{% if kafka -%}
+## Kafka transport
+
+- The relay publishes each event to its aggregate's topic, `<KAFKA_TOPIC_PREFIX>.<aggregate>`,
+  keyed by the aggregate id: the events of one aggregate are consumed in the order they happened.
+- A consumer is the consumer group `<KAFKA_TOPIC_PREFIX>.<consumer>`. Its offset is committed
+  once the outcome is settled. A `Retry` holds back the records behind it in its partition until
+  it is acked or dead-lettered; after a restart its attempts start over.
+- `make docker-compose/up` starts Redpanda next to Postgres; the topics are created when the
+  worker starts. Dead letters stay in Postgres.
+
+{% endif -%}
 ## Health and shutdown
 
 Served by the Puerto runtime, `puerto-events`, on `WORKER_PORT` (8081).
@@ -44,4 +56,5 @@ Served by the Puerto runtime, `puerto-events`, on `WORKER_PORT` (8081).
 
 `WORKER_PORT` (8081), `RELAY_BATCH_SIZE` (100), `RELAY_POLL_INTERVAL_MS` (500),
 `CONSUMER_POLL_INTERVAL_MS` (500), `MAX_DELIVERIES` (5), `RETRY_MAX_DELAY_MS` (unset: the backoff
-above), plus `DATABASE_URL`. A value that is set but invalid stops the worker at startup.
+above), plus `DATABASE_URL`. A value that is set but invalid stops the worker at startup.{% if kafka %}
+Kafka: `KAFKA_BROKERS` (`localhost:9092`) and `KAFKA_TOPIC_PREFIX` (the project name).{% endif %}

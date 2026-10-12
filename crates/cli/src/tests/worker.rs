@@ -1,5 +1,5 @@
 // Phase 13.4 (ADR-0018 § 5): the `worker/` crate of an `events` project and
-// `puerto generate consumer`.
+// `puerto generate consumer`; Phase 13.5: the same worker on the `kafka` transport.
 use super::*;
 
 fn read(dir: &Path, path: &str) -> String {
@@ -20,7 +20,11 @@ fn events_project(name: &str, transport: &str) -> (PathBuf, PathBuf) {
 
 /// An events project with a CRUD `Product` that declares `product_published`.
 fn product_project(name: &str) -> (PathBuf, PathBuf) {
-    let (dir, output) = events_project(name, "db");
+    product_project_on(name, "db")
+}
+
+fn product_project_on(name: &str, transport: &str) -> (PathBuf, PathBuf) {
+    let (dir, output) = events_project(name, transport);
     let fields: Vec<puerto_toml::Field> = ["name:Name:String", "price:i64"]
         .iter()
         .map(|arg| puerto_toml::parse_field_arg(arg).unwrap())
@@ -117,11 +121,90 @@ fn new_with_db_events_tells_agents_that_the_registry_is_never_hand_edited() {
 }
 
 #[test]
-fn new_with_kafka_events_writes_no_worker_yet() {
+fn new_with_kafka_events_writes_the_worker_on_the_kafka_transport() {
     let (dir, output) = events_project("worker_kafka", "kafka");
 
-    assert!(!output.join("worker").exists());
-    assert!(!read(&output, "Cargo.toml").contains("\"worker\""));
+    let root = read(&output, "Cargo.toml");
+    assert!(
+        root.contains("members = [\"business\", \"infrastructure\", \"presentation\", \"worker\"]"),
+        "{root}"
+    );
+    assert!(root.contains("puerto-events = \""), "{root}");
+    assert!(root.contains("puerto-kafka = \""), "{root}");
+    let manifest = read(&output, "worker/Cargo.toml");
+    assert!(
+        manifest.contains("puerto-kafka = { workspace = true }"),
+        "{manifest}"
+    );
+    let registry = read(&output, "worker/src/generated/registry.rs");
+    assert!(registry.starts_with("// AUTO-GENERATED"), "{registry}");
+    assert!(
+        registry.contains("KafkaConfig::from_env(\"worker_kafka\")"),
+        "{registry}"
+    );
+    assert!(
+        registry.contains(".relay(PgOutbox::new(pool), publisher)"),
+        "{registry}"
+    );
+    assert!(!registry.contains("PgDeliveries"), "{registry}");
+    assert!(!registry.contains(".consumer("), "{registry}");
+    let worker_agents = read(&output, "worker/AGENTS.md");
+    assert!(
+        worker_agents.contains("## Kafka transport"),
+        "{worker_agents}"
+    );
+    assert!(worker_agents.contains("KAFKA_BROKERS"), "{worker_agents}");
+    cleanup(&dir);
+}
+
+#[test]
+fn new_with_kafka_events_writes_no_event_deliveries_in_the_outbox_migration() {
+    let (dir, output) = events_project("worker_kafka_outbox", "kafka");
+
+    let migrations: Vec<String> = fs::read_dir(output.join("infrastructure/migrations"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    let outbox = migrations
+        .iter()
+        .find(|m| m.ends_with("_outbox.sql"))
+        .unwrap_or_else(|| panic!("no outbox migration in {migrations:?}"));
+    let sql = read(&output, &format!("infrastructure/migrations/{outbox}"));
+
+    assert!(sql.contains("CREATE TABLE outbox ("), "{sql}");
+    assert!(sql.contains("CREATE TABLE dead_letters ("), "{sql}");
+    assert!(
+        sql.contains("CREATE UNIQUE INDEX dead_letters_event_consumer"),
+        "{sql}"
+    );
+    assert!(!sql.contains("event_deliveries"), "{sql}");
+    cleanup(&dir);
+}
+
+#[test]
+fn new_with_kafka_events_adds_redpanda_to_docker_compose_and_the_brokers_to_env() {
+    let (dir, output) = events_project("worker_kafka_compose", "kafka");
+
+    let compose = read(&output, "docker-compose.yml");
+    assert!(compose.contains("\n  postgres:\n"), "{compose}");
+    assert!(compose.contains("\n  redpanda:\n"), "{compose}");
+    assert!(compose.contains("redpandadata/redpanda"), "{compose}");
+    assert!(compose.contains("\n  redpanda-data:\n"), "{compose}");
+    for env in [".env", ".env.example"] {
+        let content = read(&output, env);
+        assert!(content.contains("KAFKA_BROKERS=localhost:9092"), "{env}");
+        assert!(content.contains("WORKER_PORT=8081"), "{env}");
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn new_with_db_events_adds_no_broker() {
+    let (dir, output) = events_project("worker_db_compose", "db");
+
+    assert!(!read(&output, "docker-compose.yml").contains("redpanda"));
+    assert!(!read(&output, ".env").contains("KAFKA_BROKERS"));
+    assert!(!read(&output, "Cargo.toml").contains("puerto-kafka"));
     cleanup(&dir);
 }
 
@@ -299,16 +382,54 @@ fn generate_consumer_refuses_names_that_would_not_compile() {
 }
 
 #[test]
-fn generate_consumer_is_refused_outside_a_db_events_project() {
-    let (dir, output) = events_project("consumer_kafka", "kafka");
+fn generate_consumer_is_refused_outside_an_events_project() {
+    let dir = temp_dir("consumer_no_events");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("consumer-no-events", &dir).unwrap();
+    scaffold::apply_db_to_new_project(&output).unwrap();
 
     let err = error_of(scaffold::run_generate_consumer(
         "audit",
-        &on(&["product_created"]),
+        &on(&["greeting_created"]),
         &output,
     ));
 
-    assert!(err.contains("--events db"), "{err}");
+    assert!(err.contains("--events"), "{err}");
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_consumer_on_kafka_subscribes_to_the_topics_of_its_events() {
+    let (dir, output) = product_project_on("consumer_kafka", "kafka");
+
+    scaffold::run_generate_consumer(
+        "notify_new_product",
+        &on(&["product_created", "product_published"]),
+        &output,
+    )
+    .unwrap();
+
+    assert!(
+        output
+            .join("worker/src/consumers/notify_new_product.rs")
+            .exists()
+    );
+    let registry = read(&output, "worker/src/generated/registry.rs");
+    assert!(
+        registry.contains(".ensure_topics(&[\"product\"])"),
+        "{registry}"
+    );
+    assert!(
+        registry.contains("KafkaSubscription::new(\n                &kafka,\n                \"notify_new_product\",\n                &[\"product\"],\n                &[PRODUCT_CREATED, PRODUCT_PUBLISHED],"),
+        "{registry}"
+    );
+    assert!(
+        registry.contains("PgDeadLetters::new(pool.clone())"),
+        "{registry}"
+    );
+    assert!(registry.contains("use crate::consumers::notify_new_product::NotifyNewProduct;"));
+    assert!(!registry.contains("PgSubscription"), "{registry}");
     cleanup(&dir);
 }
 

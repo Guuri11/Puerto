@@ -294,11 +294,13 @@ pub fn apply_events_to_new_project(
     config.project.events = Some(transport.to_string());
     crate::puerto_toml::write(base, &config)?;
 
-    crate::generators::migration::run_migration(
-        "outbox",
-        base,
-        Some(&render("infrastructure/outbox.sql", &tera::Context::new())?),
-    )?;
+    let outbox = render("infrastructure/outbox.sql", &tera::Context::new())?;
+    let outbox = if transport == crate::generators::worker::KAFKA_TRANSPORT {
+        without_event_deliveries(&outbox)?
+    } else {
+        outbox
+    };
+    crate::generators::migration::run_migration("outbox", base, Some(&outbox))?;
 
     // `events.rs` derives serde on the snapshots; the domain models stay serde-free.
     let manifest = base.join("business/Cargo.toml");
@@ -332,10 +334,23 @@ pub fn apply_events_to_new_project(
         fs::write(&agents_path, out)?;
     }
 
-    if transport == crate::generators::worker::WORKER_TRANSPORT {
-        crate::generators::worker::apply_worker_to_new_project(base)?;
-    }
+    crate::generators::worker::apply_worker_to_new_project(base)?;
     Ok(())
+}
+
+/// The outbox migration of the `kafka` transport: Kafka holds the deliveries, so the `db`
+/// transport's `event_deliveries` table and its index are left out. The template stays the byte
+/// copy of `puerto-sqlx`'s migration (tested), so this cuts it rather than keeping a second one.
+fn without_event_deliveries(sql: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let start = sql.find("CREATE TABLE event_deliveries");
+    let index = "CREATE INDEX event_deliveries_due";
+    let end = sql
+        .find(index)
+        .and_then(|at| sql[at..].find(";\n\n").map(|i| at + i + ";\n\n".len()));
+    match (start, end) {
+        (Some(start), Some(end)) if start < end => Ok(format!("{}{}", &sql[..start], &sql[end..])),
+        _ => Err("the outbox migration has no `event_deliveries` block to leave out".into()),
+    }
 }
 
 /// An already-absent file is what a removal wants; any other failure is a real error.

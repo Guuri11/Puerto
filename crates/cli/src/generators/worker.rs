@@ -1,6 +1,6 @@
-//! The worker of an `events` project (ADR-0018 § 5): the `worker/` crate `puerto new --events db`
-//! writes, `worker/src/generated/registry.rs` (always regenerated from puerto.toml) and
-//! `puerto generate consumer`.
+//! The worker of an `events` project (ADR-0018 § 5): the `worker/` crate `puerto new --events`
+//! writes, `worker/src/generated/registry.rs` (always regenerated from puerto.toml, on the
+//! project's transport) and `puerto generate consumer`.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -15,8 +15,9 @@ use crate::generators::naming::{
 use crate::generators::render::render;
 use crate::puerto_toml::{Consumer, PuertoConfig};
 
-/// The transport whose worker this version generates; Kafka's arrives with `puerto-kafka`.
-pub const WORKER_TRANSPORT: &str = "db";
+/// The transport that needs a broker: its registry wires `puerto-kafka`, its outbox migration has
+/// no `event_deliveries` and its `docker-compose.yml` runs Redpanda.
+pub const KAFKA_TRANSPORT: &str = "kafka";
 
 /// Names the worker's generated code already uses: a consumer named after one would not compile.
 const RESERVED_CONSUMER_TYPES: &[&str] = &[
@@ -24,6 +25,9 @@ const RESERVED_CONSUMER_TYPES: &[&str] = &[
     "EventEnvelope",
     "EventHandler",
     "HandlerOutcome",
+    "KafkaConfig",
+    "KafkaPublisher",
+    "KafkaSubscription",
     "Loops",
     "PgDeadLetters",
     "PgDeliveries",
@@ -76,9 +80,13 @@ pub fn declared_events(config: &PuertoConfig) -> Vec<DeclaredEvent> {
         .collect()
 }
 
-/// Whether the project at `config` has a `worker/` (an `events` project on the `db` transport).
+/// Whether the project at `config` has a `worker/`: every `events` project does.
 pub fn has_worker(config: &PuertoConfig) -> bool {
-    config.project.events.as_deref() == Some(WORKER_TRANSPORT)
+    config.project.events.is_some()
+}
+
+fn on_kafka(config: &PuertoConfig) -> bool {
+    config.project.events.as_deref() == Some(KAFKA_TRANSPORT)
 }
 
 /// The declared events `consumer` subscribes to, in its order. Errors on one nobody declares.
@@ -117,9 +125,12 @@ struct RegistryConsumer {
     pascal: String,
     /// The constants it is routed: `PRODUCT_CREATED`.
     events: Vec<String>,
+    /// The aggregates whose topics it reads (Kafka): `product`, sorted.
+    aggregates: Vec<String>,
 }
 
-/// `worker/src/generated/registry.rs`: the relay and every `[[consumer]]`, on the `db` transport.
+/// `worker/src/generated/registry.rs`: the relay and every `[[consumer]]`, on the project's
+/// transport.
 pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::error::Error>> {
     let declared = declared_events(config);
     // entity snake → the constants its consumers name, in declaration order.
@@ -134,10 +145,14 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
                 names.push(event.constant.clone());
             }
         }
+        let mut aggregates: Vec<String> = events.iter().map(|e| e.entity_snake.clone()).collect();
+        aggregates.sort();
+        aggregates.dedup();
         consumers.push(RegistryConsumer {
             name: consumer.name.clone(),
             pascal: to_pascal_case(&consumer.name),
             events: events.into_iter().map(|e| e.constant).collect(),
+            aggregates,
         });
     }
 
@@ -148,20 +163,29 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
             format!("business::domain::{snake}::events::{}", braced(&names))
         })
         .collect();
-    let adapters: Vec<String> = if consumers.is_empty() {
-        vec!["PgDeliveries".into(), "PgOutbox".into()]
-    } else {
-        [
+    let kafka = on_kafka(config);
+    let adapters: &[&str] = match (kafka, consumers.is_empty()) {
+        (false, true) => &["PgDeliveries", "PgOutbox"],
+        (false, false) => &[
             "PgDeadLetters",
             "PgDeliveries",
             "PgOutbox",
             "PgSubscription",
-        ]
-        .map(String::from)
-        .to_vec()
+        ],
+        (true, true) => &["PgOutbox"],
+        (true, false) => &["PgDeadLetters", "PgOutbox"],
     };
+    let adapters: Vec<String> = adapters.iter().map(|a| a.to_string()).collect();
     imports.push(format!("infrastructure::db::events::{}", braced(&adapters)));
     imports.push("puerto_events::{Loops, WorkerConfig}".into());
+    if kafka {
+        let types = if consumers.is_empty() {
+            "{KafkaConfig, KafkaPublisher}"
+        } else {
+            "{KafkaConfig, KafkaPublisher, KafkaSubscription}"
+        };
+        imports.push(format!("puerto_kafka::{types}"));
+    }
 
     let mut modules: Vec<(&str, &str)> = consumers
         .iter()
@@ -173,7 +197,17 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
     ctx.insert("imports", &imports);
     ctx.insert("consumers", &consumers);
     ctx.insert("modules", &modules);
-    Ok(render("worker/registry.tera", &ctx)?)
+    if !kafka {
+        return Ok(render("worker/registry.tera", &ctx)?);
+    }
+    // Every aggregate that records events gets its topic at startup, subscribed to or not: the
+    // relay publishes them all.
+    let mut aggregates: Vec<String> = declared.into_iter().map(|e| e.entity_snake).collect();
+    aggregates.sort();
+    aggregates.dedup();
+    ctx.insert("aggregates", &aggregates);
+    ctx.insert("project", &config.project.name);
+    Ok(render("worker/registry_kafka.tera", &ctx)?)
 }
 
 /// `A` or `{A, B}`, as rustfmt writes a `use`.
@@ -269,9 +303,12 @@ events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
     )
 }
 
-/// The `worker/` crate of a fresh `events` project on the `db` transport: the member, its runtime
-/// dependency, the files, `make worker` / `make events/dead-letters` and `WORKER_PORT`.
+/// The `worker/` crate of a fresh `events` project: the member, its runtime dependencies, the
+/// files, `make worker` / `make events/dead-letters` and `WORKER_PORT` — and on the `kafka`
+/// transport `puerto-kafka`, Redpanda in `docker-compose.yml` and `KAFKA_BROKERS`.
 pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::puerto_toml::read(base)?;
+    let kafka = on_kafka(&config);
     let manifest = base.join("Cargo.toml");
     let src = fs::read_to_string(&manifest)?;
     if !src.contains("\"worker\"") {
@@ -288,8 +325,12 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
         )?;
     }
     crate::generators::project::add_workspace_dependency(base, "puerto-events")?;
+    if kafka {
+        crate::generators::project::add_workspace_dependency(base, "puerto-kafka")?;
+    }
 
-    let empty = tera::Context::new();
+    let mut ctx = tera::Context::new();
+    ctx.insert("kafka", &kafka);
     for (path, template) in [
         ("worker/Cargo.toml", "worker/cargo_toml.tera"),
         ("worker/AGENTS.md", "worker/agents.tera"),
@@ -297,9 +338,8 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
         ("worker/src/generated.rs", "worker/generated.tera"),
         ("worker/src/consumers.rs", "worker/consumers.tera"),
     ] {
-        write_file(&base.join(path), &render(template, &empty)?)?;
+        write_file(&base.join(path), &render(template, &ctx)?)?;
     }
-    let config = crate::puerto_toml::read(base)?;
     write_file(
         &base.join("worker/src/generated/registry.rs"),
         &generate_registry(&config)?,
@@ -320,9 +360,73 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
         let mut content = fs::read_to_string(&path).unwrap_or_default();
         if !content.contains("WORKER_PORT") {
             content.push_str("\n# Worker\nWORKER_PORT=8081\n");
-            fs::write(&path, content)?;
         }
+        if kafka && !content.contains("KAFKA_BROKERS") {
+            // KAFKA_TOPIC_PREFIX defaults to the project name.
+            content.push_str(
+                "\n# Kafka (Redpanda in docker-compose.yml)\nKAFKA_BROKERS=localhost:9092\n",
+            );
+        }
+        fs::write(&path, content)?;
     }
+    if kafka {
+        add_redpanda_to_compose(base, &config.project.name)?;
+    }
+    Ok(())
+}
+
+/// The Redpanda service the `kafka` transport runs against in development, next to Postgres.
+fn redpanda_service(project_name: &str) -> String {
+    format!(
+        r#"  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    container_name: {project_name}-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://localhost:${{KAFKA_HOST_PORT:-9092}}
+    ports:
+      - "${{KAFKA_HOST_PORT:-9092}}:9092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+"#
+    )
+}
+
+/// Adds Redpanda to the `docker-compose.yml` `puerto new --db` wrote: its service after the
+/// others, its volume after theirs.
+fn add_redpanda_to_compose(
+    base: &Path,
+    project_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("docker-compose.yml");
+    let src = fs::read_to_string(&path)?;
+    if src.contains("redpanda:") {
+        return Ok(());
+    }
+    let Some(at) = src.find("\nvolumes:\n") else {
+        return Err(format!("{}: no top-level `volumes:`", path.display()).into());
+    };
+    let out = format!(
+        "{}{}{}  redpanda-data:\n",
+        &src[..=at],
+        redpanda_service(project_name),
+        &src[at..]
+    );
+    fs::write(&path, out)?;
     Ok(())
 }
 
@@ -338,7 +442,7 @@ pub fn run_generate_consumer(
     if !has_worker(&config) {
         return Err(
             "this project has no worker — consumers need a project created with \
-             `puerto new --db --events db`"
+             `puerto new --db --events db|kafka`"
                 .into(),
         );
     }

@@ -9,6 +9,10 @@ infrastructure = { path = "../infrastructure" }
 puerto-core = { workspace = true }
 # The relay, the consume loops, health probes and graceful shutdown (`main.rs`, `generated/registry.rs`).
 puerto-events = { workspace = true }
+{%- if kafka %}
+# The Kafka transport: the publisher and the subscriptions `generated/registry.rs` wires.
+puerto-kafka = { workspace = true }
+{%- endif %}
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"

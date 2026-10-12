@@ -390,6 +390,14 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     )],
 };
 
+/// `events_db` on the `kafka` transport (Phase 13.5): the worker's registry wires `puerto-kafka`,
+/// the outbox migration has no `event_deliveries`, `docker-compose.yml` runs Redpanda.
+pub(super) const EVENTS_KAFKA: Scenario = Scenario {
+    name: "events_kafka",
+    events: Some("kafka"),
+    ..EVENTS_DB
+};
+
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
 /// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
 /// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto new`
@@ -764,6 +772,15 @@ fn postgres_events_project_compiles_lints_and_passes_integration_tests() {
     // Phase 13.3: units of work, the outbox migration and `events.rs` — the Pg unit of work's
     // tests write an entity and its `product_created` row, and a taken `unique` writes neither.
     assert_postgres_scenario_is_clean(&EVENTS_DB, "puerto_matrix_events");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/kafka`"]
+fn kafka_events_project_compiles_lints_and_passes_integration_tests() {
+    // Phase 13.5: the worker against `puerto-kafka`, and the outbox migration without
+    // `event_deliveries` under the Pg unit of work's tests. No broker is needed to build and
+    // test it; `make test/kafka` provides the Postgres it compiles against.
+    assert_postgres_scenario_is_clean(&EVENTS_KAFKA, "puerto_matrix_events_kafka");
 }
 
 /// A `--db` scenario against a real database: `query!` checks its SQL at compile time, so the
