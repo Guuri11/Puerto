@@ -1,0 +1,28 @@
+[package]
+name = "puerto-kafka"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Puerto runtime — the Kafka transport of Puerto projects with domain events: the publisher the outbox relay hands events to and the subscription each consumer reads, ordered per aggregate."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["ddd", "puerto", "events", "kafka", "outbox"]
+categories = ["asynchronous"]
+
+[dependencies]
+puerto-core = { workspace = true }
+puerto-web = { workspace = true }
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# `cmake-build`: librdkafka is built from source, so a project needs cmake, not a system package.
+rdkafka = { version = "0.39", features = ["cmake-build"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "time"] }
+tracing = "0.1"
+uuid = "1"
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+uuid = { version = "1", features = ["v7"] }

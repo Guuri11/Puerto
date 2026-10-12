@@ -166,6 +166,7 @@ struct SubscriptionState {
     failing_settle: bool,
     watched: Option<FakeSink>,
     dead_letters_at_settle: Vec<usize>,
+    max_batch: Option<u32>,
 }
 
 #[derive(Clone, Default)]
@@ -176,6 +177,12 @@ impl FakeSubscription {
         let subscription = Self::default();
         lock(&subscription.0).due = due;
         subscription
+    }
+
+    /// Hands out one claim per batch, as a transport that has to keep an order does.
+    pub fn one_at_a_time(self) -> Self {
+        lock(&self.0).max_batch = Some(1);
+        self
     }
 
     pub fn failing_settle(self) -> Self {
@@ -206,6 +213,10 @@ impl FakeSubscription {
 impl EventSubscription for FakeSubscription {
     fn consumer(&self) -> &str {
         "notify_new_product"
+    }
+
+    fn max_batch(&self) -> u32 {
+        lock(&self.0).max_batch.unwrap_or(u32::MAX)
     }
 
     async fn next_batch(&mut self, max: u32) -> Result<Vec<Claimed>, TransportError> {

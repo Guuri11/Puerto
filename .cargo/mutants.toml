@@ -18,6 +18,7 @@ examine_globs = [
     "crates/web/src/*.rs",
     "crates/sqlx/src/**/*.rs",
     "crates/events/src/**/*.rs",
+    "crates/kafka/src/**/*.rs",
 ]
 # The process boundary of `puerto-web`: binding a port, waiting for SIGTERM, reading the real
 # environment. A mutant there only shows when a server runs — no unit test can catch it without
@@ -46,6 +47,14 @@ exclude_re = [
     "for PgDeadLetters>::",
     "for PgDeliveries>::publish",
     "for PgSubscription>::(next_batch|settle)",
+    # `puerto-kafka` against a live broker: `make test/kafka` (`kafka_*` in crates/kafka). The
+    # envelope ↔ record mapping (`wire`), the config and the retry ledger are examined.
+    "KafkaConfig::(from_env|client|ensure_topics)",
+    "KafkaPublisher::new",
+    "for KafkaPublisher>::publish",
+    "KafkaSubscription::",
+    "for KafkaSubscription>::",
+    "Position::of",
 ]
 # The compile matrix is `#[ignore]`d; a mutant run uses the fast structural suite only.
 test_tool = "nextest"

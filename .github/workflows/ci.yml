@@ -28,6 +28,10 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
+      # `puerto-kafka` builds librdkafka from source (`rdkafka/cmake-build`).
+      - name: Install cmake
+        run: sudo apt-get install -y cmake
+
       - name: Test
         run: make test
 
@@ -55,6 +59,10 @@ jobs:
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
+
+      # `puerto-kafka`, and the `--events kafka` scenario's worker, build librdkafka from source.
+      - name: Install cmake
+        run: sudo apt-get install -y cmake
 
       # The web scenarios install, lint and test the generated frontend.
       - name: Install Bun

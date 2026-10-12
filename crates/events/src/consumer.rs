@@ -39,8 +39,10 @@ impl<S: EventSubscription> Consumer<S> {
         dead_letters: Arc<dyn DeadLetterSink>,
     ) -> Self {
         Self {
+            batch_size: DEFAULT_CONSUMER_BATCH_SIZE
+                .min(subscription.max_batch())
+                .max(1),
             subscription,
-            batch_size: DEFAULT_CONSUMER_BATCH_SIZE,
             policy: Policy {
                 handler: Arc::new(handler),
                 dead_letters,
@@ -50,8 +52,9 @@ impl<S: EventSubscription> Consumer<S> {
         }
     }
 
+    /// Never more than the subscription hands out per batch (`max_batch`).
     pub fn with_batch_size(mut self, batch_size: u32) -> Self {
-        self.batch_size = batch_size.max(1);
+        self.batch_size = batch_size.max(1).min(self.subscription.max_batch());
         self
     }
 
@@ -374,6 +377,36 @@ mod tests {
         // Assert
         assert_eq!((first, second), (Ok(Progress::More), Ok(Progress::Idle)));
         assert_eq!(subscription.settled().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn should_ask_for_more_at_once_when_the_subscription_hands_out_one_claim_at_a_time() {
+        // Arrange
+        let due = (0..3)
+            .map(|_| Claimed::new(envelope("product_created"), 1))
+            .collect();
+        let sink = FakeSink::default();
+        let subscription = FakeSubscription::with(due).one_at_a_time();
+        let mut consumer =
+            Consumer::new(subscription.clone(), Scripted::Ack, Arc::new(sink.clone()));
+
+        // Act
+        let first = consumer.consume_once().await;
+
+        // Assert
+        assert_eq!(first, Ok(Progress::More));
+        assert_eq!(subscription.settled().len(), 1);
+    }
+
+    #[test]
+    fn should_never_claim_more_than_the_subscription_hands_out() {
+        let consumer = Consumer::new(
+            FakeSubscription::with(vec![]).one_at_a_time(),
+            Scripted::Ack,
+            Arc::new(FakeSink::default()),
+        )
+        .with_batch_size(50);
+        assert_eq!(consumer.batch_size, 1);
     }
 
     #[tokio::test]

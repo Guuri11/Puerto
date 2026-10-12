@@ -1,4 +1,4 @@
-.PHONY: help run build install setup test test/full test/db test/mutation test/snapshots lint check format format/fix audit audit/fix
+.PHONY: help run build install setup test test/full test/db test/kafka test/mutation test/snapshots lint check format format/fix audit audit/fix
 
 CARGO := cargo
 
@@ -51,6 +51,18 @@ test/db: ## Slow test: generated --db project against a throwaway Postgres (need
 	PUERTO_TEST_DATABASE_URL=postgres://postgres:pg@localhost:55432 \
 		$(CARGO) nextest run --workspace --run-ignored all -E 'test(postgres)'; \
 		status=$$?; docker stop puerto-test-pg >/dev/null; exit $$status
+
+test/kafka: ## Slow test: the Kafka transport against a throwaway Redpanda (+ Postgres for the generated worker)
+	@echo "${YELLOW}Starting throwaway Redpanda on :59092 and Postgres on :55433...${NC}"
+	@docker run -d --rm --name puerto-test-redpanda -p 59092:59092 docker.redpanda.com/redpandadata/redpanda:v24.2.7 \
+		redpanda start --mode dev-container --smp 1 --kafka-addr PLAINTEXT://0.0.0.0:59092 \
+		--advertise-kafka-addr PLAINTEXT://localhost:59092 >/dev/null
+	@docker run -d --rm --name puerto-test-pg-kafka -e POSTGRES_PASSWORD=pg -p 55433:5432 postgres:16-alpine >/dev/null
+	@until docker exec puerto-test-redpanda rpk cluster health -X brokers=localhost:59092 2>/dev/null | grep -q 'Healthy:.*true'; do sleep 1; done
+	@until docker exec puerto-test-pg-kafka pg_isready -U postgres -q; do sleep 1; done
+	PUERTO_TEST_KAFKA_BROKERS=localhost:59092 PUERTO_TEST_DATABASE_URL=postgres://postgres:pg@localhost:55433 \
+		$(CARGO) nextest run --workspace --run-ignored all -E 'test(/(^|::)kafka_/)'; \
+		status=$$?; docker stop puerto-test-redpanda puerto-test-pg-kafka >/dev/null; exit $$status
 
 test/mutation: ## Slow: mutation testing on Puerto's pure logic (see .cargo/mutants.toml)
 	@echo "${YELLOW}Running cargo-mutants...${NC}"

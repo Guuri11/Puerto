@@ -72,6 +72,12 @@ impl Claimed {
 pub trait EventSubscription: Send {
     /// The consumer it delivers to — the `[[consumer]] name`.
     fn consumer(&self) -> &str;
+    /// The most claims one batch hands out, whatever `next_batch` is asked for. A transport that
+    /// keeps an order (Kafka: a partition) answers 1, so a `Retry` holds back what comes after
+    /// it instead of letting the handler see it first.
+    fn max_batch(&self) -> u32 {
+        u32::MAX
+    }
     /// Up to `max` events due for this consumer. Empty when there is nothing to do.
     async fn next_batch(&mut self, max: u32) -> Result<Vec<Claimed>, TransportError>;
     /// Ack → never again; `Retry { delay }` → again after `delay`; `DeadLetter` → never again
