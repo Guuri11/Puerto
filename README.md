@@ -108,7 +108,8 @@ curl http://localhost:8080/api/greetings/World
 
 `puerto generate scaffold <Name>` also writes the entity's screens — list, detail and a
 create/edit form, with an HTTP repository and `bun test` tests — and every field type gets its
-input. The OpenAPI spec is the contract between the two halves:
+input. A rejected form says what went wrong next to the field (`domain/<entity>/messages.ts`, from
+the same codes as `errors.rs`), and list pages live in the URL. The OpenAPI spec is the contract between the two halves:
 
 ```bash
 make web/sync                    # after a scaffold or a DTO change: export the spec, regenerate the web types
