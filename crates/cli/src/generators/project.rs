@@ -158,7 +158,10 @@ fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>>
 
 /// Adds runtime crate `name` to the root `[workspace.dependencies]`, next to the ones the template
 /// declares and on the same minor as this CLI.
-fn add_workspace_dependency(base: &Path, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) fn add_workspace_dependency(
+    base: &Path,
+    name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("Cargo.toml");
     let src = fs::read_to_string(&path)?;
     if src.contains(&format!("{name} = ")) {
@@ -269,6 +272,10 @@ event in the `outbox` table in one transaction (ADR-0018 of Puerto). The reposit
 - A write use case: `uow_factory.begin()` → `save` → `record` → `commit`. Returning early with
   `?` before `commit` rolls everything back.
 - The snapshot is a public contract: consumers decode it. Renaming a field changes it.
+- `worker/` is the second process: it relays the outbox and runs the consumers (`make worker`).
+  **Never hand-edit `worker/src/generated/registry.rs`.** Add a consumer with
+  `puerto generate consumer <name> --on <event_type>`; its handler must be idempotent — delivery
+  is at-least-once. See `worker/AGENTS.md`.
 
 "#;
 
@@ -323,6 +330,10 @@ pub fn apply_events_to_new_project(
             None => format!("{agents}\n{AGENTS_EVENTS_SECTION}"),
         };
         fs::write(&agents_path, out)?;
+    }
+
+    if transport == crate::generators::worker::WORKER_TRANSPORT {
+        crate::generators::worker::apply_worker_to_new_project(base)?;
     }
     Ok(())
 }

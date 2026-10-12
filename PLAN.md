@@ -2044,6 +2044,19 @@ Progress: the runtime crate `crates/events` is done. What the code settled:
   worker shares them. `puerto-web` joins `[workspace.dependencies]`; release order is
   core → web → sqlx → events → puerto.
 
+The `worker/` template and `generate consumer` are done too:
+- Only `--events db` writes `worker/`; `--events kafka` gets it in 13.5, with its own registry.
+- `registry.rs` routes and imports the events by their `{ENTITY}_{VERB}` constants, so an event
+  removed from puerto.toml is a compile error in the worker. It runs the migrations too (as
+  `bootstrap.rs` does), so the worker starts on its own.
+- `generate consumer` also refuses a name whose type the worker already uses (`loops` → `Loops`,
+  `product_event` → `ProductEvent`) and a handler file already on disk. `consumers.rs` keeps its
+  `pub mod`s sorted, as rustfmt would.
+- A `[[consumer]]` whose file is missing is drift: `validate` fails and `generate bootstrap`
+  refuses, like an entity's.
+- The consumer stub's tests build the envelope from the first subscribed event and the entity's
+  Object Mother (`business` `test-utils`).
+
 Starting point (what 13.1–13.3 left to build on):
 - Ports: `puerto_core::events::transport::{Outbox (try_lead / fetch_unpublished /
   mark_published), EventPublisher::publish, EventSubscription (consumer / next_batch /

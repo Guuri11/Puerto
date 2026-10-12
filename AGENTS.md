@@ -32,7 +32,8 @@ crates/
     src/commands/   — Command handlers (new, list, validate)
     src/generators/ — Per-layer generators + bootstrap, conflict (overwrite guard), consistency (drift),
                       web (the frontend slice + web/src/presentation/core/generated/*),
-                      events (events.rs, the unit of work ports, `generate event`)
+                      events (events.rs, the unit of work ports, `generate event`),
+                      worker (the `worker/` crate, registry.rs, `generate consumer`)
     src/templates/  — .tera templates the generators render (embedded via include_dir)
     src/patchers/   — lib.rs / api.rs / routes.rs patchers
     src/runtime.rs  — Which runtime crates a project depends on, at which version (rendered from
@@ -185,6 +186,7 @@ puerto generate scaffold <Name> -- mid:MiddleName:opt:String            # Option
 puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
 puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String; DateTime shorthand ok)
 puerto generate event <Entity> <name>      # events projects: a custom event (product_published) + regenerates events.rs
+puerto generate consumer <name> --on product_created,product_published   # --events db: a worker consumer + regenerates registry.rs
 puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
 puerto generate domain <Name> -- price:i64 status:Status:enum:Draft/Paid   # Same field syntax as scaffold — fields land in puerto.toml
 puerto generate application <Name>         # Application layer only: use case impls
@@ -252,6 +254,11 @@ make format/fix    # cargo fmt --all
   CLI's `templates/infrastructure/outbox.sql`), per CRUD entity `events.rs` (AUTO-GENERATED) and
   `unit_of_work.rs`, a read-only repository port, writes through `Pg{Entity}UnitOfWorkFactory`,
   and a root `AGENTS.md` section saying `events.rs` is never hand-edited
+- `--events db` also writes the `worker/` member (ADR-0018 § 5): `main.rs` is
+  `WorkerConfig::from_env()` + `Worker::new(config).run(build_worker)` (`puerto-events`),
+  `generated/registry.rs` (AUTO-GENERATED from `[[consumer]]`: the relay over `PgOutbox` →
+  `PgDeliveries`, one `PgSubscription` per consumer), `consumers/<name>.rs` (the user's), `make
+  worker`, `make events/dead-letters`, `WORKER_PORT`. `--events kafka` writes no worker until 13.5
 
 ## Detailed Rules
 

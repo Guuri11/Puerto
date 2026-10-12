@@ -285,6 +285,27 @@ domain/<entity>/
 - Tests use `RecordingUnitOfWorkFactory` (`failing_at(FailAt::Save, RepositoryError::Duplicate)`,
   `recorded()` → `saved`, `events`, `committed`)
 
+### The worker (`events = "db"` — ADR-0018 § 5)
+
+A second binary next to `presentation`, and a composition root like it:
+
+```
+worker/src/
+  main.rs                 # WorkerConfig::from_env() + Worker::new(config).run(build_worker) — never changes
+  generated/registry.rs   # AUTO-GENERATED from [[consumer]]: relay + one consumer each — never hand-edit
+  consumers.rs            # pub mod <consumer>; (sorted)
+  consumers/<consumer>.rs # the user's EventHandler, written once by `puerto generate consumer`
+```
+
+- A consumer matches `event.event_type` against the entity's `{ENTITY}_{VERB}` constants,
+  decodes `{Entity}Snapshot` (a decode error → `dead_letter(REASON_PAYLOAD_INVALID, …)`) and
+  calls a use case. It must be idempotent: delivery is at-least-once, keyed on `event.id`
+- `Ack` / `Retry` (redelivered with the policy's backoff until `MAX_DELIVERIES`) /
+  `DeadLetter` — nothing is retired without a `dead_letters` row
+- The loops, `/health` + `/health/ready` on `WORKER_PORT` and the SIGTERM drain are
+  `puerto-events`'; the `db` transport adapters are `puerto_sqlx::events`, reached through
+  `infrastructure::db`
+
 ---
 
 ## Application Layer (`business/src/application/<entity>/`)

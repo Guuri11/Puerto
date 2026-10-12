@@ -1,0 +1,99 @@
+//! `{{ name }}`: reacts to {% for e in events %}`{{ e.event_type }}`{% if not loop.last %}, {% endif %}{% endfor %}. Written once by
+//! `puerto generate consumer`; it is yours now.
+//!
+//! Delivery is at-least-once: the same event (the same `event.id`) can arrive twice — after a
+//! crash, a timeout or a redeploy. Whatever this does must be **idempotent**: check whether it
+//! already happened (keyed on `event.id`) before doing it again.
+//!
+//! `Ack` when done; `Retry` for a failure that may pass (the worker redelivers with a growing
+//! backoff, then dead-letters); `HandlerOutcome::dead_letter(…)` for one that never will.
+
+use async_trait::async_trait;
+{% for import in imports -%}
+use {{ import }};
+{% endfor -%}
+use puerto_core::events::{EventEnvelope, EventHandler, HandlerOutcome, REASON_PAYLOAD_INVALID};
+
+pub struct {{ pascal }};
+
+#[async_trait]
+impl EventHandler for {{ pascal }} {
+    async fn handle(&self, event: &EventEnvelope) -> HandlerOutcome {
+        match event.event_type.as_str() {
+{%- for e in events %}
+            {{ e.constant }} => match event.decode::<{{ e.entity_pascal }}Snapshot>() {
+                Ok({{ e.entity_snake }}) => {
+                    tracing::info!(
+                        event_id = %event.id,
+                        {{ e.entity_snake }}_id = %{{ e.entity_snake }}.id,
+                        "{{ name }}: {{ e.event_type }}"
+                    );
+                    HandlerOutcome::Ack
+                }
+                Err(err) => HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),
+            },
+{%- endfor %}
+            // Not subscribed (puerto.toml `[[consumer]] events`): nothing to do.
+            _ => HandlerOutcome::Ack,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use business::domain::{{ first.entity_snake }}::events::{{ first.entity_pascal }}Event;
+    use business::tests::mothers::{{ first.entity_snake }}_mother::{{ first.entity_pascal }}Mother;
+
+    fn {{ first.const_lower }}() -> EventEnvelope {
+        let snapshot = {{ first.entity_pascal }}Snapshot::from_entity(&{{ first.entity_pascal }}Mother::random());
+        EventEnvelope::new(&{{ first.entity_pascal }}Event::{{ first.variant }}(snapshot))
+    }
+
+    #[tokio::test]
+    async fn should_ack_when_a_{{ first.event_type }}_event_is_valid() {
+        // Arrange
+        let event = {{ first.const_lower }}();
+
+        // Act
+        let outcome = {{ pascal }}.handle(&event).await;
+
+        // Assert
+        assert_eq!(outcome, HandlerOutcome::Ack);
+    }
+
+    #[tokio::test]
+    async fn should_ack_again_when_the_same_event_is_delivered_twice() {
+        // Arrange
+        let event = {{ first.const_lower }}();
+
+        // Act
+        let first = {{ pascal }}.handle(&event).await;
+        let second = {{ pascal }}.handle(&event).await;
+
+        // Assert
+        assert_eq!((first, second), (HandlerOutcome::Ack, HandlerOutcome::Ack));
+    }
+
+    #[tokio::test]
+    async fn should_dead_letter_when_the_payload_is_malformed() {
+        // Arrange
+        let mut event = {{ first.const_lower }}();
+        event.payload = serde_json::json!({ "unexpected": true });
+
+        // Act
+        let outcome = {{ pascal }}.handle(&event).await;
+
+        // Assert
+        assert!(
+            matches!(
+                outcome,
+                HandlerOutcome::DeadLetter {
+                    reason: REASON_PAYLOAD_INVALID,
+                    ..
+                }
+            ),
+            "{outcome:?}"
+        );
+    }
+}

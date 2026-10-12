@@ -13,6 +13,18 @@ pub struct PuertoConfig {
     pub entity: Vec<Entity>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub value_object: Vec<ValueObjectDefinition>,
+    /// The worker's consumers (ADR-0018 § 5) — `events` projects.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub consumer: Vec<Consumer>,
+}
+
+/// One `[[consumer]]`: `worker/src/consumers/<name>.rs`, subscribed to `events`.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct Consumer {
+    /// snake_case, unique: the module, the `db` transport's consumer name and the Kafka group id.
+    pub name: String,
+    /// The event types it is delivered (`product_created`), each declared by some entity.
+    pub events: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -358,6 +370,16 @@ pub fn add_event(
         write(base, &config)?;
     }
     Ok(())
+}
+
+/// Append a consumer. Errors if one with the same name is already declared.
+pub fn add_consumer(base: &Path, consumer: Consumer) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = read(base)?;
+    if config.consumer.iter().any(|c| c.name == consumer.name) {
+        return Err(format!("consumer '{}' is already declared", consumer.name).into());
+    }
+    config.consumer.push(consumer);
+    write(base, &config)
 }
 
 /// Append a use case action to an existing entity. Errors if entity not found. No-op if action already present.

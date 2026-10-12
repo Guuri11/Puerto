@@ -14,6 +14,7 @@ pub mod scaffold;
 pub mod types;
 pub mod use_case;
 pub mod web;
+pub mod worker;
 
 use crate::puerto_toml::Field;
 

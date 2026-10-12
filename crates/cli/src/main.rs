@@ -100,6 +100,15 @@ enum GenerateAction {
         /// Event type in snake_case, past tense (e.g. product_published)
         name: String,
     },
+    /// Add a consumer to the worker: an event handler, its tests and its registry entry
+    /// (projects created with --events db)
+    Consumer {
+        /// Consumer name in snake_case (e.g. notify_new_product)
+        name: String,
+        /// The event types it handles, comma-separated (e.g. product_created,product_published)
+        #[arg(long, value_delimiter = ',', required = true)]
+        on: Vec<String>,
+    },
     /// Regenerate presentation/src/generated/bootstrap.rs from puerto.toml
     Bootstrap {
         /// Write the file even when puerto.toml declares entities whose code is not on disk
@@ -266,6 +275,13 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_event(&entity, &name, &cwd))
+        }
+        Commands::Generate {
+            action: GenerateAction::Consumer { name, on },
+        } => {
+            let cwd = std::env::current_dir()?;
+            commands::list::require_puerto_project(&cwd)
+                .and_then(|_| scaffold::run_generate_consumer(&name, &on, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Bootstrap { allow_missing },

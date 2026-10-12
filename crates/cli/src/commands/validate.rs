@@ -227,6 +227,42 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Consumers (ADR-0018 § 5): the worker's registry names each one and the events it handles.
+    let declared = crate::generators::worker::declared_events(&config);
+    let mut seen_consumers: Vec<&str> = vec![];
+    for consumer in &config.consumer {
+        if !config.project.has_events() {
+            errors.push(format!(
+                "consumer '{}': declared, but project.events is not set",
+                consumer.name
+            ));
+        }
+        if let Err(e) = crate::validation::validate_consumer_name(&consumer.name) {
+            errors.push(format!("consumer '{}': {e}", consumer.name));
+        }
+        if seen_consumers.contains(&consumer.name.as_str()) {
+            errors.push(format!("duplicate consumer name '{}'", consumer.name));
+        }
+        seen_consumers.push(&consumer.name);
+        if consumer.events.is_empty() {
+            errors.push(format!(
+                "consumer '{}': subscribes to no event",
+                consumer.name
+            ));
+        }
+        for event in &consumer.events {
+            if !declared.iter().any(|d| d.event_type == *event) {
+                errors.push(format!(
+                    "consumer '{}': event '{event}' is not declared by any entity",
+                    consumer.name
+                ));
+            }
+        }
+    }
+    errors.extend(crate::generators::consistency::missing_consumer_files(
+        cwd, &config,
+    ));
+
     // The manifest can be internally consistent and still describe code that is not there —
     // `generate bootstrap` would then emit imports for modules that do not exist.
     for line in crate::generators::consistency::drift_lines(

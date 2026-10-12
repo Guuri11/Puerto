@@ -58,6 +58,7 @@ mod typed_ids;
 mod use_cases;
 mod value_objects;
 mod web_slice;
+mod worker;
 
 // Helpers shared across the test modules. Each lives next to the tests that introduced it.
 use compile_matrix::{assert_generated_project_is_clean, scenario_workspace, test_database_server};

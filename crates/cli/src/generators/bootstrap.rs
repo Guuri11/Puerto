@@ -122,9 +122,13 @@ pub fn run_bootstrap_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !allow_missing {
         let config = crate::puerto_toml::read(base)?;
-        let drifts = crate::generators::consistency::missing_entity_files(base, &config);
-        if !drifts.is_empty() {
-            let lines = crate::generators::consistency::drift_lines(&drifts);
+        let mut lines = crate::generators::consistency::drift_lines(
+            &crate::generators::consistency::missing_entity_files(base, &config),
+        );
+        lines.extend(crate::generators::consistency::missing_consumer_files(
+            base, &config,
+        ));
+        if !lines.is_empty() {
             return Err(format!(
                 "refusing to write generated wiring that will not compile:\n  {}\n\nPass \
                  --allow-missing to write it anyway.",
@@ -151,7 +155,11 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
 
     for line in crate::generators::consistency::drift_lines(
         &crate::generators::consistency::missing_entity_files(base, &config),
-    ) {
+    )
+    .into_iter()
+    .chain(crate::generators::consistency::missing_consumer_files(
+        base, &config,
+    )) {
         eprintln!("⚠ {line}");
     }
 
@@ -175,6 +183,7 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     fs::write(tags_path, generate_tags_content(&config.entity)?)?;
 
     crate::generators::events::regenerate_events(base, &config)?;
+    crate::generators::worker::regenerate_registry(base, &config)?;
     crate::generators::web::regenerate_web(base, &config)?;
 
     Ok(())

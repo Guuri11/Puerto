@@ -29,6 +29,8 @@ pub(super) struct Scenario<'a> {
     use_cases: &'a [(&'a str, &'a str)],
     /// Custom events declared after scaffolding (`puerto generate event`): `(PascalEntity, name)`.
     entity_events: &'a [(&'a str, &'a str)],
+    /// Worker consumers added last (`puerto generate consumer`): `(name, event types)`.
+    consumers: &'a [(&'a str, &'a [&'a str])],
 }
 
 // The scenarios, shared with the snapshot tests (`generated_output.rs`): one proves the output
@@ -43,6 +45,7 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[("Persona", &["name:String"])],
 };
 
@@ -55,6 +58,7 @@ pub(super) const NO_WEB: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[],
 };
 
@@ -67,6 +71,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[(
         "Product",
         &[
@@ -92,6 +97,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[("Booking", &["reference:String", "tenant_id:TenantId:Uuid"])],
 };
 
@@ -104,6 +110,7 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[(
         "Article",
         &[
@@ -125,6 +132,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[(
         "Item",
         &["name:Name:String", "sku:Sku:String!", "weight:Weight:i64"],
@@ -140,6 +148,7 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[(
         "Persona",
         &[
@@ -159,6 +168,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[(
         "Order",
         &[
@@ -177,6 +187,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     shared_vos: &[("Email", "String"), ("Money", "i64")],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[("Customer", &["name:String", "email:Email", "credit:Money"])],
 };
 
@@ -189,6 +200,7 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[
         ("Product", &["title:String", "price:i64"]),
         ("Category", &["name:Name:String"]),
@@ -204,6 +216,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     shared_vos: &[("Email", "String")],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[(
         "Account",
         &[
@@ -229,6 +242,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[("Ticket", &["state:State:enum:Open/Closed"])],
 };
 
@@ -241,6 +255,7 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[("Product", "archive_product")],
     entity_events: &[],
+    consumers: &[],
     entities: &[("Product", &["title:String", "price:i64"])],
 };
 
@@ -255,6 +270,7 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[(
         "OrderItem",
         &[
@@ -280,6 +296,7 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[],
     entity_events: &[],
+    consumers: &[],
     entities: &[(
         "Case",
         &[
@@ -309,6 +326,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     shared_vos: &[("Email", "String")],
     use_cases: &[("Product", "archive_product")],
     entity_events: &[],
+    consumers: &[],
     entities: &[
         (
             "Product",
@@ -354,6 +372,10 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     shared_vos: &[],
     use_cases: &[("Product", "publish_product")],
     entity_events: &[("Product", "product_published")],
+    consumers: &[(
+        "notify_new_product",
+        &["product_created", "product_published"],
+    )],
     entities: &[(
         "Product",
         &[
@@ -420,6 +442,11 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
 
     for (entity, event) in scenario.entity_events {
         scaffold::run_generate_event(entity, event, output).unwrap();
+    }
+
+    for (name, events) in scenario.consumers {
+        let events: Vec<String> = events.iter().map(|e| e.to_string()).collect();
+        scaffold::run_generate_consumer(name, &events, output).unwrap();
     }
 }
 

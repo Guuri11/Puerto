@@ -249,6 +249,23 @@ pub fn validate_use_case_name(action: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A `[[consumer]]` name becomes a module (`worker/src/consumers/<name>.rs`), a type
+/// (`NotifyNewProduct`) and the `db` transport's consumer column.
+pub fn validate_consumer_name(name: &str) -> Result<(), String> {
+    if !is_valid_field_name(name) {
+        return Err(format!(
+            "invalid consumer name '{name}'. Must be snake_case (lowercase letters, digits and \
+             underscores, starting with a lowercase letter), e.g. 'notify_new_product'"
+        ));
+    }
+    if RUST_KEYWORDS.contains(&name) {
+        return Err(format!(
+            "consumer name '{name}' is a Rust keyword. Pick another name"
+        ));
+    }
+    Ok(())
+}
+
 /// The inner type of a shared `[[value_object]]`.
 pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
     if !SHARED_VO_ALLOWED_INNER_TYPES.contains(&inner_type) {

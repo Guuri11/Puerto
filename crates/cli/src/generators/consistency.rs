@@ -79,6 +79,31 @@ pub fn missing_entity_files(base: &Path, config: &PuertoConfig) -> Vec<EntityDri
         .collect()
 }
 
+/// One line per `[[consumer]]` whose handler is not on disk: the worker's `registry.rs` imports
+/// it. Empty in a project without `worker/`.
+pub fn missing_consumer_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
+    if !base.join("worker/src").is_dir() {
+        return vec![];
+    }
+    config
+        .consumer
+        .iter()
+        .filter(|c| {
+            !base
+                .join(format!("worker/src/consumers/{}.rs", c.name))
+                .exists()
+        })
+        .map(|c| {
+            format!(
+                "consumer '{0}': worker/src/consumers/{0}.rs is missing — remove its [[consumer]] \
+                 block and run `puerto generate consumer {0} --on {1}`",
+                c.name,
+                c.events.join(",")
+            )
+        })
+        .collect()
+}
+
 /// Domain modules on disk with no `[[entity]]` block — the inverse drift. Not an error: the code
 /// compiles, it is just invisible to every Puerto command.
 pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
@@ -218,6 +243,7 @@ mod tests {
                 events: vec![],
             }],
             value_object: vec![],
+            consumer: vec![],
         };
         let dir = std::env::temp_dir();
         assert!(missing_entity_files(&dir, &config).is_empty());

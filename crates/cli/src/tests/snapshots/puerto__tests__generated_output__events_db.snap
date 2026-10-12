@@ -12,11 +12,17 @@ SQLX_OFFLINE = "true"
 DB_HOST_PORT=5432
 DATABASE_URL=postgres://devuser:password@localhost:5432/snapshot
 
+# Worker
+WORKER_PORT=8081
+
 === .env.example ===
 
 # Database
 DB_HOST_PORT=5432
 DATABASE_URL=postgres://devuser:password@localhost:5432/snapshot
+
+# Worker
+WORKER_PORT=8081
 
 === AGENTS.md ===
 # AI Agent Instructions
@@ -104,6 +110,10 @@ event in the `outbox` table in one transaction (ADR-0018 of Puerto). The reposit
 - A write use case: `uow_factory.begin()` → `save` → `record` → `commit`. Returning early with
   `?` before `commit` rolls everything back.
 - The snapshot is a public contract: consumers decode it. Renaming a field changes it.
+- `worker/` is the second process: it relays the outbox and runs the consumers (`make worker`).
+  **Never hand-edit `worker/src/generated/registry.rs`.** Add a consumer with
+  `puerto generate consumer <name> --on <event_type>`; its handler must be idempotent — delivery
+  is at-least-once. See `worker/AGENTS.md`.
 
 ## Conventions
 
@@ -153,7 +163,7 @@ reason instead of re-deriving it or undoing it.
 
 === Cargo.toml ===
 [workspace]
-members = ["business", "infrastructure", "presentation"]
+members = ["business", "infrastructure", "presentation", "worker"]
 resolver = "3"
 
 # The Puerto runtime (ADR-0017 of Puerto): what every Puerto project shares lives in these crates,
@@ -162,6 +172,7 @@ resolver = "3"
 puerto-core = "0.14"
 puerto-web = "0.14"
 puerto-sqlx = "0.14"
+puerto-events = "0.14"
 
 === Makefile ===
 .PHONY: help setup run \
@@ -352,6 +363,16 @@ generate/migration: ## Create a new SQLx migration — make generate/migration N
 	fi
 	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
 	puerto generate migration $$NAME
+
+.PHONY: worker events/dead-letters
+
+worker: ## Run the worker: relays the outbox and runs the consumers (health on :8081)
+	@echo "${GREEN}Starting worker...${NC}"
+	$(CARGO) run -p worker
+
+events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
+	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d snapshot -c \
+		"SELECT recorded_at, consumer, event_type, attempts, reason, detail FROM dead_letters ORDER BY recorded_at DESC LIMIT 20"
 
 === business/Cargo.toml ===
 [package]
@@ -3665,6 +3686,13 @@ type = "Option<DateTime<Utc>>"
 name = "meta"
 type = "HashMap<String, String>"
 
+[[consumer]]
+name = "notify_new_product"
+events = [
+    "product_created",
+    "product_published",
+]
+
 === web/src/domain/product/errors.ts ===
 /**
  * A request about a product that the API refused. `code` is the API's `ErrorResponse.name`:
@@ -4583,4 +4611,240 @@ export function fakeProductRepository(seed: Product[] = []): ProductRepository {
       store.delete(id);
     },
   };
+}
+
+=== worker/AGENTS.md ===
+# Worker — AI Agent Notes
+
+The second process of this project (ADR-0018 of Puerto). The API's units of work write every
+event to the `outbox` table in the entity's own transaction; this process **relays** the outbox
+to the transport and **runs the consumers**. It is a composition root, like `presentation`: no
+business logic lives here — a consumer decodes the event and calls a use case.
+
+## Layer Structure
+
+```
+worker/src/
+├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).run(…)` (never changes)
+├── generated.rs             # `pub mod registry;`
+├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
+├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
+└── consumers/
+    └── <consumer>.rs        # Yours: an `EventHandler`, written once by `puerto generate consumer`
+```
+
+## Critical Rules
+
+- **Add a consumer with `puerto generate consumer <name> --on <event_type>[,…]`** — it declares
+  `[[consumer]]` in `puerto.toml`, writes the handler and its tests, and regenerates
+  `generated/registry.rs`. Never wire one by hand.
+- **Handlers must be idempotent.** Delivery is at-least-once: the same `event.id` can arrive
+  twice. Check whether the work was already done (keyed on `event.id`) before doing it again.
+- **Answer honestly**: `Ack` when done; `Retry` for a failure that may pass (redelivered with a
+  1 s → 300 s backoff, `MAX_DELIVERIES` times); `HandlerOutcome::dead_letter(reason, detail)` for
+  one that never will. A payload that does not decode is `REASON_PAYLOAD_INVALID`. Nothing is
+  dropped without a row in `dead_letters` (`make events/dead-letters`).
+- **Decode the snapshot, never the domain model**: `event.decode::<ProductSnapshot>()`. The
+  snapshot is the event's public contract.
+
+## Health and shutdown
+
+Served by the Puerto runtime, `puerto-events`, on `WORKER_PORT` (8081).
+
+- `GET /health` — liveness: the process answers.
+- `GET /health/ready` — readiness: `503` until the relay and every consumer have finished a pass
+  that did not fail recently (a database that is down shows up here).
+- On SIGTERM / Ctrl-C each loop finishes the batch it is handling, for up to 8 s.
+
+## Configuration
+
+`WORKER_PORT` (8081), `RELAY_BATCH_SIZE` (100), `RELAY_POLL_INTERVAL_MS` (500),
+`CONSUMER_POLL_INTERVAL_MS` (500), `MAX_DELIVERIES` (5), `RETRY_MAX_DELAY_MS` (unset: the backoff
+above), plus `DATABASE_URL`. A value that is set but invalid stops the worker at startup.
+
+=== worker/Cargo.toml ===
+[package]
+name = "worker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+business = { path = "../business" }
+infrastructure = { path = "../infrastructure" }
+puerto-core = { workspace = true }
+# The relay, the consume loops, health probes and graceful shutdown (`main.rs`, `generated/registry.rs`).
+puerto-events = { workspace = true }
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+# Consumer tests build envelopes from the Object Mothers, which business exports behind `test-utils`.
+business = { path = "../business", features = ["test-utils"] }
+serde_json = "1"
+
+=== worker/src/consumers.rs ===
+//! One module per `[[consumer]]` of puerto.toml — `puerto generate consumer` adds them.
+pub mod notify_new_product;
+
+=== worker/src/consumers/notify_new_product.rs ===
+//! `notify_new_product`: reacts to `product_created`, `product_published`. Written once by
+//! `puerto generate consumer`; it is yours now.
+//!
+//! Delivery is at-least-once: the same event (the same `event.id`) can arrive twice — after a
+//! crash, a timeout or a redeploy. Whatever this does must be **idempotent**: check whether it
+//! already happened (keyed on `event.id`) before doing it again.
+//!
+//! `Ack` when done; `Retry` for a failure that may pass (the worker redelivers with a growing
+//! backoff, then dead-letters); `HandlerOutcome::dead_letter(…)` for one that never will.
+
+use async_trait::async_trait;
+use business::domain::product::events::{PRODUCT_CREATED, PRODUCT_PUBLISHED, ProductSnapshot};
+use puerto_core::events::{EventEnvelope, EventHandler, HandlerOutcome, REASON_PAYLOAD_INVALID};
+
+pub struct NotifyNewProduct;
+
+#[async_trait]
+impl EventHandler for NotifyNewProduct {
+    async fn handle(&self, event: &EventEnvelope) -> HandlerOutcome {
+        match event.event_type.as_str() {
+            PRODUCT_CREATED => match event.decode::<ProductSnapshot>() {
+                Ok(product) => {
+                    tracing::info!(
+                        event_id = %event.id,
+                        product_id = %product.id,
+                        "notify_new_product: product_created"
+                    );
+                    HandlerOutcome::Ack
+                }
+                Err(err) => HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),
+            },
+            PRODUCT_PUBLISHED => match event.decode::<ProductSnapshot>() {
+                Ok(product) => {
+                    tracing::info!(
+                        event_id = %event.id,
+                        product_id = %product.id,
+                        "notify_new_product: product_published"
+                    );
+                    HandlerOutcome::Ack
+                }
+                Err(err) => HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),
+            },
+            // Not subscribed (puerto.toml `[[consumer]] events`): nothing to do.
+            _ => HandlerOutcome::Ack,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use business::domain::product::events::ProductEvent;
+    use business::tests::mothers::product_mother::ProductMother;
+
+    fn product_created() -> EventEnvelope {
+        let snapshot = ProductSnapshot::from_entity(&ProductMother::random());
+        EventEnvelope::new(&ProductEvent::Created(snapshot))
+    }
+
+    #[tokio::test]
+    async fn should_ack_when_a_product_created_event_is_valid() {
+        // Arrange
+        let event = product_created();
+
+        // Act
+        let outcome = NotifyNewProduct.handle(&event).await;
+
+        // Assert
+        assert_eq!(outcome, HandlerOutcome::Ack);
+    }
+
+    #[tokio::test]
+    async fn should_ack_again_when_the_same_event_is_delivered_twice() {
+        // Arrange
+        let event = product_created();
+
+        // Act
+        let first = NotifyNewProduct.handle(&event).await;
+        let second = NotifyNewProduct.handle(&event).await;
+
+        // Assert
+        assert_eq!((first, second), (HandlerOutcome::Ack, HandlerOutcome::Ack));
+    }
+
+    #[tokio::test]
+    async fn should_dead_letter_when_the_payload_is_malformed() {
+        // Arrange
+        let mut event = product_created();
+        event.payload = serde_json::json!({ "unexpected": true });
+
+        // Act
+        let outcome = NotifyNewProduct.handle(&event).await;
+
+        // Assert
+        assert!(
+            matches!(
+                outcome,
+                HandlerOutcome::DeadLetter {
+                    reason: REASON_PAYLOAD_INVALID,
+                    ..
+                }
+            ),
+            "{outcome:?}"
+        );
+    }
+}
+
+=== worker/src/generated.rs ===
+pub mod registry;
+
+=== worker/src/generated/registry.rs ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`; add a
+// consumer with `puerto generate consumer <name> --on <event_type>`.
+use std::sync::Arc;
+
+use business::domain::product::events::{PRODUCT_CREATED, PRODUCT_PUBLISHED};
+use infrastructure::db::events::{PgDeadLetters, PgDeliveries, PgOutbox, PgSubscription};
+use puerto_events::{Loops, WorkerConfig};
+
+use crate::consumers::notify_new_product::NotifyNewProduct;
+
+/// The relay and one consumer per `[[consumer]]`, on the `db` transport: the relay hands each
+/// event to `event_deliveries`, one row per consumer subscribed to its type.
+pub async fn build_worker(config: WorkerConfig) -> Loops {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let pool = infrastructure::db::create_postgres_pool(&database_url)
+        .await
+        .expect("Failed to connect to database");
+    infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)
+        .await
+        .expect("Failed to run migrations");
+
+    let deliveries = PgDeliveries::new(pool.clone())
+        .route("notify_new_product", &[PRODUCT_CREATED, PRODUCT_PUBLISHED]);
+    let dead_letters = Arc::new(PgDeadLetters::new(pool.clone()));
+
+    Loops::new(&config)
+        .relay(PgOutbox::new(pool.clone()), deliveries)
+        .consumer(
+            PgSubscription::new(pool.clone(), "notify_new_product"),
+            NotifyNewProduct,
+            dead_letters,
+        )
+}
+
+=== worker/src/main.rs ===
+mod consumers;
+mod generated;
+
+/// The second process of this project (ADR-0018 of Puerto): it relays the outbox the API writes
+/// and runs the consumers. The loops, health probes and graceful shutdown come from the Puerto
+/// runtime, `puerto-events`; the wiring is in `generated/registry.rs`, the consumers in
+/// `consumers/`.
+#[tokio::main]
+async fn main() -> Result<(), puerto_events::Error> {
+    let config = puerto_events::WorkerConfig::from_env()?;
+    puerto_events::Worker::new(config)
+        .run(generated::registry::build_worker)
+        .await
 }
