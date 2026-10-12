@@ -169,11 +169,39 @@ pub fn run_generate_presentation(
     write_presentation_files(&pascal, &snake, base, &fields)?;
     patch_api_rs(base, &snake)?;
     crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)?;
-    regenerate_bootstrap(base)?;
-
     println!("✓ presentation/        — routes, dto, responses, error_mapper");
-    println!("✓ bootstrap.rs         — regenerated");
+
+    // API first is allowed: the routes only need the domain. `bootstrap.rs` also imports the use
+    // case implementations and the repository adapter, so it waits for them — written now, it
+    // would not compile.
+    let entity = config.entity.iter().find(|e| e.name == pascal);
+    let missing: Vec<_> = entity
+        .map(crate::generators::consistency::bootstrap_required_files)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|path| !base.join(path).exists())
+        .collect();
+    if missing.is_empty() {
+        regenerate_bootstrap(base)?;
+        println!("✓ bootstrap.rs         — regenerated");
+        println!();
+        println!("  All layers wired. Run `make run` to start.");
+        return Ok(());
+    }
+
+    // The routes tag their endpoints `ApiTags::{pascal}`.
+    write_file(
+        &base.join("presentation/src/api/tags.rs"),
+        &crate::generators::bootstrap::generate_tags_content(&config.entity)?,
+    )?;
+    let next = if missing.iter().any(|p| p.starts_with("business")) {
+        "application"
+    } else {
+        "repository"
+    };
+    println!("✓ tags.rs              — regenerated");
     println!();
-    println!("  All layers wired. Run `make run` to start.");
+    println!("  bootstrap.rs not regenerated yet: {pascal} has no {next} layer.");
+    println!("  Next: puerto generate {next} {pascal}, then `puerto generate bootstrap`.");
     Ok(())
 }

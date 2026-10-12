@@ -215,6 +215,7 @@ fn generate_presentation_creates_all_files_and_regenerates_bootstrap() {
     let output = generate_project("myapp", &dir).unwrap();
 
     scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
+    scaffold::run_generate_application("Widget", &output).unwrap();
     scaffold::run_generate_repository("Widget", &output).unwrap();
     scaffold::run_generate_presentation("Widget", &output).unwrap();
 
@@ -239,6 +240,41 @@ fn generate_presentation_creates_all_files_and_regenerates_bootstrap() {
     let bootstrap =
         fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
     assert!(bootstrap.contains("WidgetApi"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn should_write_the_api_but_not_bootstrap_when_presentation_comes_before_the_other_layers() {
+    // API first: routes, DTOs and the error mapper only need the domain, so `presentation` may run
+    // right after `domain`. `bootstrap.rs` also imports the use case implementations and the
+    // repository adapter — rewritten now, it named modules that do not exist and the project
+    // stopped compiling, while the command printed "All layers wired".
+    let dir = temp_dir("gen_presentation_api_first");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+    scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
+    let bootstrap_path = output.join("presentation/src/generated/bootstrap.rs");
+    let bootstrap_before = fs::read_to_string(&bootstrap_path).unwrap();
+
+    // Act
+    scaffold::run_generate_presentation("Widget", &output).unwrap();
+
+    // Assert
+    assert!(
+        output
+            .join("presentation/src/api/widget/routes.rs")
+            .exists()
+    );
+    assert_eq!(
+        fs::read_to_string(&bootstrap_path).unwrap(),
+        bootstrap_before,
+        "bootstrap.rs must wait for the application and repository layers"
+    );
+    // routes.rs tags its endpoints `ApiTags::Widget`: the tags are written now.
+    let tags = fs::read_to_string(output.join("presentation/src/api/tags.rs")).unwrap();
+    assert!(tags.contains("Widget"), "{tags}");
 
     cleanup(&dir);
 }
