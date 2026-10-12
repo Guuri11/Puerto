@@ -1,4 +1,4 @@
-use business::domain::shared::repository_error::RepositoryError;
+use puerto_core::RepositoryError;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
 use thiserror::Error;

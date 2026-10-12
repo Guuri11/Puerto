@@ -37,7 +37,7 @@ let state = params.state.parse::<State>()?;
 mod tests {
     use super::*;
     use crate::domain::ticket::repository::mocks::MockTicketRepository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
 
 
     #[tokio::test]
@@ -231,7 +231,7 @@ mod tests {
         model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use crate::domain::ticket::value_objects::State;
 
 
@@ -293,6 +293,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::ticket::{
     errors::TicketError,
@@ -300,7 +301,6 @@ use crate::domain::ticket::{
     repository::TicketRepositoryTrait,
     use_cases::list_tickets::{ListTicketsParams, ListTicketsUseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct ListTicketsUseCaseImpl {
     pub repository: Arc<dyn TicketRepositoryTrait>,
@@ -321,7 +321,7 @@ impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::ticket::{
         model::{Ticket, TicketProps},
         repository::mocks::MockTicketRepository,
@@ -495,9 +495,8 @@ mod tests {
 }
 
 === business/src/domain/ticket/errors.rs ===
+use puerto_core::RepositoryError;
 use thiserror::Error;
-
-use crate::domain::shared::repository_error::RepositoryError;
 
 #[derive(Debug, Error)]
 pub enum TicketError {
@@ -516,11 +515,13 @@ pub enum TicketError {
 }
 
 impl From<RepositoryError> for TicketError {
-    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
             RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
         }
     }
 }
@@ -640,9 +641,8 @@ mod tests {
 
 === business/src/domain/ticket/repository.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
-use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Ticket, TicketId};
 
 #[async_trait]
@@ -768,8 +768,8 @@ pub mod mocks {
 
 === business/src/domain/ticket/use_cases/list_tickets.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::ticket::{errors::TicketError, model::Ticket};
 
 #[derive(Debug, Clone)]
@@ -865,7 +865,6 @@ impl State {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -968,13 +967,11 @@ pub mod ticket {
 
 === infrastructure/src/ticket/repository.rs ===
 use async_trait::async_trait;
-
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::ticket::{
     model::{Ticket, TicketId},
     repository::TicketRepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 /// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
 /// Postgres repositories).
@@ -1028,9 +1025,9 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/ticket/dto.rs ===
-use business::domain::shared::pagination::Page;
 use business::domain::ticket::model::Ticket;
 use poem_openapi::Object;
+use puerto_core::Page;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -1318,7 +1315,6 @@ impl DeleteTicketResponse {
 === presentation/src/api/ticket/routes.rs ===
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::ticket::model::TicketId;
 use business::domain::ticket::use_cases::{
     create_ticket::{CreateTicketParams, CreateTicketUseCaseTrait},
@@ -1332,6 +1328,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -1450,7 +1447,6 @@ impl TicketApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::ticket::errors::TicketError;
     use business::domain::ticket::use_cases::{
         create_ticket::mocks::MockCreateTicketUseCase, delete_ticket::mocks::MockDeleteTicketUseCase,
@@ -1460,6 +1456,7 @@ mod tests {
     use business::tests::mothers::ticket_mother::TicketMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
 
     use super::*;
 

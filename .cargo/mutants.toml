@@ -11,6 +11,9 @@ examine_globs = [
     "crates/cli/src/generators/naming.rs",
     "crates/cli/src/generators/web.rs",
     "crates/cli/src/patchers/*.rs",
+    "crates/cli/src/runtime.rs",
+    # Runtime crates: their code ships in every generated project.
+    "crates/core/src/*.rs",
 ]
 # The compile matrix is `#[ignore]`d; a mutant run uses the fast structural suite only.
 test_tool = "nextest"

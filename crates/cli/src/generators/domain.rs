@@ -245,7 +245,7 @@ pub fn write_shared_vo_files(
         &generate_shared_errors_combined(shared_vos)?,
     )?;
 
-    // Declared in `shared.rs` (shipped with `repository_error`), never a `shared/mod.rs`.
+    // Declared in `shared.rs` (created here by the first shared VO), never a `shared/mod.rs`.
     let shared_rs = base.join("business/src/domain/shared.rs");
     let mut declarations = fs::read_to_string(&shared_rs).unwrap_or_default();
     for module in ["errors", "value_objects"] {

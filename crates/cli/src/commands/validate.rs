@@ -217,6 +217,15 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         ));
     }
 
+    // Generated code expects the runtime of the CLI that generates it; another minor may not have
+    // what it imports. A warning: the project still builds against the runtime it pins.
+    if let Ok(manifest) = std::fs::read_to_string(cwd.join("Cargo.toml")) {
+        warnings.extend(crate::runtime::version_warnings(
+            &manifest,
+            env!("CARGO_PKG_VERSION"),
+        ));
+    }
+
     if !errors.is_empty() {
         eprintln!("Validation failed:");
         for e in &errors {

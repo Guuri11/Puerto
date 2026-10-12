@@ -27,27 +27,6 @@ fn web_project_with_product(name: &str) -> (PathBuf, PathBuf) {
 }
 
 #[test]
-fn new_project_ships_the_page_types_with_a_capped_limit() {
-    let dir = temp_dir("paged_template");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let output = generate_project("paged-template", &dir).unwrap();
-
-    assert!(read(&output, "business/src/domain/shared.rs").contains("pub mod pagination;"));
-    let pagination = read(&output, "business/src/domain/shared/pagination.rs");
-    assert!(pagination.contains("pub const DEFAULT_PAGE_LIMIT: u32 = 20;"));
-    assert!(pagination.contains("pub const MAX_PAGE_LIMIT: u32 = 100;"));
-    assert!(pagination.contains("pub struct PageRequest {\n    limit: u32,\n    offset: u32,\n}"));
-    assert!(pagination.contains("pub fn new(limit: Option<u32>, offset: Option<u32>) -> Self"));
-    assert!(pagination.contains("pub struct Page<T> {"));
-    assert!(pagination.contains("fn should_cap_the_limit_at_the_maximum()"));
-    assert!(pagination.contains("fn should_raise_a_zero_limit_to_one()"));
-    assert!(pagination.contains("fn should_take_the_defaults_when_nothing_is_asked()"));
-
-    cleanup(&dir);
-}
-
-#[test]
 fn repository_port_reads_a_page() {
     let dir = scaffold_crud_product("paged_port", false);
 
@@ -55,7 +34,7 @@ fn repository_port_reads_a_page() {
     assert!(port.contains(
         "async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;"
     ));
-    assert!(port.contains("use crate::domain::shared::pagination::{Page, PageRequest};"));
+    assert!(port.contains("use puerto_core::{Page, PageRequest, RepositoryError};"));
 
     cleanup(&dir);
 }

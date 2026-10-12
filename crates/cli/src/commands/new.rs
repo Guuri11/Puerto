@@ -4,6 +4,15 @@ use std::path::PathBuf;
 pub fn extract_template() -> Result<tempfile::TempDir, Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir()?;
     crate::TEMPLATE_DIR.extract(tmp.path())?;
+    // The runtime crates' version follows this CLI's, so it is rendered here, not in the template.
+    let manifest = tmp.path().join("Cargo.toml.liquid");
+    std::fs::write(
+        &manifest,
+        crate::runtime::render_manifest(
+            &std::fs::read_to_string(&manifest)?,
+            env!("CARGO_PKG_VERSION"),
+        ),
+    )?;
     Ok(tmp)
 }
 

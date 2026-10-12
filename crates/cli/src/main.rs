@@ -2,6 +2,7 @@ mod commands;
 mod generators;
 mod patchers;
 mod puerto_toml;
+mod runtime;
 mod scaffold;
 mod snippets;
 mod validation;

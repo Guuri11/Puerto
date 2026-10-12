@@ -1,7 +1,7 @@
 use async_trait::async_trait;
+use puerto_core::RepositoryError;
 
 use super::model::Greeting;
-use crate::domain::shared::repository_error::RepositoryError;
 
 /// Port: contract for greeting persistence (implemented by infrastructure)
 #[async_trait]

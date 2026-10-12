@@ -1824,6 +1824,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "puerto-core"
+version = "0.13.0"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"

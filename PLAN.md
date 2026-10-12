@@ -1612,7 +1612,7 @@ Next is pressed, `Pagination` disables Previous on the first page and Next on th
 
 ## Phase 12 — Runtime crates (ADR-0017)
 
-**Status:** Not started. Decision: [ADR-0017](docs/adr/0017-runtime-crates-next-to-the-generator.md).
+**Status:** 12.0 done; 12.1 next. Decision: [ADR-0017](docs/adr/0017-runtime-crates-next-to-the-generator.md).
 Every piece is a **move**: code that is identical in every generated project leaves the template
 and becomes a crate in Puerto's workspace. No new behaviour, no error code or HTTP status changes
 (ADR-0007, 0008, 0015, 0016 hold) — the generated projects' tests prove it, unchanged in intent.
@@ -1620,7 +1620,16 @@ Each piece changes generated output (`feat!`); no project generated before it is
 changelog is the migration guide. One commit per piece, in this order (12.1 and 12.2 depend on
 12.0's workspace and `[patch]` plumbing).
 
-### 12.0 — Workspace, release plumbing and `puerto-core`
+### 12.0 — Workspace, release plumbing and `puerto-core` ✅
+
+As built, two refinements of the spec below: the requirement is rendered **once**, in the root
+`Cargo.toml`'s `[workspace.dependencies]` (`puerto-core = "0.13"`), and `business`,
+`infrastructure` and `presentation` each inherit it with `{ workspace = true }` — the Pg/InMemory
+repositories, routes and DTOs import `puerto_core` too, and 12.1/12.2 add their crates in the same
+place. The version is substituted when the embedded template is extracted
+(`runtime::render_manifest`), so `new` and the test harness get the same manifest. A shared value
+object's first scaffold creates `shared.rs` and `pub mod shared;` (what `generate value-object`
+alone never did: it only writes puerto.toml).
 
 - Puerto's workspace gains `crates/core` (`puerto-core`). Same version as `crates/cli`; the
   workspace sets `version.workspace = true` for both so they cannot drift. `publish = true`,

@@ -1,11 +1,10 @@
 use async_trait::async_trait;
-use sqlx::PgPool;
-
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::{{ snake }}::{
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{{ pascal }}RepositoryTrait,
 };
+use puerto_core::RepositoryError;
+use sqlx::PgPool;
 
 use super::entity::{{ pascal }}Db;
 use crate::db::map_sqlx_error;

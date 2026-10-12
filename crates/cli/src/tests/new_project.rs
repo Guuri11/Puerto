@@ -206,6 +206,7 @@ fn generated_project_compiles_and_tests_pass() {
     fs::create_dir_all(&dir).unwrap();
 
     let output = generate_project("compile-test", &dir).unwrap();
+    super::compile_matrix::patch_runtime_crates(&output);
 
     let result = std::process::Command::new("cargo")
         .args(["test", "--workspace"])

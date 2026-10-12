@@ -25,6 +25,17 @@ Dependencies point inward only. `business` depends on no other crate of this wor
 | `infrastructure` | adapters implementing the domain ports (in-memory or Postgres repositories) | contains business rules |
 | `presentation` | HTTP: routes, DTOs, responses, error mapping, health probes, DI wiring | exposes a domain model in a response |
 
+**The Puerto runtime.** What every Puerto project shares is not copied into it: it is a crate,
+declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same minor as the
+`puerto` CLI) and inherited by each member with `{ workspace = true }`.
+
+| Crate | Owns | Imported as |
+|---|---|---|
+| `puerto-core` | `RepositoryError` (what every repository port fails with), `PageRequest` / `Page<T>` (paged lists, limit capped at 100) | `use puerto_core::{Page, PageRequest, RepositoryError};` |
+
+`puerto-core` depends on nothing but `thiserror`, so the domain may use it. Do not copy its types
+into the project; upgrade it with the `puerto` CLI (`puerto validate` warns when they drift apart).
+
 **Modules are declared inline in each crate's `lib.rs`** (nested `pub mod {}` blocks). There are
 no `mod.rs` files: adding a use case is one line in `lib.rs` plus its file.
 

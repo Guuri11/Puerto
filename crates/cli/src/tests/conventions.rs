@@ -336,6 +336,8 @@ fn generated_project_has_a_root_entry_point_for_agents() {
         "make lint",
         "one commit",
         "business/AGENTS.md",
+        // ADR-0017: an agent must know which code is the project's and which is the runtime's.
+        "puerto-core",
     ] {
         assert!(agents.contains(must), "root AGENTS.md misses '{must}'");
     }

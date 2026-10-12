@@ -368,6 +368,7 @@ pub(super) fn assert_generated_project_is_clean(
     name: &str,
     envs: &[(&str, &str)],
 ) {
+    patch_runtime_crates(output);
     for args in [
         &[
             "clippy",
@@ -400,6 +401,26 @@ pub(super) fn assert_generated_project_is_clean(
     if output.join("web").is_dir() {
         assert_spec_export_is_stable(output, dir, name, envs);
         assert_web_is_clean(output, name);
+    }
+}
+
+/// Builds the project against the runtime crates in this checkout, not the ones on crates.io: the
+/// templates and an unreleased runtime change are tested together (ADR-0017). Done by the harness
+/// only — `puerto new` never writes it, so it is not in the snapshots either.
+pub(super) fn patch_runtime_crates(output: &Path) {
+    let crates = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut patch = String::from("\n[patch.crates-io]\n");
+    // `puerto-core` lives in `crates/core`, `puerto-web` will in `crates/web`, …
+    for name in crate::runtime::RUNTIME_CRATES {
+        let dir = name.trim_start_matches("puerto-");
+        let path = crates.join(dir).canonicalize().unwrap();
+        patch.push_str(&format!("{name} = {{ path = {path:?} }}\n"));
+    }
+    let manifest = output.join("Cargo.toml");
+    let mut src = fs::read_to_string(&manifest).unwrap();
+    if !src.contains("[patch.crates-io]") {
+        src.push_str(&patch);
+        fs::write(&manifest, src).unwrap();
     }
 }
 

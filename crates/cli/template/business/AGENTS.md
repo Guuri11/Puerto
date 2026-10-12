@@ -31,9 +31,11 @@ Adding a use case is one line in `lib.rs` (under both `domain::<entity>::use_cas
 - **Typed ids**: an entity's id is its own type, `ProductId` (`model.rs`): `ProductId::generate()` for
   a new one, `from_uuid` / `.value()` only at the edges (routes, DTOs, rows). Never pass a bare `Uuid`.
 - **Typed fields**: when `entity.fields` is defined in `puerto.toml`, generated structs include custom fields (Props, Params, DTOs, DB rows). When empty, defaults to `name: String`.
-- **Repositories return `RepositoryError`** (`domain/shared/repository_error.rs`): `Duplicate`,
+- **Repositories return `RepositoryError`** (`puerto_core::RepositoryError`): `Duplicate`,
   `InvalidData`, `Unavailable`. Each entity error has `From<RepositoryError>`, so a use case uses `?`;
-  a mock returns `Err(RepositoryError::Unavailable)` to test a failure path.
+  a mock returns `Err(RepositoryError::Unavailable)` to test a failure path. It is
+  `#[non_exhaustive]`: the `From` impl keeps a `_` arm for failures a later runtime adds.
+- **Paged lists** take a `puerto_core::PageRequest` and answer a `puerto_core::Page<T>`.
 - **Use case file structure**: exactly `Params struct` + `Trait`. The `Impl` struct lives in the **application layer**.
 - **Dependencies injected as `Arc<dyn Trait>`** — never concrete types.
 - **No `unwrap()`/`expect()`** outside of tests.

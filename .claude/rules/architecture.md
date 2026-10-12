@@ -6,7 +6,8 @@
 Presentation → Infrastructure → Application → Domain
 ```
 
-- **Domain** depends on NOTHING — pure Rust, only `std`, `async-trait`, `thiserror`
+- **Domain** depends on NOTHING — pure Rust, only `std`, `async-trait`, `thiserror` and the
+  Puerto runtime core `puerto-core` (itself `thiserror` only — ADR-0017)
 - **Application** depends on Domain only — use case implementations (plus `tracing` for logs)
 - **Infrastructure** depends on Domain — adapters (DB, HTTP, etc.)
 - **Presentation** depends on all layers via manual dependency injection
@@ -233,7 +234,7 @@ Error codes are **machine-readable identifiers**, never human-readable messages.
 Repository ports return one shared error, whatever the entity and the adapter (ADR-0015):
 
 ```rust
-// business/src/domain/shared/repository_error.rs — shipped by the template
+// puerto_core::RepositoryError — crates/core in Puerto's workspace (ADR-0017), #[non_exhaustive]
 pub enum RepositoryError {
     Duplicate,    // "repository.duplicate"    — a unique constraint rejected the write
     InvalidData,  // "repository.invalid_data" — a stored row fails the domain's rules
@@ -242,13 +243,14 @@ pub enum RepositoryError {
 ```
 
 Each entity error converts it — `impl From<RepositoryError> for EntityError` (`Duplicate →
-Duplicate`, the rest → `RepositoryError`) — so use cases propagate it with `?` and the API keeps
-answering the entity's codes. `domain/shared.rs` declares `repository_error` (and the shared value
-objects' `errors` / `value_objects`); there is no `shared/mod.rs`.
+Duplicate`, the rest → `RepositoryError`, plus a `_` arm because the enum is `#[non_exhaustive]`)
+— so use cases propagate it with `?` and the API keeps answering the entity's codes.
+`domain/shared.rs` exists only once a shared value object does: it declares `errors` /
+`value_objects`; there is no `shared/mod.rs`.
 
 ### Paged lists
 
-`domain/shared/pagination.rs` (template, ADR-0016): `PageRequest::new(limit, offset)` — private
+`puerto_core::{PageRequest, Page}` (ADR-0016, moved to the runtime by ADR-0017): `PageRequest::new(limit, offset)` — private
 fields, limit defaults to 20 and is clamped to `1..=100` — and `Page<T> { items, total, limit,
 offset }`. The CRUD port reads `find_all(&self, page: PageRequest) -> Result<Page<Entity>,
 RepositoryError>`, `ListEntitiesParams { page }` returns a `Page`, and `GET /entities?limit=&offset=`

@@ -38,7 +38,7 @@ let status = params.status.parse::<Status>()?;
 mod tests {
     use super::*;
     use crate::domain::order::repository::mocks::MockOrderRepository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
 
 
     #[tokio::test]
@@ -260,7 +260,7 @@ mod tests {
         model::{Order, OrderId, OrderProps},
         repository::mocks::MockOrderRepository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use crate::domain::order::value_objects::Status;
 
 
@@ -324,6 +324,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::order::{
     errors::OrderError,
@@ -331,7 +332,6 @@ use crate::domain::order::{
     repository::OrderRepositoryTrait,
     use_cases::list_orders::{ListOrdersParams, ListOrdersUseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct ListOrdersUseCaseImpl {
     pub repository: Arc<dyn OrderRepositoryTrait>,
@@ -352,7 +352,7 @@ impl ListOrdersUseCaseTrait for ListOrdersUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::order::{
         model::{Order, OrderProps},
         repository::mocks::MockOrderRepository,
@@ -570,9 +570,8 @@ mod tests {
 }
 
 === business/src/domain/order/errors.rs ===
+use puerto_core::RepositoryError;
 use thiserror::Error;
-
-use crate::domain::shared::repository_error::RepositoryError;
 
 #[derive(Debug, Error)]
 pub enum OrderError {
@@ -591,11 +590,13 @@ pub enum OrderError {
 }
 
 impl From<RepositoryError> for OrderError {
-    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
             RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
         }
     }
 }
@@ -744,9 +745,8 @@ mod tests {
 
 === business/src/domain/order/repository.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
-use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Order, OrderId};
 
 #[async_trait]
@@ -873,8 +873,8 @@ pub mod mocks {
 
 === business/src/domain/order/use_cases/list_orders.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::order::{errors::OrderError, model::Order};
 
 #[derive(Debug, Clone)]
@@ -974,7 +974,6 @@ impl Status {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1090,13 +1089,11 @@ pub mod order {
 
 === infrastructure/src/order/repository.rs ===
 use async_trait::async_trait;
-
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::order::{
     model::{Order, OrderId},
     repository::OrderRepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 /// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
 /// Postgres repositories).
@@ -1140,9 +1137,9 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/order/dto.rs ===
-use business::domain::shared::pagination::Page;
 use business::domain::order::model::Order;
 use poem_openapi::Object;
+use puerto_core::Page;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -1434,7 +1431,6 @@ impl DeleteOrderResponse {
 === presentation/src/api/order/routes.rs ===
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::order::model::OrderId;
 use business::domain::order::use_cases::{
     create_order::{CreateOrderParams, CreateOrderUseCaseTrait},
@@ -1448,6 +1444,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -1568,7 +1565,6 @@ impl OrderApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::order::errors::OrderError;
     use business::domain::order::use_cases::{
         create_order::mocks::MockCreateOrderUseCase, delete_order::mocks::MockDeleteOrderUseCase,
@@ -1578,6 +1574,7 @@ mod tests {
     use business::tests::mothers::order_mother::OrderMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
 
     use super::*;
 

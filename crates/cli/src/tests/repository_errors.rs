@@ -17,45 +17,6 @@ fn scaffold_product(name: &str, db: bool, crud: bool, fields: &[puerto_toml::Fie
 }
 
 #[test]
-fn new_project_ships_the_shared_repository_error() {
-    let dir = temp_dir("repo_error_template");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let output = generate_project("repo-error-app", &dir).unwrap();
-
-    let shared = read(&output, "business/src/domain/shared.rs");
-    assert!(shared.contains("pub mod repository_error;"));
-    let error = read(&output, "business/src/domain/shared/repository_error.rs");
-    assert!(error.contains("pub enum RepositoryError"));
-    for code in [
-        "repository.duplicate",
-        "repository.invalid_data",
-        "repository.unavailable",
-    ] {
-        assert!(error.contains(code), "{code}");
-    }
-    let lib = read(&output, "business/src/lib.rs");
-    assert!(lib.contains("pub mod shared;"));
-
-    cleanup(&dir);
-}
-
-#[test]
-fn no_demo_project_keeps_the_shared_module() {
-    let dir = temp_dir("repo_error_no_demo");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let output = generate_project("repo-error-no-demo", &dir).unwrap();
-    scaffold::apply_no_demo(&output).unwrap();
-
-    let lib = read(&output, "business/src/lib.rs");
-    assert!(lib.contains("pub mod shared;"));
-    assert!(output.join("business/src/domain/shared.rs").exists());
-
-    cleanup(&dir);
-}
-
-#[test]
 fn greeting_repository_returns_the_repository_error() {
     let dir = temp_dir("repo_error_greeting");
     cleanup(&dir);
@@ -75,7 +36,7 @@ fn crud_repository_port_returns_the_repository_error() {
     let dir = scaffold_product("repo_error_crud_port", false, true, &[]);
 
     let port = read(&dir, "business/src/domain/product/repository.rs");
-    assert!(port.contains("use crate::domain::shared::repository_error::RepositoryError;"));
+    assert!(port.contains("use puerto_core::{Page, PageRequest, RepositoryError};"));
     assert!(
         port.contains("async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;")
     );
@@ -106,6 +67,9 @@ fn entity_error_converts_the_repository_error_and_tests_each_arm() {
     assert!(errors.contains(
         "RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,"
     ));
+    // `RepositoryError` is `#[non_exhaustive]` in puerto-core: a failure a later version adds is
+    // the store's problem (500) until the project gives it a meaning.
+    assert!(errors.contains("_ => Self::RepositoryError,"));
     assert!(errors.contains("fn should_convert_a_duplicate_into_the_entity_duplicate()"));
     assert!(errors.contains("fn should_convert_invalid_data_into_a_repository_error()"));
     assert!(errors.contains("fn should_convert_an_unavailable_store_into_a_repository_error()"));
@@ -202,12 +166,8 @@ fn shared_value_objects_are_declared_in_shared_rs_without_mod_rs() {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
     }];
-    fs::create_dir_all(dir.join("business/src/domain")).unwrap();
-    fs::write(
-        dir.join("business/src/domain/shared.rs"),
-        "pub mod repository_error;\n",
-    )
-    .unwrap();
+    // Since 12.0 a project ships no `shared.rs`: the first shared VO creates it.
+    assert!(!dir.join("business/src/domain/shared.rs").exists());
 
     scaffold::run(
         "User",
@@ -222,13 +182,15 @@ fn shared_value_objects_are_declared_in_shared_rs_without_mod_rs() {
 
     assert!(!dir.join("business/src/domain/shared/mod.rs").exists());
     let shared = read(&dir, "business/src/domain/shared.rs");
-    assert!(shared.contains("pub mod repository_error;"));
+    assert!(!shared.contains("repository_error"));
     assert_eq!(shared.matches("pub mod errors;").count(), 1);
     assert_eq!(shared.matches("pub mod value_objects;").count(), 1);
     assert!(
         dir.join("business/src/domain/shared/value_objects.rs")
             .exists()
     );
+    let lib = read(&dir, "business/src/lib.rs");
+    assert_eq!(lib.matches("pub mod shared;").count(), 1);
 
     cleanup(&dir);
 }

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::{{ snake }}::model::{{ pascal }}Id;
 use business::domain::{{ snake }}::use_cases::{
     create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
@@ -14,6 +13,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -132,7 +132,6 @@ impl {{ pascal }}Api {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::{{ snake }}::errors::{{ pascal }}Error;
     use business::domain::{{ snake }}::use_cases::{
         create_{{ snake }}::mocks::MockCreate{{ pascal }}UseCase, delete_{{ snake }}::mocks::MockDelete{{ pascal }}UseCase,
@@ -141,7 +140,8 @@ mod tests {
     };
     use business::tests::mothers::{{ snake }}_mother::{{ pascal }}Mother;
     use poem::{Route, http::StatusCode, test::TestClient};
-    use poem_openapi::{OpenApiService, types::ToJSON};{% for import in test_imports %}
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;{% for import in test_imports %}
     use {{ import }};{% endfor %}
 
     use super::*;

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
 
 #[derive(Debug, Clone)]

@@ -1,0 +1,14 @@
+[package]
+name = "puerto-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Puerto runtime — the domain types every Puerto project shares: paged lists and the repository error."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["ddd", "clean-architecture", "puerto", "pagination", "repository"]
+categories = ["rust-patterns"]
+
+[dependencies]
+thiserror = "2"

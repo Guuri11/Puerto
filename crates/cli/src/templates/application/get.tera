@@ -33,7 +33,7 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 

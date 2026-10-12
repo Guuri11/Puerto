@@ -55,7 +55,7 @@ let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
 mod tests {
     use super::*;
     use crate::domain::account::repository::mocks::MockAccountRepository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
 
 
     #[tokio::test]
@@ -408,7 +408,7 @@ mod tests {
         model::{Account, AccountId, AccountProps},
         repository::mocks::MockAccountRepository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use crate::domain::account::value_objects::Name;
     use crate::domain::account::value_objects::Sku;
     use crate::domain::account::value_objects::Status;
@@ -482,6 +482,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::account::{
     errors::AccountError,
@@ -489,7 +490,6 @@ use crate::domain::account::{
     repository::AccountRepositoryTrait,
     use_cases::list_accounts::{ListAccountsParams, ListAccountsUseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct ListAccountsUseCaseImpl {
     pub repository: Arc<dyn AccountRepositoryTrait>,
@@ -510,7 +510,7 @@ impl ListAccountsUseCaseTrait for ListAccountsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::account::{
         model::{Account, AccountProps},
         repository::mocks::MockAccountRepository,
@@ -941,9 +941,8 @@ mod tests {
 }
 
 === business/src/domain/account/errors.rs ===
+use puerto_core::RepositoryError;
 use thiserror::Error;
-
-use crate::domain::shared::repository_error::RepositoryError;
 
 #[derive(Debug, Error)]
 pub enum AccountError {
@@ -972,11 +971,13 @@ pub enum AccountError {
 }
 
 impl From<RepositoryError> for AccountError {
-    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
             RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
         }
     }
 }
@@ -1202,9 +1203,8 @@ mod tests {
 
 === business/src/domain/account/repository.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
-use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Account, AccountId};
 
 #[async_trait]
@@ -1338,8 +1338,8 @@ pub mod mocks {
 
 === business/src/domain/account/use_cases/list_accounts.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::account::{errors::AccountError, model::Account};
 
 #[derive(Debug, Clone)]
@@ -1518,9 +1518,6 @@ impl Status {
 }
 
 === business/src/domain/shared.rs ===
-//! What every entity of the domain shares.
-pub mod pagination;
-pub mod repository_error;
 pub mod errors;
 pub mod value_objects;
 
@@ -1557,7 +1554,6 @@ impl Email {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1581,6 +1577,8 @@ pub mod domain {
     
         pub mod value_objects;
 }
+
+    pub mod shared;
 }
 pub mod application {
   pub mod greeting {
@@ -1726,13 +1724,11 @@ impl Default for AccountMother {
 
 === infrastructure/src/account/repository.rs ===
 use async_trait::async_trait;
-
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::account::{
     model::{Account, AccountId},
     repository::AccountRepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 /// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
 /// Postgres repositories).
@@ -1784,9 +1780,9 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/account/dto.rs ===
-use business::domain::shared::pagination::Page;
 use business::domain::account::model::Account;
 use poem_openapi::Object;
+use puerto_core::Page;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -2161,7 +2157,6 @@ impl DeleteAccountResponse {
 === presentation/src/api/account/routes.rs ===
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::account::model::AccountId;
 use business::domain::account::use_cases::{
     create_account::{CreateAccountParams, CreateAccountUseCaseTrait},
@@ -2175,6 +2170,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -2309,7 +2305,6 @@ impl AccountApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::account::errors::AccountError;
     use business::domain::account::use_cases::{
         create_account::mocks::MockCreateAccountUseCase, delete_account::mocks::MockDeleteAccountUseCase,
@@ -2319,6 +2314,7 @@ mod tests {
     use business::tests::mothers::account_mother::AccountMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
 
     use super::*;
 

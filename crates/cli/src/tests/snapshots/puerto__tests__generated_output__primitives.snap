@@ -41,7 +41,7 @@ impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::repository::mocks::MockProductRepository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use chrono::Utc;
     use std::collections::HashMap;
     use uuid::Uuid;
@@ -264,7 +264,7 @@ mod tests {
         model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use chrono::Utc;
     use std::collections::HashMap;
     use uuid::Uuid;
@@ -335,6 +335,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::product::{
     errors::ProductError,
@@ -342,7 +343,6 @@ use crate::domain::product::{
     repository::ProductRepositoryTrait,
     use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct ListProductsUseCaseImpl {
     pub repository: Arc<dyn ProductRepositoryTrait>,
@@ -363,7 +363,7 @@ impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::product::{
         model::{Product, ProductProps},
         repository::mocks::MockProductRepository,
@@ -623,9 +623,8 @@ mod tests {
 }
 
 === business/src/domain/product/errors.rs ===
+use puerto_core::RepositoryError;
 use thiserror::Error;
-
-use crate::domain::shared::repository_error::RepositoryError;
 
 #[derive(Debug, Error)]
 pub enum ProductError {
@@ -642,11 +641,13 @@ pub enum ProductError {
 }
 
 impl From<RepositoryError> for ProductError {
-    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
             RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
         }
     }
 }
@@ -815,9 +816,8 @@ mod tests {
 
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
-use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Product, ProductId};
 
 #[async_trait]
@@ -952,8 +952,8 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::product::{errors::ProductError, model::Product};
 
 #[derive(Debug, Clone)]
@@ -1028,7 +1028,6 @@ pub mod mocks {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1184,13 +1183,11 @@ pub mod product {
 
 === infrastructure/src/product/repository.rs ===
 use async_trait::async_trait;
-
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::product::{
     model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 /// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
 /// Postgres repositories).
@@ -1234,9 +1231,9 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/product/dto.rs ===
-use business::domain::shared::pagination::Page;
 use business::domain::product::model::Product;
 use poem_openapi::Object;
+use puerto_core::Page;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -1539,7 +1536,6 @@ impl DeleteProductResponse {
 === presentation/src/api/product/routes.rs ===
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::product::model::ProductId;
 use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
@@ -1553,6 +1549,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -1683,7 +1680,6 @@ impl ProductApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::product::errors::ProductError;
     use business::domain::product::use_cases::{
         create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
@@ -1693,6 +1689,7 @@ mod tests {
     use business::tests::mothers::product_mother::ProductMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
     use chrono::Utc;
     use std::collections::HashMap;
 

@@ -3,12 +3,11 @@ use sqlx::PgPool;
 {% if has_map %}use sqlx::types::Json;
 use std::collections::HashMap;
 {% endif %}
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::{{ snake }}::{
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{{ pascal }}RepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 use super::entity::{{ pascal }}Db;
 use crate::db::map_sqlx_error;

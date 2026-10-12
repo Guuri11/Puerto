@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use business::domain::greeting::{model::Greeting, repository::GreetingRepositoryTrait};
-use business::domain::shared::repository_error::RepositoryError;
+use puerto_core::RepositoryError;
 
 #[derive(Default)]
 pub struct InMemoryGreetingRepository;

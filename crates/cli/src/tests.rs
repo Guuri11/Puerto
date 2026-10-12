@@ -50,6 +50,7 @@ mod new_project;
 mod paged_lists;
 mod patchers;
 mod repository_errors;
+mod runtime_crates;
 mod scaffolding;
 mod typed_fields;
 mod typed_ids;

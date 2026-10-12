@@ -264,7 +264,7 @@ let status = params.status.parse::<Status>()?;
 mod tests {
     use super::*;
     use crate::domain::customer::repository::mocks::MockCustomerRepository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use chrono::Utc;
 
 
@@ -583,7 +583,7 @@ mod tests {
         model::{Customer, CustomerId, CustomerProps},
         repository::mocks::MockCustomerRepository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use chrono::Utc;
     use crate::domain::shared::value_objects::Email;
     use crate::domain::customer::value_objects::Name;
@@ -659,6 +659,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::customer::{
     errors::CustomerError,
@@ -666,7 +667,6 @@ use crate::domain::customer::{
     repository::CustomerRepositoryTrait,
     use_cases::list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct ListCustomersUseCaseImpl {
     pub repository: Arc<dyn CustomerRepositoryTrait>,
@@ -687,7 +687,7 @@ impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::customer::{
         model::{Customer, CustomerProps},
         repository::mocks::MockCustomerRepository,
@@ -1152,7 +1152,7 @@ impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::repository::mocks::MockProductRepository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use uuid::Uuid;
     use chrono::Utc;
     use std::collections::HashMap;
@@ -1434,7 +1434,7 @@ mod tests {
         model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use uuid::Uuid;
     use chrono::Utc;
     use std::collections::HashMap;
@@ -1511,6 +1511,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::product::{
     errors::ProductError,
@@ -1518,7 +1519,6 @@ use crate::domain::product::{
     repository::ProductRepositoryTrait,
     use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct ListProductsUseCaseImpl {
     pub repository: Arc<dyn ProductRepositoryTrait>,
@@ -1539,7 +1539,7 @@ impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::product::{
         model::{Product, ProductProps},
         repository::mocks::MockProductRepository,
@@ -1941,7 +1941,7 @@ let state = params.state.parse::<State>()?;
 mod tests {
     use super::*;
     use crate::domain::ticket::repository::mocks::MockTicketRepository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
 
 
     #[tokio::test]
@@ -2135,7 +2135,7 @@ mod tests {
         model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use crate::domain::ticket::value_objects::State;
 
 
@@ -2197,6 +2197,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::ticket::{
     errors::TicketError,
@@ -2204,7 +2205,6 @@ use crate::domain::ticket::{
     repository::TicketRepositoryTrait,
     use_cases::list_tickets::{ListTicketsParams, ListTicketsUseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct ListTicketsUseCaseImpl {
     pub repository: Arc<dyn TicketRepositoryTrait>,
@@ -2225,7 +2225,7 @@ impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::ticket::{
         model::{Ticket, TicketProps},
         repository::mocks::MockTicketRepository,
@@ -2399,9 +2399,8 @@ mod tests {
 }
 
 === business/src/domain/customer/errors.rs ===
+use puerto_core::RepositoryError;
 use thiserror::Error;
-
-use crate::domain::shared::repository_error::RepositoryError;
 
 #[derive(Debug, Error)]
 pub enum CustomerError {
@@ -2434,11 +2433,13 @@ pub enum CustomerError {
 }
 
 impl From<RepositoryError> for CustomerError {
-    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
             RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
         }
     }
 }
@@ -2623,9 +2624,8 @@ mod tests {
 
 === business/src/domain/customer/repository.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
-use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Customer, CustomerId};
 
 #[async_trait]
@@ -2759,8 +2759,8 @@ pub mod mocks {
 
 === business/src/domain/customer/use_cases/list_customers.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::customer::{errors::CustomerError, model::Customer};
 
 #[derive(Debug, Clone)]
@@ -2966,9 +2966,8 @@ impl Status {
 }
 
 === business/src/domain/product/errors.rs ===
+use puerto_core::RepositoryError;
 use thiserror::Error;
-
-use crate::domain::shared::repository_error::RepositoryError;
 
 #[derive(Debug, Error)]
 pub enum ProductError {
@@ -2985,11 +2984,13 @@ pub enum ProductError {
 }
 
 impl From<RepositoryError> for ProductError {
-    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
             RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
         }
     }
 }
@@ -3241,9 +3242,8 @@ mod tests {
 
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
-use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Product, ProductId};
 
 #[async_trait]
@@ -3415,8 +3415,8 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::product::{errors::ProductError, model::Product};
 
 #[derive(Debug, Clone)]
@@ -3496,9 +3496,6 @@ pub mod mocks {
 }
 
 === business/src/domain/shared.rs ===
-//! What every entity of the domain shares.
-pub mod pagination;
-pub mod repository_error;
 pub mod errors;
 pub mod value_objects;
 
@@ -3534,9 +3531,8 @@ impl Email {
 }
 
 === business/src/domain/ticket/errors.rs ===
+use puerto_core::RepositoryError;
 use thiserror::Error;
-
-use crate::domain::shared::repository_error::RepositoryError;
 
 #[derive(Debug, Error)]
 pub enum TicketError {
@@ -3555,11 +3551,13 @@ pub enum TicketError {
 }
 
 impl From<RepositoryError> for TicketError {
-    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
             RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
         }
     }
 }
@@ -3679,9 +3677,8 @@ mod tests {
 
 === business/src/domain/ticket/repository.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
-use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Ticket, TicketId};
 
 #[async_trait]
@@ -3807,8 +3804,8 @@ pub mod mocks {
 
 === business/src/domain/ticket/use_cases/list_tickets.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::ticket::{errors::TicketError, model::Ticket};
 
 #[derive(Debug, Clone)]
@@ -3904,7 +3901,6 @@ impl State {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -3928,6 +3924,8 @@ pub mod domain {
             pub mod archive_product;
 }
     }
+
+    pub mod shared;
 
     pub mod customer {
         pub mod errors;
@@ -4346,6 +4344,7 @@ edition = "2024"
 
 [dependencies]
 business = { path = "../business" }
+puerto-core = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
 tracing = "0.1"
@@ -4503,12 +4502,11 @@ impl From<&Customer> for CustomerDb {
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::customer::{
     model::{Customer, CustomerId},
     repository::CustomerRepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 use super::entity::CustomerDb;
 use crate::db::map_sqlx_error;
@@ -4755,7 +4753,7 @@ mod integration_tests {
 }
 
 === infrastructure/src/db.rs ===
-use business::domain::shared::repository_error::RepositoryError;
+use puerto_core::RepositoryError;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
 use thiserror::Error;
@@ -4925,12 +4923,11 @@ use sqlx::PgPool;
 use sqlx::types::Json;
 use std::collections::HashMap;
 
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::product::{
     model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 use super::entity::ProductDb;
 use crate::db::map_sqlx_error;
@@ -5244,12 +5241,11 @@ impl From<&Ticket> for TicketDb {
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::ticket::{
     model::{Ticket, TicketId},
     repository::TicketRepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 use super::entity::TicketDb;
 use crate::db::map_sqlx_error;
@@ -5457,9 +5453,9 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/customer/dto.rs ===
-use business::domain::shared::pagination::Page;
 use business::domain::customer::model::Customer;
 use poem_openapi::Object;
+use puerto_core::Page;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
@@ -5853,7 +5849,6 @@ impl DeleteCustomerResponse {
 === presentation/src/api/customer/routes.rs ===
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::customer::model::CustomerId;
 use business::domain::customer::use_cases::{
     create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
@@ -5867,6 +5862,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -5999,7 +5995,6 @@ impl CustomerApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::customer::errors::CustomerError;
     use business::domain::customer::use_cases::{
         create_customer::mocks::MockCreateCustomerUseCase, delete_customer::mocks::MockDeleteCustomerUseCase,
@@ -6009,6 +6004,7 @@ mod tests {
     use business::tests::mothers::customer_mother::CustomerMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
     use chrono::Utc;
 
     use super::*;
@@ -6252,9 +6248,9 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/product/dto.rs ===
-use business::domain::shared::pagination::Page;
 use business::domain::product::model::Product;
 use poem_openapi::Object;
+use puerto_core::Page;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -6582,7 +6578,6 @@ impl DeleteProductResponse {
 use business::domain::product::use_cases::archive_product::ArchiveProductUseCaseTrait;
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::product::model::ProductId;
 use business::domain::product::use_cases::{
     create_product::{CreateProductParams, CreateProductUseCaseTrait},
@@ -6596,6 +6591,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -6741,7 +6737,6 @@ impl ProductApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::product::errors::ProductError;
     use business::domain::product::use_cases::{
         create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
@@ -6751,6 +6746,7 @@ mod tests {
     use business::tests::mothers::product_mother::ProductMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
     use chrono::Utc;
     use std::collections::HashMap;
 
@@ -7020,9 +7016,9 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/ticket/dto.rs ===
-use business::domain::shared::pagination::Page;
 use business::domain::ticket::model::Ticket;
 use poem_openapi::Object;
+use puerto_core::Page;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -7310,7 +7306,6 @@ impl DeleteTicketResponse {
 === presentation/src/api/ticket/routes.rs ===
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::ticket::model::TicketId;
 use business::domain::ticket::use_cases::{
     create_ticket::{CreateTicketParams, CreateTicketUseCaseTrait},
@@ -7324,6 +7319,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -7442,7 +7438,6 @@ impl TicketApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::ticket::errors::TicketError;
     use business::domain::ticket::use_cases::{
         create_ticket::mocks::MockCreateTicketUseCase, delete_ticket::mocks::MockDeleteTicketUseCase,
@@ -7452,6 +7447,7 @@ mod tests {
     use business::tests::mothers::ticket_mother::TicketMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
 
     use super::*;
 

@@ -11,6 +11,10 @@ Puerto is a Rust CLI tool that scaffolds full-stack DDD projects. It uses `cargo
 
 ```
 crates/
+  core/             — `puerto-core`, a runtime crate (ADR-0017): `RepositoryError`, `PageRequest`,
+                      `Page<T>`. Generated projects depend on it at the CLI's minor; same workspace
+                      version as `cli/`. The compile matrix builds against this checkout
+                      (`[patch.crates-io]`, added by the test harness only)
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
@@ -18,6 +22,8 @@ crates/
                       web (the frontend slice + web/src/presentation/core/generated/*)
     src/templates/  — .tera templates the generators render (embedded via include_dir)
     src/patchers/   — lib.rs / api.rs / routes.rs patchers
+    src/runtime.rs  — Which runtime crates a project depends on, at which version (rendered from
+                      the CLI's own; `puerto validate` warns on a minor mismatch)
     src/puerto_toml.rs — puerto.toml serde structs + read/write/add_entity + field parser
     src/validation.rs  — Name predicates shared by the field parser and `puerto validate`
     src/tests.rs    — Test root: shared helpers + one module per area in src/tests/
@@ -130,7 +136,7 @@ Every generated project is a Cargo workspace. Dependency rule (inward only):
 Presentation → Infrastructure → Application → Domain
 ```
 
-- **Domain** — pure Rust, no external crates beyond std/async-trait/thiserror
+- **Domain** — pure Rust, no external crates beyond std/async-trait/thiserror and `puerto-core`
 - **Application** — implements use case traits; imports domain only
 - **Infrastructure** — adapters (DB, HTTP); imports domain + application
 - **Presentation** — poem-openapi REST API; imports all layers
@@ -210,6 +216,9 @@ make format/fix    # cargo fmt --all
 
 ## Generated project contract (what every project gets)
 
+- Runtime crates instead of copies (ADR-0017): `puerto-core = "<cli minor>"` in the root
+  `[workspace.dependencies]`, `{ workspace = true }` in each member; the domain imports
+  `puerto_core::{RepositoryError, Page, PageRequest}`
 - Logging through `tracing` directly — no logger port (ADR-0006)
 - Errors: `ErrorResponse { name, message }` with the code in `name`; validation → 422; one test per
   mapper arm (ADR-0007)

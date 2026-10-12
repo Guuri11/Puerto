@@ -1,6 +1,7 @@
 {% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
@@ -8,7 +9,6 @@ use crate::domain::{{ snake }}::{
     repository::{{ pascal }}RepositoryTrait,
     use_cases::list_{{ plural }}::{List{{ plural_pascal }}Params, List{{ plural_pascal }}UseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct List{{ plural_pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
@@ -29,7 +29,7 @@ impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::{{ snake }}::{
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,

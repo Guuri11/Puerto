@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 business = { path = "../business" }
 infrastructure = { path = "../infrastructure" }
+puerto-core = { workspace = true }
 poem = "3"
 # `chrono` feature: without it poem-openapi has no `Type` impl for DateTime<Utc>, so any entity
 # with a date field fails to derive `Object`.

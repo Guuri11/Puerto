@@ -1,7 +1,7 @@
-{% if is_crud %}use business::domain::shared::pagination::Page;
-{% endif %}use business::domain::{{ snake }}::model::{{ pascal }};
+use business::domain::{{ snake }}::model::{{ pascal }};
 use poem_openapi::Object;
-use uuid::Uuid;{% for import in imports %}
+{% if is_crud %}use puerto_core::Page;
+{% endif %}use uuid::Uuid;{% for import in imports %}
 use {{ import }};{% endfor %}
 
 #[derive(Debug, Object)]

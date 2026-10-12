@@ -53,7 +53,7 @@ let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Res
 mod tests {
     use super::*;
     use crate::domain::case::repository::mocks::MockCaseRepository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use chrono::Utc;
     use std::collections::HashMap;
 
@@ -334,7 +334,7 @@ mod tests {
         model::{Case, CaseId, CaseProps},
         repository::mocks::MockCaseRepository,
     };
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
     use chrono::Utc;
     use std::collections::HashMap;
     use crate::domain::case::value_objects::Status;
@@ -411,6 +411,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use puerto_core::Page;
 
 use crate::domain::case::{
     errors::CaseError,
@@ -418,7 +419,6 @@ use crate::domain::case::{
     repository::CaseRepositoryTrait,
     use_cases::list_cases::{ListCasesParams, ListCasesUseCaseTrait},
 };
-use crate::domain::shared::pagination::Page;
 
 pub struct ListCasesUseCaseImpl {
     pub repository: Arc<dyn CaseRepositoryTrait>,
@@ -439,7 +439,7 @@ impl ListCasesUseCaseTrait for ListCasesUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::shared::pagination::PageRequest;
+    use puerto_core::PageRequest;
     use crate::domain::case::{
         model::{Case, CaseProps},
         repository::mocks::MockCaseRepository,
@@ -753,9 +753,8 @@ mod tests {
 }
 
 === business/src/domain/case/errors.rs ===
+use puerto_core::RepositoryError;
 use thiserror::Error;
-
-use crate::domain::shared::repository_error::RepositoryError;
 
 #[derive(Debug, Error)]
 pub enum CaseError {
@@ -778,11 +777,13 @@ pub enum CaseError {
 }
 
 impl From<RepositoryError> for CaseError {
-    /// Exhaustive on purpose: a new repository failure does not compile until it has a meaning here.
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
             RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
         }
     }
 }
@@ -1000,9 +1001,8 @@ mod tests {
 
 === business/src/domain/case/repository.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
-use crate::domain::shared::repository_error::RepositoryError;
 use super::model::{Case, CaseId};
 
 #[async_trait]
@@ -1142,8 +1142,8 @@ pub mod mocks {
 
 === business/src/domain/case/use_cases/list_cases.rs ===
 use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
 
-use crate::domain::shared::pagination::{Page, PageRequest};
 use crate::domain::case::{errors::CaseError, model::Case};
 
 #[derive(Debug, Clone)]
@@ -1291,7 +1291,6 @@ impl Label {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod shared;
   pub mod greeting {
     pub mod errors;
     pub mod model;
@@ -1491,13 +1490,11 @@ impl Default for CaseMother {
 
 === infrastructure/src/case/repository.rs ===
 use async_trait::async_trait;
-
-use business::domain::shared::pagination::{Page, PageRequest};
-use business::domain::shared::repository_error::RepositoryError;
 use business::domain::case::{
     model::{Case, CaseId},
     repository::CaseRepositoryTrait,
 };
+use puerto_core::{Page, PageRequest, RepositoryError};
 
 /// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
 /// Postgres repositories).
@@ -1549,9 +1546,9 @@ pub mod responses;
 pub mod routes;
 
 === presentation/src/api/case/dto.rs ===
-use business::domain::shared::pagination::Page;
 use business::domain::case::model::Case;
 use poem_openapi::Object;
+use puerto_core::Page;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
@@ -1911,7 +1908,6 @@ impl DeleteCaseResponse {
 === presentation/src/api/case/routes.rs ===
 use std::sync::Arc;
 
-use business::domain::shared::pagination::PageRequest;
 use business::domain::case::model::CaseId;
 use business::domain::case::use_cases::{
     create_case::{CreateCaseParams, CreateCaseUseCaseTrait},
@@ -1925,6 +1921,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
+use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -2067,7 +2064,6 @@ impl CaseApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::shared::pagination::Page;
     use business::domain::case::errors::CaseError;
     use business::domain::case::use_cases::{
         create_case::mocks::MockCreateCaseUseCase, delete_case::mocks::MockDeleteCaseUseCase,
@@ -2077,6 +2073,7 @@ mod tests {
     use business::tests::mothers::case_mother::CaseMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
     use chrono::Utc;
     use std::collections::HashMap;
 

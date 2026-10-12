@@ -32,7 +32,7 @@ impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
-    use crate::domain::shared::repository_error::RepositoryError;
+    use puerto_core::RepositoryError;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
