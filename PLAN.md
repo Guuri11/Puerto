@@ -2056,6 +2056,9 @@ The `worker/` template and `generate consumer` are done too:
   refuses, like an entity's.
 - The consumer stub's tests build the envelope from the first subscribed event and the entity's
   Object Mother (`business` `test-utils`).
+- End to end (`tests/worker_e2e.rs`, `make test/db`): the generated API and worker run as real
+  processes; delivery, the dead letter after 4 retries + 1 (`RETRY_MAX_DELAY_MS=0`) and delivery
+  after a worker restart are read from the worker's log.
 
 Starting point (what 13.1–13.3 left to build on):
 - Ports: `puerto_core::events::transport::{Outbox (try_lead / fetch_unpublished /

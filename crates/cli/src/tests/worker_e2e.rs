@@ -1,0 +1,254 @@
+// Phase 13.4 end to end (`make test/db`): the generated API and worker as real processes against
+// Postgres — an event written by a POST reaches its consumer, a consumer that always retries ends
+// in `dead_letters`, and an event written while the worker is down is delivered after a restart.
+use super::*;
+
+use std::io::{Read as _, Write as _};
+use std::net::{TcpListener, TcpStream};
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+use super::compile_matrix::{
+    EVENTS_DB, apply_scenario, patch_runtime_crates, scenario_workspace, test_database_server,
+};
+
+/// How long any one expectation may take: a pass every 100 ms, so this is generous.
+const WAIT: Duration = Duration::from_secs(60);
+
+/// A consumer that never succeeds: every delivery of it is a `Retry`.
+const ALWAYS_RETRY: &str = r#"use async_trait::async_trait;
+use puerto_core::events::{EventEnvelope, EventHandler, HandlerOutcome};
+
+pub struct AlwaysRetry;
+
+#[async_trait]
+impl EventHandler for AlwaysRetry {
+    async fn handle(&self, _event: &EventEnvelope) -> HandlerOutcome {
+        HandlerOutcome::Retry
+    }
+}
+"#;
+
+/// A child process killed when the test ends, whatever happens.
+struct Running(Child);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn free_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
+        .expect("no free port")
+}
+
+/// One HTTP/1.1 request: `(status, body)`, or `None` when nothing answers yet.
+fn http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .ok()?;
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response).ok()?;
+    let status = response.split(' ').nth(1)?.parse().ok()?;
+    let body = response.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+    Some((status, body))
+}
+
+fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+    let start = Instant::now();
+    while !done() {
+        assert!(start.elapsed() < WAIT, "timed out waiting for {what}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn log_lines(path: &Path) -> Vec<String> {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
+fn logged(path: &Path, needles: &[&str]) -> bool {
+    log_lines(path)
+        .iter()
+        .any(|line| needles.iter().all(|n| line.contains(n)))
+}
+
+/// Creates a product and returns its id.
+fn create_product(port: u16, sku: &str) -> String {
+    let body = format!(
+        r#"{{"name":"Desk lamp","sku":"{sku}","price":2500,"status":"Draft","tags":[],"meta":{{}}}}"#
+    );
+    let (status, response) =
+        http(port, "POST", "/api/products", &body).expect("the API did not answer");
+    assert_eq!(status, 201, "POST /api/products: {response}");
+    let at = response.find("\"id\":\"").expect("no id in the response") + 6;
+    response[at..at + 36].to_string()
+}
+
+struct Project {
+    dir: PathBuf,
+    output: PathBuf,
+    env: Vec<(String, String)>,
+}
+
+impl Project {
+    fn spawn(&self, binary: &str, log: &Path, extra: &[(&str, String)]) -> Running {
+        let file = fs::File::create(log).unwrap();
+        let child = Command::new(self.dir.join("target/debug").join(binary))
+            .current_dir(&self.output)
+            .envs(self.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .envs(extra.iter().map(|(k, v)| (*k, v.as_str())))
+            .stdout(Stdio::from(file.try_clone().unwrap()))
+            .stderr(Stdio::from(file))
+            .spawn()
+            .unwrap_or_else(|e| panic!("cannot start {binary}: {e}"));
+        Running(child)
+    }
+}
+
+/// The `events_db` scenario plus a consumer that always retries, migrated and built.
+fn build_project(database: &str) -> Option<Project> {
+    let server = test_database_server()?;
+    let dir = scenario_workspace("events_e2e");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("e2e-events", &dir).unwrap();
+    apply_scenario(&EVENTS_DB, &output);
+    scaffold::run_generate_consumer("always_retry", &["product_created".into()], &output).unwrap();
+    fs::write(
+        output.join("worker/src/consumers/always_retry.rs"),
+        ALWAYS_RETRY,
+    )
+    .unwrap();
+    patch_runtime_crates(&output);
+
+    let database_url = format!("{server}/{database}");
+    for args in [
+        &["database", "drop", "-y"][..],
+        &["database", "create"][..],
+        &["migrate", "run", "--source", "infrastructure/migrations"][..],
+    ] {
+        let status = Command::new("sqlx")
+            .args(args)
+            .env("DATABASE_URL", &database_url)
+            .current_dir(&output)
+            .status()
+            .expect("sqlx CLI not found — cargo install sqlx-cli");
+        assert!(status.success(), "`sqlx {}` failed", args.join(" "));
+    }
+    let env: Vec<(String, String)> = [
+        ("DATABASE_URL", database_url.as_str()),
+        ("SQLX_OFFLINE", "false"),
+        ("RUST_LOG", "info"),
+        ("NO_COLOR", "1"),
+        ("PUERTO_BANNER", "false"),
+        ("RELAY_POLL_INTERVAL_MS", "100"),
+        ("CONSUMER_POLL_INTERVAL_MS", "100"),
+        ("MAX_DELIVERIES", "5"),
+        // The policy waits 1 s, 5 s, 15 s, 60 s between deliveries: no wait here.
+        ("RETRY_MAX_DELAY_MS", "0"),
+    ]
+    .iter()
+    .map(|(k, v)| (k.to_string(), v.to_string()))
+    .collect();
+
+    let built = Command::new("cargo")
+        .args(["build", "--workspace"])
+        .env("CARGO_TARGET_DIR", dir.join("target"))
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .current_dir(&output)
+        .output()
+        .expect("failed to run cargo");
+    if !built.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&built.stderr));
+        panic!("the events project did not build");
+    }
+    Some(Project { dir, output, env })
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_events_worker_delivers_dead_letters_and_survives_a_restart() {
+    let Some(project) = build_project("puerto_matrix_events_e2e") else {
+        eprintln!("PUERTO_TEST_DATABASE_URL not set — skipping (run `make test/db`)");
+        return;
+    };
+    let (api_port, worker_port) = (free_port(), free_port());
+    let api_log = project.dir.join("api.log");
+    let worker_log = project.dir.join("worker.log");
+    let api = project.spawn(
+        "e2e-events",
+        &api_log,
+        &[("SERVICE_PORT", api_port.to_string())],
+    );
+    let worker_env = [("WORKER_PORT", worker_port.to_string())];
+    let worker = project.spawn("worker", &worker_log, &worker_env);
+    wait_until("the API to be ready", || {
+        http(api_port, "GET", "/health/ready", "").is_some_and(|(s, _)| s == 200)
+    });
+    wait_until("the worker to be ready", || {
+        http(worker_port, "GET", "/health/ready", "").is_some_and(|(s, _)| s == 200)
+    });
+
+    // A POST reaches the generated consumer.
+    let first = create_product(api_port, "E2E-1");
+    wait_until("notify_new_product to see product_created", || {
+        logged(
+            &worker_log,
+            &[
+                "notify_new_product: product_created",
+                &format!("product_id={first}"),
+            ],
+        )
+    });
+
+    // A consumer that always retries is dead-lettered on its fifth delivery.
+    wait_until("always_retry to be dead-lettered", || {
+        logged(
+            &worker_log,
+            &["dead_letters: recorded", "consumer=always_retry"],
+        )
+    });
+    let retries = log_lines(&worker_log)
+        .iter()
+        .filter(|l| l.contains("consumer: retry") && l.contains("always_retry"))
+        .count();
+    assert_eq!(retries, 4, "deliveries 1–4 retry, the 5th dead-letters");
+
+    // An event written while the worker is down stays in the outbox until it is back.
+    drop(worker);
+    let second = create_product(api_port, "E2E-2");
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(!logged(&worker_log, &[&format!("product_id={second}")]));
+    let restarted_log = project.dir.join("worker-restarted.log");
+    let restarted = project.spawn("worker", &restarted_log, &worker_env);
+    wait_until("the restarted worker to deliver the second product", || {
+        logged(
+            &restarted_log,
+            &[
+                "notify_new_product: product_created",
+                &format!("product_id={second}"),
+            ],
+        )
+    });
+    // The first one was settled before the restart: it is not delivered again.
+    assert!(!logged(&restarted_log, &[&format!("product_id={first}")]));
+
+    drop(restarted);
+    drop(api);
+    cleanup(&project.dir);
+}
