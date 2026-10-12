@@ -12,13 +12,13 @@ use business::domain::{{ entity.snake }}::repository::{{ entity.pascal }}Reposit
 use infrastructure::{{ entity.snake }}::repository::{% if entity.db %}Pg{% else %}InMemory{% endif %}{{ entity.pascal }}Repository;
 {% endfor %}
 {% endif -%}
-use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
 {% for entity in entities -%}
 use crate::api::{{ entity.snake }}::routes::{{ entity.pascal }}Api;
 {% endfor %}
-pub async fn build_app() -> impl poem::Endpoint {
+pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
 {%- if has_db %}
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = infrastructure::db::create_postgres_pool(&database_url)
@@ -38,37 +38,17 @@ pub async fn build_app() -> impl poem::Endpoint {
 {%- endfor %}
     let {{ entity.snake }}_api = {{ entity.pascal }}Api {% if entity.use_cases %}{ {% for uc in entity.use_cases %}{{ uc.action }}{% if not loop.last %}, {% endif %}{% endfor %} }{% else %}{}{% endif %};
 {% endfor %}
-    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
-    let api_service =
-        openapi_service({{ apis }}).server(format!("http://localhost:{port}/api"));
-    let ui = api_service.swagger_ui();
-
-    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
-    let mut cors = Cors::new();
-    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        cors = cors.allow_origin(origin);
-    }
-
-    Route::new()
-        .at("/health", get(crate::health::liveness))
 {%- if has_db %}
-        .at(
-            "/health/ready",
-            get(poem::endpoint::make(move |_| {
-                let pool = pool.clone();
-                async move { crate::health::readiness(infrastructure::db::ping(&pool).await) }
-            })),
-        )
+    let ready = puerto_web::health::probe(move || {
+        let pool = pool.clone();
+        async move { infrastructure::db::ping(&pool).await }
+    });
 {%- else %}
-        .at(
-            "/health/ready",
-            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
-        )
+    let ready = puerto_web::health::always_ready();
 {%- endif %}
-        .nest("/api", api_service)
-        .nest("/", ui)
-        .with(Tracing)
-        .with(cors)
+
+    // `app.rs` is the project's own: middleware and routes added there wrap everything here.
+    crate::app::configure(puerto_web::routes(openapi_service({{ apis }}), &config, ready))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project

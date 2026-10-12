@@ -1,6 +1,8 @@
-use crate::api::{error::ErrorResponse, greeting::dto::GreetingDto};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::greeting::dto::GreetingDto;
 
 #[derive(ApiResponse)]
 pub enum GetGreetingResponse {

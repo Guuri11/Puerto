@@ -1,8 +1,9 @@
 {% import "presentation/macros.tera" as macros %}use business::domain::{{ snake }}::errors::{{ pascal }}Error;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
 
-use crate::api::error::{ErrorResponse, IntoErrorResponse};
+use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for {{ pascal }}Error {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.

@@ -2114,8 +2114,9 @@ pub struct UpdateCategoryRequest {
 use business::domain::category::errors::CategoryError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
 
-use crate::api::error::{ErrorResponse, IntoErrorResponse};
+use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for CategoryError {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.
@@ -2203,12 +2204,11 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{
-    error::ErrorResponse,
-    category::dto::{CategoryDto, CategoryPageDto},
-};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::category::dto::{CategoryDto, CategoryPageDto};
 
 #[derive(ApiResponse)]
 pub enum CreateCategoryResponse {
@@ -2778,8 +2778,9 @@ pub struct UpdateProductRequest {
 use business::domain::product::errors::ProductError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
 
-use crate::api::error::{ErrorResponse, IntoErrorResponse};
+use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for ProductError {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.
@@ -2856,12 +2857,11 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{
-    error::ErrorResponse,
-    product::dto::{ProductDto, ProductPageDto},
-};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::product::dto::{ProductDto, ProductPageDto};
 
 #[derive(ApiResponse)]
 pub enum CreateProductResponse {
@@ -3398,14 +3398,14 @@ use infrastructure::product::repository::InMemoryProductRepository;
 use business::domain::category::repository::CategoryRepositoryTrait;
 use infrastructure::category::repository::InMemoryCategoryRepository;
 
-use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
 use crate::api::greeting::routes::GreetingApi;
 use crate::api::product::routes::ProductApi;
 use crate::api::category::routes::CategoryApi;
 
-pub async fn build_app() -> impl poem::Endpoint {
+pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
     let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
     let greeting_api = GreetingApi { get_greeting };
 
@@ -3425,27 +3425,10 @@ pub async fn build_app() -> impl poem::Endpoint {
     let delete_category = Arc::new(DeleteCategoryUseCaseImpl { repository: category_repo });
     let category_api = CategoryApi { create_category, get_category, list_categories, update_category, delete_category };
 
-    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
-    let api_service =
-        openapi_service((greeting_api, product_api, category_api)).server(format!("http://localhost:{port}/api"));
-    let ui = api_service.swagger_ui();
+    let ready = puerto_web::health::always_ready();
 
-    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
-    let mut cors = Cors::new();
-    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        cors = cors.allow_origin(origin);
-    }
-
-    Route::new()
-        .at("/health", get(crate::health::liveness))
-        .at(
-            "/health/ready",
-            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
-        )
-        .nest("/api", api_service)
-        .nest("/", ui)
-        .with(Tracing)
-        .with(cors)
+    // `app.rs` is the project's own: middleware and routes added there wrap everything here.
+    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, product_api, category_api)), &config, ready))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project

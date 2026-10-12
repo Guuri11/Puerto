@@ -3,9 +3,11 @@
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{error::ErrorResponse, {{ snake }}::dto::{{ pascal }}Dto};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::{{ snake }}::dto::{{ pascal }}Dto;
 
 #[derive(ApiResponse)]
 pub enum Create{{ pascal }}Response {

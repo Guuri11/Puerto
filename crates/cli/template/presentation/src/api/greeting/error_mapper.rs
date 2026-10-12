@@ -1,8 +1,9 @@
 use business::domain::greeting::errors::GreetingError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
 
-use crate::api::error::{ErrorResponse, IntoErrorResponse};
+use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for GreetingError {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.

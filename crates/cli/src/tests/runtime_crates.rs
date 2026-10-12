@@ -268,3 +268,193 @@ fn validate_passes_on_a_new_project() {
 
     cleanup(&dir);
 }
+
+// ── Phase 12.1: `puerto-web` ──────────────────────────────────────────────
+
+#[test]
+fn new_project_depends_on_puerto_web_from_presentation_only() {
+    let (dir, output) = new_project("runtime-web-deps");
+
+    let root = read(&output, "Cargo.toml");
+    assert!(
+        root.contains(&format!("puerto-web = \"{}\"", cli_minor())),
+        "{root}"
+    );
+    let presentation = read(&output, "presentation/Cargo.toml");
+    assert!(presentation.contains("puerto-web = { workspace = true }"));
+    // The server, `.env` and the subscriber are the runtime's now.
+    assert!(!presentation.contains("dotenvy"), "{presentation}");
+    assert!(
+        !presentation.contains("tracing-subscriber"),
+        "{presentation}"
+    );
+    for member in ["business", "infrastructure"] {
+        assert!(!read(&output, &format!("{member}/Cargo.toml")).contains("puerto-web"));
+    }
+
+    cleanup(&dir);
+}
+
+#[test]
+fn new_project_main_hands_the_server_to_puerto_web() {
+    let (dir, output) = new_project("runtime-web-main");
+
+    let main = read(&output, "presentation/src/main.rs");
+    assert!(main.contains("puerto_web::Config::from_env()?"), "{main}");
+    assert!(main.contains("puerto_web::App::new(config)"), "{main}");
+    assert!(
+        main.contains(".serve(generated::bootstrap::build_app)"),
+        "{main}"
+    );
+    assert!(main.contains("mod app;"), "{main}");
+    for gone in [
+        "run_with_graceful_shutdown",
+        "tracing_subscriber",
+        "SERVICE_PORT",
+        "mod health;",
+    ] {
+        assert!(!main.contains(gone), "{gone}: {main}");
+    }
+
+    cleanup(&dir);
+}
+
+#[test]
+fn new_project_ships_no_copy_of_the_http_shell() {
+    let (dir, output) = new_project("runtime-web-no-copy");
+
+    assert!(!output.join("presentation/src/health.rs").exists());
+    // `IntoErrorResponse` stays: an `error_mapper.rs` implements it for an error of `business`,
+    // which the orphan rule only allows for a trait of `presentation` itself.
+    let error = read(&output, "presentation/src/api/error.rs");
+    assert!(error.contains("pub trait IntoErrorResponse"), "{error}");
+    assert!(error.contains("use puerto_web::ErrorResponse;"), "{error}");
+    assert!(!error.contains("struct ErrorResponse"), "{error}");
+    let greeting = format!(
+        "{}{}",
+        read(&output, "presentation/src/api/greeting/error_mapper.rs"),
+        read(&output, "presentation/src/api/greeting/responses.rs")
+    );
+    assert!(!greeting.contains("error::ErrorResponse"), "{greeting}");
+    assert!(greeting.contains("use crate::api::error::IntoErrorResponse;"));
+    assert!(greeting.contains("use puerto_web::ErrorResponse;"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn bootstrap_builds_the_routes_with_puerto_web_and_hands_them_to_the_app_hook() {
+    let (dir, output) = new_project("runtime-web-bootstrap");
+
+    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    assert!(
+        bootstrap.contains("pub async fn build_app(config: puerto_web::Config) -> impl Endpoint"),
+        "{bootstrap}"
+    );
+    assert!(
+        bootstrap.contains("crate::app::configure(puerto_web::routes("),
+        "{bootstrap}"
+    );
+    assert!(bootstrap.contains("puerto_web::health::always_ready()"));
+    for gone in ["Cors", "std::env::var(\"SERVICE_PORT\")", "crate::health"] {
+        assert!(!bootstrap.contains(gone), "{gone}: {bootstrap}");
+    }
+
+    cleanup(&dir);
+}
+
+#[test]
+fn db_bootstrap_probes_the_database_through_puerto_web() {
+    let dir = temp_dir("runtime_web_db_bootstrap");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some("runtime-web-db".into()), true, &dir).unwrap();
+    // The readiness check pings the database once an entity is stored in it.
+    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+
+    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    assert!(
+        bootstrap.contains("puerto_web::health::probe(move ||"),
+        "{bootstrap}"
+    );
+    assert!(
+        bootstrap.contains("infrastructure::db::ping(&pool)"),
+        "{bootstrap}"
+    );
+    assert!(!bootstrap.contains("always_ready"), "{bootstrap}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn new_project_has_a_hand_written_app_hook() {
+    let (dir, output) = new_project("runtime-web-app-hook");
+
+    let app = read(&output, "presentation/src/app.rs");
+    assert!(
+        app.contains("pub fn configure(routes: Route) -> impl Endpoint"),
+        "{app}"
+    );
+    assert!(!app.contains("AUTO-GENERATED"), "{app}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn app_hook_survives_scaffold_force_and_bootstrap_byte_for_byte() {
+    let (dir, output) = new_project("runtime-web-app-survives");
+    let hook = output.join("presentation/src/app.rs");
+    let custom = "use poem::{Endpoint, EndpointExt, Route, middleware::SetHeader};\n\npub fn configure(routes: Route) -> impl Endpoint {\n    routes.with(SetHeader::new().overriding(\"x-team\", \"orders\"))\n}\n";
+    fs::write(&hook, custom).unwrap();
+
+    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Force).unwrap();
+    crate::generators::bootstrap::run_bootstrap_command(&output, false).unwrap();
+
+    assert_eq!(fs::read_to_string(&hook).unwrap(), custom);
+
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_takes_the_error_body_from_puerto_web() {
+    for (name, crud) in [("runtime_web_crud", true), ("runtime_web_simple", false)] {
+        let dir = temp_dir(name);
+        cleanup(&dir);
+        setup_puerto_stubs(&dir);
+        scaffold::run("Product", &dir, false, crud, &[], &[]).unwrap();
+
+        for (path, import) in [
+            (
+                "presentation/src/api/product/error_mapper.rs",
+                "use puerto_web::ErrorResponse;",
+            ),
+            (
+                "presentation/src/api/product/responses.rs",
+                "use puerto_web::ErrorResponse;",
+            ),
+        ] {
+            let source = read(&dir, path);
+            assert!(source.contains(import), "{name}: {path}\n{source}");
+            assert!(!source.contains("error::ErrorResponse"), "{name}: {path}");
+        }
+
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn snippets_take_the_error_body_from_puerto_web() {
+    let snippets = crate::snippets::SNIPPETS_JSON;
+    assert!(!snippets.contains("error::ErrorResponse"));
+    assert!(!snippets.contains("error::{ErrorResponse"));
+    assert!(snippets.contains("use puerto_web::ErrorResponse;"));
+}
+
+#[test]
+fn every_runtime_crate_is_patched_in_the_compile_matrix() {
+    assert_eq!(
+        crate::runtime::RUNTIME_CRATES,
+        ["puerto-core", "puerto-web"]
+    );
+}

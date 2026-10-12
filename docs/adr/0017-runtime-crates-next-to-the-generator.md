@@ -161,3 +161,13 @@ enough. Ejected code is the user's; it no longer receives fixes.
   3. `puerto-sqlx` (pool, `ping`, `map_sqlx_error`).
 
   New features land in the runtime from then on.
+
+## Amendment (12.1, 2026-10-12): traits the project implements for its own types stay in it
+
+`IntoErrorResponse` did not move: every `error_mapper.rs` implements it for an error of
+`business`, and with the trait in `puerto-web` both trait and type would be foreign to
+`presentation` — the orphan rule (E0117) rejects it. Only the body, `ErrorResponse`, is the
+runtime's. The rule for later pieces: a trait that one project crate implements for a type of
+*another* project crate (here `presentation` for `business`) is generated into the implementing
+crate. Runtime traits implemented for a type in the same crate — a repository adapter for a
+`puerto-core` port — are fine.

@@ -4,7 +4,8 @@ use super::*;
 
 #[test]
 fn new_project_bootstrap_injects_no_logger() {
-    // Logging goes through `tracing` directly; the subscriber is set up once in main.rs.
+    // Logging goes through `tracing` directly; the subscriber is set up once, by
+    // `puerto_web::App::serve` (ADR-0017).
     let dir = temp_dir("logger_bootstrap");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -15,7 +16,7 @@ fn new_project_bootstrap_injects_no_logger() {
         fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
     assert!(!content.contains("logger"), "{content}");
     let main = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
-    assert!(main.contains("tracing_subscriber::fmt()"), "{main}");
+    assert!(main.contains("puerto_web::App::new(config)"), "{main}");
 
     cleanup(&dir);
 }
@@ -211,39 +212,9 @@ fn responses_offer_422_and_no_longer_map_400() {
     assert!(!responses.contains("BAD_REQUEST"), "{responses}");
 }
 
-#[test]
-fn shared_error_response_is_built_from_the_code() {
-    let dir = temp_dir("error_rs_from_code");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let output = generate_project("error-rs-from-code", &dir).unwrap();
-
-    let error_rs = fs::read_to_string(output.join("presentation/src/api/error.rs")).unwrap();
-
-    assert!(error_rs.contains("pub fn from_code("), "{error_rs}");
-    cleanup(&dir);
-}
-
 // ── T-38: health probes + graceful shutdown ───────────────────────────────
-
-#[test]
-fn generated_project_serves_liveness_and_readiness_and_shuts_down_gracefully() {
-    let (dir, output) = project_with_product("health_no_db", false);
-
-    let bootstrap =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
-    let main = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
-
-    assert!(
-        bootstrap.contains(".at(\"/health\", get(crate::health::liveness))"),
-        "{bootstrap}"
-    );
-    assert!(bootstrap.contains("\"/health/ready\""), "{bootstrap}");
-    assert!(main.contains("run_with_graceful_shutdown"), "{main}");
-    assert!(main.contains("mod health;"), "{main}");
-    assert!(output.join("presentation/src/health.rs").exists());
-    cleanup(&dir);
-}
+// The probes, the server and the shutdown are `puerto-web`'s (ADR-0017) and tested there; the
+// project hands its readiness check to `puerto_web::routes` (tests/runtime_crates.rs).
 
 #[test]
 fn readiness_pings_the_database_in_a_db_project() {
@@ -338,6 +309,7 @@ fn generated_project_has_a_root_entry_point_for_agents() {
         "business/AGENTS.md",
         // ADR-0017: an agent must know which code is the project's and which is the runtime's.
         "puerto-core",
+        "puerto-web",
     ] {
         assert!(agents.contains(must), "root AGENTS.md misses '{must}'");
     }

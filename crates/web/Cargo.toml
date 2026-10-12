@@ -1,0 +1,24 @@
+[package]
+name = "puerto-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Puerto runtime — the HTTP shell every Puerto project shares: server, graceful shutdown, health probes, config, CORS and the error body."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["ddd", "clean-architecture", "puerto", "poem", "openapi"]
+categories = ["web-programming::http-server"]
+
+[dependencies]
+poem = "3"
+poem-openapi = { version = "5", features = ["swagger-ui"] }
+tokio = { version = "1", features = ["macros", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+thiserror = "2"
+
+[dev-dependencies]
+poem = { version = "3", features = ["test"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

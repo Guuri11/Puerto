@@ -7,13 +7,13 @@ no business logic lives here.
 
 ```
 presentation/src/
-├── main.rs                  # Tracing subscriber, server, graceful shutdown (never changes)
-├── health.rs                # GET /health (liveness) and /health/ready (readiness)
+├── main.rs                  # `puerto_web::Config::from_env()` + `App::new(config).serve(…)` (never changes)
+├── app.rs                   # Yours: `configure(routes)` — extra middleware and routes; no generator touches it
 ├── generated.rs             # `pub mod bootstrap;`
 ├── generated/bootstrap.rs   # AUTO-GENERATED DI wiring + routes — never hand-edit
 ├── api.rs                   # `pub mod error; pub mod tags; pub mod <entity>;` — no `mod.rs`
 └── api/
-    ├── error.rs             # Shared ErrorResponse + IntoErrorResponse trait
+    ├── error.rs             # The IntoErrorResponse trait (the body, ErrorResponse, is puerto-web's)
     ├── <entity>.rs          # `pub mod dto; pub mod error_mapper; pub mod responses; pub mod routes;`
     └── <entity>/
         ├── routes.rs        # #[OpenApi] impl with endpoints
@@ -41,11 +41,19 @@ presentation/src/
 
 ## Health and shutdown
 
+Served by the Puerto runtime, `puerto-web`; `bootstrap.rs` hands it the readiness check.
+
 - `GET /health` — liveness: the process answers.
 - `GET /health/ready` — readiness: `503` until every dependency answers (the database, in a
   `--db` project). Point orchestrator readiness checks here, liveness checks at `/health`.
 - On SIGTERM / Ctrl-C the server stops accepting and drains in-flight requests for up to
-  `SHUTDOWN_DEADLINE` (`main.rs`).
+  `puerto_web::app::SHUTDOWN_DEADLINE` (8s).
+
+## Configuration
+
+`puerto_web::Config::from_env()` reads the environment, after `.env`: `SERVICE_PORT` (default
+`8080`), `CORS_ALLOWED_ORIGINS` (comma-separated; none set means any origin), `PUERTO_BANNER`
+(`false` hides the banner). A value that is set but invalid stops the server at startup.
 
 ## Route Handler Pattern
 

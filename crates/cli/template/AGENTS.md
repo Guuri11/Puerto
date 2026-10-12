@@ -27,9 +27,12 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 | Crate | Owns | Imported as |
 |---|---|---|
 | `puerto-core` | `RepositoryError` (what every repository port fails with), `PageRequest` / `Page<T>` (paged lists, limit capped at 100) | `use puerto_core::{Page, PageRequest, RepositoryError};` |
+| `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
 
-`puerto-core` depends on nothing but `thiserror`, so the domain may use it. Do not copy its types
-into the project; upgrade it with the `puerto` CLI (`puerto validate` warns when they drift apart).
+`puerto-core` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
+poem and stays in `presentation`. Do not copy their code into the project; upgrade them with the
+`puerto` CLI (`puerto validate` warns when they drift apart). Your own middleware and routes go in
+`presentation/src/app.rs`, which no generator touches.
 
 **Modules are declared inline in each crate's `lib.rs`** (nested `pub mod {}` blocks). There are
 no `mod.rs` files: adding a use case is one line in `lib.rs` plus its file.

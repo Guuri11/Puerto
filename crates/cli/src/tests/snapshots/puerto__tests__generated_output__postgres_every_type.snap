@@ -5542,8 +5542,9 @@ pub struct UpdateCustomerRequest {
 use business::domain::customer::errors::CustomerError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
 
-use crate::api::error::{ErrorResponse, IntoErrorResponse};
+use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for CustomerError {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.
@@ -5708,12 +5709,11 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{
-    error::ErrorResponse,
-    customer::dto::{CustomerDto, CustomerPageDto},
-};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::customer::dto::{CustomerDto, CustomerPageDto};
 
 #[derive(ApiResponse)]
 pub enum CreateCustomerResponse {
@@ -6358,8 +6358,9 @@ pub struct UpdateProductRequest {
 use business::domain::product::errors::ProductError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
 
-use crate::api::error::{ErrorResponse, IntoErrorResponse};
+use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for ProductError {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.
@@ -6436,12 +6437,11 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{
-    error::ErrorResponse,
-    product::dto::{ProductDto, ProductPageDto},
-};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::product::dto::{ProductDto, ProductPageDto};
 
 #[derive(ApiResponse)]
 pub enum CreateProductResponse {
@@ -7076,8 +7076,9 @@ pub struct UpdateTicketRequest {
 use business::domain::ticket::errors::TicketError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
 
-use crate::api::error::{ErrorResponse, IntoErrorResponse};
+use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for TicketError {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.
@@ -7165,12 +7166,11 @@ mod tests {
 // allocation.
 #![allow(clippy::large_enum_variant)]
 
-use crate::api::{
-    error::ErrorResponse,
-    ticket::dto::{TicketDto, TicketPageDto},
-};
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::ticket::dto::{TicketDto, TicketPageDto};
 
 #[derive(ApiResponse)]
 pub enum CreateTicketResponse {
@@ -7700,7 +7700,7 @@ use infrastructure::customer::repository::PgCustomerRepository;
 use business::domain::ticket::repository::TicketRepositoryTrait;
 use infrastructure::ticket::repository::PgTicketRepository;
 
-use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
 use crate::api::greeting::routes::GreetingApi;
@@ -7708,7 +7708,7 @@ use crate::api::product::routes::ProductApi;
 use crate::api::customer::routes::CustomerApi;
 use crate::api::ticket::routes::TicketApi;
 
-pub async fn build_app() -> impl poem::Endpoint {
+pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = infrastructure::db::create_postgres_pool(&database_url)
         .await
@@ -7745,30 +7745,13 @@ pub async fn build_app() -> impl poem::Endpoint {
     let delete_ticket = Arc::new(DeleteTicketUseCaseImpl { repository: ticket_repo });
     let ticket_api = TicketApi { create_ticket, get_ticket, list_tickets, update_ticket, delete_ticket };
 
-    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
-    let api_service =
-        openapi_service((greeting_api, product_api, customer_api, ticket_api)).server(format!("http://localhost:{port}/api"));
-    let ui = api_service.swagger_ui();
+    let ready = puerto_web::health::probe(move || {
+        let pool = pool.clone();
+        async move { infrastructure::db::ping(&pool).await }
+    });
 
-    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
-    let mut cors = Cors::new();
-    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        cors = cors.allow_origin(origin);
-    }
-
-    Route::new()
-        .at("/health", get(crate::health::liveness))
-        .at(
-            "/health/ready",
-            get(poem::endpoint::make(move |_| {
-                let pool = pool.clone();
-                async move { crate::health::readiness(infrastructure::db::ping(&pool).await) }
-            })),
-        )
-        .nest("/api", api_service)
-        .nest("/", ui)
-        .with(Tracing)
-        .with(cors)
+    // `app.rs` is the project's own: middleware and routes added there wrap everything here.
+    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, product_api, customer_api, ticket_api)), &config, ready))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project

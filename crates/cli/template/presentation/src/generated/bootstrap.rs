@@ -6,36 +6,19 @@ use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::domain::greeting::repository::GreetingRepositoryTrait;
 use infrastructure::greeting::repository::InMemoryGreetingRepository;
 
-use poem::{EndpointExt, Route, get, middleware::{Cors, Tracing}};
+use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
 use crate::api::greeting::routes::GreetingApi;
 
-pub async fn build_app() -> impl poem::Endpoint {
+pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
     let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
     let greeting_api = GreetingApi { get_greeting };
 
-    let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "8080".to_string());
-    let api_service =
-        openapi_service(greeting_api).server(format!("http://localhost:{port}/api"));
-    let ui = api_service.swagger_ui();
+    let ready = puerto_web::health::always_ready();
 
-    let cors_origins = std::env::var("CORS_ALLOWED_ORIGINS").unwrap_or_default();
-    let mut cors = Cors::new();
-    for origin in cors_origins.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        cors = cors.allow_origin(origin);
-    }
-
-    Route::new()
-        .at("/health", get(crate::health::liveness))
-        .at(
-            "/health/ready",
-            get(poem::endpoint::make_sync(|_| crate::health::readiness(true))),
-        )
-        .nest("/api", api_service)
-        .nest("/", ui)
-        .with(Tracing)
-        .with(cors)
+    // `app.rs` is the project's own: middleware and routes added there wrap everything here.
+    crate::app::configure(puerto_web::routes(openapi_service(greeting_api), &config, ready))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project

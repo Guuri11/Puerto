@@ -90,7 +90,7 @@ published crate (one `[workspace.package] version` in the root `Cargo.toml` — 
 then `puerto`:
 
 ```
-puerto-core → puerto
+puerto-core → puerto-web → puerto
 ```
 
 A crate whose version is already on crates.io is skipped, so publishing by hand first does not
@@ -112,6 +112,7 @@ make lint
 make format
 cargo package --list -p puerto       # confirm template files are included
 cargo publish --dry-run -p puerto-core
+cargo publish --dry-run -p puerto-web
 cargo publish --dry-run -p puerto
 
 # 4. Commit, push, tag — the tag publishes
@@ -120,7 +121,8 @@ git push
 git tag -a v0.x.y -m "v0.x.y" && git push origin v0.x.y
 
 # Fallback when the workflow cannot publish — same order:
-#   cargo publish -p puerto-core --locked && cargo publish -p puerto --locked
+#   cargo publish -p puerto-core --locked && cargo publish -p puerto-web --locked \
+#     && cargo publish -p puerto --locked
 ```
 
 The landing (`landing/`) is deployed by Vercel on every push to `main` — update its docs in the

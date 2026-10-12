@@ -550,9 +550,11 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Presentation — responses.rs ApiResponse enum": {
     "prefix": "poem-response-enum",
     "body": [
-      "use crate::api::{error::ErrorResponse, ${1:entity}::dto::${2:Entity}Dto};",
       "use poem::http::StatusCode;",
       "use poem_openapi::{ApiResponse, payload::Json};",
+      "use puerto_web::ErrorResponse;",
+      "",
+      "use crate::api::${1:entity}::dto::${2:Entity}Dto;",
       "",
       "#[derive(ApiResponse)]",
       "pub enum ${3:Action}${2:Entity}Response {",
@@ -587,8 +589,9 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use business::domain::${1:entity}::errors::${2:Entity}Error;",
       "use poem::http::StatusCode;",
       "use poem_openapi::payload::Json;",
+      "use puerto_web::ErrorResponse;",
       "",
-      "use crate::api::error::{ErrorResponse, IntoErrorResponse};",
+      "use crate::api::error::IntoErrorResponse;",
       "",
       "impl IntoErrorResponse for ${2:Entity}Error {",
       "\tfn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {",

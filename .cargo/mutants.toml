@@ -14,6 +14,15 @@ examine_globs = [
     "crates/cli/src/runtime.rs",
     # Runtime crates: their code ships in every generated project.
     "crates/core/src/*.rs",
+    "crates/web/src/*.rs",
+]
+# The process boundary of `puerto-web`: binding a port, waiting for SIGTERM, reading the real
+# environment. A mutant there only shows when a server runs — no unit test can catch it without
+# starting one. Everything they call (`wrap`, `routes`, `Config::from_vars`) is examined.
+exclude_re = [
+    "App::serve",
+    "shutdown_signal",
+    "Config::from_env",
 ]
 # The compile matrix is `#[ignore]`d; a mutant run uses the fast structural suite only.
 test_tool = "nextest"

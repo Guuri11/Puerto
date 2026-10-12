@@ -266,7 +266,7 @@ answers `EntityPageDto`. Pg: `ORDER BY created_at DESC, id LIMIT $1 OFFSET $2` +
 - Implements the trait defined in `domain/<entity>/use_cases/<action>.rs`
 - Dependencies injected as `Arc<dyn Trait>` — never concrete types
 - **Logging with `tracing` directly** — no injected logger, no `Logger` port (ADR-0006).
-  `tracing` is already a facade: the subscriber is chosen once in `main.rs`. A use case logs
+  `tracing` is already a facade: the subscriber is set up once, by `puerto_web::App::serve`. A use case logs
   `<use_case>: start` and `<use_case>: done` (plus the id when there is one); it never logs the
   request payload, which is user data
 
@@ -369,14 +369,14 @@ SQL type mappings come from the type registry (see `puerto-toml.md`).
 
 ```
 presentation/src/
-  main.rs                  # tracing subscriber + server + graceful shutdown — never changes
-  health.rs                # GET /health (liveness) + /health/ready (readiness)
+  main.rs                  # puerto_web::Config::from_env() + App::new(config).serve(…) — never changes
+  app.rs                   # the user's hook: configure(routes) — written once by `new`, never regenerated
   generated.rs             # pub mod bootstrap; — static, never changes
   generated/
     bootstrap.rs           # AUTO-GENERATED from puerto.toml — never hand-edit
   api.rs                   # pub mod error; pub mod <entity>; ...
   api/
-    error.rs               # Shared ErrorResponse + IntoErrorResponse trait
+    error.rs               # IntoErrorResponse trait (local: the orphan rule) — the body is puerto_web::ErrorResponse
     <entity>.rs            # pub mod dto; pub mod routes; pub mod responses; pub mod error_mapper;
     <entity>/
       routes.rs            # OpenApi impl — endpoints, auth, param parsing
@@ -445,16 +445,20 @@ Each OpenAPI type derives from the type registry mapping (e.g., `i64` → `integ
 - **API First**: update `routes.rs` + `dto.rs` before any implementation
 - Domain models are **never** exposed in responses — always map via `EntityDto::from_domain(&entity)`
 - Every `ApiResponse` enum has a `from_status(StatusCode, Json<ErrorResponse>) -> Self` helper
-- All errors use the shared `ErrorResponse { name, message }` from `api/error.rs`, built with
+- All errors use the shared `puerto_web::ErrorResponse { name, message }` (ADR-0017), built with
   `ErrorResponse::from_code(err.to_string())`: **`name` is the machine-readable code**
   (`product.not_found`) — ADR-0007
 - Status mapping: domain validation and invalid value objects → **422**; not found → 404;
   duplicate → 409; repository / unknown → 500. `400` is left to poem for malformed bodies
 - Error mappers are exhaustive (no `_` arm) and generated with **one unit test per arm**
 - `/health` is liveness only; `/health/ready` probes the dependencies (`infrastructure::db::ping`
-  in `--db` projects) and answers 503 when one is down. SIGTERM drains in-flight requests for
-  `SHUTDOWN_DEADLINE` (ADR-0008)
-- DI wiring lives in `generated/bootstrap.rs` — never in `main.rs`
+  in `--db` projects, handed to `puerto_web::health::probe`) and answers 503 when one is down.
+  SIGTERM drains in-flight requests for `SHUTDOWN_DEADLINE` (ADR-0008) — all served by `puerto-web`
+- `Config::from_env()` (`puerto-web`) reads `SERVICE_PORT`, `CORS_ALLOWED_ORIGINS`, `PUERTO_BANNER`
+  after `.env`; a set but invalid value is a startup error
+- DI wiring lives in `generated/bootstrap.rs` — never in `main.rs`; it ends with
+  `crate::app::configure(puerto_web::routes(openapi_service(…), &config, ready))`. `app.rs` is the
+  user's: no generator writes it
 - `{Entity}Api` holds **ports**: `Arc<dyn {Uc}UseCaseTrait>`. Only `bootstrap.rs` (the
   composition root) names `business::application::*`; its `Arc<{Uc}UseCaseImpl>` coerces at the
   struct literal

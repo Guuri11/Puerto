@@ -1,97 +1,14 @@
 mod api;
+mod app;
 mod generated;
-mod health;
 
-use std::time::Duration;
-
-use poem::{Server, listener::TcpListener};
-
-/// How long in-flight requests get to finish once a shutdown signal arrives. Keep it below the
-/// orchestrator's kill timeout (`docker stop` waits 10s by default) so requests drain instead of
-/// being cut.
-const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(8);
-
-const BANNER: &str = r#"
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    ***********   ++++++++++++   =============
-    %#*******##%%%#**********#%%%%++++++++++*%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      ****###########%%%%%%%%%%%%%%%%%%%%%%%
-  *****************************        ****
-  ***********     ***********************
-   *                     ***************
-                                *****
-
-    H  A  R  B  O  R"#;
-
+/// The configuration (environment and `.env`) and the server — tracing, health probes, CORS,
+/// graceful shutdown — come from the Puerto runtime, `puerto-web`. The routes and the wiring are
+/// in `generated/bootstrap.rs`; your own middleware and routes go in `app.rs`.
 #[tokio::main]
-async fn main() -> Result<(), std::io::Error> {
-    dotenvy::dotenv().ok();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
-    if std::env::var("HARBOR_BANNER").as_deref() != Ok("false") {
-        println!("{}", BANNER);
-        println!("    v{}\n", env!("CARGO_PKG_VERSION"));
-    }
-
-    let port = std::env::var("SERVICE_PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(8080);
-
-    Server::new(TcpListener::bind(format!("0.0.0.0:{port}")))
-        .run_with_graceful_shutdown(
-            generated::bootstrap::build_app().await,
-            shutdown_signal(),
-            Some(SHUTDOWN_DEADLINE),
-        )
+async fn main() -> Result<(), puerto_web::Error> {
+    let config = puerto_web::Config::from_env()?;
+    puerto_web::App::new(config)
+        .serve(generated::bootstrap::build_app)
         .await
-}
-
-/// Resolves on Ctrl-C or SIGTERM — what `docker stop` and Kubernetes send. The listener then stops
-/// accepting and in-flight requests get `SHUTDOWN_DEADLINE` to finish.
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(mut signal) => {
-                signal.recv().await;
-            }
-            Err(_) => std::future::pending::<()>().await,
-        }
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
-    tracing::info!("shutdown signal received, draining in-flight requests");
 }

@@ -1612,7 +1612,7 @@ Next is pressed, `Pagination` disables Previous on the first page and Next on th
 
 ## Phase 12 — Runtime crates (ADR-0017)
 
-**Status:** 12.0 done; 12.1 next. Decision: [ADR-0017](docs/adr/0017-runtime-crates-next-to-the-generator.md).
+**Status:** 12.0 and 12.1 done; 12.2 next. Decision: [ADR-0017](docs/adr/0017-runtime-crates-next-to-the-generator.md).
 Every piece is a **move**: code that is identical in every generated project leaves the template
 and becomes a crate in Puerto's workspace. No new behaviour, no error code or HTTP status changes
 (ADR-0007, 0008, 0015, 0016 hold) — the generated projects' tests prove it, unchanged in intent.
@@ -1675,7 +1675,30 @@ render function); `validate` warns on a minor mismatch and is silent on a patch 
 `puerto-core` unit tests (clamping, codes) pass in Puerto's workspace; `make test/mutation`
 covers `crates/core`. Snapshots re-recorded — the `.snap` diff is deletions plus import changes.
 
-### 12.1 — `puerto-web`
+### 12.1 — `puerto-web` ✅
+
+As built, where it departs from the spec below:
+
+- **`IntoErrorResponse` stays in the project** (`presentation/src/api/error.rs`, the trait alone);
+  only `ErrorResponse` moved. Each `error_mapper.rs` implements the trait for an error of
+  `business`: with the trait in `puerto-web` both would be foreign to `presentation`, which the
+  orphan rule (E0117) forbids. `api.rs` keeps `pub mod error;`.
+- **Health is two functions, not a `HealthApi`**: `puerto_web::health::{probe, always_ready}` build
+  the `ReadinessProbe`, `health::mount(route, probe)` adds `/health` + `/health/ready` (still plain
+  poem routes outside the OpenAPI spec, as before). `puerto_web::routes(api, &config, probe)` puts
+  them next to `/api` and the Swagger UI.
+- **`App::serve(build)` adds tracing and CORS around what `build` returns**, so `bootstrap.rs`
+  names neither: `build_app(config: Config) -> impl Endpoint` ends with
+  `crate::app::configure(puerto_web::routes(openapi_service(…), &config, ready))`.
+- **`app::configure(routes: Route) -> impl Endpoint`**, not `-> Route`: a `Route` cannot carry
+  middleware (`.with` returns another type). An adapter swap is not possible there — the
+  repositories are built before it — so the hook is documented for middleware and routes only.
+- `puerto-web` does not depend on `puerto-core` yet: nothing in it uses it.
+- `Config` is built by `from_env`, `from_vars(lookup)` (tests) or `Config::default().with_*`.
+  `PUERTO_BANNER` accepts `true`/`false`/`1`/`0`; an empty value counts as unset. The banner says
+  `PUERTO` and the runtime's version. `puerto_web::Error`'s `Debug` is its message, so `main`
+  returning it prints `SERVICE_PORT="abc" is not valid: …`.
+- `presentation/Cargo.toml` drops `tracing-subscriber`, `dotenvy` and tokio's `signal` feature.
 
 - `crates/web` (`puerto-web`), depends on `puerto-core`, `poem`, `poem-openapi`, `tokio`,
   `tracing`, `tracing-subscriber`, `dotenvy`. Moved, with tests:

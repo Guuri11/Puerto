@@ -15,6 +15,8 @@ crates/
                       `Page<T>`. Generated projects depend on it at the CLI's minor; same workspace
                       version as `cli/`. The compile matrix builds against this checkout
                       (`[patch.crates-io]`, added by the test harness only)
+  web/              — `puerto-web`, the presentation runtime: `App` (tracing, CORS, graceful
+                      shutdown), `Config::from_env`, the health probes, `ErrorResponse`
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
@@ -40,8 +42,8 @@ crates/
       infrastructure/     — Adapters crate
       presentation/       — REST API crate
         src/
-          main.rs.liquid        — Entry point: tracing subscriber, server, graceful shutdown
-          health.rs             — /health (liveness) + /health/ready (readiness) — ADR-0008
+          main.rs.liquid        — Entry point: `puerto_web::Config::from_env()` + `App::new(config).serve(…)`
+          app.rs                — The project's hook: `configure(routes)`, written once, never regenerated
           generated.rs          — pub mod bootstrap; (static, never changes)
           generated/
             bootstrap.rs        — AUTO-GENERATED, full DI wiring (the template copy is tested to
@@ -218,7 +220,9 @@ make format/fix    # cargo fmt --all
 
 - Runtime crates instead of copies (ADR-0017): `puerto-core = "<cli minor>"` in the root
   `[workspace.dependencies]`, `{ workspace = true }` in each member; the domain imports
-  `puerto_core::{RepositoryError, Page, PageRequest}`
+  `puerto_core::{RepositoryError, Page, PageRequest}`. `presentation` also depends on `puerto-web`:
+  `main.rs` is `Config::from_env()` + `App::new(config).serve(build_app)`, `bootstrap.rs` hands its
+  API and readiness check to `puerto_web::routes`, then to the user's `app::configure`
 - Logging through `tracing` directly — no logger port (ADR-0006)
 - Errors: `ErrorResponse { name, message }` with the code in `name`; validation → 422; one test per
   mapper arm (ADR-0007)
