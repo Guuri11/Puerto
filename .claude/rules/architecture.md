@@ -316,7 +316,7 @@ infrastructure/src/<entity>/
   entity.rs        # <Entity>Db struct (#[derive(FromRow)]) + TryFrom + From conversions
   repository.rs    # Pg<Entity>Repository { pool: PgPool } — implements domain repository trait
 infrastructure/src/
-  db.rs            # create_postgres_pool() — created once by puerto new --db
+  db.rs            # pub use puerto_sqlx::* + the project's MIGRATOR — created once by puerto new --db
 infrastructure/migrations/
   <ts>_<name>.sql  # created by puerto generate migration <name>
 ```
@@ -326,7 +326,9 @@ infrastructure/migrations/
 - `from_repository()` is the **only** entry point from persistence to domain — never call `Entity::new()` inside a repository
 - `TryFrom<EntityDb> for Entity` handles row → domain conversion (can fail)
 - `From<&Entity> for EntityDb` handles domain → row conversion (infallible)
-- `db.rs` is shared across all entities — never duplicated per entity
+- `db.rs` is shared across all entities — never duplicated per entity. The pool, `run_migrations`,
+  `ping` and `map_sqlx_error` are `puerto-sqlx`'s (ADR-0017), re-exported there; the project keeps
+  only `MIGRATOR` (`sqlx::migrate!` embeds the project's own `migrations/` at compile time)
 - `entity.rs` and `db.rs` are only present when `db = true` in puerto.toml
 - A `HashMap<String, String>` field is a `JSONB` column: the row field is
   `sqlx::types::Json<HashMap<String, String>>`, the `SELECT` overrides the column type

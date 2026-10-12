@@ -1,58 +1,6 @@
-use puerto_core::RepositoryError;
-use sqlx::{PgPool, postgres::PgPoolOptions};
-use std::time::Duration;
-use thiserror::Error;
+//! The database adapter — pool, migrations at startup, readiness ping, driver-error mapping — is
+//! `puerto-sqlx`'s (ADR-0017 of Puerto). Only the migrations are this project's.
+pub use puerto_sqlx::*;
 
-#[derive(Debug, Error)]
-pub enum DatabaseError {
-    #[error("database.connection_error")]
-    ConnectionError,
-    #[error("database.migration_error")]
-    MigrationError,
-}
-
-pub async fn create_postgres_pool(database_url: &str) -> Result<PgPool, DatabaseError> {
-    PgPoolOptions::new()
-        .max_connections(5)
-        .acquire_timeout(Duration::from_secs(30))
-        .connect(database_url)
-        .await
-        .map_err(|_| DatabaseError::ConnectionError)
-}
-
-pub async fn run_migrations(pool: &PgPool) -> Result<(), DatabaseError> {
-    sqlx::migrate!("./migrations")
-        .run(pool)
-        .await
-        .map_err(|_| DatabaseError::MigrationError)
-}
-
-/// Whether the database answers a trivial query — what `/health/ready` reports.
-///
-/// Bounded by the pool's acquire timeout, so a database that is down makes the probe slow to
-/// answer rather than hang forever.
-pub async fn ping(pool: &PgPool) -> bool {
-    sqlx::query("SELECT 1").execute(pool).await.is_ok()
-}
-
-/// The one place that knows Postgres error codes: a driver error, as the repository port speaks it.
-/// The caller logs it first, with its own context.
-pub fn map_sqlx_error(err: &sqlx::Error) -> RepositoryError {
-    // 23505 = unique_violation: a `unique` column already taken.
-    if let Some(db_err) = err.as_database_error()
-        && db_err.code().is_some_and(|c| c == "23505")
-    {
-        return RepositoryError::Duplicate;
-    }
-    RepositoryError::Unavailable
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_map_a_non_database_error_to_unavailable() {
-        assert_eq!(map_sqlx_error(&sqlx::Error::PoolTimedOut), RepositoryError::Unavailable);
-    }
-}
+/// `infrastructure/migrations/`, embedded at compile time and applied at startup by `bootstrap.rs`.
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");

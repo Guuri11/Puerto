@@ -17,6 +17,8 @@ crates/
                       (`[patch.crates-io]`, added by the test harness only)
   web/              — `puerto-web`, the presentation runtime: `App` (tracing, CORS, graceful
                       shutdown), `Config::from_env`, the health probes, `ErrorResponse`
+  sqlx/             — `puerto-sqlx`, the Postgres runtime (`--db` projects): the pool,
+                      `run_migrations(pool, &MIGRATOR)`, `ping`, `map_sqlx_error`
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
@@ -222,7 +224,9 @@ make format/fix    # cargo fmt --all
   `[workspace.dependencies]`, `{ workspace = true }` in each member; the domain imports
   `puerto_core::{RepositoryError, Page, PageRequest}`. `presentation` also depends on `puerto-web`:
   `main.rs` is `Config::from_env()` + `App::new(config).serve(build_app)`, `bootstrap.rs` hands its
-  API and readiness check to `puerto_web::routes`, then to the user's `app::configure`
+  API and readiness check to `puerto_web::routes`, then to the user's `app::configure`. A `--db`
+  project's `infrastructure` depends on `puerto-sqlx`: `db.rs` is `pub use puerto_sqlx::*;` plus
+  the project's `MIGRATOR`
 - Logging through `tracing` directly — no logger port (ADR-0006)
 - Errors: `ErrorResponse { name, message }` with the code in `name`; validation → 422; one test per
   mapper arm (ADR-0007)

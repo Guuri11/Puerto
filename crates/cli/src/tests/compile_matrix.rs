@@ -409,15 +409,19 @@ pub(super) fn assert_generated_project_is_clean(
 /// only — `puerto new` never writes it, so it is not in the snapshots either.
 pub(super) fn patch_runtime_crates(output: &Path) {
     let crates = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let manifest = output.join("Cargo.toml");
+    let mut src = fs::read_to_string(&manifest).unwrap();
     let mut patch = String::from("\n[patch.crates-io]\n");
-    // `puerto-core` lives in `crates/core`, `puerto-web` will in `crates/web`, …
+    // `puerto-core` lives in `crates/core`, `puerto-web` in `crates/web`, … Only the crates the
+    // project names: an unused patch is a cargo warning in every build.
     for name in crate::runtime::RUNTIME_CRATES {
+        if !src.contains(&format!("{name} = ")) {
+            continue;
+        }
         let dir = name.trim_start_matches("puerto-");
         let path = crates.join(dir).canonicalize().unwrap();
         patch.push_str(&format!("{name} = {{ path = {path:?} }}\n"));
     }
-    let manifest = output.join("Cargo.toml");
-    let mut src = fs::read_to_string(&manifest).unwrap();
     if !src.contains("[patch.crates-io]") {
         src.push_str(&patch);
         fs::write(&manifest, src).unwrap();

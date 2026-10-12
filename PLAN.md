@@ -48,8 +48,8 @@ Puerto is a Rust full-stack framework built around DDD + Clean Architecture (Hex
 `puerto generate scaffold <Name>` creates all DDD files, patches `lib.rs` files, updates `puerto.toml`, and regenerates `bootstrap.rs` — zero manual wiring.
 
 Since Phase 12 the code identical in every project lives in runtime crates instead of the template
-(ADR-0017): `puerto-core` (repository error, paged lists) and `puerto-web` (server, config, health,
-error body); `puerto-sqlx` is next.
+(ADR-0017): `puerto-core` (repository error, paged lists), `puerto-web` (server, config, health,
+error body) and, in `--db` projects, `puerto-sqlx` (pool, migrations, ping, driver-error mapping).
 
 Since Phase 9 a project also gets `web/` — a React + daisyUI frontend on Bun (`--no-web` skips it)
 — and, once `cargo test` runs, `docs/api/openapi.json`, the API contract the frontend is typed from
@@ -1617,7 +1617,7 @@ Next is pressed, `Pagination` disables Previous on the first page and Next on th
 
 ## Phase 12 — Runtime crates (ADR-0017)
 
-**Status:** 12.0 and 12.1 done; 12.2 next. Decision: [ADR-0017](docs/adr/0017-runtime-crates-next-to-the-generator.md).
+**Status:** done — 12.0, 12.1 and 12.2. Decision: [ADR-0017](docs/adr/0017-runtime-crates-next-to-the-generator.md).
 Every piece is a **move**: code that is identical in every generated project leaves the template
 and becomes a crate in Puerto's workspace. No new behaviour, no error code or HTTP status changes
 (ADR-0007, 0008, 0015, 0016 hold) — the generated projects' tests prove it, unchanged in intent.
@@ -1736,7 +1736,24 @@ still assert the same statuses and `name` codes; in `crates/web`: `/health` 200,
 503 when the probe is false, `Config::from_env` rejects a non-numeric port, CORS answers a
 preflight from an allowed origin and not from another. Snapshots re-recorded.
 
-### 12.2 — `puerto-sqlx`
+### 12.2 — `puerto-sqlx` ✅
+
+As built, where it departs from the spec below:
+
+- `bootstrap.tera` changes too: `run_migrations` takes the migrator, so the generated call is
+  `infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)`. The repository
+  templates are untouched (`crate::db::map_sqlx_error` resolves through the re-export).
+- `puerto-sqlx` is a `--db` dependency only: `new --db` adds `puerto-sqlx = "<cli minor>"` to the
+  root `[workspace.dependencies]` and `{ workspace = true }` to `infrastructure` (which keeps
+  `sqlx` for its queries and `migrate!`). A project without a database never names it.
+- The matrix's `[patch.crates-io]` lists only the runtime crates the project's manifest names — an
+  unused patch is a cargo warning in every build.
+- `DatabaseError` becomes `#[non_exhaustive]`; `map_sqlx_error` drops the let-chain (the
+  published crate's `rust-version` is 1.85). Puerto's root manifest gains
+  `[workspace.dependencies] puerto-core = { version, path }`, bumped with the workspace version.
+- Tests in `crates/sqlx`: the non-database mapping, the error codes, `ping` false on an unreachable
+  server, an invalid URL refused; under `make test/db` a real `23505` → `Duplicate` and `ping` true.
+  `/health/ready` 503 itself is `puerto-web`'s test (a false probe).
 
 - `crates/sqlx` (`puerto-sqlx`), depends on `puerto-core`, `sqlx` (postgres, runtime-tokio).
   Moved from `templates/infrastructure/db.tera`, with tests: `create_postgres_pool`, `ping`,

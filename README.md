@@ -170,7 +170,8 @@ puerto/
     │   ├── src/            # CLI source
     │   └── template/       # The "basic" project template (edit directly here)
     ├── core/               # puerto-core — runtime: RepositoryError, PageRequest / Page<T>
-    └── web/                # puerto-web — runtime: server, Config, health probes, ErrorResponse
+    ├── web/                # puerto-web — runtime: server, Config, health probes, ErrorResponse
+    └── sqlx/               # puerto-sqlx — runtime: Postgres pool, migrations, ping, map_sqlx_error
 ```
 
 What every generated project shares is not copied into it: it depends on the runtime crates, on the

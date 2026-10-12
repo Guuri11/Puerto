@@ -228,7 +228,8 @@ fn readiness_pings_the_database_in_a_db_project() {
         bootstrap.contains("infrastructure::db::ping(&pool)"),
         "{bootstrap}"
     );
-    assert!(db_rs.contains("pub async fn ping("), "{db_rs}");
+    // `ping` is `puerto-sqlx`'s, re-exported by the project's `db` module.
+    assert!(db_rs.contains("pub use puerto_sqlx::*;"), "{db_rs}");
     cleanup(&dir);
 }
 
@@ -310,6 +311,7 @@ fn generated_project_has_a_root_entry_point_for_agents() {
         // ADR-0017: an agent must know which code is the project's and which is the runtime's.
         "puerto-core",
         "puerto-web",
+        "puerto-sqlx",
     ] {
         assert!(agents.contains(must), "root AGENTS.md misses '{must}'");
     }

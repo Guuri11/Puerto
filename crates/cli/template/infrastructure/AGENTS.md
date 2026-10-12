@@ -9,7 +9,7 @@ logic lives here.
 infrastructure/
 ├── src/
 │   ├── lib.rs               # Module tree, inline (`pub mod <entity> { pub mod repository; }`) — no `mod.rs`
-│   ├── db.rs                # Postgres pool, migrations, `ping` for readiness (--db projects)
+│   ├── db.rs                # `MIGRATOR` + `pub use puerto_sqlx::*` (pool, `ping`, `map_sqlx_error`) — --db projects
 │   └── <entity>/
 │       ├── repository.rs    # Implements the domain repository trait
 │       └── entity.rs        # `<Entity>Db` row + conversions (--db projects)
@@ -24,7 +24,7 @@ infrastructure/
 - Repositories depend on `business` only. Never import from `presentation`.
 - Logging with `tracing::debug!` / `error!` directly. Repositories return `RepositoryError`
   (`puerto_core::RepositoryError`): log the driver error with context, then convert
-  it with `db::map_sqlx_error` (`23505` unique violation → `Duplicate`, the rest → `Unavailable`);
+  it with `db::map_sqlx_error` (`puerto-sqlx`'s: `23505` unique violation → `Duplicate`, the rest → `Unavailable`);
   a row the domain rejects is `InvalidData`. Never leak a driver error upward.
 
 ## In-memory (default without `--db`)

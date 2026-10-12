@@ -1,7 +1,7 @@
 # 0017 — Runtime crates next to the generator
 
-**Status:** Accepted (2026-10-12). Spec: `PLAN.md` § Phase 12. Rollout: steps 1 (`puerto-core`) and 2
-(`puerto-web`) done; step 3 (`puerto-sqlx`) pending.
+**Status:** Accepted (2026-10-12). Spec: `PLAN.md` § Phase 12. Rollout: done — `puerto-core`,
+`puerto-web` and `puerto-sqlx`.
 
 ## Context
 

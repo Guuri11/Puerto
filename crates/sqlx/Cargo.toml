@@ -1,0 +1,19 @@
+[package]
+name = "puerto-sqlx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Puerto runtime — the Postgres adapter every Puerto project with a database shares: the pool, migrations at startup, the readiness ping and the driver-error mapping."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["ddd", "clean-architecture", "puerto", "sqlx", "postgres"]
+categories = ["database"]
+
+[dependencies]
+puerto-core = { workspace = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate"] }
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

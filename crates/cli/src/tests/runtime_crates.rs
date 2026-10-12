@@ -177,20 +177,6 @@ fn non_crud_scaffold_imports_the_repository_error_from_puerto_core() {
 }
 
 #[test]
-fn db_module_takes_the_repository_error_from_puerto_core() {
-    let dir = temp_dir("runtime_db_rs");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let output = new_project_non_interactive(Some("runtime-db".into()), true, &dir).unwrap();
-
-    let db = read(&output, "infrastructure/src/db.rs");
-    assert!(db.contains("use puerto_core::RepositoryError;"));
-    assert!(!db.contains("domain::shared"));
-
-    cleanup(&dir);
-}
-
-#[test]
 fn snippets_import_the_runtime_types_from_puerto_core() {
     let snippets = format!(
         "{}{}",
@@ -455,6 +441,107 @@ fn snippets_take_the_error_body_from_puerto_web() {
 fn every_runtime_crate_is_patched_in_the_compile_matrix() {
     assert_eq!(
         crate::runtime::RUNTIME_CRATES,
-        ["puerto-core", "puerto-web"]
+        ["puerto-core", "puerto-web", "puerto-sqlx"]
     );
+}
+
+// ── Phase 12.2: `puerto-sqlx` ─────────────────────────────────────────────
+
+fn new_db_project(name: &str) -> (PathBuf, PathBuf) {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some(name.into()), true, &dir).unwrap();
+    (dir, output)
+}
+
+#[test]
+fn db_project_depends_on_puerto_sqlx_from_infrastructure_only() {
+    let (dir, output) = new_db_project("runtime-sqlx-deps");
+
+    let root = read(&output, "Cargo.toml");
+    assert!(
+        root.contains(&format!("puerto-sqlx = \"{}\"", cli_minor())),
+        "{root}"
+    );
+    let infrastructure = read(&output, "infrastructure/Cargo.toml");
+    assert!(
+        infrastructure.contains("puerto-sqlx = { workspace = true }"),
+        "{infrastructure}"
+    );
+    for member in ["business", "presentation"] {
+        assert!(!read(&output, &format!("{member}/Cargo.toml")).contains("puerto-sqlx"));
+    }
+
+    cleanup(&dir);
+}
+
+#[test]
+fn project_without_db_does_not_depend_on_puerto_sqlx() {
+    let (dir, output) = new_project("runtime-sqlx-no-db");
+
+    for path in [
+        "Cargo.toml",
+        "business/Cargo.toml",
+        "infrastructure/Cargo.toml",
+        "presentation/Cargo.toml",
+    ] {
+        assert!(!read(&output, path).contains("puerto-sqlx"), "{path}");
+    }
+
+    cleanup(&dir);
+}
+
+#[test]
+fn db_module_keeps_only_the_project_migrations_and_re_exports_puerto_sqlx() {
+    let (dir, output) = new_db_project("runtime-sqlx-db-rs");
+
+    let db = read(&output, "infrastructure/src/db.rs");
+    assert!(db.contains("pub use puerto_sqlx::*;"), "{db}");
+    assert!(
+        db.contains(
+            "pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!(\"./migrations\");"
+        ),
+        "{db}"
+    );
+    // The pool, the probe and the error mapping are the runtime's — no code of their own here.
+    for gone in ["fn ", "23505", "PgPoolOptions", "DatabaseError"] {
+        assert!(!db.contains(gone), "{gone}: {db}");
+    }
+
+    cleanup(&dir);
+}
+
+#[test]
+fn db_bootstrap_runs_the_project_migrations_through_puerto_sqlx() {
+    let (dir, output) = new_db_project("runtime-sqlx-bootstrap");
+    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+
+    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    assert!(
+        bootstrap
+            .contains("infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)"),
+        "{bootstrap}"
+    );
+    assert!(
+        bootstrap.contains("infrastructure::db::create_postgres_pool(&database_url)"),
+        "{bootstrap}"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn compile_matrix_patches_only_the_runtime_crates_a_project_names() {
+    let (dir, output) = new_project("runtime-sqlx-patch");
+    super::compile_matrix::patch_runtime_crates(&output);
+
+    let root = read(&output, "Cargo.toml");
+    let patch = &root[root.find("[patch.crates-io]").unwrap()..];
+    assert!(patch.contains("puerto-core = { path"), "{patch}");
+    assert!(patch.contains("puerto-web = { path"), "{patch}");
+    // An unused `[patch]` entry is a cargo warning in every build of a project without a database.
+    assert!(!patch.contains("puerto-sqlx"), "{patch}");
+
+    cleanup(&dir);
 }

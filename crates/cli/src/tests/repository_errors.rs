@@ -113,22 +113,6 @@ fn postgres_repositories_map_driver_errors_in_one_place() {
 }
 
 #[test]
-fn db_module_maps_unique_violations_to_duplicate() {
-    let dir = temp_dir("repo_error_db_rs");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let output = new_project_non_interactive(Some("repo-error-db".into()), true, &dir).unwrap();
-
-    let db = read(&output, "infrastructure/src/db.rs");
-    assert!(db.contains("pub fn map_sqlx_error(err: &sqlx::Error) -> RepositoryError"));
-    assert!(db.contains("\"23505\""));
-    assert!(db.contains("RepositoryError::Duplicate"));
-    assert!(db.contains("fn should_map_a_non_database_error_to_unavailable()"));
-
-    cleanup(&dir);
-}
-
-#[test]
 fn postgres_test_rejects_a_duplicate_when_a_field_is_unique() {
     let mut sku = scaffold_test_field("sku", "String");
     sku.unique = true;

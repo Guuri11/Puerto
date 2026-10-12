@@ -15,6 +15,7 @@ examine_globs = [
     # Runtime crates: their code ships in every generated project.
     "crates/core/src/*.rs",
     "crates/web/src/*.rs",
+    "crates/sqlx/src/*.rs",
 ]
 # The process boundary of `puerto-web`: binding a port, waiting for SIGTERM, reading the real
 # environment. A mutant there only shows when a server runs — no unit test can catch it without
@@ -23,6 +24,10 @@ exclude_re = [
     "App::serve",
     "shutdown_signal",
     "Config::from_env",
+    # `puerto-sqlx` against a live server: a mutant of these shows only with Postgres running —
+    # `make test/db` runs that (`postgres_*` in crates/sqlx). `map_sqlx_error` is examined.
+    "replace ping ",
+    "run_migrations",
 ]
 # The compile matrix is `#[ignore]`d; a mutant run uses the fast structural suite only.
 test_tool = "nextest"

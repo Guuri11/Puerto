@@ -143,10 +143,46 @@ fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>>
     if !src.ends_with('\n') {
         src.push('\n');
     }
+    // The adapter is the runtime's (ADR-0017); `sqlx` stays for the repositories' queries and the
+    // project's `migrate!`.
+    src = src.replace(
+        "puerto-core = { workspace = true }\n",
+        "puerto-core = { workspace = true }\npuerto-sqlx = { workspace = true }\n",
+    );
     src.push_str(
         "\n[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\", \"json\"]\n",
     );
     fs::write(&path, src)?;
+    add_workspace_dependency(base, "puerto-sqlx")
+}
+
+/// Adds runtime crate `name` to the root `[workspace.dependencies]`, next to the ones the template
+/// declares and on the same minor as this CLI.
+fn add_workspace_dependency(base: &Path, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("Cargo.toml");
+    let src = fs::read_to_string(&path)?;
+    if src.contains(&format!("{name} = ")) {
+        return Ok(());
+    }
+    let header = "[workspace.dependencies]\n";
+    let Some(at) = src.find(header) else {
+        return Err(format!("{}: no [workspace.dependencies] table", path.display()).into());
+    };
+    let line = format!(
+        "{name} = \"{}\"",
+        crate::runtime::requirement(env!("CARGO_PKG_VERSION"))
+    );
+    // After the table's last entry: before the next table (and the blank line ahead of it), or at
+    // the end of the file.
+    let body = at + header.len();
+    let table_end = src[body..].find("\n[").map_or(src.len(), |i| body + i + 1);
+    let end = body + src[body..table_end].trim_end().len();
+    let out = if end > body {
+        format!("{}\n{line}{}", &src[..end], &src[end..])
+    } else {
+        format!("{}{line}\n{}", &src[..body], &src[body..])
+    };
+    fs::write(&path, out)?;
     Ok(())
 }
 

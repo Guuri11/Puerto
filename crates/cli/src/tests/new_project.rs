@@ -352,14 +352,14 @@ fn db_project_has_migrations_dir() {
 }
 
 #[test]
-fn db_project_has_db_rs_with_pool_function() {
+fn db_project_has_db_rs_with_the_project_migrator() {
     let dir = temp_dir("db_db_rs");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_db_project("db-app", &dir).unwrap();
     let content = fs::read_to_string(output.join("infrastructure/src/db.rs")).unwrap();
-    assert!(content.contains("create_postgres_pool"));
-    assert!(content.contains("PgPool"));
+    assert!(content.contains("MIGRATOR"));
+    assert!(content.contains("puerto_sqlx"));
     cleanup(&dir);
 }
 
