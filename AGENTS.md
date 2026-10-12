@@ -23,7 +23,9 @@ crates/
                       `run_migrations(pool, &MIGRATOR)`, `ping`, `map_sqlx_error`; for events projects
                       `uow::PgTransaction`, `events::{PgOutbox, PgDeliveries, PgSubscription,
                       PgDeadLetters}` and `migrations/outbox.sql` (the CLI's
-                      `templates/infrastructure/outbox.sql` must match it byte for byte — tested)
+                      `templates/infrastructure/outbox.sql` must match it byte for byte — tested);
+                      for mail (ADR-0020) `mail::PgSentMails` and `migrations/sent_mails.sql` (same
+                      byte-for-byte rule with `templates/infrastructure/sent_mails.sql`)
   events/           — `puerto-events`, the worker runtime (`--events` projects, ADR-0018): `Relay`
                       (outbox → `EventPublisher`), `Consumer` (subscription → `EventHandler`, `decide`,
                       dead letter before retiring), `Worker` + `Loops` (health on `WORKER_PORT`,

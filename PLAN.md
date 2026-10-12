@@ -2279,7 +2279,12 @@ sent again; the mark lands only after a successful send; `render` rejects an unk
 a multi-line subject is trimmed; `MailConfig` rejects a missing `SMTP_URL`. One `#[ignore]` test
 sends through `SmtpMailer` to a Mailpit (`make test/mail`).
 
-### 14.2 — `puerto-sqlx`: `PgSentMails`
+### 14.2 — `puerto-sqlx`: `PgSentMails` ✅
+
+Done as specified: `puerto_sqlx::{mail::PgSentMails, SENT_MAILS_MIGRATION}`, errors through
+`map_sqlx_error` after logging. `crates/sqlx/tests/mail_postgres.rs` (`postgres_*`, `make test/db`)
+also checks a missing table answers `Unavailable`.
+
 
 `puerto_sqlx::mail::PgSentMails` and `migrations/sent_mails.sql` (`event_id UUID NOT NULL, mail
 TEXT NOT NULL, sent_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (event_id, mail)`;

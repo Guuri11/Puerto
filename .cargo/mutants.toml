@@ -46,6 +46,8 @@ exclude_re = [
     "replace envelope_from_pg ",
     "for PgOutbox>::",
     "for PgDeadLetters>::",
+    # The sent-mail log: `crates/sqlx/tests/mail_postgres.rs` under `make test/db`.
+    "for PgSentMails>::",
     "for PgDeliveries>::publish",
     "for PgSubscription>::(next_batch|settle)",
     # `puerto-kafka` against a live broker: `make test/kafka` (`kafka_*` in crates/kafka). The

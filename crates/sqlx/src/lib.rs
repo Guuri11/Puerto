@@ -17,8 +17,12 @@
 //! A project with domain events (ADR-0018) also uses [`uow::PgTransaction`] in its generated units
 //! of work, and its worker the outbox, the `db` transport and the dead-letter sink in [`events`].
 //! Their tables are [`OUTBOX_MIGRATION`], which `puerto new --events` writes into the project.
+//!
+//! A worker that sends mail (ADR-0020) keeps what it sent in [`mail::PgSentMails`], over
+//! [`SENT_MAILS_MIGRATION`].
 
 pub mod events;
+pub mod mail;
 pub mod uow;
 
 use puerto_core::RepositoryError;
@@ -30,6 +34,10 @@ use std::time::Duration;
 /// The outbox, delivery and dead-letter tables (`migrations/outbox.sql`). Puerto's CLI ships a
 /// byte-for-byte copy of it as a project migration.
 pub const OUTBOX_MIGRATION: &str = include_str!("../migrations/outbox.sql");
+
+/// The sent-mail log (`migrations/sent_mails.sql`). Puerto's CLI ships a byte-for-byte copy of it
+/// as a project migration.
+pub const SENT_MAILS_MIGRATION: &str = include_str!("../migrations/sent_mails.sql");
 
 /// Why the database could not be used at startup — read by the person starting the process, so
 /// it says where and why, never the password.

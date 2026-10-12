@@ -566,3 +566,15 @@ fn outbox_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
     assert_eq!(template, runtime);
     assert!(runtime_lib.contains(r#"include_str!("../migrations/outbox.sql")"#));
 }
+
+// Phase 14.2 (ADR-0020): the sent-mail log the first `generate mail --on` writes is the table
+// `puerto-sqlx`'s own tests run against (`SENT_MAILS_MIGRATION` embeds that file).
+#[test]
+fn sent_mails_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
+    let template = include_str!("../templates/infrastructure/sent_mails.sql");
+    let runtime = include_str!("../../../sqlx/migrations/sent_mails.sql");
+    let runtime_lib = include_str!("../../../sqlx/src/lib.rs");
+
+    assert_eq!(template, runtime);
+    assert!(runtime_lib.contains(r#"include_str!("../migrations/sent_mails.sql")"#));
+}
