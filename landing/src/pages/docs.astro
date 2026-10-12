@@ -27,6 +27,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <a href="#runtime" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Runtime crates</a>
           <a href="#production" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Production defaults</a>
           <a href="#ai-agents" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">AI agents</a>
+          <a href="#cli" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">CLI reference</a>
           <a href="#snippets" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">IDE Snippets</a>
         </nav>
       </aside>
@@ -44,7 +45,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <ul class="mt-2 space-y-1 font-sans text-sm text-puerto-mist">
             <li>Rust stable (1.85+) — <a href="https://rustup.rs" target="_blank" rel="noopener noreferrer" class="text-puerto-teal hover:underline">install via rustup</a></li>
             <li>Cargo (included with Rust)</li>
-            <li>Optional: PostgreSQL + SQLx CLI for database projects (migrations, query cache)</li>
+            <li>Optional: Docker + <a href="https://github.com/launchbadge/sqlx/tree/main/sqlx-cli" target="_blank" rel="noopener noreferrer" class="text-puerto-teal hover:underline">SQLx CLI</a> for database projects — <code class="font-mono text-xs text-puerto-teal">docker-compose.yml</code> runs Postgres, the CLI runs migrations and the query cache</li>
+            <li>Optional: <code class="font-mono text-xs text-puerto-teal">cmake</code> and the libcurl headers for <code class="font-mono text-xs text-puerto-teal">--events kafka</code> projects (librdkafka is built from source)</li>
             <li>Optional: <a href="https://bun.sh" target="_blank" rel="noopener noreferrer" class="text-puerto-teal hover:underline">Bun</a> for the web frontend (skip it with <code class="font-mono text-xs text-puerto-teal">--no-web</code>)</li>
             <li>Generated projects pin their toolchain (<code class="font-mono text-xs text-puerto-teal">rust-toolchain.toml</code>, Rust 1.95.0) — rustup installs it on the first build</li>
           </ul>
@@ -221,7 +223,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </button>
           </div>
           <p class="mt-3 font-sans text-sm text-puerto-mist">
-            Checks entity names (PascalCase), field names (snake_case), field types (against the type registry), duplicate entities and fields, and warns about <code class="font-mono text-xs text-puerto-ice">Option&lt;T&gt;</code> fields marked <code class="font-mono text-xs text-puerto-ice">unique</code>.
+            Checks entity names (PascalCase), field names (snake_case), field types (against the type registry), duplicate entities and fields, reserved names (Rust keywords, SQL reserved words in <code class="font-mono text-xs text-puerto-ice">--db</code> projects), and that every declared entity has its code on disk. In events projects it also checks custom events and consumers. It warns about <code class="font-mono text-xs text-puerto-ice">Option&lt;T&gt;</code> fields marked <code class="font-mono text-xs text-puerto-ice">unique</code> and about runtime crates on another minor than the CLI.
           </p>
         </section>
 
@@ -414,6 +416,20 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <p class="mt-4 font-sans text-sm text-puerto-mist">
             Puerto reads <code class="font-mono text-xs text-puerto-rust">puerto.toml</code> to decide: db projects get a <code class="font-mono text-xs text-puerto-mist">PgUserRepository</code> with a connection pool and auto-created migration; non-db projects get <code class="font-mono text-xs text-puerto-mist">InMemoryUserRepository</code>. No flag needed on every scaffold.
           </p>
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">After a scaffold:</p>
+          <p class="mt-2 font-sans text-sm text-puerto-mist">
+            Queries are checked at compile time against an offline cache (<code class="font-mono text-xs text-puerto-rust">.sqlx/</code>, commit it). A new entity's queries are not in it yet, so the build asks for it until you apply the migration and refresh the cache. Both targets start Postgres from <code class="font-mono text-xs text-puerto-rust">docker-compose.yml</code>:
+          </p>
+          <div class="mt-3 code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-indigo bg-puerto-navy px-5 py-4">
+            <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+            <code class="font-mono text-sm text-puerto-ice">make sqlx/migrate &amp;&amp; make sqlx/prepare</code>
+            <button class="copy-btn ml-auto cursor-pointer text-puerto-mist hover:text-puerto-ice" data-copy="make sqlx/migrate && make sqlx/prepare" aria-label="Copy">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </button>
+          </div>
+          <p class="mt-3 font-sans text-sm text-puerto-mist">
+            Migrations also run at startup, so <code class="font-mono text-xs text-puerto-ice">make run</code> only needs the database up. <code class="font-mono text-xs text-puerto-ice">make test/infrastructure</code> runs the repositories' <code class="font-mono text-xs text-puerto-rust">#[sqlx::test]</code>s, each against a throwaway database.
+          </p>
           <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
             <li>• Every scaffold writes its own migration; versions stay unique even when two entities are scaffolded within the same second.</li>
             <li>• Driver errors are mapped in one place, <code class="font-mono text-xs text-puerto-rust">map_sqlx_error</code> from the <a href="#runtime" class="text-puerto-teal hover:underline">puerto-sqlx</a> runtime crate: a unique violation (<code class="font-mono text-xs text-puerto-mist">23505</code>) becomes <code class="font-mono text-xs text-puerto-mist">409</code>, with an integration test per <code class="font-mono text-xs text-puerto-rust">unique</code> field.</li>
@@ -449,6 +465,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           </div>
           <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
             <li>• Each CRUD entity gets a generated <code class="font-mono text-xs text-puerto-rust">events.rs</code> (<code class="font-mono text-xs text-puerto-mist">ProductEvent::Created(ProductSnapshot)</code>, …) and a unit of work. Its repository only reads, so a write that skips the outbox does not compile.</li>
+            <li>• The CRUD use cases record created / updated / deleted for you. A custom event is recorded by your use case, in the same unit of work as the write: <code class="font-mono text-xs text-puerto-mist">uow.save(&amp;product)</code>, <code class="font-mono text-xs text-puerto-mist">uow.record(ProductEvent::Published(ProductSnapshot::from_entity(&amp;product)))</code>, <code class="font-mono text-xs text-puerto-mist">uow.commit()</code>. Return early with <code class="font-mono text-xs text-puerto-mist">?</code> and both roll back.</li>
             <li>• A consumer is an <code class="font-mono text-xs text-puerto-rust">EventHandler</code> that answers <code class="font-mono text-xs text-puerto-mist">Ack</code>, <code class="font-mono text-xs text-puerto-mist">Retry</code> (redelivered with a 1 s → 300 s backoff) or a dead letter. Nothing is dropped without a row in <code class="font-mono text-xs text-puerto-rust">dead_letters</code> (<code class="font-mono text-xs text-puerto-ice">make events/dead-letters</code>). Delivery is at-least-once: handlers are idempotent.</li>
             <li>• <code class="font-mono text-xs text-puerto-teal">--events db</code> needs no broker: deliveries are rows in Postgres. <code class="font-mono text-xs text-puerto-teal">--events kafka</code> publishes each event to its aggregate's topic, keyed by the aggregate id, so one aggregate's events are consumed in order; each consumer is a consumer group, and <code class="font-mono text-xs text-puerto-rust">docker-compose.yml</code> runs Redpanda for development. It builds librdkafka from source: install <code class="font-mono text-xs text-puerto-mist">cmake</code> and the libcurl headers (<code class="font-mono text-xs text-puerto-mist">libcurl4-openssl-dev</code> on Debian/Ubuntu).</li>
             <li>• The worker serves <code class="font-mono text-xs text-puerto-ice">/health</code> and <code class="font-mono text-xs text-puerto-ice">/health/ready</code> on <code class="font-mono text-xs text-puerto-mist">WORKER_PORT</code> (8081) and drains on SIGTERM, like the API.</li>
@@ -552,11 +569,55 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           </ul>
         </section>
 
+        <!-- CLI reference -->
+        <section id="cli" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">CLI reference</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
+            Every command runs from the project root and reads <code class="font-mono text-xs text-puerto-rust">puerto.toml</code>. Generators refuse to overwrite files you own unless told to, and a command that does not apply to the project (a migration without <code class="font-mono text-xs text-puerto-ice">--db</code>, a consumer without <code class="font-mono text-xs text-puerto-ice">--events</code>) says so instead of writing anything.
+          </p>
+          <div class="mt-6 overflow-x-auto">
+            <table class="w-full font-sans text-sm text-puerto-mist">
+              <thead>
+                <tr class="border-b border-puerto-steel/30 text-left text-xs text-puerto-mist/60">
+                  <th class="py-2 pr-6 font-normal">Command</th><th class="py-2 font-normal">What it does</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">puerto new</td><td class="py-2 text-xs">New workspace — <code class="text-puerto-ice">--name</code>, <code class="text-puerto-ice">--db</code> / <code class="text-puerto-ice">--no-db</code>, <code class="text-puerto-ice">--events db|kafka</code>, <code class="text-puerto-ice">--no-demo</code>, <code class="text-puerto-ice">--no-web</code>, <code class="text-puerto-ice">--destination</code></td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate scaffold &lt;Name&gt;</td><td class="py-2 text-xs">Every layer of an entity, its screens and its migration — fields after <code class="text-puerto-ice">--</code>, <code class="text-puerto-ice">--force</code> to overwrite</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate &lt;layer&gt; &lt;Name&gt;</td><td class="py-2 text-xs">One layer at a time: <code class="text-puerto-ice">domain</code>, <code class="text-puerto-ice">application</code>, <code class="text-puerto-ice">repository</code>, <code class="text-puerto-ice">presentation</code>, <code class="text-puerto-ice">web</code> (which takes <code class="text-puerto-ice">--force</code>)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate use-case &lt;Entity&gt; &lt;action&gt;</td><td class="py-2 text-xs">A use case trait, its implementation and its mock, wired into the entity's API</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate value-object &lt;Name&gt; &lt;type&gt;</td><td class="py-2 text-xs">A shared value object any entity can use by name</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate migration &lt;name&gt;</td><td class="py-2 text-xs">An empty SQLx migration (<code class="text-puerto-ice">--db</code>)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate event &lt;Entity&gt; &lt;name&gt;</td><td class="py-2 text-xs">A custom domain event; regenerates <code class="text-puerto-ice">events.rs</code> (<code class="text-puerto-ice">--events</code>)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate consumer &lt;name&gt; --on a,b</td><td class="py-2 text-xs">A worker consumer with its tests; regenerates the registry (<code class="text-puerto-ice">--events</code>)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate bootstrap</td><td class="py-2 text-xs">Rewrites <code class="text-puerto-ice">bootstrap.rs</code> and the web composition root; refuses while a declared entity has no code (<code class="text-puerto-ice">--allow-missing</code> writes it anyway)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate snippets</td><td class="py-2 text-xs">Rewrites the IDE snippet files — <code class="text-puerto-ice">--ide zed|vscode</code></td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">list</td><td class="py-2 text-xs">Entities, their adapter and their use cases</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">validate</td><td class="py-2 text-xs">Checks <code class="text-puerto-ice">puerto.toml</code> against the rules and the code on disk</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">completions &lt;shell&gt;</td><td class="py-2 text-xs">Shell completion script — <code class="text-puerto-ice">bash</code>, <code class="text-puerto-ice">zsh</code>, <code class="text-puerto-ice">fish</code>, …</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="mt-6 font-sans text-sm font-semibold text-puerto-ice">In the generated project</p>
+          <div class="mt-3 overflow-x-auto">
+            <table class="w-full font-sans text-sm text-puerto-mist">
+              <tbody>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make run · make worker</td><td class="py-2 text-xs">The API on <code class="text-puerto-teal">:8080</code> (Swagger UI at <code class="text-puerto-teal">/</code>, endpoints under <code class="text-puerto-teal">/api</code>) · the worker on <code class="text-puerto-teal">:8081</code></td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make test · make lint</td><td class="py-2 text-xs">Rust and, when <code class="text-puerto-teal">web/</code> exists, the frontend (<code class="text-puerto-teal">make web/install</code> first)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make web/dev · make web/sync</td><td class="py-2 text-xs">The frontend on <code class="text-puerto-teal">:5173</code> · the API types after a DTO change</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make sqlx/migrate · make sqlx/prepare</td><td class="py-2 text-xs">Apply migrations · refresh the offline query cache</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make events/dead-letters</td><td class="py-2 text-xs">The 20 most recent events no consumer could handle</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <!-- IDE Snippets -->
         <section id="snippets" class="mt-16 scroll-mt-28">
           <h2 class="font-mono text-2xl font-bold text-puerto-ice">IDE Snippets</h2>
           <p class="mt-3 font-sans text-puerto-mist">
-            Every <code class="font-mono text-xs text-puerto-teal">puerto new</code> project ships with 28 Puerto-adapted Rust snippets for Zed, VS Code, and nvim+LuaSnip. No configuration needed — files are written automatically and loaded by your editor from the project root.
+            Every <code class="font-mono text-xs text-puerto-teal">puerto new</code> project ships with 32 Rust and 7 SQL snippets adapted to Puerto's conventions, for Zed, VS Code, and nvim+LuaSnip. No configuration needed — files are written automatically and loaded by your editor from the project root.
           </p>
 
           <!-- IDE setup -->
@@ -564,13 +625,13 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             <div class="rounded-md border border-puerto-teal/20 bg-puerto-navy p-4">
               <p class="font-mono text-sm font-semibold text-puerto-teal">Zed</p>
               <p class="mt-1 font-sans text-sm text-puerto-mist">
-                Snippets are written to <code class="font-mono text-xs text-puerto-teal">.zed/snippets/rust.json</code>. Zed loads project-local snippets automatically — no further setup.
+                Snippets are written to <code class="font-mono text-xs text-puerto-teal">.zed/snippets/rust.json</code> and <code class="font-mono text-xs text-puerto-teal">sql.json</code>. Zed loads project-local snippets automatically — no further setup.
               </p>
             </div>
             <div class="rounded-md border border-puerto-steel/30 bg-puerto-navy p-4">
               <p class="font-mono text-sm font-semibold text-puerto-ice">VS Code</p>
               <p class="mt-1 font-sans text-sm text-puerto-mist">
-                Snippets are written to <code class="font-mono text-xs text-puerto-mist">.vscode/puerto.code-snippets</code>. VS Code picks up workspace snippet files automatically.
+                Snippets are written to <code class="font-mono text-xs text-puerto-mist">.vscode/puerto.code-snippets</code> and <code class="font-mono text-xs text-puerto-mist">puerto.sql.code-snippets</code>. VS Code picks up workspace snippet files automatically.
               </p>
             </div>
             <div class="rounded-md border border-puerto-steel/30 bg-puerto-navy p-4">

@@ -374,6 +374,28 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Full-Stack Scaffold</h3>
           <p class="font-sans text-sm text-puerto-mist leading-relaxed">Rails-style: <code class="text-puerto-teal text-xs">scaffold</code> also writes the entity's list, detail and form screens in React + daisyUI, typed from the API spec and tested with <code class="text-puerto-teal text-xs">bun test</code>.</p>
         </div>
+
+        <!-- Domain events -->
+        <div class="feature-card group rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card transition-colors hover:border-puerto-rust">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-puerto-rust/10">
+            <svg class="h-5 w-5 text-puerto-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Domain Events, No Lost Writes</h3>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">With <code class="text-puerto-rust text-xs">--events</code>, every write saves the entity and its event in one transaction — a transactional outbox. A write that skips it does not compile.</p>
+        </div>
+
+        <!-- Worker -->
+        <div class="feature-card group rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card transition-colors hover:border-puerto-indigo">
+          <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-puerto-indigo/10">
+            <svg class="h-5 w-5 text-puerto-indigo-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+            </svg>
+          </div>
+          <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Worker, Postgres or Kafka</h3>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">A second binary relays the outbox and runs your consumers: retries with backoff, dead letters, health probes. <code class="text-puerto-indigo-light text-xs">generate consumer</code> writes one; the transport is Postgres or Kafka.</p>
+        </div>
       </div>
     </div>
   </section>
