@@ -285,7 +285,7 @@ domain/<entity>/
 - Tests use `RecordingUnitOfWorkFactory` (`failing_at(FailAt::Save, RepositoryError::Duplicate)`,
   `recorded()` → `saved`, `events`, `committed`)
 
-### The worker (`events = "db"` — ADR-0018 § 5)
+### The worker (`[project] events` — ADR-0018 § 5)
 
 A second binary next to `presentation`, and a composition root like it:
 
@@ -305,6 +305,11 @@ worker/src/
 - The loops, `/health` + `/health/ready` on `WORKER_PORT` and the SIGTERM drain are
   `puerto-events`'; the `db` transport adapters are `puerto_sqlx::events`, reached through
   `infrastructure::db`
+- `kafka` (`puerto-kafka`): the relay still reads `PgOutbox` and dead letters stay in
+  `PgDeadLetters`; events go to `<KAFKA_TOPIC_PREFIX>.<aggregate>` keyed by the aggregate id, and
+  a consumer is the group `<prefix>.<consumer>`. It hands out one record at a time
+  (`EventSubscription::max_batch`): a `Retry` is retried in process and holds back its partition,
+  never reordered. A record that is not an envelope is dead-lettered (`event_id` NULL)
 
 ---
 

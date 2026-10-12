@@ -51,14 +51,15 @@ Since Phase 12 the code identical in every project lives in runtime crates inste
 (ADR-0017): `puerto-core` (repository error, paged lists), `puerto-web` (server, config, health,
 error body) and, in `--db` projects, `puerto-sqlx` (pool, migrations, ping, driver-error mapping).
 
-Since Phase 13 (in progress) `puerto new --db --events db|kafka` makes every CRUD write go through
+Since Phase 13 `puerto new --db --events db|kafka` makes every CRUD write go through
 a per-entity unit of work that saves the entity and records its event in an `outbox` table in one
 transaction (ADR-0018): `events.rs` is generated from puerto.toml, the repository only reads, and
 `puerto generate event` adds custom events. `puerto-core` holds the envelope, the delivery policy
 and the transport ports; `puerto-sqlx` the Pg unit of work, outbox and `db` transport;
 `puerto-events` the relay, the consume loops and the worker shell. `--events db` projects get a
-`worker/` binary that relays the outbox and runs the consumers `puerto generate consumer` adds.
-Kafka (`--events kafka`, which gets no worker yet) is 13.5.
+`worker/` binary that relays the outbox and runs the consumers `puerto generate consumer` adds;
+on `--events kafka` it publishes through `puerto-kafka` (one topic per aggregate, one consumer
+group per consumer) instead of the `db` transport.
 
 Since Phase 9 a project also gets `web/` — a React + daisyUI frontend on Bun (`--no-web` skips it)
 — and, once `cargo test` runs, `docs/api/openapi.json`, the API contract the frontend is typed from
@@ -1794,9 +1795,9 @@ T-23 (with T-29's second binary) is Phase 13; the mailer, Phase 14, is the first
 
 ## Phase 13 — Domain events: unit of work, outbox, worker (T-23, T-29)
 
-**Status:** in progress — 13.0 (`7b83e3f`) · 13.1 (`9947162`) · 13.2 (`789a0ed`) · 13.3
-(`02578b8`, with `960e01f`) · 13.4 (`31f6200`, `ea1c46f`, `2ad0263`) done. Next: **13.5**
-(`puerto-kafka`, `--events kafka` gets its worker). Decision:
+**Status:** done — 13.0 (`7b83e3f`) · 13.1 (`9947162`) · 13.2 (`789a0ed`) · 13.3
+(`02578b8`, with `960e01f`) · 13.4 (`31f6200`, `ea1c46f`, `2ad0263`) · 13.5 (`5441eeb`,
+`7db138a`, `a798b26`, with `372596d`). Decision:
 [ADR-0018](docs/adr/0018-domain-events-outbox-pluggable-transport.md).
 Every write in an `events` project saves the aggregate and its event in one transaction (outbox).
 A second binary, `worker/`, relays the outbox to a transport and runs the consumers. The transport
@@ -2118,7 +2119,41 @@ sees `product_created` within a bounded wait; a consumer that always retries end
 `dead_letters` after 5 attempts (with the backoff shortened through config); with the worker
 stopped, the outbox keeps the row and the worker delivers it after a restart.
 
-### 13.5 — `puerto-kafka` (`puerto new --events kafka`)
+### 13.5 — `puerto-kafka` (`puerto new --events kafka`) ✅
+
+Done as specified. What the code settled — the runtime crate `crates/kafka`:
+- The retry question: `KafkaSubscription::settle(Retry)` does not commit; it keeps the record and
+  hands it out again once the backoff has passed, as `attempt + 1`. So that a `Retry` holds back
+  the records behind it instead of letting the handler see them first, the subscription hands out
+  **one record per batch**: `EventSubscription` gained `max_batch()` (default `u32::MAX`, Kafka 1)
+  and `Consumer` never asks for more — a batch of 1 is "full", so the loop does not sleep between
+  records. While a retry waits nothing is read (the whole subscription stalls, not only the
+  partition), hence `max.poll.interval.ms` = 600 s, above the 300 s backoff. The attempt count is
+  in memory: a restart starts it over.
+- The group id is `<prefix>.<consumer>`, like topics `<prefix>.<aggregate>`, so two projects on
+  one cluster never share a group. Topics are created by `KafkaConfig::ensure_topics` with the
+  broker's default partitions and replication (`-1`); the registry calls it for every aggregate
+  that records events, before the relay starts.
+- Wire format: the value is the JSON payload, the key the aggregate id, the envelope fields
+  (`event_id`, `event_type`, `aggregate_type`, `aggregate_id`, `schema_version`, `occurred_at`)
+  headers, then the envelope's own headers (one named like a field is left out). A record that
+  does not read back as an envelope is dead-lettered by the subscription itself
+  (`DeadLetterRecord::unreadable`, `payload_invalid`) and committed; if the sink fails it is kept
+  and retried first on the next batch. A record of a type the consumer did not subscribe to is
+  committed and skipped. Commits are synchronous, off the async threads (`spawn_blocking`).
+- The producer: `acks=all`, idempotent, `message.timeout.ms` 30 s — a publish that times out is a
+  relay pass that failed, so the worker shows not ready while the broker is down.
+
+The generator:
+- Redpanda is a service added to the project's `docker-compose.yml` (with its volume), not a
+  separate `compose.yaml`: Compose prefers `compose.yaml` and would stop starting Postgres.
+- The `kafka` outbox migration is the template with its `event_deliveries` block cut out
+  (`project::without_event_deliveries`), so `templates/infrastructure/outbox.sql` stays the byte
+  copy of `puerto-sqlx`'s.
+- `make test/kafka` runs `-E 'test(/(^|::)kafka_/)'` against Redpanda and a Postgres of its own
+  (:55433): the crate's broker tests, the `events_kafka` scenario (it needs Postgres to compile,
+  not a broker) and the generated worker end to end (`worker_e2e.rs`). Puerto's CLI gains an
+  `rdkafka` dev-dependency for the poisoned record.
 
 Tier 1. New matrix scenario `events_kafka`. A new `make test/kafka` brings up a Redpanda
 container, which is lighter than Kafka and speaks the same protocol.

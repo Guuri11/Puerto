@@ -16,7 +16,7 @@ db = true                # optional — omit for InMemory, set true for SQLx/Pos
 events = ["product_published"]   # optional, `events` projects: custom events beyond the CRUD
                                  # created/updated/deleted — snake_case, unique, not a CRUD name
 
-[[consumer]]                     # `events = "db"` projects: a worker consumer (ADR-0018 § 5)
+[[consumer]]                     # `events` projects: a worker consumer (ADR-0018 § 5)
 name = "notify_new_product"      # snake_case, unique → worker/src/consumers/notify_new_product.rs
 events = ["product_created", "product_published"]   # each declared by some entity (CRUD or custom)
 
@@ -227,7 +227,7 @@ presentation/src/api/product/error_mapper.rs
 | `puerto generate event <Entity> <name>`         | `events` projects, CRUD entities: appends to `[[entity]] events`, regenerates `events.rs`. Refuses a CRUD name, a duplicate (also by variant: `published` = `product_published`) or a non-snake_case name. Touches no use case |
 | `puerto generate web <Name> [--force]`          | Web projects: the entity's frontend slice + `core/generated/*`. Does not touch puerto.toml; refuses an undeclared or non-CRUD entity |
 | `puerto generate migration <name>`              | Creates a migration file (`--db` projects only) — does not touch puerto.toml. The version is unique even within one second |
-| `puerto generate consumer <name> --on <type>[,…]` | `events = "db"` projects: appends `[[consumer]]`, writes `worker/src/consumers/<name>.rs` (never overwritten), adds `pub mod` to `consumers.rs` (sorted), regenerates `worker/src/generated/registry.rs`. Refuses an existing name, an undeclared event type, a non-snake_case name or one whose type the worker already uses (`loops`, `product_event`) |
+| `puerto generate consumer <name> --on <type>[,…]` | `events` projects (`db` or `kafka`): appends `[[consumer]]`, writes `worker/src/consumers/<name>.rs` (never overwritten), adds `pub mod` to `consumers.rs` (sorted), regenerates `worker/src/generated/registry.rs`. Refuses an existing name, an undeclared event type, a non-snake_case name or one whose type the worker already uses (`loops`, `product_event`) |
 | `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk; `events` is `db`/`kafka` and needs `db = true`; custom events follow `generate event`'s rules; consumers are snake_case, unique, name declared events and have their file on disk |
 
 `db` is a **project-level** setting (`[project] db`), chosen once by `puerto new --db`. There is

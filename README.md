@@ -163,8 +163,9 @@ unit of work; its repository only reads, so a write that skips the outbox does n
 second binary, `worker/`, relays the outbox and runs the consumers: each is an `EventHandler`
 that answers `Ack`, `Retry` (redelivered with backoff) or `DeadLetter` — nothing is dropped
 without a row in `dead_letters` (`make events/dead-letters`). Delivery is at-least-once, so
-handlers must be idempotent. The `db` transport needs no broker; Kafka (`--events kafka`) gets
-its worker in Phase 13.5.
+handlers must be idempotent. The `db` transport needs no broker. On Kafka (`--events kafka`) the
+worker publishes each event to its aggregate's topic, keyed by the aggregate id, and each consumer
+is a consumer group — `docker-compose.yml` runs Redpanda for development.
 
 Validate your `puerto.toml` at any time:
 

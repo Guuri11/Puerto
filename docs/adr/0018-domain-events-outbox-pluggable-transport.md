@@ -3,7 +3,9 @@
 **Status:** Accepted (2026-10-12). Spec: `PLAN.md` § Phase 13. Backlog: T-23 (T-29 is part of it).
 Rollout: 13.1 (`puerto-core` events and ports), 13.2 (`puerto-sqlx` unit of work, outbox, `db`
 transport store), 13.3 (generated `events.rs` / units of work) and 13.4 (`puerto-events`, the
-`worker/` binary, `generate consumer`) done; 13.5 (Kafka) pending. The port signatures § 4 left open are settled in `PLAN.md` § 13.1.
+`worker/` binary, `generate consumer`) and 13.5 (`puerto-kafka`) done. The port signatures § 4
+left open are settled in `PLAN.md` § 13.1; what the Kafka adapter settled (one record per batch,
+consumer groups prefixed like topics) in § 13.5.
 
 ## Context
 

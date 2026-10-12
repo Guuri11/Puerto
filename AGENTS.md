@@ -27,6 +27,10 @@ crates/
                       (outbox → `EventPublisher`), `Consumer` (subscription → `EventHandler`, `decide`,
                       dead letter before retiring), `Worker` + `Loops` (health on `WORKER_PORT`,
                       SIGTERM drain), `WorkerConfig::from_env`
+  kafka/            — `puerto-kafka`, the Kafka transport (`--events kafka`, ADR-0018): `KafkaConfig`
+                      (`KAFKA_BROKERS`, `KAFKA_TOPIC_PREFIX`, `ensure_topics`), `KafkaPublisher`,
+                      `KafkaSubscription` (one record per batch, in-process retry, commit after
+                      the outcome). `make test/kafka` runs it against Redpanda
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
@@ -186,7 +190,7 @@ puerto generate scaffold <Name> -- mid:MiddleName:opt:String            # Option
 puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
 puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String; DateTime shorthand ok)
 puerto generate event <Entity> <name>      # events projects: a custom event (product_published) + regenerates events.rs
-puerto generate consumer <name> --on product_created,product_published   # --events db: a worker consumer + regenerates registry.rs
+puerto generate consumer <name> --on product_created,product_published   # events projects: a worker consumer + regenerates registry.rs
 puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
 puerto generate domain <Name> -- price:i64 status:Status:enum:Draft/Paid   # Same field syntax as scaffold — fields land in puerto.toml
 puerto generate application <Name>         # Application layer only: use case impls
@@ -211,6 +215,7 @@ make test          # Fast structural tests (verifies generated file structure)
 make test/full     # Slow: generates real projects, runs their `clippy --all-targets -D warnings` + tests
                    #       and the generated frontend's checks (needs `bun` on PATH)
 make test/db       # Slow: a generated --db project against a throwaway Postgres (Docker + sqlx-cli)
+make test/kafka    # Slow: the Kafka transport against a throwaway Redpanda (+ Postgres; Docker, cmake)
 make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
 make test/snapshots # Re-record generated-output snapshots after an intended output change
 make lint          # cargo clippy --workspace --all-targets -- -D warnings
@@ -254,11 +259,14 @@ make format/fix    # cargo fmt --all
   CLI's `templates/infrastructure/outbox.sql`), per CRUD entity `events.rs` (AUTO-GENERATED) and
   `unit_of_work.rs`, a read-only repository port, writes through `Pg{Entity}UnitOfWorkFactory`,
   and a root `AGENTS.md` section saying `events.rs` is never hand-edited
-- `--events db` also writes the `worker/` member (ADR-0018 § 5): `main.rs` is
+- `--events` also writes the `worker/` member (ADR-0018 § 5): `main.rs` is
   `WorkerConfig::from_env()` + `Worker::new(config).run(build_worker)` (`puerto-events`),
-  `generated/registry.rs` (AUTO-GENERATED from `[[consumer]]`: the relay over `PgOutbox` →
-  `PgDeliveries`, one `PgSubscription` per consumer), `consumers/<name>.rs` (the user's), `make
-  worker`, `make events/dead-letters`, `WORKER_PORT`. `--events kafka` writes no worker until 13.5
+  `generated/registry.rs` (AUTO-GENERATED from `[[consumer]]`), `consumers/<name>.rs` (the
+  user's), `make worker`, `make events/dead-letters`, `WORKER_PORT`. On `db` the registry relays
+  `PgOutbox` → `PgDeliveries`, one `PgSubscription` per consumer. On `kafka` it relays to
+  `KafkaPublisher` (topics created at startup), one `KafkaSubscription` per consumer
+  (`puerto-kafka`); the outbox migration has no `event_deliveries`, `docker-compose.yml` gains
+  Redpanda and `.env` `KAFKA_BROKERS`
 
 ## Detailed Rules
 
