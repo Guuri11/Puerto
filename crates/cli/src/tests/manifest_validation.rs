@@ -639,3 +639,153 @@ fn project_name_must_be_a_valid_package_name() {
     assert!(validate_project_name("my-app").is_ok());
     assert!(validate_project_name("my_app2").is_ok());
 }
+
+// ── Phase 16.4: auth ─────────────────────────────────────────────────────────
+
+fn validate_manifest(name: &str, manifest: &str) -> Result<(), String> {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("puerto.toml"), manifest).unwrap();
+    let result = validate::run_validate(&dir).map_err(|e| e.to_string());
+    cleanup(&dir);
+    result
+}
+
+#[test]
+fn validate_accepts_public_and_roles_in_an_auth_project() {
+    let result = validate_manifest(
+        "validate_auth_ok",
+        r#"[project]
+name = "my-app"
+auth = "oidc"
+
+[[entity]]
+name = "Product"
+use_cases = ["create_product", "list_products"]
+public = ["list_products"]
+roles = { create_product = ["admin"] }
+"#,
+    );
+
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn validate_rejects_an_unknown_auth_mode() {
+    let result = validate_manifest(
+        "validate_auth_mode",
+        "[project]\nname = \"my-app\"\nauth = \"auth0\"\n",
+    );
+
+    assert!(result.unwrap_err().contains("unknown auth mode 'auth0'"));
+}
+
+#[test]
+fn validate_rejects_local_auth_without_a_database() {
+    let result = validate_manifest(
+        "validate_auth_local",
+        "[project]\nname = \"my-app\"\nauth = \"local\"\n",
+    );
+
+    assert!(result.unwrap_err().contains("needs project.db = true"));
+}
+
+#[test]
+fn validate_rejects_public_and_roles_without_auth() {
+    let result = validate_manifest(
+        "validate_auth_none",
+        r#"[project]
+name = "my-app"
+
+[[entity]]
+name = "Product"
+use_cases = ["list_products"]
+public = ["list_products"]
+"#,
+    );
+
+    assert!(
+        result
+            .unwrap_err()
+            .contains("declares public or roles, but project.auth is not set")
+    );
+}
+
+#[test]
+fn validate_rejects_the_user_entity_in_an_auth_project() {
+    let result = validate_manifest(
+        "validate_auth_user",
+        r#"[project]
+name = "my-app"
+auth = "oidc"
+
+[[entity]]
+name = "User"
+use_cases = ["get_user"]
+"#,
+    );
+
+    assert!(result.unwrap_err().contains("an auth project already uses"));
+}
+
+#[test]
+fn validate_rejects_roles_naming_another_use_case() {
+    let result = validate_manifest(
+        "validate_auth_roles",
+        r#"[project]
+name = "my-app"
+auth = "oidc"
+
+[[entity]]
+name = "Product"
+use_cases = ["create_product"]
+roles = { delete_product = ["admin"] }
+"#,
+    );
+
+    assert!(
+        result
+            .unwrap_err()
+            .contains("roles: 'delete_product' is not one of the entity's use cases")
+    );
+}
+
+#[test]
+fn auth_access_survives_a_write_of_puerto_toml() {
+    let dir = temp_dir("auth_toml_roundtrip");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("puerto.toml"),
+        r#"[project]
+name = "my-app"
+auth = "oidc"
+
+[[entity]]
+name = "Product"
+use_cases = ["create_product", "list_products"]
+public = ["list_products"]
+roles = { create_product = ["admin", "editor"] }
+
+[[entity.fields]]
+name = "title"
+type = "String"
+"#,
+    )
+    .unwrap();
+
+    let config = puerto_toml::read(&dir).unwrap();
+    puerto_toml::write(&dir, &config).unwrap();
+    let written = fs::read_to_string(dir.join("puerto.toml")).unwrap();
+    let reread = puerto_toml::read(&dir).unwrap();
+
+    assert_eq!(reread.project.auth.as_deref(), Some("oidc"));
+    assert_eq!(reread.entity[0].public, vec!["list_products"]);
+    assert_eq!(
+        reread.entity[0].roles.get("create_product"),
+        Some(&vec!["admin".to_string(), "editor".to_string()])
+    );
+    assert_eq!(reread.entity[0].fields.len(), 1, "{written}");
+    cleanup(&dir);
+}

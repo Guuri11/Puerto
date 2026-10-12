@@ -477,6 +477,90 @@ pub fn validate_event_name(snake: &str, event: &str, declared: &[String]) -> Res
     Ok(())
 }
 
+/// The modes `[project] auth` can name (ADR-0021 § 1).
+pub const AUTH_MODES: &[&str] = &["oidc", "local"];
+
+pub fn validate_auth_mode(mode: &str) -> Result<(), String> {
+    if AUTH_MODES.contains(&mode) {
+        return Ok(());
+    }
+    Err(format!(
+        "unknown auth mode '{mode}'. Use one of: {}",
+        AUTH_MODES.join(", ")
+    ))
+}
+
+/// Module names an auth project already occupies: the `User` entity it is created with
+/// (`domain/user`, `infrastructure/src/user`), `GET /me` (`api/me`) and `/auth/*` (`api/auth`).
+const AUTH_RESERVED_MODULE_NAMES: &[&str] = &["user", "me", "auth"];
+
+/// The entity names an auth project cannot scaffold, on top of [`validate_entity_name`].
+pub fn validate_auth_entity_name(pascal: &str) -> Result<(), String> {
+    let snake = crate::generators::naming::pascal_to_snake(pascal);
+    if AUTH_RESERVED_MODULE_NAMES.contains(&snake.as_str()) {
+        return Err(format!(
+            "entity name '{pascal}' becomes the module name '{snake}', which an auth project \
+             already uses (the User entity, GET /me, /auth). Pick another name"
+        ));
+    }
+    Ok(())
+}
+
+/// `[a-z][a-z0-9_:-]*` — what `#[require_role]` accepts (`admin`, `billing:read`, `team-lead`).
+pub fn validate_role_name(role: &str) -> Result<(), String> {
+    let mut chars = role.chars();
+    let valid = chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | ':' | '-'));
+    if !valid {
+        return Err(format!(
+            "invalid role '{role}'. Use lowercase letters, digits, '_', ':' and '-', starting \
+             with a letter (e.g. 'admin', 'billing:read')"
+        ));
+    }
+    Ok(())
+}
+
+/// An entity's `public` and `roles`: each names one of its use cases, a public route requires no
+/// role, and every role is a role name.
+pub fn validate_entity_access(entity: &crate::puerto_toml::Entity) -> Vec<String> {
+    let mut errors = vec![];
+    let names_use_case = |uc: &String| entity.use_cases.contains(uc);
+    for (i, uc) in entity.public.iter().enumerate() {
+        if !names_use_case(uc) {
+            errors.push(format!(
+                "public: '{uc}' is not one of the entity's use cases"
+            ));
+        }
+        if entity.public[..i].contains(uc) {
+            errors.push(format!("public: '{uc}' is listed twice"));
+        }
+    }
+    for (uc, roles) in &entity.roles {
+        if !names_use_case(uc) {
+            errors.push(format!(
+                "roles: '{uc}' is not one of the entity's use cases"
+            ));
+        }
+        if entity.public.contains(uc) {
+            errors.push(format!(
+                "'{uc}' is both public and requires a role: a public route has no caller to check"
+            ));
+        }
+        if roles.is_empty() {
+            errors.push(format!(
+                "roles: '{uc}' requires no role — remove it or name one"
+            ));
+        }
+        for role in roles {
+            if let Err(e) = validate_role_name(role) {
+                errors.push(format!("roles: '{uc}': {e}"));
+            }
+        }
+    }
+    errors
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -615,5 +699,100 @@ mod tests {
         }];
 
         assert!(validate_vo_coherence(&fields, &shared).is_empty());
+    }
+    // ── Phase 16.4: auth ─────────────────────────────────────────────────────
+
+    #[test]
+    fn should_accept_the_auth_modes_and_reject_any_other() {
+        assert!(validate_auth_mode("oidc").is_ok());
+        assert!(validate_auth_mode("local").is_ok());
+        for mode in ["", "OIDC", "auth0", "keycloak"] {
+            assert!(validate_auth_mode(mode).is_err(), "{mode}");
+        }
+    }
+
+    #[test]
+    fn should_reserve_the_auth_modules_when_naming_an_entity_of_an_auth_project() {
+        for name in ["User", "Me", "Auth"] {
+            assert!(validate_auth_entity_name(name).is_err(), "{name}");
+        }
+        for name in ["Users", "UserProfile", "Author", "Product"] {
+            assert!(validate_auth_entity_name(name).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
+    fn should_accept_role_names_the_macro_accepts() {
+        for role in ["admin", "a", "billing:read", "team-lead", "level_2"] {
+            assert!(validate_role_name(role).is_ok(), "{role}");
+        }
+        for role in ["", "Admin", "1admin", "ad min", "_admin", "admin!"] {
+            assert!(validate_role_name(role).is_err(), "{role}");
+        }
+    }
+
+    fn product(public: &[&str], roles: &[(&str, &[&str])]) -> crate::puerto_toml::Entity {
+        crate::puerto_toml::Entity {
+            name: "Product".into(),
+            use_cases: vec!["create_product".into(), "list_products".into()],
+            public: public.iter().map(|s| s.to_string()).collect(),
+            roles: roles
+                .iter()
+                .map(|(uc, roles)| {
+                    (
+                        uc.to_string(),
+                        roles.iter().map(|r| r.to_string()).collect(),
+                    )
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn should_accept_public_and_roles_when_they_name_distinct_use_cases() {
+        let entity = product(&["list_products"], &[("create_product", &["admin"])]);
+        assert_eq!(validate_entity_access(&entity), Vec::<String>::new());
+    }
+
+    #[test]
+    fn should_reject_public_and_roles_when_they_name_no_use_case_of_the_entity() {
+        let entity = product(&["get_product"], &[("delete_product", &["admin"])]);
+        let errors = validate_entity_access(&entity);
+        assert_eq!(errors.len(), 2, "{errors:?}");
+        assert!(
+            errors[0].contains("'get_product' is not one of"),
+            "{errors:?}"
+        );
+        assert!(
+            errors[1].contains("'delete_product' is not one of"),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn should_reject_a_use_case_when_it_is_both_public_and_role_protected() {
+        let entity = product(&["create_product"], &[("create_product", &["admin"])]);
+        let errors = validate_entity_access(&entity);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(
+            errors[0].contains("both public and requires a role"),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn should_reject_roles_when_they_are_empty_or_not_role_names() {
+        let errors = validate_entity_access(&product(&[], &[("create_product", &[])]));
+        assert!(errors[0].contains("requires no role"), "{errors:?}");
+        let errors = validate_entity_access(&product(&[], &[("create_product", &["Admin"])]));
+        assert!(errors[0].contains("invalid role 'Admin'"), "{errors:?}");
+    }
+
+    #[test]
+    fn should_reject_a_public_use_case_when_it_is_listed_twice() {
+        let errors = validate_entity_access(&product(&["list_products", "list_products"], &[]));
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("listed twice"), "{errors:?}");
     }
 }

@@ -59,10 +59,34 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    if let Some(mode) = &config.project.auth {
+        if let Err(e) = crate::validation::validate_auth_mode(mode) {
+            errors.push(format!("project.auth: {e}"));
+        }
+        // Local sessions and credentials are rows (ADR-0021 § 2).
+        if mode == "local" && !config.project.db {
+            errors.push("project.auth = \"local\" needs project.db = true: sessions and credentials are database rows".into());
+        }
+    }
+
     let mut seen_entities: Vec<String> = vec![];
     for entity in &config.entity {
         if let Err(e) = crate::validation::validate_entity_name(&entity.name) {
             errors.push(format!("entity '{}': {}", entity.name, e));
+        }
+
+        if config.project.has_auth() {
+            if let Err(e) = crate::validation::validate_auth_entity_name(&entity.name) {
+                errors.push(format!("entity '{}': {}", entity.name, e));
+            }
+        } else if !entity.public.is_empty() || !entity.roles.is_empty() {
+            errors.push(format!(
+                "entity '{}': declares public or roles, but project.auth is not set",
+                entity.name
+            ));
+        }
+        for e in crate::validation::validate_entity_access(entity) {
+            errors.push(format!("entity '{}': {e}", entity.name));
         }
 
         if seen_entities.contains(&entity.name) {
@@ -313,6 +337,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     ) {
         errors.push(line);
     }
+    errors.extend(crate::generators::consistency::auth_drift(cwd, &config));
     for orphan in crate::generators::consistency::orphan_entity_dirs(cwd, &config) {
         warnings.push(format!(
             "'business/src/domain/{orphan}' exists but has no [[entity]] block — Puerto commands \

@@ -754,7 +754,7 @@ mod tests {
             use_cases,
             db: false,
             fields,
-            events: vec![],
+            ..Default::default()
         }
     }
 

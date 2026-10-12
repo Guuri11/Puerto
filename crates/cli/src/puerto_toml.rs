@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -49,7 +50,7 @@ pub struct ValueObjectDefinition {
     pub inner_type: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Project {
     pub name: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -61,6 +62,9 @@ pub struct Project {
     /// `puerto new --db --events <transport>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<String>,
+    /// Auth (ADR-0021): `"oidc"` or `"local"`. Absent: no auth. Set by `puerto new --auth <mode>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<String>,
 }
 
 impl Project {
@@ -68,9 +72,14 @@ impl Project {
     pub fn has_events(&self) -> bool {
         self.events.is_some()
     }
+
+    /// Routes take `auth: BearerAuth` unless the entity lists them as `public`.
+    pub fn has_auth(&self) -> bool {
+        self.auth.is_some()
+    }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Entity {
     /// PascalCase entity name, e.g. "Product"
     pub name: String,
@@ -78,6 +87,15 @@ pub struct Entity {
     pub use_cases: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub db: bool,
+    /// Auth projects: the use cases whose routes take no `BearerAuth` — what scaffold wrote
+    /// (`--public`); after it, `routes.rs` is the user's.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub public: Vec<String>,
+    /// Auth projects: the roles a use case's route requires (`#[require_role]`), by use case —
+    /// what scaffold wrote (`--role`). Declared before `fields`: written after the
+    /// `[[entity.fields]]`, `[entity.roles]` would read as if it belonged to the last field.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub roles: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub fields: Vec<Field>,
     /// Custom events beyond the CRUD ones (`product_published`), snake_case — `events` projects.
@@ -313,7 +331,7 @@ pub fn add_entity(
             use_cases,
             db,
             fields,
-            events: vec![],
+            ..Default::default()
         }),
     }
     write(base, &config)

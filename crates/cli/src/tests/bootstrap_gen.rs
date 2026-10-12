@@ -11,7 +11,7 @@ fn bootstrap_with_entity_without_use_cases_is_syntactically_valid() {
         use_cases: vec![],
         db: false,
         fields: vec![],
-        events: vec![],
+        ..Default::default()
     }];
 
     let content =
@@ -28,7 +28,7 @@ fn bootstrap_with_use_cases_lists_them_in_the_api_initializer() {
         use_cases: vec!["create_product".into(), "get_product".into()],
         db: false,
         fields: vec![],
-        events: vec![],
+        ..Default::default()
     }];
 
     let content =
@@ -45,7 +45,7 @@ fn product_with_crud() -> Vec<puerto_toml::Entity> {
         use_cases: vec!["create_product".into(), "list_products".into()],
         db: false,
         fields: vec![],
-        events: vec![],
+        ..Default::default()
     }]
 }
 
