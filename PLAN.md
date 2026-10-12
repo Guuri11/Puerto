@@ -2495,3 +2495,171 @@ message, an unknown code shows the code.
 - `generate use-case`: the impl logs `id`, not `?params` (the payload is user data —
   `architecture.md`), and the generated test is `#[ignore = "write this test"]` instead of an
   empty body that passes.
+
+---
+
+## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
+
+**Status:** not started. Decision:
+[ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
+this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
+
+Glossary:
+
+| Name | Where | Generated |
+|---|---|---|
+| `Principal`, `Authenticator`, `AuthError` | `puerto-core::auth` | runtime |
+| `BearerAuth`, `#[require_role]`, `auth.*` error codes | `puerto-web` (+ `puerto-macros`) | runtime |
+| `OidcAuthenticator`, `OidcConfig`, `RolesClaim` (feature `oidc`) | `puerto-auth` | runtime |
+| `hash_password`, `verify_password`, `SessionToken` (feature `local`) | `puerto-auth` | runtime |
+| `PgSessions`, `PgCredentials`, `migrations/auth.sql` | `puerto-sqlx::auth` | runtime |
+| `User`, `UserId`, `UserRepositoryTrait` (+ mock) | `business/src/domain/user/` | once, by `new --auth` |
+| `ProvisioningAuthenticator` (oidc) | `infrastructure/src/user/provisioning.rs` | once |
+| `register` / `login` / `logout` use cases (local) | `business/src/{domain,application}/user/` | once |
+| `MeApi` (`GET /me`), `AuthApi` (`/auth/*`, local) | `presentation/src/api/{me,auth}/` | once |
+| `AuthGateway`, `CurrentUser` | `web/src/domain/auth/session.ts` | once |
+| `OidcAuthGateway` / `LocalAuthGateway` | `web/src/infrastructure/auth/` | once |
+| `AuthProvider`, `useAuth`, `RequireAuth` | `web/src/presentation/core/auth.tsx` | once |
+
+### puerto.toml additions
+
+```toml
+[project]
+auth = "oidc"                 # "oidc" | "local"; absent = no auth. "local" requires db = true
+
+[[entity]]
+name = "Product"
+public = ["list_products", "get_product"]          # routes without BearerAuth
+roles = { create_product = ["admin"], delete_product = ["admin"] }   # #[require_role] per route
+```
+
+Additive (minor bump). `public` and `roles` are what scaffold wrote, like `fields`: after it,
+`routes.rs` is the user's. `puerto validate`: `auth` is `oidc`/`local`, `local` needs `db`;
+`public` and `roles` keys name use cases of the entity, not both for one use case; role names
+match `[a-z][a-z0-9_:-]*`; drift: every declared role appears as `require_role("<role>")` in the
+entity's `routes.rs`, and every `public` handler has no `BearerAuth` (textual check). `User` is a
+reserved entity name in auth projects.
+
+### 16.0 — ADR-0021 + this spec
+
+### 16.1 — Spike: `#[require_role]` inside `#[OpenApi] impl`
+
+A throwaway proc-macro in a test crate, applied to a handler of a `#[OpenApi] impl` in a
+`puerto-web` test: does poem-openapi pass the attribute through, does the method still register,
+does the spec still list it, does the check run before the body. Result written into ADR-0021 § 4
+(kept, or the explicit-check fallback). Nothing ships; no snapshot changes.
+
+### 16.2 — `puerto-core::auth` + `BearerAuth` in `puerto-web`
+
+- `puerto_core::auth`: `Principal` (`#[non_exhaustive]`, `Principal::new(user_id, subject)
+  .with_email(…).with_name(…).with_roles(…)`, `has_role`), `#[async_trait] Authenticator`,
+  `AuthError::{Invalid, Expired, Unavailable}`; `mocks::MockAuthenticator` behind `test-utils`.
+- `puerto-web`: `BearerAuth(pub Principal)` — `#[derive(SecurityScheme)]`, `ty = "bearer"`,
+  `bearer_format = "opaque or JWT"`, checker reads `Arc<dyn Authenticator>` from the request data.
+  Missing/`Invalid`/`Expired` → 401 `auth.unauthenticated`; `Unavailable` → 503
+  `auth.unavailable` (the provider or the database is down — not the caller's fault).
+  `puerto_web::auth::forbidden()` → `(403, ErrorResponse auth.forbidden)`.
+- `puerto-macros` (or the fallback from 16.1): `#[require_role("admin")]` → at the top of the
+  handler, `if !auth.0.has_role("admin") { let (s, e) = puerto_web::auth::forbidden(); return
+  <Ret>::from_status(s, e); }`. Compile error when the handler has no `BearerAuth` parameter.
+
+Tests: each `AuthError` → its status and code; a route with `BearerAuth` answers 401 without the
+header, 401 for a token the mock rejects, 200 with a principal; `#[require_role]` 403 without the
+role, 200 with it; the spec lists the bearer security scheme on the route.
+
+### 16.3 — `puerto-auth`, feature `oidc` + `make test/auth`
+
+- `OidcConfig::from_env`: `AUTH_ISSUER`, `AUTH_AUDIENCE` (required), `AUTH_ROLES_CLAIM` (default
+  `realm_access.roles`). A claim name that exists at the top level is used as is (Auth0's
+  `https://example.com/roles`), otherwise it is a dotted path.
+- `OidcAuthenticator::discover(config)` — reads `/.well-known/openid-configuration`, fetches the
+  JWKS; verifies RS256/ES256 (never `none`, never HS* with a public key), `iss`, `aud`, `exp`,
+  `nbf` with 60 s leeway. An unknown `kid` refetches the JWKS at most once per minute. Discovery
+  or JWKS unreachable → `Unavailable`. The `Principal` it builds has a nil `user_id`: provisioning
+  (16.4) fills it.
+- Tests over tokens signed in the test with a static JWKS: valid → principal with the roles;
+  wrong `iss`, wrong `aud`, expired, `alg: none`, unknown `kid` after a refetch → the right error;
+  Keycloak's nested roles and Auth0's namespaced claim both read. `#[ignore]` tests against a
+  Keycloak container (pinned release tag, realm imported from a fixture): a password-grant token
+  of the test client is accepted, a token of another realm is not (`make test/auth`).
+
+### 16.4 — `puerto new --auth oidc` (backend)
+
+Tier 1. New matrix scenarios `AUTH_OIDC` (no db, web) and `AUTH_OIDC_DB` (`make test/db`).
+- `--auth oidc|local` on `new`; interactive flow asks (default none). `[project] auth`.
+- Writes once: the `User` entity (domain model, errors, `UserRepositoryTrait { find_by_subject,
+  find_by_id, save }`, in-memory or Pg repository, migration `users` with
+  `UNIQUE (issuer, subject)` in `--db`), `ProvisioningAuthenticator` (lookup → create on miss;
+  a `Mutex<HashMap>` cache with a 60 s TTL, no cache crate in v1), `MeApi` (`GET /me` →
+  `MeDto { id, email, name, roles }`).
+- `bootstrap.rs`: builds `OidcAuthenticator::discover` (a startup error with a hint if the issuer
+  is unreachable: `make docker-compose/up`), wraps it in `ProvisioningAuthenticator`, hands the
+  `Arc<dyn Authenticator>` to the routes with `.data(…)`.
+- `scaffold` in an auth project: every CRUD handler takes `auth: BearerAuth` except `--public
+  <uc>[,…]`; `--role <uc>=<role>[,…]` adds `#[require_role]`; both recorded in puerto.toml.
+  Protected use cases' params gain `actor: Principal` (the handler passes `auth.0`); response
+  enums gain `Unauthorized` (401), `Forbidden` (403), `Unavailable` (503) on protected routes;
+  `{Entity}Error::Forbidden` (`{snake}.forbidden`, 403) with its mapper test. Route tests: 401
+  without a token, 403 without the role, the existing happy paths with a `PrincipalMother`.
+- `generate use-case` in an auth project: the new use case's params take `actor` (protected by
+  default, as the routes).
+- `docker-compose.yml`: Keycloak with `infrastructure/keycloak/realm.json` (client `web`, public,
+  PKCE, redirect `http://localhost:5173/*`; audience mapper `api`; user `admin@<project>.localhost`
+  with role `admin`, password in `.env.example`). `.env`: `AUTH_ISSUER`, `AUTH_AUDIENCE`,
+  `AUTH_ROLES_CLAIM`. `make auth/ui` prints the Keycloak console. Root `AGENTS.md` gains an "Auth"
+  section (tested, ADR-0010): `public`/`roles`, `actor`, roles from the token only.
+
+### 16.5 — The frontend, OIDC
+
+Tier 1 (web template + slices).
+- `web/` gains `oidc-client-ts` (exact version); `web/.env`: `VITE_AUTH_ISSUER`,
+  `VITE_AUTH_CLIENT_ID`, `VITE_AUTH_AUDIENCE` (empty for Keycloak; Auth0 needs it).
+- Writes the glossary's web rows: `OidcAuthGateway` (in-memory user store, `signinRedirect`,
+  `/auth/callback` page), `createApiClient(auth)` middleware (bearer + 401 → `login()`),
+  `AuthProvider` / `useAuth` / `RequireAuth`, a user menu in `layout.tsx`.
+- `core/generated/routes.tsx`: non-public routes wrapped in `<RequireAuth>`; generated list/detail
+  views hide New/Edit/Delete when `can(role)` is false (from `roles`). dependency-cruiser:
+  `oidc-client-ts` only in `infrastructure/auth/`.
+- `test-support/auth.ts`: `fakeAuthGateway({ user })`; `renderScreen(…, { user })`. Tests: a
+  protected route without a user starts login; a user without the role sees no Delete button; a
+  403 shows `auth.forbidden` in the alert; the middleware sets the header.
+
+### 16.6 — `puerto new --auth local` (backend)
+
+Tier 1. New matrix scenario `AUTH_LOCAL` (db, web; `make test/db`).
+- `puerto-auth`, feature `local`: `hash_password` / `verify_password` (argon2id, crate defaults),
+  `SessionToken::generate()` (32 random bytes, base64url) and `SessionToken::hash()` (SHA-256).
+- `puerto-sqlx::auth`: `PgSessions` (`Authenticator`: hash → session → user → `Principal` with the
+  `roles` column; expired → `Expired`), `create`, `revoke`; `PgCredentials`;
+  `migrations/auth.sql` (`credentials`, `sessions (token_hash PK, user_id, expires_at)`), copied
+  byte for byte by the CLI (tested, like `outbox.sql`). `AUTH_SESSION_TTL` (default 30 days).
+- Generated: `register_user` (email unique → `user.duplicate`, password length ≥ 12 →
+  `user.validation_error.password_too_short`), `login` (unknown email and wrong password are the
+  same `auth.invalid_credentials` 401, and both run argon2 — no timing difference), `logout`
+  (revokes the presented session); `AuthApi`: `POST /auth/register`, `POST /auth/login` →
+  `{ token, expiresAt }`, `POST /auth/logout`. Registration is open in v1.
+- `make auth/grant EMAIL=… ROLE=…` (SQL on the `roles` column). Same `scaffold` / `public` /
+  `roles` behaviour as 16.4.
+
+### 16.7 — The frontend, local
+
+- `LocalAuthGateway` (token in `localStorage`, `GET /me` on start, `login(email, password)`,
+  `logout()` calls the API then clears), `/login` and `/register` pages (forms with `FieldError`,
+  codes from the API). Same `RequireAuth` / `can` as 16.5. Tests: login stores the token and loads
+  the user; a 401 on any call clears it and goes to `/login`; register shows a duplicate email
+  next to the field.
+
+### 16.8 — End to end
+
+`make test/auth` (Keycloak) and `make test/db` (local) run a generated project's API as a real
+process: no token → 401; a token without the role → 403 on a protected route, 200 on a public
+one; the first call provisions one `users` row and a second call does not add another (OIDC);
+register → login → `/me` → logout → the old token is 401 (local).
+
+### Out of scope (Phase 16)
+
+Password reset and address verification (need `deliver_now` — sending a mail from a use case);
+MFA; social login in local mode; an admin UI for users and roles; login rate limiting; auth in the
+worker and an actor on events; machine-to-machine tokens (client credentials: a token without a
+person would be provisioned as a user); a cookie / backend-for-frontend mode; refreshing a
+provisioned user's email and name from later tokens.
