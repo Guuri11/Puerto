@@ -1,3 +1,43 @@
+## [0.15.0] - 2026-10-12
+
+Domain events (ADR-0018). In a `--db` project created with `--events db|kafka`, every write of a
+CRUD entity saves the entity and records its event in an `outbox` table in one transaction, and a
+second process, `worker/`, relays the outbox to a transport and runs the consumers. Projects
+created without `--events` are generated exactly as in 0.14.
+
+### 🚀 Features
+
+- **`puerto new --db --events db|kafka`** — `[project] events`, the outbox migration, and per
+  CRUD entity a generated `events.rs` (`{Entity}Snapshot`, `{Entity}Event`, `{ENTITY}_CREATED`…
+  constants) and `unit_of_work.rs`. The repository port only reads: writes go
+  `uow_factory.begin()` → `save` → `record` → `commit`, tested with `RecordingUnitOfWorkFactory`
+- **`puerto generate event <Entity> <name>`** — a custom event beyond created / updated / deleted
+- **`worker/`** — a second binary on the new runtime crate **`puerto-events`**: the outbox relay,
+  one consume loop per consumer with the delivery policy (`Ack` / `Retry` with a 1 s → 300 s
+  backoff / dead letter after `MAX_DELIVERIES`), `/health` + `/health/ready` on `WORKER_PORT`,
+  graceful shutdown. `generated/registry.rs` is regenerated from `puerto.toml`; `make worker`,
+  `make events/dead-letters`
+- **`puerto generate consumer <name> --on <event_type>[,…]`** — `[[consumer]]` in `puerto.toml`,
+  an idempotent `EventHandler` stub with its tests in `worker/src/consumers/<name>.rs`
+- **`db` transport** (`puerto-sqlx`): deliveries are rows in Postgres (`event_deliveries`), no
+  broker
+- **`kafka` transport** — the new runtime crate **`puerto-kafka`** (rdkafka, needs `cmake`): one
+  topic per aggregate keyed by its id (the events of one aggregate stay in order), one consumer
+  group per consumer, offsets committed after the outcome, a `Retry` retried in process without
+  reordering. `docker-compose.yml` gains Redpanda and `.env` `KAFKA_BROKERS`
+- `puerto-core` gains the event envelope, `DomainEvent`, `EventHandler`, the delivery policy and
+  the transport ports; `puerto validate` checks events and consumers
+
+### 🐛 Bug Fixes
+
+- Web import specifiers are sorted as Biome does (the upper-case letter first), so
+  `bun run lint` passes on entities whose types and helpers share a letter
+
+### Release
+
+- Publish order: `puerto-core` → `puerto-web` → `puerto-sqlx` → `puerto-events` →
+  `puerto-kafka` → `puerto`
+
 ## [0.14.0] - 2026-10-12
 
 The code every generated project shared as a copy now lives in three runtime crates, released in
