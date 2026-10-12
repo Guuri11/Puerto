@@ -263,6 +263,9 @@ make format/fix    # cargo fmt --all
   regenerates `web/src/presentation/core/generated/{dependencies.ts,routes.tsx}`;
   `bootstrap.rs` exports the OpenAPI spec to `docs/api/openapi.json` from mocked use cases, and
   `make web/sync` turns it into the frontend's wire types
+- Web forms say what went wrong next to the field: `domain/<entity>/messages.ts` (generated from
+  the same codes as `errors.rs`) maps a code to a message and a field; `FieldError` shows it under
+  that input, other codes go to the alert, unknown ones show as they are
 - `--events db|kafka` (needs `--db`, ADR-0018): `[project] events`, the outbox migration (the
   CLI's `templates/infrastructure/outbox.sql`), per CRUD entity `events.rs` (AUTO-GENERATED) and
   `unit_of_work.rs`, a read-only repository port, writes through `Pg{Entity}UnitOfWorkFactory`,

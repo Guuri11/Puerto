@@ -236,6 +236,12 @@ fields = []
 === web/src/presentation/shared/ui/error-alert.tsx ===
 (deleted)
 
+=== web/src/presentation/shared/ui/field-error.test.tsx ===
+(deleted)
+
+=== web/src/presentation/shared/ui/field-error.tsx ===
+(deleted)
+
 === web/src/presentation/shared/ui/layout.tsx ===
 (deleted)
 

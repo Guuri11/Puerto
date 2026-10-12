@@ -2740,6 +2740,42 @@ export class CaseError extends Error {
   }
 }
 
+=== web/src/domain/case/messages.ts ===
+import type { CaseDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface CaseProblem {
+  field: keyof CaseDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "case.validation_error.title_empty": "Title is required",
+  "case.invalid_status": "Status is not valid",
+  "case.invalid_middle_name": "Middle name is not valid",
+  "case.invalid_label": "Labels are not valid",
+  "case.duplicate": "A case with these values already exists",
+  "case.not_found": "This case no longer exists",
+  "case.repository_error": "The case could not be saved, try again later",
+  "case.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof CaseDraft> = {
+  "case.validation_error.title_empty": "title",
+  "case.invalid_status": "status",
+  "case.invalid_middle_name": "middleName",
+  "case.invalid_label": "labels",
+};
+
+export function toProblem(code: string): CaseProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/case/model.ts ===
 import { CaseError } from "./errors";
 
@@ -3207,7 +3243,7 @@ describe("CaseFormContainer", () => {
     expect(await caseRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the case", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "case.validation_error.invalid";
     const caseRepository = {
@@ -3223,15 +3259,53 @@ describe("CaseFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a case with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const caseRepository = {
+      ...fakeCaseRepository(),
+      create: () => Promise.reject(new CaseError("case.duplicate")),
+    };
+    renderScreen(<CaseFormContainer />, { caseRepository });
+    await fillIn(CaseMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A case with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const caseRepository = {
+      ...fakeCaseRepository(),
+      create: () => Promise.reject(new CaseError("case.validation_error.title_empty")),
+    };
+    renderScreen(<CaseFormContainer />, { caseRepository });
+    await fillIn(CaseMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Title is required")).toBeTruthy();
+    const input = screen.getByLabelText("Title");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/case/containers/case-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/case/messages";
 import type { Case } from "../../../../domain/case/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { CaseFormView, toCaseDraft, toCaseForm } from "../views/case-form-view";
 
 /** Creates a case, or edits the one with `id`. */
@@ -3262,6 +3336,7 @@ function CaseForm({ existing }: { existing: Case | null }) {
   const [values, setValues] = useState(toCaseForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -3282,8 +3357,14 @@ function CaseForm({ existing }: { existing: Case | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <CaseFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <CaseFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -3431,6 +3512,7 @@ export function CaseDetailView({ caseItem }: { caseItem: Case }) {
 }
 
 === web/src/presentation/features/case/views/case-form-view.tsx ===
+import type { CaseProblem } from "../../../../domain/case/messages";
 import { type Case, type CaseDraft, parseStatus } from "../../../../domain/case/model";
 import {
   booleanOrNull,
@@ -3445,6 +3527,7 @@ import {
   textOrNull,
   toDateTimeLocal,
 } from "../../../shared/forms";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface CaseFormValues {
@@ -3520,11 +3603,14 @@ export function toCaseDraft(values: CaseFormValues): CaseDraft {
 export function CaseFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: CaseFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: CaseProblem | null;
   onChange: (values: CaseFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -3541,43 +3627,52 @@ export function CaseFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "title"}
           required
           value={values.title}
           onChange={(event) => onChange({ ...values, title: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="title" />
       <label className="fieldset">
         <span className="fieldset-legend">Summary</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "summary"}
           value={values.summary}
           onChange={(event) => onChange({ ...values, summary: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="summary" />
       <label className="fieldset">
         <span className="fieldset-legend">Views</span>
         <input
           className="input w-full"
           type="number"
+          aria-invalid={problem?.field === "views"}
           value={values.views}
           onChange={(event) => onChange({ ...values, views: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="views" />
       <label className="fieldset">
         <span className="fieldset-legend">Ratio</span>
         <input
           className="input w-full"
           type="number"
+          aria-invalid={problem?.field === "ratio"}
           step="any"
           value={values.ratio}
           onChange={(event) => onChange({ ...values, ratio: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="ratio" />
       <label className="fieldset">
         <span className="fieldset-legend">Urgent</span>
         <select
           className="select w-full"
+          aria-invalid={problem?.field === "urgent"}
           value={values.urgent}
           onChange={(event) => onChange({ ...values, urgent: event.target.value })}
         >
@@ -3586,56 +3681,68 @@ export function CaseFormView({
           <option value="false">No</option>
         </select>
       </label>
+      <FieldError problem={problem} field="urgent" />
       <label className="fieldset">
         <span className="fieldset-legend">Due at</span>
         <input
           className="input w-full"
           type="datetime-local"
+          aria-invalid={problem?.field === "dueAt"}
           value={values.dueAt}
           onChange={(event) => onChange({ ...values, dueAt: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="dueAt" />
       <label className="fieldset">
         <span className="fieldset-legend">Opened at</span>
         <input
           className="input w-full"
           type="datetime-local"
+          aria-invalid={problem?.field === "openedAt"}
           required
           value={values.openedAt}
           onChange={(event) => onChange({ ...values, openedAt: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="openedAt" />
       <label className="fieldset">
         <span className="fieldset-legend">Tags</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "tags"}
           value={values.tags}
           onChange={(event) => onChange({ ...values, tags: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="tags" />
       <label className="fieldset">
         <span className="fieldset-legend">Scores</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "scores"}
           value={values.scores}
           onChange={(event) => onChange({ ...values, scores: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="scores" />
       <label className="fieldset">
         <span className="fieldset-legend">Meta</span>
         <textarea
           className="textarea w-full"
+          aria-invalid={problem?.field === "meta"}
           placeholder="key=value, one per line"
           value={values.meta}
           onChange={(event) => onChange({ ...values, meta: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="meta" />
       <label className="fieldset">
         <span className="fieldset-legend">Status</span>
         <select
           className="select w-full"
+          aria-invalid={problem?.field === "status"}
           required
           value={values.status}
           onChange={(event) => onChange({ ...values, status: event.target.value })}
@@ -3645,24 +3752,29 @@ export function CaseFormView({
           <option value="Closed">Closed</option>
         </select>
       </label>
+      <FieldError problem={problem} field="status" />
       <label className="fieldset">
         <span className="fieldset-legend">Middle name</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "middleName"}
           value={values.middleName}
           onChange={(event) => onChange({ ...values, middleName: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="middleName" />
       <label className="fieldset">
         <span className="fieldset-legend">Labels</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "labels"}
           value={values.labels}
           onChange={(event) => onChange({ ...values, labels: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="labels" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

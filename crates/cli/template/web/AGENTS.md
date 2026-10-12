@@ -11,7 +11,7 @@ presentation → infrastructure → application → domain
 
 | Directory | Holds | Never |
 |---|---|---|
-| `src/domain/<entity>/` | types, the error (`code` = the API's `ErrorResponse.name`), the repository port | imports an npm package or another layer |
+| `src/domain/<entity>/` | types, the error (`code` = the API's `ErrorResponse.name`), the messages for those codes, the repository port | imports an npm package or another layer |
 | `src/application/` | use cases — **only when there is logic** (see its README) | imports an adapter or a screen |
 | `src/infrastructure/` | adapters implementing the domain ports (HTTP) | imports a screen or a use case |
 | `src/presentation/` | pages, containers (state + calls), views (props only), shared UI | imports `infrastructure/` (only `core/generated/dependencies.ts` does) |
@@ -28,7 +28,7 @@ and needs no network.
 (`puerto generate web <Name>` writes them alone, for an entity already in `puerto.toml`):
 
 ```
-src/domain/<entity>/            model.ts · errors.ts · repository.ts (the port)
+src/domain/<entity>/            model.ts · errors.ts · messages.ts · repository.ts (the port)
 src/infrastructure/<entity>/    <entity>-repository-http.ts (+ test): DTO ↔ model, ErrorResponse → error
 src/presentation/features/<entity>/
   containers/                   list · detail · form (create + edit): state and repository calls (+ tests)
@@ -50,6 +50,10 @@ repository port directly; write a use case in `src/application/` once there is l
 
 ## Generated files
 
+- **Error messages** live in `src/domain/<entity>/messages.ts`, generated from the backend's error
+  list: `toProblem(code)` answers the text and the form field it is about. The form shows it under
+  that input (`FieldError`, `aria-invalid`), anything else in the alert; an unknown code shows as
+  it is. English — that file is where to translate (a forced re-scaffold rewrites it).
 - **Never hand-edit `src/presentation/core/generated/`** — `dependencies.ts` (the composition
   root) and `routes.tsx` (the route table) are rewritten from `puerto.toml` by
   `puerto generate scaffold`, `puerto generate web` and `puerto generate bootstrap`. A screen of

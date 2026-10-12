@@ -3953,6 +3953,36 @@ export class CategoryError extends Error {
   }
 }
 
+=== web/src/domain/category/messages.ts ===
+import type { CategoryDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface CategoryProblem {
+  field: keyof CategoryDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "category.invalid_name": "Name is not valid",
+  "category.duplicate": "A category with these values already exists",
+  "category.not_found": "This category no longer exists",
+  "category.repository_error": "The category could not be saved, try again later",
+  "category.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof CategoryDraft> = {
+  "category.invalid_name": "name",
+};
+
+export function toProblem(code: string): CategoryProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/category/model.ts ===
 export interface Category {
   id: string;
@@ -3988,6 +4018,36 @@ export class ProductError extends Error {
     this.name = "ProductError";
     this.code = code;
   }
+}
+
+=== web/src/domain/product/messages.ts ===
+import type { ProductDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ProductProblem {
+  field: keyof ProductDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "product.validation_error.title_empty": "Title is required",
+  "product.duplicate": "A product with these values already exists",
+  "product.not_found": "This product no longer exists",
+  "product.repository_error": "The product could not be saved, try again later",
+  "product.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof ProductDraft> = {
+  "product.validation_error.title_empty": "title",
+};
+
+export function toProblem(code: string): ProductProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
 }
 
 === web/src/domain/product/model.ts ===
@@ -4554,7 +4614,7 @@ describe("CategoryFormContainer", () => {
     expect(await categoryRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the category", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "category.validation_error.invalid";
     const categoryRepository = {
@@ -4570,15 +4630,53 @@ describe("CategoryFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a category with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const categoryRepository = {
+      ...fakeCategoryRepository(),
+      create: () => Promise.reject(new CategoryError("category.duplicate")),
+    };
+    renderScreen(<CategoryFormContainer />, { categoryRepository });
+    await fillIn(CategoryMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A category with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const categoryRepository = {
+      ...fakeCategoryRepository(),
+      create: () => Promise.reject(new CategoryError("category.invalid_name")),
+    };
+    renderScreen(<CategoryFormContainer />, { categoryRepository });
+    await fillIn(CategoryMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Name is not valid")).toBeTruthy();
+    const input = screen.getByLabelText("Name");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/category/containers/category-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/category/messages";
 import type { Category } from "../../../../domain/category/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { CategoryFormView, toCategoryDraft, toCategoryForm } from "../views/category-form-view";
 
 /** Creates a category, or edits the one with `id`. */
@@ -4609,6 +4707,7 @@ function CategoryForm({ existing }: { existing: Category | null }) {
   const [values, setValues] = useState(toCategoryForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -4629,8 +4728,14 @@ function CategoryForm({ existing }: { existing: Category | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <CategoryFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <CategoryFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -4753,7 +4858,9 @@ export function CategoryDetailView({ category }: { category: Category }) {
 }
 
 === web/src/presentation/features/category/views/category-form-view.tsx ===
+import type { CategoryProblem } from "../../../../domain/category/messages";
 import type { Category, CategoryDraft } from "../../../../domain/category/model";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface CategoryFormValues {
@@ -4781,11 +4888,14 @@ export function toCategoryDraft(values: CategoryFormValues): CategoryDraft {
 export function CategoryFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: CategoryFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: CategoryProblem | null;
   onChange: (values: CategoryFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -4802,11 +4912,13 @@ export function CategoryFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "name"}
           required
           value={values.name}
           onChange={(event) => onChange({ ...values, name: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="name" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>
@@ -5012,7 +5124,7 @@ describe("ProductFormContainer", () => {
     expect(await productRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the product", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "product.validation_error.invalid";
     const productRepository = {
@@ -5028,15 +5140,53 @@ describe("ProductFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a product with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError("product.duplicate")),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A product with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError("product.validation_error.title_empty")),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Title is required")).toBeTruthy();
+    const input = screen.getByLabelText("Title");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/product/containers/product-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/product/messages";
 import type { Product } from "../../../../domain/product/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { ProductFormView, toProductDraft, toProductForm } from "../views/product-form-view";
 
 /** Creates a product, or edits the one with `id`. */
@@ -5067,6 +5217,7 @@ function ProductForm({ existing }: { existing: Product | null }) {
   const [values, setValues] = useState(toProductForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -5087,8 +5238,14 @@ function ProductForm({ existing }: { existing: Product | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <ProductFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <ProductFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -5213,7 +5370,9 @@ export function ProductDetailView({ product }: { product: Product }) {
 }
 
 === web/src/presentation/features/product/views/product-form-view.tsx ===
+import type { ProductProblem } from "../../../../domain/product/messages";
 import type { Product, ProductDraft } from "../../../../domain/product/model";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface ProductFormValues {
@@ -5245,11 +5404,14 @@ export function toProductDraft(values: ProductFormValues): ProductDraft {
 export function ProductFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: ProductFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: ProductProblem | null;
   onChange: (values: ProductFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -5266,21 +5428,25 @@ export function ProductFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "title"}
           required
           value={values.title}
           onChange={(event) => onChange({ ...values, title: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="title" />
       <label className="fieldset">
         <span className="fieldset-legend">Price</span>
         <input
           className="input w-full"
           type="number"
+          aria-invalid={problem?.field === "price"}
           required
           value={values.price}
           onChange={(event) => onChange({ ...values, price: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="price" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

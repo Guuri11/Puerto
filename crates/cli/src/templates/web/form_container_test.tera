@@ -61,7 +61,7 @@ describe("{{ pascal }}FormContainer", () => {
     expect(await {{ camel }}Repository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the {{ words }}", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "{{ snake }}.validation_error.invalid";
     const {{ camel }}Repository = {
@@ -77,4 +77,43 @@ describe("{{ pascal }}FormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a {{ words }} with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const {{ camel }}Repository = {
+      ...fake{{ pascal }}Repository(),
+      create: () => Promise.reject(new {{ pascal }}Error("{{ snake }}.duplicate")),
+    };
+    renderScreen(<{{ pascal }}FormContainer />, { {{ camel }}Repository });
+    await fillIn({{ pascal }}Mother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "{{ duplicate_text }}",
+    );
+  });
+{%- if field_problem %}
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const {{ camel }}Repository = {
+      ...fake{{ pascal }}Repository(),
+      create: () => Promise.reject(new {{ pascal }}Error("{{ field_problem.code }}")),
+    };
+    renderScreen(<{{ pascal }}FormContainer />, { {{ camel }}Repository });
+    await fillIn({{ pascal }}Mother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("{{ field_problem.text }}")).toBeTruthy();
+    const input = screen.getByLabelText("{{ field_problem.label }}");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+{%- endif %}
 });

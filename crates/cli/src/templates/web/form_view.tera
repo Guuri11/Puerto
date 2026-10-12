@@ -1,7 +1,9 @@
 {% if enums %}import { {% for e in enums %}parse{{ e.name }}, {% endfor %}type {{ pascal }}, type {{ pascal }}Draft }{% else %}import type { {{ pascal }}, {{ pascal }}Draft }{% endif %} from "../../../../domain/{{ kebab }}/model";
+import type { {{ pascal }}Problem } from "../../../../domain/{{ kebab }}/messages";
 {%- if form_helpers %}
 import { {{ form_helpers | join(sep=", ") }} } from "../../../shared/forms";
 {%- endif %}
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface {{ pascal }}FormValues {
@@ -37,11 +39,14 @@ export function to{{ pascal }}Draft(values: {{ pascal }}FormValues): {{ pascal }
 export function {{ pascal }}FormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: {{ pascal }}FormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: {{ pascal }}Problem | null;
   onChange: (values: {{ pascal }}FormValues) => void;
   onSubmit: () => void;
 }) {
@@ -69,6 +74,7 @@ export function {{ pascal }}FormView({
         <span className="fieldset-legend">{{ f.label }}</span>
         <select
           className="select w-full"
+          aria-invalid={problem?.field === "{{ f.camel }}"}
 {%- if f.required %}
           required
 {%- endif %}
@@ -81,22 +87,26 @@ export function {{ pascal }}FormView({
 {%- endfor %}
         </select>
       </label>
+      <FieldError problem={problem} field="{{ f.camel }}" />
 {%- elif f.input == "textarea" %}
       <label className="fieldset">
         <span className="fieldset-legend">{{ f.label }}</span>
         <textarea
           className="textarea w-full"
+          aria-invalid={problem?.field === "{{ f.camel }}"}
           placeholder="key=value, one per line"
           value={values.{{ f.camel }}}
           onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="{{ f.camel }}" />
 {%- else %}
       <label className="fieldset">
         <span className="fieldset-legend">{{ f.label }}</span>
         <input
           className="input w-full"
           type="{{ f.input }}"
+          aria-invalid={problem?.field === "{{ f.camel }}"}
 {%- if f.decimal %}
           step="any"
 {%- endif %}
@@ -107,6 +117,7 @@ export function {{ pascal }}FormView({
           onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="{{ f.camel }}" />
 {%- endif %}
 {%- endfor %}
       <button type="submit" className="btn btn-primary" disabled={saving}>

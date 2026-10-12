@@ -2139,6 +2139,38 @@ export class OrderError extends Error {
   }
 }
 
+=== web/src/domain/order/messages.ts ===
+import type { OrderDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface OrderProblem {
+  field: keyof OrderDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "order.validation_error.reference_empty": "Reference is required",
+  "order.invalid_status": "Status is not valid",
+  "order.duplicate": "An order with these values already exists",
+  "order.not_found": "This order no longer exists",
+  "order.repository_error": "The order could not be saved, try again later",
+  "order.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof OrderDraft> = {
+  "order.validation_error.reference_empty": "reference",
+  "order.invalid_status": "status",
+};
+
+export function toProblem(code: string): OrderProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/order/model.ts ===
 import { OrderError } from "./errors";
 
@@ -2561,7 +2593,7 @@ describe("OrderFormContainer", () => {
     expect(await orderRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the order", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "order.validation_error.invalid";
     const orderRepository = {
@@ -2577,15 +2609,53 @@ describe("OrderFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a order with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      create: () => Promise.reject(new OrderError("order.duplicate")),
+    };
+    renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(OrderMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "An order with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      create: () => Promise.reject(new OrderError("order.validation_error.reference_empty")),
+    };
+    renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(OrderMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Reference is required")).toBeTruthy();
+    const input = screen.getByLabelText("Reference");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/order/containers/order-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/order/messages";
 import type { Order } from "../../../../domain/order/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { OrderFormView, toOrderDraft, toOrderForm } from "../views/order-form-view";
 
 /** Creates an order, or edits the one with `id`. */
@@ -2616,6 +2686,7 @@ function OrderForm({ existing }: { existing: Order | null }) {
   const [values, setValues] = useState(toOrderForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -2636,8 +2707,14 @@ function OrderForm({ existing }: { existing: Order | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <OrderFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <OrderFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -2762,7 +2839,9 @@ export function OrderDetailView({ order }: { order: Order }) {
 }
 
 === web/src/presentation/features/order/views/order-form-view.tsx ===
+import type { OrderProblem } from "../../../../domain/order/messages";
 import { type Order, type OrderDraft, parseStatus } from "../../../../domain/order/model";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface OrderFormValues {
@@ -2794,11 +2873,14 @@ export function toOrderDraft(values: OrderFormValues): OrderDraft {
 export function OrderFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: OrderFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: OrderProblem | null;
   onChange: (values: OrderFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -2815,15 +2897,18 @@ export function OrderFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "reference"}
           required
           value={values.reference}
           onChange={(event) => onChange({ ...values, reference: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="reference" />
       <label className="fieldset">
         <span className="fieldset-legend">Status</span>
         <select
           className="select w-full"
+          aria-invalid={problem?.field === "status"}
           required
           value={values.status}
           onChange={(event) => onChange({ ...values, status: event.target.value })}
@@ -2834,6 +2919,7 @@ export function OrderFormView({
           <option value="Cancelled">Cancelled</option>
         </select>
       </label>
+      <FieldError problem={problem} field="status" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

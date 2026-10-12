@@ -3,7 +3,8 @@ import { Link, useLocation } from "wouter";
 import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { toProblem } from "../../../../domain/{{ kebab }}/messages";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { {{ pascal }}FormView, to{{ pascal }}Draft, to{{ pascal }}Form } from "../views/{{ kebab }}-form-view";
 
 /** Creates {{ a_words }}, or edits the one with `id`. */
@@ -34,6 +35,7 @@ function {{ pascal }}Form({ existing }: { existing: {{ pascal }} | null }) {
   const [values, setValues] = useState(to{{ pascal }}Form(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -54,8 +56,14 @@ function {{ pascal }}Form({ existing }: { existing: {{ pascal }} | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <{{ pascal }}FormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <{{ pascal }}FormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );

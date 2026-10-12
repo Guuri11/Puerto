@@ -1985,6 +1985,36 @@ export class TicketError extends Error {
   }
 }
 
+=== web/src/domain/ticket/messages.ts ===
+import type { TicketDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface TicketProblem {
+  field: keyof TicketDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "ticket.invalid_state": "State is not valid",
+  "ticket.duplicate": "A ticket with these values already exists",
+  "ticket.not_found": "This ticket no longer exists",
+  "ticket.repository_error": "The ticket could not be saved, try again later",
+  "ticket.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof TicketDraft> = {
+  "ticket.invalid_state": "state",
+};
+
+export function toProblem(code: string): TicketProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/ticket/model.ts ===
 import { TicketError } from "./errors";
 
@@ -2403,7 +2433,7 @@ describe("TicketFormContainer", () => {
     expect(await ticketRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the ticket", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "ticket.validation_error.invalid";
     const ticketRepository = {
@@ -2419,15 +2449,53 @@ describe("TicketFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a ticket with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const ticketRepository = {
+      ...fakeTicketRepository(),
+      create: () => Promise.reject(new TicketError("ticket.duplicate")),
+    };
+    renderScreen(<TicketFormContainer />, { ticketRepository });
+    await fillIn(TicketMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A ticket with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const ticketRepository = {
+      ...fakeTicketRepository(),
+      create: () => Promise.reject(new TicketError("ticket.invalid_state")),
+    };
+    renderScreen(<TicketFormContainer />, { ticketRepository });
+    await fillIn(TicketMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("State is not valid")).toBeTruthy();
+    const input = screen.getByLabelText("State");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/ticket/containers/ticket-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/ticket/messages";
 import type { Ticket } from "../../../../domain/ticket/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { TicketFormView, toTicketDraft, toTicketForm } from "../views/ticket-form-view";
 
 /** Creates a ticket, or edits the one with `id`. */
@@ -2458,6 +2526,7 @@ function TicketForm({ existing }: { existing: Ticket | null }) {
   const [values, setValues] = useState(toTicketForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -2478,8 +2547,14 @@ function TicketForm({ existing }: { existing: Ticket | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <TicketFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <TicketFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -2602,7 +2677,9 @@ export function TicketDetailView({ ticket }: { ticket: Ticket }) {
 }
 
 === web/src/presentation/features/ticket/views/ticket-form-view.tsx ===
+import type { TicketProblem } from "../../../../domain/ticket/messages";
 import { parseState, type Ticket, type TicketDraft } from "../../../../domain/ticket/model";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface TicketFormValues {
@@ -2630,11 +2707,14 @@ export function toTicketDraft(values: TicketFormValues): TicketDraft {
 export function TicketFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: TicketFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: TicketProblem | null;
   onChange: (values: TicketFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -2650,6 +2730,7 @@ export function TicketFormView({
         <span className="fieldset-legend">State</span>
         <select
           className="select w-full"
+          aria-invalid={problem?.field === "state"}
           required
           value={values.state}
           onChange={(event) => onChange({ ...values, state: event.target.value })}
@@ -2659,6 +2740,7 @@ export function TicketFormView({
           <option value="Closed">Closed</option>
         </select>
       </label>
+      <FieldError problem={problem} field="state" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

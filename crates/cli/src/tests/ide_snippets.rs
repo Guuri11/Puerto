@@ -859,7 +859,8 @@ test("should reach a custom route through the generated route table", async () =
     let form = format!("{web}/presentation/features/product/views/product-form-view.tsx");
     let src = fs::read_to_string(output.join(&form)).unwrap();
     let start = src.find("      <label className=\"fieldset\">\n        <span className=\"fieldset-legend\">Name</span>").unwrap();
-    let end = start + src[start..].find("</label>\n").unwrap() + "</label>\n".len();
+    let field_error = "<FieldError problem={problem} field=\"name\" />\n";
+    let end = start + src[start..].find(field_error).unwrap() + field_error.len();
     let field = expand_snippet(
         &tsx["web-form-field"],
         &[("Label", "Name"), ("text", "text"), ("field", "name")],

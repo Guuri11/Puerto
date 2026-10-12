@@ -2237,7 +2237,7 @@ over losses).
 
 ## Phase 15 — Developer experience: what the 2026-10-12 walkthrough found
 
-**Status:** in progress (15.0–15.2 done). Source: a manual run of every command and option on five generated
+**Status:** in progress (15.0–15.3 done). Source: a manual run of every command and option on five generated
 projects (in-memory, `--db`, `--events db`, `--events kafka`, `--no-demo`), the apps driven in a
 browser. Already fixed outside this phase, one commit each: generated code is formatted
 (ADR-0019); a forced re-scaffold that drops every local value object removes `value_objects.rs`;
@@ -2327,7 +2327,7 @@ a blanket impl over `IntoEndpoint` and one over `Result` overlap), `Error::Start
 Matrix: a `--db` scenario starts the binary with `DATABASE_URL` pointing at a closed port and
 asserts the exit code and the hint, no `panicked` in stderr.
 
-### 15.3 — The frontend says what went wrong, next to the field
+### 15.3 — The frontend says what went wrong, next to the field ✅
 
 **Problem.** A 409 or 422 shows the raw code in the alert (`product.invalid_email`) and no field is
 marked.
@@ -2338,6 +2338,9 @@ error list as `errors.rs`: `product.duplicate` → "A product with these values 
 The form maps a code to its field when it names one (`<field>_empty`, the VO's field) and shows the
 message under that input; other codes go to the alert. Unknown codes fall back to the code itself.
 English only; the file is the place to translate.
+
+Done as `toProblem(code) → { field, text }` and a shared `FieldError`, placed after the input's
+`<label>`: inside it, the message became part of the input's accessible name.
 
 **Test scenarios.** `bun test`: a 422 `name_empty` marks the name input, a 409 shows the duplicate
 message, an unknown code shows the code.

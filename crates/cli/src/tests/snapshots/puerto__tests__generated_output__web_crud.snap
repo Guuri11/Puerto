@@ -2383,6 +2383,38 @@ export class OrderItemError extends Error {
   }
 }
 
+=== web/src/domain/order-item/messages.ts ===
+import type { OrderItemDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface OrderItemProblem {
+  field: keyof OrderItemDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "order_item.validation_error.title_empty": "Title is required",
+  "order_item.invalid_sku": "Sku is not valid",
+  "order_item.duplicate": "An order item with these values already exists",
+  "order_item.not_found": "This order item no longer exists",
+  "order_item.repository_error": "The order item could not be saved, try again later",
+  "order_item.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof OrderItemDraft> = {
+  "order_item.validation_error.title_empty": "title",
+  "order_item.invalid_sku": "sku",
+};
+
+export function toProblem(code: string): OrderItemProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/order-item/model.ts ===
 export interface OrderItem {
   id: string;
@@ -2812,7 +2844,7 @@ describe("OrderItemFormContainer", () => {
     expect(await orderItemRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the order item", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "order_item.validation_error.invalid";
     const orderItemRepository = {
@@ -2828,15 +2860,53 @@ describe("OrderItemFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a order item with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const orderItemRepository = {
+      ...fakeOrderItemRepository(),
+      create: () => Promise.reject(new OrderItemError("order_item.duplicate")),
+    };
+    renderScreen(<OrderItemFormContainer />, { orderItemRepository });
+    await fillIn(OrderItemMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "An order item with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const orderItemRepository = {
+      ...fakeOrderItemRepository(),
+      create: () => Promise.reject(new OrderItemError("order_item.validation_error.title_empty")),
+    };
+    renderScreen(<OrderItemFormContainer />, { orderItemRepository });
+    await fillIn(OrderItemMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Title is required")).toBeTruthy();
+    const input = screen.getByLabelText("Title");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/order-item/containers/order-item-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/order-item/messages";
 import type { OrderItem } from "../../../../domain/order-item/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import {
   OrderItemFormView,
   toOrderItemDraft,
@@ -2871,6 +2941,7 @@ function OrderItemForm({ existing }: { existing: OrderItem | null }) {
   const [values, setValues] = useState(toOrderItemForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -2891,8 +2962,14 @@ function OrderItemForm({ existing }: { existing: OrderItem | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <OrderItemFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <OrderItemFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -3025,7 +3102,9 @@ export function OrderItemDetailView({ orderItem }: { orderItem: OrderItem }) {
 }
 
 === web/src/presentation/features/order-item/views/order-item-form-view.tsx ===
+import type { OrderItemProblem } from "../../../../domain/order-item/messages";
 import type { OrderItem, OrderItemDraft } from "../../../../domain/order-item/model";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface OrderItemFormValues {
@@ -3073,11 +3152,14 @@ export function toOrderItemDraft(values: OrderItemFormValues): OrderItemDraft {
 export function OrderItemFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: OrderItemFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: OrderItemProblem | null;
   onChange: (values: OrderItemFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -3094,32 +3176,38 @@ export function OrderItemFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "title"}
           required
           value={values.title}
           onChange={(event) => onChange({ ...values, title: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="title" />
       <label className="fieldset">
         <span className="fieldset-legend">Quantity</span>
         <input
           className="input w-full"
           type="number"
+          aria-invalid={problem?.field === "quantity"}
           required
           value={values.quantity}
           onChange={(event) => onChange({ ...values, quantity: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="quantity" />
       <label className="fieldset">
         <span className="fieldset-legend">Rate</span>
         <input
           className="input w-full"
           type="number"
+          aria-invalid={problem?.field === "rate"}
           step="any"
           required
           value={values.rate}
           onChange={(event) => onChange({ ...values, rate: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="rate" />
       <label className="label">
         <input
           className="checkbox"
@@ -3134,21 +3222,25 @@ export function OrderItemFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "refId"}
           required
           value={values.refId}
           onChange={(event) => onChange({ ...values, refId: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="refId" />
       <label className="fieldset">
         <span className="fieldset-legend">Sku</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "sku"}
           required
           value={values.sku}
           onChange={(event) => onChange({ ...values, sku: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="sku" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

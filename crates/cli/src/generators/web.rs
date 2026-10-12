@@ -27,6 +27,7 @@ pub fn web_entity_files(snake: &str) -> Vec<PathBuf> {
     [
         format!("web/src/domain/{k}/model.ts"),
         format!("web/src/domain/{k}/errors.ts"),
+        format!("web/src/domain/{k}/messages.ts"),
         format!("web/src/domain/{k}/repository.ts"),
         format!("web/src/infrastructure/{k}/{k}-repository-http.ts"),
         format!("web/src/infrastructure/{k}/{k}-repository-http.test.ts"),
@@ -144,6 +145,7 @@ const TAKEN_IDENTIFIERS: &[&str] = &[
     "existing",
     "failure",
     "navigate",
+    "problem",
     "remove",
     "saving",
     "values",
@@ -232,8 +234,99 @@ fn entity_template_ctx(pascal: &str, fields: &[Field]) -> tera::Context {
     ctx.insert("fill_helpers", &helpers(|f| &f.to_form_helpers));
     ctx.insert("display_helpers", &helpers(|f| &f.display_helpers));
     ctx.insert("enums", &enums);
+    let problems = web_problems(&entity, &effective_fields(fields), &web_fields);
+    ctx.insert(
+        "field_problem",
+        &problems.iter().find(|p| p.field.is_some()),
+    );
+    ctx.insert("problems", &problems);
+    ctx.insert(
+        "duplicate_text",
+        &format!(
+            "{} with these values already exists",
+            capitalize(&entity.a_words)
+        ),
+    );
     ctx.insert("fields", &web_fields);
     ctx
+}
+
+/// An error code of the entity's API and what the screens say for it (`domain/<entity>/messages.ts`).
+#[derive(Serialize)]
+struct WebProblemCtx {
+    code: String,
+    /// The form field it is about (camelCase), shown under that input; `None` goes to the alert.
+    field: Option<String>,
+    /// That field's label — how a test finds its input.
+    label: String,
+    text: String,
+}
+
+/// The codes `errors.rs` declares, in its order: a required `String` field's `<field>_empty`, a
+/// value object's `invalid_<vo>`, then the entity-wide ones.
+fn web_problems(
+    entity: &WebEntityCtx,
+    eff: &[Field],
+    web_fields: &[WebFieldCtx],
+) -> Vec<WebProblemCtx> {
+    let snake = &entity.snake;
+    let mut problems: Vec<WebProblemCtx> = vec![];
+    for (f, web) in eff.iter().zip(web_fields) {
+        // A checkbox has no message under it; its code (a bool VO never fails) goes to the alert.
+        let field = (web.input != "checkbox").then(|| web.camel.clone());
+        let mut add = |code: String, text: String| {
+            if !problems.iter().any(|p| p.code == code) {
+                problems.push(WebProblemCtx {
+                    code,
+                    field: field.clone(),
+                    label: web.label.clone(),
+                    text,
+                });
+            }
+        };
+        if f.field_type == "String" && f.value_object.is_none() {
+            add(
+                format!("{snake}.validation_error.{}_empty", f.name),
+                format!("{} is required", web.label),
+            );
+        }
+        if let Some(vo) = &f.value_object {
+            // `Vec<VO>` fields are plural: "Labels are not valid".
+            let verb = if f.field_type.starts_with("Vec<") {
+                "are"
+            } else {
+                "is"
+            };
+            add(
+                format!("{snake}.invalid_{}", pascal_to_snake(vo)),
+                format!("{} {verb} not valid", web.label),
+            );
+        }
+    }
+    let words = &entity.words;
+    for (code, text) in [
+        (
+            "duplicate",
+            format!(
+                "{} with these values already exists",
+                capitalize(&entity.a_words)
+            ),
+        ),
+        ("not_found", format!("This {words} no longer exists")),
+        (
+            "repository_error",
+            format!("The {words} could not be saved, try again later"),
+        ),
+        ("unknown", "Something went wrong".to_string()),
+    ] {
+        problems.push(WebProblemCtx {
+            code: format!("{snake}.{code}"),
+            field: None,
+            label: String::new(),
+            text,
+        });
+    }
+    problems
 }
 
 /// Renders a TypeScript template and orders its imports the way Biome's `organizeImports` does,
@@ -243,9 +336,10 @@ fn render_ts(template: &str, ctx: &tera::Context) -> Result<String, RenderError>
 }
 
 /// One template per file of the slice, in `web_entity_files` order.
-const ENTITY_TEMPLATES: [&str; 15] = [
+const ENTITY_TEMPLATES: [&str; 16] = [
     "web/model.tera",
     "web/errors.tera",
+    "web/messages.tera",
     "web/repository.tera",
     "web/repository_http.tera",
     "web/repository_http_test.tera",

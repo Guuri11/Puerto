@@ -2293,6 +2293,40 @@ export class CustomerError extends Error {
   }
 }
 
+=== web/src/domain/customer/messages.ts ===
+import type { CustomerDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface CustomerProblem {
+  field: keyof CustomerDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "customer.validation_error.name_empty": "Name is required",
+  "customer.invalid_email": "Email is not valid",
+  "customer.invalid_money": "Credit is not valid",
+  "customer.duplicate": "A customer with these values already exists",
+  "customer.not_found": "This customer no longer exists",
+  "customer.repository_error": "The customer could not be saved, try again later",
+  "customer.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof CustomerDraft> = {
+  "customer.validation_error.name_empty": "name",
+  "customer.invalid_email": "email",
+  "customer.invalid_money": "credit",
+};
+
+export function toProblem(code: string): CustomerProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/customer/model.ts ===
 export interface Customer {
   id: string;
@@ -2708,7 +2742,7 @@ describe("CustomerFormContainer", () => {
     expect(await customerRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the customer", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "customer.validation_error.invalid";
     const customerRepository = {
@@ -2724,15 +2758,53 @@ describe("CustomerFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a customer with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const customerRepository = {
+      ...fakeCustomerRepository(),
+      create: () => Promise.reject(new CustomerError("customer.duplicate")),
+    };
+    renderScreen(<CustomerFormContainer />, { customerRepository });
+    await fillIn(CustomerMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A customer with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const customerRepository = {
+      ...fakeCustomerRepository(),
+      create: () => Promise.reject(new CustomerError("customer.validation_error.name_empty")),
+    };
+    renderScreen(<CustomerFormContainer />, { customerRepository });
+    await fillIn(CustomerMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Name is required")).toBeTruthy();
+    const input = screen.getByLabelText("Name");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/customer/containers/customer-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/customer/messages";
 import type { Customer } from "../../../../domain/customer/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { CustomerFormView, toCustomerDraft, toCustomerForm } from "../views/customer-form-view";
 
 /** Creates a customer, or edits the one with `id`. */
@@ -2763,6 +2835,7 @@ function CustomerForm({ existing }: { existing: Customer | null }) {
   const [values, setValues] = useState(toCustomerForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -2783,8 +2856,14 @@ function CustomerForm({ existing }: { existing: Customer | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <CustomerFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <CustomerFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -2911,7 +2990,9 @@ export function CustomerDetailView({ customer }: { customer: Customer }) {
 }
 
 === web/src/presentation/features/customer/views/customer-form-view.tsx ===
+import type { CustomerProblem } from "../../../../domain/customer/messages";
 import type { Customer, CustomerDraft } from "../../../../domain/customer/model";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface CustomerFormValues {
@@ -2947,11 +3028,14 @@ export function toCustomerDraft(values: CustomerFormValues): CustomerDraft {
 export function CustomerFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: CustomerFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: CustomerProblem | null;
   onChange: (values: CustomerFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -2968,31 +3052,37 @@ export function CustomerFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "name"}
           required
           value={values.name}
           onChange={(event) => onChange({ ...values, name: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Email</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "email"}
           required
           value={values.email}
           onChange={(event) => onChange({ ...values, email: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="email" />
       <label className="fieldset">
         <span className="fieldset-legend">Credit</span>
         <input
           className="input w-full"
           type="number"
+          aria-invalid={problem?.field === "credit"}
           required
           value={values.credit}
           onChange={(event) => onChange({ ...values, credit: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="credit" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

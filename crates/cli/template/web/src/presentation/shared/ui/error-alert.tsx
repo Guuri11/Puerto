@@ -10,10 +10,11 @@ export function errorCode(error: unknown): string {
   return error instanceof Error ? error.message : "unknown";
 }
 
-export function ErrorAlert({ error }: { error: unknown }) {
+/** The alert of a failed call: `message` when there is one, else the error's code. */
+export function ErrorAlert({ error, message }: { error: unknown; message?: string }) {
   return (
     <div role="alert" className="alert alert-error">
-      <span>{errorCode(error)}</span>
+      <span>{message ?? errorCode(error)}</span>
     </div>
   );
 }

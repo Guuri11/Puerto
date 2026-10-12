@@ -2190,6 +2190,36 @@ export class ArticleError extends Error {
   }
 }
 
+=== web/src/domain/article/messages.ts ===
+import type { ArticleDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ArticleProblem {
+  field: keyof ArticleDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "article.validation_error.title_empty": "Title is required",
+  "article.duplicate": "An article with these values already exists",
+  "article.not_found": "This article no longer exists",
+  "article.repository_error": "The article could not be saved, try again later",
+  "article.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof ArticleDraft> = {
+  "article.validation_error.title_empty": "title",
+};
+
+export function toProblem(code: string): ArticleProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/article/model.ts ===
 export interface Article {
   id: string;
@@ -2612,7 +2642,7 @@ describe("ArticleFormContainer", () => {
     expect(await articleRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the article", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "article.validation_error.invalid";
     const articleRepository = {
@@ -2628,15 +2658,53 @@ describe("ArticleFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a article with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const articleRepository = {
+      ...fakeArticleRepository(),
+      create: () => Promise.reject(new ArticleError("article.duplicate")),
+    };
+    renderScreen(<ArticleFormContainer />, { articleRepository });
+    await fillIn(ArticleMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "An article with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const articleRepository = {
+      ...fakeArticleRepository(),
+      create: () => Promise.reject(new ArticleError("article.validation_error.title_empty")),
+    };
+    renderScreen(<ArticleFormContainer />, { articleRepository });
+    await fillIn(ArticleMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Title is required")).toBeTruthy();
+    const input = screen.getByLabelText("Title");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/article/containers/article-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/article/messages";
 import type { Article } from "../../../../domain/article/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { ArticleFormView, toArticleDraft, toArticleForm } from "../views/article-form-view";
 
 /** Creates an article, or edits the one with `id`. */
@@ -2667,6 +2735,7 @@ function ArticleForm({ existing }: { existing: Article | null }) {
   const [values, setValues] = useState(toArticleForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -2687,8 +2756,14 @@ function ArticleForm({ existing }: { existing: Article | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <ArticleFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <ArticleFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -2819,8 +2894,10 @@ export function ArticleDetailView({ article }: { article: Article }) {
 }
 
 === web/src/presentation/features/article/views/article-form-view.tsx ===
+import type { ArticleProblem } from "../../../../domain/article/messages";
 import type { Article, ArticleDraft } from "../../../../domain/article/model";
 import { numberOrNull, splitList, splitNumbers, textOf, textOrNull } from "../../../shared/forms";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface ArticleFormValues {
@@ -2864,11 +2941,14 @@ export function toArticleDraft(values: ArticleFormValues): ArticleDraft {
 export function ArticleFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: ArticleFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: ArticleProblem | null;
   onChange: (values: ArticleFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -2885,47 +2965,57 @@ export function ArticleFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "title"}
           required
           value={values.title}
           onChange={(event) => onChange({ ...values, title: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="title" />
       <label className="fieldset">
         <span className="fieldset-legend">Summary</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "summary"}
           value={values.summary}
           onChange={(event) => onChange({ ...values, summary: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="summary" />
       <label className="fieldset">
         <span className="fieldset-legend">Views</span>
         <input
           className="input w-full"
           type="number"
+          aria-invalid={problem?.field === "views"}
           value={values.views}
           onChange={(event) => onChange({ ...values, views: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="views" />
       <label className="fieldset">
         <span className="fieldset-legend">Tags</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "tags"}
           value={values.tags}
           onChange={(event) => onChange({ ...values, tags: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="tags" />
       <label className="fieldset">
         <span className="fieldset-legend">Scores</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "scores"}
           value={values.scores}
           onChange={(event) => onChange({ ...values, scores: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="scores" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

@@ -2281,6 +2281,40 @@ export class ItemError extends Error {
   }
 }
 
+=== web/src/domain/item/messages.ts ===
+import type { ItemDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ItemProblem {
+  field: keyof ItemDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "item.invalid_name": "Name is not valid",
+  "item.invalid_sku": "Sku is not valid",
+  "item.invalid_weight": "Weight is not valid",
+  "item.duplicate": "An item with these values already exists",
+  "item.not_found": "This item no longer exists",
+  "item.repository_error": "The item could not be saved, try again later",
+  "item.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof ItemDraft> = {
+  "item.invalid_name": "name",
+  "item.invalid_sku": "sku",
+  "item.invalid_weight": "weight",
+};
+
+export function toProblem(code: string): ItemProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/item/model.ts ===
 export interface Item {
   id: string;
@@ -2694,7 +2728,7 @@ describe("ItemFormContainer", () => {
     expect(await itemRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the item", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "item.validation_error.invalid";
     const itemRepository = {
@@ -2710,15 +2744,53 @@ describe("ItemFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a item with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const itemRepository = {
+      ...fakeItemRepository(),
+      create: () => Promise.reject(new ItemError("item.duplicate")),
+    };
+    renderScreen(<ItemFormContainer />, { itemRepository });
+    await fillIn(ItemMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "An item with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const itemRepository = {
+      ...fakeItemRepository(),
+      create: () => Promise.reject(new ItemError("item.invalid_name")),
+    };
+    renderScreen(<ItemFormContainer />, { itemRepository });
+    await fillIn(ItemMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Name is not valid")).toBeTruthy();
+    const input = screen.getByLabelText("Name");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/item/containers/item-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/item/messages";
 import type { Item } from "../../../../domain/item/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { ItemFormView, toItemDraft, toItemForm } from "../views/item-form-view";
 
 /** Creates an item, or edits the one with `id`. */
@@ -2749,6 +2821,7 @@ function ItemForm({ existing }: { existing: Item | null }) {
   const [values, setValues] = useState(toItemForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -2769,8 +2842,14 @@ function ItemForm({ existing }: { existing: Item | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <ItemFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <ItemFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -2897,7 +2976,9 @@ export function ItemDetailView({ item }: { item: Item }) {
 }
 
 === web/src/presentation/features/item/views/item-form-view.tsx ===
+import type { ItemProblem } from "../../../../domain/item/messages";
 import type { Item, ItemDraft } from "../../../../domain/item/model";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface ItemFormValues {
@@ -2933,11 +3014,14 @@ export function toItemDraft(values: ItemFormValues): ItemDraft {
 export function ItemFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: ItemFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: ItemProblem | null;
   onChange: (values: ItemFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -2954,31 +3038,37 @@ export function ItemFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "name"}
           required
           value={values.name}
           onChange={(event) => onChange({ ...values, name: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Sku</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "sku"}
           required
           value={values.sku}
           onChange={(event) => onChange({ ...values, sku: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="sku" />
       <label className="fieldset">
         <span className="fieldset-legend">Weight</span>
         <input
           className="input w-full"
           type="number"
+          aria-invalid={problem?.field === "weight"}
           required
           value={values.weight}
           onChange={(event) => onChange({ ...values, weight: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="weight" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

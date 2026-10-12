@@ -1291,12 +1291,14 @@ pub const WEB_TSX_SNIPPETS_JSON: &str = r##"{
       "\t\tclassName=\"input w-full\"",
       "\t\ttype=\"${2:text}\"",
       "\t\trequired",
+      "\t\taria-invalid={problem?.field === \"${3:field}\"}",
       "\t\tvalue={values.${3:field}}",
       "\t\tonChange={(event) => onChange({ ...values, ${3:field}: event.target.value })}",
       "\t/>",
-      "</label>"
+      "</label>",
+      "<FieldError problem={problem} field=\"${3:field}\" />"
     ],
-    "description": "A daisyUI input bound to the form view's values (views/<entity>-form-view.tsx); add the field to <Entity>FormValues and its two mappings."
+    "description": "A daisyUI input bound to the form view's values (views/<entity>-form-view.tsx), and the API's message about it underneath; add the field to <Entity>FormValues and its two mappings."
   },
   "Web — route": {
     "prefix": "web-route",

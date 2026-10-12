@@ -2197,6 +2197,40 @@ export class PersonaError extends Error {
   }
 }
 
+=== web/src/domain/persona/messages.ts ===
+import type { PersonaDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface PersonaProblem {
+  field: keyof PersonaDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "persona.validation_error.name_empty": "Name is required",
+  "persona.invalid_middle_name": "Middle name is not valid",
+  "persona.invalid_tag": "Tags are not valid",
+  "persona.duplicate": "A persona with these values already exists",
+  "persona.not_found": "This persona no longer exists",
+  "persona.repository_error": "The persona could not be saved, try again later",
+  "persona.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof PersonaDraft> = {
+  "persona.validation_error.name_empty": "name",
+  "persona.invalid_middle_name": "middleName",
+  "persona.invalid_tag": "tags",
+};
+
+export function toProblem(code: string): PersonaProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/persona/model.ts ===
 export interface Persona {
   id: string;
@@ -2611,7 +2645,7 @@ describe("PersonaFormContainer", () => {
     expect(await personaRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the persona", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "persona.validation_error.invalid";
     const personaRepository = {
@@ -2627,15 +2661,53 @@ describe("PersonaFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a persona with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const personaRepository = {
+      ...fakePersonaRepository(),
+      create: () => Promise.reject(new PersonaError("persona.duplicate")),
+    };
+    renderScreen(<PersonaFormContainer />, { personaRepository });
+    await fillIn(PersonaMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A persona with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const personaRepository = {
+      ...fakePersonaRepository(),
+      create: () => Promise.reject(new PersonaError("persona.validation_error.name_empty")),
+    };
+    renderScreen(<PersonaFormContainer />, { personaRepository });
+    await fillIn(PersonaMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Name is required")).toBeTruthy();
+    const input = screen.getByLabelText("Name");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/persona/containers/persona-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/persona/messages";
 import type { Persona } from "../../../../domain/persona/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { PersonaFormView, toPersonaDraft, toPersonaForm } from "../views/persona-form-view";
 
 /** Creates a persona, or edits the one with `id`. */
@@ -2666,6 +2738,7 @@ function PersonaForm({ existing }: { existing: Persona | null }) {
   const [values, setValues] = useState(toPersonaForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -2686,8 +2759,14 @@ function PersonaForm({ existing }: { existing: Persona | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <PersonaFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <PersonaFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -2814,8 +2893,10 @@ export function PersonaDetailView({ persona }: { persona: Persona }) {
 }
 
 === web/src/presentation/features/persona/views/persona-form-view.tsx ===
+import type { PersonaProblem } from "../../../../domain/persona/messages";
 import type { Persona, PersonaDraft } from "../../../../domain/persona/model";
 import { splitList, textOf, textOrNull } from "../../../shared/forms";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface PersonaFormValues {
@@ -2851,11 +2932,14 @@ export function toPersonaDraft(values: PersonaFormValues): PersonaDraft {
 export function PersonaFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: PersonaFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: PersonaProblem | null;
   onChange: (values: PersonaFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -2872,29 +2956,35 @@ export function PersonaFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "name"}
           required
           value={values.name}
           onChange={(event) => onChange({ ...values, name: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Middle name</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "middleName"}
           value={values.middleName}
           onChange={(event) => onChange({ ...values, middleName: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="middleName" />
       <label className="fieldset">
         <span className="fieldset-legend">Tags</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "tags"}
           value={values.tags}
           onChange={(event) => onChange({ ...values, tags: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="tags" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

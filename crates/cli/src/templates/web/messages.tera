@@ -1,0 +1,29 @@
+import type { {{ pascal }}Draft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface {{ pascal }}Problem {
+  field: keyof {{ pascal }}Draft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+{%- for p in problems %}
+  "{{ p.code }}": "{{ p.text }}",
+{%- endfor %}
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof {{ pascal }}Draft> = {
+{%- if field_problem %}
+{%- for p in problems %}{% if p.field %}
+  "{{ p.code }}": "{{ p.field }}",
+{%- endif %}{% endfor %}
+{% endif %}};
+
+export function toProblem(code: string): {{ pascal }}Problem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}

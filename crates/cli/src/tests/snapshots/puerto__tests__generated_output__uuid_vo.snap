@@ -2115,6 +2115,38 @@ export class BookingError extends Error {
   }
 }
 
+=== web/src/domain/booking/messages.ts ===
+import type { BookingDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface BookingProblem {
+  field: keyof BookingDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "booking.validation_error.reference_empty": "Reference is required",
+  "booking.invalid_tenant_id": "Tenant id is not valid",
+  "booking.duplicate": "A booking with these values already exists",
+  "booking.not_found": "This booking no longer exists",
+  "booking.repository_error": "The booking could not be saved, try again later",
+  "booking.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof BookingDraft> = {
+  "booking.validation_error.reference_empty": "reference",
+  "booking.invalid_tenant_id": "tenantId",
+};
+
+export function toProblem(code: string): BookingProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
 === web/src/domain/booking/model.ts ===
 export interface Booking {
   id: string;
@@ -2524,7 +2556,7 @@ describe("BookingFormContainer", () => {
     expect(await bookingRepository.get(seeded.id)).toEqual(seeded);
   });
 
-  test("should show the validation code when the API rejects the booking", async () => {
+  test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
     const code = "booking.validation_error.invalid";
     const bookingRepository = {
@@ -2540,15 +2572,53 @@ describe("BookingFormContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe(code);
   });
+
+  test("should say a booking with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const bookingRepository = {
+      ...fakeBookingRepository(),
+      create: () => Promise.reject(new BookingError("booking.duplicate")),
+    };
+    renderScreen(<BookingFormContainer />, { bookingRepository });
+    await fillIn(BookingMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A booking with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const bookingRepository = {
+      ...fakeBookingRepository(),
+      create: () => Promise.reject(new BookingError("booking.validation_error.reference_empty")),
+    };
+    renderScreen(<BookingFormContainer />, { bookingRepository });
+    await fillIn(BookingMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Reference is required")).toBeTruthy();
+    const input = screen.getByLabelText("Reference");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/booking/containers/booking-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/booking/messages";
 import type { Booking } from "../../../../domain/booking/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { BookingFormView, toBookingDraft, toBookingForm } from "../views/booking-form-view";
 
 /** Creates a booking, or edits the one with `id`. */
@@ -2579,6 +2649,7 @@ function BookingForm({ existing }: { existing: Booking | null }) {
   const [values, setValues] = useState(toBookingForm(existing));
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
 
   const save = async () => {
     setSaving(true);
@@ -2599,8 +2670,14 @@ function BookingForm({ existing }: { existing: Booking | null }) {
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {failure !== null && <ErrorAlert error={failure} />}
-        <BookingFormView values={values} saving={saving} onChange={setValues} onSubmit={save} />
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <BookingFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
       </div>
     </div>
   );
@@ -2725,7 +2802,9 @@ export function BookingDetailView({ booking }: { booking: Booking }) {
 }
 
 === web/src/presentation/features/booking/views/booking-form-view.tsx ===
+import type { BookingProblem } from "../../../../domain/booking/messages";
 import type { Booking, BookingDraft } from "../../../../domain/booking/model";
+import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface BookingFormValues {
@@ -2757,11 +2836,14 @@ export function toBookingDraft(values: BookingFormValues): BookingDraft {
 export function BookingFormView({
   values,
   saving,
+  problem,
   onChange,
   onSubmit,
 }: {
   values: BookingFormValues;
   saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: BookingProblem | null;
   onChange: (values: BookingFormValues) => void;
   onSubmit: () => void;
 }) {
@@ -2778,21 +2860,25 @@ export function BookingFormView({
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "reference"}
           required
           value={values.reference}
           onChange={(event) => onChange({ ...values, reference: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="reference" />
       <label className="fieldset">
         <span className="fieldset-legend">Tenant id</span>
         <input
           className="input w-full"
           type="text"
+          aria-invalid={problem?.field === "tenantId"}
           required
           value={values.tenantId}
           onChange={(event) => onChange({ ...values, tenantId: event.target.value })}
         />
       </label>
+      <FieldError problem={problem} field="tenantId" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>

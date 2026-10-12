@@ -447,3 +447,79 @@ fn generated_routes_match_custom_routes_before_the_entities() {
 
     cleanup(&dir);
 }
+
+// ── Phase 15.3: the form says what went wrong, next to the field ─────────
+
+#[test]
+fn messages_cover_every_code_of_errors_rs_and_name_the_field_it_is_about() {
+    let (dir, output) = web_project("web_messages");
+    let args = fields(&[
+        "title:String",
+        "sku:Sku:String",
+        "status:Status:enum:Draft/Live",
+        "note:opt:String",
+        "count:i64",
+    ]);
+    scaffold::run_scaffold("Product", &output, &args, OverwritePolicy::Ask).unwrap();
+
+    let messages = read(&output, "web/src/domain/product/messages.ts");
+    let errors = read(&output, "business/src/domain/product/errors.rs");
+    for line in errors.lines().filter(|l| l.contains("#[error(\"product.")) {
+        let code = line.split('"').nth(1).unwrap();
+        if code.ends_with("{0}") {
+            continue; // the field-specific validation codes are below
+        }
+        assert!(
+            messages.contains(&format!("\"{code}\": \"")),
+            "{code} has no message"
+        );
+    }
+    assert!(messages.contains("\"product.validation_error.title_empty\": \"Title is required\","));
+    assert!(messages.contains("\"product.validation_error.title_empty\": \"title\","));
+    assert!(messages.contains("\"product.invalid_sku\": \"Sku is not valid\","));
+    assert!(messages.contains("\"product.invalid_status\": \"status\","));
+    assert!(
+        messages.contains("\"product.duplicate\": \"A product with these values already exists\",")
+    );
+    assert!(!messages.contains("note_empty"));
+    assert!(
+        messages.contains("return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };")
+    );
+
+    let view = read(
+        &output,
+        "web/src/presentation/features/product/views/product-form-view.tsx",
+    );
+    assert!(view.contains("<FieldError problem={problem} field=\"title\" />"));
+    assert!(view.contains("aria-invalid={problem?.field === \"status\"}"));
+    let container = read(
+        &output,
+        "web/src/presentation/features/product/containers/product-form-container.tsx",
+    );
+    assert!(
+        container
+            .contains("const problem = failure === null ? null : toProblem(errorCode(failure));")
+    );
+    assert!(container.contains(
+        "{problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}"
+    ));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn messages_of_an_entity_without_field_codes_map_no_field() {
+    let (dir, output) = web_project("web_messages_no_fields");
+    scaffold::run_scaffold(
+        "Counter",
+        &output,
+        &fields(&["count:i64"]),
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+
+    let messages = read(&output, "web/src/domain/counter/messages.ts");
+    assert!(messages.contains("const FIELDS: Record<string, keyof CounterDraft> = {};"));
+
+    cleanup(&dir);
+}
