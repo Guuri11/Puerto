@@ -4,6 +4,7 @@ import { Route, Switch } from "wouter";
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [];
 
@@ -13,6 +14,7 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+      {customRoutes}
       <Route>
         <NotFoundPage />
       </Route>

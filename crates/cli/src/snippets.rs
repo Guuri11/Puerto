@@ -169,7 +169,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t}",
       "}"
     ],
-    "description": "Repository port trait (find_all, find_by_id, save) returning RepositoryError + mockall mock in pub mod mocks."
+    "description": "Repository port trait (find_all, find_by_id, save) returning RepositoryError + mockall mock in pub mod mocks. In an events project the port only reads: drop save, writes go through the unit of work (uow-write)."
   },
   "Domain — use_cases/<action>.rs": {
     "prefix": "domain-use-case",
@@ -291,6 +291,123 @@ pub const SNIPPETS_JSON: &str = r##"{
       "}"
     ],
     "description": "Use case test for the failure path: the mocked repository errors, the code propagates."
+  },
+  "Application — unit of work write (events)": {
+    "prefix": "uow-write",
+    "body": [
+      "let failed = |e: &RepositoryError| tracing::error!(error = %e, \"${1:action}: repository failed\");",
+      "let mut uow = self.uow_factory.begin().await.inspect_err(failed)?;",
+      "uow.save(&entity).await.inspect_err(failed)?;",
+      "uow.record(${2:Entity}Event::${3:Updated}(${2:Entity}Snapshot::from_entity(&entity)))",
+      "\t.await",
+      "\t.inspect_err(failed)?;",
+      "uow.commit().await.inspect_err(failed)?;"
+    ],
+    "description": "Events projects: write through the unit of work — begin, save, record the event, commit. Dropping it uncommitted rolls back."
+  },
+  "Application — use case impl over the unit of work (events)": {
+    "prefix": "app-use-case-uow",
+    "body": [
+      "use std::sync::Arc;",
+      "",
+      "use async_trait::async_trait;",
+      "use puerto_core::RepositoryError;",
+      "",
+      "use crate::domain::${1:entity}::{",
+      "\terrors::${2:Entity}Error,",
+      "\tevents::{${2:Entity}Event, ${2:Entity}Snapshot},",
+      "\tmodel::${2:Entity},",
+      "\trepository::${2:Entity}RepositoryTrait,",
+      "\tunit_of_work::${2:Entity}UnitOfWorkFactory,",
+      "\tuse_cases::${3:action}::{${4:Action}${2:Entity}Params, ${4:Action}${2:Entity}UseCaseTrait},",
+      "};",
+      "",
+      "pub struct ${4:Action}${2:Entity}UseCaseImpl {",
+      "\tpub repository: Arc<dyn ${2:Entity}RepositoryTrait>,",
+      "\tpub uow_factory: Arc<dyn ${2:Entity}UnitOfWorkFactory>,",
+      "}",
+      "",
+      "#[async_trait]",
+      "impl ${4:Action}${2:Entity}UseCaseTrait for ${4:Action}${2:Entity}UseCaseImpl {",
+      "\tasync fn execute(&self, params: ${4:Action}${2:Entity}Params) -> Result<${2:Entity}, ${2:Entity}Error> {",
+      "\t\ttracing::info!(id = %params.id, \"${3:action}: start\");",
+      "\t\tlet failed = |e: &RepositoryError| tracing::error!(error = %e, \"${3:action}: repository failed\");",
+      "\t\tlet mut entity = self",
+      "\t\t\t.repository",
+      "\t\t\t.find_by_id(params.id)",
+      "\t\t\t.await",
+      "\t\t\t.inspect_err(failed)?",
+      "\t\t\t.ok_or(${2:Entity}Error::NotFound)?;",
+      "\t\t$0",
+      "\t\tentity.updated_at = chrono::Utc::now();",
+      "\t\tlet mut uow = self.uow_factory.begin().await.inspect_err(failed)?;",
+      "\t\tuow.save(&entity).await.inspect_err(failed)?;",
+      "\t\tuow.record(${2:Entity}Event::${5:Published}(${2:Entity}Snapshot::from_entity(&entity)))",
+      "\t\t\t.await",
+      "\t\t\t.inspect_err(failed)?;",
+      "\t\tuow.commit().await.inspect_err(failed)?;",
+      "\t\ttracing::info!(id = %entity.id, \"${3:action}: done\");",
+      "\t\tOk(entity)",
+      "\t}",
+      "}",
+      "",
+      "#[cfg(test)]",
+      "mod tests {",
+      "\tuse super::*;",
+      "\tuse crate::domain::${1:entity}::{",
+      "\t\tmodel::${2:Entity}Id, repository::mocks::Mock${2:Entity}Repository,",
+      "\t\tunit_of_work::mocks::RecordingUnitOfWorkFactory,",
+      "\t};",
+      "\tuse crate::tests::mothers::${1:entity}_mother::${2:Entity}Mother;",
+      "\tuse puerto_core::DomainEvent;",
+      "",
+      "\t#[tokio::test]",
+      "\tasync fn should_record_${6:event}_when_the_${1:entity}_exists() {",
+      "\t\t// Arrange",
+      "\t\tlet entity = ${2:Entity}Mother::random();",
+      "\t\tlet id = entity.id;",
+      "\t\tlet mut mock_repo = Mock${2:Entity}Repository::new();",
+      "\t\tmock_repo.expect_find_by_id().returning(move |_| Ok(Some(entity.clone())));",
+      "\t\tlet uow_factory = RecordingUnitOfWorkFactory::new();",
+      "\t\tlet use_case = ${4:Action}${2:Entity}UseCaseImpl {",
+      "\t\t\trepository: Arc::new(mock_repo),",
+      "\t\t\tuow_factory: Arc::new(uow_factory.clone()),",
+      "\t\t};",
+      "",
+      "\t\t// Act",
+      "\t\tlet result = use_case.execute(${4:Action}${2:Entity}Params { id }).await;",
+      "",
+      "\t\t// Assert",
+      "\t\tassert!(result.is_ok());",
+      "\t\tlet recorded = uow_factory.recorded();",
+      "\t\tassert!(recorded.committed);",
+      "\t\tassert_eq!(recorded.events.len(), 1);",
+      "\t\tassert_eq!(recorded.events[0].event_type(), \"${6:event}\");",
+      "\t}",
+      "",
+      "\t#[tokio::test]",
+      "\tasync fn should_return_not_found_and_record_nothing_when_the_${1:entity}_does_not_exist() {",
+      "\t\t// Arrange",
+      "\t\tlet mut mock_repo = Mock${2:Entity}Repository::new();",
+      "\t\tmock_repo.expect_find_by_id().returning(|_| Ok(None));",
+      "\t\tlet uow_factory = RecordingUnitOfWorkFactory::new();",
+      "\t\tlet use_case = ${4:Action}${2:Entity}UseCaseImpl {",
+      "\t\t\trepository: Arc::new(mock_repo),",
+      "\t\t\tuow_factory: Arc::new(uow_factory.clone()),",
+      "\t\t};",
+      "",
+      "\t\t// Act",
+      "\t\tlet result = use_case",
+      "\t\t\t.execute(${4:Action}${2:Entity}Params { id: ${2:Entity}Id::generate() })",
+      "\t\t\t.await;",
+      "",
+      "\t\t// Assert",
+      "\t\tassert_eq!(result.unwrap_err().to_string(), \"${1:entity}.not_found\");",
+      "\t\tassert!(uow_factory.recorded().events.is_empty());",
+      "\t}",
+      "}"
+    ],
+    "description": "Events projects: a use case on an existing entity — read through the repository, write through the unit of work, record the event; tests with RecordingUnitOfWorkFactory."
   },
   "Infrastructure — lib.rs entity block (InMemory)": {
     "prefix": "lib-infra-entity",
@@ -571,8 +688,8 @@ pub const SNIPPETS_JSON: &str = r##"{
       "",
       "#[derive(ApiResponse)]",
       "pub enum ${3:Action}${2:Entity}Response {",
-      "\t#[oai(status = 201)]",
-      "\tCreated(Json<${2:Entity}Dto>),",
+      "\t#[oai(status = ${4:201})]",
+      "\t${5:Created}(Json<${2:Entity}Dto>),",
       "\t#[oai(status = 422)]",
       "\tUnprocessableEntity(Json<ErrorResponse>),",
       "\t#[oai(status = 404)]",
@@ -594,7 +711,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t}",
       "}"
     ],
-    "description": "ApiResponse enum with from_status() helper."
+    "description": "ApiResponse enum with from_status() helper (201 Created; 200 Ok for an action endpoint)."
   },
   "Presentation — error_mapper.rs": {
     "prefix": "poem-error-mapper",
@@ -706,6 +823,71 @@ pub const SNIPPETS_JSON: &str = r##"{
       "}"
     ],
     "description": "GET /entities/:id endpoint: Path<Uuid> → EntityId → 200 or mapped error."
+  },
+  "Presentation — action endpoint on one entity": {
+    "prefix": "poem-endpoint-action",
+    "body": [
+      "/// ${1:Action} a ${2:Entity}",
+      "#[oai(path = \"/${3:entities}/:id/${4:verb}\", method = \"post\", tag = \"ApiTags::${2:Entity}\")]",
+      "async fn ${5:action}(&self, id: Path<Uuid>) -> ${1:Action}${2:Entity}Response {",
+      "\tmatch self",
+      "\t\t.${5:action}",
+      "\t\t.execute(${1:Action}${2:Entity}Params { id: ${2:Entity}Id::from_uuid(id.0) })",
+      "\t\t.await",
+      "\t{",
+      "\t\tOk(entity) => ${1:Action}${2:Entity}Response::Ok(Json(${2:Entity}Dto::from_domain(&entity))),",
+      "\t\tErr(err) => {",
+      "\t\t\tlet (status, error) = err.into_error_response();",
+      "\t\t\ttracing::warn!(code = %error.0.name, \"${5:action} failed\");",
+      "\t\t\t${1:Action}${2:Entity}Response::from_status(status, error)",
+      "\t\t}",
+      "\t}",
+      "}"
+    ],
+    "description": "POST /entities/:id/<verb> for a custom use case: Path<Uuid> → EntityId → use case → 200 or the mapped error. Its response enum: poem-response-enum with status 200 and variant Ok."
+  },
+  "Test — route test": {
+    "prefix": "poem-route-test",
+    "body": [
+      "#[tokio::test]",
+      "async fn should_respond_${1:200}_when_${2:entity}_is_${3:done}() {",
+      "\t// Arrange",
+      "\tlet mut mocks = Mocks::default();",
+      "\tmocks",
+      "\t\t.${4:action}",
+      "\t\t.expect_execute()",
+      "\t\t.returning(|_| Ok(${5:Entity}Mother::random()));",
+      "",
+      "\t// Act",
+      "\tlet response = mocks",
+      "\t\t.client()",
+      "\t\t.post(format!(\"/${6:entities}/{}/${7:verb}\", Uuid::new_v4()))",
+      "\t\t.send()",
+      "\t\t.await;",
+      "",
+      "\t// Assert",
+      "\tresponse.assert_status(StatusCode::${8:OK});",
+      "}"
+    ],
+    "description": "Route test in routes.rs' tests: TestClient over the real OpenApiService, one mocked use case (`mocks.<action>`), one status assertion (ADR-0012)."
+  },
+  "Worker — consumer match arm": {
+    "prefix": "consumer-arm",
+    "body": [
+      "${1:ENTITY}_${2:VERB} => match event.decode::<${3:Entity}Snapshot>() {",
+      "\tOk(${4:entity}) => {",
+      "\t\ttracing::info!(",
+      "\t\t\tevent_id = %event.id,",
+      "\t\t\t${4:entity}_id = %${4:entity}.id,",
+      "\t\t\t\"${5:consumer}: ${6:event}\"",
+      "\t\t);",
+      "\t\t$0",
+      "\t\tHandlerOutcome::Ack",
+      "\t}",
+      "\tErr(err) => HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),",
+      "},"
+    ],
+    "description": "One `match event.event_type` arm of a consumer: decode the snapshot, act idempotently (keyed on event.id), dead-letter a payload that does not decode."
   },
   "Test — cfg(test) block": {
     "prefix": "cfg-test",
@@ -1025,6 +1207,108 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
   }
 }"##;
 
+// ── Frontend snippets (web projects) ─────────────────────────────────────────
+//
+// Zed reads them per language (`typescript.json`, `tsx.json`); VS Code from one file, each entry
+// scoped to its language.
+
+pub const WEB_TS_SNIPPETS_JSON: &str = r##"{
+  "Web — HTTP repository method": {
+    "prefix": "web-repo-method",
+    "body": [
+      "async ${1:method}(id) {",
+      "\tconst { data, error, response } = await api.${2:GET}(\"/${3:entities}/{id}\", {",
+      "\t\tparams: { path: { id } },",
+      "\t});",
+      "\tif (data === undefined) throw new ${4:Entity}Error(apiErrorCode(error, response));",
+      "\treturn to${4:Entity}(data);",
+      "},"
+    ],
+    "description": "A method of the HTTP repository (infrastructure/<entity>/<entity>-repository-http.ts): an openapi-fetch call, the API's error code as the entity's Error. Declare it on the port (domain/<entity>/repository.ts) and the fake (test-support/<entity>.ts) too."
+  }
+}"##;
+
+pub const WEB_TSX_SNIPPETS_JSON: &str = r##"{
+  "Web — container + view": {
+    "prefix": "web-container",
+    "body": [
+      "import type { ${1:Entity} } from \"../../../../domain/${2:entity-name}/model\";",
+      "import { useDependencies } from \"../../../core/dependencies\";",
+      "import { useAsync } from \"../../../core/hooks/use-async\";",
+      "import { ErrorAlert } from \"../../../shared/ui/error-alert\";",
+      "",
+      "export function ${1:Entity}${3:Summary}Container({ id }: { id: string }) {",
+      "\tconst { ${4:entity}Repository } = useDependencies();",
+      "\tconst ${4:entity} = useAsync(() => ${4:entity}Repository.get(id), [${4:entity}Repository, id]);",
+      "",
+      "\treturn (",
+      "\t\t<section className=\"space-y-4\">",
+      "\t\t\t{${4:entity}.status === \"loading\" && <span className=\"loading loading-spinner\" />}",
+      "\t\t\t{${4:entity}.status === \"error\" && <ErrorAlert error={${4:entity}.error} />}",
+      "\t\t\t{${4:entity}.status === \"ok\" && <${1:Entity}${3:Summary}View ${4:entity}={${4:entity}.data} />}",
+      "\t\t</section>",
+      "\t);",
+      "}",
+      "",
+      "/** Props only. Move it to `views/` once it grows: containers load, views render. */",
+      "function ${1:Entity}${3:Summary}View({ ${4:entity} }: { ${4:entity}: ${1:Entity} }) {",
+      "\treturn <p>{${4:entity}.id}</p>;$0",
+      "}"
+    ],
+    "description": "A container (features/<entity>/containers/): loads through useDependencies() + useAsync, renders loading / error / its view."
+  },
+  "Web — container test": {
+    "prefix": "web-container-test",
+    "body": [
+      "import { describe, expect, test } from \"bun:test\";",
+      "import { screen } from \"@testing-library/react\";",
+      "import { ${1:Entity}Mother, fake${1:Entity}Repository } from \"../../../../test-support/${2:entity-name}\";",
+      "import { renderScreen } from \"../../../../test-support/render\";",
+      "import { ${1:Entity}${3:Summary}Container } from \"./${2:entity-name}-${5:summary}-container\";",
+      "",
+      "describe(\"${1:Entity}${3:Summary}Container\", () => {",
+      "\ttest(\"should show the ${6:entity label} when it exists\", async () => {",
+      "\t\t// Arrange",
+      "\t\tconst seeded = ${1:Entity}Mother.random();",
+      "\t\tconst ${4:entity}Repository = fake${1:Entity}Repository([seeded]);",
+      "",
+      "\t\t// Act",
+      "\t\trenderScreen(<${1:Entity}${3:Summary}Container id={seeded.id} />, { ${4:entity}Repository });",
+      "",
+      "\t\t// Assert",
+      "\t\texpect(await screen.findByText(seeded.id)).toBeTruthy();",
+      "\t});",
+      "});"
+    ],
+    "description": "A container test: render it with the in-memory fake repository, assert on what the user sees."
+  },
+  "Web — form field": {
+    "prefix": "web-form-field",
+    "body": [
+      "<label className=\"fieldset\">",
+      "\t<span className=\"fieldset-legend\">${1:Label}</span>",
+      "\t<input",
+      "\t\tclassName=\"input w-full\"",
+      "\t\ttype=\"${2:text}\"",
+      "\t\trequired",
+      "\t\tvalue={values.${3:field}}",
+      "\t\tonChange={(event) => onChange({ ...values, ${3:field}: event.target.value })}",
+      "\t/>",
+      "</label>"
+    ],
+    "description": "A daisyUI input bound to the form view's values (views/<entity>-form-view.tsx); add the field to <Entity>FormValues and its two mappings."
+  },
+  "Web — route": {
+    "prefix": "web-route",
+    "body": [
+      "<Route key=\"${1:/entities/:id/summary}\" path=\"${1:/entities/:id/summary}\">",
+      "\t{(params) => <${2:Entity}${3:Summary}Container id={params.id} />}",
+      "</Route>,"
+    ],
+    "description": "A route in customRoutes (presentation/core/routes.tsx — yours; core/generated/routes.tsx is rewritten)."
+  }
+}"##;
+
 // ── Writers ───────────────────────────────────────────────────────────────────
 
 fn write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
@@ -1039,6 +1323,7 @@ fn write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
 pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     let write_zed = ide.is_none_or(|i| i == "zed");
     let write_vscode = ide.is_none_or(|i| i == "vscode");
+    let web = base.join("web").is_dir();
 
     if write_zed {
         write_file(&base.join(".zed/snippets/rust.json"), SNIPPETS_JSON)?;
@@ -1046,6 +1331,14 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
         println!(
             "✓ .zed/snippets/rust.json + sql.json  (Zed — loaded automatically from project root)"
         );
+        if web {
+            write_file(
+                &base.join(".zed/snippets/typescript.json"),
+                WEB_TS_SNIPPETS_JSON,
+            )?;
+            write_file(&base.join(".zed/snippets/tsx.json"), WEB_TSX_SNIPPETS_JSON)?;
+            println!("✓ .zed/snippets/typescript.json + tsx.json  (the web/ frontend)");
+        }
     }
     if write_vscode {
         write_file(&base.join(".vscode/puerto.code-snippets"), SNIPPETS_JSON)?;
@@ -1056,12 +1349,35 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
         println!(
             "✓ .vscode/puerto.code-snippets + puerto.sql.code-snippets  (VS Code — loaded automatically)"
         );
+        if web {
+            write_file(
+                &base.join(".vscode/puerto.ts.code-snippets"),
+                &vscode_web_snippets()?,
+            )?;
+            println!("✓ .vscode/puerto.ts.code-snippets  (the web/ frontend)");
+        }
         println!(
             "  nvim+LuaSnip: require(\"luasnip.loaders.from_vscode\").lazy_load({{ paths = {{ \"./.vscode\" }} }})"
         );
     }
 
     Ok(())
+}
+
+/// The frontend snippets in one VS Code file: each scoped to the language Zed files it under.
+fn vscode_web_snippets() -> Result<String, serde_json::Error> {
+    let mut all = serde_json::Map::new();
+    for (json, scope) in [
+        (WEB_TS_SNIPPETS_JSON, "typescript"),
+        (WEB_TSX_SNIPPETS_JSON, "typescriptreact"),
+    ] {
+        let snippets: serde_json::Map<String, serde_json::Value> = serde_json::from_str(json)?;
+        for (name, mut snippet) in snippets {
+            snippet["scope"] = scope.into();
+            all.insert(name, snippet);
+        }
+    }
+    Ok(serde_json::to_string_pretty(&all)? + "\n")
 }
 
 /// `puerto generate snippets [--ide <ide>]`

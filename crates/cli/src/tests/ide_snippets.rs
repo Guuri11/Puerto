@@ -518,3 +518,368 @@ fn postgres_snippets_compose_a_repository_that_passes_its_integration_tests() {
     );
     cleanup(&dir);
 }
+
+// ── Phase 15.1: snippets for what the generators now write ────────────────
+
+#[test]
+fn snippets_cover_events_projects_and_custom_endpoints() {
+    let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
+
+    for prefix in [
+        "uow-write",
+        "app-use-case-uow",
+        "consumer-arm",
+        "poem-endpoint-action",
+        "poem-route-test",
+    ] {
+        assert!(s.contains_key(prefix), "missing snippet '{prefix}'");
+    }
+    // The use case over the unit of work never calls the repository's `save`: in an events
+    // project the port has none.
+    assert!(!s["app-use-case-uow"].contains("repository.save"));
+    assert!(s["app-use-case-uow"].contains("uow.commit()"));
+}
+
+/// Replaces the first occurrence of `from` in the file at `rel`, which must contain it.
+fn replace_in(output: &Path, rel: &str, from: &str, to: &str) {
+    let path = output.join(rel);
+    let src = fs::read_to_string(&path).unwrap();
+    assert!(src.contains(from), "{rel} has no {from:?}");
+    fs::write(&path, src.replacen(from, to, 1)).unwrap();
+}
+
+/// Indents every non-empty line of `text` by `levels` × 4 spaces.
+fn indent(text: &str, levels: usize) -> String {
+    let pad = "    ".repeat(levels);
+    text.lines()
+        .map(|l| {
+            if l.is_empty() {
+                "\n".to_string()
+            } else {
+                format!("{pad}{l}\n")
+            }
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_events_snippets_compose_a_custom_action_that_compiles_lints_and_passes_its_tests() {
+    use super::compile_matrix::{EVENTS_DB, Scenario, assert_edited_postgres_scenario_is_clean};
+    // `events_db`'s Product, its custom use case `publish_product`, the event `product_published`
+    // and the consumer `notify_new_product` — what the user then writes comes from snippets.
+    let scenario = Scenario {
+        name: "snippets_events",
+        no_web: true,
+        ..EVENTS_DB
+    };
+    assert_edited_postgres_scenario_is_clean(&scenario, "puerto_snippets_events", |output| {
+        compose_publish_from_snippets(output);
+    });
+}
+
+/// Writes what `generate use-case publish_product` leaves to the user — the use case, its
+/// endpoint, response and route test — and a consumer arm, from snippets alone.
+fn compose_publish_from_snippets(output: &Path) {
+    let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
+    let publish = &[
+        ("entity", "product"),
+        ("Entity", "Product"),
+        ("action", "publish_product"),
+        ("Action", "Publish"),
+        ("Published", "Published"),
+        ("event", "product_published"),
+        ("entities", "products"),
+        ("verb", "publish"),
+        ("done", "published"),
+    ];
+
+    // The use case acts on one product: its params are the id (the step a user does by hand).
+    replace_in(
+        output,
+        "business/src/domain/product/use_cases/publish_product.rs",
+        "pub name: String,",
+        "pub id: ProductId,",
+    );
+    replace_in(
+        output,
+        "business/src/domain/product/use_cases/publish_product.rs",
+        "model::Product}",
+        "model::{Product, ProductId}}",
+    );
+    fs::write(
+        output.join("business/src/application/product/publish_product.rs"),
+        expand_snippet(&s["app-use-case-uow"], publish),
+    )
+    .unwrap();
+
+    // `uow-write` in place of the generated write block of update_product.
+    let update = "business/src/application/product/update_product.rs";
+    let src = fs::read_to_string(output.join(update)).unwrap();
+    let start = src.find("        let mut uow = ").unwrap();
+    let end_marker = "uow.commit().await.inspect_err(failed)?;\n";
+    let end = start + src[start..].find(end_marker).unwrap() + end_marker.len();
+    let write = expand_snippet(
+        &s["uow-write"],
+        &[("action", "update_product"), ("Entity", "Product")],
+    );
+    fs::write(
+        output.join(update),
+        format!("{}{}{}", &src[..start], indent(&write, 2), &src[end..]),
+    )
+    .unwrap();
+
+    // The endpoint, its response and its route test.
+    let responses = "presentation/src/api/product/responses.rs";
+    let response = expand_snippet(
+        &s["poem-response-enum"],
+        &[
+            ("entity", "product"),
+            ("Entity", "Product"),
+            ("Action", "Publish"),
+            ("201", "200"),
+            ("Created", "Ok"),
+        ],
+    );
+    let enum_only = &response[response.find("#[derive(ApiResponse)]").unwrap()..];
+    let src = fs::read_to_string(output.join(responses)).unwrap();
+    fs::write(output.join(responses), format!("{src}\n{enum_only}")).unwrap();
+
+    let routes = "presentation/src/api/product/routes.rs";
+    replace_in(
+        output,
+        routes,
+        "use crate::api::tags::ApiTags;\n",
+        "use crate::api::tags::ApiTags;\nuse crate::api::product::responses::PublishProductResponse;\nuse business::domain::product::use_cases::publish_product::PublishProductParams;\n",
+    );
+    replace_in(
+        output,
+        routes,
+        "impl ProductApi {\n",
+        &format!(
+            "impl ProductApi {{\n{}\n",
+            indent(&expand_snippet(&s["poem-endpoint-action"], publish), 1)
+        ),
+    );
+    let src = fs::read_to_string(output.join(routes)).unwrap();
+    let close = src.trim_end().rfind('}').unwrap();
+    let test = expand_snippet(
+        &s["poem-route-test"],
+        &[
+            ("200", "200"),
+            ("entity", "product"),
+            ("done", "published"),
+            ("action", "publish_product"),
+            ("Entity", "Product"),
+            ("entities", "products"),
+            ("verb", "publish"),
+            ("OK", "OK"),
+        ],
+    );
+    fs::write(
+        output.join(routes),
+        format!("{}\n{}}}\n", &src[..close], indent(&test, 1)),
+    )
+    .unwrap();
+
+    // The consumer's `product_published` arm, rewritten from `consumer-arm`.
+    let consumer = "worker/src/consumers/notify_new_product.rs";
+    let src = fs::read_to_string(output.join(consumer)).unwrap();
+    let start = src.find("            PRODUCT_PUBLISHED => ").unwrap();
+    let end_marker = "REASON_PAYLOAD_INVALID, err.detail),\n            },\n";
+    let end = start + src[start..].find(end_marker).unwrap() + end_marker.len();
+    let arm = expand_snippet(
+        &s["consumer-arm"],
+        &[
+            ("ENTITY", "PRODUCT"),
+            ("VERB", "PUBLISHED"),
+            ("Entity", "Product"),
+            ("entity", "product"),
+            ("consumer", "notify_new_product"),
+            ("event", "product_published"),
+        ],
+    );
+    fs::write(
+        output.join(consumer),
+        format!("{}{}{}", &src[..start], indent(&arm, 3), &src[end..]),
+    )
+    .unwrap();
+
+    // Snippets are expanded by an editor, which formats on save (or `make format/fix`).
+    crate::generators::format::format_project(output).unwrap();
+}
+
+#[test]
+fn web_projects_get_the_frontend_snippets() {
+    let dir = temp_dir("snippets_web_files");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let web = new_project_non_interactive(Some("snip-web".into()), false, &dir).unwrap();
+    snippets::apply(&web, None).unwrap();
+
+    for file in [
+        ".zed/snippets/typescript.json",
+        ".zed/snippets/tsx.json",
+        ".vscode/puerto.ts.code-snippets",
+    ] {
+        let json = fs::read_to_string(web.join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&json).is_ok(),
+            "{file} is not valid JSON"
+        );
+    }
+    let ts =
+        snippet_bodies(&fs::read_to_string(web.join(".vscode/puerto.ts.code-snippets")).unwrap());
+    for prefix in [
+        "web-container",
+        "web-repo-method",
+        "web-container-test",
+        "web-form-field",
+        "web-route",
+    ] {
+        assert!(ts.contains_key(prefix), "missing snippet '{prefix}'");
+    }
+
+    cleanup(&dir);
+}
+
+#[test]
+fn projects_without_web_get_no_frontend_snippets() {
+    let dir = temp_dir("snippets_no_web_files");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some("snip-no-web".into()), false, &dir).unwrap();
+    scaffold::apply_no_web(&output).unwrap();
+    snippets::apply(&output, None).unwrap();
+
+    assert!(!output.join(".zed/snippets/tsx.json").exists());
+    assert!(!output.join(".vscode/puerto.ts.code-snippets").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+#[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
+fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
+    let dir = scenario_workspace("snippets_web");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("compile-snippets-web", &dir).unwrap();
+    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    let ts = snippet_bodies(crate::snippets::WEB_TS_SNIPPETS_JSON);
+    let tsx = snippet_bodies(crate::snippets::WEB_TSX_SNIPPETS_JSON);
+    let product = &[
+        ("Entity", "Product"),
+        ("entity", "product"),
+        ("entity-name", "product"),
+        ("Summary", "Summary"),
+        ("summary", "summary"),
+        ("entity label", "product"),
+        ("method", "refresh"),
+        ("entities", "products"),
+        ("/entities/:id/summary", "/products/:id/summary"),
+    ];
+    let web = "web/src";
+
+    // A repository method: on the port, the fake and the HTTP adapter.
+    replace_in(
+        &output,
+        &format!("{web}/domain/product/repository.ts"),
+        "  get(id: string): Promise<Product>;\n",
+        "  get(id: string): Promise<Product>;\n  refresh(id: string): Promise<Product>;\n",
+    );
+    replace_in(
+        &output,
+        &format!("{web}/test-support/product.ts"),
+        "    get: async (id) => find(id),\n",
+        "    get: async (id) => find(id),\n    refresh: async (id) => find(id),\n",
+    );
+    replace_in(
+        &output,
+        &format!("{web}/infrastructure/product/product-repository-http.ts"),
+        "ProductRepository {\n  return {\n",
+        &format!(
+            "ProductRepository {{\n  return {{\n{}",
+            expand_snippet(&ts["web-repo-method"], product)
+        ),
+    );
+
+    // A screen, its test, and its route.
+    let containers = format!("{web}/presentation/features/product/containers");
+    fs::write(
+        output.join(format!("{containers}/product-summary-container.tsx")),
+        expand_snippet(&tsx["web-container"], product),
+    )
+    .unwrap();
+    fs::write(
+        output.join(format!("{containers}/product-summary-container.test.tsx")),
+        expand_snippet(&tsx["web-container-test"], product),
+    )
+    .unwrap();
+    let route = expand_snippet(&tsx["web-route"], product);
+    let routes = format!("{web}/presentation/core/routes.tsx");
+    replace_in(
+        &output,
+        &routes,
+        "export const customRoutes: ReactElement[] = [];",
+        &format!("export const customRoutes: ReactElement[] = [\n{route}];"),
+    );
+    replace_in(
+        &output,
+        &routes,
+        "import type { ReactElement } from \"react\";\n",
+        "import type { ReactElement } from \"react\";\nimport { Route } from \"wouter\";\nimport { ProductSummaryContainer } from \"../features/product/containers/product-summary-container\";\n",
+    );
+
+    // The route is reached through the generated table: `{customRoutes}` inside its `<Switch>`.
+    fs::write(
+        output.join(format!("{web}/presentation/core/routes.test.tsx")),
+        r#"import { expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { fakeProductRepository, ProductMother } from "../../test-support/product";
+import { renderScreen } from "../../test-support/render";
+import { AppRoutes } from "./generated/routes";
+
+test("should reach a custom route through the generated route table", async () => {
+  // Arrange
+  const seeded = ProductMother.random();
+  const productRepository = fakeProductRepository([seeded]);
+
+  // Act
+  renderScreen(<AppRoutes />, { productRepository }, `/products/${seeded.id}/summary`);
+
+  // Assert
+  expect(await screen.findByText(seeded.id)).toBeTruthy();
+});
+"#,
+    )
+    .unwrap();
+
+    // The form's `name` input, rewritten from `web-form-field`.
+    let form = format!("{web}/presentation/features/product/views/product-form-view.tsx");
+    let src = fs::read_to_string(output.join(&form)).unwrap();
+    let start = src.find("      <label className=\"fieldset\">\n        <span className=\"fieldset-legend\">Name</span>").unwrap();
+    let end = start + src[start..].find("</label>\n").unwrap() + "</label>\n".len();
+    let field = expand_snippet(
+        &tsx["web-form-field"],
+        &[("Label", "Name"), ("text", "text"), ("field", "name")],
+    );
+    fs::write(
+        output.join(&form),
+        format!("{}{field}{}", &src[..start], &src[end..]),
+    )
+    .unwrap();
+
+    // An editor formats on save; Biome is the project's formatter.
+    for args in [&["install"][..], &["run", "format"][..]] {
+        let status = std::process::Command::new("bun")
+            .args(args)
+            .current_dir(output.join("web"))
+            .status()
+            .expect("bun not found — the web scenarios need it on PATH (https://bun.sh)");
+        assert!(status.success(), "`bun {}` failed", args.join(" "));
+    }
+    crate::generators::format::format_project(&output).unwrap();
+    assert_generated_project_is_clean(&output, &dir, "snippets_web", &[]);
+    cleanup(&dir);
+}

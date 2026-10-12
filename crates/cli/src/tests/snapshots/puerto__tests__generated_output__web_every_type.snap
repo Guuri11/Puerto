@@ -3001,6 +3001,7 @@ import { CaseListContainer } from "../../features/case/containers/case-list-cont
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [{ label: "Cases", href: "/cases" }];
 
@@ -3010,6 +3011,7 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+      {customRoutes}
       <Route path="/cases">
         <CaseListContainer />
       </Route>

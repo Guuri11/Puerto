@@ -2610,6 +2610,7 @@ import { OrderItemListContainer } from "../../features/order-item/containers/ord
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [{ label: "Order items", href: "/order_items" }];
 
@@ -2619,6 +2620,7 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+      {customRoutes}
       <Route path="/order_items">
         <OrderItemListContainer />
       </Route>

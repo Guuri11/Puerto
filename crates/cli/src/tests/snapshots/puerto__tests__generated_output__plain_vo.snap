@@ -2499,6 +2499,7 @@ import { ItemListContainer } from "../../features/item/containers/item-list-cont
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [{ label: "Items", href: "/items" }];
 
@@ -2508,6 +2509,7 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+      {customRoutes}
       <Route path="/items">
         <ItemListContainer />
       </Route>

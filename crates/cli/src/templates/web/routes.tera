@@ -9,6 +9,7 @@ import { {{ e.pascal }}ListContainer } from "../../features/{{ e.kebab }}/contai
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [
 {%- if nav_inline %}
@@ -25,6 +26,7 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+      {customRoutes}
 {%- for e in entities %}
       <Route path="/{{ e.plural }}">
         <{{ e.pascal }}ListContainer />

@@ -66,6 +66,9 @@ fn add_api_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pasca
 /// field makes it stop compiling (E0063). It gets a mock with no expectations — a route that
 /// calls it panics. Spelled out in full: the `mocks` module exists only under test, so a
 /// file-level import would break the non-test build.
+///
+/// When the tests hold their mocks in `struct Mocks` (the CRUD template), the mock becomes a
+/// field there too, so a test of the use case's endpoint can set `mocks.{uc}.expect_execute()`.
 fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pascal: &str) {
     let literal_open = format!("let api = {pascal}Api {{\n");
     let Some(open) = src.find(&literal_open) else {
@@ -83,12 +86,36 @@ fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str,
         return;
     }
 
+    let mock = format!("business::domain::{snake}::use_cases::{uc}::mocks::Mock{uc_pascal}UseCase");
+    // Read before `struct Mocks` grows: it precedes the literal, so `close` would move.
+    let in_mocks = src.contains(MOCKS_OPEN);
     let line_start = src[..close].rfind('\n').map_or(0, |i| i + 1);
     let indent = format!("{}    ", &src[line_start..close]);
-    let field = format!(
-        "{indent}{uc}: Arc::new(\n{indent}    business::domain::{snake}::use_cases::{uc}::mocks::Mock{uc_pascal}UseCase::new(),\n{indent}),\n"
-    );
+    let field = if in_mocks {
+        format!("{indent}{uc}: Arc::new(self.{uc}),\n")
+    } else {
+        format!("{indent}{uc}: Arc::new(\n{indent}    {mock}::new(),\n{indent}),\n")
+    };
     src.insert_str(line_start, &field);
+    if in_mocks {
+        add_mocks_field(src, uc, &mock);
+    }
+}
+
+const MOCKS_OPEN: &str = "    struct Mocks {\n";
+
+/// Adds `{uc}: {mock},` as the last field of the tests' `struct Mocks`. The CRUD use cases are
+/// already there under short names (`create`, `get`…): the caller only gets here for a use case
+/// the API literal did not have.
+fn add_mocks_field(src: &mut String, uc: &str, mock: &str) {
+    let Some(start) = src.find(MOCKS_OPEN) else {
+        return;
+    };
+    let body_start = start + MOCKS_OPEN.len();
+    let Some(close) = src[body_start..].find("    }\n").map(|i| body_start + i) else {
+        return;
+    };
+    src.insert_str(close, &format!("        {uc}: {mock},\n"));
 }
 
 /// [`patch_routes_use_cases`] with the entity's use cases read from puerto.toml.

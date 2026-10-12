@@ -1737,6 +1737,8 @@ mod tests {
         list: MockListProductsUseCase,
         update: MockUpdateProductUseCase,
         delete: MockDeleteProductUseCase,
+        archive_product:
+            business::domain::product::use_cases::archive_product::mocks::MockArchiveProductUseCase,
     }
 
     impl Mocks {
@@ -1747,9 +1749,7 @@ mod tests {
                 list_products: Arc::new(self.list),
                 update_product: Arc::new(self.update),
                 delete_product: Arc::new(self.delete),
-                archive_product: Arc::new(
-                    business::domain::product::use_cases::archive_product::mocks::MockArchiveProductUseCase::new(),
-                ),
+                archive_product: Arc::new(self.archive_product),
             };
             TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
         }
@@ -2366,6 +2366,7 @@ import { ProductListContainer } from "../../features/product/containers/product-
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [{ label: "Products", href: "/products" }];
 
@@ -2375,6 +2376,7 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+      {customRoutes}
       <Route path="/products">
         <ProductListContainer />
       </Route>

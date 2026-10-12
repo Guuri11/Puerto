@@ -2210,6 +2210,7 @@ import { TicketListContainer } from "../../features/ticket/containers/ticket-lis
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [{ label: "Tickets", href: "/tickets" }];
 
@@ -2219,6 +2220,7 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+      {customRoutes}
       <Route path="/tickets">
         <TicketListContainer />
       </Route>

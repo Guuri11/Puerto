@@ -14,23 +14,23 @@ pub(super) struct Scenario<'a> {
     /// Temp-dir suffix and snapshot name; must be unique per scenario.
     pub(super) name: &'a str,
     /// A `--db` project (`puerto new --db`): Pg repositories, migrations.
-    db: bool,
+    pub(super) db: bool,
     /// `puerto new --db --events <transport>`: units of work, `events.rs`, the outbox.
-    events: Option<&'a str>,
+    pub(super) events: Option<&'a str>,
     /// Strip the Greeting demo before scaffolding (`puerto new --no-demo`).
-    no_demo: bool,
+    pub(super) no_demo: bool,
     /// Strip the web frontend (`puerto new --no-web`).
-    no_web: bool,
+    pub(super) no_web: bool,
     /// Shared VOs declared in puerto.toml before any scaffold (`(name, inner_type)`).
-    shared_vos: &'a [(&'a str, &'a str)],
+    pub(super) shared_vos: &'a [(&'a str, &'a str)],
     /// Entities to scaffold: `(PascalName, CLI field args)`.
-    entities: &'a [(&'a str, &'a [&'a str])],
+    pub(super) entities: &'a [(&'a str, &'a [&'a str])],
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
-    use_cases: &'a [(&'a str, &'a str)],
+    pub(super) use_cases: &'a [(&'a str, &'a str)],
     /// Custom events declared after scaffolding (`puerto generate event`): `(PascalEntity, name)`.
-    entity_events: &'a [(&'a str, &'a str)],
+    pub(super) entity_events: &'a [(&'a str, &'a str)],
     /// Worker consumers added last (`puerto generate consumer`): `(name, event types)`.
-    consumers: &'a [(&'a str, &'a [&'a str])],
+    pub(super) consumers: &'a [(&'a str, &'a [&'a str])],
 }
 
 // The scenarios, shared with the snapshot tests (`generated_output.rs`): one proves the output
@@ -808,6 +808,16 @@ fn kafka_events_project_compiles_lints_and_passes_integration_tests() {
 /// A `--db` scenario against a real database: `query!` checks its SQL at compile time, so the
 /// schema has to exist before the project builds.
 fn assert_postgres_scenario_is_clean(scenario: &Scenario, database: &str) {
+    assert_edited_postgres_scenario_is_clean(scenario, database, |_| {});
+}
+
+/// [`assert_postgres_scenario_is_clean`], with `edit` applied to the project before it builds —
+/// what a user writes by hand after the generators.
+pub(super) fn assert_edited_postgres_scenario_is_clean(
+    scenario: &Scenario,
+    database: &str,
+    edit: impl FnOnce(&Path),
+) {
     let Some(server) = test_database_server() else {
         eprintln!("PUERTO_TEST_DATABASE_URL not set — skipping (run `make test/db`)");
         return;
@@ -822,6 +832,7 @@ fn assert_postgres_scenario_is_clean(scenario: &Scenario, database: &str) {
     )
     .unwrap();
     apply_scenario(scenario, &output);
+    edit(&output);
 
     let database_url = format!("{server}/{database}");
     for args in [

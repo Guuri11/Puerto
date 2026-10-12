@@ -2237,7 +2237,7 @@ over losses).
 
 ## Phase 15 — Developer experience: what the 2026-10-12 walkthrough found
 
-**Status:** in progress (15.0 done). Source: a manual run of every command and option on five generated
+**Status:** in progress (15.0, 15.1 done). Source: a manual run of every command and option on five generated
 projects (in-memory, `--db`, `--events db`, `--events kafka`, `--no-demo`), the apps driven in a
 browser. Already fixed outside this phase, one commit each: generated code is formatted
 (ADR-0019); a forced re-scaffold that drops every local value object removes `value_objects.rs`;
@@ -2269,7 +2269,7 @@ flow looks broken.
 fields. Generated unit tests in the adapter: save then find; find skips a deleted row; `find_all`
 pages and counts; a duplicate unique value → `Duplicate`. The matrix runs them.
 
-### 15.1 — Snippets for what the generators now write
+### 15.1 — Snippets for what the generators now write ✅
 
 **Problem.** The 32 Rust snippets describe a project without events: `repository-trait` has `save`
 and `app-use-case` calls `self.repository.save`, which do not compile in an `events` project. The
@@ -2291,6 +2291,11 @@ nor does a route test. The frontend has none at all.
 the HTTP repository, error code to `Error`), `web-container-test` (render with the in-memory fake,
 assert on text), `web-form-field` (label + daisyUI input bound to the form state), `web-route`
 (a route in `routes.tsx` — not `core/generated`, which is regenerated).
+
+`web-route` needs a route table the user owns: the template gains `web/src/presentation/core/routes.tsx`
+(`customRoutes: ReactElement[]`, written once by `new`), which the generated `<Switch>` renders right
+after `/`. `generate use-case` puts the custom use case's mock in the route tests' `Mocks`
+(`mocks.<action>`), where `poem-route-test` sets its expectation.
 
 **Test scenarios.** The existing snippet test builds an entity from snippets alone; extend it to an
 `events` project (`uow-write`, `app-use-case-uow`, `consumer-arm`) and to a custom endpoint with its

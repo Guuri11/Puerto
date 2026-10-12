@@ -416,3 +416,34 @@ fn web_agents_rules_describe_the_slice_and_the_sync_step() {
 
 /// The frontend rules shipped to every web project (ADR-0010).
 const TEMPLATE_DIR_WEB_AGENTS: &str = include_str!("../../template/web/AGENTS.md");
+
+// ── Phase 15.1: routes the user writes ────────────────────────────────────
+
+#[test]
+fn new_web_project_has_a_routes_file_of_its_own() {
+    // `core/generated/routes.tsx` is rewritten by every scaffold: a screen the user adds needs a
+    // route table puerto never touches (the `web-route` snippet goes there).
+    let (dir, output) = web_project("web_custom_routes");
+
+    let custom = read(&output, "web/src/presentation/core/routes.tsx");
+    assert!(custom.contains("export const customRoutes: ReactElement[] = [];"));
+    assert!(!custom.contains("AUTO-GENERATED"));
+    let generated = read(&output, "web/src/presentation/core/generated/routes.tsx");
+    assert!(generated.contains("import { customRoutes } from \"../routes\";"));
+    assert!(generated.contains("      {customRoutes}\n"));
+
+    cleanup(&dir);
+}
+
+#[test]
+fn generated_routes_match_custom_routes_before_the_entities() {
+    let (dir, output) = web_project("web_custom_routes_order");
+    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+
+    let generated = read(&output, "web/src/presentation/core/generated/routes.tsx");
+    let custom = generated.find("{customRoutes}").unwrap();
+    assert!(custom < generated.find("<Route path=\"/products\">").unwrap());
+    assert!(custom > generated.find("<HomePage").unwrap());
+
+    cleanup(&dir);
+}
