@@ -394,7 +394,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </svg>
           </div>
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Worker, Postgres or Kafka</h3>
-          <p class="font-sans text-sm text-puerto-mist leading-relaxed">A second binary relays the outbox and runs your consumers: retries with backoff, dead letters, health probes. <code class="text-puerto-indigo-light text-xs">generate consumer</code> writes one; the transport is Postgres or Kafka.</p>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">A second binary relays the outbox and runs your consumers: retries with backoff, dead letters, health probes. <code class="text-puerto-indigo-light text-xs">generate consumer</code> writes one; the transport is Postgres or Kafka. <code class="text-puerto-indigo-light text-xs">generate mail --on</code> sends a templated mail once per event.</p>
         </div>
       </div>
     </div>

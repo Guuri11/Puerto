@@ -2677,7 +2677,7 @@ dependencies = [
 
 [[package]]
 name = "puerto"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "cargo-generate",
  "clap",
@@ -2697,7 +2697,7 @@ dependencies = [
 
 [[package]]
 name = "puerto-core"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2710,7 +2710,7 @@ dependencies = [
 
 [[package]]
 name = "puerto-events"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "poem",
@@ -2724,7 +2724,7 @@ dependencies = [
 
 [[package]]
 name = "puerto-kafka"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2739,7 +2739,7 @@ dependencies = [
 
 [[package]]
 name = "puerto-mail"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "dotenvy",
@@ -2756,7 +2756,7 @@ dependencies = [
 
 [[package]]
 name = "puerto-sqlx"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2771,7 +2771,7 @@ dependencies = [
 
 [[package]]
 name = "puerto-web"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "dotenvy",
  "poem",

@@ -153,9 +153,9 @@ resolver = "3"
 # The Puerto runtime (ADR-0017 of Puerto): what every Puerto project shares lives in these crates,
 # on the same minor as the `puerto` CLI that generated this project.
 [workspace.dependencies]
-puerto-core = "0.17"
-puerto-web = "0.17"
-puerto-mail = "0.17"
+puerto-core = "0.18"
+puerto-web = "0.18"
+puerto-mail = "0.18"
 
 === Makefile ===
 .PHONY: help setup run \

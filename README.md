@@ -170,6 +170,25 @@ is a consumer group — `docker-compose.yml` runs Redpanda for development. Buil
 project compiles librdkafka from source: it needs `cmake` and the libcurl headers
 (`libcurl4-openssl-dev` on Debian/Ubuntu, `curl` on Arch, preinstalled with Xcode on macOS).
 
+### Mail
+
+A mail is a port in the domain, a template implementation in infrastructure and three template
+files — written once, then yours ([ADR-0020](docs/adr/0020-mail-port-per-mail-sent-from-the-worker.md)):
+
+```bash
+puerto generate mail welcome -- name:String plan:opt:String     # any project
+puerto generate mail welcome --on customer_created --to email   # events projects: the worker sends it
+make mail/ui                                                    # Mailpit: every mail sent in development
+```
+
+`business/src/domain/mail/welcome.rs` holds `WelcomeMail` and the port `WelcomeMailer`;
+`infrastructure/src/mail/welcome.rs` renders `infrastructure/mail/welcome/{subject.txt, body.html,
+body.txt}` (minijinja, strict) and sends through SMTP — its tests render every template, so a typo
+fails `make test`. With `--on`, `worker/src/consumers/mail_welcome.rs` builds the mail from the
+event's snapshot and sends it once per event: a `sent_mails` row per event keeps a redelivery from
+sending it again, a 5xx is dead-lettered, a 4xx or a server that is down is retried. In
+development Mailpit (`docker-compose.yml`) catches every mail; production sets `SMTP_URL`.
+
 Validate your `puerto.toml` at any time:
 
 ```bash
@@ -199,8 +218,10 @@ puerto/
     ├── web/                # puerto-web — runtime: server, Config, health probes, ErrorResponse
     ├── sqlx/               # puerto-sqlx — runtime: Postgres pool, migrations, ping, map_sqlx_error,
     │                       #   unit of work, outbox and the db event transport
-    └── events/             # puerto-events — runtime: the worker's relay, consume loops, health
-                            #   probes and graceful shutdown
+    ├── events/             # puerto-events — runtime: the worker's relay, consume loops, health
+    │                       #   probes and graceful shutdown
+    ├── kafka/              # puerto-kafka — runtime: the Kafka event transport
+    └── mail/               # puerto-mail — runtime: SMTP mailer, templates, send-once
 ```
 
 What every generated project shares is not copied into it: it depends on the runtime crates, on the
@@ -212,7 +233,9 @@ same minor as the CLI that generated it, and receives their fixes through `cargo
 | `make run`       | Run the puerto CLI                                         |
 | `make test`      | Fast structural tests                                      |
 | `make test/full` | Full test: generates projects + runs their clippy and tests     |
-| `make test/db`   | Same for a `--db` project, against a throwaway Postgres    |
+| `make test/db`   | Same for a `--db` project, against a throwaway Postgres + Mailpit |
+| `make test/kafka` | The Kafka transport against a throwaway Redpanda (+ Postgres, Mailpit) |
+| `make test/mail` | The SMTP adapter against a throwaway Mailpit               |
 | `make test/mutation` | Mutation testing (cargo-mutants) on Puerto's pure logic |
 | `make lint`      | Clippy with `-D warnings`                                  |
 | `make format`    | rustfmt                                                    |
