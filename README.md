@@ -154,11 +154,17 @@ transaction, in an outbox table ([ADR-0018](docs/adr/0018-domain-events-outbox-p
 puerto new --name shop --db --events db        # or --events kafka
 puerto generate scaffold Product -- name:String sku:String!
 puerto generate event Product product_published
+puerto generate consumer notify_new_product --on product_created,product_published
+make worker                                    # relays the outbox, runs the consumers (:8081)
 ```
 
 Each CRUD entity gets a generated `events.rs` (`ProductEvent::Created(ProductSnapshot)`, …) and a
-unit of work; its repository only reads, so a write that skips the outbox does not compile. The
-worker that relays the outbox and runs consumers is in progress (Phase 13.4).
+unit of work; its repository only reads, so a write that skips the outbox does not compile. A
+second binary, `worker/`, relays the outbox and runs the consumers: each is an `EventHandler`
+that answers `Ack`, `Retry` (redelivered with backoff) or `DeadLetter` — nothing is dropped
+without a row in `dead_letters` (`make events/dead-letters`). Delivery is at-least-once, so
+handlers must be idempotent. The `db` transport needs no broker; Kafka (`--events kafka`) gets
+its worker in Phase 13.5.
 
 Validate your `puerto.toml` at any time:
 
@@ -187,8 +193,10 @@ puerto/
     ├── core/               # puerto-core — runtime: RepositoryError, PageRequest / Page<T>,
     │                       #   domain events (envelope, delivery policy, transport ports)
     ├── web/                # puerto-web — runtime: server, Config, health probes, ErrorResponse
-    └── sqlx/               # puerto-sqlx — runtime: Postgres pool, migrations, ping, map_sqlx_error,
-                            #   unit of work, outbox and the db event transport
+    ├── sqlx/               # puerto-sqlx — runtime: Postgres pool, migrations, ping, map_sqlx_error,
+    │                       #   unit of work, outbox and the db event transport
+    └── events/             # puerto-events — runtime: the worker's relay, consume loops, health
+                            #   probes and graceful shutdown
 ```
 
 What every generated project shares is not copied into it: it depends on the runtime crates, on the

@@ -55,8 +55,10 @@ Since Phase 13 (in progress) `puerto new --db --events db|kafka` makes every CRU
 a per-entity unit of work that saves the entity and records its event in an `outbox` table in one
 transaction (ADR-0018): `events.rs` is generated from puerto.toml, the repository only reads, and
 `puerto generate event` adds custom events. `puerto-core` holds the envelope, the delivery policy
-and the transport ports; `puerto-sqlx` the Pg unit of work, outbox and `db` transport. The
-`worker/` binary that relays and consumes them is 13.4.
+and the transport ports; `puerto-sqlx` the Pg unit of work, outbox and `db` transport;
+`puerto-events` the relay, the consume loops and the worker shell. `--events db` projects get a
+`worker/` binary that relays the outbox and runs the consumers `puerto generate consumer` adds.
+Kafka (`--events kafka`, which gets no worker yet) is 13.5.
 
 Since Phase 9 a project also gets `web/` — a React + daisyUI frontend on Bun (`--no-web` skips it)
 — and, once `cargo test` runs, `docs/api/openapi.json`, the API contract the frontend is typed from
@@ -1793,8 +1795,8 @@ T-23 (with T-29's second binary) is Phase 13; the mailer, Phase 14, is the first
 ## Phase 13 — Domain events: unit of work, outbox, worker (T-23, T-29)
 
 **Status:** in progress — 13.0 (`7b83e3f`) · 13.1 (`9947162`) · 13.2 (`789a0ed`) · 13.3
-(`02578b8`, with `960e01f`) done. Next: **13.4** (`puerto-events`, the `db` transport loops, the
-`worker/` binary, `generate consumer`), then 13.5 (Kafka). Decision:
+(`02578b8`, with `960e01f`) · 13.4 (`31f6200`, `ea1c46f`, `2ad0263`) done. Next: **13.5**
+(`puerto-kafka`, `--events kafka` gets its worker). Decision:
 [ADR-0018](docs/adr/0018-domain-events-outbox-pluggable-transport.md).
 Every write in an `events` project saves the aggregate and its event in one transaction (outbox).
 A second binary, `worker/`, relays the outbox to a transport and runs the consumers. The transport
@@ -2021,11 +2023,11 @@ factory. The compile matrix: `events_db` passes clippy and its tests. `make test
 `/products` leaves one row in `products` and one `product_created` row in `outbox`, and a
 duplicate `unique` leaves neither.
 
-### 13.4 — `puerto-events` + the `db` transport + the `worker/` binary
+### 13.4 — `puerto-events` + the `db` transport + the `worker/` binary ✅
 
 Tier 1. The `events_db` snapshot grows a `worker/` crate.
 
-Progress: the runtime crate `crates/events` is done. What the code settled:
+Done as specified. What the code settled — the runtime crate `crates/events` (`31f6200`):
 - `Relay<O: Outbox, P: EventPublisher>::relay_once` and `Consumer<S>::consume_once` are one pass
   each, answering `Progress::{More, Idle}` (`More` = a full batch: run again at once). The worker
   drives them (`driver::drive`); a pass in flight at SIGTERM is finished, bounded by
@@ -2044,7 +2046,7 @@ Progress: the runtime crate `crates/events` is done. What the code settled:
   worker shares them. `puerto-web` joins `[workspace.dependencies]`; release order is
   core → web → sqlx → events → puerto.
 
-The `worker/` template and `generate consumer` are done too:
+The `worker/` template and `generate consumer` (`ea1c46f`):
 - Only `--events db` writes `worker/`; `--events kafka` gets it in 13.5, with its own registry.
 - `registry.rs` routes and imports the events by their `{ENTITY}_{VERB}` constants, so an event
   removed from puerto.toml is a compile error in the worker. It runs the migrations too (as
@@ -2056,7 +2058,7 @@ The `worker/` template and `generate consumer` are done too:
   refuses, like an entity's.
 - The consumer stub's tests build the envelope from the first subscribed event and the entity's
   Object Mother (`business` `test-utils`).
-- End to end (`tests/worker_e2e.rs`, `make test/db`): the generated API and worker run as real
+- End to end (`2ad0263`, `tests/worker_e2e.rs`, `make test/db`): the generated API and worker run as real
   processes; delivery, the dead letter after 4 retries + 1 (`RETRY_MAX_DELAY_MS=0`) and delivery
   after a worker restart are read from the worker's log.
 
@@ -2120,6 +2122,24 @@ stopped, the outbox keeps the row and the worker delivers it after a restart.
 
 Tier 1. New matrix scenario `events_kafka`. A new `make test/kafka` brings up a Redpanda
 container, which is lighter than Kafka and speaks the same protocol.
+
+Starting point (what 13.4 left to build on):
+- `puerto-events` is transport-neutral: `Loops::new(&config).relay(outbox, publisher)
+  .consumer(subscription, handler, dead_letters)` takes any `Outbox` / `EventPublisher` /
+  `EventSubscription` / `DeadLetterSink`. Kafka needs `KafkaPublisher: EventPublisher` and
+  `KafkaSubscription: EventSubscription`; the outbox (`PgOutbox`) and the dead letters
+  (`PgDeadLetters`) stay Postgres. The in-process retry means `KafkaSubscription::settle(Retry)`
+  must not commit, or the consume loop needs a kafka-specific path — decide it in the code.
+- Generator: `generators/worker.rs` — `WORKER_TRANSPORT = "db"` and `has_worker` gate the worker
+  to `--events db`; `apply_worker_to_new_project`, `generate_registry` (`templates/worker/
+  registry.tera`) and `run_generate_consumer` (refuses non-`db` projects) need a kafka branch.
+  `apply_events_to_new_project` (`generators/project.rs`) writes the outbox migration from
+  `templates/infrastructure/outbox.sql`, which has `event_deliveries`: kafka needs a variant
+  without it (and `crates/sqlx/migrations/outbox.sql` stays the byte-for-byte `db` copy).
+- Tests: `tests/worker.rs` (`new_with_kafka_events_writes_no_worker_yet`,
+  `generate_consumer_is_refused_outside_a_db_events_project` change meaning), the `EVENTS_DB`
+  scenario as the model for `EVENTS_KAFKA`, `tests/worker_e2e.rs` as the model for
+  `make test/kafka`. `RUNTIME_CRATES`, `release.yml`, `.cargo/mutants.toml` learn `puerto-kafka`.
 
 - New runtime crate `crates/kafka` (`puerto-kafka`) on `rdkafka` (`cmake-build`):
   `KafkaPublisher` (topic `<project>.<aggregate_type>`, key `aggregate_id`, the envelope fields
