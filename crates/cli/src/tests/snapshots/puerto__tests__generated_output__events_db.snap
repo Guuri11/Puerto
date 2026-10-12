@@ -2365,12 +2365,12 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 pub mod greeting {
     pub mod repository;
 }
+pub mod db;
 pub mod product {
     pub mod entity;
     pub mod repository;
     pub mod unit_of_work;
 }
-pub mod db;
 
 === infrastructure/src/product/entity.rs ===
 use business::domain::product::value_objects::Name;

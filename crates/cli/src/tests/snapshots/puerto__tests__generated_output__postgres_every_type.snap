@@ -4899,11 +4899,11 @@ pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 pub mod greeting {
     pub mod repository;
 }
+pub mod db;
 pub mod product {
     pub mod entity;
     pub mod repository;
 }
-pub mod db;
 pub mod customer {
     pub mod entity;
     pub mod repository;

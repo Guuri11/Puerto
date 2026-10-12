@@ -461,6 +461,19 @@ fn db_project_has_db_rs_with_the_project_migrator() {
 }
 
 #[test]
+fn should_declare_the_db_module_when_a_db_project_is_created() {
+    // `db.rs` was written but never declared until the first scaffold: an `--events` project's
+    // worker names `infrastructure::db` and did not compile straight out of `puerto new`.
+    let dir = temp_dir("db_mod_declared");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-app", &dir).unwrap();
+    let lib = fs::read_to_string(output.join("infrastructure/src/lib.rs")).unwrap();
+    assert_eq!(lib.matches("pub mod db;").count(), 1, "{lib}");
+    cleanup(&dir);
+}
+
+#[test]
 fn db_project_infrastructure_cargo_has_sqlx() {
     let dir = temp_dir("db_infra_cargo");
     cleanup(&dir);

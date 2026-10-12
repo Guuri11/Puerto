@@ -398,6 +398,18 @@ pub(super) const EVENTS_KAFKA: Scenario = Scenario {
     ..EVENTS_DB
 };
 
+/// `puerto new --db --events db` and nothing else: the worker has to build before the first
+/// scaffold (it named `infrastructure::db`, which only a scaffold declared). No `query!`, so no
+/// database is needed.
+pub(super) const EVENTS_FRESH: Scenario = Scenario {
+    name: "events_fresh",
+    use_cases: &[],
+    entity_events: &[],
+    consumers: &[],
+    entities: &[],
+    ..EVENTS_DB
+};
+
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
 /// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
 /// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto new`
@@ -769,6 +781,12 @@ fn web_every_type_slice_passes_its_own_checks() {
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_without_the_web_frontend() {
     assert_scenario_compiles(&NO_WEB);
+}
+
+#[test]
+#[ignore = "slow: compiles and tests a generated project"]
+fn compiles_a_fresh_events_project_before_any_scaffold() {
+    assert_scenario_compiles(&EVENTS_FRESH);
 }
 
 /// `PUERTO_TEST_DATABASE_URL` — a Postgres server URL **without** a database name, e.g.

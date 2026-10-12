@@ -250,6 +250,13 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
         &base.join("infrastructure/src/db.rs"),
         &render("infrastructure/db.tera", &tera::Context::new())?,
     )?;
+    // …declared now, not by the first scaffold: the `--events` worker names `infrastructure::db`.
+    let infra_lib = base.join("infrastructure/src/lib.rs");
+    let mut lib = fs::read_to_string(&infra_lib)?;
+    if !lib.contains("pub mod db;") {
+        lib.push_str("pub mod db;\n");
+        fs::write(&infra_lib, lib)?;
+    }
 
     // Patch infrastructure/Cargo.toml to add sqlx
     patch_infra_cargo_toml(base)?;
