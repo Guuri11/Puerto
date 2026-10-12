@@ -492,9 +492,14 @@ fn compare_sources(a: &str, b: &str) -> Ordering {
     })
 }
 
-/// Specifiers sort case-insensitively, ignoring their `type ` keyword.
-fn specifier_key(name: &str) -> String {
-    name.trim_start_matches("type ").to_lowercase()
+/// Specifiers sort as Biome's natural order does, ignoring their `type ` keyword: letter by letter
+/// case-insensitively, except that the same letter in upper case comes first — `Product` before
+/// `parseStatus`, but `fakeOrder` before `OrderMother`.
+fn specifier_key(name: &str) -> Vec<(char, bool)> {
+    name.trim_start_matches("type ")
+        .chars()
+        .map(|c| (c.to_ascii_lowercase(), c.is_ascii_lowercase()))
+        .collect()
 }
 
 /// Biome's `lineWidth` in the template's `biome.json`.
@@ -603,6 +608,17 @@ mod tests {
         assert_eq!(
             organize_imports(ts),
             "import { type Apple, toUserForm, UserFormView } from \"./x\";\n"
+        );
+    }
+
+    #[test]
+    fn should_put_the_upper_case_letter_first_when_specifiers_differ_only_in_case_there() {
+        // Biome's order: `parseStatus` before `type Product` failed `bun run lint`.
+        let ts = "import { parseStatus, type Product, type ProductDraft } from \"./model\";\n";
+
+        assert_eq!(
+            organize_imports(ts),
+            "import { type Product, type ProductDraft, parseStatus } from \"./model\";\n"
         );
     }
 
