@@ -292,7 +292,7 @@ fn makefile_targets(db_name: &str) -> String {
         r#"
 .PHONY: worker events/dead-letters
 
-worker: ## Run the worker: relays the outbox and runs the consumers (health on :8081)
+worker: docker-compose/up ## Run the worker: relays the outbox and runs the consumers (health on :8081)
 	@echo "${{GREEN}}Starting worker...${{NC}}"
 	$(CARGO) run -p worker
 

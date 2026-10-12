@@ -5,7 +5,6 @@ use crate::generators::render::render;
 
 const DB_MAKEFILE_TARGETS: &str = r#"
 .PHONY: db-up db-down docker-compose/up docker-compose/down reset-db \
-        test/infrastructure \
         sqlx/online sqlx/offline sqlx/migrate sqlx/prepare sqlx/check \
         generate/migration
 
@@ -18,7 +17,7 @@ db-down: docker-compose/down ## Stop database containers
 
 docker-compose/up: ## Start all containers
 	@echo "${CYAN}Starting containers...${NC}"
-	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) up -d --wait
 
 docker-compose/down: ## Stop all containers
 	@echo "${CYAN}Stopping containers...${NC}"
@@ -34,13 +33,12 @@ reset-db: ## Wipe database and re-run migrations (DESTRUCTIVE)
 	echo "${CYAN}Stopping containers and removing volumes...${NC}"; \
 	$(DOCKER_COMPOSE) down -v; \
 	echo "${CYAN}Restarting containers...${NC}"; \
-	$(DOCKER_COMPOSE) up -d; \
+	$(DOCKER_COMPOSE) up -d --wait; \
 	echo "${GREEN}Running migrations...${NC}"; \
 	sqlx migrate run --source infrastructure/migrations
 
-test/infrastructure: docker-compose/up ## Run infrastructure tests (requires live DB)
-	@echo "${YELLOW}Running infrastructure tests...${NC}"
-	$(CARGO) nextest run -p infrastructure
+# The template's `run` and `test/infrastructure` keep their recipes; here they gain the database.
+run test/infrastructure: docker-compose/up
 
 sqlx/online: ## Switch SQLx to ONLINE mode (check against live DB)
 	@printf '[env]\nSQLX_OFFLINE = "false"\n' > .cargo/config.toml

@@ -94,7 +94,10 @@ fn new_with_db_events_adds_the_worker_targets_and_port() {
     let (dir, output) = events_project("worker_make", "db");
 
     let makefile = read(&output, "Makefile");
-    assert!(makefile.contains("\nworker: ## "), "{makefile}");
+    assert!(
+        makefile.contains("\nworker: docker-compose/up ## "),
+        "{makefile}"
+    );
     assert!(makefile.contains("$(CARGO) run -p worker"), "{makefile}");
     assert!(makefile.contains("\nevents/dead-letters: "), "{makefile}");
     assert!(makefile.contains("FROM dead_letters"), "{makefile}");

@@ -3,16 +3,17 @@
         lint format format/fix check clean \
         audit audit/fix \
         generate/entity generate/use-case generate/bootstrap \
-        web/install web/dev web/test web/lint web/sync
+        web/install web/require-install web/dev web/test web/lint web/sync
 
 CARGO := cargo
 BUN   := bun
 
-GREEN  := \033[1;32m
-YELLOW := \033[1;33m
-CYAN   := \033[1;36m
-RED    := \033[1;31m
-NC     := \033[0m
+# The escape byte itself, not `\033`: `echo` does not interpret escapes where `sh` is bash.
+GREEN  := $(shell printf '\033[1;32m')
+YELLOW := $(shell printf '\033[1;33m')
+CYAN   := $(shell printf '\033[1;36m')
+RED    := $(shell printf '\033[1;31m')
+NC     := $(shell printf '\033[0m')
 
 help: ## Show available commands
 	@echo ""
@@ -100,19 +101,26 @@ web/install: ## Install the frontend dependencies (needs Bun)
 	@echo "${CYAN}Installing frontend dependencies...${NC}"
 	cd web && $(BUN) install
 
-web/dev: ## Run the frontend dev server (http://localhost:5173, /api proxied to :8080)
+# Not in `make help`: the prerequisite of every target that runs the frontend's tools.
+web/require-install:
+	@if [ ! -d web/node_modules ]; then \
+		echo "${RED}web/node_modules is missing — run: make web/install${NC}"; \
+		exit 1; \
+	fi
+
+web/dev: web/require-install ## Run the frontend dev server (http://localhost:5173, /api proxied to :8080)
 	@echo "${GREEN}Starting frontend dev server...${NC}"
 	cd web && $(BUN) run dev
 
-web/test: ## Run the frontend tests
+web/test: web/require-install ## Run the frontend tests
 	@echo "${YELLOW}Running frontend tests...${NC}"
 	cd web && $(BUN) test
 
-web/lint: ## Typecheck, lint and check the frontend Dependency Rule
+web/lint: web/require-install ## Typecheck, lint and check the frontend Dependency Rule
 	@echo "${CYAN}Linting frontend...${NC}"
 	cd web && $(BUN) run typecheck && $(BUN) run lint && $(BUN) run lint:arch
 
-web/sync: ## After a scaffold or a DTO change: export the OpenAPI spec, regenerate the web types
+web/sync: web/require-install ## After a scaffold or a DTO change: export the OpenAPI spec, regenerate the web types
 	@echo "${CYAN}Exporting docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p presentation openapi
 	@echo "${CYAN}Generating web/src/infrastructure/http/schema.d.ts...${NC}"

@@ -330,6 +330,103 @@ fn db_project_makefile_has_docker_and_sqlx_targets() {
     cleanup(&dir);
 }
 
+/// `make <args>` in a generated project: (exit success, stdout + stderr).
+fn make(output: &Path, args: &[&str]) -> (bool, String) {
+    let result = std::process::Command::new("make")
+        .args(args)
+        .current_dir(output)
+        .output()
+        .expect("make not found");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    (result.status.success(), text)
+}
+
+#[test]
+fn should_define_each_db_make_target_once_when_the_project_has_a_database() {
+    // `test/infrastructure` had a recipe in the template and another in the db targets: every
+    // `make` call of a --db project printed "warning: overriding recipe".
+    let dir = temp_dir("db_makefile_once");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-make", &dir).unwrap();
+
+    // Act
+    let (ok, text) = make(&output, &["-n", "help"]);
+
+    // Assert
+    assert!(ok, "{text}");
+    assert!(!text.contains("overriding recipe"), "{text}");
+    cleanup(&dir);
+}
+
+#[test]
+fn should_start_postgres_and_wait_for_it_when_running_a_db_project() {
+    // `up -d` returns before Postgres accepts connections: the first `make sqlx/migrate` of a
+    // fresh project failed with "connection reset by peer". And `make run` started an API whose
+    // database was not up.
+    let dir = temp_dir("db_makefile_wait");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-wait", &dir).unwrap();
+
+    for target in ["sqlx/migrate", "run", "test/infrastructure"] {
+        // Act
+        let (ok, text) = make(&output, &["-n", target]);
+
+        // Assert
+        assert!(ok, "{text}");
+        assert!(
+            text.contains("docker compose up -d --wait"),
+            "`make {target}` does not wait for the database:\n{text}"
+        );
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn should_print_colors_not_escape_codes_when_make_echoes() {
+    // `echo "\033[…"` prints the escape literally where `sh` is bash (Arch, Fedora…).
+    let dir = temp_dir("makefile_colors");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("colors", &dir).unwrap();
+
+    // Act
+    let (ok, text) = make(&output, &["help"]);
+
+    // Assert
+    assert!(ok, "{text}");
+    assert!(!text.contains("\\033"), "{text}");
+    cleanup(&dir);
+}
+
+#[test]
+fn should_ask_for_web_install_when_the_frontend_dependencies_are_missing() {
+    // Without `make web/install`, `make lint` / `make test` failed with bun's "exited with code
+    // 127" — nothing said what to run.
+    let dir = temp_dir("web_not_installed");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("web-missing", &dir).unwrap();
+
+    for target in ["web/lint", "web/test", "web/dev"] {
+        // Act
+        let (ok, text) = make(&output, &[target]);
+
+        // Assert
+        assert!(!ok, "`make {target}` should fail without node_modules");
+        assert!(
+            text.contains("make web/install"),
+            "`make {target}` does not say how to fix it:\n{text}"
+        );
+    }
+    cleanup(&dir);
+}
+
 #[test]
 fn db_project_has_cargo_config_with_sqlx_offline() {
     let dir = temp_dir("db_cargo_config");
