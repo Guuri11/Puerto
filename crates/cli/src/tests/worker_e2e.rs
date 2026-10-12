@@ -1,6 +1,8 @@
 // Phase 13.4 end to end (`make test/db`): the generated API and worker as real processes against
 // Postgres — an event written by a POST reaches its consumer, a consumer that always retries ends
 // in `dead_letters`, and an event written while the worker is down is delivered after a restart.
+// Phase 13.5 (`make test/kafka`): the same on the `kafka` transport, plus the order of one
+// aggregate's events and a record that is not an event.
 use super::*;
 
 use std::io::{Read as _, Write as _};
@@ -9,7 +11,8 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use super::compile_matrix::{
-    EVENTS_DB, apply_scenario, patch_runtime_crates, scenario_workspace, test_database_server,
+    EVENTS_DB, EVENTS_KAFKA, Scenario, apply_scenario, patch_runtime_crates, scenario_workspace,
+    test_database_server,
 };
 
 /// How long any one expectation may take: a pass every 100 ms, so this is generous.
@@ -87,11 +90,15 @@ fn logged(path: &Path, needles: &[&str]) -> bool {
         .any(|line| needles.iter().all(|n| line.contains(n)))
 }
 
+fn product_body(sku: &str) -> String {
+    format!(
+        r#"{{"name":"Desk lamp","sku":"{sku}","price":2500,"status":"Draft","tags":[],"meta":{{}}}}"#
+    )
+}
+
 /// Creates a product and returns its id.
 fn create_product(port: u16, sku: &str) -> String {
-    let body = format!(
-        r#"{{"name":"Desk lamp","sku":"{sku}","price":2500,"status":"Draft","tags":[],"meta":{{}}}}"#
-    );
+    let body = product_body(sku);
     let (status, response) =
         http(port, "POST", "/api/products", &body).expect("the API did not answer");
     assert_eq!(status, 201, "POST /api/products: {response}");
@@ -120,14 +127,24 @@ impl Project {
     }
 }
 
-/// The `events_db` scenario plus a consumer that always retries, migrated and built.
-fn build_project(database: &str) -> Option<Project> {
+/// `scenario` plus a consumer that always retries (and `extra_consumers`), migrated and built.
+fn build_project(
+    scenario: &Scenario,
+    name: &str,
+    database: &str,
+    extra_consumers: &[(&str, &[&str])],
+    extra_env: &[(&str, String)],
+) -> Option<Project> {
     let server = test_database_server()?;
-    let dir = scenario_workspace("events_e2e");
+    let dir = scenario_workspace(&format!("{}_e2e", scenario.name));
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    let output = generate_project("e2e-events", &dir).unwrap();
-    apply_scenario(&EVENTS_DB, &output);
+    let output = generate_project(name, &dir).unwrap();
+    apply_scenario(scenario, &output);
+    for (consumer, events) in extra_consumers {
+        let events: Vec<String> = events.iter().map(|e| e.to_string()).collect();
+        scaffold::run_generate_consumer(consumer, &events, &output).unwrap();
+    }
     scaffold::run_generate_consumer("always_retry", &["product_created".into()], &output).unwrap();
     fs::write(
         output.join("worker/src/consumers/always_retry.rs"),
@@ -164,6 +181,7 @@ fn build_project(database: &str) -> Option<Project> {
     ]
     .iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))
+    .chain(extra_env.iter().map(|(k, v)| (k.to_string(), v.clone())))
     .collect();
 
     let built = Command::new("cargo")
@@ -183,7 +201,13 @@ fn build_project(database: &str) -> Option<Project> {
 #[test]
 #[ignore = "slow: needs Postgres — run via `make test/db`"]
 fn postgres_events_worker_delivers_dead_letters_and_survives_a_restart() {
-    let Some(project) = build_project("puerto_matrix_events_e2e") else {
+    let Some(project) = build_project(
+        &EVENTS_DB,
+        "e2e-events",
+        "puerto_matrix_events_e2e",
+        &[],
+        &[],
+    ) else {
         eprintln!("PUERTO_TEST_DATABASE_URL not set — skipping (run `make test/db`)");
         return;
     };
@@ -246,6 +270,160 @@ fn postgres_events_worker_delivers_dead_letters_and_survives_a_restart() {
         )
     });
     // The first one was settled before the restart: it is not delivered again.
+    assert!(!logged(&restarted_log, &[&format!("product_id={first}")]));
+
+    drop(restarted);
+    drop(api);
+    cleanup(&project.dir);
+}
+
+/// Writes `payload` to `topic` as a bare record: no envelope headers.
+fn produce_raw(brokers: &str, topic: &str, payload: &str) {
+    use rdkafka::producer::{BaseProducer, BaseRecord, Producer};
+    let producer: BaseProducer = rdkafka::ClientConfig::new()
+        .set("bootstrap.servers", brokers)
+        .create()
+        .expect("cannot create a Kafka producer");
+    producer
+        .send(BaseRecord::<str, str>::to(topic).payload(payload))
+        .map_err(|(err, _)| err)
+        .expect("cannot queue the record");
+    producer
+        .flush(Duration::from_secs(10))
+        .expect("the record was not written");
+}
+
+/// The index of the first log line holding every needle.
+fn line_of(path: &Path, needles: &[&str]) -> Option<usize> {
+    log_lines(path)
+        .iter()
+        .position(|line| needles.iter().all(|n| line.contains(n)))
+}
+
+#[test]
+#[ignore = "slow: needs Kafka and Postgres — run via `make test/kafka`"]
+fn kafka_events_worker_delivers_in_order_dead_letters_and_survives_a_restart() {
+    let Some(brokers) = std::env::var("PUERTO_TEST_KAFKA_BROKERS").ok() else {
+        eprintln!("PUERTO_TEST_KAFKA_BROKERS not set — skipping (run `make test/kafka`)");
+        return;
+    };
+    // Topics and groups of their own: a rerun never reads what an earlier one left.
+    let prefix = format!("e2e{}", std::process::id());
+    let Some(project) = build_project(
+        &EVENTS_KAFKA,
+        "e2e-kafka",
+        "puerto_matrix_kafka_e2e",
+        &[("audit", &["product_created", "product_updated"])],
+        &[
+            ("KAFKA_BROKERS", brokers.clone()),
+            ("KAFKA_TOPIC_PREFIX", prefix.clone()),
+        ],
+    ) else {
+        eprintln!("PUERTO_TEST_DATABASE_URL not set — skipping (run `make test/kafka`)");
+        return;
+    };
+    let (api_port, worker_port) = (free_port(), free_port());
+    let api_log = project.dir.join("api.log");
+    let worker_log = project.dir.join("worker.log");
+    let api = project.spawn(
+        "e2e-kafka",
+        &api_log,
+        &[("SERVICE_PORT", api_port.to_string())],
+    );
+    let worker_env = [("WORKER_PORT", worker_port.to_string())];
+    let worker = project.spawn("worker", &worker_log, &worker_env);
+    wait_until("the API to be ready", || {
+        http(api_port, "GET", "/health/ready", "").is_some_and(|(s, _)| s == 200)
+    });
+    wait_until("the worker to be ready", || {
+        http(worker_port, "GET", "/health/ready", "").is_some_and(|(s, _)| s == 200)
+    });
+
+    // A POST reaches the generated consumer, through Kafka.
+    let first = create_product(api_port, "KAFKA-1");
+    wait_until("notify_new_product to see product_created", || {
+        logged(
+            &worker_log,
+            &[
+                "notify_new_product: product_created",
+                &format!("product_id={first}"),
+            ],
+        )
+    });
+
+    // Two events of one aggregate arrive in the order they happened.
+    let (status, response) = http(
+        api_port,
+        "PUT",
+        &format!("/api/products/{first}"),
+        &product_body("KAFKA-1"),
+    )
+    .expect("the API did not answer");
+    assert_eq!(status, 200, "PUT /api/products/{first}: {response}");
+    let product = format!("product_id={first}");
+    wait_until("audit to see product_updated", || {
+        logged(&worker_log, &["audit: product_updated", &product])
+    });
+    let created = line_of(&worker_log, &["audit: product_created", &product]);
+    let updated = line_of(&worker_log, &["audit: product_updated", &product]);
+    assert!(
+        created.is_some() && created < updated,
+        "audit saw product_updated before product_created"
+    );
+
+    // A consumer that always retries is retried in process, then dead-lettered.
+    wait_until("always_retry to be dead-lettered", || {
+        logged(
+            &worker_log,
+            &["dead_letters: recorded", "consumer=always_retry"],
+        )
+    });
+    let retries = log_lines(&worker_log)
+        .iter()
+        .filter(|l| l.contains("consumer: retry") && l.contains("always_retry"))
+        .count();
+    assert_eq!(retries, 4, "deliveries 1–4 retry, the 5th dead-letters");
+
+    // A record that is not an event is dead-lettered, and the next one is still consumed.
+    produce_raw(&brokers, &format!("{prefix}.product"), "not an event");
+    wait_until("the poisoned record to be dead-lettered", || {
+        logged(
+            &worker_log,
+            &[
+                "dead_letters: recorded",
+                "consumer=notify_new_product",
+                "event_id=None",
+            ],
+        )
+    });
+    let after_poison = create_product(api_port, "KAFKA-2");
+    wait_until("notify_new_product to see the next product", || {
+        logged(
+            &worker_log,
+            &[
+                "notify_new_product: product_created",
+                &format!("product_id={after_poison}"),
+            ],
+        )
+    });
+
+    // An event written while the worker is down (killed) is published once it is back; what was
+    // committed before the restart is not delivered again.
+    drop(worker);
+    let third = create_product(api_port, "KAFKA-3");
+    let restarted_log = project.dir.join("worker-restarted.log");
+    let restarted = project.spawn("worker", &restarted_log, &worker_env);
+    wait_until("the restarted worker to deliver the third product", || {
+        logged(
+            &restarted_log,
+            &[
+                "notify_new_product: product_created",
+                &format!("product_id={third}"),
+            ],
+        )
+    });
+    // `first` was settled by every consumer long before the worker was killed; `after_poison`
+    // may not have been (audit, always_retry), and redelivering it is at-least-once, not a bug.
     assert!(!logged(&restarted_log, &[&format!("product_id={first}")]));
 
     drop(restarted);

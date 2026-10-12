@@ -36,3 +36,5 @@ toml = "0.8"
 
 [dev-dependencies]
 insta = "1"
+# `make test/kafka`: the end-to-end test writes a record that is not an event.
+rdkafka = { version = "0.39", features = ["cmake-build"] }
