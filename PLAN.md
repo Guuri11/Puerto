@@ -2232,3 +2232,110 @@ recommended) or in a separate runtime-read file (editable without a rebuild); th
 (`minijinja`); idempotency, because an SMTP send cannot share a transaction with the delivery
 (record a `sent_mails` row keyed by `(event_id, mail)` before sending, accepting rare duplicates
 over losses).
+
+---
+
+## Phase 15 — Developer experience: what the 2026-10-12 walkthrough found
+
+**Status:** not started. Source: a manual run of every command and option on five generated
+projects (in-memory, `--db`, `--events db`, `--events kafka`, `--no-demo`), the apps driven in a
+browser. Already fixed outside this phase, one commit each: generated code is formatted
+(ADR-0019); a forced re-scaffold that drops every local value object removes `value_objects.rs`;
+`generate presentation` before the other layers no longer rewrites `bootstrap.rs`; the `--db`
+Makefile waits for Postgres, defines each target once, prints colors, and the web targets ask for
+`make web/install`; the migration hint adds `make sqlx/prepare` and `generate consumer --help`
+says `--events`. One commit per piece below, in this order.
+
+### 15.0 — An in-memory repository that keeps what it is given
+
+**Problem.** Without `--db`, `InMemory{Entity}Repository` stores nothing ("a stand-in"): `POST`
+answers 201, then `GET /…/:id` answers 404 and the list is empty. With the web frontend, which is
+on by default, *create → detail* always lands on "not found": the default project's first screen
+flow looks broken.
+
+**Behaviour.**
+- `InMemory{Entity}Repository { rows: RwLock<HashMap<{Entity}Id, {Entity}>> }` (std `RwLock`, no
+  new dependency), `Default` + `new()` unchanged, so `bootstrap.rs` does not change.
+- `save` upserts by id. `find_by_id` and `find_all` skip `deleted` rows, like the Pg adapter.
+  `find_all` orders by `created_at` desc, then id; `total` counts live rows; `limit`/`offset` from
+  the `PageRequest`.
+- `unique` fields: `save` answers `RepositoryError::Duplicate` when another live row has the same
+  value — the same 409 the Pg adapter gives.
+- Process memory only: lost on restart, said in the file's doc comment and in `make run`'s banner
+  line for non-db projects.
+- The `inmemory-repo` snippet follows.
+
+**Test scenarios.** Structural: the file holds the map, the unique check exists only for `unique`
+fields. Generated unit tests in the adapter: save then find; find skips a deleted row; `find_all`
+pages and counts; a duplicate unique value → `Duplicate`. The matrix runs them.
+
+### 15.1 — Snippets for what the generators now write
+
+**Problem.** The 32 Rust snippets describe a project without events: `repository-trait` has `save`
+and `app-use-case` calls `self.repository.save`, which do not compile in an `events` project. The
+endpoint for a custom use case — what `generate use-case` asks the user to write — has no snippet,
+nor does a route test. The frontend has none at all.
+
+**Rust, added** (`.zed/snippets/rust.json`, `.vscode/puerto.code-snippets`):
+
+| Prefix | Body |
+|---|---|
+| `uow-write` | `begin` → `save` → `record({Entity}Event::X(…Snapshot::from_entity(&e)))` → `commit`, with the `inspect_err` logs |
+| `app-use-case-uow` | A use case impl holding `repository` + `uow_factory`, its test with `RecordingUnitOfWorkFactory` |
+| `consumer-arm` | One `match event.event_type` arm: decode the snapshot, dead-letter `REASON_PAYLOAD_INVALID` |
+| `poem-endpoint-action` | `POST /entities/:id/<action>`: `Path<Uuid>` → `{Entity}Id` → use case → mapped response |
+| `poem-route-test` | `TestClient` over the real `OpenApiService`, one mocked use case, one status assertion |
+
+**Frontend, new** (`.zed/snippets/typescript.json` + `tsx.json`, `.vscode/puerto.ts.code-snippets`):
+`web-container` (container + view pair, `useAsync`), `web-repo-method` (an openapi-fetch call in
+the HTTP repository, error code to `Error`), `web-container-test` (render with the in-memory fake,
+assert on text), `web-form-field` (label + daisyUI input bound to the form state), `web-route`
+(a route in `routes.tsx` — not `core/generated`, which is regenerated).
+
+**Test scenarios.** The existing snippet test builds an entity from snippets alone; extend it to an
+`events` project (`uow-write`, `app-use-case-uow`, `consumer-arm`) and to a custom endpoint with its
+route test, all through clippy and the tests. Frontend snippets: the web scenario pastes each one
+into a generated slice and runs typecheck, Biome and `bun test`.
+
+### 15.2 — A startup failure is an error message, not a panic
+
+**Problem.** `bootstrap.rs` and `registry.rs` `expect` on `DATABASE_URL`, the pool and the
+migrations — `make run` with the database down prints a panic and `ConnectionError`, with no
+cause (refused? wrong password?) and no hint. It also breaks the generated rule "no `expect`
+outside tests".
+
+**Behaviour.**
+- `puerto-web`'s `App::serve` and `puerto-events`' `Worker::run` accept a `build` whose future
+  returns `Result<_, E: Display>`; an `Err` is logged and the process exits 1. The infallible form
+  keeps working (minor release, ADR-0017's runtime contract).
+- `puerto_sqlx::DatabaseError` keeps the driver's message (`ConnectionError { cause }`), and its
+  `Display` names the host of `DATABASE_URL` (never the password).
+- The generated `build_app` / `build_worker` use `?`; a missing `DATABASE_URL` says "set it in
+  `.env`", a refused connection says "is the database up? `make docker-compose/up`".
+
+**Test scenarios.** Runtime unit tests: an `Err` from `build` exits non-zero with the message.
+Matrix: a `--db` scenario starts the binary with `DATABASE_URL` pointing at a closed port and
+asserts the exit code and the hint, no `panicked` in stderr.
+
+### 15.3 — The frontend says what went wrong, next to the field
+
+**Problem.** A 409 or 422 shows the raw code in the alert (`product.invalid_email`) and no field is
+marked.
+
+**Behaviour.** Each entity's web slice gets `domain/<entity>/messages.ts`, generated from the same
+error list as `errors.rs`: `product.duplicate` → "A product with these values already exists",
+`validation_error.<field>_empty` → "<Field> is required", `invalid_<vo>` → "<Field> is not valid".
+The form maps a code to its field when it names one (`<field>_empty`, the VO's field) and shows the
+message under that input; other codes go to the alert. Unknown codes fall back to the code itself.
+English only; the file is the place to translate.
+
+**Test scenarios.** `bun test`: a 422 `name_empty` marks the name input, a 409 shows the duplicate
+message, an unknown code shows the code.
+
+### 15.4 — Smaller things
+
+- The list's page in the URL (`?page=2`): reload and back keep it.
+- `puerto list` shows each entity's custom events, the consumers and the shared value objects.
+- `generate use-case`: the impl logs `id`, not `?params` (the payload is user data —
+  `architecture.md`), and the generated test is `#[ignore = "write this test"]` instead of an
+  empty body that passes.

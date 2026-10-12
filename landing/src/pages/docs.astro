@@ -428,7 +428,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </button>
           </div>
           <p class="mt-3 font-sans text-sm text-puerto-mist">
-            Migrations also run at startup, so <code class="font-mono text-xs text-puerto-ice">make run</code> only needs the database up. <code class="font-mono text-xs text-puerto-ice">make test/infrastructure</code> runs the repositories' <code class="font-mono text-xs text-puerto-rust">#[sqlx::test]</code>s, each against a throwaway database.
+            Migrations also run at startup, and <code class="font-mono text-xs text-puerto-ice">make run</code> starts the database first. <code class="font-mono text-xs text-puerto-ice">make test/infrastructure</code> runs the repositories' <code class="font-mono text-xs text-puerto-rust">#[sqlx::test]</code>s, each against a throwaway database.
           </p>
           <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
             <li>• Every scaffold writes its own migration; versions stay unique even when two entities are scaffolded within the same second.</li>

@@ -247,6 +247,8 @@ make format/fix    # cargo fmt --all
   API and readiness check to `puerto_web::routes`, then to the user's `app::configure`. A `--db`
   project's `infrastructure` depends on `puerto-sqlx`: `db.rs` is `pub use puerto_sqlx::*;` plus
   the project's `MIGRATOR`
+- Formatted: every command that writes Rust ends with `cargo fmt --all` in the project, so its
+  `make format` passes; a failed format only warns (ADR-0019)
 - Logging through `tracing` directly — no logger port (ADR-0006)
 - Errors: `ErrorResponse { name, message }` with the code in `name`; validation → 422; one test per
   mapper arm (ADR-0007)
