@@ -2805,6 +2805,19 @@ describe("ArticleListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ArticleMother.random());
+    const articleRepository = fakeArticleRepository(seed);
+    const path = "/articles?page=2";
+
+    // Act
+    renderScreen(<ArticleListContainer />, { articleRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no article", async () => {
     // Arrange
     const articleRepository = fakeArticleRepository();
@@ -2832,19 +2845,21 @@ describe("ArticleListContainer", () => {
 });
 
 === web/src/presentation/features/article/containers/article-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { ArticleListView } from "../views/article-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function ArticleListContainer() {
   const { articleRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const articles = useAsync(
     () => articleRepository.list({ limit: PAGE_SIZE, offset }),
     [articleRepository, offset],
@@ -2866,7 +2881,7 @@ export function ArticleListContainer() {
         ) : (
           <>
             <ArticleListView articles={articles.data.items} />
-            <Pagination {...articles.data} onOffsetChange={setOffset} />
+            <Pagination {...articles.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

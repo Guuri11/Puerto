@@ -2719,6 +2719,19 @@ describe("BookingListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => BookingMother.random());
+    const bookingRepository = fakeBookingRepository(seed);
+    const path = "/bookings?page=2";
+
+    // Act
+    renderScreen(<BookingListContainer />, { bookingRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no booking", async () => {
     // Arrange
     const bookingRepository = fakeBookingRepository();
@@ -2746,19 +2759,21 @@ describe("BookingListContainer", () => {
 });
 
 === web/src/presentation/features/booking/containers/booking-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { BookingListView } from "../views/booking-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function BookingListContainer() {
   const { bookingRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const bookings = useAsync(
     () => bookingRepository.list({ limit: PAGE_SIZE, offset }),
     [bookingRepository, offset],
@@ -2780,7 +2795,7 @@ export function BookingListContainer() {
         ) : (
           <>
             <BookingListView bookings={bookings.data.items} />
-            <Pagination {...bookings.data} onOffsetChange={setOffset} />
+            <Pagination {...bookings.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

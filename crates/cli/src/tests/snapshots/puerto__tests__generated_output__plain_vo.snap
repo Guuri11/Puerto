@@ -2891,6 +2891,19 @@ describe("ItemListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ItemMother.random());
+    const itemRepository = fakeItemRepository(seed);
+    const path = "/items?page=2";
+
+    // Act
+    renderScreen(<ItemListContainer />, { itemRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no item", async () => {
     // Arrange
     const itemRepository = fakeItemRepository();
@@ -2918,19 +2931,21 @@ describe("ItemListContainer", () => {
 });
 
 === web/src/presentation/features/item/containers/item-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { ItemListView } from "../views/item-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function ItemListContainer() {
   const { itemRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const items = useAsync(
     () => itemRepository.list({ limit: PAGE_SIZE, offset }),
     [itemRepository, offset],
@@ -2952,7 +2967,7 @@ export function ItemListContainer() {
         ) : (
           <>
             <ItemListView items={items.data.items} />
-            <Pagination {...items.data} onOffsetChange={setOffset} />
+            <Pagination {...items.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

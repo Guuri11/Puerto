@@ -3406,6 +3406,19 @@ describe("CaseListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => CaseMother.random());
+    const caseRepository = fakeCaseRepository(seed);
+    const path = "/cases?page=2";
+
+    // Act
+    renderScreen(<CaseListContainer />, { caseRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no case", async () => {
     // Arrange
     const caseRepository = fakeCaseRepository();
@@ -3433,19 +3446,21 @@ describe("CaseListContainer", () => {
 });
 
 === web/src/presentation/features/case/containers/case-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { CaseListView } from "../views/case-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function CaseListContainer() {
   const { caseRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const cases = useAsync(
     () => caseRepository.list({ limit: PAGE_SIZE, offset }),
     [caseRepository, offset],
@@ -3467,7 +3482,7 @@ export function CaseListContainer() {
         ) : (
           <>
             <CaseListView cases={cases.data.items} />
-            <Pagination {...cases.data} onOffsetChange={setOffset} />
+            <Pagination {...cases.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

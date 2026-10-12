@@ -1036,8 +1036,9 @@ pub struct PublishProductUseCaseImpl {
 
 #[async_trait]
 impl PublishProductUseCaseTrait for PublishProductUseCaseImpl {
-    async fn execute(&self, params: PublishProductParams) -> Result<Product, ProductError> {
-        tracing::info!(?params, "publish_product: start");
+    async fn execute(&self, _params: PublishProductParams) -> Result<Product, ProductError> {
+        // Log what identifies the work, never the params themselves: they are user data.
+        tracing::info!("publish_product: start");
         todo!()
     }
 }
@@ -1049,6 +1050,7 @@ mod tests {
     use crate::domain::product::unit_of_work::mocks::RecordingUnitOfWorkFactory;
 
     #[tokio::test]
+    #[ignore = "write this test"]
     async fn should_publish_product_when_valid() {
         // Arrange
         let mock_repo = MockProductRepository::new();
@@ -1058,8 +1060,10 @@ mod tests {
         };
 
         // Act
-        // TODO: implement test body
         let _ = &use_case;
+
+        // Assert
+        todo!("call use_case.execute(…) and assert on the outcome")
     }
 }
 
@@ -4537,6 +4541,19 @@ describe("ProductListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ProductMother.random());
+    const productRepository = fakeProductRepository(seed);
+    const path = "/products?page=2";
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no product", async () => {
     // Arrange
     const productRepository = fakeProductRepository();
@@ -4564,19 +4581,21 @@ describe("ProductListContainer", () => {
 });
 
 === web/src/presentation/features/product/containers/product-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { ProductListView } from "../views/product-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function ProductListContainer() {
   const { productRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const products = useAsync(
     () => productRepository.list({ limit: PAGE_SIZE, offset }),
     [productRepository, offset],
@@ -4598,7 +4617,7 @@ export function ProductListContainer() {
         ) : (
           <>
             <ProductListView products={products.data.items} />
-            <Pagination {...products.data} onOffsetChange={setOffset} />
+            <Pagination {...products.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

@@ -2905,6 +2905,19 @@ describe("CustomerListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => CustomerMother.random());
+    const customerRepository = fakeCustomerRepository(seed);
+    const path = "/customers?page=2";
+
+    // Act
+    renderScreen(<CustomerListContainer />, { customerRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no customer", async () => {
     // Arrange
     const customerRepository = fakeCustomerRepository();
@@ -2932,19 +2945,21 @@ describe("CustomerListContainer", () => {
 });
 
 === web/src/presentation/features/customer/containers/customer-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { CustomerListView } from "../views/customer-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function CustomerListContainer() {
   const { customerRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const customers = useAsync(
     () => customerRepository.list({ limit: PAGE_SIZE, offset }),
     [customerRepository, offset],
@@ -2966,7 +2981,7 @@ export function CustomerListContainer() {
         ) : (
           <>
             <CustomerListView customers={customers.data.items} />
-            <Pagination {...customers.data} onOffsetChange={setOffset} />
+            <Pagination {...customers.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

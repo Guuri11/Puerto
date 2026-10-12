@@ -2601,6 +2601,19 @@ describe("PersonaListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => PersonaMother.random());
+    const personaRepository = fakePersonaRepository(seed);
+    const path = "/personas?page=2";
+
+    // Act
+    renderScreen(<PersonaListContainer />, { personaRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no persona", async () => {
     // Arrange
     const personaRepository = fakePersonaRepository();
@@ -2628,19 +2641,21 @@ describe("PersonaListContainer", () => {
 });
 
 === web/src/presentation/features/persona/containers/persona-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { PersonaListView } from "../views/persona-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function PersonaListContainer() {
   const { personaRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const personas = useAsync(
     () => personaRepository.list({ limit: PAGE_SIZE, offset }),
     [personaRepository, offset],
@@ -2662,7 +2677,7 @@ export function PersonaListContainer() {
         ) : (
           <>
             <PersonaListView personas={personas.data.items} />
-            <Pagination {...personas.data} onOffsetChange={setOffset} />
+            <Pagination {...personas.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

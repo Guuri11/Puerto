@@ -2596,6 +2596,19 @@ describe("TicketListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => TicketMother.random());
+    const ticketRepository = fakeTicketRepository(seed);
+    const path = "/tickets?page=2";
+
+    // Act
+    renderScreen(<TicketListContainer />, { ticketRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no ticket", async () => {
     // Arrange
     const ticketRepository = fakeTicketRepository();
@@ -2623,19 +2636,21 @@ describe("TicketListContainer", () => {
 });
 
 === web/src/presentation/features/ticket/containers/ticket-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { TicketListView } from "../views/ticket-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function TicketListContainer() {
   const { ticketRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const tickets = useAsync(
     () => ticketRepository.list({ limit: PAGE_SIZE, offset }),
     [ticketRepository, offset],
@@ -2657,7 +2672,7 @@ export function TicketListContainer() {
         ) : (
           <>
             <TicketListView tickets={tickets.data.items} />
-            <Pagination {...tickets.data} onOffsetChange={setOffset} />
+            <Pagination {...tickets.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

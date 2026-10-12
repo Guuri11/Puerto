@@ -2756,6 +2756,19 @@ describe("OrderListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => OrderMother.random());
+    const orderRepository = fakeOrderRepository(seed);
+    const path = "/orders?page=2";
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no order", async () => {
     // Arrange
     const orderRepository = fakeOrderRepository();
@@ -2783,19 +2796,21 @@ describe("OrderListContainer", () => {
 });
 
 === web/src/presentation/features/order/containers/order-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { OrderListView } from "../views/order-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function OrderListContainer() {
   const { orderRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const orders = useAsync(
     () => orderRepository.list({ limit: PAGE_SIZE, offset }),
     [orderRepository, offset],
@@ -2817,7 +2832,7 @@ export function OrderListContainer() {
         ) : (
           <>
             <OrderListView orders={orders.data.items} />
-            <Pagination {...orders.data} onOffsetChange={setOffset} />
+            <Pagination {...orders.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

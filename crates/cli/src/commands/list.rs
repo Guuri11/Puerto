@@ -12,21 +12,49 @@ pub fn require_puerto_project(cwd: &Path) -> Result<(), Box<dyn std::error::Erro
 pub fn run_list(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     require_puerto_project(cwd)?;
     let config = crate::puerto_toml::read(cwd)?;
-    println!("Project: {}", config.project.name);
+    print!("{}", list_report(&config));
+    Ok(())
+}
+
+/// What `puerto list` prints: the project, its entities with their use cases and custom events,
+/// the shared value objects and the worker's consumers. A section with nothing in it is left out.
+pub fn list_report(config: &crate::puerto_toml::PuertoConfig) -> String {
+    let mut out = format!("Project: {}\n", config.project.name);
     if config.project.db {
-        println!("Database: enabled");
+        out.push_str("Database: enabled\n");
     }
-    println!();
+    if let Some(transport) = &config.project.events {
+        out.push_str(&format!("Events: {transport}\n"));
+    }
+    out.push('\n');
     if config.entity.is_empty() {
-        println!("No entities defined.");
-        return Ok(());
+        out.push_str("No entities defined.\n");
     }
     for entity in &config.entity {
         let repo_kind = if entity.db { "SQLx" } else { "InMemory" };
-        println!("  {} [{}]", entity.name, repo_kind);
+        out.push_str(&format!("  {} [{repo_kind}]\n", entity.name));
         for uc in &entity.use_cases {
-            println!("    · {uc}");
+            out.push_str(&format!("    · {uc}\n"));
+        }
+        if !entity.events.is_empty() {
+            out.push_str(&format!("    events: {}\n", entity.events.join(", ")));
         }
     }
-    Ok(())
+    if !config.value_object.is_empty() {
+        out.push_str("\nShared value objects:\n");
+        for vo in &config.value_object {
+            out.push_str(&format!("  {} ({})\n", vo.name, vo.inner_type));
+        }
+    }
+    if !config.consumer.is_empty() {
+        out.push_str("\nConsumers:\n");
+        for consumer in &config.consumer {
+            out.push_str(&format!(
+                "  {} ← {}\n",
+                consumer.name,
+                consumer.events.join(", ")
+            ));
+        }
+    }
+    out
 }

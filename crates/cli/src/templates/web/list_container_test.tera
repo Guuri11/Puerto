@@ -33,6 +33,19 @@ describe("{{ pascal }}ListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => {{ pascal }}Mother.random());
+    const {{ camel }}Repository = fake{{ pascal }}Repository(seed);
+    const path = "/{{ plural }}?page=2";
+
+    // Act
+    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no {{ words }}", async () => {
     // Arrange
     const {{ camel }}Repository = fake{{ pascal }}Repository();

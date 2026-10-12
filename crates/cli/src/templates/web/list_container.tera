@@ -1,16 +1,18 @@
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { {{ pascal }}ListView } from "../views/{{ kebab }}-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function {{ pascal }}ListContainer() {
   const { {{ camel }}Repository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const {{ plural_ident }} = useAsync(
     () => {{ camel }}Repository.list({ limit: PAGE_SIZE, offset }),
     [{{ camel }}Repository, offset],
@@ -32,7 +34,7 @@ export function {{ pascal }}ListContainer() {
         ) : (
           <>
             <{{ pascal }}ListView {{ plural_ident }}={{ "{" }}{{ plural_ident }}.data.items} />
-            <Pagination {...{{ plural_ident }}.data} onOffsetChange={setOffset} />
+            <Pagination {...{{ plural_ident }}.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

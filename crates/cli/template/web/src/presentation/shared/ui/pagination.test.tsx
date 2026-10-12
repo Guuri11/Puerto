@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { Pagination } from "./pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "./pagination";
 
 function button(name: string): HTMLButtonElement {
   return screen.getByRole("button", { name }) as HTMLButtonElement;
@@ -49,5 +49,17 @@ describe("Pagination", () => {
 
     // Assert
     expect(container.textContent).toBe("");
+  });
+
+  test("should read the page of the URL as an offset", () => {
+    expect(offsetFromSearch("?page=3", 20)).toBe(40);
+    expect(offsetFromSearch("", 20)).toBe(0);
+    expect(offsetFromSearch("?page=abc", 20)).toBe(0);
+    expect(offsetFromSearch("?page=0", 20)).toBe(0);
+  });
+
+  test("should write an offset as the page of the URL, none for the first", () => {
+    expect(pageSearch(40, 20)).toBe("?page=3");
+    expect(pageSearch(0, 20)).toBe("");
   });
 });

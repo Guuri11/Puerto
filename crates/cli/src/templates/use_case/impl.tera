@@ -19,8 +19,9 @@ pub struct {{ uc_pascal }}UseCaseImpl {
 
 #[async_trait]
 impl {{ uc_pascal }}UseCaseTrait for {{ uc_pascal }}UseCaseImpl {
-    async fn execute(&self, params: {{ uc_pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
-        tracing::info!(?params, "{{ uc }}: start");
+    async fn execute(&self, _params: {{ uc_pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
+        // Log what identifies the work, never the params themselves: they are user data.
+        tracing::info!("{{ uc }}: start");
         todo!()
     }
 }
@@ -33,6 +34,7 @@ mod tests {
 {% endif %}
 
     #[tokio::test]
+    #[ignore = "write this test"]
     async fn should_{{ uc }}_when_valid() {
         // Arrange
         let mock_repo = Mock{{ pascal }}Repository::new();
@@ -42,7 +44,9 @@ mod tests {
 {% endif %}        };
 
         // Act
-        // TODO: implement test body
         let _ = &use_case;
+
+        // Assert
+        todo!("call use_case.execute(…) and assert on the outcome")
     }
 }

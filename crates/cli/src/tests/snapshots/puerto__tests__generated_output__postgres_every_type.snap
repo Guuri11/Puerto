@@ -1119,8 +1119,9 @@ pub struct ArchiveProductUseCaseImpl {
 
 #[async_trait]
 impl ArchiveProductUseCaseTrait for ArchiveProductUseCaseImpl {
-    async fn execute(&self, params: ArchiveProductParams) -> Result<Product, ProductError> {
-        tracing::info!(?params, "archive_product: start");
+    async fn execute(&self, _params: ArchiveProductParams) -> Result<Product, ProductError> {
+        // Log what identifies the work, never the params themselves: they are user data.
+        tracing::info!("archive_product: start");
         todo!()
     }
 }
@@ -1131,6 +1132,7 @@ mod tests {
     use crate::domain::product::repository::mocks::MockProductRepository;
 
     #[tokio::test]
+    #[ignore = "write this test"]
     async fn should_archive_product_when_valid() {
         // Arrange
         let mock_repo = MockProductRepository::new();
@@ -1139,8 +1141,10 @@ mod tests {
         };
 
         // Act
-        // TODO: implement test body
         let _ = &use_case;
+
+        // Assert
+        todo!("call use_case.execute(…) and assert on the outcome")
     }
 }
 
@@ -9436,6 +9440,19 @@ describe("CustomerListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => CustomerMother.random());
+    const customerRepository = fakeCustomerRepository(seed);
+    const path = "/customers?page=2";
+
+    // Act
+    renderScreen(<CustomerListContainer />, { customerRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no customer", async () => {
     // Arrange
     const customerRepository = fakeCustomerRepository();
@@ -9463,19 +9480,21 @@ describe("CustomerListContainer", () => {
 });
 
 === web/src/presentation/features/customer/containers/customer-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { CustomerListView } from "../views/customer-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function CustomerListContainer() {
   const { customerRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const customers = useAsync(
     () => customerRepository.list({ limit: PAGE_SIZE, offset }),
     [customerRepository, offset],
@@ -9497,7 +9516,7 @@ export function CustomerListContainer() {
         ) : (
           <>
             <CustomerListView customers={customers.data.items} />
-            <Pagination {...customers.data} onOffsetChange={setOffset} />
+            <Pagination {...customers.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>
@@ -10108,6 +10127,19 @@ describe("ProductListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ProductMother.random());
+    const productRepository = fakeProductRepository(seed);
+    const path = "/products?page=2";
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no product", async () => {
     // Arrange
     const productRepository = fakeProductRepository();
@@ -10135,19 +10167,21 @@ describe("ProductListContainer", () => {
 });
 
 === web/src/presentation/features/product/containers/product-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { ProductListView } from "../views/product-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function ProductListContainer() {
   const { productRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const products = useAsync(
     () => productRepository.list({ limit: PAGE_SIZE, offset }),
     [productRepository, offset],
@@ -10169,7 +10203,7 @@ export function ProductListContainer() {
         ) : (
           <>
             <ProductListView products={products.data.items} />
-            <Pagination {...products.data} onOffsetChange={setOffset} />
+            <Pagination {...products.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>
@@ -10863,6 +10897,19 @@ describe("TicketListContainer", () => {
     expect(screen.getAllByText("View")).toHaveLength(5);
   });
 
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => TicketMother.random());
+    const ticketRepository = fakeTicketRepository(seed);
+    const path = "/tickets?page=2";
+
+    // Act
+    renderScreen(<TicketListContainer />, { ticketRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
   test("should say so when there is no ticket", async () => {
     // Arrange
     const ticketRepository = fakeTicketRepository();
@@ -10890,19 +10937,21 @@ describe("TicketListContainer", () => {
 });
 
 === web/src/presentation/features/ticket/containers/ticket-list-container.tsx ===
-import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { Pagination } from "../../../shared/ui/pagination";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
 import { TicketListView } from "../views/ticket-list-view";
 
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function TicketListContainer() {
   const { ticketRepository } = useDependencies();
-  const [offset, setOffset] = useState(0);
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
   const tickets = useAsync(
     () => ticketRepository.list({ limit: PAGE_SIZE, offset }),
     [ticketRepository, offset],
@@ -10924,7 +10973,7 @@ export function TicketListContainer() {
         ) : (
           <>
             <TicketListView tickets={tickets.data.items} />
-            <Pagination {...tickets.data} onOffsetChange={setOffset} />
+            <Pagination {...tickets.data} onOffsetChange={goTo} />
           </>
         ))}
     </section>

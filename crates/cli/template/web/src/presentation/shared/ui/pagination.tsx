@@ -39,3 +39,15 @@ export function Pagination({
     </nav>
   );
 }
+
+/** The offset the URL's `?page=` names (1-based); the first page when there is none. */
+export function offsetFromSearch(search: string, limit: number): number {
+  const page = Number(new URLSearchParams(search).get("page"));
+  return Number.isInteger(page) && page > 1 ? (page - 1) * limit : 0;
+}
+
+/** The query string for the page at `offset`: none for the first. */
+export function pageSearch(offset: number, limit: number): string {
+  const page = Math.floor(offset / limit) + 1;
+  return page > 1 ? `?page=${page}` : "";
+}

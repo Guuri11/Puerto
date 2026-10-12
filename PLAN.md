@@ -2237,7 +2237,7 @@ over losses).
 
 ## Phase 15 — Developer experience: what the 2026-10-12 walkthrough found
 
-**Status:** in progress (15.0–15.3 done). Source: a manual run of every command and option on five generated
+**Status:** done. Source: a manual run of every command and option on five generated
 projects (in-memory, `--db`, `--events db`, `--events kafka`, `--no-demo`), the apps driven in a
 browser. Already fixed outside this phase, one commit each: generated code is formatted
 (ADR-0019); a forced re-scaffold that drops every local value object removes `value_objects.rs`;
@@ -2345,7 +2345,7 @@ Done as `toProblem(code) → { field, text }` and a shared `FieldError`, placed 
 **Test scenarios.** `bun test`: a 422 `name_empty` marks the name input, a 409 shows the duplicate
 message, an unknown code shows the code.
 
-### 15.4 — Smaller things
+### 15.4 — Smaller things ✅
 
 - The list's page in the URL (`?page=2`): reload and back keep it.
 - `puerto list` shows each entity's custom events, the consumers and the shared value objects.
