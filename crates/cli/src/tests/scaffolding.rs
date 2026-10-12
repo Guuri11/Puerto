@@ -744,6 +744,43 @@ fn rescaffold_with_force_overwrites_and_syncs_puerto_toml() {
 }
 
 #[test]
+fn should_drop_the_value_objects_module_when_a_forced_rescaffold_has_no_local_value_object() {
+    // Arrange: `Customer` first had a local `Email` VO — `value_objects.rs` names
+    // `CustomerError::InvalidEmail`. Re-scaffolded without it, `errors.rs` loses the variant: a
+    // `value_objects.rs` left behind (and still declared in lib.rs) no longer compiled.
+    let dir = temp_dir("rescaffold_drops_vos");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("rescaffold-drops-vos", &dir).unwrap();
+    let email = puerto_toml::parse_field_arg("email:Email:String").unwrap();
+    scaffold::run_scaffold("Customer", &output, &[email], OverwritePolicy::Ask).unwrap();
+    let value_objects = output.join("business/src/domain/customer/value_objects.rs");
+    assert!(value_objects.exists());
+
+    // Act
+    scaffold::run_scaffold(
+        "Customer",
+        &output,
+        &[scaffold_test_field("full_name", "String")],
+        OverwritePolicy::Force,
+    )
+    .unwrap();
+
+    // Assert
+    assert!(
+        !value_objects.exists(),
+        "stale value_objects.rs left behind"
+    );
+    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    assert!(
+        !lib.contains("pub mod value_objects;"),
+        "lib.rs still declares the module:\n{lib}"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
 fn rescaffold_preserves_use_cases_added_by_generate_use_case() {
     let dir = temp_dir("rescaffold_keeps_uc");
     cleanup(&dir);

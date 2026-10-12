@@ -241,31 +241,57 @@ pub fn patch_business_lib_value_objects(
 
     // Check within this entity's block specifically — a previous entity may already
     // have `pub mod value_objects;` which would cause a false-positive global check.
-    let entity_marker = format!("pub mod {snake} {{");
-    if let Some(start) = src.find(&entity_marker) {
-        let rest = &src[start..];
-        let mut depth = 0usize;
-        let mut block_end = rest.len();
-        for (i, ch) in rest.char_indices() {
-            match ch {
-                '{' => depth += 1,
-                '}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        block_end = i;
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-        if rest[..block_end].contains("pub mod value_objects;") {
-            return Ok(());
-        }
+    if let Some(block) = domain_entity_block(&src, snake)
+        && src[block].contains("pub mod value_objects;")
+    {
+        return Ok(());
     }
 
     let content = "\n        pub mod value_objects;\n".to_string();
     let patched = patch_lib_block(&src, &["domain", snake], &content)?;
+    fs::write(&path, patched)?;
+    Ok(())
+}
+
+/// The byte range of `pub mod {snake} { … }` — the first one, the domain's: lib.rs declares
+/// `domain` before `application`.
+fn domain_entity_block(src: &str, snake: &str) -> Option<std::ops::Range<usize>> {
+    let start = src.find(&format!("pub mod {snake} {{"))?;
+    let mut depth = 0usize;
+    for (i, ch) in src[start..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(start..start + i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Undoes [`patch_business_lib_value_objects`]: a forced re-scaffold whose entity no longer has a
+/// local value object deletes `value_objects.rs`, so lib.rs must stop declaring it.
+pub fn unpatch_business_lib_value_objects(
+    base: &Path,
+    snake: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("business/src/lib.rs");
+    let src = fs::read_to_string(&path)?;
+    let Some(block) = domain_entity_block(&src, snake) else {
+        return Ok(());
+    };
+    let Some(offset) = src[block.clone()].find("pub mod value_objects;") else {
+        return Ok(());
+    };
+    let at = block.start + offset;
+    let line_start = src[..at].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = src[at..].find('\n').map_or(src.len(), |i| at + i + 1);
+    let mut patched = src;
+    patched.replace_range(line_start..line_end, "");
     fs::write(&path, patched)?;
     Ok(())
 }

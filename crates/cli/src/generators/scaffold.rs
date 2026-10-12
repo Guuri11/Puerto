@@ -15,6 +15,7 @@ use crate::generators::{
 };
 use crate::patchers::lib_rs::{
     patch_business_lib_shared, patch_business_lib_value_objects, patch_libs, patch_mothers_lib,
+    unpatch_business_lib_value_objects,
 };
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
@@ -161,6 +162,8 @@ pub fn run(
             .any(|f| is_value_object(f) && !is_shared_vo(f, shared_vos))
     {
         patch_business_lib_value_objects(base, &snake)?;
+    } else {
+        unpatch_business_lib_value_objects(base, &snake)?;
     }
 
     if !shared_vos.is_empty() {

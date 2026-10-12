@@ -12,7 +12,7 @@ use crate::generators::types::{
 };
 use crate::patchers::lib_rs::{
     patch_business_lib_domain_crud, patch_business_lib_shared, patch_business_lib_value_objects,
-    patch_mothers_lib,
+    patch_mothers_lib, unpatch_business_lib_value_objects,
 };
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
@@ -301,6 +301,10 @@ pub fn write_domain_files(
     {
         let vos = generate_value_objects(pascal, snake, fields, shared_vos)?;
         write("value_objects.rs".into(), vos)?;
+    } else if dir.join("value_objects.rs").exists() {
+        // A forced re-scaffold without local VOs: the old file names error variants that the new
+        // errors.rs no longer has.
+        std::fs::remove_file(dir.join("value_objects.rs"))?;
     }
     write(
         "repository.rs".into(),
@@ -403,6 +407,8 @@ pub fn run_generate_domain(
         .any(|f| is_value_object(f) && !is_shared_vo(f, &shared_vos));
     if has_local_vo {
         patch_business_lib_value_objects(base, &snake)?;
+    } else {
+        unpatch_business_lib_value_objects(base, &snake)?;
     }
 
     if !shared_vos.is_empty() {
