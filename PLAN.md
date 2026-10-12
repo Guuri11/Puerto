@@ -2501,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, 3/3). Next: **16.5**. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`). Next: **16.5**. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
