@@ -1,3 +1,35 @@
+## [0.16.0] - 2026-10-12
+
+Fixes from a walkthrough of every command on five generated projects. Generated code is now
+formatted as it is written, so a project's own `make format` passes.
+
+### 🐛 Bug Fixes
+
+- **Generated code passes `cargo fmt --check`** (ADR-0019) — every command that writes Rust ends
+  with `cargo fmt --all` in the project; a failed format only warns. A fresh project had 3–7
+  diffs, one with two scaffolded entities about 200
+- `generate scaffold --force` on an entity that no longer has a local value object removes
+  `value_objects.rs` and its `pub mod` — the stale file did not compile
+- `generate presentation` before `application` / `repository` (API first) writes the routes and
+  `tags.rs` but leaves `bootstrap.rs` alone, and names the next step — it used to write a
+  bootstrap that did not compile and print "All layers wired"
+- Generated Makefile: `docker compose up -d --wait` (the first `make sqlx/migrate` failed while
+  Postgres started); `make run`, `make worker` and `make test/infrastructure` start the database;
+  `test/infrastructure` defined once; colors print where `sh` is bash; `web/*` targets ask for
+  `make web/install` instead of failing with exit 127
+- The migration hint after a scaffold adds `make sqlx/prepare`; `generate consumer --help` says
+  `--events`
+
+### Breaking
+
+- Generated output is reformatted (whitespace and import order only). No migration needed:
+  `cargo fmt --all` brings an existing project to the same layout
+
+### Release
+
+- Publish order: `puerto-core` → `puerto-web` → `puerto-sqlx` → `puerto-events` →
+  `puerto-kafka` → `puerto` (runtime crates unchanged, republished at the CLI's minor)
+
 ## [0.15.0] - 2026-10-12
 
 Domain events (ADR-0018). In a `--db` project created with `--events db|kafka`, every write of a
