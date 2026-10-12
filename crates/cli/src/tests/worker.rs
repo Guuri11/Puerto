@@ -434,6 +434,17 @@ fn generate_consumer_on_kafka_subscribes_to_the_topics_of_its_events() {
 }
 
 #[test]
+fn generate_bootstrap_does_not_bring_back_a_removed_worker() {
+    let (dir, output) = product_project("consumer_worker_removed");
+    fs::remove_dir_all(output.join("worker/src/generated")).unwrap();
+
+    scaffold::run_bootstrap_command(&output, false).unwrap();
+
+    assert!(!output.join("worker/src/generated").exists());
+    cleanup(&dir);
+}
+
+#[test]
 fn generate_bootstrap_regenerates_the_registry() {
     let (dir, output) = product_project("consumer_bootstrap");
     scaffold::run_generate_consumer("audit", &on(&["product_created"]), &output).unwrap();

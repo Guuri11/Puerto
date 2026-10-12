@@ -299,6 +299,15 @@ mod tests {
         }
     }
 
+    #[test]
+    fn should_hand_out_whole_batches_unless_a_transport_keeps_an_order() {
+        let subscription = FakeSubscription {
+            due: vec![],
+            settled: vec![],
+        };
+        assert_eq!(subscription.max_batch(), u32::MAX);
+    }
+
     #[tokio::test]
     async fn should_mark_only_the_confirmed_prefix_when_the_publisher_fails_midway() {
         // Arrange

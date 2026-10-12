@@ -511,3 +511,22 @@ pub fn run_generate_consumer(
     println!("  worker/src/generated/registry.rs regenerated. Run it with `make worker`.");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_sort_only_module_declarations_when_a_consumer_is_added() {
+        let src = "pub mod zeta;\npub mod helpers {}\n";
+
+        let out = with_module(src, "alpha");
+
+        assert_eq!(out, "pub mod helpers {}\npub mod alpha;\npub mod zeta;\n");
+    }
+
+    #[test]
+    fn should_not_declare_a_module_twice() {
+        assert_eq!(with_module("pub mod audit;\n", "audit"), "pub mod audit;\n");
+    }
+}
