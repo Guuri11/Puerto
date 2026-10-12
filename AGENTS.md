@@ -14,11 +14,18 @@ crates/
   core/             — `puerto-core`, a runtime crate (ADR-0017): `RepositoryError`, `PageRequest`,
                       `Page<T>`; `events` (ADR-0018): `DomainEvent`, `EventEnvelope`, `EventHandler`,
                       the delivery policy and the transport ports; `mail` (ADR-0020): `Email`, `Mailer`,
-                      `SentMails`. Generated projects depend on it at the CLI's minor; same workspace
-                      version as `cli/`. The compile matrix builds against this checkout
+                      `SentMails`; `auth` (ADR-0021): `Principal`, `Authenticator`, `AuthError`,
+                      `mocks::MockAuthenticator` (`test-utils`). Generated projects depend on it at
+                      the CLI's minor; same workspace version as `cli/`. The compile matrix builds
+                      against this checkout
                       (`[patch.crates-io]`, added by the test harness only)
+  macros/           — `puerto-macros` (proc-macro, ADR-0021 § 4): `#[require_role("<role>")]`, reached
+                      as `puerto_web::require_role` — a 403 check at the top of a handler that takes
+                      `auth: BearerAuth`; on a misuse it emits the method unchanged next to the error
   web/              — `puerto-web`, the presentation runtime: `App` (tracing, CORS, graceful
-                      shutdown), `Config::from_env`, the health probes, `ErrorResponse`
+                      shutdown), `Config::from_env`, the health probes, `ErrorResponse`; `auth`:
+                      `BearerAuth` (asks the `Arc<dyn Authenticator>` the routes carry as data;
+                      401 `auth.unauthenticated`, 503 `auth.unavailable`), `forbidden()`
   sqlx/             — `puerto-sqlx`, the Postgres runtime (`--db` projects): the pool,
                       `run_migrations(pool, &MIGRATOR)`, `ping`, `map_sqlx_error`; for events projects
                       `uow::PgTransaction`, `events::{PgOutbox, PgDeliveries, PgSubscription,

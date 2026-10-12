@@ -3,12 +3,16 @@ name = "puerto-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Puerto runtime — the domain types every Puerto project shares: paged lists, the repository error, domain events and the ports their transports implement, and the mail ports."
+description = "Puerto runtime — the domain types every Puerto project shares: paged lists, the repository error, domain events and the ports their transports implement, and the mail ports, and the auth port."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-keywords = ["ddd", "clean-architecture", "puerto", "events", "mail"]
+keywords = ["ddd", "clean-architecture", "puerto", "events", "auth"]
 categories = ["rust-patterns"]
+
+[features]
+# `auth::mocks::MockAuthenticator`, for a project's tests.
+test-utils = ["dep:mockall"]
 
 [dependencies]
 thiserror = "2"
@@ -18,7 +22,9 @@ serde = "1"
 serde_json = "1"
 uuid = { version = "1", features = ["v7", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+mockall = { version = "0.13", optional = true }
 
 [dev-dependencies]
+mockall = "0.13"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt"] }

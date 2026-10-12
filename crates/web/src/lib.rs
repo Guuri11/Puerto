@@ -1,5 +1,6 @@
 //! The HTTP shell every Puerto project shares (ADR-0017): the server with graceful shutdown, the
-//! health probes, the configuration read from the environment, CORS and the error body.
+//! health probes, the configuration read from the environment, CORS, the error body and bearer
+//! auth.
 //!
 //! A generated project calls it; it never calls the project. `main.rs` is
 //!
@@ -14,6 +15,7 @@
 //! and `generated/bootstrap.rs` — the composition root — builds the routes with [`routes`].
 
 pub mod app;
+pub mod auth;
 pub mod config;
 pub mod error_response;
 pub mod health;
@@ -22,6 +24,8 @@ pub use app::{App, routes};
 pub use config::{Config, ConfigError};
 pub use error_response::{ErrorResponse, IntoErrorResponse};
 pub use health::ReadinessProbe;
+/// `#[require_role("admin")]` on a handler that takes `auth: BearerAuth` — see [`auth`].
+pub use puerto_macros::require_role;
 
 /// Why the application did not start or stopped serving.
 #[derive(thiserror::Error)]

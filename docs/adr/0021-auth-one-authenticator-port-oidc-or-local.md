@@ -82,6 +82,13 @@ never reads provider-specific claims. `User` becomes a reserved entity name in a
 - A handler that takes `auth: BearerAuth` (a poem-openapi `SecurityScheme`, `puerto-web`) is
   authenticated: no or a bad token → `401 auth.unauthenticated`. The OpenAPI spec carries the
   `security` requirement, so the frontend's wire types know it.
+- `BearerAuth` implements poem-openapi's `ApiExtractor` by hand; only the spec registration comes
+  from a private `#[derive(SecurityScheme)]` struct. The derive's checker runs only once a bearer
+  header was found: a request without one gets poem's plain-text 401, not an `ErrorResponse`, and
+  the checker has no way to answer 503. By hand, every refusal is an `ErrorResponse` JSON body —
+  401 `auth.unauthenticated` (no header, `Invalid`, `Expired`), 503 `auth.unavailable`, and 500
+  `auth.not_configured` when the routes carry no `Arc<dyn Authenticator>` (`bootstrap.rs` did not
+  register one).
 - `#[require_role("admin")]` (`puerto-macros`, re-exported by `puerto-web`) on the handler adds a
   `403 auth.forbidden` check at its top. One line, visible, written by the generator and by hand
   alike. The 16.1 spike (poem-openapi 5.1.16) proved it works inside `#[OpenApi] impl`:

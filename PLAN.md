@@ -2501,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`). Next: **16.2**. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2. Next: **16.3**. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
@@ -2557,7 +2557,14 @@ A throwaway proc-macro in a test crate, applied to a handler of a `#[OpenApi] im
 does the spec still list it, does the check run before the body. Result written into ADR-0021 § 4
 (kept, or the explicit-check fallback). Nothing ships; no snapshot changes.
 
-### 16.2 — `puerto-core::auth` + `BearerAuth` in `puerto-web`
+### 16.2 — `puerto-core::auth` + `BearerAuth` in `puerto-web` ✅
+
+Done. The checker question below is settled by not using the derive's checker: `BearerAuth`
+implements `ApiExtractor` by hand (ADR-0021 § 4), so a missing header is an `ErrorResponse` too;
+no `Authenticator` registered → 500 `auth.not_configured`. `Principal` gained `with_user_id` for
+provisioning (16.4). The macro also rejects a role name outside `[a-z][a-z0-9_:-]*` and a
+destructured `BearerAuth(p)` parameter. `crates/web/tests/auth.rs` covers every status over a real
+`#[OpenApi] impl` and the spec.
 
 - `puerto_core::auth`: `Principal` (`#[non_exhaustive]`, `Principal::new(user_id, subject)
   .with_email(…).with_name(…).with_roles(…)`, `has_role`), `#[async_trait] Authenticator`,
