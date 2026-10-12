@@ -6,13 +6,20 @@ use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-fn var(key: &str) -> String {
-    std::env::var(key).unwrap_or_else(|_| panic!("{key} is not set — run `make test/mail`"))
+const SKIP: &str =
+    "PUERTO_TEST_SMTP_URL / PUERTO_TEST_MAILPIT_API not set — skipping (run `make test/mail`)";
+
+/// Mailpit's SMTP URL and API, when `make test/mail` started one.
+fn mailpit() -> Option<(String, String)> {
+    Some((
+        std::env::var("PUERTO_TEST_SMTP_URL").ok()?,
+        std::env::var("PUERTO_TEST_MAILPIT_API").ok()?,
+    ))
 }
 
-fn mailer() -> SmtpMailer {
+fn mailer(smtp_url: &str) -> SmtpMailer {
     let config = MailConfig::from_vars(|key| match key {
-        "SMTP_URL" => Some(var("PUERTO_TEST_SMTP_URL")),
+        "SMTP_URL" => Some(smtp_url.to_string()),
         "MAIL_FROM" => Some("Puerto <no-reply@puerto.test>".into()),
         _ => None,
     })
@@ -21,8 +28,7 @@ fn mailer() -> SmtpMailer {
 }
 
 /// `GET <PUERTO_TEST_MAILPIT_API>/api/v1/messages`, over HTTP/1.0 so the body is never chunked.
-async fn messages() -> Value {
-    let api = var("PUERTO_TEST_MAILPIT_API");
+async fn messages(api: &str) -> Value {
     let host = api.trim_start_matches("http://");
     let mut stream = TcpStream::connect(host).await.unwrap();
     let request = format!("GET /api/v1/messages HTTP/1.0\r\nHost: {host}\r\n\r\n");
@@ -40,16 +46,19 @@ fn unique_address(domain: &str) -> String {
 #[tokio::test]
 #[ignore = "needs Mailpit: make test/mail"]
 async fn should_deliver_the_mail_when_the_server_accepts_it() {
+    let Some((smtp_url, api)) = mailpit() else {
+        return eprintln!("{SKIP}");
+    };
     // Arrange
     let to = unique_address("accepted.test");
     let email = Email::new(&to, "Welcome, Ada", "<p>Hi Ada</p>").with_text("Hi Ada");
 
     // Act
-    let result = mailer().send(&email).await;
+    let result = mailer(&smtp_url).send(&email).await;
 
     // Assert
     assert_eq!(result, Ok(()));
-    let messages = messages().await;
+    let messages = messages(&api).await;
     let delivered = messages["messages"]
         .as_array()
         .unwrap()
@@ -63,11 +72,14 @@ async fn should_deliver_the_mail_when_the_server_accepts_it() {
 #[tokio::test]
 #[ignore = "needs Mailpit: make test/mail"]
 async fn should_fail_permanently_when_the_server_rejects_the_recipient() {
+    let Some((smtp_url, _)) = mailpit() else {
+        return eprintln!("{SKIP}");
+    };
     // Arrange
     let email = Email::new(unique_address("rejected.test"), "Hi", "<p>Hi</p>");
 
     // Act
-    let result = mailer().send(&email).await;
+    let result = mailer(&smtp_url).send(&email).await;
 
     // Assert
     assert!(matches!(result, Err(MailError::Permanent(_))), "{result:?}");
