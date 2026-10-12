@@ -1788,7 +1788,8 @@ under `make test/db`). Snapshots re-recorded.
 New infrastructure lands in the runtime, split per ADR-0017 § 1: ports in `puerto-core`,
 adapters in their own crate, domain-facing parts (the `User` entity, login use cases) generated.
 Candidates, in roadmap order: `UnitOfWork` (T-23), auth, jobs (T-29), mailer, storage.
-T-23 (with T-29's second binary) is Phase 13; the mailer, Phase 14, is the first consumer built on it.
+T-23 (with T-29's second binary) is Phase 13; the mailer, Phase 14, is the first consumer built on it;
+auth is Phase 16.
 `puerto eject <component>` once a runtime crate has something worth ejecting.
 
 ---
@@ -2500,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** not started. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`). Next: **16.2**. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
@@ -2573,6 +2574,30 @@ does the spec still list it, does the check run before the body. Result written 
 Tests: each `AuthError` → its status and code; a route with `BearerAuth` answers 401 without the
 header, 401 for a token the mock rejects, 200 with a principal; `#[require_role]` 403 without the
 role, 200 with it; the spec lists the bearer security scheme on the route.
+
+Handoff notes from 16.1 (what is verified, what is not):
+- **Verified** (poem-openapi 5.1.16): `#[derive(SecurityScheme)] #[oai(ty = "bearer", checker =
+  "check")] struct BearerAuth(Principal)` with `async fn check(req: &poem::Request, bearer:
+  poem_openapi::auth::Bearer) -> Option<Principal>`; the spec names the scheme after the struct
+  (`security: [{"BearerAuth": []}]`). The macro: `#[proc_macro_attribute]`, parse the item as
+  `syn::ImplItemFn` (syn 2, `full`), find the `FnArg::Typed` whose `Pat::Ident`'s type path ends in
+  `BearerAuth`, take the `ReturnType::Type`, and wrap the block with `syn::parse_quote!` in
+  `if !#auth.0.has_role(#role) { let (status, error) = …forbidden(); return <#ret>::from_status(
+  status, error); } #body`. The generated path must be absolute (`::puerto_web::auth::forbidden`),
+  and users reach the macro as `puerto_web::require_role` (re-export).
+- **Not verified**: with `Option`, a rejected token gets poem's default 401, **not** an
+  `ErrorResponse` JSON body, and there is no way to answer 503. The spec needs the checker to return
+  `poem::Result<Principal>` with a `poem::Error` carrying status + `ErrorResponse` JSON. Check that
+  the body really reaches the client (a `TestClient` test for each status), and how the checker
+  gets `Arc<dyn Authenticator>` (`req.data::<Arc<dyn Authenticator>>()`; no data → 500 with a
+  message saying `bootstrap.rs` did not register it).
+- `puerto-core` already has `uuid` and `async-trait`; `mockall` for `MockAuthenticator` is new
+  there (optional, feature `test-utils`).
+- Release plumbing for the new crate `crates/macros` (`puerto-macros`, `proc-macro = true`): root
+  `Cargo.toml` `members` + `[workspace.dependencies]`, `.github/workflows/release.yml` crate loop,
+  `.claude/rules/release.md` order and checklist, `AGENTS.md` § Puerto's Own Structure. Order:
+  core → macros → web → sqlx → events → kafka → mail → puerto (web depends on macros).
+  `puerto-auth` (16.3) goes after `puerto-mail`.
 
 ### 16.3 — `puerto-auth`, feature `oidc` + `make test/auth`
 
