@@ -1607,3 +1607,121 @@ take the defaults; application — the use case passes the page to the repositor
 `items` and `total`; Pg — a page of a larger table has `limit` items and the full `total`; web —
 the HTTP adapter sends the query and maps the items, the list container shows the next page when
 Next is pressed, `Pagination` disables Previous on the first page and Next on the last.
+
+---
+
+## Phase 12 — Runtime crates (ADR-0017)
+
+**Status:** Not started. Decision: [ADR-0017](docs/adr/0017-runtime-crates-next-to-the-generator.md).
+Every piece is a **move**: code that is identical in every generated project leaves the template
+and becomes a crate in Puerto's workspace. No new behaviour, no error code or HTTP status changes
+(ADR-0007, 0008, 0015, 0016 hold) — the generated projects' tests prove it, unchanged in intent.
+Each piece changes generated output (`feat!`); no project generated before it is in use, so the
+changelog is the migration guide. One commit per piece, in this order (12.1 and 12.2 depend on
+12.0's workspace and `[patch]` plumbing).
+
+### 12.0 — Workspace, release plumbing and `puerto-core`
+
+- Puerto's workspace gains `crates/core` (`puerto-core`). Same version as `crates/cli`; the
+  workspace sets `version.workspace = true` for both so they cannot drift. `publish = true`,
+  `description`, `license`, `repository`, `rust-version` as `puerto` has.
+- `puerto-core` dependencies: `thiserror` only (`async-trait` arrives with the first port). It
+  holds, moved verbatim with their tests:
+  - `pagination.rs` — `PageRequest`, `Page<T>`, `DEFAULT_PAGE_LIMIT`, `MAX_PAGE_LIMIT`;
+  - `repository_error.rs` — `RepositoryError` (`repository.*` codes unchanged).
+  Re-exported at the root: `puerto_core::{Page, PageRequest, RepositoryError}`. `RepositoryError`
+  becomes `#[non_exhaustive]`; generated `From<RepositoryError>` impls gain no `_` arm — they live
+  outside the crate, so the compiler would demand one: the arm maps to `RepositoryError` (500) and
+  the per-arm tests stay one per *named* variant.
+- Template: `business/src/domain/shared/{pagination,repository_error}.rs` are deleted;
+  `shared.rs` no longer declares them (it is deleted when empty, and `pub mod shared;` with it —
+  `generate value-object` recreates both, as it already handles a missing `shared.rs`).
+  `business/Cargo.toml` gains `puerto-core = "<cli minor>"`, rendered from the CLI's own
+  `CARGO_PKG_VERSION` (`"0.14"` for `0.14.x`), never hard-coded in the template.
+- Generators import `puerto_core::{…}` instead of `crate::domain::shared::…` (`errors.tera`,
+  repository traits and mocks, `list_*` use case, Pg/InMemory repositories, routes, DTOs).
+- Compile matrix (`make test/full`, `make test/db`): every generated project gets
+  ```toml
+  [patch.crates-io]
+  puerto-core = { path = "<puerto>/crates/core" }
+  ```
+  appended to its root `Cargo.toml` by the test harness (not by `puerto new`), so templates and
+  the unreleased runtime are tested together.
+- `release.yml`: publish runtime crates first, in dependency order, each skipped when its version
+  is already on crates.io (same check as `puerto`), then `puerto`. The tag check covers every
+  crate's version. `release.md` lists the order and the hand-publish fallback.
+- `puerto validate` warns (does not fail) when a runtime crate in the project's `Cargo.toml`
+  is on a different minor than the CLI: `warning: puerto-core 0.13 but puerto 0.14 — see the
+  CHANGELOG migration guide`.
+- Docs: `architecture.md` (domain may depend on `puerto-core`), `AGENTS.md` of Puerto and the
+  generated root `AGENTS.md` (which runtime crate owns what — ADR-0010's test checks it names
+  them), `puerto-toml.md` where it names the moved paths.
+
+Test scenarios: `puerto new` writes `puerto-core = "<minor>"` in `business/Cargo.toml` and no
+`domain/shared/{pagination,repository_error}.rs`; `--no-demo` project still compiles; scaffold
+imports `puerto_core::RepositoryError` / `PageRequest` / `Page` and never `domain::shared::
+repository_error`; `generate value-object` on a project without `shared.rs` creates it and
+declares `pub mod shared;`; the rendered version follows `CARGO_PKG_VERSION` (unit test on the
+render function); `validate` warns on a minor mismatch and is silent on a patch difference;
+`puerto-core` unit tests (clamping, codes) pass in Puerto's workspace; `make test/mutation`
+covers `crates/core`. Snapshots re-recorded — the `.snap` diff is deletions plus import changes.
+
+### 12.1 — `puerto-web`
+
+- `crates/web` (`puerto-web`), depends on `puerto-core`, `poem`, `poem-openapi`, `tokio`,
+  `tracing`, `tracing-subscriber`, `dotenvy`. Moved, with tests:
+  - `ErrorResponse`, `ErrorResponse::from_code`, `IntoErrorResponse` (from `api/error.rs`);
+  - health: `puerto_web::health::HealthApi` taking a readiness probe
+    (`Arc<dyn Fn() -> BoxFuture<'static, bool> + Send + Sync>`; `--db` passes
+    `puerto_sqlx::ping` in 12.2, otherwise always ready);
+  - `Config::from_env()` — `SERVICE_PORT` (default 8080), `CORS_ALLOWED_ORIGINS`,
+    `PUERTO_BANNER` (replaces `HARBOR_BANNER`); reads `.env` via `dotenvy`; an invalid value is an
+    error at startup, not a silent default (today `SERVICE_PORT=abc` silently falls back to 8080);
+    `#[non_exhaustive]`, built only through `from_env` / a builder;
+  - `App::new(config).serve(build_app)` — tracing subscriber, banner, listener, graceful
+    shutdown with `SHUTDOWN_DEADLINE` (ADR-0008), CORS from the config;
+  - `openapi_service(apis)` setup now in `bootstrap.rs` (title, version, Swagger UI path).
+- Template: `main.rs` shrinks to `Config::from_env()` + `App::new(config).serve(…)`;
+  `health.rs` and `api/error.rs` are deleted; `api.rs` stops declaring `error`. Generated error
+  mappers and routes import `puerto_web::{ErrorResponse, IntoErrorResponse}`.
+- New hand-written hook, created once by `puerto new`, never touched by any generator:
+  `presentation/src/app.rs` with `pub fn configure(route: Route) -> Route { route }` — called by
+  `bootstrap.rs` last, the one place for extra middleware or an adapter swap. `conflict` guards
+  it like any user file.
+- `bootstrap.rs` calls `puerto_web` for the service and CORS; its shape is otherwise unchanged
+  (still generated, still the composition root — ADR-0017 § 3).
+- `[patch.crates-io]` in the matrix gains `puerto-web`.
+
+Test scenarios: generated `main.rs` has no server/shutdown code and names `puerto_web::App`;
+no `health.rs` / `api/error.rs`; `app.rs` exists after `new`, survives `scaffold --force` and
+`generate bootstrap` byte for byte; `bootstrap.rs` calls `app::configure`; route tests (ADR-0012)
+still assert the same statuses and `name` codes; in `crates/web`: `/health` 200, `/health/ready`
+503 when the probe is false, `Config::from_env` rejects a non-numeric port, CORS answers a
+preflight from an allowed origin and not from another. Snapshots re-recorded.
+
+### 12.2 — `puerto-sqlx`
+
+- `crates/sqlx` (`puerto-sqlx`), depends on `puerto-core`, `sqlx` (postgres, runtime-tokio).
+  Moved from `templates/infrastructure/db.tera`, with tests: `create_postgres_pool`, `ping`,
+  `map_sqlx_error`, `DatabaseError`.
+- `run_migrations` cannot move as is: `sqlx::migrate!("./migrations")` embeds the *project's*
+  directory at compile time. It becomes `puerto_sqlx::run_migrations(pool, &MIGRATOR)`, and the
+  project keeps one line: `pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");` in
+  `infrastructure/src/db.rs`, which otherwise re-exports `puerto_sqlx::*` — so generated
+  repositories keep `crate::db::map_sqlx_error` and no `.tera` beyond `db.tera` changes.
+- `--db` template `infrastructure/Cargo.toml` gains `puerto-sqlx`; `/health/ready` gets
+  `puerto_sqlx::ping` through 12.1's probe.
+- `[patch.crates-io]` in `make test/db` gains `puerto-sqlx`.
+
+Test scenarios: `--db` project's `db.rs` is the `MIGRATOR` line plus the re-export; Pg
+repositories compile unchanged; `make test/db` — a duplicate `unique` value still returns
+`RepositoryError::Duplicate`, `/health/ready` 503 with Postgres stopped; in `crates/sqlx`:
+`map_sqlx_error` maps a non-database error to `Unavailable` (Postgres-backed `23505` test runs
+under `make test/db`). Snapshots re-recorded.
+
+### After Phase 12
+
+New infrastructure lands in the runtime, split per ADR-0017 § 1: ports in `puerto-core`,
+adapters in their own crate, domain-facing parts (the `User` entity, login use cases) generated.
+Candidates, in roadmap order: `UnitOfWork` (T-23), auth, jobs (T-29), mailer, storage.
+`puerto eject <component>` once a runtime crate has something worth ejecting.

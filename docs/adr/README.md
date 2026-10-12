@@ -25,3 +25,4 @@ ADR; supersede it with a new one and link both ways.
 | [0014](0014-entity-ids-are-generated-newtypes.md) | Entity ids are generated newtypes | Accepted |
 | [0015](0015-repositories-return-one-repository-error.md) | Repositories return one `RepositoryError` | Accepted |
 | [0016](0016-lists-are-offset-pages.md) | Lists are offset pages, capped in the domain | Accepted |
+| [0017](0017-runtime-crates-next-to-the-generator.md) | Runtime crates next to the generator, one per layer | Accepted |
