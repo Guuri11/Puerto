@@ -445,6 +445,8 @@ fn snippets_compose_an_entity_that_compiles_lints_and_passes_its_tests() {
     let routes = replace_method(&routes, "/// Create a new Widget", &s["poem-endpoint"]);
     fs::write(&routes_path, routes).unwrap();
 
+    // Snippets are expanded by an editor, which formats on save (or `make format/fix`).
+    crate::generators::format::format_project(&output).unwrap();
     assert_generated_project_is_clean(&output, &dir, "snippets_inmemory", &[]);
     cleanup(&dir);
 }
@@ -507,6 +509,7 @@ fn postgres_snippets_compose_a_repository_that_passes_its_integration_tests() {
         assert!(status.success(), "`sqlx {}` failed", args.join(" "));
     }
 
+    crate::generators::format::format_project(&output).unwrap();
     assert_generated_project_is_clean(
         &output,
         &dir,

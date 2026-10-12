@@ -427,6 +427,10 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     if scenario.no_web {
         scaffold::apply_no_web(output).unwrap();
     }
+    // `puerto new`, and every later command that writes Rust, ends with `cargo fmt`: the next
+    // step's patchers read formatted code, as they do for a user.
+    let format = || crate::generators::format::format_project(output).unwrap();
+    format();
 
     for (vo_name, inner) in scenario.shared_vos {
         puerto_toml::add_value_object(output, vo_name, inner).unwrap();
@@ -442,19 +446,23 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         let fields = puerto_toml::apply_shared_vo_inference(parsed, &shared_vos);
         crate::generators::types::validate_fields(&fields).unwrap();
         scaffold::run_scaffold(entity, output, &fields, OverwritePolicy::Ask).unwrap();
+        format();
     }
 
     for (entity, action) in scenario.use_cases {
         scaffold::run_use_case(entity, action, output).unwrap();
+        format();
     }
 
     for (entity, event) in scenario.entity_events {
         scaffold::run_generate_event(entity, event, output).unwrap();
+        format();
     }
 
     for (name, events) in scenario.consumers {
         let events: Vec<String> = events.iter().map(|e| e.to_string()).collect();
         scaffold::run_generate_consumer(name, &events, output).unwrap();
+        format();
     }
 }
 
@@ -480,6 +488,8 @@ pub(super) fn assert_generated_project_is_clean(
             "warnings",
         ][..],
         &["test", "--workspace"][..],
+        // The project's own `make format`: generated code is formatted as it is written.
+        &["fmt", "--all", "--", "--check"][..],
     ] {
         let result = std::process::Command::new("cargo")
             .args(args)
@@ -646,10 +656,20 @@ fn compiles_with_domain_first_layered_flow_and_fields() {
     .map(|arg| puerto_toml::parse_field_arg(arg).unwrap())
     .collect();
 
+    // Formatted after each step, like the CLI. Until the last layer exists a declared module has
+    // no file and `cargo fmt` fails — the CLI only warns, so the steps here ignore it too.
+    let format = || {
+        let _ = crate::generators::format::format_project(&output);
+    };
+    format();
     scaffold::run_generate_domain("Invoice", &output, &fields).unwrap();
+    format();
     scaffold::run_generate_application("Invoice", &output).unwrap();
+    format();
     scaffold::run_generate_repository("Invoice", &output).unwrap();
+    format();
     scaffold::run_generate_presentation("Invoice", &output).unwrap();
+    format();
     // The flow's last step in a web project: `core/generated/*` already routes Invoice.
     scaffold::run_generate_web("Invoice", &output, OverwritePolicy::Ask).unwrap();
 
@@ -721,6 +741,8 @@ fn web_shell_passes_its_own_checks() {
     fs::create_dir_all(&dir).unwrap();
 
     let output = generate_project("compile-web-shell", &dir).unwrap();
+    // What `puerto new` does last.
+    crate::generators::format::format_project(&output).unwrap();
     assert_generated_project_is_clean(&output, &dir, "web_shell", &[]);
     assert!(
         output

@@ -25,10 +25,12 @@ pub struct CreatePersonaUseCaseImpl {
 impl CreatePersonaUseCaseTrait for CreatePersonaUseCaseImpl {
     async fn execute(&self, params: CreatePersonaParams) -> Result<Persona, PersonaError> {
         tracing::info!("create_persona: start");
-        let entity = Persona::new(PersonaProps {
-            name: params.name,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_persona: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_persona: repository failed"))?;
+        let entity = Persona::new(PersonaProps { name: params.name })
+            .inspect_err(|e| tracing::warn!(error = %e, "create_persona: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_persona: repository failed"))?;
         tracing::info!(id = %entity.id, "create_persona: done");
         Ok(entity)
     }
@@ -39,7 +41,6 @@ mod tests {
     use super::*;
     use crate::domain::persona::repository::mocks::MockPersonaRepository;
     use puerto_core::RepositoryError;
-
 
     #[tokio::test]
     async fn should_create_persona_when_name_is_valid() {
@@ -53,7 +54,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreatePersonaParams {
-            name: "example".to_string(),
+                name: "example".to_string(),
             })
             .await;
 
@@ -76,7 +77,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreatePersonaParams {
-            name: "example".to_string(),
+                name: "example".to_string(),
             })
             .await;
 
@@ -96,7 +97,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreatePersonaParams {
-            name: "".to_string(),
+                name: "".to_string(),
             })
             .await;
 
@@ -142,7 +143,10 @@ impl DeletePersonaUseCaseTrait for DeletePersonaUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_persona: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_persona: repository failed"))?;
         Ok(())
     }
 }
@@ -155,12 +159,12 @@ mod tests {
         repository::mocks::MockPersonaRepository,
     };
 
-
     #[tokio::test]
     async fn should_soft_delete_persona_when_id_exists() {
         let entity = Persona::new(PersonaProps {
             name: "example".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockPersonaRepository::new();
         mock_repo
@@ -187,7 +191,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeletePersonaParams { id: PersonaId::generate() })
+            .execute(DeletePersonaParams {
+                id: PersonaId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -215,7 +221,11 @@ pub struct GetPersonaUseCaseImpl {
 impl GetPersonaUseCaseTrait for GetPersonaUseCaseImpl {
     async fn execute(&self, params: GetPersonaParams) -> Result<Persona, PersonaError> {
         tracing::info!(id = %params.id, "get_persona: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_persona: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_persona: repository failed"))?;
         result.ok_or_else(|| {
             let err = PersonaError::NotFound;
             tracing::warn!(error = %err, "get_persona: rejected");
@@ -233,12 +243,12 @@ mod tests {
     };
     use puerto_core::RepositoryError;
 
-
     #[tokio::test]
     async fn should_return_persona_when_id_exists() {
         let entity = Persona::new(PersonaProps {
             name: "example".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockPersonaRepository::new();
         mock_repo
@@ -263,7 +273,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetPersonaParams { id: PersonaId::generate() })
+            .execute(GetPersonaParams {
+                id: PersonaId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -281,7 +293,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetPersonaParams { id: PersonaId::generate() })
+            .execute(GetPersonaParams {
+                id: PersonaId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -309,7 +323,11 @@ pub struct ListPersonasUseCaseImpl {
 #[async_trait]
 impl ListPersonasUseCaseTrait for ListPersonasUseCaseImpl {
     async fn execute(&self, params: ListPersonasParams) -> Result<Page<Persona>, PersonaError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_personas: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_personas: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -321,22 +339,23 @@ impl ListPersonasUseCaseTrait for ListPersonasUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
     use crate::domain::persona::{
         model::{Persona, PersonaProps},
         repository::mocks::MockPersonaRepository,
     };
-
+    use puerto_core::PageRequest;
 
     #[tokio::test]
     async fn should_return_the_page_of_personas() {
         let entities = vec![
             Persona::new(PersonaProps {
-            name: "first".to_string(),
-        }).unwrap(),
+                name: "first".to_string(),
+            })
+            .unwrap(),
             Persona::new(PersonaProps {
-            name: "second".to_string(),
-        }).unwrap(),
+                name: "second".to_string(),
+            })
+            .unwrap(),
         ];
         let mut mock_repo = MockPersonaRepository::new();
         mock_repo
@@ -347,7 +366,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListPersonasParams { page: PageRequest::default() })
+            .execute(ListPersonasParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -366,7 +387,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListPersonasParams { page: PageRequest::default() })
+            .execute(ListPersonasParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -386,7 +409,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListPersonasParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListPersonasParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -430,7 +455,10 @@ impl UpdatePersonaUseCaseTrait for UpdatePersonaUseCaseImpl {
         }
         entity.name = params.name;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_persona: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_persona: repository failed"))?;
         Ok(entity)
     }
 }
@@ -443,13 +471,13 @@ mod tests {
         repository::mocks::MockPersonaRepository,
     };
 
-
     #[tokio::test]
     async fn should_update_persona_when_params_are_valid() {
         // Arrange
         let entity = Persona::new(PersonaProps {
             name: "original".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockPersonaRepository::new();
         mock_repo
@@ -463,8 +491,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdatePersonaParams {
-            id: entity_id,
-            name: "updated".to_string(),
+                id: entity_id,
+                name: "updated".to_string(),
             })
             .await;
 
@@ -484,8 +512,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdatePersonaParams {
-            id: PersonaId::generate(),
-            name: "new".to_string(),
+                id: PersonaId::generate(),
+                name: "new".to_string(),
             })
             .await;
 
@@ -499,7 +527,8 @@ mod tests {
         // Arrange
         let entity = Persona::new(PersonaProps {
             name: "original".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockPersonaRepository::new();
         mock_repo
@@ -512,8 +541,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdatePersonaParams {
-            id: entity_id,
-            name: "".to_string(),
+                id: entity_id,
+                name: "".to_string(),
             })
             .await;
 
@@ -671,12 +700,9 @@ mod tests {
         assert_eq!(result.unwrap().name, "example");
     }
 
-
     #[test]
     fn should_reject_persona_when_name_is_empty() {
-        let result = Persona::new(PersonaProps {
-            name: "".into(),
-        });
+        let result = Persona::new(PersonaProps { name: "".into() });
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -686,9 +712,7 @@ mod tests {
 
     #[test]
     fn should_reject_persona_when_name_is_only_whitespace() {
-        let result = Persona::new(PersonaProps {
-            name: "   ".into(),
-        });
+        let result = Persona::new(PersonaProps { name: "   ".into() });
         assert!(result.is_err());
     }
 }
@@ -889,28 +913,26 @@ pub mod mocks {
 
 === business/src/lib.rs ===
 pub mod domain {
-
     pub mod persona {
         pub mod errors;
         pub mod model;
         pub mod repository;
         pub mod use_cases {
             pub mod create_persona;
+            pub mod delete_persona;
             pub mod get_persona;
             pub mod list_personas;
             pub mod update_persona;
-            pub mod delete_persona;
         }
     }
 }
 pub mod application {
-
     pub mod persona {
         pub mod create_persona;
+        pub mod delete_persona;
         pub mod get_persona;
         pub mod list_personas;
         pub mod update_persona;
-        pub mod delete_persona;
     }
 }
 
@@ -976,7 +998,6 @@ impl Default for PersonaMother {
 (deleted)
 
 === infrastructure/src/lib.rs ===
-
 pub mod persona {
     pub mod repository;
 }
@@ -1020,8 +1041,8 @@ impl PersonaRepositoryTrait for InMemoryPersonaRepository {
 
 === presentation/src/api.rs ===
 pub mod error;
-pub mod tags;
 pub mod persona;
+pub mod tags;
 
 === presentation/src/api/greeting.rs ===
 (deleted)
@@ -1072,7 +1093,6 @@ pub struct CreatePersonaRequest {
     pub name: String,
 }
 
-
 /// One page of Personas: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1099,7 +1119,6 @@ impl PersonaPageDto {
 pub struct UpdatePersonaRequest {
     pub name: String,
 }
-
 
 === presentation/src/api/persona/error_mapper.rs ===
 use business::domain::persona::errors::PersonaError;
@@ -1130,7 +1149,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = PersonaError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            PersonaError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1341,14 +1361,14 @@ use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
-use crate::api::tags::ApiTags;
 use crate::api::persona::dto::{
-    CreatePersonaRequest, UpdatePersonaRequest, PersonaDto, PersonaPageDto,
+    CreatePersonaRequest, PersonaDto, PersonaPageDto, UpdatePersonaRequest,
 };
 use crate::api::persona::responses::{
     CreatePersonaResponse, DeletePersonaResponse, GetPersonaResponse, ListPersonasResponse,
     UpdatePersonaResponse,
 };
+use crate::api::tags::ApiTags;
 
 /// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct PersonaApi {
@@ -1385,7 +1405,9 @@ impl PersonaApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetPersonaResponse {
         match self
             .get_persona
-            .execute(GetPersonaParams { id: PersonaId::from_uuid(id.0) })
+            .execute(GetPersonaParams {
+                id: PersonaId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetPersonaResponse::Ok(Json(PersonaDto::from_domain(&entity))),
@@ -1399,7 +1421,11 @@ impl PersonaApi {
 
     /// List Personas, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/personas", method = "get", tag = "ApiTags::Persona")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListPersonasResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListPersonasResponse {
         match self
             .list_personas
             .execute(ListPersonasParams {
@@ -1418,7 +1444,11 @@ impl PersonaApi {
 
     /// Update a Persona
     #[oai(path = "/personas/:id", method = "put", tag = "ApiTags::Persona")]
-    async fn update(&self, id: Path<Uuid>, body: Json<UpdatePersonaRequest>) -> UpdatePersonaResponse {
+    async fn update(
+        &self,
+        id: Path<Uuid>,
+        body: Json<UpdatePersonaRequest>,
+    ) -> UpdatePersonaResponse {
         match self
             .update_persona
             .execute(UpdatePersonaParams {
@@ -1441,7 +1471,9 @@ impl PersonaApi {
     async fn delete(&self, id: Path<Uuid>) -> DeletePersonaResponse {
         match self
             .delete_persona
-            .execute(DeletePersonaParams { id: PersonaId::from_uuid(id.0) })
+            .execute(DeletePersonaParams {
+                id: PersonaId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeletePersonaResponse::NoContent,
@@ -1458,8 +1490,9 @@ impl PersonaApi {
 mod tests {
     use business::domain::persona::errors::PersonaError;
     use business::domain::persona::use_cases::{
-        create_persona::mocks::MockCreatePersonaUseCase, delete_persona::mocks::MockDeletePersonaUseCase,
-        get_persona::mocks::MockGetPersonaUseCase, list_personas::mocks::MockListPersonasUseCase,
+        create_persona::mocks::MockCreatePersonaUseCase,
+        delete_persona::mocks::MockDeletePersonaUseCase, get_persona::mocks::MockGetPersonaUseCase,
+        list_personas::mocks::MockListPersonasUseCase,
         update_persona::mocks::MockUpdatePersonaUseCase,
     };
     use business::tests::mothers::persona_mother::PersonaMother;
@@ -1513,7 +1546,10 @@ mod tests {
     async fn should_respond_201_when_persona_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(PersonaMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(PersonaMother::random()));
 
         // Act
         let response = mocks
@@ -1552,7 +1588,10 @@ mod tests {
     async fn should_respond_200_when_persona_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(PersonaMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(PersonaMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1565,7 +1604,10 @@ mod tests {
     async fn should_respond_404_when_persona_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(PersonaError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(PersonaError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1605,7 +1647,11 @@ mod tests {
             .returning(|params| Ok(Page::new(vec![], 0, params.page)));
 
         // Act
-        let response = mocks.client().get("/personas?limit=5&offset=10").send().await;
+        let response = mocks
+            .client()
+            .get("/personas?limit=5&offset=10")
+            .send()
+            .await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -1615,7 +1661,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(PersonaError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(PersonaError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/personas").send().await;
@@ -1628,7 +1677,10 @@ mod tests {
     async fn should_respond_200_when_persona_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(PersonaMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(PersonaMother::random()));
 
         // Act
         let response = mocks
@@ -1646,7 +1698,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_persona() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(PersonaError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(PersonaError::NotFound));
 
         // Act
         let response = mocks
@@ -1677,7 +1732,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_persona() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(PersonaError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(PersonaError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -1701,10 +1759,10 @@ pub enum ApiTags {
 use std::sync::Arc;
 
 use business::application::persona::create_persona::CreatePersonaUseCaseImpl;
+use business::application::persona::delete_persona::DeletePersonaUseCaseImpl;
 use business::application::persona::get_persona::GetPersonaUseCaseImpl;
 use business::application::persona::list_personas::ListPersonasUseCaseImpl;
 use business::application::persona::update_persona::UpdatePersonaUseCaseImpl;
-use business::application::persona::delete_persona::DeletePersonaUseCaseImpl;
 
 use business::domain::persona::repository::PersonaRepositoryTrait;
 use infrastructure::persona::repository::InMemoryPersonaRepository;
@@ -1716,17 +1774,37 @@ use crate::api::persona::routes::PersonaApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
     let persona_repo: Arc<dyn PersonaRepositoryTrait> = Arc::new(InMemoryPersonaRepository::new());
-    let create_persona = Arc::new(CreatePersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
-    let get_persona = Arc::new(GetPersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
-    let list_personas = Arc::new(ListPersonasUseCaseImpl { repository: Arc::clone(&persona_repo) });
-    let update_persona = Arc::new(UpdatePersonaUseCaseImpl { repository: Arc::clone(&persona_repo) });
-    let delete_persona = Arc::new(DeletePersonaUseCaseImpl { repository: persona_repo });
-    let persona_api = PersonaApi { create_persona, get_persona, list_personas, update_persona, delete_persona };
+    let create_persona = Arc::new(CreatePersonaUseCaseImpl {
+        repository: Arc::clone(&persona_repo),
+    });
+    let get_persona = Arc::new(GetPersonaUseCaseImpl {
+        repository: Arc::clone(&persona_repo),
+    });
+    let list_personas = Arc::new(ListPersonasUseCaseImpl {
+        repository: Arc::clone(&persona_repo),
+    });
+    let update_persona = Arc::new(UpdatePersonaUseCaseImpl {
+        repository: Arc::clone(&persona_repo),
+    });
+    let delete_persona = Arc::new(DeletePersonaUseCaseImpl {
+        repository: persona_repo,
+    });
+    let persona_api = PersonaApi {
+        create_persona,
+        get_persona,
+        list_personas,
+        update_persona,
+        delete_persona,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service(persona_api), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service(persona_api),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -1740,10 +1818,10 @@ mod tests {
     use super::*;
 
     use business::domain::persona::use_cases::create_persona::mocks::MockCreatePersonaUseCase;
+    use business::domain::persona::use_cases::delete_persona::mocks::MockDeletePersonaUseCase;
     use business::domain::persona::use_cases::get_persona::mocks::MockGetPersonaUseCase;
     use business::domain::persona::use_cases::list_personas::mocks::MockListPersonasUseCase;
     use business::domain::persona::use_cases::update_persona::mocks::MockUpdatePersonaUseCase;
-    use business::domain::persona::use_cases::delete_persona::mocks::MockDeletePersonaUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -1752,7 +1830,13 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let persona_api = PersonaApi { create_persona: Arc::new(MockCreatePersonaUseCase::new()), get_persona: Arc::new(MockGetPersonaUseCase::new()), list_personas: Arc::new(MockListPersonasUseCase::new()), update_persona: Arc::new(MockUpdatePersonaUseCase::new()), delete_persona: Arc::new(MockDeletePersonaUseCase::new()) };
+        let persona_api = PersonaApi {
+            create_persona: Arc::new(MockCreatePersonaUseCase::new()),
+            get_persona: Arc::new(MockGetPersonaUseCase::new()),
+            list_personas: Arc::new(MockListPersonasUseCase::new()),
+            update_persona: Arc::new(MockUpdatePersonaUseCase::new()),
+            delete_persona: Arc::new(MockDeletePersonaUseCase::new()),
+        };
         let spec = openapi_service(persona_api).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);

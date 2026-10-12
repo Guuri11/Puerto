@@ -5,9 +5,9 @@ expression: generated_output(& SHARED_VO)
 === business/src/application/customer/create_customer.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::domain::shared::value_objects::Email;
 use crate::domain::shared::value_objects::Money;
+use async_trait::async_trait;
 
 use crate::domain::customer::{
     errors::CustomerError,
@@ -24,14 +24,18 @@ pub struct CreateCustomerUseCaseImpl {
 impl CreateCustomerUseCaseTrait for CreateCustomerUseCaseImpl {
     async fn execute(&self, params: CreateCustomerParams) -> Result<Customer, CustomerError> {
         tracing::info!("create_customer: start");
-let email = Email::new(params.email).map_err(|_| CustomerError::InvalidEmail)?;
-let credit = Money::new(params.credit).map_err(|_| CustomerError::InvalidMoney)?;
+        let email = Email::new(params.email).map_err(|_| CustomerError::InvalidEmail)?;
+        let credit = Money::new(params.credit).map_err(|_| CustomerError::InvalidMoney)?;
         let entity = Customer::new(CustomerProps {
             name: params.name,
             email,
             credit,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_customer: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_customer: repository failed"))?;
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_customer: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_customer: repository failed"))?;
         tracing::info!(id = %entity.id, "create_customer: done");
         Ok(entity)
     }
@@ -42,7 +46,6 @@ mod tests {
     use super::*;
     use crate::domain::customer::repository::mocks::MockCustomerRepository;
     use puerto_core::RepositoryError;
-
 
     #[tokio::test]
     async fn should_create_customer_when_fields_are_valid() {
@@ -56,9 +59,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateCustomerParams {
-            name: "example".to_string(),
-            email: "example".to_string(),
-            credit: 42,
+                name: "example".to_string(),
+                email: "example".to_string(),
+                credit: 42,
             })
             .await;
 
@@ -81,9 +84,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateCustomerParams {
-            name: "example".to_string(),
-            email: "example".to_string(),
-            credit: 42,
+                name: "example".to_string(),
+                email: "example".to_string(),
+                credit: 42,
             })
             .await;
 
@@ -103,9 +106,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateCustomerParams {
-            name: "".to_string(),
-            email: "example".to_string(),
-            credit: 42,
+                name: "".to_string(),
+                email: "example".to_string(),
+                credit: 42,
             })
             .await;
 
@@ -128,18 +131,15 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateCustomerParams {
-            name: "example".to_string(),
-            email: "".to_string(),
-            credit: 42,
+                name: "example".to_string(),
+                email: "".to_string(),
+                credit: 42,
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "customer.invalid_email"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "customer.invalid_email");
     }
 }
 
@@ -176,7 +176,10 @@ impl DeleteCustomerUseCaseTrait for DeleteCustomerUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_customer: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_customer: repository failed"))?;
         Ok(())
     }
 }
@@ -191,14 +194,14 @@ mod tests {
     use crate::domain::shared::value_objects::Email;
     use crate::domain::shared::value_objects::Money;
 
-
     #[tokio::test]
     async fn should_soft_delete_customer_when_id_exists() {
         let entity = Customer::new(CustomerProps {
             name: "example".to_string(),
             email: Email::new("example".to_string()).expect("valid Email"),
             credit: Money::new(42).expect("valid Money"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
@@ -225,7 +228,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteCustomerParams { id: CustomerId::generate() })
+            .execute(DeleteCustomerParams {
+                id: CustomerId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -253,7 +258,11 @@ pub struct GetCustomerUseCaseImpl {
 impl GetCustomerUseCaseTrait for GetCustomerUseCaseImpl {
     async fn execute(&self, params: GetCustomerParams) -> Result<Customer, CustomerError> {
         tracing::info!(id = %params.id, "get_customer: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_customer: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_customer: repository failed"))?;
         result.ok_or_else(|| {
             let err = CustomerError::NotFound;
             tracing::warn!(error = %err, "get_customer: rejected");
@@ -269,10 +278,9 @@ mod tests {
         model::{Customer, CustomerId, CustomerProps},
         repository::mocks::MockCustomerRepository,
     };
-    use puerto_core::RepositoryError;
     use crate::domain::shared::value_objects::Email;
     use crate::domain::shared::value_objects::Money;
-
+    use puerto_core::RepositoryError;
 
     #[tokio::test]
     async fn should_return_customer_when_id_exists() {
@@ -280,7 +288,8 @@ mod tests {
             name: "example".to_string(),
             email: Email::new("example".to_string()).expect("valid Email"),
             credit: Money::new(42).expect("valid Money"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
@@ -305,7 +314,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetCustomerParams { id: CustomerId::generate() })
+            .execute(GetCustomerParams {
+                id: CustomerId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -323,7 +334,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetCustomerParams { id: CustomerId::generate() })
+            .execute(GetCustomerParams {
+                id: CustomerId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -351,7 +364,11 @@ pub struct ListCustomersUseCaseImpl {
 #[async_trait]
 impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
     async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_customers: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_customers: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -363,28 +380,29 @@ impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
     use crate::domain::customer::{
         model::{Customer, CustomerProps},
         repository::mocks::MockCustomerRepository,
     };
     use crate::domain::shared::value_objects::Email;
     use crate::domain::shared::value_objects::Money;
-
+    use puerto_core::PageRequest;
 
     #[tokio::test]
     async fn should_return_the_page_of_customers() {
         let entities = vec![
             Customer::new(CustomerProps {
-            name: "first".to_string(),
-            email: Email::new("first".to_string()).expect("valid Email"),
-            credit: Money::new(42).expect("valid Money"),
-        }).unwrap(),
+                name: "first".to_string(),
+                email: Email::new("first".to_string()).expect("valid Email"),
+                credit: Money::new(42).expect("valid Money"),
+            })
+            .unwrap(),
             Customer::new(CustomerProps {
-            name: "second".to_string(),
-            email: Email::new("second".to_string()).expect("valid Email"),
-            credit: Money::new(42).expect("valid Money"),
-        }).unwrap(),
+                name: "second".to_string(),
+                email: Email::new("second".to_string()).expect("valid Email"),
+                credit: Money::new(42).expect("valid Money"),
+            })
+            .unwrap(),
         ];
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
@@ -395,7 +413,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListCustomersParams { page: PageRequest::default() })
+            .execute(ListCustomersParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -414,7 +434,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListCustomersParams { page: PageRequest::default() })
+            .execute(ListCustomersParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -434,7 +456,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListCustomersParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListCustomersParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -444,9 +468,9 @@ mod tests {
 === business/src/application/customer/update_customer.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::domain::shared::value_objects::Email;
 use crate::domain::shared::value_objects::Money;
+use async_trait::async_trait;
 
 use crate::domain::customer::{
     errors::CustomerError,
@@ -478,13 +502,16 @@ impl UpdateCustomerUseCaseTrait for UpdateCustomerUseCaseImpl {
             tracing::warn!(error = %err, "update_customer: rejected");
             return Err(err);
         }
-let email = Email::new(params.email).map_err(|_| CustomerError::InvalidEmail)?;
-let credit = Money::new(params.credit).map_err(|_| CustomerError::InvalidMoney)?;
+        let email = Email::new(params.email).map_err(|_| CustomerError::InvalidEmail)?;
+        let credit = Money::new(params.credit).map_err(|_| CustomerError::InvalidMoney)?;
         entity.name = params.name;
         entity.email = email;
         entity.credit = credit;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_customer: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_customer: repository failed"))?;
         Ok(entity)
     }
 }
@@ -499,7 +526,6 @@ mod tests {
     use crate::domain::shared::value_objects::Email;
     use crate::domain::shared::value_objects::Money;
 
-
     #[tokio::test]
     async fn should_update_customer_when_params_are_valid() {
         // Arrange
@@ -507,7 +533,8 @@ mod tests {
             name: "original".to_string(),
             email: Email::new("original".to_string()).expect("valid Email"),
             credit: Money::new(42).expect("valid Money"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
@@ -521,10 +548,10 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateCustomerParams {
-            id: entity_id,
-            name: "updated".to_string(),
-            email: "updated".to_string(),
-            credit: 42,
+                id: entity_id,
+                name: "updated".to_string(),
+                email: "updated".to_string(),
+                credit: 42,
             })
             .await;
 
@@ -544,10 +571,10 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateCustomerParams {
-            id: CustomerId::generate(),
-            name: "new".to_string(),
-            email: "new".to_string(),
-            credit: 42,
+                id: CustomerId::generate(),
+                name: "new".to_string(),
+                email: "new".to_string(),
+                credit: 42,
             })
             .await;
 
@@ -563,7 +590,8 @@ mod tests {
             name: "original".to_string(),
             email: Email::new("original".to_string()).expect("valid Email"),
             credit: Money::new(42).expect("valid Money"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
@@ -576,10 +604,10 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateCustomerParams {
-            id: entity_id,
-            name: "".to_string(),
-            email: "updated".to_string(),
-            credit: 42,
+                id: entity_id,
+                name: "".to_string(),
+                email: "updated".to_string(),
+                credit: 42,
             })
             .await;
 
@@ -598,7 +626,8 @@ mod tests {
             name: "original".to_string(),
             email: Email::new("original".to_string()).expect("valid Email"),
             credit: Money::new(42).expect("valid Money"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
@@ -611,19 +640,16 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateCustomerParams {
-            id: entity_id,
-            name: "updated".to_string(),
-            email: "".to_string(),
-            credit: 42,
+                id: entity_id,
+                name: "updated".to_string(),
+                email: "".to_string(),
+                credit: 42,
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "customer.invalid_email"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "customer.invalid_email");
     }
 }
 
@@ -685,10 +711,10 @@ mod tests {
 }
 
 === business/src/domain/customer/model.rs ===
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
 use crate::domain::shared::value_objects::Email;
 use crate::domain::shared::value_objects::Money;
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 use super::errors::CustomerError;
 
@@ -773,7 +799,6 @@ mod tests {
         });
         assert_eq!(result.unwrap().name, "example");
     }
-
 
     #[test]
     fn should_reject_customer_when_name_is_empty() {
@@ -1066,14 +1091,14 @@ impl Money {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod greeting {
-    pub mod errors;
-    pub mod model;
-    pub mod repository;
-    pub mod use_cases {
-      pub mod get_greeting;
+    pub mod greeting {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod get_greeting;
+        }
     }
-  }
 
     pub mod customer {
         pub mod errors;
@@ -1081,26 +1106,26 @@ pub mod domain {
         pub mod repository;
         pub mod use_cases {
             pub mod create_customer;
+            pub mod delete_customer;
             pub mod get_customer;
             pub mod list_customers;
             pub mod update_customer;
-            pub mod delete_customer;
         }
     }
 
     pub mod shared;
 }
 pub mod application {
-  pub mod greeting {
-    pub mod get_greeting;
-  }
+    pub mod greeting {
+        pub mod get_greeting;
+    }
 
     pub mod customer {
         pub mod create_customer;
+        pub mod delete_customer;
         pub mod get_customer;
         pub mod list_customers;
         pub mod update_customer;
-        pub mod delete_customer;
     }
 }
 
@@ -1125,7 +1150,11 @@ pub struct CustomerMother {
 
 impl CustomerMother {
     pub fn new() -> Self {
-        Self { name: None, email: None, credit: None }
+        Self {
+            name: None,
+            email: None,
+            credit: None,
+        }
     }
 
     pub fn with_name(mut self, name: &str) -> Self {
@@ -1151,8 +1180,12 @@ impl CustomerMother {
     pub fn build(self) -> Customer {
         Customer::new(CustomerProps {
             name: self.name.unwrap_or_else(|| "example".to_string()),
-            email: self.email.unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
-            credit: self.credit.unwrap_or_else(|| Money::new(42).expect("valid Money")),
+            email: self
+                .email
+                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            credit: self
+                .credit
+                .unwrap_or_else(|| Money::new(42).expect("valid Money")),
         })
         .expect("CustomerMother: failed to build valid Customer")
     }
@@ -1160,8 +1193,12 @@ impl CustomerMother {
     pub fn build_props(self) -> CustomerProps {
         CustomerProps {
             name: self.name.unwrap_or_else(|| "example".to_string()),
-            email: self.email.unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
-            credit: self.credit.unwrap_or_else(|| Money::new(42).expect("valid Money")),
+            email: self
+                .email
+                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            credit: self
+                .credit
+                .unwrap_or_else(|| Money::new(42).expect("valid Money")),
         }
     }
 
@@ -1226,10 +1263,10 @@ pub mod customer {
 }
 
 === presentation/src/api.rs ===
+pub mod customer;
 pub mod error;
 pub mod greeting;
 pub mod tags;
-pub mod customer;
 
 === presentation/src/api/customer.rs ===
 pub mod dto;
@@ -1271,7 +1308,6 @@ pub struct CreateCustomerRequest {
     pub credit: i64,
 }
 
-
 /// One page of Customers: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1300,7 +1336,6 @@ pub struct UpdateCustomerRequest {
     pub email: String,
     pub credit: i64,
 }
-
 
 === presentation/src/api/customer/error_mapper.rs ===
 use business::domain::customer::errors::CustomerError;
@@ -1333,7 +1368,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = CustomerError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            CustomerError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1563,15 +1599,15 @@ use poem_openapi::{
 use puerto_core::PageRequest;
 use uuid::Uuid;
 
-use crate::api::error::IntoErrorResponse;
-use crate::api::tags::ApiTags;
 use crate::api::customer::dto::{
-    CreateCustomerRequest, UpdateCustomerRequest, CustomerDto, CustomerPageDto,
+    CreateCustomerRequest, CustomerDto, CustomerPageDto, UpdateCustomerRequest,
 };
 use crate::api::customer::responses::{
     CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomersResponse,
     UpdateCustomerResponse,
 };
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
 
 /// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct CustomerApi {
@@ -1610,7 +1646,9 @@ impl CustomerApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetCustomerResponse {
         match self
             .get_customer
-            .execute(GetCustomerParams { id: CustomerId::from_uuid(id.0) })
+            .execute(GetCustomerParams {
+                id: CustomerId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetCustomerResponse::Ok(Json(CustomerDto::from_domain(&entity))),
@@ -1624,7 +1662,11 @@ impl CustomerApi {
 
     /// List Customers, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/customers", method = "get", tag = "ApiTags::Customer")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListCustomersResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListCustomersResponse {
         match self
             .list_customers
             .execute(ListCustomersParams {
@@ -1643,7 +1685,11 @@ impl CustomerApi {
 
     /// Update a Customer
     #[oai(path = "/customers/:id", method = "put", tag = "ApiTags::Customer")]
-    async fn update(&self, id: Path<Uuid>, body: Json<UpdateCustomerRequest>) -> UpdateCustomerResponse {
+    async fn update(
+        &self,
+        id: Path<Uuid>,
+        body: Json<UpdateCustomerRequest>,
+    ) -> UpdateCustomerResponse {
         match self
             .update_customer
             .execute(UpdateCustomerParams {
@@ -1668,7 +1714,9 @@ impl CustomerApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteCustomerResponse {
         match self
             .delete_customer
-            .execute(DeleteCustomerParams { id: CustomerId::from_uuid(id.0) })
+            .execute(DeleteCustomerParams {
+                id: CustomerId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeleteCustomerResponse::NoContent,
@@ -1685,8 +1733,10 @@ impl CustomerApi {
 mod tests {
     use business::domain::customer::errors::CustomerError;
     use business::domain::customer::use_cases::{
-        create_customer::mocks::MockCreateCustomerUseCase, delete_customer::mocks::MockDeleteCustomerUseCase,
-        get_customer::mocks::MockGetCustomerUseCase, list_customers::mocks::MockListCustomersUseCase,
+        create_customer::mocks::MockCreateCustomerUseCase,
+        delete_customer::mocks::MockDeleteCustomerUseCase,
+        get_customer::mocks::MockGetCustomerUseCase,
+        list_customers::mocks::MockListCustomersUseCase,
         update_customer::mocks::MockUpdateCustomerUseCase,
     };
     use business::tests::mothers::customer_mother::CustomerMother;
@@ -1744,7 +1794,10 @@ mod tests {
     async fn should_respond_201_when_customer_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(CustomerMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(CustomerMother::random()));
 
         // Act
         let response = mocks
@@ -1783,7 +1836,10 @@ mod tests {
     async fn should_respond_200_when_customer_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(CustomerMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(CustomerMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1796,7 +1852,10 @@ mod tests {
     async fn should_respond_404_when_customer_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(CustomerError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(CustomerError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1836,7 +1895,11 @@ mod tests {
             .returning(|params| Ok(Page::new(vec![], 0, params.page)));
 
         // Act
-        let response = mocks.client().get("/customers?limit=5&offset=10").send().await;
+        let response = mocks
+            .client()
+            .get("/customers?limit=5&offset=10")
+            .send()
+            .await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -1846,7 +1909,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(CustomerError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(CustomerError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/customers").send().await;
@@ -1859,7 +1925,10 @@ mod tests {
     async fn should_respond_200_when_customer_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(CustomerMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(CustomerMother::random()));
 
         // Act
         let response = mocks
@@ -1877,7 +1946,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_customer() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(CustomerError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(CustomerError::NotFound));
 
         // Act
         let response = mocks
@@ -1908,7 +1980,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_customer() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(CustomerError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(CustomerError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -1932,40 +2007,63 @@ pub enum ApiTags {
 // AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
 use std::sync::Arc;
 
-use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::customer::create_customer::CreateCustomerUseCaseImpl;
+use business::application::customer::delete_customer::DeleteCustomerUseCaseImpl;
 use business::application::customer::get_customer::GetCustomerUseCaseImpl;
 use business::application::customer::list_customers::ListCustomersUseCaseImpl;
 use business::application::customer::update_customer::UpdateCustomerUseCaseImpl;
-use business::application::customer::delete_customer::DeleteCustomerUseCaseImpl;
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 
-use business::domain::greeting::repository::GreetingRepositoryTrait;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use business::domain::customer::repository::CustomerRepositoryTrait;
+use business::domain::greeting::repository::GreetingRepositoryTrait;
 use infrastructure::customer::repository::InMemoryCustomerRepository;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
 
 use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
-use crate::api::greeting::routes::GreetingApi;
 use crate::api::customer::routes::CustomerApi;
+use crate::api::greeting::routes::GreetingApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
+    });
     let greeting_api = GreetingApi { get_greeting };
 
-    let customer_repo: Arc<dyn CustomerRepositoryTrait> = Arc::new(InMemoryCustomerRepository::new());
-    let create_customer = Arc::new(CreateCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
-    let get_customer = Arc::new(GetCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
-    let list_customers = Arc::new(ListCustomersUseCaseImpl { repository: Arc::clone(&customer_repo) });
-    let update_customer = Arc::new(UpdateCustomerUseCaseImpl { repository: Arc::clone(&customer_repo) });
-    let delete_customer = Arc::new(DeleteCustomerUseCaseImpl { repository: customer_repo });
-    let customer_api = CustomerApi { create_customer, get_customer, list_customers, update_customer, delete_customer };
+    let customer_repo: Arc<dyn CustomerRepositoryTrait> =
+        Arc::new(InMemoryCustomerRepository::new());
+    let create_customer = Arc::new(CreateCustomerUseCaseImpl {
+        repository: Arc::clone(&customer_repo),
+    });
+    let get_customer = Arc::new(GetCustomerUseCaseImpl {
+        repository: Arc::clone(&customer_repo),
+    });
+    let list_customers = Arc::new(ListCustomersUseCaseImpl {
+        repository: Arc::clone(&customer_repo),
+    });
+    let update_customer = Arc::new(UpdateCustomerUseCaseImpl {
+        repository: Arc::clone(&customer_repo),
+    });
+    let delete_customer = Arc::new(DeleteCustomerUseCaseImpl {
+        repository: customer_repo,
+    });
+    let customer_api = CustomerApi {
+        create_customer,
+        get_customer,
+        list_customers,
+        update_customer,
+        delete_customer,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, customer_api)), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service((greeting_api, customer_api)),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -1978,12 +2076,12 @@ fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
 mod tests {
     use super::*;
 
-    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
     use business::domain::customer::use_cases::create_customer::mocks::MockCreateCustomerUseCase;
+    use business::domain::customer::use_cases::delete_customer::mocks::MockDeleteCustomerUseCase;
     use business::domain::customer::use_cases::get_customer::mocks::MockGetCustomerUseCase;
     use business::domain::customer::use_cases::list_customers::mocks::MockListCustomersUseCase;
     use business::domain::customer::use_cases::update_customer::mocks::MockUpdateCustomerUseCase;
-    use business::domain::customer::use_cases::delete_customer::mocks::MockDeleteCustomerUseCase;
+    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -1992,8 +2090,16 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
-        let customer_api = CustomerApi { create_customer: Arc::new(MockCreateCustomerUseCase::new()), get_customer: Arc::new(MockGetCustomerUseCase::new()), list_customers: Arc::new(MockListCustomersUseCase::new()), update_customer: Arc::new(MockUpdateCustomerUseCase::new()), delete_customer: Arc::new(MockDeleteCustomerUseCase::new()) };
+        let greeting_api = GreetingApi {
+            get_greeting: Arc::new(MockGetGreetingUseCase::new()),
+        };
+        let customer_api = CustomerApi {
+            create_customer: Arc::new(MockCreateCustomerUseCase::new()),
+            get_customer: Arc::new(MockGetCustomerUseCase::new()),
+            list_customers: Arc::new(MockListCustomersUseCase::new()),
+            update_customer: Arc::new(MockUpdateCustomerUseCase::new()),
+            delete_customer: Arc::new(MockDeleteCustomerUseCase::new()),
+        };
         let spec = openapi_service((greeting_api, customer_api)).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);

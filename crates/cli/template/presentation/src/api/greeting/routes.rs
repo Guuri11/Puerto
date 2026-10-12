@@ -1,9 +1,15 @@
 use std::sync::Arc;
 
-use business::domain::greeting::use_cases::get_greeting::{GetGreetingParams, GetGreetingUseCaseTrait};
+use business::domain::greeting::use_cases::get_greeting::{
+    GetGreetingParams, GetGreetingUseCaseTrait,
+};
 use poem_openapi::{OpenApi, param::Path};
 
-use crate::api::{error::IntoErrorResponse, greeting::{dto::GreetingDto, responses::GetGreetingResponse}, tags::ApiTags};
+use crate::api::{
+    error::IntoErrorResponse,
+    greeting::{dto::GreetingDto, responses::GetGreetingResponse},
+    tags::ApiTags,
+};
 
 /// Holds the use case port; `generated/bootstrap.rs` plugs in the implementation.
 pub struct GreetingApi {
@@ -15,7 +21,11 @@ impl GreetingApi {
     /// Get a greeting for the given name
     #[oai(path = "/greetings/:name", method = "get", tag = "ApiTags::Greeting")]
     async fn get_greeting(&self, name: Path<String>) -> GetGreetingResponse {
-        match self.get_greeting.execute(GetGreetingParams { name: name.0 }).await {
+        match self
+            .get_greeting
+            .execute(GetGreetingParams { name: name.0 })
+            .await
+        {
             Ok(greeting) => GetGreetingResponse::Ok(poem_openapi::payload::Json(
                 GreetingDto::from_greeting(&greeting),
             )),
@@ -59,7 +69,13 @@ mod tests {
 
         // Assert
         response.assert_status(StatusCode::OK);
-        response.json().await.value().object().get("name").assert_string("Alice");
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("Alice");
     }
 
     #[tokio::test]

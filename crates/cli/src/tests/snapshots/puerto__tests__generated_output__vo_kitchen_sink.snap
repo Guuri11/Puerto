@@ -5,13 +5,13 @@ expression: generated_output(& VO_KITCHEN_SINK)
 === business/src/application/account/create_account.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
+use crate::domain::account::value_objects::MiddleName;
 use crate::domain::account::value_objects::Name;
 use crate::domain::account::value_objects::Sku;
-use crate::domain::account::value_objects::MiddleName;
-use crate::domain::account::value_objects::Tag;
 use crate::domain::account::value_objects::Status;
+use crate::domain::account::value_objects::Tag;
 use crate::domain::shared::value_objects::Email;
+use async_trait::async_trait;
 
 use crate::domain::account::{
     errors::AccountError,
@@ -28,12 +28,16 @@ pub struct CreateAccountUseCaseImpl {
 impl CreateAccountUseCaseTrait for CreateAccountUseCaseImpl {
     async fn execute(&self, params: CreateAccountParams) -> Result<Account, AccountError> {
         tracing::info!("create_account: start");
-let name = Name::new(params.name)?;
-let sku = Sku::new(params.sku)?;
-let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
-let tags: Vec<Tag> = params.tags.into_iter().map(Tag::new).collect::<Result<Vec<_>,_>>()?;
-let status = params.status.parse::<Status>()?;
-let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
+        let name = Name::new(params.name)?;
+        let sku = Sku::new(params.sku)?;
+        let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
+        let tags: Vec<Tag> = params
+            .tags
+            .into_iter()
+            .map(Tag::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        let status = params.status.parse::<Status>()?;
+        let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
         let entity = Account::new(AccountProps {
             title: params.title,
             price: params.price,
@@ -44,8 +48,12 @@ let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
             tags,
             status,
             email,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_account: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_account: repository failed"))?;
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_account: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_account: repository failed"))?;
         tracing::info!(id = %entity.id, "create_account: done");
         Ok(entity)
     }
@@ -56,7 +64,6 @@ mod tests {
     use super::*;
     use crate::domain::account::repository::mocks::MockAccountRepository;
     use puerto_core::RepositoryError;
-
 
     #[tokio::test]
     async fn should_create_account_when_fields_are_valid() {
@@ -70,15 +77,15 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateAccountParams {
-            title: "example".to_string(),
-            price: 42,
-            name: "example".to_string(),
-            sku: "example".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "example".to_string(),
+                title: "example".to_string(),
+                price: 42,
+                name: "example".to_string(),
+                sku: "example".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "example".to_string(),
             })
             .await;
 
@@ -101,15 +108,15 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateAccountParams {
-            title: "example".to_string(),
-            price: 42,
-            name: "example".to_string(),
-            sku: "example".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "example".to_string(),
+                title: "example".to_string(),
+                price: 42,
+                name: "example".to_string(),
+                sku: "example".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "example".to_string(),
             })
             .await;
 
@@ -129,15 +136,15 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateAccountParams {
-            title: "".to_string(),
-            price: 42,
-            name: "example".to_string(),
-            sku: "example".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "example".to_string(),
+                title: "".to_string(),
+                price: 42,
+                name: "example".to_string(),
+                sku: "example".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "example".to_string(),
             })
             .await;
 
@@ -160,24 +167,21 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateAccountParams {
-            title: "example".to_string(),
-            price: 42,
-            name: "".to_string(),
-            sku: "example".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "example".to_string(),
+                title: "example".to_string(),
+                price: 42,
+                name: "".to_string(),
+                sku: "example".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "example".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_name"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_name");
     }
 
     #[tokio::test]
@@ -191,24 +195,21 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateAccountParams {
-            title: "example".to_string(),
-            price: 42,
-            name: "example".to_string(),
-            sku: "".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "example".to_string(),
+                title: "example".to_string(),
+                price: 42,
+                name: "example".to_string(),
+                sku: "".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "example".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_sku"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_sku");
     }
 
     #[tokio::test]
@@ -222,24 +223,21 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateAccountParams {
-            title: "example".to_string(),
-            price: 42,
-            name: "example".to_string(),
-            sku: "example".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "".to_string(),
-            email: "example".to_string(),
+                title: "example".to_string(),
+                price: 42,
+                name: "example".to_string(),
+                sku: "example".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "".to_string(),
+                email: "example".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_status"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_status");
     }
 
     #[tokio::test]
@@ -253,24 +251,21 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateAccountParams {
-            title: "example".to_string(),
-            price: 42,
-            name: "example".to_string(),
-            sku: "example".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "".to_string(),
+                title: "example".to_string(),
+                price: 42,
+                name: "example".to_string(),
+                sku: "example".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_email"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_email");
     }
 }
 
@@ -307,7 +302,10 @@ impl DeleteAccountUseCaseTrait for DeleteAccountUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_account: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_account: repository failed"))?;
         Ok(())
     }
 }
@@ -315,15 +313,14 @@ impl DeleteAccountUseCaseTrait for DeleteAccountUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::account::value_objects::Name;
+    use crate::domain::account::value_objects::Sku;
+    use crate::domain::account::value_objects::Status;
     use crate::domain::account::{
         model::{Account, AccountId, AccountProps},
         repository::mocks::MockAccountRepository,
     };
-    use crate::domain::account::value_objects::Name;
-    use crate::domain::account::value_objects::Sku;
-    use crate::domain::account::value_objects::Status;
     use crate::domain::shared::value_objects::Email;
-
 
     #[tokio::test]
     async fn should_soft_delete_account_when_id_exists() {
@@ -337,7 +334,8 @@ mod tests {
             tags: vec![],
             status: Status::Active,
             email: Email::new("example".to_string()).expect("valid Email"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
@@ -364,7 +362,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteAccountParams { id: AccountId::generate() })
+            .execute(DeleteAccountParams {
+                id: AccountId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -392,7 +392,11 @@ pub struct GetAccountUseCaseImpl {
 impl GetAccountUseCaseTrait for GetAccountUseCaseImpl {
     async fn execute(&self, params: GetAccountParams) -> Result<Account, AccountError> {
         tracing::info!(id = %params.id, "get_account: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_account: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_account: repository failed"))?;
         result.ok_or_else(|| {
             let err = AccountError::NotFound;
             tracing::warn!(error = %err, "get_account: rejected");
@@ -404,16 +408,15 @@ impl GetAccountUseCaseTrait for GetAccountUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::account::value_objects::Name;
+    use crate::domain::account::value_objects::Sku;
+    use crate::domain::account::value_objects::Status;
     use crate::domain::account::{
         model::{Account, AccountId, AccountProps},
         repository::mocks::MockAccountRepository,
     };
-    use puerto_core::RepositoryError;
-    use crate::domain::account::value_objects::Name;
-    use crate::domain::account::value_objects::Sku;
-    use crate::domain::account::value_objects::Status;
     use crate::domain::shared::value_objects::Email;
-
+    use puerto_core::RepositoryError;
 
     #[tokio::test]
     async fn should_return_account_when_id_exists() {
@@ -427,7 +430,8 @@ mod tests {
             tags: vec![],
             status: Status::Active,
             email: Email::new("example".to_string()).expect("valid Email"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
@@ -452,7 +456,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetAccountParams { id: AccountId::generate() })
+            .execute(GetAccountParams {
+                id: AccountId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -470,7 +476,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetAccountParams { id: AccountId::generate() })
+            .execute(GetAccountParams {
+                id: AccountId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -498,7 +506,11 @@ pub struct ListAccountsUseCaseImpl {
 #[async_trait]
 impl ListAccountsUseCaseTrait for ListAccountsUseCaseImpl {
     async fn execute(&self, params: ListAccountsParams) -> Result<Page<Account>, AccountError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_accounts: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_accounts: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -510,42 +522,43 @@ impl ListAccountsUseCaseTrait for ListAccountsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
+    use crate::domain::account::value_objects::Name;
+    use crate::domain::account::value_objects::Sku;
+    use crate::domain::account::value_objects::Status;
     use crate::domain::account::{
         model::{Account, AccountProps},
         repository::mocks::MockAccountRepository,
     };
-    use crate::domain::account::value_objects::Name;
-    use crate::domain::account::value_objects::Sku;
-    use crate::domain::account::value_objects::Status;
     use crate::domain::shared::value_objects::Email;
-
+    use puerto_core::PageRequest;
 
     #[tokio::test]
     async fn should_return_the_page_of_accounts() {
         let entities = vec![
             Account::new(AccountProps {
-            title: "first".to_string(),
-            price: 42,
-            name: Name::new("first".to_string()).expect("valid Name"),
-            sku: Sku::new("first".to_string()).expect("valid Sku"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("first".to_string()).expect("valid Email"),
-        }).unwrap(),
+                title: "first".to_string(),
+                price: 42,
+                name: Name::new("first".to_string()).expect("valid Name"),
+                sku: Sku::new("first".to_string()).expect("valid Sku"),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: Status::Active,
+                email: Email::new("first".to_string()).expect("valid Email"),
+            })
+            .unwrap(),
             Account::new(AccountProps {
-            title: "second".to_string(),
-            price: 42,
-            name: Name::new("second".to_string()).expect("valid Name"),
-            sku: Sku::new("second".to_string()).expect("valid Sku"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("second".to_string()).expect("valid Email"),
-        }).unwrap(),
+                title: "second".to_string(),
+                price: 42,
+                name: Name::new("second".to_string()).expect("valid Name"),
+                sku: Sku::new("second".to_string()).expect("valid Sku"),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: Status::Active,
+                email: Email::new("second".to_string()).expect("valid Email"),
+            })
+            .unwrap(),
         ];
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
@@ -556,7 +569,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListAccountsParams { page: PageRequest::default() })
+            .execute(ListAccountsParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -575,7 +590,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListAccountsParams { page: PageRequest::default() })
+            .execute(ListAccountsParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -595,7 +612,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListAccountsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListAccountsParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -605,13 +624,13 @@ mod tests {
 === business/src/application/account/update_account.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
+use crate::domain::account::value_objects::MiddleName;
 use crate::domain::account::value_objects::Name;
 use crate::domain::account::value_objects::Sku;
-use crate::domain::account::value_objects::MiddleName;
-use crate::domain::account::value_objects::Tag;
 use crate::domain::account::value_objects::Status;
+use crate::domain::account::value_objects::Tag;
 use crate::domain::shared::value_objects::Email;
+use async_trait::async_trait;
 
 use crate::domain::account::{
     errors::AccountError,
@@ -643,12 +662,16 @@ impl UpdateAccountUseCaseTrait for UpdateAccountUseCaseImpl {
             tracing::warn!(error = %err, "update_account: rejected");
             return Err(err);
         }
-let name = Name::new(params.name)?;
-let sku = Sku::new(params.sku)?;
-let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
-let tags: Vec<Tag> = params.tags.into_iter().map(Tag::new).collect::<Result<Vec<_>,_>>()?;
-let status = params.status.parse::<Status>()?;
-let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
+        let name = Name::new(params.name)?;
+        let sku = Sku::new(params.sku)?;
+        let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
+        let tags: Vec<Tag> = params
+            .tags
+            .into_iter()
+            .map(Tag::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        let status = params.status.parse::<Status>()?;
+        let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
         entity.title = params.title;
         entity.price = params.price;
         entity.name = name;
@@ -659,7 +682,10 @@ let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
         entity.status = status;
         entity.email = email;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_account: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_account: repository failed"))?;
         Ok(entity)
     }
 }
@@ -667,15 +693,14 @@ let email = Email::new(params.email).map_err(|_| AccountError::InvalidEmail)?;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::account::value_objects::Name;
+    use crate::domain::account::value_objects::Sku;
+    use crate::domain::account::value_objects::Status;
     use crate::domain::account::{
         model::{Account, AccountId, AccountProps},
         repository::mocks::MockAccountRepository,
     };
-    use crate::domain::account::value_objects::Name;
-    use crate::domain::account::value_objects::Sku;
-    use crate::domain::account::value_objects::Status;
     use crate::domain::shared::value_objects::Email;
-
 
     #[tokio::test]
     async fn should_update_account_when_params_are_valid() {
@@ -690,7 +715,8 @@ mod tests {
             tags: vec![],
             status: Status::Active,
             email: Email::new("original".to_string()).expect("valid Email"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
@@ -704,16 +730,16 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateAccountParams {
-            id: entity_id,
-            title: "updated".to_string(),
-            price: 42,
-            name: "updated".to_string(),
-            sku: "updated".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "updated".to_string(),
+                id: entity_id,
+                title: "updated".to_string(),
+                price: 42,
+                name: "updated".to_string(),
+                sku: "updated".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "updated".to_string(),
             })
             .await;
 
@@ -733,16 +759,16 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateAccountParams {
-            id: AccountId::generate(),
-            title: "new".to_string(),
-            price: 42,
-            name: "new".to_string(),
-            sku: "new".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "new".to_string(),
+                id: AccountId::generate(),
+                title: "new".to_string(),
+                price: 42,
+                name: "new".to_string(),
+                sku: "new".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "new".to_string(),
             })
             .await;
 
@@ -764,7 +790,8 @@ mod tests {
             tags: vec![],
             status: Status::Active,
             email: Email::new("original".to_string()).expect("valid Email"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
@@ -777,16 +804,16 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateAccountParams {
-            id: entity_id,
-            title: "".to_string(),
-            price: 42,
-            name: "updated".to_string(),
-            sku: "updated".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "updated".to_string(),
+                id: entity_id,
+                title: "".to_string(),
+                price: 42,
+                name: "updated".to_string(),
+                sku: "updated".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "updated".to_string(),
             })
             .await;
 
@@ -811,7 +838,8 @@ mod tests {
             tags: vec![],
             status: Status::Active,
             email: Email::new("original".to_string()).expect("valid Email"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
@@ -824,25 +852,22 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateAccountParams {
-            id: entity_id,
-            title: "updated".to_string(),
-            price: 42,
-            name: "".to_string(),
-            sku: "updated".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "updated".to_string(),
+                id: entity_id,
+                title: "updated".to_string(),
+                price: 42,
+                name: "".to_string(),
+                sku: "updated".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "updated".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_name"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_name");
     }
 
     #[tokio::test]
@@ -858,7 +883,8 @@ mod tests {
             tags: vec![],
             status: Status::Active,
             email: Email::new("original".to_string()).expect("valid Email"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
@@ -871,25 +897,22 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateAccountParams {
-            id: entity_id,
-            title: "updated".to_string(),
-            price: 42,
-            name: "updated".to_string(),
-            sku: "".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "updated".to_string(),
+                id: entity_id,
+                title: "updated".to_string(),
+                price: 42,
+                name: "updated".to_string(),
+                sku: "".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "updated".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_sku"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_sku");
     }
 
     #[tokio::test]
@@ -905,7 +928,8 @@ mod tests {
             tags: vec![],
             status: Status::Active,
             email: Email::new("original".to_string()).expect("valid Email"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockAccountRepository::new();
         mock_repo
@@ -918,25 +942,22 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateAccountParams {
-            id: entity_id,
-            title: "updated".to_string(),
-            price: 42,
-            name: "updated".to_string(),
-            sku: "updated".to_string(),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: "Active".to_string(),
-            email: "".to_string(),
+                id: entity_id,
+                title: "updated".to_string(),
+                price: 42,
+                name: "updated".to_string(),
+                sku: "updated".to_string(),
+                note: None,
+                middle_name: None,
+                tags: vec![],
+                status: "Active".to_string(),
+                email: "".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_email"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_email");
     }
 }
 
@@ -1006,14 +1027,14 @@ mod tests {
 }
 
 === business/src/domain/account/model.rs ===
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
+use super::value_objects::MiddleName;
 use super::value_objects::Name;
 use super::value_objects::Sku;
-use super::value_objects::MiddleName;
-use super::value_objects::Tag;
 use super::value_objects::Status;
+use super::value_objects::Tag;
 use crate::domain::shared::value_objects::Email;
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 use super::errors::AccountError;
 
@@ -1123,7 +1144,6 @@ mod tests {
         assert_eq!(result.unwrap().title, "example");
     }
 
-
     #[test]
     fn should_reject_account_when_title_is_empty() {
         let result = Account::new(AccountProps {
@@ -1164,20 +1184,14 @@ mod tests {
     fn should_reject_account_when_name_is_empty() {
         let result = Name::new("".to_string());
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_name"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_name");
     }
 
     #[test]
     fn should_reject_account_when_sku_is_empty() {
         let result = Sku::new("".to_string());
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_sku"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_sku");
     }
 
     #[test]
@@ -1194,10 +1208,7 @@ mod tests {
     fn should_reject_account_when_status_is_invalid() {
         let result = "InvalidVariant".parse::<Status>();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "account.invalid_status"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "account.invalid_status");
     }
 }
 
@@ -1554,14 +1565,14 @@ impl Email {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod greeting {
-    pub mod errors;
-    pub mod model;
-    pub mod repository;
-    pub mod use_cases {
-      pub mod get_greeting;
+    pub mod greeting {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod get_greeting;
+        }
     }
-  }
 
     pub mod account {
         pub mod errors;
@@ -1569,28 +1580,28 @@ pub mod domain {
         pub mod repository;
         pub mod use_cases {
             pub mod create_account;
+            pub mod delete_account;
             pub mod get_account;
             pub mod list_accounts;
             pub mod update_account;
-            pub mod delete_account;
         }
-    
+
         pub mod value_objects;
-}
+    }
 
     pub mod shared;
 }
 pub mod application {
-  pub mod greeting {
-    pub mod get_greeting;
-  }
+    pub mod greeting {
+        pub mod get_greeting;
+    }
 
     pub mod account {
         pub mod create_account;
+        pub mod delete_account;
         pub mod get_account;
         pub mod list_accounts;
         pub mod update_account;
-        pub mod delete_account;
     }
 }
 
@@ -1604,11 +1615,11 @@ pub mod tests {
 === business/src/tests/mothers/account_mother.rs ===
 use crate::domain::account::model::Account;
 use crate::domain::account::model::AccountProps;
+use crate::domain::account::value_objects::MiddleName;
 use crate::domain::account::value_objects::Name;
 use crate::domain::account::value_objects::Sku;
-use crate::domain::account::value_objects::MiddleName;
-use crate::domain::account::value_objects::Tag;
 use crate::domain::account::value_objects::Status;
+use crate::domain::account::value_objects::Tag;
 use crate::domain::shared::value_objects::Email;
 
 pub struct AccountMother {
@@ -1625,7 +1636,17 @@ pub struct AccountMother {
 
 impl AccountMother {
     pub fn new() -> Self {
-        Self { title: None, price: None, name: None, sku: None, note: None, middle_name: None, tags: None, status: None, email: None }
+        Self {
+            title: None,
+            price: None,
+            name: None,
+            sku: None,
+            note: None,
+            middle_name: None,
+            tags: None,
+            status: None,
+            email: None,
+        }
     }
 
     pub fn with_title(mut self, title: &str) -> Self {
@@ -1682,13 +1703,19 @@ impl AccountMother {
         Account::new(AccountProps {
             title: self.title.unwrap_or_else(|| "example".to_string()),
             price: self.price.unwrap_or(42),
-            name: self.name.unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
-            sku: self.sku.unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
+            name: self
+                .name
+                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            sku: self
+                .sku
+                .unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
             note: self.note,
             middle_name: self.middle_name,
             tags: self.tags.unwrap_or_default(),
             status: self.status.unwrap_or(Status::Active),
-            email: self.email.unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            email: self
+                .email
+                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
         })
         .expect("AccountMother: failed to build valid Account")
     }
@@ -1697,13 +1724,19 @@ impl AccountMother {
         AccountProps {
             title: self.title.unwrap_or_else(|| "example".to_string()),
             price: self.price.unwrap_or(42),
-            name: self.name.unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
-            sku: self.sku.unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
+            name: self
+                .name
+                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            sku: self
+                .sku
+                .unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
             note: self.note,
             middle_name: self.middle_name,
             tags: self.tags.unwrap_or_default(),
             status: self.status.unwrap_or(Status::Active),
-            email: self.email.unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            email: self
+                .email
+                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
         }
     }
 
@@ -1768,10 +1801,10 @@ pub mod account {
 }
 
 === presentation/src/api.rs ===
+pub mod account;
 pub mod error;
 pub mod greeting;
 pub mod tags;
-pub mod account;
 
 === presentation/src/api/account.rs ===
 pub mod dto;
@@ -1810,7 +1843,11 @@ impl AccountDto {
             sku: entity.sku.value().to_string(),
             note: entity.note.clone(),
             middle_name: entity.middle_name.as_ref().map(|v| v.value().to_string()),
-            tags: entity.tags.iter().map(|v| v.value().to_string()).collect::<Vec<_>>(),
+            tags: entity
+                .tags
+                .iter()
+                .map(|v| v.value().to_string())
+                .collect::<Vec<_>>(),
             status: entity.status.as_str().to_string(),
             email: entity.email.value().to_string(),
         }
@@ -1830,7 +1867,6 @@ pub struct CreateAccountRequest {
     pub status: String,
     pub email: String,
 }
-
 
 /// One page of Accounts: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
@@ -1867,7 +1903,6 @@ pub struct UpdateAccountRequest {
     pub email: String,
 }
 
-
 === presentation/src/api/account/error_mapper.rs ===
 use business::domain::account::errors::AccountError;
 use poem::http::StatusCode;
@@ -1903,7 +1938,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = AccountError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            AccountError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -2173,15 +2209,15 @@ use poem_openapi::{
 use puerto_core::PageRequest;
 use uuid::Uuid;
 
-use crate::api::error::IntoErrorResponse;
-use crate::api::tags::ApiTags;
 use crate::api::account::dto::{
-    CreateAccountRequest, UpdateAccountRequest, AccountDto, AccountPageDto,
+    AccountDto, AccountPageDto, CreateAccountRequest, UpdateAccountRequest,
 };
 use crate::api::account::responses::{
     CreateAccountResponse, DeleteAccountResponse, GetAccountResponse, ListAccountsResponse,
     UpdateAccountResponse,
 };
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
 
 /// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct AccountApi {
@@ -2226,7 +2262,9 @@ impl AccountApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetAccountResponse {
         match self
             .get_account
-            .execute(GetAccountParams { id: AccountId::from_uuid(id.0) })
+            .execute(GetAccountParams {
+                id: AccountId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetAccountResponse::Ok(Json(AccountDto::from_domain(&entity))),
@@ -2240,7 +2278,11 @@ impl AccountApi {
 
     /// List Accounts, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/accounts", method = "get", tag = "ApiTags::Account")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListAccountsResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListAccountsResponse {
         match self
             .list_accounts
             .execute(ListAccountsParams {
@@ -2259,7 +2301,11 @@ impl AccountApi {
 
     /// Update a Account
     #[oai(path = "/accounts/:id", method = "put", tag = "ApiTags::Account")]
-    async fn update(&self, id: Path<Uuid>, body: Json<UpdateAccountRequest>) -> UpdateAccountResponse {
+    async fn update(
+        &self,
+        id: Path<Uuid>,
+        body: Json<UpdateAccountRequest>,
+    ) -> UpdateAccountResponse {
         match self
             .update_account
             .execute(UpdateAccountParams {
@@ -2290,7 +2336,9 @@ impl AccountApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteAccountResponse {
         match self
             .delete_account
-            .execute(DeleteAccountParams { id: AccountId::from_uuid(id.0) })
+            .execute(DeleteAccountParams {
+                id: AccountId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeleteAccountResponse::NoContent,
@@ -2307,8 +2355,9 @@ impl AccountApi {
 mod tests {
     use business::domain::account::errors::AccountError;
     use business::domain::account::use_cases::{
-        create_account::mocks::MockCreateAccountUseCase, delete_account::mocks::MockDeleteAccountUseCase,
-        get_account::mocks::MockGetAccountUseCase, list_accounts::mocks::MockListAccountsUseCase,
+        create_account::mocks::MockCreateAccountUseCase,
+        delete_account::mocks::MockDeleteAccountUseCase, get_account::mocks::MockGetAccountUseCase,
+        list_accounts::mocks::MockListAccountsUseCase,
         update_account::mocks::MockUpdateAccountUseCase,
     };
     use business::tests::mothers::account_mother::AccountMother;
@@ -2378,7 +2427,10 @@ mod tests {
     async fn should_respond_201_when_account_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(AccountMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(AccountMother::random()));
 
         // Act
         let response = mocks
@@ -2417,7 +2469,10 @@ mod tests {
     async fn should_respond_200_when_account_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(AccountMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(AccountMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -2430,7 +2485,10 @@ mod tests {
     async fn should_respond_404_when_account_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(AccountError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(AccountError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -2470,7 +2528,11 @@ mod tests {
             .returning(|params| Ok(Page::new(vec![], 0, params.page)));
 
         // Act
-        let response = mocks.client().get("/accounts?limit=5&offset=10").send().await;
+        let response = mocks
+            .client()
+            .get("/accounts?limit=5&offset=10")
+            .send()
+            .await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -2480,7 +2542,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(AccountError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(AccountError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/accounts").send().await;
@@ -2493,7 +2558,10 @@ mod tests {
     async fn should_respond_200_when_account_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(AccountMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(AccountMother::random()));
 
         // Act
         let response = mocks
@@ -2511,7 +2579,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_account() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(AccountError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(AccountError::NotFound));
 
         // Act
         let response = mocks
@@ -2542,7 +2613,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_account() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(AccountError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(AccountError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -2566,40 +2640,62 @@ pub enum ApiTags {
 // AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
 use std::sync::Arc;
 
-use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::account::create_account::CreateAccountUseCaseImpl;
+use business::application::account::delete_account::DeleteAccountUseCaseImpl;
 use business::application::account::get_account::GetAccountUseCaseImpl;
 use business::application::account::list_accounts::ListAccountsUseCaseImpl;
 use business::application::account::update_account::UpdateAccountUseCaseImpl;
-use business::application::account::delete_account::DeleteAccountUseCaseImpl;
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 
-use business::domain::greeting::repository::GreetingRepositoryTrait;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use business::domain::account::repository::AccountRepositoryTrait;
+use business::domain::greeting::repository::GreetingRepositoryTrait;
 use infrastructure::account::repository::InMemoryAccountRepository;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
 
 use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
-use crate::api::greeting::routes::GreetingApi;
 use crate::api::account::routes::AccountApi;
+use crate::api::greeting::routes::GreetingApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
+    });
     let greeting_api = GreetingApi { get_greeting };
 
     let account_repo: Arc<dyn AccountRepositoryTrait> = Arc::new(InMemoryAccountRepository::new());
-    let create_account = Arc::new(CreateAccountUseCaseImpl { repository: Arc::clone(&account_repo) });
-    let get_account = Arc::new(GetAccountUseCaseImpl { repository: Arc::clone(&account_repo) });
-    let list_accounts = Arc::new(ListAccountsUseCaseImpl { repository: Arc::clone(&account_repo) });
-    let update_account = Arc::new(UpdateAccountUseCaseImpl { repository: Arc::clone(&account_repo) });
-    let delete_account = Arc::new(DeleteAccountUseCaseImpl { repository: account_repo });
-    let account_api = AccountApi { create_account, get_account, list_accounts, update_account, delete_account };
+    let create_account = Arc::new(CreateAccountUseCaseImpl {
+        repository: Arc::clone(&account_repo),
+    });
+    let get_account = Arc::new(GetAccountUseCaseImpl {
+        repository: Arc::clone(&account_repo),
+    });
+    let list_accounts = Arc::new(ListAccountsUseCaseImpl {
+        repository: Arc::clone(&account_repo),
+    });
+    let update_account = Arc::new(UpdateAccountUseCaseImpl {
+        repository: Arc::clone(&account_repo),
+    });
+    let delete_account = Arc::new(DeleteAccountUseCaseImpl {
+        repository: account_repo,
+    });
+    let account_api = AccountApi {
+        create_account,
+        get_account,
+        list_accounts,
+        update_account,
+        delete_account,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, account_api)), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service((greeting_api, account_api)),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -2612,12 +2708,12 @@ fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
 mod tests {
     use super::*;
 
-    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
     use business::domain::account::use_cases::create_account::mocks::MockCreateAccountUseCase;
+    use business::domain::account::use_cases::delete_account::mocks::MockDeleteAccountUseCase;
     use business::domain::account::use_cases::get_account::mocks::MockGetAccountUseCase;
     use business::domain::account::use_cases::list_accounts::mocks::MockListAccountsUseCase;
     use business::domain::account::use_cases::update_account::mocks::MockUpdateAccountUseCase;
-    use business::domain::account::use_cases::delete_account::mocks::MockDeleteAccountUseCase;
+    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -2626,8 +2722,16 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
-        let account_api = AccountApi { create_account: Arc::new(MockCreateAccountUseCase::new()), get_account: Arc::new(MockGetAccountUseCase::new()), list_accounts: Arc::new(MockListAccountsUseCase::new()), update_account: Arc::new(MockUpdateAccountUseCase::new()), delete_account: Arc::new(MockDeleteAccountUseCase::new()) };
+        let greeting_api = GreetingApi {
+            get_greeting: Arc::new(MockGetGreetingUseCase::new()),
+        };
+        let account_api = AccountApi {
+            create_account: Arc::new(MockCreateAccountUseCase::new()),
+            get_account: Arc::new(MockGetAccountUseCase::new()),
+            list_accounts: Arc::new(MockListAccountsUseCase::new()),
+            update_account: Arc::new(MockUpdateAccountUseCase::new()),
+            delete_account: Arc::new(MockDeleteAccountUseCase::new()),
+        };
         let spec = openapi_service((greeting_api, account_api)).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);

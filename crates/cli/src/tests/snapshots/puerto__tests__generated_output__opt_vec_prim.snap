@@ -28,8 +28,12 @@ impl CreateArticleUseCaseTrait for CreateArticleUseCaseImpl {
             views: params.views,
             tags: params.tags,
             scores: params.scores,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_article: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_article: repository failed"))?;
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_article: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_article: repository failed"))?;
         tracing::info!(id = %entity.id, "create_article: done");
         Ok(entity)
     }
@@ -40,7 +44,6 @@ mod tests {
     use super::*;
     use crate::domain::article::repository::mocks::MockArticleRepository;
     use puerto_core::RepositoryError;
-
 
     #[tokio::test]
     async fn should_create_article_when_fields_are_valid() {
@@ -54,11 +57,11 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateArticleParams {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
+                title: "example".to_string(),
+                summary: None,
+                views: None,
+                tags: vec![],
+                scores: vec![],
             })
             .await;
 
@@ -81,11 +84,11 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateArticleParams {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
+                title: "example".to_string(),
+                summary: None,
+                views: None,
+                tags: vec![],
+                scores: vec![],
             })
             .await;
 
@@ -105,11 +108,11 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateArticleParams {
-            title: "".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
+                title: "".to_string(),
+                summary: None,
+                views: None,
+                tags: vec![],
+                scores: vec![],
             })
             .await;
 
@@ -155,7 +158,10 @@ impl DeleteArticleUseCaseTrait for DeleteArticleUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_article: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_article: repository failed"))?;
         Ok(())
     }
 }
@@ -168,7 +174,6 @@ mod tests {
         repository::mocks::MockArticleRepository,
     };
 
-
     #[tokio::test]
     async fn should_soft_delete_article_when_id_exists() {
         let entity = Article::new(ArticleProps {
@@ -177,7 +182,8 @@ mod tests {
             views: None,
             tags: vec![],
             scores: vec![],
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
@@ -204,7 +210,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteArticleParams { id: ArticleId::generate() })
+            .execute(DeleteArticleParams {
+                id: ArticleId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -232,7 +240,11 @@ pub struct GetArticleUseCaseImpl {
 impl GetArticleUseCaseTrait for GetArticleUseCaseImpl {
     async fn execute(&self, params: GetArticleParams) -> Result<Article, ArticleError> {
         tracing::info!(id = %params.id, "get_article: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_article: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_article: repository failed"))?;
         result.ok_or_else(|| {
             let err = ArticleError::NotFound;
             tracing::warn!(error = %err, "get_article: rejected");
@@ -250,7 +262,6 @@ mod tests {
     };
     use puerto_core::RepositoryError;
 
-
     #[tokio::test]
     async fn should_return_article_when_id_exists() {
         let entity = Article::new(ArticleProps {
@@ -259,7 +270,8 @@ mod tests {
             views: None,
             tags: vec![],
             scores: vec![],
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
@@ -284,7 +296,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetArticleParams { id: ArticleId::generate() })
+            .execute(GetArticleParams {
+                id: ArticleId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -302,7 +316,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetArticleParams { id: ArticleId::generate() })
+            .execute(GetArticleParams {
+                id: ArticleId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -330,7 +346,11 @@ pub struct ListArticlesUseCaseImpl {
 #[async_trait]
 impl ListArticlesUseCaseTrait for ListArticlesUseCaseImpl {
     async fn execute(&self, params: ListArticlesParams) -> Result<Page<Article>, ArticleError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_articles: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_articles: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -342,30 +362,31 @@ impl ListArticlesUseCaseTrait for ListArticlesUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
     use crate::domain::article::{
         model::{Article, ArticleProps},
         repository::mocks::MockArticleRepository,
     };
-
+    use puerto_core::PageRequest;
 
     #[tokio::test]
     async fn should_return_the_page_of_articles() {
         let entities = vec![
             Article::new(ArticleProps {
-            title: "first".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        }).unwrap(),
+                title: "first".to_string(),
+                summary: None,
+                views: None,
+                tags: vec![],
+                scores: vec![],
+            })
+            .unwrap(),
             Article::new(ArticleProps {
-            title: "second".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        }).unwrap(),
+                title: "second".to_string(),
+                summary: None,
+                views: None,
+                tags: vec![],
+                scores: vec![],
+            })
+            .unwrap(),
         ];
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
@@ -376,7 +397,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListArticlesParams { page: PageRequest::default() })
+            .execute(ListArticlesParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -395,7 +418,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListArticlesParams { page: PageRequest::default() })
+            .execute(ListArticlesParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -415,7 +440,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListArticlesParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListArticlesParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -463,7 +490,10 @@ impl UpdateArticleUseCaseTrait for UpdateArticleUseCaseImpl {
         entity.tags = params.tags;
         entity.scores = params.scores;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_article: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_article: repository failed"))?;
         Ok(entity)
     }
 }
@@ -476,7 +506,6 @@ mod tests {
         repository::mocks::MockArticleRepository,
     };
 
-
     #[tokio::test]
     async fn should_update_article_when_params_are_valid() {
         // Arrange
@@ -486,7 +515,8 @@ mod tests {
             views: None,
             tags: vec![],
             scores: vec![],
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
@@ -500,12 +530,12 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateArticleParams {
-            id: entity_id,
-            title: "updated".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
+                id: entity_id,
+                title: "updated".to_string(),
+                summary: None,
+                views: None,
+                tags: vec![],
+                scores: vec![],
             })
             .await;
 
@@ -525,12 +555,12 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateArticleParams {
-            id: ArticleId::generate(),
-            title: "new".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
+                id: ArticleId::generate(),
+                title: "new".to_string(),
+                summary: None,
+                views: None,
+                tags: vec![],
+                scores: vec![],
             })
             .await;
 
@@ -548,7 +578,8 @@ mod tests {
             views: None,
             tags: vec![],
             scores: vec![],
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
@@ -561,12 +592,12 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateArticleParams {
-            id: entity_id,
-            title: "".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
+                id: entity_id,
+                title: "".to_string(),
+                summary: None,
+                views: None,
+                tags: vec![],
+                scores: vec![],
             })
             .await;
 
@@ -727,7 +758,6 @@ mod tests {
         });
         assert_eq!(result.unwrap().title, "example");
     }
-
 
     #[test]
     fn should_reject_article_when_title_is_empty() {
@@ -962,14 +992,14 @@ pub mod mocks {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod greeting {
-    pub mod errors;
-    pub mod model;
-    pub mod repository;
-    pub mod use_cases {
-      pub mod get_greeting;
+    pub mod greeting {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod get_greeting;
+        }
     }
-  }
 
     pub mod article {
         pub mod errors;
@@ -977,24 +1007,24 @@ pub mod domain {
         pub mod repository;
         pub mod use_cases {
             pub mod create_article;
+            pub mod delete_article;
             pub mod get_article;
             pub mod list_articles;
             pub mod update_article;
-            pub mod delete_article;
         }
     }
 }
 pub mod application {
-  pub mod greeting {
-    pub mod get_greeting;
-  }
+    pub mod greeting {
+        pub mod get_greeting;
+    }
 
     pub mod article {
         pub mod create_article;
+        pub mod delete_article;
         pub mod get_article;
         pub mod list_articles;
         pub mod update_article;
-        pub mod delete_article;
     }
 }
 
@@ -1019,7 +1049,13 @@ pub struct ArticleMother {
 
 impl ArticleMother {
     pub fn new() -> Self {
-        Self { title: None, summary: None, views: None, tags: None, scores: None }
+        Self {
+            title: None,
+            summary: None,
+            views: None,
+            tags: None,
+            scores: None,
+        }
     }
 
     pub fn with_title(mut self, title: &str) -> Self {
@@ -1134,10 +1170,10 @@ pub mod article {
 }
 
 === presentation/src/api.rs ===
+pub mod article;
 pub mod error;
 pub mod greeting;
 pub mod tags;
-pub mod article;
 
 === presentation/src/api/article.rs ===
 pub mod dto;
@@ -1185,7 +1221,6 @@ pub struct CreateArticleRequest {
     pub scores: Vec<i64>,
 }
 
-
 /// One page of Articles: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1217,7 +1252,6 @@ pub struct UpdateArticleRequest {
     pub scores: Vec<i64>,
 }
 
-
 === presentation/src/api/article/error_mapper.rs ===
 use business::domain::article::errors::ArticleError;
 use poem::http::StatusCode;
@@ -1247,7 +1281,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = ArticleError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            ArticleError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1457,15 +1492,15 @@ use poem_openapi::{
 use puerto_core::PageRequest;
 use uuid::Uuid;
 
-use crate::api::error::IntoErrorResponse;
-use crate::api::tags::ApiTags;
 use crate::api::article::dto::{
-    CreateArticleRequest, UpdateArticleRequest, ArticleDto, ArticlePageDto,
+    ArticleDto, ArticlePageDto, CreateArticleRequest, UpdateArticleRequest,
 };
 use crate::api::article::responses::{
     CreateArticleResponse, DeleteArticleResponse, GetArticleResponse, ListArticlesResponse,
     UpdateArticleResponse,
 };
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
 
 /// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct ArticleApi {
@@ -1506,7 +1541,9 @@ impl ArticleApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetArticleResponse {
         match self
             .get_article
-            .execute(GetArticleParams { id: ArticleId::from_uuid(id.0) })
+            .execute(GetArticleParams {
+                id: ArticleId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetArticleResponse::Ok(Json(ArticleDto::from_domain(&entity))),
@@ -1520,7 +1557,11 @@ impl ArticleApi {
 
     /// List Articles, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/articles", method = "get", tag = "ApiTags::Article")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListArticlesResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListArticlesResponse {
         match self
             .list_articles
             .execute(ListArticlesParams {
@@ -1539,7 +1580,11 @@ impl ArticleApi {
 
     /// Update a Article
     #[oai(path = "/articles/:id", method = "put", tag = "ApiTags::Article")]
-    async fn update(&self, id: Path<Uuid>, body: Json<UpdateArticleRequest>) -> UpdateArticleResponse {
+    async fn update(
+        &self,
+        id: Path<Uuid>,
+        body: Json<UpdateArticleRequest>,
+    ) -> UpdateArticleResponse {
         match self
             .update_article
             .execute(UpdateArticleParams {
@@ -1566,7 +1611,9 @@ impl ArticleApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteArticleResponse {
         match self
             .delete_article
-            .execute(DeleteArticleParams { id: ArticleId::from_uuid(id.0) })
+            .execute(DeleteArticleParams {
+                id: ArticleId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeleteArticleResponse::NoContent,
@@ -1583,8 +1630,9 @@ impl ArticleApi {
 mod tests {
     use business::domain::article::errors::ArticleError;
     use business::domain::article::use_cases::{
-        create_article::mocks::MockCreateArticleUseCase, delete_article::mocks::MockDeleteArticleUseCase,
-        get_article::mocks::MockGetArticleUseCase, list_articles::mocks::MockListArticlesUseCase,
+        create_article::mocks::MockCreateArticleUseCase,
+        delete_article::mocks::MockDeleteArticleUseCase, get_article::mocks::MockGetArticleUseCase,
+        list_articles::mocks::MockListArticlesUseCase,
         update_article::mocks::MockUpdateArticleUseCase,
     };
     use business::tests::mothers::article_mother::ArticleMother;
@@ -1646,7 +1694,10 @@ mod tests {
     async fn should_respond_201_when_article_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(ArticleMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(ArticleMother::random()));
 
         // Act
         let response = mocks
@@ -1685,7 +1736,10 @@ mod tests {
     async fn should_respond_200_when_article_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(ArticleMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(ArticleMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1698,7 +1752,10 @@ mod tests {
     async fn should_respond_404_when_article_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(ArticleError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(ArticleError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1738,7 +1795,11 @@ mod tests {
             .returning(|params| Ok(Page::new(vec![], 0, params.page)));
 
         // Act
-        let response = mocks.client().get("/articles?limit=5&offset=10").send().await;
+        let response = mocks
+            .client()
+            .get("/articles?limit=5&offset=10")
+            .send()
+            .await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -1748,7 +1809,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(ArticleError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(ArticleError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/articles").send().await;
@@ -1761,7 +1825,10 @@ mod tests {
     async fn should_respond_200_when_article_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(ArticleMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(ArticleMother::random()));
 
         // Act
         let response = mocks
@@ -1779,7 +1846,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_article() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(ArticleError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(ArticleError::NotFound));
 
         // Act
         let response = mocks
@@ -1810,7 +1880,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_article() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(ArticleError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(ArticleError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -1834,40 +1907,62 @@ pub enum ApiTags {
 // AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
 use std::sync::Arc;
 
-use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::article::create_article::CreateArticleUseCaseImpl;
+use business::application::article::delete_article::DeleteArticleUseCaseImpl;
 use business::application::article::get_article::GetArticleUseCaseImpl;
 use business::application::article::list_articles::ListArticlesUseCaseImpl;
 use business::application::article::update_article::UpdateArticleUseCaseImpl;
-use business::application::article::delete_article::DeleteArticleUseCaseImpl;
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 
-use business::domain::greeting::repository::GreetingRepositoryTrait;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use business::domain::article::repository::ArticleRepositoryTrait;
+use business::domain::greeting::repository::GreetingRepositoryTrait;
 use infrastructure::article::repository::InMemoryArticleRepository;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
 
 use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
-use crate::api::greeting::routes::GreetingApi;
 use crate::api::article::routes::ArticleApi;
+use crate::api::greeting::routes::GreetingApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
+    });
     let greeting_api = GreetingApi { get_greeting };
 
     let article_repo: Arc<dyn ArticleRepositoryTrait> = Arc::new(InMemoryArticleRepository::new());
-    let create_article = Arc::new(CreateArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
-    let get_article = Arc::new(GetArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
-    let list_articles = Arc::new(ListArticlesUseCaseImpl { repository: Arc::clone(&article_repo) });
-    let update_article = Arc::new(UpdateArticleUseCaseImpl { repository: Arc::clone(&article_repo) });
-    let delete_article = Arc::new(DeleteArticleUseCaseImpl { repository: article_repo });
-    let article_api = ArticleApi { create_article, get_article, list_articles, update_article, delete_article };
+    let create_article = Arc::new(CreateArticleUseCaseImpl {
+        repository: Arc::clone(&article_repo),
+    });
+    let get_article = Arc::new(GetArticleUseCaseImpl {
+        repository: Arc::clone(&article_repo),
+    });
+    let list_articles = Arc::new(ListArticlesUseCaseImpl {
+        repository: Arc::clone(&article_repo),
+    });
+    let update_article = Arc::new(UpdateArticleUseCaseImpl {
+        repository: Arc::clone(&article_repo),
+    });
+    let delete_article = Arc::new(DeleteArticleUseCaseImpl {
+        repository: article_repo,
+    });
+    let article_api = ArticleApi {
+        create_article,
+        get_article,
+        list_articles,
+        update_article,
+        delete_article,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, article_api)), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service((greeting_api, article_api)),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -1880,12 +1975,12 @@ fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
 mod tests {
     use super::*;
 
-    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
     use business::domain::article::use_cases::create_article::mocks::MockCreateArticleUseCase;
+    use business::domain::article::use_cases::delete_article::mocks::MockDeleteArticleUseCase;
     use business::domain::article::use_cases::get_article::mocks::MockGetArticleUseCase;
     use business::domain::article::use_cases::list_articles::mocks::MockListArticlesUseCase;
     use business::domain::article::use_cases::update_article::mocks::MockUpdateArticleUseCase;
-    use business::domain::article::use_cases::delete_article::mocks::MockDeleteArticleUseCase;
+    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -1894,8 +1989,16 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
-        let article_api = ArticleApi { create_article: Arc::new(MockCreateArticleUseCase::new()), get_article: Arc::new(MockGetArticleUseCase::new()), list_articles: Arc::new(MockListArticlesUseCase::new()), update_article: Arc::new(MockUpdateArticleUseCase::new()), delete_article: Arc::new(MockDeleteArticleUseCase::new()) };
+        let greeting_api = GreetingApi {
+            get_greeting: Arc::new(MockGetGreetingUseCase::new()),
+        };
+        let article_api = ArticleApi {
+            create_article: Arc::new(MockCreateArticleUseCase::new()),
+            get_article: Arc::new(MockGetArticleUseCase::new()),
+            list_articles: Arc::new(MockListArticlesUseCase::new()),
+            update_article: Arc::new(MockUpdateArticleUseCase::new()),
+            delete_article: Arc::new(MockDeleteArticleUseCase::new()),
+        };
         let spec = openapi_service((greeting_api, article_api)).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);

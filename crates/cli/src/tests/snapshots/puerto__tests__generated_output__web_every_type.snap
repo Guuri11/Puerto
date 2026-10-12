@@ -5,10 +5,10 @@ expression: generated_output(& WEB_EVERY_TYPE)
 === business/src/application/case/create_case.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use crate::domain::case::value_objects::Status;
-use crate::domain::case::value_objects::MiddleName;
 use crate::domain::case::value_objects::Label;
+use crate::domain::case::value_objects::MiddleName;
+use crate::domain::case::value_objects::Status;
+use async_trait::async_trait;
 
 use crate::domain::case::{
     errors::CaseError,
@@ -25,9 +25,13 @@ pub struct CreateCaseUseCaseImpl {
 impl CreateCaseUseCaseTrait for CreateCaseUseCaseImpl {
     async fn execute(&self, params: CreateCaseParams) -> Result<Case, CaseError> {
         tracing::info!("create_case: start");
-let status = params.status.parse::<Status>()?;
-let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
-let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Result<Vec<_>,_>>()?;
+        let status = params.status.parse::<Status>()?;
+        let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
+        let labels: Vec<Label> = params
+            .labels
+            .into_iter()
+            .map(Label::new)
+            .collect::<Result<Vec<_>, _>>()?;
         let entity = Case::new(CaseProps {
             title: params.title,
             summary: params.summary,
@@ -42,8 +46,12 @@ let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Res
             status,
             middle_name,
             labels,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_case: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_case: repository failed"))?;
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_case: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_case: repository failed"))?;
         tracing::info!(id = %entity.id, "create_case: done");
         Ok(entity)
     }
@@ -53,10 +61,9 @@ let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Res
 mod tests {
     use super::*;
     use crate::domain::case::repository::mocks::MockCaseRepository;
-    use puerto_core::RepositoryError;
     use chrono::Utc;
+    use puerto_core::RepositoryError;
     use std::collections::HashMap;
-
 
     #[tokio::test]
     async fn should_create_case_when_fields_are_valid() {
@@ -70,19 +77,19 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateCaseParams {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: "Open".to_string(),
-            middle_name: None,
-            labels: vec![],
+                title: "example".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: "Open".to_string(),
+                middle_name: None,
+                labels: vec![],
             })
             .await;
 
@@ -105,19 +112,19 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateCaseParams {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: "Open".to_string(),
-            middle_name: None,
-            labels: vec![],
+                title: "example".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: "Open".to_string(),
+                middle_name: None,
+                labels: vec![],
             })
             .await;
 
@@ -137,19 +144,19 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateCaseParams {
-            title: "".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: "Open".to_string(),
-            middle_name: None,
-            labels: vec![],
+                title: "".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: "Open".to_string(),
+                middle_name: None,
+                labels: vec![],
             })
             .await;
 
@@ -172,28 +179,25 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateCaseParams {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: "".to_string(),
-            middle_name: None,
-            labels: vec![],
+                title: "example".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: "".to_string(),
+                middle_name: None,
+                labels: vec![],
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "case.invalid_status"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "case.invalid_status");
     }
 }
 
@@ -230,7 +234,10 @@ impl DeleteCaseUseCaseTrait for DeleteCaseUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_case: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_case: repository failed"))?;
         Ok(())
     }
 }
@@ -238,14 +245,13 @@ impl DeleteCaseUseCaseTrait for DeleteCaseUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::case::value_objects::Status;
     use crate::domain::case::{
         model::{Case, CaseId, CaseProps},
         repository::mocks::MockCaseRepository,
     };
     use chrono::Utc;
     use std::collections::HashMap;
-    use crate::domain::case::value_objects::Status;
-
 
     #[tokio::test]
     async fn should_soft_delete_case_when_id_exists() {
@@ -263,7 +269,8 @@ mod tests {
             status: Status::Open,
             middle_name: None,
             labels: vec![],
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCaseRepository::new();
         mock_repo
@@ -274,9 +281,7 @@ mod tests {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case
-            .execute(DeleteCaseParams { id: entity_id })
-            .await;
+        let result = use_case.execute(DeleteCaseParams { id: entity_id }).await;
 
         assert!(result.is_ok());
     }
@@ -290,7 +295,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteCaseParams { id: CaseId::generate() })
+            .execute(DeleteCaseParams {
+                id: CaseId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -318,7 +325,11 @@ pub struct GetCaseUseCaseImpl {
 impl GetCaseUseCaseTrait for GetCaseUseCaseImpl {
     async fn execute(&self, params: GetCaseParams) -> Result<Case, CaseError> {
         tracing::info!(id = %params.id, "get_case: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_case: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_case: repository failed"))?;
         result.ok_or_else(|| {
             let err = CaseError::NotFound;
             tracing::warn!(error = %err, "get_case: rejected");
@@ -330,15 +341,14 @@ impl GetCaseUseCaseTrait for GetCaseUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::case::value_objects::Status;
     use crate::domain::case::{
         model::{Case, CaseId, CaseProps},
         repository::mocks::MockCaseRepository,
     };
-    use puerto_core::RepositoryError;
     use chrono::Utc;
+    use puerto_core::RepositoryError;
     use std::collections::HashMap;
-    use crate::domain::case::value_objects::Status;
-
 
     #[tokio::test]
     async fn should_return_case_when_id_exists() {
@@ -356,7 +366,8 @@ mod tests {
             status: Status::Open,
             middle_name: None,
             labels: vec![],
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCaseRepository::new();
         mock_repo
@@ -381,7 +392,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetCaseParams { id: CaseId::generate() })
+            .execute(GetCaseParams {
+                id: CaseId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -399,7 +412,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetCaseParams { id: CaseId::generate() })
+            .execute(GetCaseParams {
+                id: CaseId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -427,7 +442,11 @@ pub struct ListCasesUseCaseImpl {
 #[async_trait]
 impl ListCasesUseCaseTrait for ListCasesUseCaseImpl {
     async fn execute(&self, params: ListCasesParams) -> Result<Page<Case>, CaseError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_cases: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_cases: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -439,49 +458,50 @@ impl ListCasesUseCaseTrait for ListCasesUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
+    use crate::domain::case::value_objects::Status;
     use crate::domain::case::{
         model::{Case, CaseProps},
         repository::mocks::MockCaseRepository,
     };
     use chrono::Utc;
+    use puerto_core::PageRequest;
     use std::collections::HashMap;
-    use crate::domain::case::value_objects::Status;
-
 
     #[tokio::test]
     async fn should_return_the_page_of_cases() {
         let entities = vec![
             Case::new(CaseProps {
-            title: "first".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        }).unwrap(),
+                title: "first".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: Status::Open,
+                middle_name: None,
+                labels: vec![],
+            })
+            .unwrap(),
             Case::new(CaseProps {
-            title: "second".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        }).unwrap(),
+                title: "second".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: Status::Open,
+                middle_name: None,
+                labels: vec![],
+            })
+            .unwrap(),
         ];
         let mut mock_repo = MockCaseRepository::new();
         mock_repo
@@ -492,7 +512,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListCasesParams { page: PageRequest::default() })
+            .execute(ListCasesParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -511,7 +533,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListCasesParams { page: PageRequest::default() })
+            .execute(ListCasesParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -531,7 +555,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListCasesParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListCasesParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -541,10 +567,10 @@ mod tests {
 === business/src/application/case/update_case.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use crate::domain::case::value_objects::Status;
-use crate::domain::case::value_objects::MiddleName;
 use crate::domain::case::value_objects::Label;
+use crate::domain::case::value_objects::MiddleName;
+use crate::domain::case::value_objects::Status;
+use async_trait::async_trait;
 
 use crate::domain::case::{
     errors::CaseError,
@@ -576,9 +602,13 @@ impl UpdateCaseUseCaseTrait for UpdateCaseUseCaseImpl {
             tracing::warn!(error = %err, "update_case: rejected");
             return Err(err);
         }
-let status = params.status.parse::<Status>()?;
-let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
-let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Result<Vec<_>,_>>()?;
+        let status = params.status.parse::<Status>()?;
+        let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
+        let labels: Vec<Label> = params
+            .labels
+            .into_iter()
+            .map(Label::new)
+            .collect::<Result<Vec<_>, _>>()?;
         entity.title = params.title;
         entity.summary = params.summary;
         entity.views = params.views;
@@ -593,7 +623,10 @@ let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Res
         entity.middle_name = middle_name;
         entity.labels = labels;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_case: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_case: repository failed"))?;
         Ok(entity)
     }
 }
@@ -601,14 +634,13 @@ let labels: Vec<Label> = params.labels.into_iter().map(Label::new).collect::<Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::case::value_objects::Status;
     use crate::domain::case::{
         model::{Case, CaseId, CaseProps},
         repository::mocks::MockCaseRepository,
     };
     use chrono::Utc;
     use std::collections::HashMap;
-    use crate::domain::case::value_objects::Status;
-
 
     #[tokio::test]
     async fn should_update_case_when_params_are_valid() {
@@ -627,7 +659,8 @@ mod tests {
             status: Status::Open,
             middle_name: None,
             labels: vec![],
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCaseRepository::new();
         mock_repo
@@ -641,20 +674,20 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateCaseParams {
-            id: entity_id,
-            title: "updated".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: "Open".to_string(),
-            middle_name: None,
-            labels: vec![],
+                id: entity_id,
+                title: "updated".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: "Open".to_string(),
+                middle_name: None,
+                labels: vec![],
             })
             .await;
 
@@ -674,20 +707,20 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateCaseParams {
-            id: CaseId::generate(),
-            title: "new".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: "Open".to_string(),
-            middle_name: None,
-            labels: vec![],
+                id: CaseId::generate(),
+                title: "new".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: "Open".to_string(),
+                middle_name: None,
+                labels: vec![],
             })
             .await;
 
@@ -713,7 +746,8 @@ mod tests {
             status: Status::Open,
             middle_name: None,
             labels: vec![],
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockCaseRepository::new();
         mock_repo
@@ -726,20 +760,20 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateCaseParams {
-            id: entity_id,
-            title: "".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: "Open".to_string(),
-            middle_name: None,
-            labels: vec![],
+                id: entity_id,
+                title: "".to_string(),
+                summary: None,
+                views: None,
+                ratio: None,
+                urgent: None,
+                due_at: None,
+                opened_at: Utc::now(),
+                tags: vec![],
+                scores: vec![],
+                meta: HashMap::new(),
+                status: "Open".to_string(),
+                middle_name: None,
+                labels: vec![],
             })
             .await;
 
@@ -812,12 +846,12 @@ mod tests {
 }
 
 === business/src/domain/case/model.rs ===
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-use std::collections::HashMap;
-use super::value_objects::Status;
-use super::value_objects::MiddleName;
 use super::value_objects::Label;
+use super::value_objects::MiddleName;
+use super::value_objects::Status;
+use chrono::{DateTime, Utc};
+use std::collections::HashMap;
+use uuid::Uuid;
 
 use super::errors::CaseError;
 
@@ -943,7 +977,6 @@ mod tests {
         assert_eq!(result.unwrap().title, "example");
     }
 
-
     #[test]
     fn should_reject_case_when_title_is_empty() {
         let result = Case::new(CaseProps {
@@ -992,10 +1025,7 @@ mod tests {
     fn should_reject_case_when_status_is_invalid() {
         let result = "InvalidVariant".parse::<Status>();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "case.invalid_status"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "case.invalid_status");
     }
 }
 
@@ -1291,14 +1321,14 @@ impl Label {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod greeting {
-    pub mod errors;
-    pub mod model;
-    pub mod repository;
-    pub mod use_cases {
-      pub mod get_greeting;
+    pub mod greeting {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod get_greeting;
+        }
     }
-  }
 
     pub mod case {
         pub mod errors;
@@ -1306,26 +1336,26 @@ pub mod domain {
         pub mod repository;
         pub mod use_cases {
             pub mod create_case;
+            pub mod delete_case;
             pub mod get_case;
             pub mod list_cases;
             pub mod update_case;
-            pub mod delete_case;
         }
-    
+
         pub mod value_objects;
-}
+    }
 }
 pub mod application {
-  pub mod greeting {
-    pub mod get_greeting;
-  }
+    pub mod greeting {
+        pub mod get_greeting;
+    }
 
     pub mod case {
         pub mod create_case;
+        pub mod delete_case;
         pub mod get_case;
         pub mod list_cases;
         pub mod update_case;
-        pub mod delete_case;
     }
 }
 
@@ -1339,11 +1369,11 @@ pub mod tests {
 === business/src/tests/mothers/case_mother.rs ===
 use crate::domain::case::model::Case;
 use crate::domain::case::model::CaseProps;
+use crate::domain::case::value_objects::Label;
+use crate::domain::case::value_objects::MiddleName;
+use crate::domain::case::value_objects::Status;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use crate::domain::case::value_objects::Status;
-use crate::domain::case::value_objects::MiddleName;
-use crate::domain::case::value_objects::Label;
 
 pub struct CaseMother {
     title: Option<String>,
@@ -1363,7 +1393,21 @@ pub struct CaseMother {
 
 impl CaseMother {
     pub fn new() -> Self {
-        Self { title: None, summary: None, views: None, ratio: None, urgent: None, due_at: None, opened_at: None, tags: None, scores: None, meta: None, status: None, middle_name: None, labels: None }
+        Self {
+            title: None,
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: None,
+            tags: None,
+            scores: None,
+            meta: None,
+            status: None,
+            middle_name: None,
+            labels: None,
+        }
     }
 
     pub fn with_title(mut self, title: &str) -> Self {
@@ -1534,10 +1578,10 @@ pub mod case {
 }
 
 === presentation/src/api.rs ===
+pub mod case;
 pub mod error;
 pub mod greeting;
 pub mod tags;
-pub mod case;
 
 === presentation/src/api/case.rs ===
 pub mod dto;
@@ -1547,11 +1591,11 @@ pub mod routes;
 
 === presentation/src/api/case/dto.rs ===
 use business::domain::case::model::Case;
+use chrono::{DateTime, Utc};
 use poem_openapi::Object;
 use puerto_core::Page;
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1588,7 +1632,11 @@ impl CaseDto {
             meta: entity.meta.clone(),
             status: entity.status.as_str().to_string(),
             middle_name: entity.middle_name.as_ref().map(|v| v.value().to_string()),
-            labels: entity.labels.iter().map(|v| v.value().to_string()).collect::<Vec<_>>(),
+            labels: entity
+                .labels
+                .iter()
+                .map(|v| v.value().to_string())
+                .collect::<Vec<_>>(),
         }
     }
 }
@@ -1610,7 +1658,6 @@ pub struct CreateCaseRequest {
     pub middle_name: Option<String>,
     pub labels: Vec<String>,
 }
-
 
 /// One page of Cases: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
@@ -1651,7 +1698,6 @@ pub struct UpdateCaseRequest {
     pub labels: Vec<String>,
 }
 
-
 === presentation/src/api/case/error_mapper.rs ===
 use business::domain::case::errors::CaseError;
 use poem::http::StatusCode;
@@ -1684,7 +1730,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = CaseError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            CaseError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1924,15 +1971,12 @@ use poem_openapi::{
 use puerto_core::PageRequest;
 use uuid::Uuid;
 
+use crate::api::case::dto::{CaseDto, CasePageDto, CreateCaseRequest, UpdateCaseRequest};
+use crate::api::case::responses::{
+    CreateCaseResponse, DeleteCaseResponse, GetCaseResponse, ListCasesResponse, UpdateCaseResponse,
+};
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::case::dto::{
-    CreateCaseRequest, UpdateCaseRequest, CaseDto, CasePageDto,
-};
-use crate::api::case::responses::{
-    CreateCaseResponse, DeleteCaseResponse, GetCaseResponse, ListCasesResponse,
-    UpdateCaseResponse,
-};
 
 /// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct CaseApi {
@@ -1981,7 +2025,9 @@ impl CaseApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetCaseResponse {
         match self
             .get_case
-            .execute(GetCaseParams { id: CaseId::from_uuid(id.0) })
+            .execute(GetCaseParams {
+                id: CaseId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetCaseResponse::Ok(Json(CaseDto::from_domain(&entity))),
@@ -1995,7 +2041,11 @@ impl CaseApi {
 
     /// List Cases, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/cases", method = "get", tag = "ApiTags::Case")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListCasesResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListCasesResponse {
         match self
             .list_cases
             .execute(ListCasesParams {
@@ -2049,7 +2099,9 @@ impl CaseApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteCaseResponse {
         match self
             .delete_case
-            .execute(DeleteCaseParams { id: CaseId::from_uuid(id.0) })
+            .execute(DeleteCaseParams {
+                id: CaseId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeleteCaseResponse::NoContent,
@@ -2071,10 +2123,10 @@ mod tests {
         update_case::mocks::MockUpdateCaseUseCase,
     };
     use business::tests::mothers::case_mother::CaseMother;
+    use chrono::Utc;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
     use puerto_core::Page;
-    use chrono::Utc;
     use std::collections::HashMap;
 
     use super::*;
@@ -2147,7 +2199,10 @@ mod tests {
     async fn should_respond_201_when_case_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(CaseMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(CaseMother::random()));
 
         // Act
         let response = mocks
@@ -2186,7 +2241,10 @@ mod tests {
     async fn should_respond_200_when_case_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(CaseMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(CaseMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -2199,7 +2257,10 @@ mod tests {
     async fn should_respond_404_when_case_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(CaseError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(CaseError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -2249,7 +2310,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(CaseError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(CaseError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/cases").send().await;
@@ -2262,7 +2326,10 @@ mod tests {
     async fn should_respond_200_when_case_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(CaseMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(CaseMother::random()));
 
         // Act
         let response = mocks
@@ -2280,7 +2347,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_case() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(CaseError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(CaseError::NotFound));
 
         // Act
         let response = mocks
@@ -2311,7 +2381,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_case() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(CaseError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(CaseError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -2335,40 +2408,62 @@ pub enum ApiTags {
 // AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
 use std::sync::Arc;
 
-use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::case::create_case::CreateCaseUseCaseImpl;
+use business::application::case::delete_case::DeleteCaseUseCaseImpl;
 use business::application::case::get_case::GetCaseUseCaseImpl;
 use business::application::case::list_cases::ListCasesUseCaseImpl;
 use business::application::case::update_case::UpdateCaseUseCaseImpl;
-use business::application::case::delete_case::DeleteCaseUseCaseImpl;
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 
-use business::domain::greeting::repository::GreetingRepositoryTrait;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use business::domain::case::repository::CaseRepositoryTrait;
+use business::domain::greeting::repository::GreetingRepositoryTrait;
 use infrastructure::case::repository::InMemoryCaseRepository;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
 
 use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
-use crate::api::greeting::routes::GreetingApi;
 use crate::api::case::routes::CaseApi;
+use crate::api::greeting::routes::GreetingApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
+    });
     let greeting_api = GreetingApi { get_greeting };
 
     let case_repo: Arc<dyn CaseRepositoryTrait> = Arc::new(InMemoryCaseRepository::new());
-    let create_case = Arc::new(CreateCaseUseCaseImpl { repository: Arc::clone(&case_repo) });
-    let get_case = Arc::new(GetCaseUseCaseImpl { repository: Arc::clone(&case_repo) });
-    let list_cases = Arc::new(ListCasesUseCaseImpl { repository: Arc::clone(&case_repo) });
-    let update_case = Arc::new(UpdateCaseUseCaseImpl { repository: Arc::clone(&case_repo) });
-    let delete_case = Arc::new(DeleteCaseUseCaseImpl { repository: case_repo });
-    let case_api = CaseApi { create_case, get_case, list_cases, update_case, delete_case };
+    let create_case = Arc::new(CreateCaseUseCaseImpl {
+        repository: Arc::clone(&case_repo),
+    });
+    let get_case = Arc::new(GetCaseUseCaseImpl {
+        repository: Arc::clone(&case_repo),
+    });
+    let list_cases = Arc::new(ListCasesUseCaseImpl {
+        repository: Arc::clone(&case_repo),
+    });
+    let update_case = Arc::new(UpdateCaseUseCaseImpl {
+        repository: Arc::clone(&case_repo),
+    });
+    let delete_case = Arc::new(DeleteCaseUseCaseImpl {
+        repository: case_repo,
+    });
+    let case_api = CaseApi {
+        create_case,
+        get_case,
+        list_cases,
+        update_case,
+        delete_case,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, case_api)), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service((greeting_api, case_api)),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -2381,12 +2476,12 @@ fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
 mod tests {
     use super::*;
 
-    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
     use business::domain::case::use_cases::create_case::mocks::MockCreateCaseUseCase;
+    use business::domain::case::use_cases::delete_case::mocks::MockDeleteCaseUseCase;
     use business::domain::case::use_cases::get_case::mocks::MockGetCaseUseCase;
     use business::domain::case::use_cases::list_cases::mocks::MockListCasesUseCase;
     use business::domain::case::use_cases::update_case::mocks::MockUpdateCaseUseCase;
-    use business::domain::case::use_cases::delete_case::mocks::MockDeleteCaseUseCase;
+    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -2395,8 +2490,16 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
-        let case_api = CaseApi { create_case: Arc::new(MockCreateCaseUseCase::new()), get_case: Arc::new(MockGetCaseUseCase::new()), list_cases: Arc::new(MockListCasesUseCase::new()), update_case: Arc::new(MockUpdateCaseUseCase::new()), delete_case: Arc::new(MockDeleteCaseUseCase::new()) };
+        let greeting_api = GreetingApi {
+            get_greeting: Arc::new(MockGetGreetingUseCase::new()),
+        };
+        let case_api = CaseApi {
+            create_case: Arc::new(MockCreateCaseUseCase::new()),
+            get_case: Arc::new(MockGetCaseUseCase::new()),
+            list_cases: Arc::new(MockListCasesUseCase::new()),
+            update_case: Arc::new(MockUpdateCaseUseCase::new()),
+            delete_case: Arc::new(MockDeleteCaseUseCase::new()),
+        };
         let spec = openapi_service((greeting_api, case_api)).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);

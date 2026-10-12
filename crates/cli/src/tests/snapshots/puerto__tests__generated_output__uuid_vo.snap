@@ -5,8 +5,8 @@ expression: generated_output(& UUID_VO)
 === business/src/application/booking/create_booking.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::domain::booking::value_objects::TenantId;
+use async_trait::async_trait;
 
 use crate::domain::booking::{
     errors::BookingError,
@@ -23,12 +23,16 @@ pub struct CreateBookingUseCaseImpl {
 impl CreateBookingUseCaseTrait for CreateBookingUseCaseImpl {
     async fn execute(&self, params: CreateBookingParams) -> Result<Booking, BookingError> {
         tracing::info!("create_booking: start");
-let tenant_id = TenantId::new(params.tenant_id)?;
+        let tenant_id = TenantId::new(params.tenant_id)?;
         let entity = Booking::new(BookingProps {
             reference: params.reference,
             tenant_id,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_booking: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_booking: repository failed"))?;
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_booking: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_booking: repository failed"))?;
         tracing::info!(id = %entity.id, "create_booking: done");
         Ok(entity)
     }
@@ -40,7 +44,6 @@ mod tests {
     use crate::domain::booking::repository::mocks::MockBookingRepository;
     use puerto_core::RepositoryError;
     use uuid::Uuid;
-
 
     #[tokio::test]
     async fn should_create_booking_when_fields_are_valid() {
@@ -54,8 +57,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateBookingParams {
-            reference: "example".to_string(),
-            tenant_id: Uuid::new_v4(),
+                reference: "example".to_string(),
+                tenant_id: Uuid::new_v4(),
             })
             .await;
 
@@ -78,8 +81,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateBookingParams {
-            reference: "example".to_string(),
-            tenant_id: Uuid::new_v4(),
+                reference: "example".to_string(),
+                tenant_id: Uuid::new_v4(),
             })
             .await;
 
@@ -99,8 +102,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateBookingParams {
-            reference: "".to_string(),
-            tenant_id: Uuid::new_v4(),
+                reference: "".to_string(),
+                tenant_id: Uuid::new_v4(),
             })
             .await;
 
@@ -146,7 +149,10 @@ impl DeleteBookingUseCaseTrait for DeleteBookingUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_booking: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_booking: repository failed"))?;
         Ok(())
     }
 }
@@ -154,20 +160,20 @@ impl DeleteBookingUseCaseTrait for DeleteBookingUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::booking::value_objects::TenantId;
     use crate::domain::booking::{
         model::{Booking, BookingId, BookingProps},
         repository::mocks::MockBookingRepository,
     };
     use uuid::Uuid;
-    use crate::domain::booking::value_objects::TenantId;
-
 
     #[tokio::test]
     async fn should_soft_delete_booking_when_id_exists() {
         let entity = Booking::new(BookingProps {
             reference: "example".to_string(),
             tenant_id: TenantId::new(Uuid::new_v4()).expect("valid TenantId"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockBookingRepository::new();
         mock_repo
@@ -194,7 +200,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteBookingParams { id: BookingId::generate() })
+            .execute(DeleteBookingParams {
+                id: BookingId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -222,7 +230,11 @@ pub struct GetBookingUseCaseImpl {
 impl GetBookingUseCaseTrait for GetBookingUseCaseImpl {
     async fn execute(&self, params: GetBookingParams) -> Result<Booking, BookingError> {
         tracing::info!(id = %params.id, "get_booking: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_booking: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_booking: repository failed"))?;
         result.ok_or_else(|| {
             let err = BookingError::NotFound;
             tracing::warn!(error = %err, "get_booking: rejected");
@@ -234,21 +246,21 @@ impl GetBookingUseCaseTrait for GetBookingUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::booking::value_objects::TenantId;
     use crate::domain::booking::{
         model::{Booking, BookingId, BookingProps},
         repository::mocks::MockBookingRepository,
     };
     use puerto_core::RepositoryError;
     use uuid::Uuid;
-    use crate::domain::booking::value_objects::TenantId;
-
 
     #[tokio::test]
     async fn should_return_booking_when_id_exists() {
         let entity = Booking::new(BookingProps {
             reference: "example".to_string(),
             tenant_id: TenantId::new(Uuid::new_v4()).expect("valid TenantId"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockBookingRepository::new();
         mock_repo
@@ -273,7 +285,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetBookingParams { id: BookingId::generate() })
+            .execute(GetBookingParams {
+                id: BookingId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -291,7 +305,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetBookingParams { id: BookingId::generate() })
+            .execute(GetBookingParams {
+                id: BookingId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -319,7 +335,11 @@ pub struct ListBookingsUseCaseImpl {
 #[async_trait]
 impl ListBookingsUseCaseTrait for ListBookingsUseCaseImpl {
     async fn execute(&self, params: ListBookingsParams) -> Result<Page<Booking>, BookingError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_bookings: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_bookings: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -331,26 +351,27 @@ impl ListBookingsUseCaseTrait for ListBookingsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
+    use crate::domain::booking::value_objects::TenantId;
     use crate::domain::booking::{
         model::{Booking, BookingProps},
         repository::mocks::MockBookingRepository,
     };
+    use puerto_core::PageRequest;
     use uuid::Uuid;
-    use crate::domain::booking::value_objects::TenantId;
-
 
     #[tokio::test]
     async fn should_return_the_page_of_bookings() {
         let entities = vec![
             Booking::new(BookingProps {
-            reference: "first".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4()).expect("valid TenantId"),
-        }).unwrap(),
+                reference: "first".to_string(),
+                tenant_id: TenantId::new(Uuid::new_v4()).expect("valid TenantId"),
+            })
+            .unwrap(),
             Booking::new(BookingProps {
-            reference: "second".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4()).expect("valid TenantId"),
-        }).unwrap(),
+                reference: "second".to_string(),
+                tenant_id: TenantId::new(Uuid::new_v4()).expect("valid TenantId"),
+            })
+            .unwrap(),
         ];
         let mut mock_repo = MockBookingRepository::new();
         mock_repo
@@ -361,7 +382,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListBookingsParams { page: PageRequest::default() })
+            .execute(ListBookingsParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -380,7 +403,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListBookingsParams { page: PageRequest::default() })
+            .execute(ListBookingsParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -400,7 +425,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListBookingsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListBookingsParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -410,8 +437,8 @@ mod tests {
 === business/src/application/booking/update_booking.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::domain::booking::value_objects::TenantId;
+use async_trait::async_trait;
 
 use crate::domain::booking::{
     errors::BookingError,
@@ -443,11 +470,14 @@ impl UpdateBookingUseCaseTrait for UpdateBookingUseCaseImpl {
             tracing::warn!(error = %err, "update_booking: rejected");
             return Err(err);
         }
-let tenant_id = TenantId::new(params.tenant_id)?;
+        let tenant_id = TenantId::new(params.tenant_id)?;
         entity.reference = params.reference;
         entity.tenant_id = tenant_id;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_booking: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_booking: repository failed"))?;
         Ok(entity)
     }
 }
@@ -455,13 +485,12 @@ let tenant_id = TenantId::new(params.tenant_id)?;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::booking::value_objects::TenantId;
     use crate::domain::booking::{
         model::{Booking, BookingId, BookingProps},
         repository::mocks::MockBookingRepository,
     };
     use uuid::Uuid;
-    use crate::domain::booking::value_objects::TenantId;
-
 
     #[tokio::test]
     async fn should_update_booking_when_params_are_valid() {
@@ -469,7 +498,8 @@ mod tests {
         let entity = Booking::new(BookingProps {
             reference: "original".to_string(),
             tenant_id: TenantId::new(Uuid::new_v4()).expect("valid TenantId"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockBookingRepository::new();
         mock_repo
@@ -483,9 +513,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateBookingParams {
-            id: entity_id,
-            reference: "updated".to_string(),
-            tenant_id: Uuid::new_v4(),
+                id: entity_id,
+                reference: "updated".to_string(),
+                tenant_id: Uuid::new_v4(),
             })
             .await;
 
@@ -505,9 +535,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateBookingParams {
-            id: BookingId::generate(),
-            reference: "new".to_string(),
-            tenant_id: Uuid::new_v4(),
+                id: BookingId::generate(),
+                reference: "new".to_string(),
+                tenant_id: Uuid::new_v4(),
             })
             .await;
 
@@ -522,7 +552,8 @@ mod tests {
         let entity = Booking::new(BookingProps {
             reference: "original".to_string(),
             tenant_id: TenantId::new(Uuid::new_v4()).expect("valid TenantId"),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockBookingRepository::new();
         mock_repo
@@ -535,9 +566,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateBookingParams {
-            id: entity_id,
-            reference: "".to_string(),
-            tenant_id: Uuid::new_v4(),
+                id: entity_id,
+                reference: "".to_string(),
+                tenant_id: Uuid::new_v4(),
             })
             .await;
 
@@ -606,9 +637,9 @@ mod tests {
 }
 
 === business/src/domain/booking/model.rs ===
+use super::value_objects::TenantId;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use super::value_objects::TenantId;
 
 use super::errors::BookingError;
 
@@ -689,7 +720,6 @@ mod tests {
         });
         assert_eq!(result.unwrap().reference, "example");
     }
-
 
     #[test]
     fn should_reject_booking_when_reference_is_empty() {
@@ -931,14 +961,14 @@ impl TenantId {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod greeting {
-    pub mod errors;
-    pub mod model;
-    pub mod repository;
-    pub mod use_cases {
-      pub mod get_greeting;
+    pub mod greeting {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod get_greeting;
+        }
     }
-  }
 
     pub mod booking {
         pub mod errors;
@@ -946,26 +976,26 @@ pub mod domain {
         pub mod repository;
         pub mod use_cases {
             pub mod create_booking;
+            pub mod delete_booking;
             pub mod get_booking;
             pub mod list_bookings;
             pub mod update_booking;
-            pub mod delete_booking;
         }
-    
+
         pub mod value_objects;
-}
+    }
 }
 pub mod application {
-  pub mod greeting {
-    pub mod get_greeting;
-  }
+    pub mod greeting {
+        pub mod get_greeting;
+    }
 
     pub mod booking {
         pub mod create_booking;
+        pub mod delete_booking;
         pub mod get_booking;
         pub mod list_bookings;
         pub mod update_booking;
-        pub mod delete_booking;
     }
 }
 
@@ -979,8 +1009,8 @@ pub mod tests {
 === business/src/tests/mothers/booking_mother.rs ===
 use crate::domain::booking::model::Booking;
 use crate::domain::booking::model::BookingProps;
-use uuid::Uuid;
 use crate::domain::booking::value_objects::TenantId;
+use uuid::Uuid;
 
 pub struct BookingMother {
     reference: Option<String>,
@@ -989,7 +1019,10 @@ pub struct BookingMother {
 
 impl BookingMother {
     pub fn new() -> Self {
-        Self { reference: None, tenant_id: None }
+        Self {
+            reference: None,
+            tenant_id: None,
+        }
     }
 
     pub fn with_reference(mut self, reference: &str) -> Self {
@@ -1010,7 +1043,9 @@ impl BookingMother {
     pub fn build(self) -> Booking {
         Booking::new(BookingProps {
             reference: self.reference.unwrap_or_else(|| "example".to_string()),
-            tenant_id: self.tenant_id.unwrap_or_else(|| TenantId::new(Uuid::new_v4()).expect("valid TenantId")),
+            tenant_id: self
+                .tenant_id
+                .unwrap_or_else(|| TenantId::new(Uuid::new_v4()).expect("valid TenantId")),
         })
         .expect("BookingMother: failed to build valid Booking")
     }
@@ -1018,7 +1053,9 @@ impl BookingMother {
     pub fn build_props(self) -> BookingProps {
         BookingProps {
             reference: self.reference.unwrap_or_else(|| "example".to_string()),
-            tenant_id: self.tenant_id.unwrap_or_else(|| TenantId::new(Uuid::new_v4()).expect("valid TenantId")),
+            tenant_id: self
+                .tenant_id
+                .unwrap_or_else(|| TenantId::new(Uuid::new_v4()).expect("valid TenantId")),
         }
     }
 
@@ -1083,10 +1120,10 @@ pub mod booking {
 }
 
 === presentation/src/api.rs ===
+pub mod booking;
 pub mod error;
 pub mod greeting;
 pub mod tags;
-pub mod booking;
 
 === presentation/src/api/booking.rs ===
 pub mod dto;
@@ -1125,7 +1162,6 @@ pub struct CreateBookingRequest {
     pub tenant_id: Uuid,
 }
 
-
 /// One page of Bookings: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1153,7 +1189,6 @@ pub struct UpdateBookingRequest {
     pub reference: String,
     pub tenant_id: Uuid,
 }
-
 
 === presentation/src/api/booking/error_mapper.rs ===
 use business::domain::booking::errors::BookingError;
@@ -1185,7 +1220,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = BookingError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            BookingError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1405,15 +1441,15 @@ use poem_openapi::{
 use puerto_core::PageRequest;
 use uuid::Uuid;
 
-use crate::api::error::IntoErrorResponse;
-use crate::api::tags::ApiTags;
 use crate::api::booking::dto::{
-    CreateBookingRequest, UpdateBookingRequest, BookingDto, BookingPageDto,
+    BookingDto, BookingPageDto, CreateBookingRequest, UpdateBookingRequest,
 };
 use crate::api::booking::responses::{
     CreateBookingResponse, DeleteBookingResponse, GetBookingResponse, ListBookingsResponse,
     UpdateBookingResponse,
 };
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
 
 /// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct BookingApi {
@@ -1451,7 +1487,9 @@ impl BookingApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetBookingResponse {
         match self
             .get_booking
-            .execute(GetBookingParams { id: BookingId::from_uuid(id.0) })
+            .execute(GetBookingParams {
+                id: BookingId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetBookingResponse::Ok(Json(BookingDto::from_domain(&entity))),
@@ -1465,7 +1503,11 @@ impl BookingApi {
 
     /// List Bookings, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/bookings", method = "get", tag = "ApiTags::Booking")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListBookingsResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListBookingsResponse {
         match self
             .list_bookings
             .execute(ListBookingsParams {
@@ -1484,7 +1526,11 @@ impl BookingApi {
 
     /// Update a Booking
     #[oai(path = "/bookings/:id", method = "put", tag = "ApiTags::Booking")]
-    async fn update(&self, id: Path<Uuid>, body: Json<UpdateBookingRequest>) -> UpdateBookingResponse {
+    async fn update(
+        &self,
+        id: Path<Uuid>,
+        body: Json<UpdateBookingRequest>,
+    ) -> UpdateBookingResponse {
         match self
             .update_booking
             .execute(UpdateBookingParams {
@@ -1508,7 +1554,9 @@ impl BookingApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteBookingResponse {
         match self
             .delete_booking
-            .execute(DeleteBookingParams { id: BookingId::from_uuid(id.0) })
+            .execute(DeleteBookingParams {
+                id: BookingId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeleteBookingResponse::NoContent,
@@ -1525,8 +1573,9 @@ impl BookingApi {
 mod tests {
     use business::domain::booking::errors::BookingError;
     use business::domain::booking::use_cases::{
-        create_booking::mocks::MockCreateBookingUseCase, delete_booking::mocks::MockDeleteBookingUseCase,
-        get_booking::mocks::MockGetBookingUseCase, list_bookings::mocks::MockListBookingsUseCase,
+        create_booking::mocks::MockCreateBookingUseCase,
+        delete_booking::mocks::MockDeleteBookingUseCase, get_booking::mocks::MockGetBookingUseCase,
+        list_bookings::mocks::MockListBookingsUseCase,
         update_booking::mocks::MockUpdateBookingUseCase,
     };
     use business::tests::mothers::booking_mother::BookingMother;
@@ -1582,7 +1631,10 @@ mod tests {
     async fn should_respond_201_when_booking_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(BookingMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(BookingMother::random()));
 
         // Act
         let response = mocks
@@ -1621,7 +1673,10 @@ mod tests {
     async fn should_respond_200_when_booking_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(BookingMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(BookingMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1634,7 +1689,10 @@ mod tests {
     async fn should_respond_404_when_booking_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(BookingError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(BookingError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1674,7 +1732,11 @@ mod tests {
             .returning(|params| Ok(Page::new(vec![], 0, params.page)));
 
         // Act
-        let response = mocks.client().get("/bookings?limit=5&offset=10").send().await;
+        let response = mocks
+            .client()
+            .get("/bookings?limit=5&offset=10")
+            .send()
+            .await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -1684,7 +1746,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(BookingError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(BookingError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/bookings").send().await;
@@ -1697,7 +1762,10 @@ mod tests {
     async fn should_respond_200_when_booking_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(BookingMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(BookingMother::random()));
 
         // Act
         let response = mocks
@@ -1715,7 +1783,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_booking() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(BookingError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(BookingError::NotFound));
 
         // Act
         let response = mocks
@@ -1746,7 +1817,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_booking() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(BookingError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(BookingError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -1770,40 +1844,62 @@ pub enum ApiTags {
 // AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
 use std::sync::Arc;
 
-use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::booking::create_booking::CreateBookingUseCaseImpl;
+use business::application::booking::delete_booking::DeleteBookingUseCaseImpl;
 use business::application::booking::get_booking::GetBookingUseCaseImpl;
 use business::application::booking::list_bookings::ListBookingsUseCaseImpl;
 use business::application::booking::update_booking::UpdateBookingUseCaseImpl;
-use business::application::booking::delete_booking::DeleteBookingUseCaseImpl;
+use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 
-use business::domain::greeting::repository::GreetingRepositoryTrait;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use business::domain::booking::repository::BookingRepositoryTrait;
+use business::domain::greeting::repository::GreetingRepositoryTrait;
 use infrastructure::booking::repository::InMemoryBookingRepository;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
 
 use poem::Endpoint;
 use poem_openapi::OpenApiService;
 
-use crate::api::greeting::routes::GreetingApi;
 use crate::api::booking::routes::BookingApi;
+use crate::api::greeting::routes::GreetingApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
+    });
     let greeting_api = GreetingApi { get_greeting };
 
     let booking_repo: Arc<dyn BookingRepositoryTrait> = Arc::new(InMemoryBookingRepository::new());
-    let create_booking = Arc::new(CreateBookingUseCaseImpl { repository: Arc::clone(&booking_repo) });
-    let get_booking = Arc::new(GetBookingUseCaseImpl { repository: Arc::clone(&booking_repo) });
-    let list_bookings = Arc::new(ListBookingsUseCaseImpl { repository: Arc::clone(&booking_repo) });
-    let update_booking = Arc::new(UpdateBookingUseCaseImpl { repository: Arc::clone(&booking_repo) });
-    let delete_booking = Arc::new(DeleteBookingUseCaseImpl { repository: booking_repo });
-    let booking_api = BookingApi { create_booking, get_booking, list_bookings, update_booking, delete_booking };
+    let create_booking = Arc::new(CreateBookingUseCaseImpl {
+        repository: Arc::clone(&booking_repo),
+    });
+    let get_booking = Arc::new(GetBookingUseCaseImpl {
+        repository: Arc::clone(&booking_repo),
+    });
+    let list_bookings = Arc::new(ListBookingsUseCaseImpl {
+        repository: Arc::clone(&booking_repo),
+    });
+    let update_booking = Arc::new(UpdateBookingUseCaseImpl {
+        repository: Arc::clone(&booking_repo),
+    });
+    let delete_booking = Arc::new(DeleteBookingUseCaseImpl {
+        repository: booking_repo,
+    });
+    let booking_api = BookingApi {
+        create_booking,
+        get_booking,
+        list_bookings,
+        update_booking,
+        delete_booking,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, booking_api)), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service((greeting_api, booking_api)),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -1816,12 +1912,12 @@ fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
 mod tests {
     use super::*;
 
-    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
     use business::domain::booking::use_cases::create_booking::mocks::MockCreateBookingUseCase;
+    use business::domain::booking::use_cases::delete_booking::mocks::MockDeleteBookingUseCase;
     use business::domain::booking::use_cases::get_booking::mocks::MockGetBookingUseCase;
     use business::domain::booking::use_cases::list_bookings::mocks::MockListBookingsUseCase;
     use business::domain::booking::use_cases::update_booking::mocks::MockUpdateBookingUseCase;
-    use business::domain::booking::use_cases::delete_booking::mocks::MockDeleteBookingUseCase;
+    use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -1830,8 +1926,16 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
-        let booking_api = BookingApi { create_booking: Arc::new(MockCreateBookingUseCase::new()), get_booking: Arc::new(MockGetBookingUseCase::new()), list_bookings: Arc::new(MockListBookingsUseCase::new()), update_booking: Arc::new(MockUpdateBookingUseCase::new()), delete_booking: Arc::new(MockDeleteBookingUseCase::new()) };
+        let greeting_api = GreetingApi {
+            get_greeting: Arc::new(MockGetGreetingUseCase::new()),
+        };
+        let booking_api = BookingApi {
+            create_booking: Arc::new(MockCreateBookingUseCase::new()),
+            get_booking: Arc::new(MockGetBookingUseCase::new()),
+            list_bookings: Arc::new(MockListBookingsUseCase::new()),
+            update_booking: Arc::new(MockUpdateBookingUseCase::new()),
+            delete_booking: Arc::new(MockDeleteBookingUseCase::new()),
+        };
         let spec = openapi_service((greeting_api, booking_api)).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);

@@ -30,8 +30,12 @@ impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
             released_at: params.released_at,
             meta: params.meta,
             category_id: params.category_id,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_product: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_product: repository failed"))?;
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_product: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_product: repository failed"))?;
         tracing::info!(id = %entity.id, "create_product: done");
         Ok(entity)
     }
@@ -41,11 +45,10 @@ impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::product::repository::mocks::MockProductRepository;
-    use puerto_core::RepositoryError;
     use chrono::Utc;
+    use puerto_core::RepositoryError;
     use std::collections::HashMap;
     use uuid::Uuid;
-
 
     #[tokio::test]
     async fn should_create_product_when_fields_are_valid() {
@@ -59,13 +62,13 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateProductParams {
-            title: "example".to_string(),
-            price: 42,
-            in_stock: true,
-            rate: 1.5,
-            released_at: Utc::now(),
-            meta: HashMap::new(),
-            category_id: Uuid::new_v4(),
+                title: "example".to_string(),
+                price: 42,
+                in_stock: true,
+                rate: 1.5,
+                released_at: Utc::now(),
+                meta: HashMap::new(),
+                category_id: Uuid::new_v4(),
             })
             .await;
 
@@ -88,13 +91,13 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateProductParams {
-            title: "example".to_string(),
-            price: 42,
-            in_stock: true,
-            rate: 1.5,
-            released_at: Utc::now(),
-            meta: HashMap::new(),
-            category_id: Uuid::new_v4(),
+                title: "example".to_string(),
+                price: 42,
+                in_stock: true,
+                rate: 1.5,
+                released_at: Utc::now(),
+                meta: HashMap::new(),
+                category_id: Uuid::new_v4(),
             })
             .await;
 
@@ -114,13 +117,13 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateProductParams {
-            title: "".to_string(),
-            price: 42,
-            in_stock: true,
-            rate: 1.5,
-            released_at: Utc::now(),
-            meta: HashMap::new(),
-            category_id: Uuid::new_v4(),
+                title: "".to_string(),
+                price: 42,
+                in_stock: true,
+                rate: 1.5,
+                released_at: Utc::now(),
+                meta: HashMap::new(),
+                category_id: Uuid::new_v4(),
             })
             .await;
 
@@ -166,7 +169,10 @@ impl DeleteProductUseCaseTrait for DeleteProductUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_product: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_product: repository failed"))?;
         Ok(())
     }
 }
@@ -182,7 +188,6 @@ mod tests {
     use std::collections::HashMap;
     use uuid::Uuid;
 
-
     #[tokio::test]
     async fn should_soft_delete_product_when_id_exists() {
         let entity = Product::new(ProductProps {
@@ -193,7 +198,8 @@ mod tests {
             released_at: Utc::now(),
             meta: HashMap::new(),
             category_id: Uuid::new_v4(),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockProductRepository::new();
         mock_repo
@@ -220,7 +226,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteProductParams { id: ProductId::generate() })
+            .execute(DeleteProductParams {
+                id: ProductId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -248,7 +256,11 @@ pub struct GetProductUseCaseImpl {
 impl GetProductUseCaseTrait for GetProductUseCaseImpl {
     async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError> {
         tracing::info!(id = %params.id, "get_product: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_product: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_product: repository failed"))?;
         result.ok_or_else(|| {
             let err = ProductError::NotFound;
             tracing::warn!(error = %err, "get_product: rejected");
@@ -264,11 +276,10 @@ mod tests {
         model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
-    use puerto_core::RepositoryError;
     use chrono::Utc;
+    use puerto_core::RepositoryError;
     use std::collections::HashMap;
     use uuid::Uuid;
-
 
     #[tokio::test]
     async fn should_return_product_when_id_exists() {
@@ -280,7 +291,8 @@ mod tests {
             released_at: Utc::now(),
             meta: HashMap::new(),
             category_id: Uuid::new_v4(),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockProductRepository::new();
         mock_repo
@@ -305,7 +317,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetProductParams { id: ProductId::generate() })
+            .execute(GetProductParams {
+                id: ProductId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -323,7 +337,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetProductParams { id: ProductId::generate() })
+            .execute(GetProductParams {
+                id: ProductId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -351,7 +367,11 @@ pub struct ListProductsUseCaseImpl {
 #[async_trait]
 impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
     async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_products: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_products: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -363,37 +383,38 @@ impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
     use crate::domain::product::{
         model::{Product, ProductProps},
         repository::mocks::MockProductRepository,
     };
     use chrono::Utc;
+    use puerto_core::PageRequest;
     use std::collections::HashMap;
     use uuid::Uuid;
-
 
     #[tokio::test]
     async fn should_return_the_page_of_products() {
         let entities = vec![
             Product::new(ProductProps {
-            title: "first".to_string(),
-            price: 42,
-            in_stock: true,
-            rate: 1.5,
-            released_at: Utc::now(),
-            meta: HashMap::new(),
-            category_id: Uuid::new_v4(),
-        }).unwrap(),
+                title: "first".to_string(),
+                price: 42,
+                in_stock: true,
+                rate: 1.5,
+                released_at: Utc::now(),
+                meta: HashMap::new(),
+                category_id: Uuid::new_v4(),
+            })
+            .unwrap(),
             Product::new(ProductProps {
-            title: "second".to_string(),
-            price: 42,
-            in_stock: true,
-            rate: 1.5,
-            released_at: Utc::now(),
-            meta: HashMap::new(),
-            category_id: Uuid::new_v4(),
-        }).unwrap(),
+                title: "second".to_string(),
+                price: 42,
+                in_stock: true,
+                rate: 1.5,
+                released_at: Utc::now(),
+                meta: HashMap::new(),
+                category_id: Uuid::new_v4(),
+            })
+            .unwrap(),
         ];
         let mut mock_repo = MockProductRepository::new();
         mock_repo
@@ -404,7 +425,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListProductsParams { page: PageRequest::default() })
+            .execute(ListProductsParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -423,7 +446,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListProductsParams { page: PageRequest::default() })
+            .execute(ListProductsParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -443,7 +468,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListProductsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListProductsParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -493,7 +520,10 @@ impl UpdateProductUseCaseTrait for UpdateProductUseCaseImpl {
         entity.meta = params.meta;
         entity.category_id = params.category_id;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_product: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_product: repository failed"))?;
         Ok(entity)
     }
 }
@@ -509,7 +539,6 @@ mod tests {
     use std::collections::HashMap;
     use uuid::Uuid;
 
-
     #[tokio::test]
     async fn should_update_product_when_params_are_valid() {
         // Arrange
@@ -521,7 +550,8 @@ mod tests {
             released_at: Utc::now(),
             meta: HashMap::new(),
             category_id: Uuid::new_v4(),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockProductRepository::new();
         mock_repo
@@ -535,14 +565,14 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateProductParams {
-            id: entity_id,
-            title: "updated".to_string(),
-            price: 42,
-            in_stock: true,
-            rate: 1.5,
-            released_at: Utc::now(),
-            meta: HashMap::new(),
-            category_id: Uuid::new_v4(),
+                id: entity_id,
+                title: "updated".to_string(),
+                price: 42,
+                in_stock: true,
+                rate: 1.5,
+                released_at: Utc::now(),
+                meta: HashMap::new(),
+                category_id: Uuid::new_v4(),
             })
             .await;
 
@@ -562,14 +592,14 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateProductParams {
-            id: ProductId::generate(),
-            title: "new".to_string(),
-            price: 42,
-            in_stock: true,
-            rate: 1.5,
-            released_at: Utc::now(),
-            meta: HashMap::new(),
-            category_id: Uuid::new_v4(),
+                id: ProductId::generate(),
+                title: "new".to_string(),
+                price: 42,
+                in_stock: true,
+                rate: 1.5,
+                released_at: Utc::now(),
+                meta: HashMap::new(),
+                category_id: Uuid::new_v4(),
             })
             .await;
 
@@ -589,7 +619,8 @@ mod tests {
             released_at: Utc::now(),
             meta: HashMap::new(),
             category_id: Uuid::new_v4(),
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockProductRepository::new();
         mock_repo
@@ -602,14 +633,14 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateProductParams {
-            id: entity_id,
-            title: "".to_string(),
-            price: 42,
-            in_stock: true,
-            rate: 1.5,
-            released_at: Utc::now(),
-            meta: HashMap::new(),
-            category_id: Uuid::new_v4(),
+                id: entity_id,
+                title: "".to_string(),
+                price: 42,
+                in_stock: true,
+                rate: 1.5,
+                released_at: Utc::now(),
+                meta: HashMap::new(),
+                category_id: Uuid::new_v4(),
             })
             .await;
 
@@ -677,8 +708,8 @@ mod tests {
 
 === business/src/domain/product/model.rs ===
 use chrono::{DateTime, Utc};
-use uuid::Uuid;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 use super::errors::ProductError;
 
@@ -779,7 +810,6 @@ mod tests {
         });
         assert_eq!(result.unwrap().title, "example");
     }
-
 
     #[test]
     fn should_reject_product_when_title_is_empty() {
@@ -1028,14 +1058,14 @@ pub mod mocks {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod greeting {
-    pub mod errors;
-    pub mod model;
-    pub mod repository;
-    pub mod use_cases {
-      pub mod get_greeting;
+    pub mod greeting {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod get_greeting;
+        }
     }
-  }
 
     pub mod product {
         pub mod errors;
@@ -1043,24 +1073,24 @@ pub mod domain {
         pub mod repository;
         pub mod use_cases {
             pub mod create_product;
+            pub mod delete_product;
             pub mod get_product;
             pub mod list_products;
             pub mod update_product;
-            pub mod delete_product;
         }
     }
 }
 pub mod application {
-  pub mod greeting {
-    pub mod get_greeting;
-  }
+    pub mod greeting {
+        pub mod get_greeting;
+    }
 
     pub mod product {
         pub mod create_product;
+        pub mod delete_product;
         pub mod get_product;
         pub mod list_products;
         pub mod update_product;
-        pub mod delete_product;
     }
 }
 
@@ -1090,7 +1120,15 @@ pub struct ProductMother {
 
 impl ProductMother {
     pub fn new() -> Self {
-        Self { title: None, price: None, in_stock: None, rate: None, released_at: None, meta: None, category_id: None }
+        Self {
+            title: None,
+            price: None,
+            in_stock: None,
+            rate: None,
+            released_at: None,
+            meta: None,
+            category_id: None,
+        }
     }
 
     pub fn with_title(mut self, title: &str) -> Self {
@@ -1221,8 +1259,8 @@ impl ProductRepositoryTrait for InMemoryProductRepository {
 === presentation/src/api.rs ===
 pub mod error;
 pub mod greeting;
-pub mod tags;
 pub mod product;
+pub mod tags;
 
 === presentation/src/api/product.rs ===
 pub mod dto;
@@ -1232,11 +1270,11 @@ pub mod routes;
 
 === presentation/src/api/product/dto.rs ===
 use business::domain::product::model::Product;
+use chrono::{DateTime, Utc};
 use poem_openapi::Object;
 use puerto_core::Page;
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1278,7 +1316,6 @@ pub struct CreateProductRequest {
     pub category_id: Uuid,
 }
 
-
 /// One page of Products: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1312,7 +1349,6 @@ pub struct UpdateProductRequest {
     pub category_id: Uuid,
 }
 
-
 === presentation/src/api/product/error_mapper.rs ===
 use business::domain::product::errors::ProductError;
 use poem::http::StatusCode;
@@ -1342,7 +1378,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = ProductError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            ProductError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1553,14 +1590,14 @@ use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
-use crate::api::tags::ApiTags;
 use crate::api::product::dto::{
-    CreateProductRequest, UpdateProductRequest, ProductDto, ProductPageDto,
+    CreateProductRequest, ProductDto, ProductPageDto, UpdateProductRequest,
 };
 use crate::api::product::responses::{
     CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductsResponse,
     UpdateProductResponse,
 };
+use crate::api::tags::ApiTags;
 
 /// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct ProductApi {
@@ -1603,7 +1640,9 @@ impl ProductApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
         match self
             .get_product
-            .execute(GetProductParams { id: ProductId::from_uuid(id.0) })
+            .execute(GetProductParams {
+                id: ProductId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
@@ -1617,7 +1656,11 @@ impl ProductApi {
 
     /// List Products, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListProductsResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListProductsResponse {
         match self
             .list_products
             .execute(ListProductsParams {
@@ -1636,7 +1679,11 @@ impl ProductApi {
 
     /// Update a Product
     #[oai(path = "/products/:id", method = "put", tag = "ApiTags::Product")]
-    async fn update(&self, id: Path<Uuid>, body: Json<UpdateProductRequest>) -> UpdateProductResponse {
+    async fn update(
+        &self,
+        id: Path<Uuid>,
+        body: Json<UpdateProductRequest>,
+    ) -> UpdateProductResponse {
         match self
             .update_product
             .execute(UpdateProductParams {
@@ -1665,7 +1712,9 @@ impl ProductApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteProductResponse {
         match self
             .delete_product
-            .execute(DeleteProductParams { id: ProductId::from_uuid(id.0) })
+            .execute(DeleteProductParams {
+                id: ProductId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeleteProductResponse::NoContent,
@@ -1682,15 +1731,16 @@ impl ProductApi {
 mod tests {
     use business::domain::product::errors::ProductError;
     use business::domain::product::use_cases::{
-        create_product::mocks::MockCreateProductUseCase, delete_product::mocks::MockDeleteProductUseCase,
-        get_product::mocks::MockGetProductUseCase, list_products::mocks::MockListProductsUseCase,
+        create_product::mocks::MockCreateProductUseCase,
+        delete_product::mocks::MockDeleteProductUseCase, get_product::mocks::MockGetProductUseCase,
+        list_products::mocks::MockListProductsUseCase,
         update_product::mocks::MockUpdateProductUseCase,
     };
     use business::tests::mothers::product_mother::ProductMother;
+    use chrono::Utc;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
     use puerto_core::Page;
-    use chrono::Utc;
     use std::collections::HashMap;
 
     use super::*;
@@ -1751,7 +1801,10 @@ mod tests {
     async fn should_respond_201_when_product_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(ProductMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
 
         // Act
         let response = mocks
@@ -1790,7 +1843,10 @@ mod tests {
     async fn should_respond_200_when_product_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(ProductMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1803,7 +1859,10 @@ mod tests {
     async fn should_respond_404_when_product_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(ProductError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1843,7 +1902,11 @@ mod tests {
             .returning(|params| Ok(Page::new(vec![], 0, params.page)));
 
         // Act
-        let response = mocks.client().get("/products?limit=5&offset=10").send().await;
+        let response = mocks
+            .client()
+            .get("/products?limit=5&offset=10")
+            .send()
+            .await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -1853,7 +1916,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(ProductError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(ProductError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/products").send().await;
@@ -1866,7 +1932,10 @@ mod tests {
     async fn should_respond_200_when_product_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(ProductMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
 
         // Act
         let response = mocks
@@ -1884,7 +1953,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_product() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(ProductError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
 
         // Act
         let response = mocks
@@ -1915,7 +1987,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_product() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(ProductError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -1941,14 +2016,14 @@ use std::sync::Arc;
 
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::product::create_product::CreateProductUseCaseImpl;
+use business::application::product::delete_product::DeleteProductUseCaseImpl;
 use business::application::product::get_product::GetProductUseCaseImpl;
 use business::application::product::list_products::ListProductsUseCaseImpl;
 use business::application::product::update_product::UpdateProductUseCaseImpl;
-use business::application::product::delete_product::DeleteProductUseCaseImpl;
 
 use business::domain::greeting::repository::GreetingRepositoryTrait;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use business::domain::product::repository::ProductRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use infrastructure::product::repository::InMemoryProductRepository;
 
 use poem::Endpoint;
@@ -1958,21 +2033,43 @@ use crate::api::greeting::routes::GreetingApi;
 use crate::api::product::routes::ProductApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
+    });
     let greeting_api = GreetingApi { get_greeting };
 
     let product_repo: Arc<dyn ProductRepositoryTrait> = Arc::new(InMemoryProductRepository::new());
-    let create_product = Arc::new(CreateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
-    let get_product = Arc::new(GetProductUseCaseImpl { repository: Arc::clone(&product_repo) });
-    let list_products = Arc::new(ListProductsUseCaseImpl { repository: Arc::clone(&product_repo) });
-    let update_product = Arc::new(UpdateProductUseCaseImpl { repository: Arc::clone(&product_repo) });
-    let delete_product = Arc::new(DeleteProductUseCaseImpl { repository: product_repo });
-    let product_api = ProductApi { create_product, get_product, list_products, update_product, delete_product };
+    let create_product = Arc::new(CreateProductUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let get_product = Arc::new(GetProductUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let list_products = Arc::new(ListProductsUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let update_product = Arc::new(UpdateProductUseCaseImpl {
+        repository: Arc::clone(&product_repo),
+    });
+    let delete_product = Arc::new(DeleteProductUseCaseImpl {
+        repository: product_repo,
+    });
+    let product_api = ProductApi {
+        create_product,
+        get_product,
+        list_products,
+        update_product,
+        delete_product,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, product_api)), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service((greeting_api, product_api)),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -1987,10 +2084,10 @@ mod tests {
 
     use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
     use business::domain::product::use_cases::create_product::mocks::MockCreateProductUseCase;
+    use business::domain::product::use_cases::delete_product::mocks::MockDeleteProductUseCase;
     use business::domain::product::use_cases::get_product::mocks::MockGetProductUseCase;
     use business::domain::product::use_cases::list_products::mocks::MockListProductsUseCase;
     use business::domain::product::use_cases::update_product::mocks::MockUpdateProductUseCase;
-    use business::domain::product::use_cases::delete_product::mocks::MockDeleteProductUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -1999,8 +2096,16 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
-        let product_api = ProductApi { create_product: Arc::new(MockCreateProductUseCase::new()), get_product: Arc::new(MockGetProductUseCase::new()), list_products: Arc::new(MockListProductsUseCase::new()), update_product: Arc::new(MockUpdateProductUseCase::new()), delete_product: Arc::new(MockDeleteProductUseCase::new()) };
+        let greeting_api = GreetingApi {
+            get_greeting: Arc::new(MockGetGreetingUseCase::new()),
+        };
+        let product_api = ProductApi {
+            create_product: Arc::new(MockCreateProductUseCase::new()),
+            get_product: Arc::new(MockGetProductUseCase::new()),
+            list_products: Arc::new(MockListProductsUseCase::new()),
+            update_product: Arc::new(MockUpdateProductUseCase::new()),
+            delete_product: Arc::new(MockDeleteProductUseCase::new()),
+        };
         let spec = openapi_service((greeting_api, product_api)).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);

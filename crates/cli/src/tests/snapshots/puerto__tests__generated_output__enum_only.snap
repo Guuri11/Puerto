@@ -5,8 +5,8 @@ expression: generated_output(& ENUM_ONLY)
 === business/src/application/ticket/create_ticket.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::domain::ticket::value_objects::State;
+use async_trait::async_trait;
 
 use crate::domain::ticket::{
     errors::TicketError,
@@ -23,11 +23,13 @@ pub struct CreateTicketUseCaseImpl {
 impl CreateTicketUseCaseTrait for CreateTicketUseCaseImpl {
     async fn execute(&self, params: CreateTicketParams) -> Result<Ticket, TicketError> {
         tracing::info!("create_ticket: start");
-let state = params.state.parse::<State>()?;
-        let entity = Ticket::new(TicketProps {
-            state,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_ticket: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_ticket: repository failed"))?;
+        let state = params.state.parse::<State>()?;
+        let entity = Ticket::new(TicketProps { state })
+            .inspect_err(|e| tracing::warn!(error = %e, "create_ticket: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_ticket: repository failed"))?;
         tracing::info!(id = %entity.id, "create_ticket: done");
         Ok(entity)
     }
@@ -38,7 +40,6 @@ mod tests {
     use super::*;
     use crate::domain::ticket::repository::mocks::MockTicketRepository;
     use puerto_core::RepositoryError;
-
 
     #[tokio::test]
     async fn should_create_ticket_when_fields_are_valid() {
@@ -52,7 +53,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateTicketParams {
-            state: "Open".to_string(),
+                state: "Open".to_string(),
             })
             .await;
 
@@ -75,7 +76,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateTicketParams {
-            state: "Open".to_string(),
+                state: "Open".to_string(),
             })
             .await;
 
@@ -95,16 +96,13 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateTicketParams {
-            state: "".to_string(),
+                state: "".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "ticket.invalid_state"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "ticket.invalid_state");
     }
 }
 
@@ -141,7 +139,10 @@ impl DeleteTicketUseCaseTrait for DeleteTicketUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_ticket: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_ticket: repository failed"))?;
         Ok(())
     }
 }
@@ -149,18 +150,15 @@ impl DeleteTicketUseCaseTrait for DeleteTicketUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ticket::value_objects::State;
     use crate::domain::ticket::{
         model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use crate::domain::ticket::value_objects::State;
-
 
     #[tokio::test]
     async fn should_soft_delete_ticket_when_id_exists() {
-        let entity = Ticket::new(TicketProps {
-            state: State::Open,
-        }).unwrap();
+        let entity = Ticket::new(TicketProps { state: State::Open }).unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
@@ -171,9 +169,7 @@ mod tests {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case
-            .execute(DeleteTicketParams { id: entity_id })
-            .await;
+        let result = use_case.execute(DeleteTicketParams { id: entity_id }).await;
 
         assert!(result.is_ok());
     }
@@ -187,7 +183,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteTicketParams { id: TicketId::generate() })
+            .execute(DeleteTicketParams {
+                id: TicketId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -215,7 +213,11 @@ pub struct GetTicketUseCaseImpl {
 impl GetTicketUseCaseTrait for GetTicketUseCaseImpl {
     async fn execute(&self, params: GetTicketParams) -> Result<Ticket, TicketError> {
         tracing::info!(id = %params.id, "get_ticket: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_ticket: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_ticket: repository failed"))?;
         result.ok_or_else(|| {
             let err = TicketError::NotFound;
             tracing::warn!(error = %err, "get_ticket: rejected");
@@ -227,19 +229,16 @@ impl GetTicketUseCaseTrait for GetTicketUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ticket::value_objects::State;
     use crate::domain::ticket::{
         model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
     use puerto_core::RepositoryError;
-    use crate::domain::ticket::value_objects::State;
-
 
     #[tokio::test]
     async fn should_return_ticket_when_id_exists() {
-        let entity = Ticket::new(TicketProps {
-            state: State::Open,
-        }).unwrap();
+        let entity = Ticket::new(TicketProps { state: State::Open }).unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
@@ -263,7 +262,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetTicketParams { id: TicketId::generate() })
+            .execute(GetTicketParams {
+                id: TicketId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -281,7 +282,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetTicketParams { id: TicketId::generate() })
+            .execute(GetTicketParams {
+                id: TicketId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -309,7 +312,11 @@ pub struct ListTicketsUseCaseImpl {
 #[async_trait]
 impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
     async fn execute(&self, params: ListTicketsParams) -> Result<Page<Ticket>, TicketError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_tickets: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_tickets: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -321,23 +328,18 @@ impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
+    use crate::domain::ticket::value_objects::State;
     use crate::domain::ticket::{
         model::{Ticket, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use crate::domain::ticket::value_objects::State;
-
+    use puerto_core::PageRequest;
 
     #[tokio::test]
     async fn should_return_the_page_of_tickets() {
         let entities = vec![
-            Ticket::new(TicketProps {
-            state: State::Open,
-        }).unwrap(),
-            Ticket::new(TicketProps {
-            state: State::Open,
-        }).unwrap(),
+            Ticket::new(TicketProps { state: State::Open }).unwrap(),
+            Ticket::new(TicketProps { state: State::Open }).unwrap(),
         ];
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
@@ -348,7 +350,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListTicketsParams { page: PageRequest::default() })
+            .execute(ListTicketsParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -367,7 +371,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListTicketsParams { page: PageRequest::default() })
+            .execute(ListTicketsParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -387,7 +393,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListTicketsParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListTicketsParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -397,8 +405,8 @@ mod tests {
 === business/src/application/ticket/update_ticket.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::domain::ticket::value_objects::State;
+use async_trait::async_trait;
 
 use crate::domain::ticket::{
     errors::TicketError,
@@ -425,10 +433,13 @@ impl UpdateTicketUseCaseTrait for UpdateTicketUseCaseImpl {
                 tracing::warn!(error = %err, "update_ticket: rejected");
                 err
             })?;
-let state = params.state.parse::<State>()?;
+        let state = params.state.parse::<State>()?;
         entity.state = state;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_ticket: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_ticket: repository failed"))?;
         Ok(entity)
     }
 }
@@ -436,19 +447,16 @@ let state = params.state.parse::<State>()?;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ticket::value_objects::State;
     use crate::domain::ticket::{
         model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use crate::domain::ticket::value_objects::State;
-
 
     #[tokio::test]
     async fn should_update_ticket_when_params_are_valid() {
         // Arrange
-        let entity = Ticket::new(TicketProps {
-            state: State::Open,
-        }).unwrap();
+        let entity = Ticket::new(TicketProps { state: State::Open }).unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
@@ -462,8 +470,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateTicketParams {
-            id: entity_id,
-            state: "Open".to_string(),
+                id: entity_id,
+                state: "Open".to_string(),
             })
             .await;
 
@@ -483,8 +491,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateTicketParams {
-            id: TicketId::generate(),
-            state: "Open".to_string(),
+                id: TicketId::generate(),
+                state: "Open".to_string(),
             })
             .await;
 
@@ -550,9 +558,9 @@ mod tests {
 }
 
 === business/src/domain/ticket/model.rs ===
+use super::value_objects::State;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use super::value_objects::State;
 
 use super::errors::TicketError;
 
@@ -621,21 +629,15 @@ mod tests {
 
     #[test]
     fn should_create_ticket_when_fields_are_valid() {
-        let result = Ticket::new(TicketProps {
-            state: State::Open,
-        });
+        let result = Ticket::new(TicketProps { state: State::Open });
         assert!(result.is_ok());
     }
-
 
     #[test]
     fn should_reject_ticket_when_state_is_invalid() {
         let result = "InvalidVariant".parse::<State>();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "ticket.invalid_state"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "ticket.invalid_state");
     }
 }
 
@@ -865,14 +867,14 @@ impl State {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod greeting {
-    pub mod errors;
-    pub mod model;
-    pub mod repository;
-    pub mod use_cases {
-      pub mod get_greeting;
+    pub mod greeting {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod get_greeting;
+        }
     }
-  }
 
     pub mod ticket {
         pub mod errors;
@@ -880,26 +882,26 @@ pub mod domain {
         pub mod repository;
         pub mod use_cases {
             pub mod create_ticket;
+            pub mod delete_ticket;
             pub mod get_ticket;
             pub mod list_tickets;
             pub mod update_ticket;
-            pub mod delete_ticket;
         }
-    
+
         pub mod value_objects;
-}
+    }
 }
 pub mod application {
-  pub mod greeting {
-    pub mod get_greeting;
-  }
+    pub mod greeting {
+        pub mod get_greeting;
+    }
 
     pub mod ticket {
         pub mod create_ticket;
+        pub mod delete_ticket;
         pub mod get_ticket;
         pub mod list_tickets;
         pub mod update_ticket;
-        pub mod delete_ticket;
     }
 }
 
@@ -1052,7 +1054,6 @@ pub struct CreateTicketRequest {
     pub state: String,
 }
 
-
 /// One page of Tickets: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1079,7 +1080,6 @@ impl TicketPageDto {
 pub struct UpdateTicketRequest {
     pub state: String,
 }
-
 
 === presentation/src/api/ticket/error_mapper.rs ===
 use business::domain::ticket::errors::TicketError;
@@ -1111,7 +1111,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = TicketError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            TicketError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1333,9 +1334,7 @@ use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
 use crate::api::tags::ApiTags;
-use crate::api::ticket::dto::{
-    CreateTicketRequest, UpdateTicketRequest, TicketDto, TicketPageDto,
-};
+use crate::api::ticket::dto::{CreateTicketRequest, TicketDto, TicketPageDto, UpdateTicketRequest};
 use crate::api::ticket::responses::{
     CreateTicketResponse, DeleteTicketResponse, GetTicketResponse, ListTicketsResponse,
     UpdateTicketResponse,
@@ -1376,7 +1375,9 @@ impl TicketApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetTicketResponse {
         match self
             .get_ticket
-            .execute(GetTicketParams { id: TicketId::from_uuid(id.0) })
+            .execute(GetTicketParams {
+                id: TicketId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetTicketResponse::Ok(Json(TicketDto::from_domain(&entity))),
@@ -1390,7 +1391,11 @@ impl TicketApi {
 
     /// List Tickets, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/tickets", method = "get", tag = "ApiTags::Ticket")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListTicketsResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListTicketsResponse {
         match self
             .list_tickets
             .execute(ListTicketsParams {
@@ -1409,7 +1414,11 @@ impl TicketApi {
 
     /// Update a Ticket
     #[oai(path = "/tickets/:id", method = "put", tag = "ApiTags::Ticket")]
-    async fn update(&self, id: Path<Uuid>, body: Json<UpdateTicketRequest>) -> UpdateTicketResponse {
+    async fn update(
+        &self,
+        id: Path<Uuid>,
+        body: Json<UpdateTicketRequest>,
+    ) -> UpdateTicketResponse {
         match self
             .update_ticket
             .execute(UpdateTicketParams {
@@ -1432,7 +1441,9 @@ impl TicketApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteTicketResponse {
         match self
             .delete_ticket
-            .execute(DeleteTicketParams { id: TicketId::from_uuid(id.0) })
+            .execute(DeleteTicketParams {
+                id: TicketId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeleteTicketResponse::NoContent,
@@ -1449,9 +1460,9 @@ impl TicketApi {
 mod tests {
     use business::domain::ticket::errors::TicketError;
     use business::domain::ticket::use_cases::{
-        create_ticket::mocks::MockCreateTicketUseCase, delete_ticket::mocks::MockDeleteTicketUseCase,
-        get_ticket::mocks::MockGetTicketUseCase, list_tickets::mocks::MockListTicketsUseCase,
-        update_ticket::mocks::MockUpdateTicketUseCase,
+        create_ticket::mocks::MockCreateTicketUseCase,
+        delete_ticket::mocks::MockDeleteTicketUseCase, get_ticket::mocks::MockGetTicketUseCase,
+        list_tickets::mocks::MockListTicketsUseCase, update_ticket::mocks::MockUpdateTicketUseCase,
     };
     use business::tests::mothers::ticket_mother::TicketMother;
     use poem::{Route, http::StatusCode, test::TestClient};
@@ -1504,7 +1515,10 @@ mod tests {
     async fn should_respond_201_when_ticket_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(TicketMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(TicketMother::random()));
 
         // Act
         let response = mocks
@@ -1543,7 +1557,10 @@ mod tests {
     async fn should_respond_200_when_ticket_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(TicketMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(TicketMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1556,7 +1573,10 @@ mod tests {
     async fn should_respond_404_when_ticket_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(TicketError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(TicketError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1596,7 +1616,11 @@ mod tests {
             .returning(|params| Ok(Page::new(vec![], 0, params.page)));
 
         // Act
-        let response = mocks.client().get("/tickets?limit=5&offset=10").send().await;
+        let response = mocks
+            .client()
+            .get("/tickets?limit=5&offset=10")
+            .send()
+            .await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -1606,7 +1630,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(TicketError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(TicketError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/tickets").send().await;
@@ -1619,7 +1646,10 @@ mod tests {
     async fn should_respond_200_when_ticket_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(TicketMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(TicketMother::random()));
 
         // Act
         let response = mocks
@@ -1637,7 +1667,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_ticket() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(TicketError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(TicketError::NotFound));
 
         // Act
         let response = mocks
@@ -1668,7 +1701,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_ticket() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(TicketError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(TicketError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -1684,14 +1720,14 @@ use std::sync::Arc;
 
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::ticket::create_ticket::CreateTicketUseCaseImpl;
+use business::application::ticket::delete_ticket::DeleteTicketUseCaseImpl;
 use business::application::ticket::get_ticket::GetTicketUseCaseImpl;
 use business::application::ticket::list_tickets::ListTicketsUseCaseImpl;
 use business::application::ticket::update_ticket::UpdateTicketUseCaseImpl;
-use business::application::ticket::delete_ticket::DeleteTicketUseCaseImpl;
 
 use business::domain::greeting::repository::GreetingRepositoryTrait;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use business::domain::ticket::repository::TicketRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use infrastructure::ticket::repository::InMemoryTicketRepository;
 
 use poem::Endpoint;
@@ -1701,21 +1737,43 @@ use crate::api::greeting::routes::GreetingApi;
 use crate::api::ticket::routes::TicketApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
+    });
     let greeting_api = GreetingApi { get_greeting };
 
     let ticket_repo: Arc<dyn TicketRepositoryTrait> = Arc::new(InMemoryTicketRepository::new());
-    let create_ticket = Arc::new(CreateTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
-    let get_ticket = Arc::new(GetTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
-    let list_tickets = Arc::new(ListTicketsUseCaseImpl { repository: Arc::clone(&ticket_repo) });
-    let update_ticket = Arc::new(UpdateTicketUseCaseImpl { repository: Arc::clone(&ticket_repo) });
-    let delete_ticket = Arc::new(DeleteTicketUseCaseImpl { repository: ticket_repo });
-    let ticket_api = TicketApi { create_ticket, get_ticket, list_tickets, update_ticket, delete_ticket };
+    let create_ticket = Arc::new(CreateTicketUseCaseImpl {
+        repository: Arc::clone(&ticket_repo),
+    });
+    let get_ticket = Arc::new(GetTicketUseCaseImpl {
+        repository: Arc::clone(&ticket_repo),
+    });
+    let list_tickets = Arc::new(ListTicketsUseCaseImpl {
+        repository: Arc::clone(&ticket_repo),
+    });
+    let update_ticket = Arc::new(UpdateTicketUseCaseImpl {
+        repository: Arc::clone(&ticket_repo),
+    });
+    let delete_ticket = Arc::new(DeleteTicketUseCaseImpl {
+        repository: ticket_repo,
+    });
+    let ticket_api = TicketApi {
+        create_ticket,
+        get_ticket,
+        list_tickets,
+        update_ticket,
+        delete_ticket,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, ticket_api)), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service((greeting_api, ticket_api)),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -1730,10 +1788,10 @@ mod tests {
 
     use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
     use business::domain::ticket::use_cases::create_ticket::mocks::MockCreateTicketUseCase;
+    use business::domain::ticket::use_cases::delete_ticket::mocks::MockDeleteTicketUseCase;
     use business::domain::ticket::use_cases::get_ticket::mocks::MockGetTicketUseCase;
     use business::domain::ticket::use_cases::list_tickets::mocks::MockListTicketsUseCase;
     use business::domain::ticket::use_cases::update_ticket::mocks::MockUpdateTicketUseCase;
-    use business::domain::ticket::use_cases::delete_ticket::mocks::MockDeleteTicketUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -1742,8 +1800,16 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
-        let ticket_api = TicketApi { create_ticket: Arc::new(MockCreateTicketUseCase::new()), get_ticket: Arc::new(MockGetTicketUseCase::new()), list_tickets: Arc::new(MockListTicketsUseCase::new()), update_ticket: Arc::new(MockUpdateTicketUseCase::new()), delete_ticket: Arc::new(MockDeleteTicketUseCase::new()) };
+        let greeting_api = GreetingApi {
+            get_greeting: Arc::new(MockGetGreetingUseCase::new()),
+        };
+        let ticket_api = TicketApi {
+            create_ticket: Arc::new(MockCreateTicketUseCase::new()),
+            get_ticket: Arc::new(MockGetTicketUseCase::new()),
+            list_tickets: Arc::new(MockListTicketsUseCase::new()),
+            update_ticket: Arc::new(MockUpdateTicketUseCase::new()),
+            delete_ticket: Arc::new(MockDeleteTicketUseCase::new()),
+        };
         let spec = openapi_service((greeting_api, ticket_api)).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);

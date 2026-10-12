@@ -9,6 +9,7 @@ mod validation;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
+use generators::format::format_after_generation;
 use include_dir::{Dir, include_dir};
 use std::path::PathBuf;
 
@@ -220,6 +221,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 events,
             };
             commands::new::new_project(name, options, destination).map(|path| {
+                format_after_generation(&path);
                 let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 let web = path.join("web").is_dir();
                 println!("├── business/        (domain logic)");
@@ -261,6 +263,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
                 .and_then(|parsed| scaffold::run_scaffold(&name, &cwd, &parsed, policy))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::UseCase { entity, action },
@@ -268,6 +271,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_use_case(&entity, &action, &cwd))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::Event { entity, name },
@@ -275,6 +279,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_event(&entity, &name, &cwd))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::Consumer { name, on },
@@ -282,6 +287,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_consumer(&name, &on, &cwd))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::Bootstrap { allow_missing },
@@ -289,6 +295,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_bootstrap_command(&cwd, allow_missing))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::Migration { name },
@@ -311,6 +318,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
                 .and_then(|parsed| scaffold::run_generate_domain(&name, &cwd, &parsed))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::Application { name },
@@ -318,6 +326,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_application(&name, &cwd))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::Repository { name },
@@ -325,6 +334,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_repository(&name, &cwd))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::Presentation { name },
@@ -332,6 +342,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_presentation(&name, &cwd))
+                .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
             action: GenerateAction::Web { name, force },

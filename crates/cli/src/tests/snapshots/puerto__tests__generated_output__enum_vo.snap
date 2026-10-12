@@ -5,8 +5,8 @@ expression: generated_output(& ENUM_VO)
 === business/src/application/order/create_order.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::domain::order::value_objects::Status;
+use async_trait::async_trait;
 
 use crate::domain::order::{
     errors::OrderError,
@@ -23,12 +23,16 @@ pub struct CreateOrderUseCaseImpl {
 impl CreateOrderUseCaseTrait for CreateOrderUseCaseImpl {
     async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError> {
         tracing::info!("create_order: start");
-let status = params.status.parse::<Status>()?;
+        let status = params.status.parse::<Status>()?;
         let entity = Order::new(OrderProps {
             reference: params.reference,
             status,
-        }).inspect_err(|e| tracing::warn!(error = %e, "create_order: rejected"))?;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "create_order: repository failed"))?;
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_order: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_order: repository failed"))?;
         tracing::info!(id = %entity.id, "create_order: done");
         Ok(entity)
     }
@@ -39,7 +43,6 @@ mod tests {
     use super::*;
     use crate::domain::order::repository::mocks::MockOrderRepository;
     use puerto_core::RepositoryError;
-
 
     #[tokio::test]
     async fn should_create_order_when_fields_are_valid() {
@@ -53,8 +56,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateOrderParams {
-            reference: "example".to_string(),
-            status: "Pending".to_string(),
+                reference: "example".to_string(),
+                status: "Pending".to_string(),
             })
             .await;
 
@@ -77,8 +80,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateOrderParams {
-            reference: "example".to_string(),
-            status: "Pending".to_string(),
+                reference: "example".to_string(),
+                status: "Pending".to_string(),
             })
             .await;
 
@@ -98,8 +101,8 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateOrderParams {
-            reference: "".to_string(),
-            status: "Pending".to_string(),
+                reference: "".to_string(),
+                status: "Pending".to_string(),
             })
             .await;
 
@@ -122,17 +125,14 @@ mod tests {
         // Act
         let result = use_case
             .execute(CreateOrderParams {
-            reference: "example".to_string(),
-            status: "".to_string(),
+                reference: "example".to_string(),
+                status: "".to_string(),
             })
             .await;
 
         // Assert
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "order.invalid_status"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "order.invalid_status");
     }
 }
 
@@ -169,7 +169,10 @@ impl DeleteOrderUseCaseTrait for DeleteOrderUseCaseImpl {
         entity.deleted = true;
         entity.deleted_at = Some(now);
         entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_order: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_order: repository failed"))?;
         Ok(())
     }
 }
@@ -177,19 +180,19 @@ impl DeleteOrderUseCaseTrait for DeleteOrderUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::order::value_objects::Status;
     use crate::domain::order::{
         model::{Order, OrderId, OrderProps},
         repository::mocks::MockOrderRepository,
     };
-    use crate::domain::order::value_objects::Status;
-
 
     #[tokio::test]
     async fn should_soft_delete_order_when_id_exists() {
         let entity = Order::new(OrderProps {
             reference: "example".to_string(),
             status: Status::Pending,
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
@@ -200,9 +203,7 @@ mod tests {
             repository: Arc::new(mock_repo),
         };
 
-        let result = use_case
-            .execute(DeleteOrderParams { id: entity_id })
-            .await;
+        let result = use_case.execute(DeleteOrderParams { id: entity_id }).await;
 
         assert!(result.is_ok());
     }
@@ -216,7 +217,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(DeleteOrderParams { id: OrderId::generate() })
+            .execute(DeleteOrderParams {
+                id: OrderId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -244,7 +247,11 @@ pub struct GetOrderUseCaseImpl {
 impl GetOrderUseCaseTrait for GetOrderUseCaseImpl {
     async fn execute(&self, params: GetOrderParams) -> Result<Order, OrderError> {
         tracing::info!(id = %params.id, "get_order: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_order: repository failed"))?;
+        let result = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "get_order: repository failed"))?;
         result.ok_or_else(|| {
             let err = OrderError::NotFound;
             tracing::warn!(error = %err, "get_order: rejected");
@@ -256,20 +263,20 @@ impl GetOrderUseCaseTrait for GetOrderUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::order::value_objects::Status;
     use crate::domain::order::{
         model::{Order, OrderId, OrderProps},
         repository::mocks::MockOrderRepository,
     };
     use puerto_core::RepositoryError;
-    use crate::domain::order::value_objects::Status;
-
 
     #[tokio::test]
     async fn should_return_order_when_id_exists() {
         let entity = Order::new(OrderProps {
             reference: "example".to_string(),
             status: Status::Pending,
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
@@ -294,7 +301,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetOrderParams { id: OrderId::generate() })
+            .execute(GetOrderParams {
+                id: OrderId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -312,7 +321,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(GetOrderParams { id: OrderId::generate() })
+            .execute(GetOrderParams {
+                id: OrderId::generate(),
+            })
             .await;
 
         assert!(result.is_err());
@@ -340,7 +351,11 @@ pub struct ListOrdersUseCaseImpl {
 #[async_trait]
 impl ListOrdersUseCaseTrait for ListOrdersUseCaseImpl {
     async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_orders: start");
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_orders: start"
+        );
         self.repository
             .find_all(params.page)
             .await
@@ -352,25 +367,26 @@ impl ListOrdersUseCaseTrait for ListOrdersUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::PageRequest;
+    use crate::domain::order::value_objects::Status;
     use crate::domain::order::{
         model::{Order, OrderProps},
         repository::mocks::MockOrderRepository,
     };
-    use crate::domain::order::value_objects::Status;
-
+    use puerto_core::PageRequest;
 
     #[tokio::test]
     async fn should_return_the_page_of_orders() {
         let entities = vec![
             Order::new(OrderProps {
-            reference: "first".to_string(),
-            status: Status::Pending,
-        }).unwrap(),
+                reference: "first".to_string(),
+                status: Status::Pending,
+            })
+            .unwrap(),
             Order::new(OrderProps {
-            reference: "second".to_string(),
-            status: Status::Pending,
-        }).unwrap(),
+                reference: "second".to_string(),
+                status: Status::Pending,
+            })
+            .unwrap(),
         ];
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
@@ -381,7 +397,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListOrdersParams { page: PageRequest::default() })
+            .execute(ListOrdersParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -400,7 +418,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListOrdersParams { page: PageRequest::default() })
+            .execute(ListOrdersParams {
+                page: PageRequest::default(),
+            })
             .await;
 
         let page = result.unwrap();
@@ -420,7 +440,9 @@ mod tests {
         };
 
         let result = use_case
-            .execute(ListOrdersParams { page: PageRequest::new(Some(5), Some(10)) })
+            .execute(ListOrdersParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
@@ -430,8 +452,8 @@ mod tests {
 === business/src/application/order/update_order.rs ===
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::domain::order::value_objects::Status;
+use async_trait::async_trait;
 
 use crate::domain::order::{
     errors::OrderError,
@@ -463,11 +485,14 @@ impl UpdateOrderUseCaseTrait for UpdateOrderUseCaseImpl {
             tracing::warn!(error = %err, "update_order: rejected");
             return Err(err);
         }
-let status = params.status.parse::<Status>()?;
+        let status = params.status.parse::<Status>()?;
         entity.reference = params.reference;
         entity.status = status;
         entity.updated_at = chrono::Utc::now();
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "update_order: repository failed"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_order: repository failed"))?;
         Ok(entity)
     }
 }
@@ -475,12 +500,11 @@ let status = params.status.parse::<Status>()?;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::order::value_objects::Status;
     use crate::domain::order::{
         model::{Order, OrderId, OrderProps},
         repository::mocks::MockOrderRepository,
     };
-    use crate::domain::order::value_objects::Status;
-
 
     #[tokio::test]
     async fn should_update_order_when_params_are_valid() {
@@ -488,7 +512,8 @@ mod tests {
         let entity = Order::new(OrderProps {
             reference: "original".to_string(),
             status: Status::Pending,
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
@@ -502,9 +527,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateOrderParams {
-            id: entity_id,
-            reference: "updated".to_string(),
-            status: "Pending".to_string(),
+                id: entity_id,
+                reference: "updated".to_string(),
+                status: "Pending".to_string(),
             })
             .await;
 
@@ -524,9 +549,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateOrderParams {
-            id: OrderId::generate(),
-            reference: "new".to_string(),
-            status: "Pending".to_string(),
+                id: OrderId::generate(),
+                reference: "new".to_string(),
+                status: "Pending".to_string(),
             })
             .await;
 
@@ -541,7 +566,8 @@ mod tests {
         let entity = Order::new(OrderProps {
             reference: "original".to_string(),
             status: Status::Pending,
-        }).unwrap();
+        })
+        .unwrap();
         let entity_id = entity.id;
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
@@ -554,9 +580,9 @@ mod tests {
         // Act
         let result = use_case
             .execute(UpdateOrderParams {
-            id: entity_id,
-            reference: "".to_string(),
-            status: "Pending".to_string(),
+                id: entity_id,
+                reference: "".to_string(),
+                status: "Pending".to_string(),
             })
             .await;
 
@@ -625,9 +651,9 @@ mod tests {
 }
 
 === business/src/domain/order/model.rs ===
+use super::value_objects::Status;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use super::value_objects::Status;
 
 use super::errors::OrderError;
 
@@ -709,7 +735,6 @@ mod tests {
         assert_eq!(result.unwrap().reference, "example");
     }
 
-
     #[test]
     fn should_reject_order_when_reference_is_empty() {
         let result = Order::new(OrderProps {
@@ -736,10 +761,7 @@ mod tests {
     fn should_reject_order_when_status_is_invalid() {
         let result = "InvalidVariant".parse::<Status>();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "order.invalid_status"
-        );
+        assert_eq!(result.unwrap_err().to_string(), "order.invalid_status");
     }
 }
 
@@ -974,14 +996,14 @@ impl Status {
 
 === business/src/lib.rs ===
 pub mod domain {
-  pub mod greeting {
-    pub mod errors;
-    pub mod model;
-    pub mod repository;
-    pub mod use_cases {
-      pub mod get_greeting;
+    pub mod greeting {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod get_greeting;
+        }
     }
-  }
 
     pub mod order {
         pub mod errors;
@@ -989,26 +1011,26 @@ pub mod domain {
         pub mod repository;
         pub mod use_cases {
             pub mod create_order;
+            pub mod delete_order;
             pub mod get_order;
             pub mod list_orders;
             pub mod update_order;
-            pub mod delete_order;
         }
-    
+
         pub mod value_objects;
-}
+    }
 }
 pub mod application {
-  pub mod greeting {
-    pub mod get_greeting;
-  }
+    pub mod greeting {
+        pub mod get_greeting;
+    }
 
     pub mod order {
         pub mod create_order;
+        pub mod delete_order;
         pub mod get_order;
         pub mod list_orders;
         pub mod update_order;
-        pub mod delete_order;
     }
 }
 
@@ -1031,7 +1053,10 @@ pub struct OrderMother {
 
 impl OrderMother {
     pub fn new() -> Self {
-        Self { reference: None, status: None }
+        Self {
+            reference: None,
+            status: None,
+        }
     }
 
     pub fn with_reference(mut self, reference: &str) -> Self {
@@ -1127,8 +1152,8 @@ impl OrderRepositoryTrait for InMemoryOrderRepository {
 === presentation/src/api.rs ===
 pub mod error;
 pub mod greeting;
-pub mod tags;
 pub mod order;
+pub mod tags;
 
 === presentation/src/api/order.rs ===
 pub mod dto;
@@ -1167,7 +1192,6 @@ pub struct CreateOrderRequest {
     pub status: String,
 }
 
-
 /// One page of Orders: `total` counts them all, `limit` is the one the API applied.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -1195,7 +1219,6 @@ pub struct UpdateOrderRequest {
     pub reference: String,
     pub status: String,
 }
-
 
 === presentation/src/api/order/error_mapper.rs ===
 use business::domain::order::errors::OrderError;
@@ -1227,7 +1250,8 @@ mod tests {
     #[test]
     fn should_map_validation_error_to_422_with_its_code() {
         // Act
-        let (status, Json(body)) = OrderError::ValidationError("name_empty".into()).into_error_response();
+        let (status, Json(body)) =
+            OrderError::ValidationError("name_empty".into()).into_error_response();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1448,14 +1472,12 @@ use puerto_core::PageRequest;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
-use crate::api::tags::ApiTags;
-use crate::api::order::dto::{
-    CreateOrderRequest, UpdateOrderRequest, OrderDto, OrderPageDto,
-};
+use crate::api::order::dto::{CreateOrderRequest, OrderDto, OrderPageDto, UpdateOrderRequest};
 use crate::api::order::responses::{
     CreateOrderResponse, DeleteOrderResponse, GetOrderResponse, ListOrdersResponse,
     UpdateOrderResponse,
 };
+use crate::api::tags::ApiTags;
 
 /// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
 pub struct OrderApi {
@@ -1493,7 +1515,9 @@ impl OrderApi {
     async fn get_by_id(&self, id: Path<Uuid>) -> GetOrderResponse {
         match self
             .get_order
-            .execute(GetOrderParams { id: OrderId::from_uuid(id.0) })
+            .execute(GetOrderParams {
+                id: OrderId::from_uuid(id.0),
+            })
             .await
         {
             Ok(entity) => GetOrderResponse::Ok(Json(OrderDto::from_domain(&entity))),
@@ -1507,7 +1531,11 @@ impl OrderApi {
 
     /// List Orders, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/orders", method = "get", tag = "ApiTags::Order")]
-    async fn list(&self, limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> ListOrdersResponse {
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListOrdersResponse {
         match self
             .list_orders
             .execute(ListOrdersParams {
@@ -1550,7 +1578,9 @@ impl OrderApi {
     async fn delete(&self, id: Path<Uuid>) -> DeleteOrderResponse {
         match self
             .delete_order
-            .execute(DeleteOrderParams { id: OrderId::from_uuid(id.0) })
+            .execute(DeleteOrderParams {
+                id: OrderId::from_uuid(id.0),
+            })
             .await
         {
             Ok(()) => DeleteOrderResponse::NoContent,
@@ -1624,7 +1654,10 @@ mod tests {
     async fn should_respond_201_when_order_is_created() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok(OrderMother::random()));
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
 
         // Act
         let response = mocks
@@ -1663,7 +1696,10 @@ mod tests {
     async fn should_respond_200_when_order_is_found() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok(OrderMother::random()));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1676,7 +1712,10 @@ mod tests {
     async fn should_respond_404_when_order_does_not_exist() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err(OrderError::NotFound));
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
 
         // Act
         let response = mocks.client().get(item_path()).send().await;
@@ -1726,7 +1765,10 @@ mod tests {
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err(OrderError::RepositoryError));
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(OrderError::RepositoryError));
 
         // Act
         let response = mocks.client().get("/orders").send().await;
@@ -1739,7 +1781,10 @@ mod tests {
     async fn should_respond_200_when_order_is_updated() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok(OrderMother::random()));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
 
         // Act
         let response = mocks
@@ -1757,7 +1802,10 @@ mod tests {
     async fn should_respond_404_when_updating_a_missing_order() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err(OrderError::NotFound));
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
 
         // Act
         let response = mocks
@@ -1788,7 +1836,10 @@ mod tests {
     async fn should_respond_404_when_deleting_a_missing_order() {
         // Arrange
         let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err(OrderError::NotFound));
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
 
         // Act
         let response = mocks.client().delete(item_path()).send().await;
@@ -1814,14 +1865,14 @@ use std::sync::Arc;
 
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
 use business::application::order::create_order::CreateOrderUseCaseImpl;
+use business::application::order::delete_order::DeleteOrderUseCaseImpl;
 use business::application::order::get_order::GetOrderUseCaseImpl;
 use business::application::order::list_orders::ListOrdersUseCaseImpl;
 use business::application::order::update_order::UpdateOrderUseCaseImpl;
-use business::application::order::delete_order::DeleteOrderUseCaseImpl;
 
 use business::domain::greeting::repository::GreetingRepositoryTrait;
-use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use business::domain::order::repository::OrderRepositoryTrait;
+use infrastructure::greeting::repository::InMemoryGreetingRepository;
 use infrastructure::order::repository::InMemoryOrderRepository;
 
 use poem::Endpoint;
@@ -1831,21 +1882,43 @@ use crate::api::greeting::routes::GreetingApi;
 use crate::api::order::routes::OrderApi;
 
 pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
-    let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
+    let get_greeting = Arc::new(GetGreetingUseCaseImpl {
+        repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait>,
+    });
     let greeting_api = GreetingApi { get_greeting };
 
     let order_repo: Arc<dyn OrderRepositoryTrait> = Arc::new(InMemoryOrderRepository::new());
-    let create_order = Arc::new(CreateOrderUseCaseImpl { repository: Arc::clone(&order_repo) });
-    let get_order = Arc::new(GetOrderUseCaseImpl { repository: Arc::clone(&order_repo) });
-    let list_orders = Arc::new(ListOrdersUseCaseImpl { repository: Arc::clone(&order_repo) });
-    let update_order = Arc::new(UpdateOrderUseCaseImpl { repository: Arc::clone(&order_repo) });
-    let delete_order = Arc::new(DeleteOrderUseCaseImpl { repository: order_repo });
-    let order_api = OrderApi { create_order, get_order, list_orders, update_order, delete_order };
+    let create_order = Arc::new(CreateOrderUseCaseImpl {
+        repository: Arc::clone(&order_repo),
+    });
+    let get_order = Arc::new(GetOrderUseCaseImpl {
+        repository: Arc::clone(&order_repo),
+    });
+    let list_orders = Arc::new(ListOrdersUseCaseImpl {
+        repository: Arc::clone(&order_repo),
+    });
+    let update_order = Arc::new(UpdateOrderUseCaseImpl {
+        repository: Arc::clone(&order_repo),
+    });
+    let delete_order = Arc::new(DeleteOrderUseCaseImpl {
+        repository: order_repo,
+    });
+    let order_api = OrderApi {
+        create_order,
+        get_order,
+        list_orders,
+        update_order,
+        delete_order,
+    };
 
     let ready = puerto_web::health::always_ready();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    crate::app::configure(puerto_web::routes(openapi_service((greeting_api, order_api)), &config, ready))
+    crate::app::configure(puerto_web::routes(
+        openapi_service((greeting_api, order_api)),
+        &config,
+        ready,
+    ))
 }
 
 /// The API service, built in one place: whatever else reads its spec (the export test of a project
@@ -1860,10 +1933,10 @@ mod tests {
 
     use business::domain::greeting::use_cases::get_greeting::mocks::MockGetGreetingUseCase;
     use business::domain::order::use_cases::create_order::mocks::MockCreateOrderUseCase;
+    use business::domain::order::use_cases::delete_order::mocks::MockDeleteOrderUseCase;
     use business::domain::order::use_cases::get_order::mocks::MockGetOrderUseCase;
     use business::domain::order::use_cases::list_orders::mocks::MockListOrdersUseCase;
     use business::domain::order::use_cases::update_order::mocks::MockUpdateOrderUseCase;
-    use business::domain::order::use_cases::delete_order::mocks::MockDeleteOrderUseCase;
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -1872,8 +1945,16 @@ mod tests {
     /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
     #[test]
     fn openapi_spec_matches_docs_api_openapi_json() {
-        let greeting_api = GreetingApi { get_greeting: Arc::new(MockGetGreetingUseCase::new()) };
-        let order_api = OrderApi { create_order: Arc::new(MockCreateOrderUseCase::new()), get_order: Arc::new(MockGetOrderUseCase::new()), list_orders: Arc::new(MockListOrdersUseCase::new()), update_order: Arc::new(MockUpdateOrderUseCase::new()), delete_order: Arc::new(MockDeleteOrderUseCase::new()) };
+        let greeting_api = GreetingApi {
+            get_greeting: Arc::new(MockGetGreetingUseCase::new()),
+        };
+        let order_api = OrderApi {
+            create_order: Arc::new(MockCreateOrderUseCase::new()),
+            get_order: Arc::new(MockGetOrderUseCase::new()),
+            list_orders: Arc::new(MockListOrdersUseCase::new()),
+            update_order: Arc::new(MockUpdateOrderUseCase::new()),
+            delete_order: Arc::new(MockDeleteOrderUseCase::new()),
+        };
         let spec = openapi_service((greeting_api, order_api)).spec();
 
         let path = std::path::Path::new(OPENAPI_JSON);
