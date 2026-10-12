@@ -2688,8 +2688,10 @@ dependencies = [
  "rdkafka",
  "serde",
  "serde_json",
+ "sqlx",
  "tempfile",
  "tera",
+ "tokio",
  "toml 0.8.23",
 ]
 

@@ -38,3 +38,6 @@ toml = "0.8"
 insta = "1"
 # `make test/kafka`: the end-to-end test writes a record that is not an event.
 rdkafka = { version = "0.39", features = ["cmake-build"] }
+# `make test/db`: the mail end-to-end test hands a delivery back to the worker, as a redelivery would.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
+tokio = { version = "1", features = ["rt"] }

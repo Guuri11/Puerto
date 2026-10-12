@@ -44,25 +44,31 @@ test/full: ## Slow test: generates real projects, compiles them, runs their inte
 test/snapshots: ## Re-record the generated-output snapshots after an intended change — then read the .snap diff
 	INSTA_UPDATE=always $(CARGO) nextest run --workspace -E 'test(/^tests::generated_output::/)'
 
-test/db: ## Slow test: generated --db project against a throwaway Postgres (needs Docker + sqlx-cli)
+test/db: ## Slow test: generated --db project against a throwaway Postgres + Mailpit (needs Docker + sqlx-cli)
 	@echo "${YELLOW}Starting throwaway Postgres on :55432...${NC}"
 	@docker run -d --rm --name puerto-test-pg -e POSTGRES_PASSWORD=pg -p 55432:5432 postgres:16-alpine >/dev/null
+	@docker run -d --rm --name puerto-test-mailpit-db -p 51026:1025 -p 58026:8025 axllent/mailpit:v1.31.1 >/dev/null
 	@until docker exec puerto-test-pg pg_isready -U postgres -q; do sleep 1; done
+	@until curl -sf http://localhost:58026/readyz >/dev/null; do sleep 1; done
 	PUERTO_TEST_DATABASE_URL=postgres://postgres:pg@localhost:55432 \
+	PUERTO_TEST_SMTP_URL=smtp://localhost:51026 PUERTO_TEST_MAILPIT_API=http://localhost:58026 \
 		$(CARGO) nextest run --workspace --run-ignored all -E 'test(postgres)'; \
-		status=$$?; docker stop puerto-test-pg >/dev/null; exit $$status
+		status=$$?; docker stop puerto-test-pg puerto-test-mailpit-db >/dev/null; exit $$status
 
-test/kafka: ## Slow test: the Kafka transport against a throwaway Redpanda (+ Postgres for the generated worker)
+test/kafka: ## Slow test: the Kafka transport against a throwaway Redpanda (+ Postgres and Mailpit for the generated worker)
 	@echo "${YELLOW}Starting throwaway Redpanda on :59092 and Postgres on :55433...${NC}"
 	@docker run -d --rm --name puerto-test-redpanda -p 59092:59092 docker.redpanda.com/redpandadata/redpanda:v24.2.7 \
 		redpanda start --mode dev-container --smp 1 --kafka-addr PLAINTEXT://0.0.0.0:59092 \
 		--advertise-kafka-addr PLAINTEXT://localhost:59092 >/dev/null
 	@docker run -d --rm --name puerto-test-pg-kafka -e POSTGRES_PASSWORD=pg -p 55433:5432 postgres:16-alpine >/dev/null
 	@until docker exec puerto-test-redpanda rpk cluster health -X brokers=localhost:59092 2>/dev/null | grep -q 'Healthy:.*true'; do sleep 1; done
+	@docker run -d --rm --name puerto-test-mailpit-kafka -p 51027:1025 -p 58027:8025 axllent/mailpit:v1.31.1 >/dev/null
 	@until docker exec puerto-test-pg-kafka pg_isready -U postgres -q; do sleep 1; done
+	@until curl -sf http://localhost:58027/readyz >/dev/null; do sleep 1; done
 	PUERTO_TEST_KAFKA_BROKERS=localhost:59092 PUERTO_TEST_DATABASE_URL=postgres://postgres:pg@localhost:55433 \
+	PUERTO_TEST_SMTP_URL=smtp://localhost:51027 PUERTO_TEST_MAILPIT_API=http://localhost:58027 \
 		$(CARGO) nextest run --workspace --run-ignored all -E 'test(/(^|::)kafka_/)'; \
-		status=$$?; docker stop puerto-test-redpanda puerto-test-pg-kafka >/dev/null; exit $$status
+		status=$$?; docker stop puerto-test-redpanda puerto-test-pg-kafka puerto-test-mailpit-kafka >/dev/null; exit $$status
 
 test/mail: ## Slow test: the SMTP adapter against a throwaway Mailpit (needs Docker)
 	@echo "${YELLOW}Starting throwaway Mailpit on :51025 (SMTP) and :58025 (API)...${NC}"

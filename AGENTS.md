@@ -227,8 +227,8 @@ make run           # Run puerto CLI (prompts for project name)
 make test          # Fast structural tests (verifies generated file structure)
 make test/full     # Slow: generates real projects, runs their `clippy --all-targets -D warnings` + tests
                    #       and the generated frontend's checks (needs `bun` on PATH)
-make test/db       # Slow: a generated --db project against a throwaway Postgres (Docker + sqlx-cli)
-make test/kafka    # Slow: the Kafka transport against a throwaway Redpanda (+ Postgres; Docker, cmake)
+make test/db       # Slow: a generated --db project against a throwaway Postgres + Mailpit (Docker + sqlx-cli)
+make test/kafka    # Slow: the Kafka transport against a throwaway Redpanda (+ Postgres, Mailpit; Docker, cmake)
 make test/mail     # Slow: the SMTP adapter against a throwaway Mailpit (Docker)
 make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
 make test/snapshots # Re-record generated-output snapshots after an intended output change

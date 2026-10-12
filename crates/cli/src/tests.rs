@@ -47,6 +47,7 @@ mod ide_snippets;
 mod inmemory_repository;
 mod layered_generators;
 mod mail;
+mod mail_e2e;
 mod manifest_validation;
 mod migrations;
 mod new_project;

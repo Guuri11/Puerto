@@ -1,6 +1,7 @@
 # 0020 — Mail: a port per mail, templates in infrastructure, sent from the worker
 
-**Status:** Accepted (2026-10-12). Spec: `PLAN.md` § Phase 14. Builds on ADR-0017 (runtime crates:
+**Status:** Accepted (2026-10-12). Spec: `PLAN.md` § Phase 14 — done, 14.1–14.5; the end-to-end
+test sends through Mailpit under `make test/db` and `make test/kafka`. Builds on ADR-0017 (runtime crates:
 ports in core, adapters in their own crate) and ADR-0018 (events, the worker).
 
 ## Context

@@ -33,7 +33,7 @@ impl EventHandler for AlwaysRetry {
 "#;
 
 /// A child process killed when the test ends, whatever happens.
-struct Running(Child);
+pub(super) struct Running(Child);
 
 impl Drop for Running {
     fn drop(&mut self) {
@@ -42,7 +42,7 @@ impl Drop for Running {
     }
 }
 
-fn free_port() -> u16 {
+pub(super) fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.local_addr())
         .map(|a| a.port())
@@ -50,7 +50,7 @@ fn free_port() -> u16 {
 }
 
 /// One HTTP/1.1 request: `(status, body)`, or `None` when nothing answers yet.
-fn http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)> {
+pub(super) fn http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)> {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
@@ -68,7 +68,7 @@ fn http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)
     Some((status, body))
 }
 
-fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+pub(super) fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
     let start = Instant::now();
     while !done() {
         assert!(start.elapsed() < WAIT, "timed out waiting for {what}");
@@ -76,7 +76,7 @@ fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
     }
 }
 
-fn log_lines(path: &Path) -> Vec<String> {
+pub(super) fn log_lines(path: &Path) -> Vec<String> {
     fs::read_to_string(path)
         .unwrap_or_default()
         .lines()
@@ -84,7 +84,7 @@ fn log_lines(path: &Path) -> Vec<String> {
         .collect()
 }
 
-fn logged(path: &Path, needles: &[&str]) -> bool {
+pub(super) fn logged(path: &Path, needles: &[&str]) -> bool {
     log_lines(path)
         .iter()
         .any(|line| needles.iter().all(|n| line.contains(n)))
@@ -97,7 +97,7 @@ fn product_body(sku: &str) -> String {
 }
 
 /// Creates a product and returns its id.
-fn create_product(port: u16, sku: &str) -> String {
+pub(super) fn create_product(port: u16, sku: &str) -> String {
     let body = product_body(sku);
     let (status, response) =
         http(port, "POST", "/api/products", &body).expect("the API did not answer");
@@ -106,14 +106,14 @@ fn create_product(port: u16, sku: &str) -> String {
     response[at..at + 36].to_string()
 }
 
-struct Project {
-    dir: PathBuf,
-    output: PathBuf,
-    env: Vec<(String, String)>,
+pub(super) struct Project {
+    pub(super) dir: PathBuf,
+    pub(super) output: PathBuf,
+    pub(super) env: Vec<(String, String)>,
 }
 
 impl Project {
-    fn spawn(&self, binary: &str, log: &Path, extra: &[(&str, String)]) -> Running {
+    pub(super) fn spawn(&self, binary: &str, log: &Path, extra: &[(&str, String)]) -> Running {
         let file = fs::File::create(log).unwrap();
         let child = Command::new(self.dir.join("target/debug").join(binary))
             .current_dir(&self.output)
@@ -128,7 +128,7 @@ impl Project {
 }
 
 /// `scenario` plus a consumer that always retries (and `extra_consumers`), migrated and built.
-fn build_project(
+pub(super) fn build_project(
     scenario: &Scenario,
     name: &str,
     database: &str,

@@ -2210,7 +2210,8 @@ are backend-only).
 
 ## Phase 14 — Mailer: a port per mail, sent from the worker
 
-**Status:** spec ready — decision:
+**Status:** done — 14.0 (`06f57cc`) · 14.1 (`8f6710e`) · 14.2 (`c06bb71`) · 14.3 (`0c7887f`) ·
+14.4 (`03a6f2a`) · 14.5. Decision:
 [ADR-0020](docs/adr/0020-mail-port-per-mail-sent-from-the-worker.md). One commit per piece, in
 this order. A project with no mail is generated exactly as today: no existing snapshot changes.
 
@@ -2350,12 +2351,24 @@ Done as specified, except where noted. What the code settled:
   on `Product` events and one sent by nothing. `EVENTS_KAFKA` stays as it was: its worker e2e
   would need `SMTP_URL`, which is 14.5's. No existing snapshot changed.
 
-### 14.5 — End to end against Mailpit
+### 14.5 — End to end against Mailpit ✅
 
-`make test/db` and `make test/kafka` start Mailpit next to Postgres (and Redpanda): `POST
-/customers` → `GET :8025/api/v1/messages` holds one message to that address with the rendered
-subject, within a bounded wait. The worker restarted mid-flight → still one message. Mailpit
-stopped → the delivery retries and arrives once it is back.
+`make test/db` and `make test/kafka` start Mailpit next to Postgres (and Redpanda);
+`tests/mail_e2e.rs` runs the generated API and worker of `EVENTS_MAIL` / `EVENTS_MAIL_KAFKA` as real
+processes. What the code settled:
+- The worker reaches Mailpit through a TCP proxy in the test (`SmtpSwitch`): `down()` refuses new
+  connections and cuts the open ones the mailer's pool keeps, `up()` lets them through. Stopping
+  the container would lose what Mailpit holds and race its restart.
+- A POST sends one mail to the product's address, with the rendered subject; with the server down
+  the delivery is retried (`mail: not sent, retrying`) and arrives once it is back; a restarted
+  worker sends what was written while it was down and nothing it sent before.
+- Redelivery (`db` only): the test hands the consumer's `event_deliveries` rows back to `pending`,
+  as a lost acknowledgement would — the worker skips them (`mail already sent for this event`) and
+  Mailpit still holds one message. The CLI gains `sqlx` / `tokio` dev-dependencies for that, both
+  already in the lock through `puerto-sqlx`. On Kafka the offset says what was delivered; the
+  restart covers it.
+- `MAX_DELIVERIES=100`, `RETRY_MAX_DELAY_MS=100` for these workers: a retry every 100 ms, never a
+  dead letter while the server is down for a few seconds.
 
 ### Out of scope (Phase 14)
 
