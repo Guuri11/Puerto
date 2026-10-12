@@ -26,6 +26,11 @@ pub enum ConfigError {
     },
 }
 
+/// Loads `.env` into the process environment when there is one; a variable already set wins.
+pub fn load_dotenv() {
+    dotenvy::dotenv().ok();
+}
+
 /// Built by [`Config::from_env`], or from [`Config::default`] with the `with_*` methods (tests).
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -48,7 +53,7 @@ impl Default for Config {
 impl Config {
     /// Loads `.env` when there is one, then reads the process environment.
     pub fn from_env() -> Result<Self, ConfigError> {
-        dotenvy::dotenv().ok();
+        load_dotenv();
         Self::from_vars(|key| std::env::var(key).ok())
     }
 

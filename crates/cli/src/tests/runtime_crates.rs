@@ -441,7 +441,7 @@ fn snippets_take_the_error_body_from_puerto_web() {
 fn every_runtime_crate_is_patched_in_the_compile_matrix() {
     assert_eq!(
         crate::runtime::RUNTIME_CRATES,
-        ["puerto-core", "puerto-web", "puerto-sqlx"]
+        ["puerto-core", "puerto-web", "puerto-sqlx", "puerto-events"]
     );
 }
 

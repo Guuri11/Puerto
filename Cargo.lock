@@ -2596,6 +2596,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "puerto-events"
+version = "0.14.0"
+dependencies = [
+ "async-trait",
+ "poem",
+ "puerto-core",
+ "puerto-web",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "puerto-sqlx"
 version = "0.14.0"
 dependencies = [

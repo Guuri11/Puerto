@@ -1,0 +1,24 @@
+[package]
+name = "puerto-events"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Puerto runtime — the worker every Puerto project with domain events runs: the outbox relay, the consume loops and their delivery policy, health probes and graceful shutdown."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["ddd", "clean-architecture", "puerto", "events", "outbox"]
+categories = ["asynchronous"]
+
+[dependencies]
+puerto-core = { workspace = true }
+puerto-web = { workspace = true }
+async-trait = "0.1"
+poem = "3"
+tokio = { version = "1", features = ["macros", "rt", "signal", "sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "test-util", "time"] }
+uuid = { version = "1", features = ["v7"] }

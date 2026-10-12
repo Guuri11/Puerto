@@ -66,10 +66,7 @@ impl App {
         E: IntoEndpoint + 'static,
         E::Endpoint: 'static,
     {
-        // `try_init`: a subscriber the project installed itself wins.
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-            .try_init();
+        init_tracing();
 
         if self.config.banner() {
             println!("{BANNER}");
@@ -83,6 +80,13 @@ impl App {
             .await?;
         Ok(())
     }
+}
+
+/// Logs to stdout, filtered by `RUST_LOG`. A subscriber the project installed itself wins.
+pub fn init_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init();
 }
 
 /// What every request goes through, outermost last: request tracing, then CORS.
@@ -109,8 +113,9 @@ pub fn routes<T: OpenApi + 'static>(
 }
 
 /// Resolves on Ctrl-C or SIGTERM — what `docker stop` and Kubernetes send. The listener then stops
-/// accepting and in-flight requests get `SHUTDOWN_DEADLINE` to finish.
-async fn shutdown_signal() {
+/// accepting and in-flight requests get `SHUTDOWN_DEADLINE` to finish. The worker
+/// (`puerto-events`) drains its loops on the same signal.
+pub async fn shutdown_signal() {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -131,7 +136,7 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
-    tracing::info!("shutdown signal received, draining in-flight requests");
+    tracing::info!("shutdown signal received, draining");
 }
 
 #[cfg(test)]

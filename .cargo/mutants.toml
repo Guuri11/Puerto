@@ -16,6 +16,7 @@ examine_globs = [
     "crates/core/src/**/*.rs",
     "crates/web/src/*.rs",
     "crates/sqlx/src/**/*.rs",
+    "crates/events/src/**/*.rs",
 ]
 # The process boundary of `puerto-web`: binding a port, waiting for SIGTERM, reading the real
 # environment. A mutant there only shows when a server runs — no unit test can catch it without
@@ -24,6 +25,12 @@ exclude_re = [
     "App::serve",
     "shutdown_signal",
     "Config::from_env",
+    "init_tracing",
+    "load_dotenv",
+    # The same boundary in `puerto-events`: `Worker::run` installs tracing and waits for the
+    # signal; `run_until` (the loops, the probes, the drain) is examined.
+    "Worker::run ->",
+    "WorkerConfig::from_env",
     # `puerto-sqlx` against a live server: a mutant of these shows only with Postgres running —
     # `make test/db` runs that (`postgres_*` in crates/sqlx). `map_sqlx_error` is examined.
     "replace ping ",

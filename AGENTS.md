@@ -23,6 +23,10 @@ crates/
                       `uow::PgTransaction`, `events::{PgOutbox, PgDeliveries, PgSubscription,
                       PgDeadLetters}` and `migrations/outbox.sql` (the CLI's
                       `templates/infrastructure/outbox.sql` must match it byte for byte — tested)
+  events/           — `puerto-events`, the worker runtime (`--events` projects, ADR-0018): `Relay`
+                      (outbox → `EventPublisher`), `Consumer` (subscription → `EventHandler`, `decide`,
+                      dead letter before retiring), `Worker` + `Loops` (health on `WORKER_PORT`,
+                      SIGTERM drain), `WorkerConfig::from_env`
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)

@@ -2025,6 +2025,25 @@ duplicate `unique` leaves neither.
 
 Tier 1. The `events_db` snapshot grows a `worker/` crate.
 
+Progress: the runtime crate `crates/events` is done. What the code settled:
+- `Relay<O: Outbox, P: EventPublisher>::relay_once` and `Consumer<S>::consume_once` are one pass
+  each, answering `Progress::{More, Idle}` (`More` = a full batch: run again at once). The worker
+  drives them (`driver::drive`); a pass in flight at SIGTERM is finished, bounded by
+  `puerto_web::app::SHUTDOWN_DEADLINE`.
+- `Worker::new(config).run(build)`, where `build(WorkerConfig) -> Loops` and
+  `Loops::new(&config).relay(outbox, publisher).consumer(subscription, handler, dead_letters)`
+  applies the config. `puerto_events::Error` is `puerto_web::Error`.
+- Readiness: every loop finished a pass **that did not fail** within its interval plus
+  `STALL_GRACE` (30 s): a database that is down shows up as not ready. Before the first pass:
+  not ready.
+- A consumer claims `DEFAULT_CONSUMER_BATCH_SIZE` (10) per pass. One more variable:
+  `RETRY_MAX_DELAY_MS` caps the policy's backoff (unset: the policy's), which is how
+  `make test/db` reaches the dead letter in seconds. `RELAY_BATCH_SIZE` / `MAX_DELIVERIES` of 0
+  are rejected.
+- `puerto-web` exposes `app::{init_tracing, shutdown_signal}` and `config::load_dotenv`, so the
+  worker shares them. `puerto-web` joins `[workspace.dependencies]`; release order is
+  core → web → sqlx → events → puerto.
+
 Starting point (what 13.1–13.3 left to build on):
 - Ports: `puerto_core::events::transport::{Outbox (try_lead / fetch_unpublished /
   mark_published), EventPublisher::publish, EventSubscription (consumer / next_batch /
