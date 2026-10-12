@@ -1778,4 +1778,298 @@ under `make test/db`). Snapshots re-recorded.
 New infrastructure lands in the runtime, split per ADR-0017 § 1: ports in `puerto-core`,
 adapters in their own crate, domain-facing parts (the `User` entity, login use cases) generated.
 Candidates, in roadmap order: `UnitOfWork` (T-23), auth, jobs (T-29), mailer, storage.
+T-23 (with T-29's second binary) is Phase 13; the mailer, Phase 14, is the first consumer built on it.
 `puerto eject <component>` once a runtime crate has something worth ejecting.
+
+---
+
+## Phase 13 — Domain events: unit of work, outbox, worker (T-23, T-29)
+
+**Status:** not started. Decision: [ADR-0018](docs/adr/0018-domain-events-outbox-pluggable-transport.md).
+Every write in an `events` project saves the aggregate and its event in one transaction (outbox).
+A second binary, `worker/`, relays the outbox to a transport and runs the consumers. The transport
+is an adapter: `db` (Postgres, no broker) and `kafka` in this phase. A project without `events`
+is generated exactly as today: no snapshot of the existing matrix scenarios changes, except where
+a piece says otherwise. One commit per piece, in this order.
+
+Glossary used below, for entity `Product`:
+
+| Name | Where | Generated |
+|---|---|---|
+| `ProductSnapshot`, `ProductEvent` | `business/src/domain/product/events.rs` | always regenerated from puerto.toml |
+| `ProductUnitOfWork`, `ProductUnitOfWorkFactory` | `business/src/domain/product/unit_of_work.rs` | once, by scaffold |
+| `PgProductUnitOfWorkFactory` | `infrastructure/src/product/unit_of_work.rs` | once, by scaffold |
+| `EventEnvelope`, `DomainEvent`, `EventHandler`, `HandlerOutcome` | `puerto-core` | runtime |
+| `<consumer>` handler | `worker/src/consumers/<consumer>.rs` | once, by `generate consumer` |
+| consumer registry | `worker/src/generated/registry.rs` | always regenerated from puerto.toml |
+
+### puerto.toml additions
+
+```toml
+[project]
+name = "shop"
+db = true
+events = "db"                       # "db" | "kafka"; absent = no events. Requires db = true
+
+[[entity]]
+name = "Product"
+use_cases = ["create_product", "get_product", "list_products", "update_product", "delete_product"]
+events = ["product_published"]      # optional: custom events beyond created/updated/deleted
+
+[[consumer]]
+name = "notify_new_product"         # snake_case, unique; file worker/src/consumers/notify_new_product.rs
+events = ["product_created", "product_published"]   # event types it subscribes to
+```
+
+Additive (a minor bump). `puerto validate` adds these checks: `events` is `db` or `kafka`; `events`
+without `db = true` is an error; custom event names are snake_case, unique per entity and do not
+collide with the CRUD ones; a consumer's `events` are all declared by some entity (CRUD or
+custom); consumer names are snake_case and unique, and every declared consumer has its file on
+disk (the same drift check as entities).
+
+### 13.0 — ADR-0018 + this spec ✅
+
+### 13.1 — `puerto-core`: events, ports and delivery policy
+
+No generated output changes. `crates/core` gains an `events` module and the dependencies
+`async-trait`, `serde`, `serde_json`, `uuid`, `chrono` (ADR-0018 extends ADR-0017's table).
+
+- `trait DomainEvent`: `event_type() -> &'static str`, `aggregate_type() -> &'static str`,
+  `aggregate_id() -> Uuid`, `schema_version() -> u16`, `payload() -> serde_json::Value`.
+- `EventEnvelope`, `#[non_exhaustive]`: `id: Uuid`, `event_type`, `aggregate_type`,
+  `aggregate_id`, `schema_version`, `occurred_at: DateTime<Utc>`, `payload: Value`,
+  `headers: BTreeMap<String, String>`. `EventEnvelope::new(&impl DomainEvent)` assigns the id
+  (v7, which sorts by time) and `occurred_at`. `with_header(k, v)`. `decode::<T: DeserializeOwned>()`
+  returns `Result<T, DecodeError>`.
+- `trait EventHandler: Send + Sync { async fn handle(&self, event: &EventEnvelope) -> HandlerOutcome }`;
+  `HandlerOutcome::{Ack, Retry, DeadLetter { reason: &'static str, detail: String }}`,
+  `#[non_exhaustive]`. The reason constants are `REASON_PAYLOAD_INVALID`,
+  `REASON_MAX_DELIVERIES_EXCEEDED` and `REASON_PERMANENT_ERROR`.
+- `delivery::{decide, backoff_for, Delivery, DEFAULT_MAX_DELIVERIES}`, the same policy as
+  document-api: `Ack → Ack`, `DeadLetter → DeadLetter`, `Retry` at or above the cap →
+  `DeadLetter(max_deliveries_exceeded)`, otherwise `Retry { delay }`. Backoff 1/5/15/60/300 s,
+  the last value repeating.
+- The transport ports the worker drives (`EventPublisher` for the relay's output,
+  `EventSubscription` for a consumer's input) and `DeadLetterRecord` / `DeadLetterSink`. Their
+  exact signatures are settled here, with a fake of each in the tests.
+
+Test scenarios: an envelope built from a test event exposes the event's metadata; its `id` is
+unique per call; `decode` round-trips the payload and rejects a payload of another shape with
+`DecodeError`; `decide` covers every arm plus the `>=` boundary (attempt 4 of 5 retries, attempt 5
+dead-letters); backoff grows and is capped; reason codes are stable strings. `make test/mutation`
+covers `events` with zero survivors.
+
+### 13.2 — `puerto-sqlx`: Pg unit of work, outbox, delivery store
+
+No generated output changes. Runtime only, tested under `make test/db`.
+
+- Outbox schema, one migration. The CLI embeds it as a template, and a structural test checks it
+  byte for byte against `crates/sqlx/migrations/outbox.sql`, the copy the crate's tests run:
+  ```sql
+  CREATE TABLE outbox (
+      id             UUID        PRIMARY KEY,
+      seq            BIGSERIAL   NOT NULL,          -- relay order
+      aggregate_type TEXT        NOT NULL,
+      aggregate_id   UUID        NOT NULL,
+      event_type     TEXT        NOT NULL,
+      schema_version INT         NOT NULL,
+      payload        JSONB       NOT NULL,
+      headers        JSONB       NOT NULL DEFAULT '{}',
+      occurred_at    TIMESTAMPTZ NOT NULL,
+      published_at   TIMESTAMPTZ
+  );
+  CREATE INDEX outbox_unpublished ON outbox (seq) WHERE published_at IS NULL;
+
+  CREATE TABLE event_deliveries (                  -- db transport only
+      event_id        UUID        NOT NULL REFERENCES outbox (id),
+      consumer        TEXT        NOT NULL,
+      status          TEXT        NOT NULL DEFAULT 'pending',   -- pending | done | dead
+      attempts        INT         NOT NULL DEFAULT 0,
+      next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_error      TEXT,
+      PRIMARY KEY (event_id, consumer)
+  );
+  CREATE INDEX event_deliveries_due ON event_deliveries (consumer, next_attempt_at) WHERE status = 'pending';
+
+  CREATE TABLE dead_letters (                      -- every transport
+      id           UUID        PRIMARY KEY,
+      event_id     UUID,
+      consumer     TEXT        NOT NULL,
+      event_type   TEXT,
+      attempts     INT         NOT NULL,
+      reason       TEXT        NOT NULL,
+      detail       TEXT        NOT NULL,
+      payload      TEXT        NOT NULL,           -- trimmed to 4000 chars
+      recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  ```
+- `puerto_sqlx::uow::PgTransaction`: `begin(&PgPool)`, `tx()` for the generated `save`,
+  `record(&impl DomainEvent)` (builds the envelope, inserts the outbox row) and `commit()`.
+  Dropping it rolls back. Generated UoWs wrap it, so they only write their entity's upsert.
+- `puerto_sqlx::events::PgOutbox`: `fetch_unpublished(limit)` (by `seq`) and `mark_published(ids)`.
+  The relay's advisory lock is `pg_try_advisory_lock(<constant>)`.
+- `puerto_sqlx::events::PgDeliveries`, the `db` transport: the publisher (fan out to the
+  registered consumers and mark the row published, in one transaction) and the subscription
+  (claim due rows with `FOR UPDATE SKIP LOCKED`, settle them as done, retry or dead).
+- `puerto_sqlx::events::PgDeadLetters`, the `DeadLetterSink`. It is idempotent on
+  `(event_id, consumer)`.
+
+Test scenarios (`make test/db`): a committed `PgTransaction` leaves the entity and its outbox row
+written; a dropped one leaves neither; unpublished rows come back in `seq` order and marked ones
+do not; fan-out writes one delivery per consumer and marks the row published atomically; two
+concurrent claims never return the same delivery; `Retry` moves `next_attempt_at` forward and
+increments `attempts`; `dead` writes a dead letter, and recording the same one twice writes one row.
+
+### 13.3 — Generated domain events and UoW (`puerto new --events db`)
+
+Tier 1. New matrix scenario `events_db` (`--db --events db`, CRUD entity with VO fields plus a
+custom event). Its snapshot is new; the existing scenarios' snapshots do not change.
+
+- `puerto new --db --events db|kafka`. Interactively, once db is chosen, Puerto asks
+  "Domain events? none / db / kafka". `--events` without `--db` is refused with a message naming
+  `--db`. `[project] events` is written. The outbox migration is written to
+  `infrastructure/migrations/<ts>_outbox.sql`. `business` gains `serde`/`serde_json`, and
+  `infrastructure` gains `serde_json` for the snapshot round-trip test.
+- `scaffold` in an `events` project, per CRUD entity:
+  - `business/src/domain/<e>/events.rs` (regenerated on every scaffold and on
+    `generate bootstrap`; header `// AUTO-GENERATED`): `{E}Snapshot` (DTO-shaped primitives,
+    serde, `from_entity(&E)`), `{E}Event::{Created, Updated, Deleted, <Custom>…}(Snapshot)`, and
+    `impl puerto_core::DomainEvent`. Tests: metadata per variant, and a snapshot round-trip that
+    pins the JSON contract.
+  - `business/src/domain/<e>/unit_of_work.rs`: the two ports (ADR-0018 § 2) and, behind the
+    `test-utils` gate, `mocks::RecordingUnitOfWorkFactory`: it records saved entities, recorded
+    events and whether `commit` ran, and can be scripted to fail at `begin`, `save` or `commit`.
+  - The repository port loses `save` (and so do its mock, the Pg repository and the InMemory
+    repository's trait impl). Reads are unchanged.
+  - `create`: `uow_factory` only. `update`/`delete`: `repository` (to read) and `uow_factory`. Each
+    one: `begin` → `save` → `record({E}Event::X(Snapshot::from_entity(&e)))` → `commit`, with the
+    existing `tracing` lines (ADR-0006).
+  - `infrastructure/src/<e>/unit_of_work.rs`: `Pg{E}UnitOfWorkFactory { pool }` over
+    `puerto_sqlx::uow::PgTransaction`. `save` is an upsert keyed by `id` (the insert and update
+    SQL the Pg repository has today, moved here).
+  - `lib.rs` patches: `pub mod events; pub mod unit_of_work;` in the entity block. The
+    infrastructure entity module gains `pub mod unit_of_work;`.
+  - `bootstrap.rs` builds one `Pg{E}UnitOfWorkFactory` per entity and passes it to the write use
+    cases.
+- `generate use-case` in an `events` project: the impl gets both `repository` and `uow_factory`,
+  `bootstrap.rs` wires both, and the stub's comment says writes go through the UoW.
+- `generate event <Entity> <name>`: appends to `[[entity]] events`, regenerates `events.rs`, and
+  refuses a duplicate, a CRUD name or a non-snake_case name. It does not touch any use case.
+- Simple (non-CRUD) entities keep their repository unchanged. Events are a CRUD-write concern
+  until a custom use case records one.
+- Docs: `architecture.md` (UoW, events.rs, repository without `save`), `puerto-toml.md`
+  (`events`, `[[entity]] events`), and the generated root `AGENTS.md`, which ADR-0010's test
+  makes name `events.rs` as never hand-edited.
+
+Test scenarios: `new --events db` without `--db` fails, and with it writes `events = "db"` and the
+outbox migration; scaffold in an events project writes `events.rs` and `unit_of_work.rs`, a
+repository trait with no `save`, and `create`/`update`/`delete` that name `uow_factory` and
+`record(`; scaffold in a non-events project is byte-identical to before (the existing snapshots);
+`events.rs` is regenerated after `generate event`; `generate event` refuses `product_created` and
+duplicates; `validate` rejects `events` without `db`; generated use case tests:
+`should_record_product_created_when_fields_are_valid`,
+`should_not_commit_when_the_store_rejects_a_duplicate` and
+`should_return_not_found_and_record_nothing_when_the_product_does_not_exist`, using the recording
+factory. The compile matrix: `events_db` passes clippy and its tests. `make test/db`: POST
+`/products` leaves one row in `products` and one `product_created` row in `outbox`, and a
+duplicate `unique` leaves neither.
+
+### 13.4 — `puerto-events` + the `db` transport + the `worker/` binary
+
+Tier 1. The `events_db` snapshot grows a `worker/` crate.
+
+- New runtime crate `crates/events` (`puerto-events`), depending on `puerto-core`, `puerto-web`
+  (health only), `tokio` and `tracing`:
+  - `Relay<P: EventPublisher>`: holds the advisory lock, fetches unpublished rows in batches,
+    publishes in order, stops at the first failure (order preserved) and marks only what was
+    confirmed. It drains back-to-back while rows remain and sleeps `poll_interval` otherwise.
+  - `Consumer<S: EventSubscription>`: hands each delivery to its `EventHandler`, applies
+    `decide`, and records a dead letter before retiring. A failed dead-letter write → retry. A
+    payload that does not decode → `DeadLetter(payload_invalid)`. A handler panic is caught and
+    treated as `Retry`.
+  - `Worker::new(WorkerConfig::from_env()?)` with `.run(build)`: spawns the relay and the
+    consumers, serves `/health` and `/health/ready` on `WORKER_PORT` (default 8081; ready while
+    every loop has ticked within its interval) and drains on SIGTERM (ADR-0008).
+    `WorkerConfig`: `WORKER_PORT`, `RELAY_BATCH_SIZE` (100), `RELAY_POLL_INTERVAL_MS` (500),
+    `CONSUMER_POLL_INTERVAL_MS` (500), `MAX_DELIVERIES` (5).
+- Template, for `events` projects only: a `worker/` member (`Cargo.toml`, `src/main.rs` written
+  once, `src/generated.rs`, `src/generated/registry.rs` regenerated, and `src/consumers.rs`
+  declaring the consumer modules), `make worker` (run it) and `make events/dead-letters` (list
+  recent dead letters with `psql`), and `.env` gains `WORKER_PORT`.
+- `puerto generate consumer <name> --on <event_type>[,<event_type>…]`: appends `[[consumer]]`,
+  writes `worker/src/consumers/<name>.rs`, patches `consumers.rs` and regenerates `registry.rs`.
+  It refuses an existing name or an undeclared event type. The stub is an `EventHandler`: it
+  matches `event.event_type`, decodes the snapshot (a decode error dead-letters), logs, returns
+  `Ack`, and carries a comment that it must be idempotent. Its tests: it acks a valid envelope,
+  it acks the same envelope delivered twice, and it dead-letters a malformed payload.
+- `generate bootstrap` also regenerates `registry.rs` in `events` projects.
+
+Test scenarios: in `crates/events`, the relay against fake ports publishes in order and marks
+everything, stops at the first failure and marks only the confirmed prefix, and does nothing on
+an empty outbox; the consumer applies every `decide` arm, records the dead letter before
+retiring, retries when the sink fails, and treats a panic as a retry; `WorkerConfig` rejects a
+non-numeric port. Structural: `new --events db` writes `worker/` and adds it to the workspace;
+`generate consumer` writes the stub, the toml entry and the registry line, and refuses an unknown
+event. `make test/db` end to end: start the worker, POST `/products`, and the generated consumer
+sees `product_created` within a bounded wait; a consumer that always retries ends up in
+`dead_letters` after 5 attempts (with the backoff shortened through config); with the worker
+stopped, the outbox keeps the row and the worker delivers it after a restart.
+
+### 13.5 — `puerto-kafka` (`puerto new --events kafka`)
+
+Tier 1. New matrix scenario `events_kafka`. A new `make test/kafka` brings up a Redpanda
+container, which is lighter than Kafka and speaks the same protocol.
+
+- New runtime crate `crates/kafka` (`puerto-kafka`) on `rdkafka` (`cmake-build`):
+  `KafkaPublisher` (topic `<project>.<aggregate_type>`, key `aggregate_id`, the envelope fields
+  in headers, `acks=all`, idempotent producer; topics created at startup if missing) and
+  `KafkaSubscription` (group id = the consumer name, subscribed to the topics of its event types,
+  filtering by the `event_type` header, auto-commit off, commit after the outcome). `Retry` is
+  retried in-process with `backoff_for`, then dead-lettered, so a partition stalls instead of
+  reordering. Config: `KAFKA_BROKERS`, `KAFKA_TOPIC_PREFIX` (default: the project name).
+- `--events kafka` projects: the worker's registry wires `KafkaPublisher` and
+  `KafkaSubscription`, dead letters stay in Postgres, `event_deliveries` is not created, and a
+  `compose.yaml` with Redpanda is added (the db transport needs none).
+- CI: the `test/full` job installs `cmake`. Puerto's `make test/kafka` lives next to
+  `make test/db`.
+
+Test scenarios: structural (`new --events kafka` writes the kafka registry, the compose file, and
+no `event_deliveries` in the migration). `make test/kafka` end to end: POST `/products` → the
+consumer sees `product_created`; two events of one aggregate arrive in order; a poisoned message
+ends up in `dead_letters` and the next one is still consumed; a worker restart does not
+re-deliver committed offsets.
+
+### Out of scope (Phase 13)
+
+Cross-aggregate transactions (hand-written UoW); backfilling a consumer registered late on the
+`db` transport; `LISTEN/NOTIFY` to cut the `db` transport's latency below the poll interval;
+RabbitMQ and NATS adapters (one crate each, same ports); enabling events on an existing project
+(`puerto add events`); event schema evolution beyond `schema_version`; the web frontend (events
+are backend-only).
+
+---
+
+## Phase 14 — Mailer: email as a consumer of domain events
+
+**Status:** not started; needs Phase 13.4. Its ADR decides the open points below before code.
+
+Goal: send an email when an event happens, by declaring it, without writing a consumer:
+
+```toml
+[[mail]]
+on = "user_created"            # a declared event type
+template = "welcome"           # mail/templates/welcome.html (+ welcome.txt if present)
+to = "email"                   # snapshot field holding the recipient
+subject = "Welcome, {{ name }}"
+```
+
+Sketch: a `Mailer` port in `puerto-core` and `puerto-mail` with an SMTP adapter (`lettre`) and a
+`log` adapter for development (`MAILER=smtp|log`). Templates are rendered with the snapshot as
+context. Each `[[mail]]` entry becomes a generated consumer (registry entry plus handler): a
+template or render error dead-letters, and an SMTP transient error retries. `puerto validate`
+checks that the event exists, that `to` is a `String` field of its snapshot and that the
+template file exists. Open, for the ADR: the config in puerto.toml (checked at generation time,
+recommended) or in a separate runtime-read file (editable without a rebuild); the template engine
+(`minijinja`); idempotency, because an SMTP send cannot share a transaction with the delivery
+(record a `sent_mails` row keyed by `(event_id, mail)` before sending, accepting rare duplicates
+over losses).
