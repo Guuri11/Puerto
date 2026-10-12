@@ -90,7 +90,7 @@ published crate (one `[workspace.package] version` in the root `Cargo.toml` — 
 then `puerto`:
 
 ```
-puerto-core → puerto-macros → puerto-web → puerto-sqlx → puerto-events → puerto-kafka → puerto-mail → puerto
+puerto-core → puerto-macros → puerto-web → puerto-sqlx → puerto-events → puerto-kafka → puerto-mail → puerto-auth → puerto
 ```
 
 A crate whose version is already on crates.io is skipped, so publishing by hand first does not
@@ -112,6 +112,7 @@ make test/full
 make test/db
 make test/kafka
 make test/mail
+make test/auth
 make lint
 make format
 cargo package --list -p puerto       # confirm template files are included
@@ -122,6 +123,7 @@ cargo publish --dry-run -p puerto-sqlx
 cargo publish --dry-run -p puerto-events
 cargo publish --dry-run -p puerto-kafka
 cargo publish --dry-run -p puerto-mail
+cargo publish --dry-run -p puerto-auth
 cargo publish --dry-run -p puerto
 
 # 4. Commit, push, tag — the tag publishes
@@ -134,7 +136,7 @@ git tag -a v0.x.y -m "v0.x.y" && git push origin v0.x.y
 #     && cargo publish -p puerto-web --locked \
 #     && cargo publish -p puerto-sqlx --locked && cargo publish -p puerto-events --locked \
 #     && cargo publish -p puerto-kafka --locked && cargo publish -p puerto-mail --locked \
-#     && cargo publish -p puerto --locked
+#     && cargo publish -p puerto-auth --locked && cargo publish -p puerto --locked
 ```
 
 The landing (`landing/`) is deployed by Vercel on every push to `main` — update its docs in the
@@ -152,6 +154,7 @@ Every release — automated or manual — must pass:
 - [ ] `make test/db` — the `--db` scenario against Postgres
 - [ ] `make test/kafka` — the Kafka transport against Redpanda
 - [ ] `make test/mail` — the SMTP adapter against Mailpit
+- [ ] `make test/auth` — the OIDC adapter against Keycloak
 - [ ] `make lint` — zero clippy warnings
 - [ ] `make format` — no formatting diff
 - [ ] `cargo package --list` — template files present in package

@@ -1,4 +1,4 @@
-.PHONY: help run build install setup test test/full test/db test/kafka test/mail test/mutation test/snapshots lint check format format/fix audit audit/fix
+.PHONY: help run build install setup test test/full test/db test/kafka test/mail test/auth test/mutation test/snapshots lint check format format/fix audit audit/fix
 
 CARGO := cargo
 
@@ -78,6 +78,16 @@ test/mail: ## Slow test: the SMTP adapter against a throwaway Mailpit (needs Doc
 	PUERTO_TEST_SMTP_URL=smtp://localhost:51025 PUERTO_TEST_MAILPIT_API=http://localhost:58025 \
 		$(CARGO) test -p puerto-mail --test mailpit -- --ignored; \
 		status=$$?; docker stop puerto-test-mailpit >/dev/null; exit $$status
+
+test/auth: ## Slow test: the OIDC adapter against a throwaway Keycloak (needs Docker)
+	@echo "${YELLOW}Starting throwaway Keycloak on :58180 (realms puerto, other)...${NC}"
+	@docker run -d --rm --name puerto-test-keycloak -p 58180:8080 \
+		-v $(CURDIR)/crates/auth/tests/fixtures/keycloak:/opt/keycloak/data/import:ro \
+		quay.io/keycloak/keycloak:26.8.0 start-dev --import-realm >/dev/null
+	@until curl -sf http://localhost:58180/realms/other/.well-known/openid-configuration >/dev/null; do sleep 1; done
+	PUERTO_TEST_KEYCLOAK_URL=http://localhost:58180 \
+		$(CARGO) test -p puerto-auth --test keycloak -- --ignored; \
+		status=$$?; docker stop puerto-test-keycloak >/dev/null; exit $$status
 
 test/mutation: ## Slow: mutation testing on Puerto's pure logic (see .cargo/mutants.toml)
 	@echo "${YELLOW}Running cargo-mutants...${NC}"

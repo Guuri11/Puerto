@@ -49,6 +49,13 @@ crates/
                       sent log, then the send, then the mark) and, behind `test-utils`,
                       `RecordingMailer` / `InMemorySentMails`. The ports (`Email`, `Mailer`,
                       `SentMails`) are `puerto-core`'s. `make test/mail` runs it against Mailpit
+  auth/             — `puerto-auth`, auth adapters (ADR-0021). Feature `oidc`: `OidcConfig`
+                      (`AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_ROLES_CLAIM`), `RolesClaim` (a top-level
+                      name as is, else a dotted path), `OidcAuthenticator::discover` (RS256/ES256
+                      only, `iss`/`aud`/`exp`/`nbf` ± 60 s, an unknown `kid` refetches the JWKS at
+                      most once a minute; the `Principal`'s `user_id` is nil). Its tests enable the
+                      feature through a dev-dependency on itself. `make test/auth` runs it against
+                      Keycloak
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
@@ -237,6 +244,7 @@ make test/full     # Slow: generates real projects, runs their `clippy --all-tar
 make test/db       # Slow: a generated --db project against a throwaway Postgres + Mailpit (Docker + sqlx-cli)
 make test/kafka    # Slow: the Kafka transport against a throwaway Redpanda (+ Postgres, Mailpit; Docker, cmake)
 make test/mail     # Slow: the SMTP adapter against a throwaway Mailpit (Docker)
+make test/auth     # Slow: the OIDC adapter against a throwaway Keycloak 26.8 (Docker)
 make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
 make test/snapshots # Re-record generated-output snapshots after an intended output change
 make lint          # cargo clippy --workspace --all-targets -- -D warnings

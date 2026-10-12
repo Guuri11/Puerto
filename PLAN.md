@@ -2501,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2. Next: **16.3**. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3. Next: **16.4**. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
@@ -2606,7 +2606,18 @@ Handoff notes from 16.1 (what is verified, what is not):
   core → macros → web → sqlx → events → kafka → mail → puerto (web depends on macros).
   `puerto-auth` (16.3) goes after `puerto-mail`.
 
-### 16.3 — `puerto-auth`, feature `oidc` + `make test/auth`
+### 16.3 — `puerto-auth`, feature `oidc` + `make test/auth` ✅
+
+Done. `jsonwebtoken` 10 (`rust_crypto`: no C toolchain) and `reqwest` 0.12 (rustls on ring).
+Beyond the spec: an issuer that differs from `AUTH_ISSUER` only by a trailing slash is the same
+issuer (Auth0 publishes `https://<tenant>.auth0.com/`), the token's `iss` is checked against the
+*discovered* one; a token without `kid`, a JWK marked `use: enc` and a JWK whose `alg` is not the
+token's are refused; a refetch attempt counts against the minute even when it fails (a flood of
+made-up `kid`s while the provider is down stays one request a minute). `discover` fails with
+`OidcError` (`Unreachable`, `Invalid`, `IssuerMismatch`, `NoSigningKey`) — the message 16.4's
+bootstrap hands to `try_serve`. `puerto-auth` is already in `RUNTIME_CRATES`, so the compile
+matrix patches it as soon as a project names it. Keycloak pinned at `26.8.0`; its realms are
+`crates/auth/tests/fixtures/keycloak/` (16.4's `realm.json` can start from them).
 
 - `OidcConfig::from_env`: `AUTH_ISSUER`, `AUTH_AUDIENCE` (required), `AUTH_ROLES_CLAIM` (default
   `realm_access.roles`). A claim name that exists at the top level is used as is (Auth0's

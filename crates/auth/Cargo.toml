@@ -1,0 +1,40 @@
+[package]
+name = "puerto-auth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Puerto runtime — auth for Puerto projects: the OIDC adapter of the Authenticator port (Auth0, Keycloak or any OpenID Connect provider)."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["ddd", "puerto", "auth", "oidc", "jwt"]
+categories = ["authentication", "web-programming"]
+
+[features]
+# The OIDC adapter (ADR-0021 § 1): `OidcAuthenticator`, `OidcConfig`, `RolesClaim`.
+oidc = ["dep:jsonwebtoken", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
+
+[dependencies]
+puerto-core = { workspace = true }
+async-trait = "0.1"
+dotenvy = "0.15"
+thiserror = "2"
+tracing = "0.1"
+# Verification only, never signing: the pure-Rust backend, so no C toolchain (aws-lc-rs needs one).
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"], optional = true }
+# rustls, not native-tls: no OpenSSL headers to install.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+tokio = { version = "1", features = ["sync"], optional = true }
+uuid = "1"
+
+[dev-dependencies]
+# Its own features for its tests: `make test` builds the workspace without features.
+puerto-auth = { path = ".", features = ["oidc"] }
+# PEM keys sign the test tokens.
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto", "use_pem"] }
+base64 = "0.22"
+poem = "3"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
