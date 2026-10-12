@@ -256,6 +256,31 @@ fn every_field_type_reaches_the_frontend_with_its_own_input() {
 }
 
 #[test]
+fn every_enum_of_an_entity_gets_its_values_once() {
+    let (dir, output) = web_project("web_two_enums");
+
+    scaffold::run_scaffold(
+        "Task",
+        &output,
+        &fields(&[
+            "status:Status:enum:Open/Closed",
+            "priority:Priority:enum:Low/High",
+        ]),
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+
+    let model = read(&output, "web/src/domain/task/model.ts");
+    for line in [
+        r#"export const statusValues = ["Open", "Closed"] as const;"#,
+        r#"export const priorityValues = ["Low", "High"] as const;"#,
+    ] {
+        assert_eq!(model.matches(line).count(), 1, "{line} in:\n{model}");
+    }
+    cleanup(&dir);
+}
+
+#[test]
 fn generate_use_case_leaves_web_untouched() {
     let (dir, output) = web_project("web_use_case_untouched");
     scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
