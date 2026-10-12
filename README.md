@@ -165,7 +165,9 @@ that answers `Ack`, `Retry` (redelivered with backoff) or `DeadLetter` — nothi
 without a row in `dead_letters` (`make events/dead-letters`). Delivery is at-least-once, so
 handlers must be idempotent. The `db` transport needs no broker. On Kafka (`--events kafka`) the
 worker publishes each event to its aggregate's topic, keyed by the aggregate id, and each consumer
-is a consumer group — `docker-compose.yml` runs Redpanda for development.
+is a consumer group — `docker-compose.yml` runs Redpanda for development. Building a Kafka
+project compiles librdkafka from source: it needs `cmake` and the libcurl headers
+(`libcurl4-openssl-dev` on Debian/Ubuntu, `curl` on Arch, preinstalled with Xcode on macOS).
 
 Validate your `puerto.toml` at any time:
 

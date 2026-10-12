@@ -2141,6 +2141,9 @@ Done as specified. What the code settled — the runtime crate `crates/kafka`:
   (`DeadLetterRecord::unreadable`, `payload_invalid`) and committed; if the sink fails it is kept
   and retried first on the next batch. A record of a type the consumer did not subscribe to is
   committed and skipped. Commits are synchronous, off the async threads (`spawn_blocking`).
+- Building librdkafka (`cmake-build`) needs the libcurl headers as well as `cmake`: librdkafka
+  2.12 guards `#include <curl/curl.h>` with `#ifdef WITH_OAUTHBEARER_OIDC`, which its
+  `config.h` always defines (as 0). CI installs `libcurl4-openssl-dev`; the README says so.
 - The producer: `acks=all`, idempotent, `message.timeout.ms` 30 s — a publish that times out is a
   relay pass that failed, so the worker shows not ready while the broker is down.
 

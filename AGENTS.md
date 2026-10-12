@@ -30,7 +30,9 @@ crates/
   kafka/            — `puerto-kafka`, the Kafka transport (`--events kafka`, ADR-0018): `KafkaConfig`
                       (`KAFKA_BROKERS`, `KAFKA_TOPIC_PREFIX`, `ensure_topics`), `KafkaPublisher`,
                       `KafkaSubscription` (one record per batch, in-process retry, commit after
-                      the outcome). `make test/kafka` runs it against Redpanda
+                      the outcome). `make test/kafka` runs it against Redpanda. Building it needs
+                      `cmake` and the libcurl headers (librdkafka 2.12 includes `curl/curl.h`
+                      even without curl support)
   cli/              — The puerto binary
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)

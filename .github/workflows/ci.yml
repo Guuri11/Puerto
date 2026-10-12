@@ -28,9 +28,10 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
-      # `puerto-kafka` builds librdkafka from source (`rdkafka/cmake-build`).
-      - name: Install cmake
-        run: sudo apt-get install -y cmake
+      # `puerto-kafka` builds librdkafka from source (`rdkafka/cmake-build`); librdkafka 2.12
+      # includes `curl/curl.h` even without curl support, so the headers are needed too.
+      - name: Install cmake and the libcurl headers
+        run: sudo apt-get install -y cmake libcurl4-openssl-dev
 
       - name: Test
         run: make test
@@ -61,8 +62,8 @@ jobs:
         uses: taiki-e/install-action@nextest
 
       # `puerto-kafka`, and the `--events kafka` scenario's worker, build librdkafka from source.
-      - name: Install cmake
-        run: sudo apt-get install -y cmake
+      - name: Install cmake and the libcurl headers
+        run: sudo apt-get install -y cmake libcurl4-openssl-dev
 
       # The web scenarios install, lint and test the generated frontend.
       - name: Install Bun
