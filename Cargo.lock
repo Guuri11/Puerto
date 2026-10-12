@@ -2555,7 +2555,7 @@ dependencies = [
 
 [[package]]
 name = "puerto"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "cargo-generate",
  "clap",
@@ -2572,14 +2572,14 @@ dependencies = [
 
 [[package]]
 name = "puerto-core"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "puerto-sqlx"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "puerto-core",
  "sqlx",
@@ -2589,7 +2589,7 @@ dependencies = [
 
 [[package]]
 name = "puerto-web"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "dotenvy",
  "poem",

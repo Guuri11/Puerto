@@ -1,3 +1,57 @@
+## [0.14.0] - 2026-10-12
+
+The code every generated project shared as a copy now lives in three runtime crates, released in
+lockstep with the CLI (ADR-0017): a fix to the server, the health probes or the Postgres error
+mapping reaches existing projects through `cargo update` instead of staying wrong in every
+project generated before it. New infrastructure (auth, jobs, mailer, storage) lands there next.
+
+### Breaking
+
+- **`puerto-core`** — `RepositoryError` (now `#[non_exhaustive]`), `PageRequest`, `Page<T>`.
+  `business/src/domain/shared/{pagination,repository_error}.rs` are no longer generated; imports
+  move from `crate::domain::shared::…` to `puerto_core::…`. Every entity's
+  `From<RepositoryError>` gains a `_` arm (→ `RepositoryError`, 500)
+- **`puerto-web`** — the server (`App::serve`: tracing, CORS, banner, graceful shutdown),
+  `Config::from_env`, the `/health` and `/health/ready` probes and `ErrorResponse`.
+  `presentation/src/main.rs` is `Config::from_env()?` + `App::new(config).serve(build_app)`;
+  `health.rs` is gone; `api/error.rs` keeps only the `IntoErrorResponse` trait (the orphan rule
+  keeps it in the project); `build_app(config)` ends with `crate::app::configure(…)`
+- **`puerto-sqlx`** (`--db` projects) — `create_postgres_pool`, `run_migrations`, `ping`,
+  `map_sqlx_error`, `DatabaseError` (now `#[non_exhaustive]`). `infrastructure/src/db.rs` is
+  `pub use puerto_sqlx::*;` plus the project's `MIGRATOR`, and `bootstrap.rs` calls
+  `run_migrations(&pool, &infrastructure::db::MIGRATOR)`
+- `HARBOR_BANNER` is now `PUERTO_BANNER`
+- A set but invalid `SERVICE_PORT` or `PUERTO_BANNER` stops the server at startup instead of
+  silently falling back to the default
+
+### 🚀 Features
+
+- Runtime requirements are declared once, in the root `Cargo.toml`'s `[workspace.dependencies]`
+  on the CLI's minor (`puerto-core = "0.14"`), and inherited by each member with
+  `{ workspace = true }`
+- **`presentation/src/app.rs`**: the project's own hook, `configure(routes) -> impl Endpoint`,
+  for middleware and extra routes. Written once by `puerto new`, never touched by a generator
+- `puerto validate` warns when a runtime crate is on another minor than the CLI
+- The generated root `AGENTS.md` names each runtime crate and what it owns
+
+### Migration Guide
+
+No project generated before 0.14.0 is in use, so the simplest path is to regenerate. For a project
+you keep, hand this to your coding agent:
+
+> Upgrade this Puerto project from 0.13 to 0.14. In the root `Cargo.toml` add
+> `[workspace.dependencies]` with `puerto-core = "0.14"`, `puerto-web = "0.14"` and, if
+> `infrastructure` uses sqlx, `puerto-sqlx = "0.14"`; add `<crate> = { workspace = true }` to
+> `business`, `infrastructure` and `presentation` (`puerto-web` only in `presentation`,
+> `puerto-sqlx` only in `infrastructure`). Delete `business/src/domain/shared/pagination.rs`,
+> `shared/repository_error.rs` and `presentation/src/health.rs`, and replace every import of
+> them with `puerto_core::{Page, PageRequest, RepositoryError}` or `puerto_web::ErrorResponse`;
+> add a `_ => Self::RepositoryError` arm to each `From<RepositoryError>`. Copy
+> `presentation/src/main.rs`, `presentation/src/app.rs`, `presentation/src/api/error.rs` and
+> (with a database) `infrastructure/src/db.rs` from a fresh `puerto new` of the same kind, move
+> any middleware you had in `main.rs` into `app.rs`, rename `HARBOR_BANNER` to `PUERTO_BANNER`
+> in `.env`, then run `puerto generate bootstrap`, `puerto validate` and `make test`.
+
 ## [0.13.0] - 2026-10-11
 
 Three backlog items that a production service needs on day one and cannot cheaply add on day 100:
