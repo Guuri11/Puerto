@@ -1,3 +1,17 @@
+## [0.17.1] - 2026-10-12
+
+### 🐛 Bug Fixes
+
+- `puerto new --db` declares `pub mod db;` in `infrastructure/src/lib.rs` right away. It used to
+  wait for the first scaffold, so a project from `puerto new --db --events db|kafka` did not
+  compile (the worker names `infrastructure::db`). Broken since 0.15; an existing project only
+  needs the line added
+
+### Release
+
+- Publish order: `puerto-core` → `puerto-web` → `puerto-sqlx` → `puerto-events` →
+  `puerto-kafka` → `puerto` (runtime crates unchanged, republished at the CLI's version)
+
 ## [0.17.0] - 2026-10-12
 
 Developer experience: what a walkthrough of a fresh project found (PLAN Phase 15). The default
