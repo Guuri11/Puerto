@@ -40,6 +40,7 @@ mod bootstrap_gen;
 mod cli_surface;
 mod compile_matrix;
 mod conventions;
+mod domain_events;
 mod field_args;
 mod generated_output;
 mod ide_snippets;

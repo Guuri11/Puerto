@@ -105,7 +105,35 @@ pub fn generate_crud_infra_db_repository(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
+    events: bool,
 ) -> Result<String, RenderError> {
+    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos);
+    ctx.insert("events", &events);
+    render("infrastructure/repository_pg_crud.tera", &ctx)
+}
+
+/// `infrastructure/src/{snake}/unit_of_work.rs`: the upsert the Pg repository has in a project
+/// without events, inside a `puerto_sqlx::uow::PgTransaction`.
+pub fn generate_pg_unit_of_work(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> Result<String, RenderError> {
+    render(
+        "infrastructure/unit_of_work_pg.tera",
+        &pg_crud_ctx(pascal, snake, fields, shared_vos),
+    )
+}
+
+/// What the Pg repository and the Pg unit of work render from: the SQL of the entity's table,
+/// and the seed its integration tests build.
+fn pg_crud_ctx(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> tera::Context {
     let eff = effective_fields(fields);
 
     // The seed names every plain and enum VO it constructs (`Name::new(…)`, `Status::Active`);
@@ -132,7 +160,7 @@ pub fn generate_crud_infra_db_repository(
     ctx.insert("all_updates", &sql_conflict_set(&eff));
     ctx.insert("test_imports", &test_imports);
     ctx.insert("fields", &field_ctxs(&eff, pascal, shared_vos));
-    render("infrastructure/repository_pg_crud.tera", &ctx)
+    ctx
 }
 
 /// A VO's path from the infrastructure crate.
@@ -196,10 +224,17 @@ pub fn write_repository_files(
             &base.join(format!("infrastructure/src/{snake}/entity.rs")),
             &generate_infra_entity(pascal, snake, fields, shared_vos)?,
         )?;
+        let events = crate::puerto_toml::events_enabled(base);
         write_file(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
-            &generate_crud_infra_db_repository(pascal, snake, fields, shared_vos)?,
+            &generate_crud_infra_db_repository(pascal, snake, fields, shared_vos, events)?,
         )?;
+        if events {
+            write_file(
+                &base.join(format!("infrastructure/src/{snake}/unit_of_work.rs")),
+                &generate_pg_unit_of_work(pascal, snake, fields, shared_vos)?,
+            )?;
+        }
     } else {
         let ctx = entity_ctx(pascal, snake);
         write_file(
@@ -232,7 +267,7 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
         .unwrap_or_default();
 
     write_repository_files(&pascal, &snake, base, db, &fields, &shared_vos)?;
-    patch_infra_lib(base, &snake, db)?;
+    patch_infra_lib(base, &snake, db, true)?;
 
     if db {
         run_migration(

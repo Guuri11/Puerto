@@ -256,6 +256,77 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
+/// The root `AGENTS.md` section an `events` project gets (ADR-0010: what it names is tested).
+const AGENTS_EVENTS_SECTION: &str = r#"## Domain events (`[project] events`)
+
+Every write of a CRUD entity goes through its unit of work, which saves the entity and records an
+event in the `outbox` table in one transaction (ADR-0018 of Puerto). The repository only reads.
+
+- **Never hand-edit `business/src/domain/<entity>/events.rs`** — it is rewritten from
+  `puerto.toml` (the snapshot follows the entity's fields). Add an event with
+  `puerto generate event <Entity> <name>`, then record it from a use case:
+  `uow.record(ProductEvent::Published(ProductSnapshot::from_entity(&entity)))`.
+- A write use case: `uow_factory.begin()` → `save` → `record` → `commit`. Returning early with
+  `?` before `commit` rolls everything back.
+- The snapshot is a public contract: consumers decode it. Renaming a field changes it.
+
+"#;
+
+/// Turns a fresh `--db` project into an `events` one (`puerto new --db --events <transport>`):
+/// `[project] events`, the outbox migration, serde for the event snapshots and the `AGENTS.md`
+/// section that says how writes work.
+pub fn apply_events_to_new_project(
+    base: &Path,
+    transport: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    crate::validation::validate_events_transport(transport)?;
+    let mut config = crate::puerto_toml::read(base)?;
+    if !config.project.db {
+        return Err("--events needs a database: add --db".into());
+    }
+    config.project.events = Some(transport.to_string());
+    crate::puerto_toml::write(base, &config)?;
+
+    crate::generators::migration::run_migration(
+        "outbox",
+        base,
+        Some(&render("infrastructure/outbox.sql", &tera::Context::new())?),
+    )?;
+
+    // `events.rs` derives serde on the snapshots; the domain models stay serde-free.
+    let manifest = base.join("business/Cargo.toml");
+    let src = fs::read_to_string(&manifest)?;
+    if !src.contains("serde_json") {
+        let patched = src.replace(
+            "uuid = { version = \"1\", features = [\"v4\"] }\nchrono = \"0.4\"\n",
+            "uuid = { version = \"1\", features = [\"v4\", \"serde\"] }\n\
+                 chrono = { version = \"0.4\", features = [\"serde\"] }\n\
+                 serde = { version = \"1\", features = [\"derive\"] }\n\
+                 serde_json = \"1\"\n",
+        );
+        if !patched.contains("serde_json") {
+            return Err(format!(
+                "{}: no uuid/chrono dependencies to extend",
+                manifest.display()
+            )
+            .into());
+        }
+        fs::write(&manifest, patched)?;
+    }
+
+    let agents_path = base.join("AGENTS.md");
+    let agents = fs::read_to_string(&agents_path)?;
+    if !agents.contains(AGENTS_EVENTS_SECTION) {
+        // Before the conventions: next to the rules about generated files.
+        let out = match agents.find("## Conventions") {
+            Some(at) => format!("{}{AGENTS_EVENTS_SECTION}{}", &agents[..at], &agents[at..]),
+            None => format!("{agents}\n{AGENTS_EVENTS_SECTION}"),
+        };
+        fs::write(&agents_path, out)?;
+    }
+    Ok(())
+}
+
 /// An already-absent file is what a removal wants; any other failure is a real error.
 fn ignore_not_found(result: std::io::Result<()>) -> std::io::Result<()> {
     match result {

@@ -54,16 +54,34 @@ pub fn validate_project_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// What `puerto new` was asked for on the command line; what is left out is prompted for.
+#[derive(Debug, Default)]
+pub struct NewOptions {
+    pub db: bool,
+    pub no_db: bool,
+    pub no_demo: bool,
+    pub no_web: bool,
+    /// `--events <transport>`: `db` or `kafka`.
+    pub events: Option<String>,
+}
+
 pub fn new_project(
     name: Option<String>,
-    db: bool,
-    no_db: bool,
-    no_demo: bool,
-    no_web: bool,
+    options: NewOptions,
     destination: Option<PathBuf>,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let NewOptions {
+        db,
+        no_db,
+        no_demo,
+        no_web,
+        events,
+    } = options;
     if let Some(name) = &name {
         validate_project_name(name)?;
+    }
+    if let Some(transport) = &events {
+        crate::validation::validate_events_transport(transport)?;
     }
 
     let resolved_db = if db {
@@ -77,6 +95,24 @@ pub fn new_project(
             .interact()?
     } else {
         false
+    };
+
+    // The outbox only works inside a database transaction (ADR-0018 § 1).
+    if events.is_some() && !resolved_db {
+        return Err("--events needs a database: add --db".into());
+    }
+    let resolved_events = if events.is_some() || !resolved_db {
+        events
+    } else if dialoguer::console::user_attended() {
+        let transports = ["none", "db", "kafka"];
+        let choice = dialoguer::Select::new()
+            .with_prompt("Domain events?")
+            .items(&transports)
+            .default(0)
+            .interact()?;
+        (choice > 0).then(|| transports[choice].to_string())
+    } else {
+        None
     };
 
     let resolved_no_demo = if no_demo {
@@ -109,6 +145,10 @@ pub fn new_project(
 
     if resolved_db {
         crate::generators::project::apply_db_to_new_project(&output)?;
+    }
+
+    if let Some(transport) = &resolved_events {
+        crate::generators::project::apply_events_to_new_project(&output, transport)?;
     }
 
     if resolved_no_demo {

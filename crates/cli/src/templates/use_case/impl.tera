@@ -6,12 +6,16 @@ use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
     model::{{ pascal }},
     repository::{{ pascal }}RepositoryTrait,
-    use_cases::{{ uc }}::{{ "{" }}{{ uc_pascal }}Params, {{ uc_pascal }}UseCaseTrait},
+{% if uow %}    unit_of_work::{{ pascal }}UnitOfWorkFactory,
+{% endif %}    use_cases::{{ uc }}::{{ "{" }}{{ uc_pascal }}Params, {{ uc_pascal }}UseCaseTrait},
 };
 
 pub struct {{ uc_pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
-}
+{% if uow %}    /// Writes go through the unit of work: `begin`, `save`, `record` an event, `commit`. The
+    /// repository only reads.
+    pub uow_factory: Arc<dyn {{ pascal }}UnitOfWorkFactory>,
+{% endif %}}
 
 #[async_trait]
 impl {{ uc_pascal }}UseCaseTrait for {{ uc_pascal }}UseCaseImpl {
@@ -25,7 +29,8 @@ impl {{ uc_pascal }}UseCaseTrait for {{ uc_pascal }}UseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
-
+{% if uow %}    use crate::domain::{{ snake }}::unit_of_work::mocks::RecordingUnitOfWorkFactory;
+{% endif %}
 
     #[tokio::test]
     async fn should_{{ uc }}_when_valid() {
@@ -33,7 +38,8 @@ mod tests {
         let mock_repo = Mock{{ pascal }}Repository::new();
         let use_case = {{ uc_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
-        };
+{% if uow %}            uow_factory: Arc::new(RecordingUnitOfWorkFactory::new()),
+{% endif %}        };
 
         // Act
         // TODO: implement test body

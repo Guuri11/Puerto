@@ -1,0 +1,153 @@
+{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+{% for import in vo_imports %}use {{ import }};
+{% endfor %}
+use crate::domain::{{ snake }}::{
+    errors::{{ pascal }}Error,
+    events::{{ "{" }}{{ pascal }}Event, {{ pascal }}Snapshot},
+    model::{{ pascal }},
+    repository::{{ pascal }}RepositoryTrait,
+    unit_of_work::{{ pascal }}UnitOfWorkFactory,
+    use_cases::update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
+};
+
+pub struct Update{{ pascal }}UseCaseImpl {
+    pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
+    pub uow_factory: Arc<dyn {{ pascal }}UnitOfWorkFactory>,
+}
+
+#[async_trait]
+impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCaseImpl {
+    async fn execute(&self, params: Update{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
+        tracing::info!(id = %params.id, "update_{{ snake }}: start");
+        let failed = |e: &RepositoryError| tracing::error!(error = %e, "update_{{ snake }}: repository failed");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(failed)?
+            .ok_or_else(|| {
+                let err = {{ pascal }}Error::NotFound;
+                tracing::warn!(error = %err, "update_{{ snake }}: rejected");
+                err
+            })?;
+{% for f in required %}        if params.{{ f.name }}.trim().is_empty() {
+            let err = {{ pascal }}Error::ValidationError("{{ f.name }}_empty".into());
+            tracing::warn!(error = %err, "update_{{ snake }}: rejected");
+            return Err(err);
+        }
+{% endfor %}{% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
+{% endfor %}{% for f in fields %}        entity.{{ f.name }} = {% if not f.is_vo %}params.{% endif %}{{ f.name }};
+{% endfor %}        entity.updated_at = chrono::Utc::now();
+        let mut uow = self.uow_factory.begin().await.inspect_err(failed)?;
+        uow.save(&entity).await.inspect_err(failed)?;
+        uow.record({{ pascal }}Event::Updated({{ pascal }}Snapshot::from_entity(&entity))).await.inspect_err(failed)?;
+        uow.commit().await.inspect_err(failed)?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{{ snake }}::{
+        model::{{ "{" }}{{ pascal }}Id, {{ pascal }}Props},
+        repository::mocks::Mock{{ pascal }}Repository,
+        unit_of_work::mocks::RecordingUnitOfWorkFactory,
+    };
+    use puerto_core::DomainEvent;
+{% for import in test_imports %}    use {{ import }};
+{% endfor %}
+
+    fn repository_holding(entity: {{ pascal }}) -> Mock{{ pascal }}Repository {
+        let mut mock_repo = Mock{{ pascal }}Repository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo
+    }
+
+    #[tokio::test]
+    async fn should_record_{{ snake }}_updated_when_params_are_valid() {
+        // Arrange
+        let entity = {{ pascal }}::new({{ pascal }}Props {
+{{ macros::props(fields=fields, word="original") }}        }).unwrap();
+        let entity_id = entity.id;
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = Update{{ pascal }}UseCaseImpl {
+            repository: Arc::new(repository_holding(entity)),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Update{{ pascal }}Params {
+            id: entity_id,
+{{ macros::params(fields=fields, word="updated") }}            })
+            .await;
+
+        // Assert
+        {% if required %}assert_eq!(result.unwrap().{{ required.0.name }}, "updated");{% elif string_vos %}assert_eq!(result.unwrap().{{ string_vos.0.name }}.value(), "updated");{% else %}assert!(result.is_ok());{% endif %}
+        let recorded = uow_factory.recorded();
+        assert!(recorded.committed);
+        assert_eq!(recorded.events.len(), 1);
+        assert_eq!(recorded.events[0].event_type(), "{{ snake }}_updated");
+        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_and_record_nothing_when_the_{{ snake }}_does_not_exist() {
+        // Arrange
+        let mut mock_repo = Mock{{ pascal }}Repository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = Update{{ pascal }}UseCaseImpl {
+            repository: Arc::new(mock_repo),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Update{{ pascal }}Params {
+            id: {{ pascal }}Id::generate(),
+{{ macros::params(fields=fields, word="new") }}            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.not_found");
+        let recorded = uow_factory.recorded();
+        assert!(recorded.saved.is_empty());
+        assert!(recorded.events.is_empty());
+    }
+{% for f in required | concat(with=string_vos) %}
+    #[tokio::test]
+    async fn should_return_error_and_record_nothing_when_{{ f.name }}_is_empty() {
+        // Arrange
+        let entity = {{ pascal }}::new({{ pascal }}Props {
+{{ macros::props(fields=fields, word="original") }}        }).unwrap();
+        let entity_id = entity.id;
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = Update{{ pascal }}UseCaseImpl {
+            repository: Arc::new(repository_holding(entity)),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Update{{ pascal }}Params {
+            id: entity_id,
+{{ macros::params(fields=fields, word="updated", empty=f.name) }}            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "{% if f.is_vo %}{{ snake }}.invalid_{{ f.vo_snake }}{% else %}{{ snake }}.validation_error.{{ f.name }}_empty{% endif %}"
+        );
+        assert!(uow_factory.recorded().saved.is_empty());
+    }
+{% endfor %}}

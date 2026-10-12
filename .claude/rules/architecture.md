@@ -257,6 +257,34 @@ offset }`. The CRUD port reads `find_all(&self, page: PageRequest) -> Result<Pag
 RepositoryError>`, `ListEntitiesParams { page }` returns a `Page`, and `GET /entities?limit=&offset=`
 answers `EntityPageDto`. Pg: `ORDER BY created_at DESC, id LIMIT $1 OFFSET $2` + `COUNT(*)`.
 
+### Domain events (`[project] events` — ADR-0018)
+
+A project created with `puerto new --db --events db|kafka`. Each **CRUD** entity gets two more
+domain files; simple entities (the Greeting demo) are unchanged:
+
+```
+domain/<entity>/
+  events.rs         # AUTO-GENERATED from puerto.toml, never hand-edited: {Entity}Snapshot
+                    #   (DTO-shaped primitives, serde camelCase, from_entity), {Entity}Event
+                    #   (Created/Updated/Deleted + custom), impl puerto_core::DomainEvent,
+                    #   pub const {ENTITY}_CREATED…
+  unit_of_work.rs   # {Entity}UnitOfWork (save / record / commit(self: Box<Self>)) and
+                    #   {Entity}UnitOfWorkFactory (begin); mocks::RecordingUnitOfWorkFactory
+```
+
+- The repository port **has no `save`**: it only reads. Writes go `uow_factory.begin()` → `save`
+  → `record({Entity}Event::X({Entity}Snapshot::from_entity(&e)))` → `commit`. Dropping the UoW
+  without `commit` rolls back — an early `?` is the rollback
+- `create` holds `uow_factory` only; `get`/`list` `repository` only; `update`/`delete` and every
+  custom use case both. `bootstrap.rs` builds `{snake}_repo` and `{snake}_uow` once per entity
+- Infrastructure: `unit_of_work.rs` — `Pg{Entity}UnitOfWorkFactory { pool }` over
+  `puerto_sqlx::uow::PgTransaction`; the upsert lives there, not in the Pg repository. Its
+  `#[sqlx::test]`s check the row and its outbox event commit (and roll back) together
+- `events.rs` is rewritten by scaffold, `generate bootstrap` and `generate event`; domain models
+  and value objects stay serde-free. The snapshot is a public contract: consumers decode it
+- Tests use `RecordingUnitOfWorkFactory` (`failing_at(FailAt::Save, RepositoryError::Duplicate)`,
+  `recorded()` → `saved`, `events`, `committed`)
+
 ---
 
 ## Application Layer (`business/src/application/<entity>/`)

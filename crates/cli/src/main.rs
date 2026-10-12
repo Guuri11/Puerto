@@ -46,6 +46,10 @@ enum Commands {
         /// Skip the web frontend (`web/`: React + daisyUI on Bun)
         #[arg(long)]
         no_web: bool,
+        /// Domain events (needs --db): every write records an event in an outbox, relayed through
+        /// this transport
+        #[arg(long, value_parser = ["db", "kafka"], conflicts_with = "no_db")]
+        events: Option<String>,
         /// Directory where the project will be created (defaults to current directory)
         #[arg(long)]
         destination: Option<PathBuf>,
@@ -87,6 +91,14 @@ enum GenerateAction {
         entity: String,
         /// Use case action in snake_case (e.g. delete_product)
         action: String,
+    },
+    /// Declare a custom domain event of a CRUD entity and regenerate its events.rs (projects
+    /// created with --events)
+    Event {
+        /// Entity name in PascalCase (e.g. Product)
+        entity: String,
+        /// Event type in snake_case, past tense (e.g. product_published)
+        name: String,
     },
     /// Regenerate presentation/src/generated/bootstrap.rs from puerto.toml
     Bootstrap {
@@ -188,9 +200,17 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             no_db,
             no_demo,
             no_web,
+            events,
             destination,
         } => {
-            commands::new::new_project(name, db, no_db, no_demo, no_web, destination).map(|path| {
+            let options = commands::new::NewOptions {
+                db,
+                no_db,
+                no_demo,
+                no_web,
+                events,
+            };
+            commands::new::new_project(name, options, destination).map(|path| {
                 let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 let web = path.join("web").is_dir();
                 println!("├── business/        (domain logic)");
@@ -239,6 +259,13 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_use_case(&entity, &action, &cwd))
+        }
+        Commands::Generate {
+            action: GenerateAction::Event { entity, name },
+        } => {
+            let cwd = std::env::current_dir()?;
+            commands::list::require_puerto_project(&cwd)
+                .and_then(|_| scaffold::run_generate_event(&entity, &name, &cwd))
         }
         Commands::Generate {
             action: GenerateAction::Bootstrap { allow_missing },

@@ -282,6 +282,10 @@ pub fn write_domain_files(
     let mut errors_ctx = entity_ctx(pascal, snake);
     errors_ctx.insert("vo_fields", &vo_fields);
     let ctx = entity_ctx(pascal, snake);
+    let config = crate::puerto_toml::read(base).ok();
+    let events = config.as_ref().is_some_and(|c| c.project.has_events());
+    let mut repository_ctx = entity_ctx(pascal, snake);
+    repository_ctx.insert("events", &events);
 
     write(
         "model.rs".into(),
@@ -300,8 +304,24 @@ pub fn write_domain_files(
     }
     write(
         "repository.rs".into(),
-        render("domain/repository.tera", &ctx)?,
+        render("domain/repository.tera", &repository_ctx)?,
     )?;
+    if events {
+        // Custom events survive a re-scaffold: they are the entity's block in puerto.toml.
+        let custom = config
+            .as_ref()
+            .and_then(|c| c.entity.iter().find(|e| e.name == pascal))
+            .map(|e| e.events.clone())
+            .unwrap_or_default();
+        write(
+            "events.rs".into(),
+            crate::generators::events::generate_events(pascal, snake, fields, shared_vos, &custom)?,
+        )?;
+        write(
+            "unit_of_work.rs".into(),
+            crate::generators::events::generate_domain_unit_of_work(pascal, snake)?,
+        )?;
+    }
     let use_case = |action: &str| format!("use_cases/{}.rs", crud_use_case(action, snake));
     write(
         use_case("create"),

@@ -2,13 +2,16 @@ use std::{fs, path::Path};
 
 use serde::Serialize;
 
-use crate::generators::naming::{pascal_to_snake, to_pascal_case};
+use crate::generators::naming::{crud_use_case, is_crud_entity, pascal_to_snake, to_pascal_case};
 use crate::generators::render::{RenderError, render};
 
 #[derive(Serialize)]
 struct BootstrapUseCase {
     action: String,
     uc_pascal: String,
+    /// Unit-of-work entities only: which ports the use case is built with.
+    repository: bool,
+    uow: bool,
 }
 
 #[derive(Serialize)]
@@ -16,24 +19,45 @@ struct BootstrapEntity {
     pascal: String,
     snake: String,
     db: bool,
+    /// Its writes go through a `Pg{Entity}UnitOfWorkFactory` (ADR-0018 § 2).
+    uow: bool,
     use_cases: Vec<BootstrapUseCase>,
 }
 
-fn build_context(entities: &[crate::puerto_toml::Entity], web: bool) -> tera::Context {
+/// Whether an entity's writes go through a unit of work: a CRUD entity of an `events` project.
+pub fn uses_unit_of_work(entity: &crate::puerto_toml::Entity, events: bool) -> bool {
+    events && entity.db && is_crud_entity(&pascal_to_snake(&entity.name), &entity.use_cases)
+}
+
+fn build_context(
+    entities: &[crate::puerto_toml::Entity],
+    web: bool,
+    events: bool,
+) -> tera::Context {
     let ctx_entities: Vec<BootstrapEntity> = entities
         .iter()
-        .map(|entity| BootstrapEntity {
-            pascal: entity.name.clone(),
-            snake: pascal_to_snake(&entity.name),
-            db: entity.db,
-            use_cases: entity
-                .use_cases
-                .iter()
-                .map(|uc| BootstrapUseCase {
-                    action: uc.clone(),
-                    uc_pascal: to_pascal_case(uc),
-                })
-                .collect(),
+        .map(|entity| {
+            let snake = pascal_to_snake(&entity.name);
+            // `create` only writes; `get` and `list` only read; the rest (update, delete and
+            // every custom use case) read, then write.
+            let create = crud_use_case("create", &snake);
+            let reads = [crud_use_case("get", &snake), crud_use_case("list", &snake)];
+            BootstrapEntity {
+                pascal: entity.name.clone(),
+                db: entity.db,
+                uow: uses_unit_of_work(entity, events),
+                use_cases: entity
+                    .use_cases
+                    .iter()
+                    .map(|uc| BootstrapUseCase {
+                        action: uc.clone(),
+                        uc_pascal: to_pascal_case(uc),
+                        repository: *uc != create,
+                        uow: !reads.contains(uc),
+                    })
+                    .collect(),
+                snake,
+            }
         })
         .collect();
 
@@ -59,11 +83,22 @@ fn api_expression(entities: &[crate::puerto_toml::Entity]) -> String {
 
 /// `web`: the project has a frontend, so `bootstrap.rs` also carries the test that exports the
 /// OpenAPI spec to `docs/api/openapi.json` (ADR-0013).
+#[cfg(test)]
 pub fn generate_bootstrap_content(
     entities: &[crate::puerto_toml::Entity],
     web: bool,
 ) -> Result<String, RenderError> {
-    let ctx = build_context(entities, web);
+    generate_bootstrap_content_with_events(entities, web, false)
+}
+
+/// `events`: the project records domain events, so its CRUD entities are wired with a unit of
+/// work.
+pub fn generate_bootstrap_content_with_events(
+    entities: &[crate::puerto_toml::Entity],
+    web: bool,
+    events: bool,
+) -> Result<String, RenderError> {
+    let ctx = build_context(entities, web, events);
     render("bootstrap/bootstrap.tera", &ctx)
 }
 
@@ -126,7 +161,11 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     }
     fs::write(
         bootstrap_path,
-        generate_bootstrap_content(&config.entity, config.project.web)?,
+        generate_bootstrap_content_with_events(
+            &config.entity,
+            config.project.web,
+            config.project.has_events(),
+        )?,
     )?;
 
     let tags_path = base.join("presentation/src/api/tags.rs");
@@ -135,6 +174,7 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     }
     fs::write(tags_path, generate_tags_content(&config.entity)?)?;
 
+    crate::generators::events::regenerate_events(base, &config)?;
     crate::generators::web::regenerate_web(base, &config)?;
 
     Ok(())

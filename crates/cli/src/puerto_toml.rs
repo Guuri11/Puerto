@@ -30,6 +30,17 @@ pub struct Project {
     /// The project has a `web/` frontend (`puerto new` without `--no-web`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub web: bool,
+    /// Domain events (ADR-0018): the transport, `"db"` or `"kafka"`. Absent: no events. Set by
+    /// `puerto new --db --events <transport>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub events: Option<String>,
+}
+
+impl Project {
+    /// Every CRUD write goes through a unit of work and records an event in the outbox.
+    pub fn has_events(&self) -> bool {
+        self.events.is_some()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -42,6 +53,9 @@ pub struct Entity {
     pub db: bool,
     #[serde(default)]
     pub fields: Vec<Field>,
+    /// Custom events beyond the CRUD ones (`product_published`), snake_case — `events` projects.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -272,6 +286,7 @@ pub fn add_entity(
             use_cases,
             db,
             fields,
+            events: vec![],
         }),
     }
     write(base, &config)
@@ -319,6 +334,30 @@ pub fn add_value_object(
         inner_type: inner_type.to_string(),
     });
     write(base, &config)
+}
+
+/// Whether the project at `base` has domain events. `false` when puerto.toml cannot be read.
+pub fn events_enabled(base: &Path) -> bool {
+    read(base).is_ok_and(|c| c.project.has_events())
+}
+
+/// Append a custom event to an existing entity. Errors if the entity is not declared.
+pub fn add_event(
+    base: &Path,
+    entity_name: &str,
+    event: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = read(base)?;
+    let entity = config
+        .entity
+        .iter_mut()
+        .find(|e| e.name == entity_name)
+        .ok_or_else(|| format!("entity '{entity_name}' not found in puerto.toml"))?;
+    if !entity.events.iter().any(|e| e == event) {
+        entity.events.push(event.to_string());
+        write(base, &config)?;
+    }
+    Ok(())
 }
 
 /// Append a use case action to an existing entity. Errors if entity not found. No-op if action already present.

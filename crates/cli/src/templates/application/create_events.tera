@@ -1,0 +1,139 @@
+{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+{% for import in vo_imports %}use {{ import }};
+{% endfor %}
+use crate::domain::{{ snake }}::{
+    errors::{{ pascal }}Error,
+    events::{{ "{" }}{{ pascal }}Event, {{ pascal }}Snapshot},
+    model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
+    unit_of_work::{{ pascal }}UnitOfWorkFactory,
+    use_cases::create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
+};
+
+pub struct Create{{ pascal }}UseCaseImpl {
+    pub uow_factory: Arc<dyn {{ pascal }}UnitOfWorkFactory>,
+}
+
+#[async_trait]
+impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
+    async fn execute(&self, params: Create{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
+        tracing::info!("create_{{ snake }}: start");
+        let failed = |e: &RepositoryError| tracing::error!(error = %e, "create_{{ snake }}: repository failed");
+{% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
+{% endfor %}        let entity = {{ pascal }}::new({{ pascal }}Props {
+{% for f in fields %}            {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
+{% endfor %}        }).inspect_err(|e| tracing::warn!(error = %e, "create_{{ snake }}: rejected"))?;
+        let mut uow = self.uow_factory.begin().await.inspect_err(failed)?;
+        uow.save(&entity).await.inspect_err(failed)?;
+        uow.record({{ pascal }}Event::Created({{ pascal }}Snapshot::from_entity(&entity))).await.inspect_err(failed)?;
+        uow.commit().await.inspect_err(failed)?;
+        tracing::info!(id = %entity.id, "create_{{ snake }}: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{{ snake }}::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
+    use puerto_core::DomainEvent;
+{% for import in test_imports %}    use {{ import }};
+{% endfor %}
+
+    #[tokio::test]
+    async fn should_record_{{ snake }}_created_when_{% if fields | length == 1 and required | length == 1 and fields.0.name == "name" %}name_is_valid{% else %}fields_are_valid{% endif %}() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = Create{{ pascal }}UseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Create{{ pascal }}Params {
+{{ macros::params(fields=fields, word="example") }}            })
+            .await;
+
+        // Assert
+        let entity = match result {
+            Ok(entity) => entity,
+            Err(e) => panic!("create failed: {e}"),
+        };{% set enum_vos = fields | filter(attribute="is_enum_vo", value=true) %}{% if required %}
+        assert_eq!(entity.{{ required.0.name }}, "example");{% elif string_vos %}
+        assert_eq!(entity.{{ string_vos.0.name }}.value(), "example");{% elif enum_vos %}
+        assert_eq!(entity.{{ enum_vos.0.name }}.as_str(), "{{ enum_vos.0.first_variant }}");{% endif %}
+        let recorded = uow_factory.recorded();
+        assert!(recorded.committed);
+        assert_eq!(recorded.saved.len(), 1);
+        assert_eq!(recorded.events.len(), 1);
+        assert_eq!(recorded.events[0].event_type(), "{{ snake }}_created");
+        assert_eq!(recorded.events[0].aggregate_id(), entity.id.value());
+    }
+
+    #[tokio::test]
+    async fn should_not_commit_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::failing_at(FailAt::Save, RepositoryError::Duplicate);
+        let use_case = Create{{ pascal }}UseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Create{{ pascal }}Params {
+{{ macros::params(fields=fields, word="example") }}            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.duplicate");
+        let recorded = uow_factory.recorded();
+        assert!(!recorded.committed);
+        assert!(recorded.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_commit_fails() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, RepositoryError::Unavailable);
+        let use_case = Create{{ pascal }}UseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Create{{ pascal }}Params {
+{{ macros::params(fields=fields, word="example") }}            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.repository_error");
+        assert!(!uow_factory.recorded().committed);
+    }
+{% for f in required | concat(with=fields | filter(attribute="is_vo", value=true) | filter(attribute="field_type", value="String")) %}
+    #[tokio::test]
+    async fn should_return_error_and_record_nothing_when_{{ f.name }}_is_empty() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = Create{{ pascal }}UseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Create{{ pascal }}Params {
+{{ macros::params(fields=fields, word="example", empty=f.name) }}            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "{% if f.is_vo %}{{ snake }}.invalid_{{ f.vo_snake }}{% else %}{{ snake }}.validation_error.{{ f.name }}_empty{% endif %}"
+        );
+        assert!(uow_factory.recorded().saved.is_empty());
+    }
+{% endfor %}}

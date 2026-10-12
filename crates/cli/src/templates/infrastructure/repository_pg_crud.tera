@@ -82,7 +82,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
 
         row.map(to_domain).transpose()
     }
-
+{% if not events %}
     async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
         tracing::debug!(id = %entity.id, "save");
         let db = {{ pascal }}Db::from(entity);
@@ -106,24 +106,34 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         })?;
         Ok(())
     }
-}
+{% endif %}}
 
 #[cfg(test)]
 mod integration_tests {
     use super::*;
     use business::domain::{{ snake }}::model::{{ pascal }}Props;
+{% if events %}    use business::domain::{{ snake }}::unit_of_work::{{ pascal }}UnitOfWorkFactory;
 
+    use crate::{{ snake }}::unit_of_work::Pg{{ pascal }}UnitOfWorkFactory;
+{% endif %}
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
     fn test_repo(pool: PgPool) -> Pg{{ pascal }}Repository {
         Pg{{ pascal }}Repository::new(pool)
     }
-
+{% if events %}
+    /// The repository only reads: rows are written through the unit of work.
+    async fn store(pool: &PgPool, entity: &{{ pascal }}) {
+        let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
+        uow.save(entity).await.unwrap();
+        uow.commit().await.unwrap();
+    }
+{% endif %}
     async fn seed(pool: &PgPool) -> {{ pascal }} {
         let entity = {{ pascal }}::new({{ pascal }}Props {
 {% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
 {% endfor %}        }).unwrap();
-        test_repo(pool.clone()).save(&entity).await.unwrap();
+        {% if events %}store(pool, &entity).await;{% else %}test_repo(pool.clone()).save(&entity).await.unwrap();{% endif %}
         entity
     }
 
@@ -150,7 +160,7 @@ mod integration_tests {
         assert!(result.is_none());
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+{% if not events %}    #[sqlx::test(migrations = "./migrations")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
 {% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entity = seed(&pool).await;
@@ -173,14 +183,14 @@ mod integration_tests {
         assert!(found.is_some());
 {% endif %}    }
 
-    #[sqlx::test(migrations = "./migrations")]
+{% endif %}    #[sqlx::test(migrations = "./migrations")]
     async fn should_list_all_{{ plural }}_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
         let mut deleted = seed(&pool).await;
         deleted.deleted = true;
         deleted.deleted_at = Some(deleted.updated_at);
-        test_repo(pool.clone()).save(&deleted).await.unwrap();
+        {% if events %}store(&pool, &deleted).await;{% else %}test_repo(pool.clone()).save(&deleted).await.unwrap();{% endif %}
 
         // Act
         let page = test_repo(pool).find_all(PageRequest::default()).await.unwrap();
@@ -208,7 +218,7 @@ mod integration_tests {
         assert_eq!(page.total, 3);
         assert_eq!((page.limit, page.offset), (2, 2));
     }
-{% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %}{% set u = uniques.0 %}
+{% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques and not events %}{% set u = uniques.0 %}
 
     #[sqlx::test(migrations = "./migrations")]
     async fn should_reject_a_duplicate_{{ u.name }}(pool: PgPool) {

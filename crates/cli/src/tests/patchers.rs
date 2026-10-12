@@ -39,7 +39,7 @@ fn infra_lib_patch_appends_on_its_own_line_and_declares_db_once() {
     fs::create_dir_all(dir.join("infrastructure/src")).unwrap();
     fs::write(dir.join("infrastructure/src/lib.rs"), "pub mod db;").unwrap();
 
-    crate::patchers::lib_rs::patch_infra_lib(&dir, "product", true).unwrap();
+    crate::patchers::lib_rs::patch_infra_lib(&dir, "product", true, true).unwrap();
 
     assert_eq!(
         fs::read_to_string(dir.join("infrastructure/src/lib.rs")).unwrap(),

@@ -9,6 +9,10 @@ use business::application::{{ entity.snake }}::{{ uc.action }}::{{ uc.uc_pascal 
 {% endfor %}
 {% for entity in entities -%}
 use business::domain::{{ entity.snake }}::repository::{{ entity.pascal }}RepositoryTrait;
+{% if entity.uow -%}
+use business::domain::{{ entity.snake }}::unit_of_work::{{ entity.pascal }}UnitOfWorkFactory;
+use infrastructure::{{ entity.snake }}::unit_of_work::Pg{{ entity.pascal }}UnitOfWorkFactory;
+{% endif -%}
 use infrastructure::{{ entity.snake }}::repository::{% if entity.db %}Pg{% else %}InMemory{% endif %}{{ entity.pascal }}Repository;
 {% endfor %}
 {% endif -%}
@@ -30,12 +34,20 @@ pub async fn build_app(config: puerto_web::Config) -> impl Endpoint {
 {% endif %}
 {%- for entity in entities %}
 {%- if entity.db %}{% set repo = "Pg" ~ entity.pascal ~ "Repository::new(pool.clone())" %}{% else %}{% set repo = "InMemory" ~ entity.pascal ~ "Repository::new()" %}{% endif %}
+{%- if entity.uow %}
+    let {{ entity.snake }}_repo: Arc<dyn {{ entity.pascal }}RepositoryTrait> = Arc::new({{ repo }});
+    let {{ entity.snake }}_uow: Arc<dyn {{ entity.pascal }}UnitOfWorkFactory> = Arc::new(Pg{{ entity.pascal }}UnitOfWorkFactory::new(pool.clone()));
+{%- for uc in entity.use_cases %}
+    let {{ uc.action }} = Arc::new({{ uc.uc_pascal }}UseCaseImpl { {% if uc.repository %}repository: Arc::clone(&{{ entity.snake }}_repo){% endif %}{% if uc.repository and uc.uow %}, {% endif %}{% if uc.uow %}uow_factory: Arc::clone(&{{ entity.snake }}_uow){% endif %} });
+{%- endfor %}
+{%- else %}
 {%- if entity.use_cases | length > 1 %}
     let {{ entity.snake }}_repo: Arc<dyn {{ entity.pascal }}RepositoryTrait> = Arc::new({{ repo }});
 {%- endif %}
 {%- for uc in entity.use_cases %}
     let {{ uc.action }} = Arc::new({{ uc.uc_pascal }}UseCaseImpl { repository: {% if entity.use_cases | length == 1 %}Arc::new({{ repo }}) as Arc<dyn {{ entity.pascal }}RepositoryTrait>{% elif loop.last %}{{ entity.snake }}_repo{% else %}Arc::clone(&{{ entity.snake }}_repo){% endif %} });
 {%- endfor %}
+{%- endif %}
     let {{ entity.snake }}_api = {{ entity.pascal }}Api {% if entity.use_cases %}{ {% for uc in entity.use_cases %}{{ uc.action }}{% if not loop.last %}, {% endif %}{% endfor %} }{% else %}{}{% endif %};
 {% endfor %}
 {%- if has_db %}

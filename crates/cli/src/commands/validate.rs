@@ -49,6 +49,15 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if config.project.name.is_empty() {
         errors.push("project.name is empty".into());
     }
+    if let Some(transport) = &config.project.events {
+        if let Err(e) = crate::validation::validate_events_transport(transport) {
+            errors.push(format!("project.events: {e}"));
+        }
+        // The outbox is written in the same transaction as the entity (ADR-0018 § 1).
+        if !config.project.db {
+            errors.push("project.events needs project.db = true: events are written to an outbox table in the entity's transaction".into());
+        }
+    }
 
     let mut seen_entities: Vec<String> = vec![];
     for entity in &config.entity {
@@ -74,6 +83,21 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
                     "entity '{}': use case '{}' is not valid snake_case",
                     entity.name, uc
                 ));
+            }
+        }
+
+        let snake = crate::generators::naming::pascal_to_snake(&entity.name);
+        if !entity.events.is_empty() && !config.project.has_events() {
+            errors.push(format!(
+                "entity '{}': declares events, but project.events is not set",
+                entity.name
+            ));
+        }
+        for (i, event) in entity.events.iter().enumerate() {
+            if let Err(e) =
+                crate::validation::validate_event_name(&snake, event, &entity.events[..i])
+            {
+                errors.push(format!("entity '{}': {e}", entity.name));
             }
         }
 

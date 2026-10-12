@@ -39,9 +39,12 @@ pub fn run_use_case(
 
     crate::puerto_toml::add_use_case(base, &pascal, &uc)?;
 
+    let uow =
+        crate::generators::bootstrap::uses_unit_of_work(declared, config.project.has_events());
     let mut ctx = entity_ctx(&pascal, &snake);
     ctx.insert("uc", &uc);
     ctx.insert("uc_pascal", &uc_pascal);
+    ctx.insert("uow", &uow);
 
     write_file(&trait_path, &render("use_case/trait.tera", &ctx)?)?;
     write_file(&impl_path, &render("use_case/impl.tera", &ctx)?)?;

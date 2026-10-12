@@ -1940,7 +1940,24 @@ do not; fan-out writes one delivery per consumer and marks the row published ato
 concurrent claims never return the same delivery; `Retry` moves `next_attempt_at` forward and
 increments `attempts`; `dead` writes a dead letter, and recording the same one twice writes one row.
 
-### 13.3 — Generated domain events and UoW (`puerto new --events db`)
+### 13.3 — Generated domain events and UoW (`puerto new --events db`) ✅
+
+Done as specified. What the code settled:
+- An entity uses a unit of work when the project has `events`, the entity is `db` and it has the
+  five CRUD use cases (`bootstrap::uses_unit_of_work`). `create` gets `uow_factory` only, `get` /
+  `list` `repository` only, everything else both.
+- `{Entity}Snapshot` is the DTO's shape (`id` + fields, value objects unwrapped,
+  `serde(rename_all = "camelCase")`); `events.rs` also exports `pub const {ENTITY}_CREATED…`
+  for consumers to match on. A custom event's variant drops the entity prefix
+  (`product_published` → `Published`), and `generate event` / `validate` refuse a second name for
+  the same variant.
+- `RecordingUnitOfWorkFactory::failing_at(FailAt::{Begin, Save, Commit}, RepositoryError)`.
+- `infrastructure` needs no `serde_json`: its tests read the outbox with sqlx. The "POST
+  `/products` → one row + one `product_created`; a duplicate `unique` → neither" check is the Pg
+  unit of work's `#[sqlx::test]`s, run by `make test/db` through the new
+  `postgres_events_project_compiles_lints_and_passes_integration_tests` (scenario `events_db`).
+- Found on the way: the web generator sorted import specifiers case-insensitively, Biome puts the
+  same letter in upper case first (`type Product` before `parseStatus`) — fixed in its own commit.
 
 Tier 1. New matrix scenario `events_db` (`--db --events db`, CRUD entity with VO fields plus a
 custom event). Its snapshot is new; the existing scenarios' snapshots do not change.

@@ -3,6 +3,7 @@ pub mod bootstrap;
 pub mod conflict;
 pub mod consistency;
 pub mod domain;
+pub mod events;
 pub mod infrastructure;
 pub mod migration;
 pub mod naming;

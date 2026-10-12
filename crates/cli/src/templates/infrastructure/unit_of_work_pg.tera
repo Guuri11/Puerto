@@ -1,0 +1,183 @@
+use async_trait::async_trait;
+use sqlx::PgPool;
+
+use business::domain::{{ snake }}::{
+    events::{{ pascal }}Event,
+    model::{{ pascal }},
+    unit_of_work::{{ "{" }}{{ pascal }}UnitOfWork, {{ pascal }}UnitOfWorkFactory},
+};
+use puerto_core::RepositoryError;
+use puerto_sqlx::uow::PgTransaction;
+
+use super::entity::{{ pascal }}Db;
+use crate::db::map_sqlx_error;
+
+/// Opens a Postgres transaction per write: the {{ snake }} row and its outbox event commit together.
+pub struct Pg{{ pascal }}UnitOfWorkFactory {
+    pub pool: PgPool,
+}
+
+impl Pg{{ pascal }}UnitOfWorkFactory {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl {{ pascal }}UnitOfWorkFactory for Pg{{ pascal }}UnitOfWorkFactory {
+    async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, RepositoryError> {
+        let tx = PgTransaction::begin(&self.pool).await?;
+        Ok(Box::new(Pg{{ pascal }}UnitOfWork { tx }))
+    }
+}
+
+struct Pg{{ pascal }}UnitOfWork {
+    tx: PgTransaction,
+}
+
+#[async_trait]
+impl {{ pascal }}UnitOfWork for Pg{{ pascal }}UnitOfWork {
+    async fn save(&mut self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+        tracing::debug!(id = %entity.id, "save");
+        let db = {{ pascal }}Db::from(entity);
+        sqlx::query!(
+            "INSERT INTO {{ plural }} ({{ all_cols }})
+             VALUES ({{ all_params }})
+             ON CONFLICT (id) DO UPDATE
+             SET {{ all_updates }}",
+            db.id,
+            db.created_at,
+            db.updated_at,
+            db.deleted,
+            db.deleted_at,
+{% for f in fields %}            {% if f.is_array %}&db.{{ f.name }}{% elif f.is_map %}db.{{ f.name }} as _{% else %}db.{{ f.name }}{% endif %},
+{% endfor %}        )
+        .execute(self.tx.tx())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "save failed");
+            map_sqlx_error(&e)
+        })?;
+        Ok(())
+    }
+
+    async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), RepositoryError> {
+        self.tx.record(&event).await
+    }
+
+    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        self.tx.commit().await
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use business::domain::{{ snake }}::{
+        events::{{ pascal }}Snapshot, model::{{ pascal }}Props, repository::{{ pascal }}RepositoryTrait,
+    };
+
+    use crate::{{ snake }}::repository::Pg{{ pascal }}Repository;
+{% for import in test_imports %}    use {{ import }};
+{% endfor %}
+    fn new_{{ snake }}() -> {{ pascal }} {
+        {{ pascal }}::new({{ pascal }}Props {
+{% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
+{% endfor %}        }).unwrap()
+    }
+
+    /// What a create use case does: save, record, commit.
+    async fn create(pool: &PgPool, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+        let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await?;
+        uow.save(entity).await?;
+        uow.record({{ pascal }}Event::Created({{ pascal }}Snapshot::from_entity(entity))).await?;
+        uow.commit().await
+    }
+
+    async fn count(pool: &PgPool, sql: &str) -> i64 {
+        sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_write_the_{{ snake }}_and_its_event_when_committed(pool: PgPool) {
+        // Arrange
+        let entity = new_{{ snake }}();
+
+        // Act
+        create(&pool, &entity).await.unwrap();
+
+        // Assert
+        let found = Pg{{ pascal }}Repository::new(pool.clone()).find_by_id(entity.id).await.unwrap();
+        assert!(found.is_some());
+        let (event_type, aggregate_id): (String, uuid::Uuid) =
+            sqlx::query_as("SELECT event_type, aggregate_id FROM outbox")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(event_type, "{{ snake }}_created");
+        assert_eq!(aggregate_id, entity.id.value());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_write_nothing_when_dropped_without_commit(pool: PgPool) {
+        // Arrange
+        let entity = new_{{ snake }}();
+
+        // Act
+        {
+            let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
+            uow.save(&entity).await.unwrap();
+            uow.record({{ pascal }}Event::Created({{ pascal }}Snapshot::from_entity(&entity))).await.unwrap();
+        }
+
+        // Assert
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 0);
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_update_the_{{ snake }}_when_saved_again(pool: PgPool) {
+        // Arrange
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entity = new_{{ snake }}();
+        create(&pool, &entity).await.unwrap();
+        entity.{{ f.name }} = {% if f.is_vo %}{{ f.vo }}::new("updated".to_string()).unwrap(){% else %}"updated".to_string(){% endif %};
+        entity.updated_at = chrono::Utc::now();
+
+        // Act
+        let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
+        uow.save(&entity).await.unwrap();
+        uow.commit().await.unwrap();
+
+        // Assert
+        let found = Pg{{ pascal }}Repository::new(pool).find_by_id(entity.id).await.unwrap().unwrap();
+        assert_eq!(found.{{ f.name }}{% if f.is_vo %}.value(){% endif %}, "updated");
+{% else %}        let entity = new_{{ snake }}();
+        create(&pool, &entity).await.unwrap();
+
+        // Act
+        let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
+        uow.save(&entity).await.unwrap();
+        uow.commit().await.unwrap();
+
+        // Assert
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
+{% endif %}    }
+{% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %}{% set u = uniques.0 %}
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_write_neither_row_nor_event_when_the_{{ u.name }}_is_taken(pool: PgPool) {
+        // Arrange
+        let first = new_{{ snake }}();
+        create(&pool, &first).await.unwrap();
+        let mut second = new_{{ snake }}();
+        second.{{ u.name }} = first.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
+
+        // Act
+        let result = create(&pool, &second).await;
+
+        // Assert
+        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
+    }
+{% endif %}}

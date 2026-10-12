@@ -601,10 +601,10 @@ fn new_project_includes_the_web_frontend_by_default() {
 
     let output = crate::commands::new::new_project(
         Some("web-app".into()),
-        false,
-        true,
-        false,
-        false,
+        crate::commands::new::NewOptions {
+            no_db: true,
+            ..Default::default()
+        },
         Some(dir.clone()),
     )
     .unwrap();
@@ -635,10 +635,11 @@ fn new_project_with_no_web_has_no_frontend_and_does_not_mention_one() {
 
     let output = crate::commands::new::new_project(
         Some("api-only".into()),
-        false,
-        true,
-        false,
-        true,
+        crate::commands::new::NewOptions {
+            no_db: true,
+            no_web: true,
+            ..Default::default()
+        },
         Some(dir.clone()),
     )
     .unwrap();

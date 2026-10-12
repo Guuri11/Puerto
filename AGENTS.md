@@ -27,7 +27,8 @@ crates/
     src/main.rs     — CLI definition + dispatch
     src/commands/   — Command handlers (new, list, validate)
     src/generators/ — Per-layer generators + bootstrap, conflict (overwrite guard), consistency (drift),
-                      web (the frontend slice + web/src/presentation/core/generated/*)
+                      web (the frontend slice + web/src/presentation/core/generated/*),
+                      events (events.rs, the unit of work ports, `generate event`)
     src/templates/  — .tera templates the generators render (embedded via include_dir)
     src/patchers/   — lib.rs / api.rs / routes.rs patchers
     src/runtime.rs  — Which runtime crates a project depends on, at which version (rendered from
@@ -168,6 +169,7 @@ puerto new --name <name> --db              # Fully non-interactive, with databas
 puerto new --name <name> --no-db           # Fully non-interactive, no database
 puerto new --name <name> --no-db --destination /tmp/projects  # Control output directory
 puerto new --no-web                        # Skip the web frontend (web/ is included by default)
+puerto new --db --events db                # Domain events (ADR-0018): units of work + outbox (db | kafka)
 
 puerto generate scaffold <Name>                                          # Add a new DDD entity — all layers at once (infers db from puerto.toml)
 puerto generate scaffold <Name> --force                                  # Re-generate an existing entity, overwriting hand-written changes
@@ -178,6 +180,7 @@ puerto generate scaffold <Name> -- status:Status:enum:Active/Inactive   # Enum V
 puerto generate scaffold <Name> -- mid:MiddleName:opt:String            # Option VO
 puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
 puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String; DateTime shorthand ok)
+puerto generate event <Entity> <name>      # events projects: a custom event (product_published) + regenerates events.rs
 puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
 puerto generate domain <Name> -- price:i64 status:Status:enum:Draft/Paid   # Same field syntax as scaffold — fields land in puerto.toml
 puerto generate application <Name>         # Application layer only: use case impls
@@ -241,6 +244,10 @@ make format/fix    # cargo fmt --all
   regenerates `web/src/presentation/core/generated/{dependencies.ts,routes.tsx}`;
   `bootstrap.rs` exports the OpenAPI spec to `docs/api/openapi.json` from mocked use cases, and
   `make web/sync` turns it into the frontend's wire types
+- `--events db|kafka` (needs `--db`, ADR-0018): `[project] events`, the outbox migration (the
+  CLI's `templates/infrastructure/outbox.sql`), per CRUD entity `events.rs` (AUTO-GENERATED) and
+  `unit_of_work.rs`, a read-only repository port, writes through `Pg{Entity}UnitOfWorkFactory`,
+  and a root `AGENTS.md` section saying `events.rs` is never hand-edited
 
 ## Detailed Rules
 

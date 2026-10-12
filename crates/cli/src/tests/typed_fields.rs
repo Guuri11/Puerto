@@ -1164,7 +1164,7 @@ fn create_table_sql_omits_unique_index_when_no_field_is_unique() {
 fn generate_crud_infra_db_repository_backward_compat() {
     use crate::generators::infrastructure::generate_crud_infra_db_repository;
 
-    let result = generate_crud_infra_db_repository("Product", "product", &[], &[]).unwrap();
+    let result = generate_crud_infra_db_repository("Product", "product", &[], &[], false).unwrap();
 
     assert!(result.contains("pub struct PgProductRepository"));
     assert!(result.contains("async fn find_all"));
@@ -1196,7 +1196,8 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_crud_infra_db_repository("Product", "product", &fields, &[]).unwrap();
+    let result =
+        generate_crud_infra_db_repository("Product", "product", &fields, &[], false).unwrap();
 
     assert!(result.contains("id, created_at, updated_at, deleted, deleted_at, title, price"));
     assert!(result.contains("$1, $2, $3, $4, $5, $6, $7"));
@@ -1485,6 +1486,7 @@ fn db_entity_maps_hashmap_columns_through_sqlx_json() {
         "product",
         &fields,
         &[],
+        false,
     )
     .unwrap();
 
@@ -1527,6 +1529,7 @@ fn pg_repository_tests_import_what_their_seed_names() {
         "product",
         &fields,
         &[],
+        false,
     )
     .unwrap();
 
@@ -1547,6 +1550,7 @@ fn pg_repository_seed_varies_unique_fields() {
         "product",
         &[sku],
         &[],
+        false,
     )
     .unwrap();
 

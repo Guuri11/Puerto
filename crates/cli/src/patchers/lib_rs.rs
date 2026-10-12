@@ -115,9 +115,15 @@ pub fn patch_business_lib_domain_crud(
         return Ok(());
     }
     let use_case_mods = mod_lines(&crud_use_cases(snake), "            ");
-    let domain_mod = format!(
-        "\n    pub mod {snake} {{\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases {{\n{use_case_mods}        }}\n    }}\n"
-    );
+    let domain_mod = if crate::puerto_toml::events_enabled(base) {
+        format!(
+            "\n    pub mod {snake} {{\n        pub mod errors;\n        pub mod events;\n        pub mod model;\n        pub mod repository;\n        pub mod unit_of_work;\n        pub mod use_cases {{\n{use_case_mods}        }}\n    }}\n"
+        )
+    } else {
+        format!(
+            "\n    pub mod {snake} {{\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n        pub mod use_cases {{\n{use_case_mods}        }}\n    }}\n"
+        )
+    };
     let patched = insert_before_block_end(&src, "domain", &domain_mod)?;
     fs::write(&path, patched)?;
     Ok(())
@@ -146,10 +152,13 @@ pub fn patch_business_lib_crud(base: &Path, snake: &str) -> Result<(), Box<dyn s
     Ok(())
 }
 
+/// `crud`: the entity has the five scaffolded use cases — in an `events` project its writes go
+/// through `unit_of_work.rs`.
 pub fn patch_infra_lib(
     base: &Path,
     snake: &str,
     db: bool,
+    crud: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("infrastructure/src/lib.rs");
     let mut src = fs::read_to_string(&path)?;
@@ -161,7 +170,14 @@ pub fn patch_infra_lib(
     if !src.ends_with('\n') {
         src.push('\n');
     }
-    if db {
+    if db && crud && crate::puerto_toml::events_enabled(base) {
+        src.push_str(&format!(
+            "pub mod {snake} {{\n    pub mod entity;\n    pub mod repository;\n    pub mod unit_of_work;\n}}\n"
+        ));
+        if !src.contains("pub mod db;") {
+            src.push_str("pub mod db;\n");
+        }
+    } else if db {
         src.push_str(&format!(
             "pub mod {snake} {{\n    pub mod entity;\n    pub mod repository;\n}}\n"
         ));
@@ -274,7 +290,7 @@ pub fn patch_libs(
         patch_business_lib(base, snake)
     }
     .map_err(in_file("business/src/lib.rs"))?;
-    patch_infra_lib(base, snake, db).map_err(in_file("infrastructure/src/lib.rs"))?;
+    patch_infra_lib(base, snake, db, crud).map_err(in_file("infrastructure/src/lib.rs"))?;
     patch_api_rs(base, snake).map_err(in_file("presentation/src/api.rs"))?;
     Ok(())
 }

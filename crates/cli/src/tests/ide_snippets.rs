@@ -465,7 +465,7 @@ fn postgres_snippets_compose_a_repository_that_passes_its_integration_tests() {
     let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
     let sql = snippet_bodies(crate::snippets::SQL_SNIPPETS_JSON);
     compose_gadget_from_snippets(&output, true);
-    crate::patchers::lib_rs::patch_infra_lib(&output, "gadget", true).unwrap();
+    crate::patchers::lib_rs::patch_infra_lib(&output, "gadget", true, true).unwrap();
     fs::create_dir_all(output.join("infrastructure/src/gadget")).unwrap();
     fs::write(
         output.join("infrastructure/src/gadget/entity.rs"),

@@ -154,6 +154,7 @@ mod tests {
             use_cases: vec!["create_order_item".into(), "list_order_item".into()],
             db: false,
             fields: vec![],
+            events: vec![],
         };
         let files = bootstrap_required_files(&entity);
 
@@ -207,12 +208,14 @@ mod tests {
                 name: "x".into(),
                 db: false,
                 web: false,
+                events: None,
             },
             entity: vec![Entity {
                 name: "Ghost".into(),
                 use_cases: vec![],
                 db: false,
                 fields: vec![],
+                events: vec![],
             }],
             value_object: vec![],
         };

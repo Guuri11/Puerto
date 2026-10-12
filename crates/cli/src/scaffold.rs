@@ -2,6 +2,7 @@
 pub use crate::generators::application::run_generate_application;
 pub use crate::generators::bootstrap::run_bootstrap_command;
 pub use crate::generators::domain::run_generate_domain;
+pub use crate::generators::events::run_generate_event;
 pub use crate::generators::infrastructure::run_generate_repository;
 pub use crate::generators::migration::run_generate_migration;
 pub use crate::generators::presentation::run_generate_presentation;
@@ -13,6 +14,8 @@ pub use crate::generators::web::run_generate_web;
 #[cfg(test)]
 pub use crate::generators::migration::run_migration;
 #[cfg(test)]
-pub use crate::generators::project::{apply_db_to_new_project, apply_no_demo, apply_no_web};
+pub use crate::generators::project::{
+    apply_db_to_new_project, apply_events_to_new_project, apply_no_demo, apply_no_web,
+};
 #[cfg(test)]
 pub use crate::generators::scaffold::run;

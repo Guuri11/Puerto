@@ -139,6 +139,33 @@ pub fn crud_use_cases(snake: &str) -> Vec<String> {
         .collect()
 }
 
+/// Whether an entity has the five scaffolded use cases — the ones that get a unit of work, an
+/// `events.rs` and a frontend slice. A simple entity (`get_greeting`) has none of them.
+pub fn is_crud_entity(snake: &str, use_cases: &[String]) -> bool {
+    crud_use_cases(snake)
+        .iter()
+        .all(|uc| use_cases.contains(uc))
+}
+
+/// The events every CRUD write records (ADR-0018 § 3): `(variant, event_type)`, past tense.
+pub fn crud_events(snake: &str) -> Vec<(String, String)> {
+    ["created", "updated", "deleted"]
+        .iter()
+        .map(|verb| (to_pascal_case(verb), format!("{snake}_{verb}")))
+        .collect()
+}
+
+/// The `{Entity}Event` variant of a custom event: the event type without the entity prefix, in
+/// PascalCase — `product_published` → `Published`, `price_changed` → `PriceChanged`.
+pub fn event_variant(snake: &str, event_type: &str) -> String {
+    let unprefixed = event_type
+        .strip_prefix(snake)
+        .and_then(|rest| rest.strip_prefix('_'))
+        .filter(|rest| !rest.is_empty())
+        .unwrap_or(event_type);
+    to_pascal_case(unprefixed)
+}
+
 /// Writes `content` to `path`, creating parent directories. The error names the path — a bare
 /// `Permission denied (os error 13)` does not tell the user which file.
 pub fn write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {

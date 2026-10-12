@@ -6,11 +6,15 @@
 [project]
 name = "my-app"          # project name (hyphen-separated, matches Cargo binary name)
 web = true               # web/ frontend present — set by `puerto new`, absent with --no-web
+db = true                # SQLx/Postgres — set by `puerto new --db`
+events = "db"            # domain events: "db" | "kafka"; absent = none. Requires db = true
 
 [[entity]]
 name = "Product"         # PascalCase entity name
 use_cases = ["create_product", "list_products"]   # snake_case action names
 db = true                # optional — omit for InMemory, set true for SQLx/Postgres
+events = ["product_published"]   # optional, `events` projects: custom events beyond the CRUD
+                                 # created/updated/deleted — snake_case, unique, not a CRUD name
 
 [[entity.fields]]
 name = "name"            # snake_case field name
@@ -209,16 +213,17 @@ presentation/src/api/product/error_mapper.rs
 
 | Command                                         | Effect                                                                            |
 | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| `puerto new [--name] [--db\|--no-db] [--no-demo] [--no-web]` | Creates puerto.toml from template with initial Greeting entity                    |
+| `puerto new [--name] [--db\|--no-db] [--events db\|kafka] [--no-demo] [--no-web]` | Creates puerto.toml from template with initial Greeting entity; `--events` (needs `--db`) writes `[project] events` and the outbox migration |
 | `puerto generate scaffold <Name>`               | Upserts the `[[entity]]` block, regenerates bootstrap.rs                          |
 | `puerto generate scaffold <Name> -- name:Type`  | Same, with `[[entity.fields]]` from the trailing arguments                        |
 | `puerto generate domain <Name> -- name:Type`    | Registers the entity **with its fields** so the later layered commands see them   |
 | `puerto generate bootstrap [--allow-missing]`   | Regenerates bootstrap.rs (and `web/…/core/generated/*`); refuses when a declared entity has no code on disk |
 | `puerto generate use-case <Entity> <action>`    | Appends action to `use_cases`, adds the field to `{Entity}Api`, regenerates bootstrap.rs. Refuses an action that already exists |
 | `puerto generate value-object <Name> <type>`    | Appends a `[[value_object]]` block. Refuses invalid names/types and duplicates    |
+| `puerto generate event <Entity> <name>`         | `events` projects, CRUD entities: appends to `[[entity]] events`, regenerates `events.rs`. Refuses a CRUD name, a duplicate (also by variant: `published` = `product_published`) or a non-snake_case name. Touches no use case |
 | `puerto generate web <Name> [--force]`          | Web projects: the entity's frontend slice + `core/generated/*`. Does not touch puerto.toml; refuses an undeclared or non-CRUD entity |
 | `puerto generate migration <name>`              | Creates a migration file (`--db` projects only) — does not touch puerto.toml. The version is unique even within one second |
-| `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk |
+| `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk; `events` is `db`/`kafka` and needs `db = true`; custom events follow `generate event`'s rules |
 
 `db` is a **project-level** setting (`[project] db`), chosen once by `puerto new --db`. There is
 no `--db` flag on `generate scaffold`: it reads the project setting from puerto.toml.

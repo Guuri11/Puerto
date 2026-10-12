@@ -86,6 +86,19 @@ fn render_use_case(
     render(&format!("application/{action}.tera"), &ctx)
 }
 
+/// The writes of an `events` project: through the unit of work, recording their event.
+fn render_write_use_case_with_events(
+    action: &str,
+    test_imports: TestImports,
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+) -> Result<String, RenderError> {
+    let ctx = use_case_context(pascal, snake, fields, shared_vos, test_imports);
+    render(&format!("application/{action}_events.tera"), &ctx)
+}
+
 // ── Public generators ─────────────────────────────────────────────────────────
 
 pub fn generate_create_use_case_impl(
@@ -177,6 +190,30 @@ pub fn write_application_files(
             &content,
         )
     };
+    if crate::puerto_toml::events_enabled(base) {
+        let writes = [
+            ("create", TestImports::ParamsOnly),
+            ("update", TestImports::Props),
+            ("delete", TestImports::Props),
+        ];
+        for (action, imports) in writes {
+            write(
+                action,
+                render_write_use_case_with_events(
+                    action, imports, pascal, snake, fields, shared_vos,
+                )?,
+            )?;
+        }
+        write(
+            "get",
+            generate_get_use_case_impl(pascal, snake, fields, shared_vos)?,
+        )?;
+        write(
+            "list",
+            generate_list_use_case_impl(pascal, snake, fields, shared_vos)?,
+        )?;
+        return Ok(());
+    }
     write(
         "create",
         generate_create_use_case_impl(pascal, snake, fields, shared_vos)?,

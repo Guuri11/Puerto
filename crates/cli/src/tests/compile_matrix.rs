@@ -15,6 +15,8 @@ pub(super) struct Scenario<'a> {
     pub(super) name: &'a str,
     /// A `--db` project (`puerto new --db`): Pg repositories, migrations.
     db: bool,
+    /// `puerto new --db --events <transport>`: units of work, `events.rs`, the outbox.
+    events: Option<&'a str>,
     /// Strip the Greeting demo before scaffolding (`puerto new --no-demo`).
     no_demo: bool,
     /// Strip the web frontend (`puerto new --no-web`).
@@ -25,6 +27,8 @@ pub(super) struct Scenario<'a> {
     entities: &'a [(&'a str, &'a [&'a str])],
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
     use_cases: &'a [(&'a str, &'a str)],
+    /// Custom events declared after scaffolding (`puerto generate event`): `(PascalEntity, name)`.
+    entity_events: &'a [(&'a str, &'a str)],
 }
 
 // The scenarios, shared with the snapshot tests (`generated_output.rs`): one proves the output
@@ -33,30 +37,36 @@ pub(super) struct Scenario<'a> {
 pub(super) const NO_DEMO: Scenario = Scenario {
     name: "no_demo",
     db: false,
+    events: None,
     no_demo: true,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[("Persona", &["name:String"])],
 };
 
 pub(super) const NO_WEB: Scenario = Scenario {
     name: "no_web",
     db: false,
+    events: None,
     no_demo: false,
     no_web: true,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[],
 };
 
 pub(super) const PRIMITIVES: Scenario = Scenario {
     name: "primitives",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[(
         "Product",
         &[
@@ -76,20 +86,24 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
 pub(super) const UUID_VO: Scenario = Scenario {
     name: "uuid_vo",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[("Booking", &["reference:String", "tenant_id:TenantId:Uuid"])],
 };
 
 pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
     name: "opt_vec_prim",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[(
         "Article",
         &[
@@ -105,10 +119,12 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
 pub(super) const PLAIN_VO: Scenario = Scenario {
     name: "plain_vo",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[(
         "Item",
         &["name:Name:String", "sku:Sku:String!", "weight:Weight:i64"],
@@ -118,10 +134,12 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
 pub(super) const OPT_VEC_VO: Scenario = Scenario {
     name: "opt_vec_vo",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[(
         "Persona",
         &[
@@ -135,10 +153,12 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
 pub(super) const ENUM_VO: Scenario = Scenario {
     name: "enum_vo",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[(
         "Order",
         &[
@@ -151,20 +171,24 @@ pub(super) const ENUM_VO: Scenario = Scenario {
 pub(super) const SHARED_VO: Scenario = Scenario {
     name: "shared_vo",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String"), ("Money", "i64")],
     use_cases: &[],
+    entity_events: &[],
     entities: &[("Customer", &["name:String", "email:Email", "credit:Money"])],
 };
 
 pub(super) const MULTI_ENTITY: Scenario = Scenario {
     name: "multi_entity",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[
         ("Product", &["title:String", "price:i64"]),
         ("Category", &["name:Name:String"]),
@@ -174,10 +198,12 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
 pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     name: "vo_kitchen_sink",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String")],
     use_cases: &[],
+    entity_events: &[],
     entities: &[(
         "Account",
         &[
@@ -197,20 +223,24 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
 pub(super) const ENUM_ONLY: Scenario = Scenario {
     name: "enum_only",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[("Ticket", &["state:State:enum:Open/Closed"])],
 };
 
 pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     name: "custom_use_case",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[("Product", "archive_product")],
+    entity_events: &[],
     entities: &[("Product", &["title:String", "price:i64"])],
 };
 
@@ -219,10 +249,12 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
 pub(super) const WEB_CRUD: Scenario = Scenario {
     name: "web_crud",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[(
         "OrderItem",
         &[
@@ -242,10 +274,12 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
 pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
     name: "web_every_type",
     db: false,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[],
     use_cases: &[],
+    entity_events: &[],
     entities: &[(
         "Case",
         &[
@@ -269,10 +303,12 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
 pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     name: "postgres_every_type",
     db: true,
+    events: None,
     no_demo: false,
     no_web: false,
     shared_vos: &[("Email", "String")],
     use_cases: &[("Product", "archive_product")],
+    entity_events: &[],
     entities: &[
         (
             "Product",
@@ -309,6 +345,29 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     ],
 };
 
+pub(super) const EVENTS_DB: Scenario = Scenario {
+    name: "events_db",
+    db: true,
+    events: Some("db"),
+    no_demo: false,
+    no_web: false,
+    shared_vos: &[],
+    use_cases: &[("Product", "publish_product")],
+    entity_events: &[("Product", "product_published")],
+    entities: &[(
+        "Product",
+        &[
+            "name:Name:String",
+            "sku:Sku:String!",
+            "price:i64",
+            "status:Status:enum:Draft/Published",
+            "tags:vec:String",
+            "released_at:opt:DateTime",
+            "meta:map",
+        ],
+    )],
+};
+
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
 /// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
 /// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto new`
@@ -328,6 +387,9 @@ fn assert_scenario_compiles(scenario: &Scenario) {
 pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     if scenario.db {
         crate::generators::project::apply_db_to_new_project(output).unwrap();
+    }
+    if let Some(transport) = scenario.events {
+        scaffold::apply_events_to_new_project(output, transport).unwrap();
     }
     if scenario.no_demo {
         scaffold::apply_no_demo(output).unwrap();
@@ -354,6 +416,10 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
 
     for (entity, action) in scenario.use_cases {
         scaffold::run_use_case(entity, action, output).unwrap();
+    }
+
+    for (entity, event) in scenario.entity_events {
+        scaffold::run_generate_event(entity, event, output).unwrap();
     }
 }
 
@@ -662,18 +728,36 @@ pub(super) fn test_database_server() -> Option<String> {
 fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests() {
     // Nothing in the matrix generated a `--db` project, which is how `HashMap` columns, the Pg
     // repository test imports, timestamp round-trips and `unique` seeds all shipped broken.
+    assert_postgres_scenario_is_clean(&POSTGRES_EVERY_TYPE, "puerto_matrix");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_events_project_compiles_lints_and_passes_integration_tests() {
+    // Phase 13.3: units of work, the outbox migration and `events.rs` — the Pg unit of work's
+    // tests write an entity and its `product_created` row, and a taken `unique` writes neither.
+    assert_postgres_scenario_is_clean(&EVENTS_DB, "puerto_matrix_events");
+}
+
+/// A `--db` scenario against a real database: `query!` checks its SQL at compile time, so the
+/// schema has to exist before the project builds.
+fn assert_postgres_scenario_is_clean(scenario: &Scenario, database: &str) {
     let Some(server) = test_database_server() else {
         eprintln!("PUERTO_TEST_DATABASE_URL not set — skipping (run `make test/db`)");
         return;
     };
-    let dir = scenario_workspace("postgres_every_type");
+    let dir = scenario_workspace(scenario.name);
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    let output = generate_project("compile-postgres", &dir).unwrap();
-    apply_scenario(&POSTGRES_EVERY_TYPE, &output);
+    let output = generate_project(
+        &format!("compile-{}", scenario.name.replace('_', "-")),
+        &dir,
+    )
+    .unwrap();
+    apply_scenario(scenario, &output);
 
-    let database_url = format!("{server}/puerto_matrix");
+    let database_url = format!("{server}/{database}");
     for args in [
         &["database", "drop", "-y"][..],
         &["database", "create"][..],
@@ -691,7 +775,7 @@ fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests(
     assert_generated_project_is_clean(
         &output,
         &dir,
-        "postgres_every_type",
+        scenario.name,
         &[("DATABASE_URL", &database_url), ("SQLX_OFFLINE", "false")],
     );
 

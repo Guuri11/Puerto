@@ -395,6 +395,53 @@ pub fn validate_field(field: &Field) -> Result<(), String> {
     Ok(())
 }
 
+/// The transports `[project] events` can name (ADR-0018 § 4).
+pub const EVENT_TRANSPORTS: &[&str] = &["db", "kafka"];
+
+pub fn validate_events_transport(transport: &str) -> Result<(), String> {
+    if EVENT_TRANSPORTS.contains(&transport) {
+        return Ok(());
+    }
+    Err(format!(
+        "unknown events transport '{transport}'. Use one of: {}",
+        EVENT_TRANSPORTS.join(", ")
+    ))
+}
+
+/// A custom event of entity `snake`, checked against the ones it already declares: snake_case,
+/// none of the CRUD events, and a `{Entity}Event` variant of its own (`product_published` and
+/// `published` would both be `Published`).
+pub fn validate_event_name(snake: &str, event: &str, declared: &[String]) -> Result<(), String> {
+    use crate::generators::naming::{crud_events, event_variant};
+
+    if !is_valid_field_name(event) {
+        return Err(format!(
+            "invalid event name '{event}'. Must be snake_case, past tense, e.g. '{snake}_published'"
+        ));
+    }
+    let variant = event_variant(snake, event);
+    if variant == "Self" {
+        return Err(format!("event name '{event}' would be the variant `Self`"));
+    }
+    if let Some((_, crud)) = crud_events(snake)
+        .into_iter()
+        .find(|(crud_variant, crud)| crud == event || *crud_variant == variant)
+    {
+        return Err(format!(
+            "event '{event}' clashes with '{crud}', which every write of the entity already records"
+        ));
+    }
+    if let Some(existing) = declared
+        .iter()
+        .find(|d| *d == event || event_variant(snake, d) == variant)
+    {
+        return Err(format!(
+            "event '{event}' is already declared (as '{existing}')"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
