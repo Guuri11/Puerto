@@ -144,6 +144,35 @@ fn new_with_auth_and_db_keeps_users_in_postgres() {
 }
 
 #[test]
+fn new_with_auth_without_the_demo_still_declares_the_user_and_me() {
+    // Regression: the demo strip rewrote the three `lib.rs`/`api.rs` files after auth had
+    // declared its modules in them, and the project did not compile (E0432, E0433).
+    let (dir, output) = new_auth_project(
+        "auth_new_no_demo",
+        NewOptions {
+            no_db: true,
+            no_web: true,
+            no_demo: true,
+            ..Default::default()
+        },
+    );
+
+    let business = read(&output, "business/src/lib.rs");
+    assert!(business.contains("pub mod user {"), "{business}");
+    assert!(business.contains("pub mod principal_mother;"), "{business}");
+    assert!(!business.contains("greeting"), "{business}");
+    let infrastructure = read(&output, "infrastructure/src/lib.rs");
+    assert!(
+        infrastructure.contains("pub mod provisioning;"),
+        "{infrastructure}"
+    );
+    let api = read(&output, "presentation/src/api.rs");
+    assert!(api.contains("pub mod me;"), "{api}");
+    assert!(!api.contains("greeting"), "{api}");
+    cleanup(&dir);
+}
+
+#[test]
 fn new_with_auth_points_env_and_make_at_the_development_provider() {
     let (dir, output) = new_auth_project(
         "auth_new_env",

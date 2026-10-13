@@ -596,10 +596,12 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
 };
 
 /// [`AUTH_OIDC`] with a database: `PgUserRepository` over runtime-checked queries (no query cache
-/// needed) and the `users` migration; its `#[sqlx::test]`s run under `make test/db`.
+/// needed) and the `users` migration; its `#[sqlx::test]`s run under `make test/db`. Without the
+/// demo: the strip once undid auth's module declarations.
 pub(super) const AUTH_OIDC_DB: Scenario = Scenario {
     name: "auth_oidc_db",
     db: true,
+    no_demo: true,
     no_web: true,
     ..AUTH_OIDC
 };
@@ -627,11 +629,12 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     if let Some(transport) = scenario.events {
         scaffold::apply_events_to_new_project(output, transport).unwrap();
     }
-    if let Some(mode) = scenario.auth {
-        crate::generators::auth::apply_auth_to_new_project(output, mode).unwrap();
-    }
+    // `puerto new`'s order: the demo strip rewrites the files auth declares its modules in.
     if scenario.no_demo {
         scaffold::apply_no_demo(output).unwrap();
+    }
+    if let Some(mode) = scenario.auth {
+        crate::generators::auth::apply_auth_to_new_project(output, mode).unwrap();
     }
     if scenario.no_web {
         scaffold::apply_no_web(output).unwrap();

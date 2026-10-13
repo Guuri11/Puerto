@@ -174,14 +174,14 @@ pub fn new_project(
         crate::generators::project::apply_events_to_new_project(&output, transport)?;
     }
 
-    // Before the demo and the frontend are stripped: both regenerate `bootstrap.rs`, which then
-    // already wires the authenticator.
-    if let Some(mode) = &resolved_auth {
-        crate::generators::auth::apply_auth_to_new_project(&output, mode)?;
-    }
-
     if resolved_no_demo {
         crate::generators::project::apply_no_demo(&output)?;
+    }
+
+    // After the demo strip, which rewrites the `lib.rs` and `api.rs` files auth declares its
+    // modules in; before the frontend strip, so the web files are written while `web/` is there.
+    if let Some(mode) = &resolved_auth {
+        crate::generators::auth::apply_auth_to_new_project(&output, mode)?;
     }
 
     if resolved_no_web {
