@@ -158,3 +158,51 @@ fn db_scaffold_names_the_table_and_the_paths_with_the_real_plural() {
 
     cleanup(&dir);
 }
+
+// ── 17.0: a forced re-scaffold does not write a second CREATE TABLE ───────
+
+fn table_migrations(dir: &Path, snake: &str) -> Vec<String> {
+    let suffix = format!("_create_{snake}_table.sql");
+    fs::read_dir(dir.join("infrastructure/migrations"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(&suffix))
+        .collect()
+}
+
+#[test]
+fn forced_rescaffold_keeps_the_one_migration_that_creates_the_table() {
+    // `sqlx migrate run` failed on the second `CREATE TABLE categories`: the table existed.
+    let dir = temp_dir("rescaffold_one_create_table");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_with_project_db(&dir);
+    scaffold::run_scaffold("Category", &dir, &[], OverwritePolicy::Ask).unwrap();
+    let first = table_migrations(&dir, "category");
+    let first_body =
+        fs::read_to_string(dir.join("infrastructure/migrations").join(&first[0])).unwrap();
+
+    let fields = [scaffold_test_field("title", "String")];
+    scaffold::run_scaffold("Category", &dir, &fields, OverwritePolicy::Force).unwrap();
+
+    let after = table_migrations(&dir, "category");
+    assert_eq!(after, first, "a second CREATE TABLE migration was written");
+    let body = fs::read_to_string(dir.join("infrastructure/migrations").join(&after[0])).unwrap();
+    assert_eq!(body, first_body, "the existing migration was rewritten");
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_repository_writes_no_create_table_when_one_exists() {
+    let dir = temp_dir("repository_one_create_table");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs_with_project_db(&dir);
+    scaffold::run_scaffold("Category", &dir, &[], OverwritePolicy::Ask).unwrap();
+
+    scaffold::run_generate_repository("Category", &dir).unwrap();
+
+    assert_eq!(table_migrations(&dir, "category").len(), 1);
+    cleanup(&dir);
+}

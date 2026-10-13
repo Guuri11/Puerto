@@ -42,6 +42,35 @@ pub fn run_migration(
     Ok(())
 }
 
+/// Writes `create_{snake}_table` unless a migration of that name already exists — a forced
+/// re-scaffold or `generate repository` on a scaffolded entity wrote a second `CREATE TABLE`, and
+/// `sqlx migrate run` failed on the existing table. A changed field set is the user's migration
+/// to write: the existing one may already be applied somewhere.
+pub fn run_create_table_migration(
+    snake: &str,
+    base: &Path,
+    sql: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let name = format!("create_{snake}_table");
+    let suffix = format!("_{name}.sql");
+    let existing = fs::read_dir(base.join("infrastructure/migrations"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .find(|file| file.ends_with(&suffix));
+    let Some(existing) = existing else {
+        return run_migration(&name, base, Some(sql));
+    };
+    println!(
+        "• infrastructure/migrations/{existing} already creates the table — no new migration."
+    );
+    println!("  If the fields changed: not applied anywhere yet → edit that file;");
+    println!("  applied → `puerto generate migration <name>` with the ALTER TABLE.");
+    println!("  Then: make sqlx/migrate && make sqlx/prepare");
+    Ok(())
+}
+
 /// CLI entry point for `puerto generate migration <name>`: only meaningful in a `--db` project.
 pub fn run_generate_migration(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::generators::effective_fields;
-use crate::generators::migration::run_migration;
+use crate::generators::migration::run_create_table_migration;
 use crate::generators::naming::{
     entity_ctx, pascal_to_snake, pluralize, to_pascal_case, write_file,
 };
@@ -285,11 +285,7 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
     patch_infra_lib(base, &snake, db, true)?;
 
     if db {
-        run_migration(
-            &format!("create_{snake}_table"),
-            base,
-            Some(&create_table_sql(&snake, &fields)),
-        )?;
+        run_create_table_migration(&snake, base, &create_table_sql(&snake, &fields))?;
     }
 
     let repo_label = if db {

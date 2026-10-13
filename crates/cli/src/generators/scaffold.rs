@@ -7,7 +7,7 @@ use crate::generators::{
     application::{generate_create_use_case_impl, write_application_files},
     domain::{generate_create_use_case_trait, generate_model, write_domain_files, write_mother},
     infrastructure::{generate_infra_entity, write_repository_files},
-    migration::run_migration,
+    migration::run_create_table_migration,
     naming::{crud_use_cases, pascal_to_snake, to_pascal_case, write_file},
     presentation::write_presentation_files,
     render::render,
@@ -366,7 +366,7 @@ pub fn run_scaffold_with_access(
     if db {
         let snake = pascal_to_snake(&pascal);
         let migration_sql = crate::generators::infrastructure::create_table_sql(&snake, &fields);
-        run_migration(&format!("create_{snake}_table"), base, Some(&migration_sql))?;
+        run_create_table_migration(&snake, base, &migration_sql)?;
     }
     Ok(())
 }
