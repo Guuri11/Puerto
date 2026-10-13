@@ -2936,7 +2936,7 @@ allowed on `ref:`, not on `ref:opt:`.
 
 ### 18.0 — ADR-0022 + this spec ✅
 
-### 18.1 — `puerto-core` + `puerto-sqlx`: a missing reference is its own failure
+### 18.1 — `puerto-core` + `puerto-sqlx`: a missing reference is its own failure ✅
 
 - `RepositoryError::MissingReference(&'static str)` — the field the store could not resolve
   (`#[error("repository.missing_reference.{0}")]`); the enum stays `Copy` and `#[non_exhaustive]`.

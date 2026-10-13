@@ -108,17 +108,38 @@ pub async fn ping(pool: &PgPool) -> bool {
 }
 
 /// The one place that knows Postgres error codes: a driver error, as the repository port speaks it.
-/// The caller logs it first, with its own context.
+/// The caller logs it first, with its own context. An entity with references converts with
+/// [`map_sqlx_error_with`] instead.
 pub fn map_sqlx_error(err: &sqlx::Error) -> RepositoryError {
-    // 23505 = unique_violation: a `unique` column already taken. (No let-chain: `rust-version`.)
-    let unique_violation = err
-        .as_database_error()
-        .and_then(|db_err| db_err.code())
-        .is_some_and(|code| code == "23505");
-    if unique_violation {
-        RepositoryError::Duplicate
-    } else {
-        RepositoryError::Unavailable
+    map_sqlx_error_with(err, &[])
+}
+
+/// A foreign key a repository writes through: the constraint's name in the migration and the field
+/// it checks (ADR-0022).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ForeignKey {
+    pub constraint: &'static str,
+    pub field: &'static str,
+}
+
+/// [`map_sqlx_error`], knowing the entity's foreign keys: a violation of one of them is
+/// [`RepositoryError::MissingReference`] with its field. One the list does not name is
+/// `Unavailable` — nothing can tell the caller which input was wrong.
+pub fn map_sqlx_error_with(err: &sqlx::Error, references: &[ForeignKey]) -> RepositoryError {
+    let Some(db_err) = err.as_database_error() else {
+        return RepositoryError::Unavailable;
+    };
+    match db_err.code().as_deref() {
+        // unique_violation: a `unique` column already taken.
+        Some("23505") => RepositoryError::Duplicate,
+        // foreign_key_violation: a reference to a row that does not exist.
+        Some("23503") => db_err
+            .constraint()
+            .and_then(|name| references.iter().find(|fk| fk.constraint == name))
+            .map_or(RepositoryError::Unavailable, |fk| {
+                RepositoryError::MissingReference(fk.field)
+            }),
+        _ => RepositoryError::Unavailable,
     }
 }
 
@@ -134,13 +155,16 @@ mod tests {
             .unwrap()
     }
 
-    /// A driver error carrying a Postgres SQLSTATE, without a server.
+    /// A driver error carrying a Postgres SQLSTATE (and the constraint it broke), without a server.
     #[derive(Debug)]
-    struct FakeDbError(&'static str);
+    struct FakeDbError {
+        code: &'static str,
+        constraint: Option<&'static str>,
+    }
 
     impl std::fmt::Display for FakeDbError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "SQLSTATE {}", self.0)
+            write!(f, "SQLSTATE {}", self.code)
         }
     }
 
@@ -148,10 +172,13 @@ mod tests {
 
     impl sqlx::error::DatabaseError for FakeDbError {
         fn message(&self) -> &str {
-            self.0
+            self.code
         }
         fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
-            Some(self.0.into())
+            Some(self.code.into())
+        }
+        fn constraint(&self) -> Option<&str> {
+            self.constraint
         }
         fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
             self
@@ -168,7 +195,69 @@ mod tests {
     }
 
     fn database_error(code: &'static str) -> sqlx::Error {
-        sqlx::Error::Database(Box::new(FakeDbError(code)))
+        sqlx::Error::Database(Box::new(FakeDbError {
+            code,
+            constraint: None,
+        }))
+    }
+
+    fn constraint_error(code: &'static str, constraint: &'static str) -> sqlx::Error {
+        sqlx::Error::Database(Box::new(FakeDbError {
+            code,
+            constraint: Some(constraint),
+        }))
+    }
+
+    const ORDER_REFERENCES: &[ForeignKey] = &[
+        ForeignKey {
+            constraint: "orders_customer_id_fkey",
+            field: "customer_id",
+        },
+        ForeignKey {
+            constraint: "orders_reviewer_id_fkey",
+            field: "reviewer_id",
+        },
+    ];
+
+    #[test]
+    fn should_map_a_foreign_key_violation_to_the_missing_field() {
+        assert_eq!(
+            map_sqlx_error_with(
+                &constraint_error("23503", "orders_reviewer_id_fkey"),
+                ORDER_REFERENCES
+            ),
+            RepositoryError::MissingReference("reviewer_id")
+        );
+    }
+
+    #[test]
+    fn should_map_a_foreign_key_violation_on_an_unlisted_constraint_to_unavailable() {
+        assert_eq!(
+            map_sqlx_error_with(
+                &constraint_error("23503", "orders_warehouse_id_fkey"),
+                ORDER_REFERENCES
+            ),
+            RepositoryError::Unavailable
+        );
+    }
+
+    #[test]
+    fn should_map_a_unique_violation_to_duplicate_whatever_the_references() {
+        assert_eq!(
+            map_sqlx_error_with(
+                &constraint_error("23505", "orders_customer_id_fkey"),
+                ORDER_REFERENCES
+            ),
+            RepositoryError::Duplicate
+        );
+    }
+
+    #[test]
+    fn should_map_a_non_database_error_to_unavailable_whatever_the_references() {
+        assert_eq!(
+            map_sqlx_error_with(&sqlx::Error::PoolTimedOut, ORDER_REFERENCES),
+            RepositoryError::Unavailable
+        );
     }
 
     #[test]
@@ -275,6 +364,37 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(map_sqlx_error(&err), RepositoryError::Duplicate);
+    }
+
+    #[tokio::test]
+    #[ignore = "needs Postgres: make test/db"]
+    async fn postgres_foreign_key_violation_maps_to_the_missing_field() {
+        let Some(pool) = test_database().await else {
+            eprintln!("PUERTO_TEST_DATABASE_URL not set — skipping (run `make test/db`)");
+            return;
+        };
+        let mut conn = pool.acquire().await.unwrap();
+        sqlx::query("CREATE TEMPORARY TABLE customers (id UUID PRIMARY KEY)")
+            .execute(&mut *conn)
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TEMPORARY TABLE orders (customer_id UUID NOT NULL \
+             CONSTRAINT orders_customer_id_fkey REFERENCES customers (id))",
+        )
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+
+        let err = sqlx::query("INSERT INTO orders VALUES (gen_random_uuid())")
+            .execute(&mut *conn)
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            map_sqlx_error_with(&err, ORDER_REFERENCES),
+            RepositoryError::MissingReference("customer_id")
+        );
     }
 
     #[tokio::test]

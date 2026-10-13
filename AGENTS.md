@@ -27,7 +27,8 @@ crates/
                       `BearerAuth` (asks the `Arc<dyn Authenticator>` the routes carry as data;
                       401 `auth.unauthenticated`, 503 `auth.unavailable`), `forbidden()`
   sqlx/             — `puerto-sqlx`, the Postgres runtime (`--db` projects): the pool,
-                      `run_migrations(pool, &MIGRATOR)`, `ping`, `map_sqlx_error`; for events projects
+                      `run_migrations(pool, &MIGRATOR)`, `ping`, `map_sqlx_error` (`_with` an entity's
+                      `ForeignKey`s: `23503` → `MissingReference(field)`, ADR-0022); for events projects
                       `uow::PgTransaction`, `events::{PgOutbox, PgDeliveries, PgSubscription,
                       PgDeadLetters}` and `migrations/outbox.sql` (the CLI's
                       `templates/infrastructure/outbox.sql` must match it byte for byte — tested);

@@ -18,6 +18,10 @@ pub enum RepositoryError {
     /// The store failed or could not be reached.
     #[error("repository.unavailable")]
     Unavailable,
+    /// A reference names a row that does not exist (a foreign key rejected the write). Holds the
+    /// field: the entity's error turns it into a validation error on it (ADR-0022).
+    #[error("repository.missing_reference.{0}")]
+    MissingReference(&'static str),
 }
 
 #[cfg(test)]
@@ -37,6 +41,14 @@ mod tests {
         assert_eq!(
             RepositoryError::Unavailable.to_string(),
             "repository.unavailable"
+        );
+    }
+
+    #[test]
+    fn should_name_the_field_whose_reference_is_missing() {
+        assert_eq!(
+            RepositoryError::MissingReference("customer_id").to_string(),
+            "repository.missing_reference.customer_id"
         );
     }
 }
