@@ -1,0 +1,42 @@
+import { Link, useLocation, useSearch } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { OrderListView } from "../views/order-list-view";
+
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
+export function OrderListContainer() {
+  const { orderRepository } = useDependencies();
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const orders = useAsync(
+    () => orderRepository.list({ limit: PAGE_SIZE, offset }),
+    [orderRepository, offset],
+  );
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Orders</h1>
+        <Link href="/orders/new" className="btn btn-primary">
+          New order
+        </Link>
+      </div>
+      {orders.status === "loading" && <span className="loading loading-spinner" />}
+      {orders.status === "error" && <ErrorAlert error={orders.error} />}
+      {orders.status === "ok" &&
+        (orders.data.total === 0 ? (
+          <EmptyState message="No orders yet." />
+        ) : (
+          <>
+            <OrderListView orders={orders.data.items} />
+            <Pagination {...orders.data} onOffsetChange={goTo} />
+          </>
+        ))}
+    </section>
+  );
+}

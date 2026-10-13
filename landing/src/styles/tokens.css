@@ -1,0 +1,55 @@
+/* ---------------------------------------------------------------------------
+   Tokens de Puerto. Los comparten la home (global.css) y las docs (starlight.css),
+   para que las dos mitades de la web sean la misma marca.
+
+   Valores y contrastes medidos: DESIGN.md § 2. Nombres por función, nunca por color.
+   --------------------------------------------------------------------------- */
+@import '@fontsource-variable/big-shoulders';
+@import '@fontsource-variable/big-shoulders-stencil';
+@import '@fontsource-variable/archivo/wdth.css';
+@import '@fontsource-variable/martian-mono/wdth.css';
+
+:root {
+  /* Día */
+  --color-canvas: #e9e5dc;
+  --color-surface: #f4f1ea;
+  --color-ink: #15171a;
+  --color-ink-muted: #5a574f;
+  --color-rule: #c9c3b6;
+
+  /* Noche */
+  --color-night: #101215;
+  --color-night-surface: #171a1e;
+  --color-night-ink: #e6e1d6;
+  --color-night-muted: #9a968c;
+  --color-night-rule: #2a2e33;
+
+  /* Los contenedores: un color por capa, siempre el mismo. */
+  --color-layer-business: #1d4e89;
+  --color-layer-infrastructure: #a33b20;
+  --color-layer-presentation: #2f6b4f;
+  --color-layer-business-night: #6fa3e0;
+  --color-layer-infrastructure-night: #e58a6a;
+  --color-layer-presentation-night: #6dbe93;
+
+  /* El único acento. Sobre claro, solo como relleno con tinta encima (DESIGN.md § 2). */
+  --color-accent: #f5b700;
+
+  --font-display: 'Big Shoulders Variable', 'Arial Narrow', sans-serif;
+  --font-stencil: 'Big Shoulders Stencil Variable', 'Big Shoulders Variable', sans-serif;
+  --font-sans: 'Archivo Variable', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Martian Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Cero radios en toda la web: candado 2. */
+  --radius-brand: 0;
+
+  /* La única elevación: sombra dura de tinta. Ni blur ni difusas. */
+  --shadow-hard-sm: 4px 4px 0 var(--color-ink);
+  --shadow-hard-lg: 8px 8px 0 var(--color-ink);
+
+  --hazard: repeating-linear-gradient(
+    -45deg,
+    var(--color-accent) 0 12px,
+    var(--color-ink) 12px 24px
+  );
+}

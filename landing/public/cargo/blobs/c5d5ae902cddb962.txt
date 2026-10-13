@@ -1,0 +1,97 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    repository::CustomerRepositoryTrait,
+    use_cases::delete_customer::{DeleteCustomerParams, DeleteCustomerUseCaseTrait},
+};
+
+pub struct DeleteCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteCustomerUseCaseTrait for DeleteCustomerUseCaseImpl {
+    async fn execute(&self, params: DeleteCustomerParams) -> Result<(), CustomerError> {
+        tracing::info!(id = %params.id, "delete_customer: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_customer: repository failed"))?
+            .ok_or_else(|| {
+                let err = CustomerError::NotFound;
+                tracing::warn!(error = %err, "delete_customer: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_customer: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::value_objects::Email;
+    use crate::domain::customer::{
+        model::{Customer, CustomerId, CustomerProps},
+        repository::mocks::MockCustomerRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_soft_delete_customer_when_id_exists() {
+        let entity = Customer::new(CustomerProps {
+            email: Email::new("example".to_string()).expect("valid Email"),
+            name: "example".to_string(),
+            tags: vec![],
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteCustomerParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+            })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_customer_does_not_exist() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteCustomerParams {
+                actor: PrincipalMother::random(),
+                id: CustomerId::generate(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.not_found");
+    }
+}

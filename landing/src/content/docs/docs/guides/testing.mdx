@@ -1,0 +1,96 @@
+---
+title: Testing
+description: The tests Puerto generates in every layer, how to write your own with mocks and Object Mothers, and the checks a project runs before every commit.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A fresh scaffold passes `make test`, `make lint` and `make format`, and it is not because it has
+few tests. Every generated piece comes with the tests that pin down its behaviour, in the layer
+where that behaviour lives.
+
+| Layer | Tests | Against |
+|---|---|---|
+| Domain model | the rules in `new`, value object parsing | nothing |
+| Errors | each `From<RepositoryError>` arm | nothing |
+| Use cases | success and each failure path | mocked repository or recording unit of work |
+| Repositories | persist, find, page, soft delete, uniqueness | in memory, or a real Postgres with `#[sqlx::test]` |
+| Routes | status per outcome, over the real `OpenApiService` | mocked use cases |
+| Error mappers | one test per variant: its status and its code | nothing |
+| Consumers | ack, ack twice (idempotency), bad payload | Object Mother envelopes |
+| Mail | every template renders | nothing |
+| Screens | list, detail, form, errors under fields | in-memory fake repository |
+| Spec | `docs/api/openapi.json` equals the live spec | mocked use cases |
+
+## Conventions
+
+Puerto's tests, and the ones its `AGENTS.md` asks you and your agent to write, follow one shape:
+
+```rust
+#[tokio::test]
+async fn should_reject_the_price_when_it_is_not_positive() {
+    // Arrange
+    // Act
+    // Assert
+}
+```
+
+- Names say `should_<expected_behaviour>_when_<scenario>`.
+- `// Arrange`, `// Act`, `// Assert`, in that order.
+- TDD: the failing test first, then the least code that passes it.
+- No `unwrap()` or `expect()` outside tests.
+
+## Mocks come with the ports
+
+Every port is a trait, and every trait file carries its `mockall` mock behind
+`#[cfg(any(test, feature = "test-utils"))]`: `MockProductRepository`, `MockCreateProductUseCase`,
+`MockWelcomeMailer`. The feature lets `presentation`'s tests use `business`'s mocks without
+shipping them in the binary.
+
+```rust
+let mut repo = MockProductRepository::new();
+repo.expect_find_by_id().returning(|_| Ok(None));
+repo.expect_save().never();
+```
+
+In an events project, write use cases are tested with `RecordingUnitOfWorkFactory`, which keeps
+what was saved, which events were recorded and whether it committed:
+
+```rust
+let recorded = uow_factory.recorded();
+assert!(recorded.committed);
+assert_eq!(recorded.saved.len(), 1);
+```
+
+## Object Mothers
+
+`business/src/tests/mothers/product_mother.rs` builds valid entities, so a test states only what
+matters to it:
+
+```rust
+let product = ProductMother::random();
+let many = ProductMother::random_vec(5);
+let props = ProductMother::new().with_empty_name().build_props();
+```
+
+Mothers are behind the same `test-utils` gate as the mocks, so route tests and worker tests build
+return values with them instead of a second set of fixtures. The frontend has its own
+(`web/src/test-support/product.ts`), next to an in-memory fake of the repository.
+
+## Running them
+
+```bash
+make test                  # cargo nextest on the workspace, then bun test in web/
+make test/domain           # business, domain tests only
+make test/application      # business, application tests only
+make test/infrastructure   # starts Postgres first in --db projects
+make lint                  # clippy -D warnings, plus typecheck, Biome and the dependency rule in web/
+make format                # cargo fmt --check
+```
+
+<Aside type="note" title="How Puerto tests itself">
+Puerto's own suite generates projects in every combination (in memory, `--db`, events on `db`
+and on Kafka, auth, web) and runs their clippy, tests and `fmt --check`, plus mutation testing on
+its decision logic. If a generated project failed its own `make test`, Puerto's CI would fail
+first.
+</Aside>

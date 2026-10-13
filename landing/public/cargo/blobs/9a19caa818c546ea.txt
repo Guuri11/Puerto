@@ -1,0 +1,44 @@
+use super::errors::OrderError;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Amount(f64);
+
+impl Amount {
+    pub fn new(value: f64) -> Result<Self, OrderError> {
+        Ok(Self(value))
+    }
+
+    pub fn value(&self) -> f64 {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Status {
+    Pending,
+    Confirmed,
+    Cancelled,
+}
+
+impl std::str::FromStr for Status {
+    type Err = OrderError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pending" => Ok(Self::Pending),
+            "Confirmed" => Ok(Self::Confirmed),
+            "Cancelled" => Ok(Self::Cancelled),
+            _ => Err(OrderError::InvalidStatus),
+        }
+    }
+}
+
+impl Status {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "Pending",
+            Self::Confirmed => "Confirmed",
+            Self::Cancelled => "Cancelled",
+        }
+    }
+}

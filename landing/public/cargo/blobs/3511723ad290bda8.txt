@@ -1,0 +1,49 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
+import { renderScreen } from "../../../../test-support/render";
+import { CustomerDetailContainer } from "./customer-detail-container";
+
+describe("CustomerDetailContainer", () => {
+  test("should show the customer when it exists", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const customerRepository = fakeCustomerRepository([seeded]);
+
+    // Act
+    renderScreen(<CustomerDetailContainer id={seeded.id} />, { customerRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the customer does not exist", async () => {
+    // Arrange
+    const customerRepository = fakeCustomerRepository();
+
+    // Act
+    renderScreen(<CustomerDetailContainer id={crypto.randomUUID()} />, { customerRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("customer.not_found");
+  });
+
+  test("should delete the customer only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const fake = fakeCustomerRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<CustomerDetailContainer id={seeded.id} />, {
+      customerRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/customers"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});

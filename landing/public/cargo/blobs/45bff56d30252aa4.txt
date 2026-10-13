@@ -1,0 +1,105 @@
+import type { Accounts, Registration } from "../../domain/auth/accounts";
+import { AuthError, type AuthGateway, type CurrentUser } from "../../domain/auth/session";
+
+/**
+ * Where the session token is kept: in `localStorage`, so a reload stays signed in — there is no
+ * provider session to fall back on. A token that leaks is revoked server-side (`POST /auth/logout`).
+ */
+export const TOKEN_KEY = "auth.token";
+
+export interface LocalAuthOptions {
+  storage?: Storage;
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
+  /** Leaves for another page of the app: the sign-in page, on `login`. */
+  goTo?: (url: string) => void;
+}
+
+interface MeBody {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  roles: string[];
+}
+
+function toCurrentUser(me: MeBody): CurrentUser {
+  return { id: me.id, email: me.email ?? null, name: me.name ?? null, roles: me.roles };
+}
+
+/** `ErrorResponse.name` of a failed call, or `http.<status>` for a body that is not one. */
+async function errorCode(response: Response): Promise<string> {
+  const body: unknown = await response.json().catch(() => null);
+  if (typeof body === "object" && body !== null && "name" in body) {
+    const { name } = body;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+const JSON_BODY = { "Content-Type": "application/json" };
+
+/** `AuthGateway` and `Accounts` over the API's own `/auth/*` (`--auth local`). */
+export function localAuthGateway({
+  storage = window.localStorage,
+  fetch: send = (url, init) => fetch(url, init),
+  goTo = (url) => window.location.assign(url),
+}: LocalAuthOptions = {}): AuthGateway & Accounts {
+  const token = () => storage.getItem(TOKEN_KEY);
+  const bearer = (value: string) => ({ Authorization: `Bearer ${value}` });
+
+  return {
+    accessToken: async () => token(),
+
+    async currentUser() {
+      const current = token();
+      if (current === null) return null;
+      const response = await send("/api/me", { headers: bearer(current) });
+      // An expired or revoked session: signed out, not an error.
+      if (response.status === 401) {
+        storage.removeItem(TOKEN_KEY);
+        return null;
+      }
+      if (!response.ok) throw new AuthError(await errorCode(response));
+      return toCurrentUser((await response.json()) as MeBody);
+    },
+
+    /** The session is gone or never was: drop what is left of it and ask for a password. */
+    async login(returnTo) {
+      storage.removeItem(TOKEN_KEY);
+      goTo(`/login?next=${encodeURIComponent(returnTo)}`);
+    },
+
+    completeLogin: async () => "/",
+
+    async logout() {
+      const current = token();
+      if (current !== null) {
+        // Signed out here whatever the API says: a session it could not revoke expires.
+        await send("/api/auth/logout", { method: "POST", headers: bearer(current) }).catch(
+          () => undefined,
+        );
+      }
+      storage.removeItem(TOKEN_KEY);
+    },
+
+    async register(registration: Registration) {
+      const response = await send("/api/auth/register", {
+        method: "POST",
+        headers: JSON_BODY,
+        body: JSON.stringify(registration),
+      });
+      if (!response.ok) throw new AuthError(await errorCode(response));
+      return toCurrentUser((await response.json()) as MeBody);
+    },
+
+    async signIn(email, password) {
+      const response = await send("/api/auth/login", {
+        method: "POST",
+        headers: JSON_BODY,
+        body: JSON.stringify({ email, password }),
+      });
+      if (!response.ok) throw new AuthError(await errorCode(response));
+      const session = (await response.json()) as { token: string };
+      storage.setItem(TOKEN_KEY, session.token);
+    },
+  };
+}

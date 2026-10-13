@@ -1,0 +1,137 @@
+---
+title: Quick start
+description: Create a Puerto project, scaffold a Product entity across every layer, call its API and open its screens, in about five minutes.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This page builds a small catalogue: a `Product` with a name, a price and a unique SKU, served as a
+REST API with its own React screens. It runs in memory, so you need nothing but Rust and, for the
+screens, [Bun](https://bun.sh). Every output on this page was captured from a real run.
+
+<Steps>
+
+1. **Create the project.**
+
+   ```bash
+   puerto new --name shop --no-db --no-demo
+   ```
+
+   ```txt title="output"
+   ├── business/        (domain logic)
+   ├── infrastructure/  (adapters)
+   ├── presentation/    (openapi routes)
+   ├── web/             (React frontend)
+   └── Cargo.toml
+   ✓ Project 'shop' created.
+   ```
+
+   `--no-db` keeps the data in memory, and `--no-demo` leaves out the `Greeting` example entity.
+   Leave both flags out and `puerto new` asks.
+
+2. **Scaffold an entity.**
+
+   ```bash
+   cd shop
+   puerto generate scaffold Product -- name:String price:i64 sku:String!
+   ```
+
+   ```txt title="output"
+   ✓ business/        — model, errors, repository trait, use cases (create, get, list, update, delete)
+   ✓ infrastructure/  — InMemoryProductRepository
+   ✓ presentation/    — routes, dto, responses, error mapper
+   ✓ web/             — list, detail and form screens, HTTP repository
+   ✓ Done. Zero manual wiring.
+
+   The API changed. Next: make web/sync   (exports the spec, regenerates the web types)
+   ```
+
+   Fields come after `--` as `name:Type`. The `!` makes `sku` unique: a second product with the
+   same SKU is refused with `409 Conflict`. [Entities and fields](/docs/guides/entities/) lists
+   every type.
+
+3. **Run the API.**
+
+   ```bash
+   make run
+   ```
+
+   The server starts on port 8080: the Swagger UI on `/`, the API under `/api`, and the health
+   probes on `/health` and `/health/ready`.
+
+4. **Call it.**
+
+   ```bash
+   curl -X POST localhost:8080/api/products \
+     -H 'content-type: application/json' \
+     -d '{"name":"Lamp","price":4900,"sku":"LMP-01"}'
+   ```
+
+   ```json title="201 Created"
+   {"id":"535f6905-8372-4349-af7d-c9fb49455ed5","name":"Lamp","price":4900,"sku":"LMP-01"}
+   ```
+
+   The same SKU again, then an empty name:
+
+   ```json title="409 Conflict"
+   {"message":"product.duplicate","name":"product.duplicate"}
+   ```
+
+   ```json title="422 Unprocessable Entity"
+   {"message":"product.validation_error.name_empty","name":"product.validation_error.name_empty"}
+   ```
+
+   Errors are machine-readable codes in `name`, and domain validation is a 422. That is the
+   [error contract](/docs/reference/errors/), the same in every Puerto project. Lists are paged:
+
+   ```bash
+   curl 'localhost:8080/api/products?limit=10'
+   ```
+
+   ```json title="200 OK"
+   {"items":[{"id":"535f6905-…","name":"Lamp","price":4900,"sku":"LMP-01"}],"limit":10,"offset":0,"total":1}
+   ```
+
+5. **Open the screens.** In another terminal:
+
+   ```bash
+   make web/sync                      # export the OpenAPI spec, regenerate the frontend's types
+   make web/install && make web/dev   # http://localhost:5173
+   ```
+
+   `/products` lists them, `/products/new` creates one, and a rejected form shows the message next
+   to the field it is about.
+
+6. **Check it.**
+
+   ```bash
+   make setup     # once: cargo-nextest and cargo-audit
+   make test      # every generated test: model, use cases, routes, mappers, screens
+   make lint      # clippy -D warnings
+   make format    # rustfmt --check
+   ```
+
+   All three pass on a fresh scaffold. That is the baseline you keep while you build.
+
+</Steps>
+
+## What you have now
+
+- `business/src/domain/product/model.rs` holds `Product` and its id type, `ProductId`. The rules
+  go in `Product::new`: it already refuses an empty `name` and an empty `sku`.
+- `business/src/application/product/` holds the five use cases, each with unit tests against a
+  mocked repository.
+- `presentation/src/api/product/routes.rs` holds the five endpoints. Their tests drive the real
+  `OpenApiService` with mocked use cases.
+- `presentation/src/generated/bootstrap.rs` wires all of it. You never edit it.
+
+<Aside type="tip">
+Run `git diff` after any `puerto generate` command. Every change it made is there, formatted.
+</Aside>
+
+## Next
+
+- Keep the data: [Database and migrations](/docs/guides/database/) (`puerto new --db`).
+- Add a rule that is not CRUD: [Use cases](/docs/guides/use-cases/).
+- React to writes: [Domain events](/docs/guides/events/).
+- Understand why it is laid out this way: [The architecture](/docs/start/architecture/).

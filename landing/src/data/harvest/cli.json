@@ -1,0 +1,79 @@
+{
+  "version": "0.19.0",
+  "root": "Puerto — Rust full-stack DDD framework\n\nUsage: puerto <COMMAND>\n\nCommands:\n  new          Scaffold a new Puerto project\n  generate     Code generators for existing Puerto projects\n  list         List entities and use cases defined in puerto.toml\n  validate     Validate puerto.toml (field types, names, entity consistency)\n  completions  Print shell completion script\n  help         Print this message or the help of the given subcommand(s)\n\nOptions:\n  -h, --help     Print help\n  -V, --version  Print version\n",
+  "generate": "Code generators for existing Puerto projects\n\nUsage: puerto generate <COMMAND>\n\nCommands:\n  scaffold      Scaffold all DDD layers for a new entity (db and CRUD inferred from puerto.toml)\n  use-case      Add a use case to an existing entity\n  event         Declare a custom domain event of a CRUD entity and regenerate its events.rs\n                (projects created with --events)\n  consumer      Add a consumer to the worker: an event handler, its tests and its registry entry\n                (projects created with --events)\n  mail          Add a mail: its port, its template implementation and its templates (subject.txt,\n                body.html, body.txt). The first one also adds Mailpit and SMTP_URL / MAIL_FROM to\n                .env\n  bootstrap     Regenerate presentation/src/generated/bootstrap.rs from puerto.toml\n  migration     Create a new SQLx migration file\n  snippets      Write IDE snippet files (.zed/snippets/rust.json, .vscode/puerto.code-snippets)\n  domain        Scaffold only the domain layer for a new entity (domain-first workflow)\n  application   Scaffold only the application layer for an existing entity\n  repository    Scaffold only the repository (infrastructure) layer for an existing entity\n  presentation  Scaffold only the presentation layer for an existing entity (regenerates\n                bootstrap.rs)\n  web           Scaffold only the frontend slice of an existing CRUD entity (web projects;\n                regenerates web/src/presentation/core/generated/)\n  value-object  Declare a shared value object in puerto.toml (reusable across entities)\n  help          Print this message or the help of the given subcommand(s)\n\nOptions:\n  -h, --help  Print help\n",
+  "commands": [
+    {
+      "command": "new",
+      "help": "Scaffold a new Puerto project\n\nUsage: puerto new [OPTIONS]\n\nOptions:\n      --name <NAME>                Project name (skips interactive prompt)\n      --db                         Include database support (SQLx + Postgres) (skips interactive\n                                   prompt)\n      --no-db                      Explicitly skip database support without prompting\n      --no-demo                    Skip the Greeting demo entity (creates an empty project)\n      --no-web                     Skip the web frontend (`web/`: React + daisyUI on Bun)\n      --events <EVENTS>            Domain events (needs --db): every write records an event in an\n                                   outbox, relayed through this transport [possible values: db,\n                                   kafka]\n      --auth <AUTH>                Auth: `oidc` verifies an OpenID Connect provider's tokens (Auth0,\n                                   Keycloak — Keycloak runs in docker-compose.yml for development);\n                                   `local` keeps accounts and sessions in the project's database\n                                   (needs --db) [possible values: oidc, local]\n      --destination <DESTINATION>  Directory where the project will be created (defaults to current\n                                   directory)\n  -h, --help                       Print help\n"
+    },
+    {
+      "command": "generate scaffold",
+      "help": "Scaffold all DDD layers for a new entity (db and CRUD inferred from puerto.toml)\n\nUsage: puerto generate scaffold [OPTIONS] <NAME> [-- <FIELDS>...]\n\nArguments:\n  <NAME>       Entity name in PascalCase (e.g. Product, OrderItem)\n  [FIELDS]...  Fields after -- separator. Primitives: title:String price:i64! desc:opt:String\n               tags:vec:String Value Objects: name:Name:String age:Age:i64\n               status:Status:enum:Active/Inactive mid:Mid:opt:String Shared VO (type inferred from\n               puerto.toml): email:Email\n\nOptions:\n      --force            Overwrite an already-generated entity, discarding hand-written changes in\n                         its files\n      --public <PUBLIC>  Auth projects: use cases whose routes need no token, comma-separated (e.g.\n                         list_products,get_product). Every other route takes `auth: BearerAuth`\n      --role <ROLE>      Auth projects: a role a route requires, <use_case>=<role>, comma-separated\n                         (e.g. create_product=admin,delete_product=admin) — `#[require_role]` on the\n                         handler\n  -h, --help             Print help\n"
+    },
+    {
+      "command": "generate use-case",
+      "help": "Add a use case to an existing entity\n\nUsage: puerto generate use-case <ENTITY> <ACTION>\n\nArguments:\n  <ENTITY>  Entity name in PascalCase (e.g. Product)\n  <ACTION>  Use case action in snake_case (e.g. delete_product)\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "generate value-object",
+      "help": "Declare a shared value object in puerto.toml (reusable across entities)\n\nUsage: puerto generate value-object <NAME> <INNER_TYPE>\n\nArguments:\n  <NAME>        Value object name in PascalCase (e.g. Email, Money)\n  <INNER_TYPE>  Inner primitive type: String, i64, bool, f64, Uuid, DateTime\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "generate migration",
+      "help": "Create a new SQLx migration file\n\nUsage: puerto generate migration <NAME>\n\nArguments:\n  <NAME>  Migration name in snake_case (e.g. add_products_table)\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "generate event",
+      "help": "Declare a custom domain event of a CRUD entity and regenerate its events.rs (projects created with\n--events)\n\nUsage: puerto generate event <ENTITY> <NAME>\n\nArguments:\n  <ENTITY>  Entity name in PascalCase (e.g. Product)\n  <NAME>    Event type in snake_case, past tense (e.g. product_published)\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "generate consumer",
+      "help": "Add a consumer to the worker: an event handler, its tests and its registry entry (projects created\nwith --events)\n\nUsage: puerto generate consumer --on <ON> <NAME>\n\nArguments:\n  <NAME>  Consumer name in snake_case (e.g. notify_new_product)\n\nOptions:\n      --on <ON>  The event types it handles, comma-separated (e.g.\n                 product_created,product_published)\n  -h, --help     Print help\n"
+    },
+    {
+      "command": "generate mail",
+      "help": "Add a mail: its port, its template implementation and its templates (subject.txt, body.html,\nbody.txt). The first one also adds Mailpit and SMTP_URL / MAIL_FROM to .env\n\nUsage: puerto generate mail [OPTIONS] <NAME> [-- <FIELDS>...]\n\nArguments:\n  <NAME>       Mail name in snake_case (e.g. welcome, order_shipped)\n  [FIELDS]...  The values its text shows, after --: name:String seats:i64 plan:opt:String.\n               Primitives and opt:<type> only; the recipient `to` is always there. None: name:String\n\nOptions:\n      --on <ON>  Projects created with --events: the worker sends the mail on these event types,\n                 comma-separated (e.g. customer_created). Its fields come from the events' snapshots\n      --to <TO>  With --on: the String field of the snapshot that holds the recipient (e.g. email)\n  -h, --help     Print help\n"
+    },
+    {
+      "command": "generate web",
+      "help": "Scaffold only the frontend slice of an existing CRUD entity (web projects; regenerates\nweb/src/presentation/core/generated/)\n\nUsage: puerto generate web [OPTIONS] <NAME>\n\nArguments:\n  <NAME>  Entity name in PascalCase (e.g. Product)\n\nOptions:\n      --force  Overwrite the entity's existing frontend files, discarding hand-written changes\n  -h, --help   Print help\n"
+    },
+    {
+      "command": "generate domain",
+      "help": "Scaffold only the domain layer for a new entity (domain-first workflow)\n\nUsage: puerto generate domain <NAME> [-- <FIELDS>...]\n\nArguments:\n  <NAME>       Entity name in PascalCase (e.g. Product, OrderItem)\n  [FIELDS]...  Fields after -- separator. Same syntax as `generate scaffold`. They are written to\n               puerto.toml, so `generate application/repository/presentation` pick them up\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "generate application",
+      "help": "Scaffold only the application layer for an existing entity\n\nUsage: puerto generate application <NAME>\n\nArguments:\n  <NAME>  Entity name in PascalCase (e.g. Product)\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "generate repository",
+      "help": "Scaffold only the repository (infrastructure) layer for an existing entity\n\nUsage: puerto generate repository <NAME>\n\nArguments:\n  <NAME>  Entity name in PascalCase (e.g. Product)\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "generate presentation",
+      "help": "Scaffold only the presentation layer for an existing entity (regenerates bootstrap.rs)\n\nUsage: puerto generate presentation <NAME>\n\nArguments:\n  <NAME>  Entity name in PascalCase (e.g. Product)\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "generate bootstrap",
+      "help": "Regenerate presentation/src/generated/bootstrap.rs from puerto.toml\n\nUsage: puerto generate bootstrap [OPTIONS]\n\nOptions:\n      --allow-missing  Write the file even when puerto.toml declares entities whose code is not on\n                       disk\n  -h, --help           Print help\n"
+    },
+    {
+      "command": "generate snippets",
+      "help": "Write IDE snippet files (.zed/snippets/rust.json, .vscode/puerto.code-snippets)\n\nUsage: puerto generate snippets [OPTIONS]\n\nOptions:\n      --ide <IDE>  Target IDE: zed or vscode (default: both)\n  -h, --help       Print help\n"
+    },
+    {
+      "command": "list",
+      "help": "List entities and use cases defined in puerto.toml\n\nUsage: puerto list\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "validate",
+      "help": "Validate puerto.toml (field types, names, entity consistency)\n\nUsage: puerto validate\n\nOptions:\n  -h, --help  Print help\n"
+    },
+    {
+      "command": "completions",
+      "help": "Print shell completion script\n\nUsage: puerto completions <SHELL>\n\nArguments:\n  <SHELL>  Shell to generate completions for (bash, zsh, fish, powershell) [possible values: bash,\n           elvish, fish, powershell, zsh]\n\nOptions:\n  -h, --help  Print help\n"
+    }
+  ]
+}

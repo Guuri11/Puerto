@@ -1,0 +1,221 @@
+.PHONY: help setup run \
+        test test/domain test/application test/infrastructure \
+        lint format format/fix check clean \
+        audit audit/fix \
+        generate/entity generate/use-case generate/bootstrap \
+        web/install web/require-install web/dev web/test web/lint web/sync
+
+CARGO := cargo
+BUN   := bun
+
+# The escape byte itself, not `\033`: `echo` does not interpret escapes where `sh` is bash.
+GREEN  := $(shell printf '\033[1;32m')
+YELLOW := $(shell printf '\033[1;33m')
+CYAN   := $(shell printf '\033[1;36m')
+RED    := $(shell printf '\033[1;31m')
+NC     := $(shell printf '\033[0m')
+
+help: ## Show available commands
+	@echo ""
+	@echo "${CYAN}Available targets:${NC}"
+	@echo ""
+	@grep -E '^[a-zA-Z/_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  ${YELLOW}%-32s${NC} %s\n", $$1, $$2}'
+	@echo ""
+
+setup: ## Install required dev tools (run once after cloning)
+	@echo "${CYAN}Setting up development environment...${NC}"
+	$(CARGO) install cargo-nextest --locked
+	$(CARGO) install sqlx-cli --no-default-features --features postgres --locked
+	$(CARGO) install cargo-audit --locked
+
+run: ## Run the API server (http://localhost:8080)
+	@echo "${GREEN}Starting API server...${NC}"
+	$(CARGO) run -p presentation
+
+test: ## Run all tests
+	@echo "${YELLOW}Running all tests...${NC}"
+	$(CARGO) nextest run --workspace
+	@if [ -d web ]; then $(MAKE) web/test; fi
+
+test/domain: ## Run domain layer tests
+	@echo "${YELLOW}Running domain tests...${NC}"
+	$(CARGO) nextest run -p business -E 'test(domain)'
+
+test/application: ## Run application layer tests
+	@echo "${YELLOW}Running application layer tests...${NC}"
+	$(CARGO) nextest run -p business -E 'test(application)'
+
+test/infrastructure: ## Run infrastructure layer tests (requires DB)
+	@echo "${YELLOW}Running infrastructure tests...${NC}"
+	$(CARGO) nextest run -p infrastructure
+
+lint: ## Clippy with -D warnings
+	@echo "${CYAN}Linting code...${NC}"
+	$(CARGO) clippy --workspace -- -D warnings
+	@if [ -d web ]; then $(MAKE) web/lint; fi
+
+format: ## Check code formatting
+	@echo "${CYAN}Checking code formatting...${NC}"
+	$(CARGO) fmt --all -- --check
+
+format/fix: ## Fix code formatting
+	@echo "${CYAN}Fixing code formatting...${NC}"
+	$(CARGO) fmt --all
+
+check: ## Fast compile check (no binary)
+	@echo "${CYAN}Checking code...${NC}"
+	$(CARGO) check --workspace
+
+clean: ## Remove build artifacts
+	@echo "${RED}Cleaning build artifacts...${NC}"
+	$(CARGO) clean
+
+audit: ## Run security audit on dependencies
+	@echo "${CYAN}Running security audit...${NC}"
+	$(CARGO) audit
+
+audit/fix: ## Preview security fixes (dry-run)
+	@echo "${CYAN}Previewing security fixes (dry-run)...${NC}"
+	$(CARGO) audit fix --dry-run
+
+generate/entity: ## Scaffold a new DDD entity — make generate/entity NAME=Product
+	@if [ -z "$$NAME" ]; then \
+		echo "${RED}Error: provide entity name — make generate/entity NAME=Product${NC}"; \
+		exit 1; \
+	fi
+	@echo "${GREEN}Scaffolding entity '$$NAME'...${NC}"
+	puerto generate scaffold $$NAME
+
+generate/use-case: ## Add a use case to an entity — make generate/use-case ENTITY=Product ACTION=delete_product
+	@if [ -z "$$ENTITY" ] || [ -z "$$ACTION" ]; then \
+		echo "${RED}Error: provide entity and action — make generate/use-case ENTITY=Product ACTION=delete_product${NC}"; \
+		exit 1; \
+	fi
+	@echo "${GREEN}Adding use case '$$ACTION' to '$$ENTITY'...${NC}"
+	puerto generate use-case $$ENTITY $$ACTION
+
+generate/bootstrap: ## Regenerate bootstrap.rs from puerto.toml
+	@echo "${GREEN}Regenerating bootstrap.rs...${NC}"
+	puerto generate bootstrap
+
+web/install: ## Install the frontend dependencies (needs Bun)
+	@echo "${CYAN}Installing frontend dependencies...${NC}"
+	cd web && $(BUN) install
+
+# Not in `make help`: the prerequisite of every target that runs the frontend's tools.
+web/require-install:
+	@if [ ! -d web/node_modules ]; then \
+		echo "${RED}web/node_modules is missing — run: make web/install${NC}"; \
+		exit 1; \
+	fi
+
+web/dev: web/require-install ## Run the frontend dev server (http://localhost:5173, /api proxied to :8080)
+	@echo "${GREEN}Starting frontend dev server...${NC}"
+	cd web && $(BUN) run dev
+
+web/test: web/require-install ## Run the frontend tests
+	@echo "${YELLOW}Running frontend tests...${NC}"
+	cd web && $(BUN) test
+
+web/lint: web/require-install ## Typecheck, lint and check the frontend Dependency Rule
+	@echo "${CYAN}Linting frontend...${NC}"
+	cd web && $(BUN) run typecheck && $(BUN) run lint && $(BUN) run lint:arch
+
+web/sync: web/require-install ## After a scaffold or a DTO change: export the OpenAPI spec, regenerate the web types
+	@echo "${CYAN}Exporting docs/api/openapi.json...${NC}"
+	UPDATE_OPENAPI=1 $(CARGO) test -p presentation openapi
+	@echo "${CYAN}Generating web/src/infrastructure/http/schema.d.ts...${NC}"
+	cd web && $(BUN) run openapi:types
+	@echo "${CYAN}Formatting web/ (Biome, no lint fixes)...${NC}"
+	cd web && $(BUN) run format
+
+.PHONY: db-up db-down docker-compose/up docker-compose/down reset-db \
+        sqlx/online sqlx/offline sqlx/migrate sqlx/prepare sqlx/check \
+        generate/migration
+
+DOCKER         := docker
+DOCKER_COMPOSE := docker compose
+
+db-up: docker-compose/up ## Start database containers
+
+db-down: docker-compose/down ## Stop database containers
+
+docker-compose/up: ## Start all containers
+	@echo "${CYAN}Starting containers...${NC}"
+	$(DOCKER_COMPOSE) up -d --wait
+
+docker-compose/down: ## Stop all containers
+	@echo "${CYAN}Stopping containers...${NC}"
+	$(DOCKER_COMPOSE) down
+
+reset-db: ## Wipe database and re-run migrations (DESTRUCTIVE)
+	@printf "${RED}This destroys ALL database data. Type DESTROY to confirm: ${NC}"; \
+	read CONFIRM; \
+	if [ "$$CONFIRM" != "DESTROY" ]; then \
+		echo "${GREEN}Cancelled${NC}"; \
+		exit 1; \
+	fi; \
+	echo "${CYAN}Stopping containers and removing volumes...${NC}"; \
+	$(DOCKER_COMPOSE) down -v; \
+	echo "${CYAN}Restarting containers...${NC}"; \
+	$(DOCKER_COMPOSE) up -d --wait; \
+	echo "${GREEN}Running migrations...${NC}"; \
+	sqlx migrate run --source infrastructure/migrations
+
+# The template's `run` and `test/infrastructure` keep their recipes; here they gain the database.
+run test/infrastructure: docker-compose/up
+
+sqlx/online: ## Switch SQLx to ONLINE mode (check against live DB)
+	@printf '[env]\nSQLX_OFFLINE = "false"\n' > .cargo/config.toml
+	@echo "${GREEN}SQLx ONLINE mode${NC}"
+
+sqlx/offline: ## Switch SQLx to OFFLINE mode (use saved cache)
+	@printf '[env]\nSQLX_OFFLINE = "true"\n' > .cargo/config.toml
+	@echo "${GREEN}SQLx OFFLINE mode${NC}"
+
+sqlx/migrate: docker-compose/up ## Run pending database migrations
+	@echo "${GREEN}Running migrations...${NC}"
+	sqlx migrate run --source infrastructure/migrations
+
+sqlx/prepare: docker-compose/up ## Regenerate SQLx offline cache (requires live DB)
+	@echo "${GREEN}Preparing SQLx cache...${NC}"
+	SQLX_OFFLINE=false $(CARGO) sqlx prepare --workspace
+
+sqlx/check: docker-compose/up ## Verify SQLx cache matches current queries
+	@echo "${GREEN}Checking SQLx cache...${NC}"
+	SQLX_OFFLINE=false $(CARGO) sqlx prepare --workspace --check
+
+generate/migration: ## Create a new SQLx migration — make generate/migration NAME=add_users
+	@if [ -z "$$NAME" ]; then \
+		echo "${RED}Error: provide name — make generate/migration NAME=add_users_table${NC}"; \
+		exit 1; \
+	fi
+	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
+	puerto generate migration $$NAME
+
+.PHONY: worker events/dead-letters
+
+worker: docker-compose/up ## Run the worker: relays the outbox and runs the consumers (health on :8081)
+	@echo "${GREEN}Starting worker...${NC}"
+	$(CARGO) run -p worker
+
+events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
+	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d shop -c \
+		"SELECT recorded_at, consumer, event_type, attempts, reason, detail FROM dead_letters ORDER BY recorded_at DESC LIMIT 20"
+
+.PHONY: auth/ui auth/token
+
+auth/ui: docker-compose/up ## The Keycloak console: users, roles, sessions
+	@echo "${GREEN}Keycloak: http://localhost:8180/admin/master/console/#/shop (admin / admin)${NC}"
+	@echo "${GREEN}Sign in to the app as admin@shop.localhost / admin-dev-only (role admin)${NC}"
+
+# The development realm's `dev-cli` client (password grant): curl -H "Authorization: Bearer
+# $(make -s auth/token)" … An EMAIL from the shell's environment is not taken for one.
+AUTH_ISSUER ?= $(shell sed -n 's/^AUTH_ISSUER=//p' .env 2>/dev/null)
+TOKEN_EMAIL = $(if $(filter command line,$(origin EMAIL)),$(EMAIL),admin@shop.localhost)
+
+auth/token: ## A development access token: make -s auth/token [EMAIL=user@shop.localhost]
+	@curl -sf "$(AUTH_ISSUER)/protocol/openid-connect/token" -d grant_type=password -d client_id=dev-cli \
+		--data-urlencode "username=$(TOKEN_EMAIL)" --data-urlencode "password=admin-dev-only" \
+		| sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p' | grep . \
+		|| { echo "${RED}no token for $(TOKEN_EMAIL) from $(AUTH_ISSUER) — is Keycloak up? make docker-compose/up${NC}" >&2; exit 1; }

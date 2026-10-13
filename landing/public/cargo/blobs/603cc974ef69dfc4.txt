@@ -1,0 +1,29 @@
+use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
+
+use super::model::{Product, ProductId};
+
+#[async_trait]
+pub trait ProductRepositoryTrait: Send + Sync {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+    async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ProductRepository {}
+
+        #[async_trait]
+        impl ProductRepositoryTrait for ProductRepository {
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+            async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+        }
+    }
+}

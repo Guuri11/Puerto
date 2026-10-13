@@ -1,0 +1,34 @@
+[package]
+name = "presentation"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "shop"
+path = "src/main.rs"
+
+[dependencies]
+business = { path = "../business" }
+infrastructure = { path = "../infrastructure" }
+puerto-core = { workspace = true }
+# The OIDC adapter `bootstrap.rs` builds (ADR-0021).
+puerto-auth = { workspace = true, features = ["oidc"] }
+# The server, health probes, configuration and error body (`main.rs`, `generated/bootstrap.rs`).
+puerto-web = { workspace = true }
+poem = "3"
+# `chrono` feature: without it poem-openapi has no `Type` impl for DateTime<Utc>, so any entity
+# with a date field fails to derive `Object`.
+poem-openapi = { version = "5", features = ["swagger-ui", "uuid", "chrono"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+# DTOs mirror the domain's field types, so any entity with a DateTime<Utc> field needs chrono here.
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+# Route tests: use case mocks and Object Mothers come from business behind `test-utils`, and
+# `poem::test::TestClient` drives the real OpenApiService.
+business = { path = "../business", features = ["test-utils"] }
+# `MockAuthenticator`, for the routes that take `BearerAuth`.
+puerto-core = { workspace = true, features = ["test-utils"] }
+poem = { version = "3", features = ["test"] }

@@ -1,0 +1,106 @@
+---
+/**
+ * La marca: tres contenedores idénticos apilados, uno por capa, con el wordmark en stencil.
+ * Que sean idénticos es la tesis: el estándar. → DESIGN.md § 4
+ *
+ * Inline y no por <img>: los colores de capa cambian de día a noche con los tokens.
+ * El favicon es aparte (public/favicon.svg): sin estrías, porque a 16px se empastan.
+ */
+interface Props {
+  /** Sobre fondo de noche: los colores de capa claros. */
+  night?: boolean;
+  /** Solo el símbolo, sin wordmark. */
+  symbolOnly?: boolean;
+  class?: string;
+}
+
+const { night = false, symbolOnly = false, class: className = '' } = Astro.props;
+
+// Tres contenedores de 22×8 en un lienzo de 32. El desplazamiento horizontal es el de una
+// pila real: la grúa no deja las cajas alineadas al píxel.
+const boxes = [
+  { layer: 'presentation', x: 4, y: 3 },
+  { layer: 'infrastructure', x: 8, y: 12 },
+  { layer: 'business', x: 2, y: 21 },
+] as const;
+const ribs = [4, 7, 10, 13, 16];
+---
+
+<span class:list={['logo', { 'logo--night': night }, className]}>
+  <svg class="logo__symbol" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+    {
+      boxes.map(({ layer, x, y }) => (
+        <g class={`logo__box logo__box--${layer}`}>
+          <rect x={x} y={y} width="22" height="8" />
+          {ribs.map((r) => (
+            <rect class="logo__rib" x={x + r} y={y + 1.5} width="1" height="5" />
+          ))}
+          <rect class="logo__door" x={x + 19} y={y + 1} width="2" height="6" />
+        </g>
+      ))
+    }
+  </svg>
+  {!symbolOnly && <span class="logo__word" translate="no">Puerto</span>}
+</span>
+
+<style>
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--color-ink);
+  }
+
+  .logo__symbol {
+    height: 1.75rem;
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .logo__box--business {
+    fill: var(--color-layer-business);
+  }
+  .logo__box--infrastructure {
+    fill: var(--color-layer-infrastructure);
+  }
+  .logo__box--presentation {
+    fill: var(--color-layer-presentation);
+  }
+
+  .logo__rib,
+  .logo__door {
+    fill: var(--color-canvas);
+    opacity: 0.28;
+  }
+
+  .logo__door {
+    opacity: 0.18;
+  }
+
+  .logo--night {
+    color: var(--color-night-ink);
+  }
+  .logo--night .logo__box--business {
+    fill: var(--color-layer-business-night);
+  }
+  .logo--night .logo__box--infrastructure {
+    fill: var(--color-layer-infrastructure-night);
+  }
+  .logo--night .logo__box--presentation {
+    fill: var(--color-layer-presentation-night);
+  }
+  .logo--night .logo__rib,
+  .logo--night .logo__door {
+    fill: var(--color-night);
+    opacity: 0.35;
+  }
+
+  .logo__word {
+    font-family: var(--font-stencil);
+    font-weight: 800;
+    font-size: 1.625rem;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+</style>

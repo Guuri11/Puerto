@@ -1,0 +1,64 @@
+import { CustomerError } from "../../domain/customer/errors";
+import type { Customer, CustomerDraft } from "../../domain/customer/model";
+import type { CustomerRepository } from "../../domain/customer/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type CustomerDto = components["schemas"]["CustomerDto"];
+type CustomerRequest = components["schemas"]["CreateCustomerRequest"];
+
+function toCustomer(dto: CustomerDto): Customer {
+  return {
+    id: dto.id,
+    email: dto.email,
+    name: dto.name,
+    tags: dto.tags,
+  };
+}
+
+function toRequest(draft: CustomerDraft): CustomerRequest {
+  return {
+    email: draft.email,
+    name: draft.name,
+    tags: draft.tags,
+  };
+}
+
+/** `CustomerRepository` over the REST API (`/customers`). */
+export function customerRepositoryHttp(api: ApiClient): CustomerRepository {
+  return {
+    async list(page) {
+      const { data, error, response } = await api.GET("/customers", {
+        params: { query: page },
+      });
+      if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
+      return { ...data, items: data.items.map(toCustomer) };
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/customers/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
+      return toCustomer(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/customers", { body: toRequest(draft) });
+      if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
+      return toCustomer(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/customers/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new CustomerError(apiErrorCode(error, response));
+      return toCustomer(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/customers/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new CustomerError(apiErrorCode(error, response));
+    },
+  };
+}

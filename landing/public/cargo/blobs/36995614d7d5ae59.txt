@@ -1,0 +1,72 @@
+import { describe, expect, test } from "bun:test";
+import { OrderError } from "../../domain/order/errors";
+import { OrderMother } from "../../test-support/order";
+import { createApiClient } from "../http/client";
+import { orderRepositoryHttp } from "./order-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: orderRepositoryHttp(api), requests };
+}
+
+describe("orderRepositoryHttp", () => {
+  test("should ask for the page and return its orders", async () => {
+    // Arrange
+    const order = OrderMother.random();
+    const page = { items: [order], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
+
+    // Act
+    const listed = await repository.list({ limit: 20, offset: 20 });
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/orders?limit=20&offset=20");
+    expect(listed).toEqual(page);
+  });
+
+  test("should send the draft when creating an order", async () => {
+    // Arrange
+    const draft = OrderMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the order does not exist", async () => {
+    // Arrange
+    const code = "order.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(OrderError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the order", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/orders/42");
+  });
+});

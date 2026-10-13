@@ -1,0 +1,22 @@
+import { OrderError } from "./errors";
+
+export interface Order {
+  id: string;
+  amount: number;
+  status: Status;
+  note: string | null;
+}
+
+/** What a create or an update sends: an order without its id. */
+export type OrderDraft = Omit<Order, "id">;
+
+export const statusValues = ["Pending", "Confirmed", "Cancelled"] as const;
+
+export type Status = (typeof statusValues)[number];
+
+/** Narrows the API's `string` to a `Status`, rejecting with `order.invalid_status`. */
+export function parseStatus(value: string): Status {
+  const found = statusValues.find((candidate) => candidate === value);
+  if (found === undefined) throw new OrderError("order.invalid_status");
+  return found;
+}

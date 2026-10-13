@@ -1,0 +1,14 @@
+import type { Customer } from "../../../../domain/customer/model";
+
+export function CustomerDetailView({ customer }: { customer: Customer }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Email</dt>
+      <dd>{customer.email}</dd>
+      <dt className="font-semibold">Name</dt>
+      <dd>{customer.name}</dd>
+      <dt className="font-semibold">Tags</dt>
+      <dd>{customer.tags.join(", ")}</dd>
+    </dl>
+  );
+}

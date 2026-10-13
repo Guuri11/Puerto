@@ -1,0 +1,75 @@
+---
+title: Upgrading
+description: "How a Puerto project gets fixes through cargo update, moves to a new minor version, and why its migration guides are written for agents too."
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+A Puerto project has two things that change with Puerto: the code it generated, which is yours,
+and the runtime crates it depends on, which are not. They upgrade differently.
+
+## Patches arrive with `cargo update`
+
+The runtime crates (`puerto-core`, `puerto-web`, `puerto-sqlx` and the rest) are released in
+lockstep with the CLI, and a project asks for the minor that generated it:
+
+```toml title="Cargo.toml"
+[workspace.dependencies]
+puerto-core = "0.19"
+puerto-web = "0.19"
+```
+
+A fix in a patch release (`0.19.1`) reaches the project with `cargo update`. Nothing to
+regenerate. That is the reason the runtime exists
+([ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)).
+
+## A new minor is a deliberate step
+
+While Puerto is `0.x`, a minor version can change what the generator writes and the runtime's
+API. Every one of those changes is listed under **Breaking** in the
+[changelog](/docs/changelog/), with a **Migration Guide**.
+
+<Steps>
+
+1. **Upgrade the CLI.**
+
+   ```bash
+   cargo install puerto --locked --force
+   ```
+
+2. **Ask the project.**
+
+   ```bash
+   puerto validate
+   ```
+
+   It warns for each runtime crate on another minor than the CLI.
+
+3. **Read the migration guide** of every minor you cross, and apply it. Bump the crates in the
+   root `Cargo.toml`, then:
+
+   ```bash
+   puerto generate bootstrap    # regenerate what Puerto owns
+   make test && make lint && make format
+   ```
+
+</Steps>
+
+## Migration guides are written for agents too
+
+When a release changes generated code, its guide ends with a paragraph meant to be pasted into
+your coding agent as is. From 0.14, for example:
+
+> Upgrade this Puerto project from 0.13 to 0.14. In the root `Cargo.toml` add
+> `[workspace.dependencies]` with `puerto-core = "0.14"`, `puerto-web = "0.14"` and, if
+> `infrastructure` uses sqlx, `puerto-sqlx = "0.14"`; […] then run `puerto generate bootstrap`,
+> `puerto validate` and `make test`.
+
+The agent does the mechanical part, and the tests tell it when it is done.
+
+<Aside type="note" title="Why the runtime is versioned this way">
+Every public enum and every struct you may receive from a runtime crate is `#[non_exhaustive]`
+from day one, so a new variant or field is not a breaking change. Loco needed a 1.0 to learn that;
+Puerto wrote it into [ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)
+before the first release.
+</Aside>

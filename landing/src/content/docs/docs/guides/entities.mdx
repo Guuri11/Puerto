@@ -1,0 +1,126 @@
+---
+title: Entities and fields
+description: Scaffold a DDD entity across every layer with puerto generate scaffold, choose its fields, and understand each file it writes and what you change afterwards.
+---
+
+import { FileTree, Aside } from '@astrojs/starlight/components';
+
+An entity is a thing your business cares about that has an identity over time: a `Product`, an
+`Order`, a `Customer`. In Puerto, an entity is also the unit of generation. One command writes
+it in every layer.
+
+```bash
+puerto generate scaffold Order -- amount:Amount:f64 status:Status:enum:Pending/Confirmed/Cancelled note:opt:String
+```
+
+The name is PascalCase; Puerto derives `order` for modules, `orders` for the table and the routes,
+and `OrderId` for the id. Fields go after `--`. The [field types reference](/docs/reference/field-types/)
+lists every type and what it becomes in each layer.
+
+## What it writes
+
+<FileTree>
+- business/src/
+  - domain/order/
+    - model.rs **Order**, **OrderId**, **OrderProps**, Order::new
+    - value_objects.rs Amount, Status
+    - errors.rs OrderError, with From&lt;RepositoryError&gt;
+    - repository.rs the port, OrderRepositoryTrait, and its mock
+    - use_cases/ create_order, get_order, list_orders, update_order, delete_order
+  - application/order/ the five implementations, with their tests
+  - tests/mothers/order_mother.rs OrderMother
+- infrastructure/src/order/
+  - repository.rs InMemoryOrderRepository, or PgOrderRepository
+  - entity.rs the row, with --db
+- infrastructure/migrations/…_create_order_table.sql with --db
+- presentation/src/api/order/
+  - routes.rs five endpoints, with route tests
+  - dto.rs
+  - responses.rs
+  - error_mapper.rs
+- web/src/…/order/ list, detail and form screens, with web projects
+</FileTree>
+
+It also patches each crate's `lib.rs`, adds the entity to `puerto.toml`, regenerates
+`bootstrap.rs` and, in a web project, the frontend's route table. Then it runs `cargo fmt`.
+
+## The five endpoints
+
+| Use case | Route | Success |
+|---|---|---|
+| `create_order` | `POST /api/orders` | `201` + the order |
+| `get_order` | `GET /api/orders/:id` | `200` + the order |
+| `list_orders` | `GET /api/orders?limit=&offset=` | `200` + a page |
+| `update_order` | `PUT /api/orders/:id` | `200` + the order |
+| `delete_order` | `DELETE /api/orders/:id` | `204` |
+
+Lists are pages, `{ items, total, limit, offset }`: 20 items by default, never more than 100. The
+cap is a rule of the domain (`PageRequest`), so no route or adapter can ask for more
+([ADR-0016](/docs/decisions/adr/0016-lists-are-offset-pages/)). Deletes are soft.
+
+## The model is where the rules go
+
+`Order::new` is the only way to build an `Order` from outside the repository. It is where
+invariants live, and the generated tests show the shape:
+
+```rust title="business/src/domain/product/model.rs"
+impl Product {
+    pub fn new(props: ProductProps) -> Result<Self, ProductError> {
+        if props.name.trim().is_empty() {
+            return Err(ProductError::ValidationError("name_empty".into()));
+        }
+        if props.sku.trim().is_empty() {
+            return Err(ProductError::ValidationError("sku_empty".into()));
+        }
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: ProductId::generate(),
+            // …
+        })
+    }
+}
+```
+
+Required `String` fields already refuse an empty value. Add your own checks the same way: return
+a `ValidationError` with a snake_case code, and the API answers `422` with
+`product.validation_error.<code>`. The web form shows it next to the field when the code names
+one.
+
+## Each entity has its own id type
+
+```rust
+pub struct ProductId(Uuid);
+```
+
+`ProductId::generate()` makes a new one, `ProductId::from_uuid(u)` wraps one read from a path or
+a row, and `.value()` unwraps it at the edges. A `CustomerId` cannot be passed where a
+`ProductId` goes. The newtype stops at the boundary: routes take `Path<Uuid>`, and DTOs and rows
+keep a `Uuid`, so the OpenAPI contract stays `string(uuid)`
+([ADR-0014](/docs/decisions/adr/0014-entity-ids-are-generated-newtypes/)).
+
+## After the scaffold, the files are yours
+
+Everything except the regenerated files is written once and then belongs to you. Change the
+model, add methods, rewrite a use case. Running `scaffold` again for the same entity is refused:
+
+```txt
+'product' is already generated — this would overwrite 36 file(s):
+  business/src/domain/product/model.rs
+  …
+Error: refusing to overwrite existing files for 'product'. Re-run with --force to overwrite, or remove the files first. Nothing was written.
+```
+
+`--force` regenerates the entity and **discards your changes** in its files. It exists for the
+moment right after a scaffold, when you got a field wrong.
+
+<Aside type="tip">
+To add a field later, add it to the entity's `[[entity.fields]]` in `puerto.toml`, then update the
+model, the DTO, the row and a new migration by hand, or `--force` the scaffold if you have not
+changed anything yet. The [IDE snippets](/docs/guides/configuration/#ide-snippets) cover the
+usual shapes.
+</Aside>
+
+## Building one layer at a time
+
+`scaffold` is a shortcut for four commands. When you want to design the domain first, or keep an
+agent's context small, run them one by one. See [Layer by layer](/docs/guides/layer-by-layer/).

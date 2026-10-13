@@ -1,4 +1,4 @@
-.PHONY: help run build install setup test test/full test/db test/kafka test/mail test/auth test/mutation test/snapshots lint check format format/fix audit audit/fix
+.PHONY: help run build install setup site/data test test/full test/db test/kafka test/mail test/auth test/mutation test/snapshots lint check format format/fix audit audit/fix
 
 CARGO := cargo
 
@@ -23,6 +23,10 @@ build: ## Build puerto binary (release) → target/release/puerto
 	@echo "${GREEN}Building puerto...${NC}"
 	$(CARGO) build --release --bin puerto
 	@echo "Binary: $(shell pwd)/target/release/puerto"
+
+site/data: build ## Refresh what the website shows from this CLI: the terminal, the CLI reference, the compiler capture
+	@echo "${GREEN}Harvesting the site's data from target/release/puerto...${NC}"
+	cd landing && pnpm harvest && pnpm capture:compiler
 
 install: ## Install puerto to ~/.cargo/bin
 	@echo "${GREEN}Installing puerto...${NC}"

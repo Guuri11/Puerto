@@ -1,0 +1,33 @@
+import { Link } from "wouter";
+import type { Product } from "../../../../domain/product/model";
+
+export function ProductListView({ products }: { products: Product[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Price</th>
+            <th>Sku</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((product) => (
+            <tr key={product.id}>
+              <td>{product.name}</td>
+              <td>{product.price}</td>
+              <td>{product.sku}</td>
+              <td className="text-right">
+                <Link href={`/products/${product.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

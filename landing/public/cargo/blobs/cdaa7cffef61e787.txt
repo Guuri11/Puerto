@@ -1,0 +1,22 @@
+[package]
+name = "business"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+puerto-core = { workspace = true }
+async-trait = "0.1"
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+mockall = { version = "0.13", optional = true }
+
+[features]
+test-utils = ["mockall"]
+
+[dev-dependencies]
+# The auth ports' mocks (`MockPasswordHasher`, …).
+puerto-core = { workspace = true, features = ["test-utils"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+mockall = "0.13"

@@ -1,0 +1,96 @@
+import { InMemoryWebStorage, UserManager, WebStorageStateStore } from "oidc-client-ts";
+import { AuthError, type AuthGateway, type CurrentUser } from "../../domain/auth/session";
+
+/** Where the provider is and who this app is to it — `web/.env`. */
+export interface OidcSettings {
+  /** `VITE_AUTH_ISSUER`: Keycloak's realm URL, `https://<tenant>.auth0.com/`. */
+  issuer: string;
+  /** `VITE_AUTH_CLIENT_ID`: a public client, Authorization Code + PKCE. */
+  clientId: string;
+  /** `VITE_AUTH_AUDIENCE`: Auth0's API identifier. Empty for Keycloak, whose mapper adds it. */
+  audience: string;
+}
+
+/** The settings from `web/.env`; a missing one is a startup error, not a redirect to nowhere. */
+export function oidcSettingsFromEnv(env: Record<string, unknown> = import.meta.env): OidcSettings {
+  const read = (name: string, required: boolean) => {
+    const value = env[name];
+    if (typeof value === "string" && value !== "") return value;
+    if (required) throw new Error(`${name} is not set: copy web/.env.example to web/.env`);
+    return "";
+  };
+  return {
+    issuer: read("VITE_AUTH_ISSUER", true),
+    clientId: read("VITE_AUTH_CLIENT_ID", true),
+    audience: read("VITE_AUTH_AUDIENCE", false),
+  };
+}
+
+/** What the gateway needs of `oidc-client-ts`'s `UserManager`. */
+export type OidcClient = Pick<
+  UserManager,
+  "getUser" | "signinRedirect" | "signinRedirectCallback" | "signoutRedirect"
+>;
+
+/** `AuthGateway` over an OpenID Connect provider (Keycloak, Auth0): Authorization Code + PKCE. */
+export function oidcAuthGateway(settings: OidcSettings): AuthGateway {
+  const origin = window.location.origin;
+  const client = new UserManager({
+    authority: settings.issuer,
+    client_id: settings.clientId,
+    redirect_uri: `${origin}/auth/callback`,
+    post_logout_redirect_uri: origin,
+    scope: "openid profile email",
+    // In memory, never in storage a script could read: a reload signs in again, through the
+    // provider's own session (ADR-0021 § 5).
+    userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
+    extraQueryParams: settings.audience === "" ? {} : { audience: settings.audience },
+  });
+  return oidcAuthGatewayOver(client, (url, init) => fetch(url, init));
+}
+
+interface MeBody {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  roles: string[];
+}
+
+/** How the gateway asks the API for `/me`. */
+export type FetchMe = (url: string, init: RequestInit) => Promise<Response>;
+
+/** `ErrorResponse.name` of a failed `/me`, or `http.<status>` for a body that is not one. */
+async function errorCode(response: Response): Promise<string> {
+  const body: unknown = await response.json().catch(() => null);
+  if (typeof body === "object" && body !== null && "name" in body) {
+    const { name } = body;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+/** The gateway over any client and `fetch`: what the tests drive. */
+export function oidcAuthGatewayOver(client: OidcClient, fetchMe: FetchMe): AuthGateway {
+  const accessToken = async () => {
+    const user = await client.getUser();
+    return user === null || user.expired === true ? null : user.access_token;
+  };
+  return {
+    accessToken,
+    async currentUser(): Promise<CurrentUser | null> {
+      const token = await accessToken();
+      if (token === null) return null;
+      // The API's view of the caller: its user id and the roles it checks.
+      const response = await fetchMe("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new AuthError(await errorCode(response));
+      const me = (await response.json()) as MeBody;
+      return { id: me.id, email: me.email ?? null, name: me.name ?? null, roles: me.roles };
+    },
+    login: (returnTo) => client.signinRedirect({ state: returnTo }),
+    async completeLogin() {
+      const user = await client.signinRedirectCallback();
+      return typeof user.state === "string" ? user.state : "/";
+    },
+    logout: () => client.signoutRedirect(),
+  };
+}

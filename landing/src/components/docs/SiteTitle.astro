@@ -1,0 +1,53 @@
+---
+/**
+ * El título de las docs es la marca, en el mismo formato que la cabecera de la home, y un
+ * rótulo «Docs» para saber en qué mitad de la web se está.
+ */
+import Logo from '@/components/Logo.astro';
+---
+
+<a href="/" class="docs-title" aria-label="Puerto, home">
+  <Logo class="docs-title__logo" />
+</a>
+<a href="/docs/" class="docs-title__section">Docs</a>
+
+<style>
+  .docs-title {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    min-height: 44px;
+  }
+
+  /* En noche el logo usa los colores claros de capa y la tinta clara. */
+  :global(:root:not([data-theme='light'])) .docs-title :global(.logo) {
+    color: var(--color-night-ink);
+  }
+  :global(:root:not([data-theme='light'])) .docs-title :global(.logo__box--business) {
+    fill: var(--color-layer-business-night);
+  }
+  :global(:root:not([data-theme='light'])) .docs-title :global(.logo__box--infrastructure) {
+    fill: var(--color-layer-infrastructure-night);
+  }
+  :global(:root:not([data-theme='light'])) .docs-title :global(.logo__box--presentation) {
+    fill: var(--color-layer-presentation-night);
+  }
+  :global(:root:not([data-theme='light'])) .docs-title :global(:is(.logo__rib, .logo__door)) {
+    fill: var(--color-night);
+  }
+
+  .docs-title__section {
+    align-self: center;
+    line-height: 1.2;
+    margin-inline-start: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    font-family: var(--font-stencil);
+    font-weight: 700;
+    font-size: 0.8125rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: #15171a;
+    background: var(--color-accent);
+  }
+</style>

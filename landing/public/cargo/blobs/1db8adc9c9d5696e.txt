@@ -1,0 +1,152 @@
+//! Yours: `puerto new --auth local` writes this file once.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::auth::{CredentialStore, PasswordHasher, Session, SessionStore};
+
+use crate::domain::user::{
+    errors::UserError,
+    model::{LOCAL_ISSUER, User},
+    repository::UserRepositoryTrait,
+    use_cases::login::{LoginParams, LoginUseCaseTrait},
+};
+
+pub struct LoginUseCaseImpl {
+    pub users: Arc<dyn UserRepositoryTrait>,
+    pub credentials: Arc<dyn CredentialStore>,
+    pub hasher: Arc<dyn PasswordHasher>,
+    pub sessions: Arc<dyn SessionStore>,
+}
+
+#[async_trait]
+impl LoginUseCaseTrait for LoginUseCaseImpl {
+    async fn execute(&self, params: LoginParams) -> Result<Session, UserError> {
+        tracing::info!("login: start");
+        let subject = User::local_subject(&params.email);
+        let user = self.users.find_by_subject(LOCAL_ISSUER, &subject).await?;
+        let hash = match &user {
+            Some(user) => self.credentials.password_hash(user.id.value()).await?,
+            None => None,
+        };
+        // An unknown email is checked too, against a decoy: both refusals take as long, so the
+        // answer's timing does not say which emails have an account.
+        let valid = self.hasher.verify(&params.password, hash).await;
+        let Some(user) = user.filter(|_| valid) else {
+            tracing::warn!("login: refused");
+            return Err(UserError::InvalidCredentials);
+        };
+        let session = self.sessions.open(user.id.value()).await?;
+        tracing::info!(id = %user.id, "login: done");
+        Ok(session)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use puerto_core::auth::mocks::{MockCredentialStore, MockPasswordHasher, MockSessionStore};
+
+    use super::*;
+    use crate::domain::user::repository::mocks::MockUserRepository;
+
+    /// Accepts `correct horse battery` against the hash `stored`; refuses anything else.
+    fn hasher() -> MockPasswordHasher {
+        let mut hasher = MockPasswordHasher::new();
+        hasher.expect_verify().times(1).returning(|password, hash| {
+            hash.as_deref() == Some("stored") && password == "correct horse battery"
+        });
+        hasher
+    }
+
+    fn users_with_ada() -> (MockUserRepository, User) {
+        let ada = User::register("ada@example.com", None).expect("valid");
+        let found = ada.clone();
+        let mut users = MockUserRepository::new();
+        users
+            .expect_find_by_subject()
+            .withf(|issuer, subject| issuer == LOCAL_ISSUER && subject == "ada@example.com")
+            .returning(move |_, _| Ok(Some(found.clone())));
+        (users, ada)
+    }
+
+    fn credentials() -> MockCredentialStore {
+        let mut credentials = MockCredentialStore::new();
+        credentials
+            .expect_password_hash()
+            .returning(|_| Ok(Some("stored".into())));
+        credentials
+    }
+
+    fn use_case(
+        users: MockUserRepository,
+        credentials: MockCredentialStore,
+        sessions: MockSessionStore,
+    ) -> LoginUseCaseImpl {
+        LoginUseCaseImpl {
+            users: Arc::new(users),
+            credentials: Arc::new(credentials),
+            hasher: Arc::new(hasher()),
+            sessions: Arc::new(sessions),
+        }
+    }
+
+    fn params(email: &str, password: &str) -> LoginParams {
+        LoginParams {
+            email: email.into(),
+            password: password.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn should_open_a_session_for_the_account_when_the_password_matches() {
+        // Arrange
+        let (users, ada) = users_with_ada();
+        let mut sessions = MockSessionStore::new();
+        sessions
+            .expect_open()
+            .withf(move |user_id| *user_id == ada.id.value())
+            .returning(|_| Ok(Session::new("opaque", Utc::now())));
+
+        // Act
+        let result = use_case(users, credentials(), sessions)
+            .execute(params(" ADA@example.com", "correct horse battery"))
+            .await;
+
+        // Assert
+        assert_eq!(result.expect("signed in").token, "opaque");
+    }
+
+    #[tokio::test]
+    async fn should_refuse_without_a_session_when_the_password_is_wrong() {
+        // Arrange
+        let (users, _) = users_with_ada();
+        let mut sessions = MockSessionStore::new();
+        sessions.expect_open().never();
+
+        // Act
+        let result = use_case(users, credentials(), sessions)
+            .execute(params("ada@example.com", "tr0ub4dor&3 guess"))
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap_err().to_string(), "auth.invalid_credentials");
+    }
+
+    #[tokio::test]
+    async fn should_refuse_the_same_way_after_checking_a_decoy_when_the_email_is_unknown() {
+        // Arrange: the hasher is still asked, with no hash.
+        let mut users = MockUserRepository::new();
+        users.expect_find_by_subject().returning(|_, _| Ok(None));
+        let mut sessions = MockSessionStore::new();
+        sessions.expect_open().never();
+
+        // Act
+        let result = use_case(users, MockCredentialStore::new(), sessions)
+            .execute(params("nobody@example.com", "correct horse battery"))
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap_err().to_string(), "auth.invalid_credentials");
+    }
+}

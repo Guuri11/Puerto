@@ -1,0 +1,107 @@
+---
+title: The web frontend
+description: "The React frontend every Puerto project gets: typed from the OpenAPI spec, with the backend's dependency rule and a working CRUD screen per entity."
+---
+
+import { FileTree, Aside } from '@astrojs/starlight/components';
+
+`puerto new` includes `web/` unless you pass `--no-web`: a React 19 app with daisyUI on Tailwind,
+run by Bun. `scaffold` writes each entity's screens (list, detail, and a form for create and
+edit), so the first thing you scaffold already works in a browser.
+
+```bash
+make web/install     # once
+make web/dev         # http://localhost:5173, /api proxied to :8080
+```
+
+## The contract is the OpenAPI spec
+
+The backend's routes are poem-openapi, so the API describes itself. A test in `bootstrap.rs`
+exports the spec to `docs/api/openapi.json`, and the frontend's wire types are generated from it
+with `openapi-typescript`.
+
+```bash
+make web/sync    # after a scaffold, and after touching a route or a DTO
+```
+
+It re-exports the spec, regenerates `web/src/infrastructure/http/schema.d.ts`, and formats
+`web/`. Commit both. Until you run it, `make test` fails. That failure is the drift check: the
+frontend cannot silently disagree with the API.
+
+## The same layers as the backend
+
+<FileTree>
+- web/src/
+  - domain/product/
+    - model.ts Product, ProductDraft, enum unions
+    - errors.ts ProductError: code is the API's error name
+    - messages.ts what each error code says, and to which field
+    - repository.ts ProductRepository, the port
+  - application/ empty until there is real logic
+  - infrastructure/
+    - http/client.ts the openapi-fetch client
+    - http/schema.d.ts **generated** by make web/sync
+    - product/product-repository-http.ts DTO ↔ model, with tests
+  - presentation/
+    - core/generated/ **generated**: composition root and route table
+    - core/routes.tsx yours: routes of your own
+    - features/product/
+      - containers/ list, detail, form: data and state, with tests
+      - views/ list, detail, form: markup only
+    - shared/ui/ layout, alerts, pagination, field errors
+  - test-support/product.ts ProductMother and an in-memory fake
+</FileTree>
+
+`domain` imports nothing, `infrastructure` imports `domain`, and only the composition root
+imports `infrastructure`. `dependency-cruiser` checks it in `make web/lint`, with the type check
+and Biome.
+
+Containers call the repository port directly. A frontend CRUD use case would only delegate to
+the API, so Puerto does not generate one. When real logic arrives, a rule or two repositories to
+orchestrate, write `application/<entity>/<action>.ts` and point the container at it
+([ADR-0013](/docs/decisions/adr/0013-web-frontend-react-daisyui-bun/)).
+
+## Fields become controls
+
+| Field | TypeScript | Control |
+|---|---|---|
+| `String`, `Uuid` | `string` | text input, `required` |
+| `i64`, `f64` | `number` | number input (`step=any` for `f64`) |
+| `bool` | `boolean` | checkbox |
+| `DateTime` | `string` (ISO 8601) | `datetime-local` |
+| `opt:T` | `T \| null` | as `T`, not required; empty → `null` |
+| `vec:T` | `T[]` | text, comma-separated |
+| `map` | `Record<string, string>` | textarea, `key=value` per line |
+| enum VO | `"Draft" \| "Paid"` | `<select>` |
+
+## Errors land next to their field
+
+The frontend does not copy the domain's validation: the server is the authority. A `422` comes
+back with its code, and `messages.ts`, generated from the same list as `errors.rs`, turns it into
+a sentence and a field:
+
+```ts title="web/src/domain/customer/messages.ts (excerpt)"
+"customer.invalid_email": "Email is not valid",
+"customer.validation_error.name_empty": "Name is required",
+```
+
+`validation_error.name_empty` marks the name input. `customer.duplicate` goes to the form's alert.
+A code nobody wrote a message for shows the code itself. This file is also where you translate.
+
+## Routes
+
+`/products`, `/products/new`, `/products/:id` and `/products/:id/edit`. The list's page lives in
+the URL (`?page=2`), so reload and back keep it. Add your own routes in
+`presentation/core/routes.tsx`, never in `core/generated/`, which is rewritten.
+
+## Tests
+
+`bun test` with happy-dom and Testing Library. Each container is tested against the in-memory
+fake from `test-support/`, and each HTTP repository against a stubbed fetch. `make test` and
+`make lint` include `web/` whenever the directory exists.
+
+<Aside type="note" title="The stack, pinned">
+React 19 · daisyUI 5 on Tailwind 4 · wouter for routing · openapi-fetch · Vite · Bun · Biome ·
+dependency-cruiser. Exact versions, chosen for what an agent writes well and what Puerto can keep
+green in its test matrix.
+</Aside>

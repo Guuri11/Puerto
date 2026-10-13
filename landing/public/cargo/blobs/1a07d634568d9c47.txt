@@ -1,0 +1,83 @@
+{
+  "Puerto — Create table": {
+    "prefix": "migration-create-table",
+    "scope": "sql",
+    "body": [
+      "CREATE TABLE ${1:entities} (",
+      "    id UUID PRIMARY KEY,",
+      "    name TEXT NOT NULL,",
+      "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),",
+      "    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),",
+      "    deleted BOOLEAN NOT NULL DEFAULT FALSE,",
+      "    deleted_at TIMESTAMPTZ",
+      ");",
+      "$0"
+    ],
+    "description": "CREATE TABLE with Puerto standard columns (id, name, timestamps, soft-delete)."
+  },
+  "Puerto — Add column": {
+    "prefix": "migration-add-column",
+    "scope": "sql",
+    "body": [
+      "ALTER TABLE ${1:entities} ADD COLUMN ${2:column_name} ${3:TEXT} NOT NULL${4: DEFAULT ''};",
+      "$0"
+    ],
+    "description": "ALTER TABLE ADD COLUMN."
+  },
+  "Puerto — Unique index (partial)": {
+    "prefix": "migration-unique-index",
+    "scope": "sql",
+    "body": [
+      "-- Partial: soft-deleted rows must not keep their value taken (ADR-0003).",
+      "CREATE UNIQUE INDEX ${1:entities}_${2:column}_key ON ${1:entities} (${2:column}) WHERE deleted = false;",
+      "$0"
+    ],
+    "description": "Named partial unique index, ignoring soft-deleted rows."
+  },
+  "Puerto — Insert": {
+    "prefix": "sql-insert",
+    "scope": "sql",
+    "body": [
+      "INSERT INTO ${1:entities} (id, name, created_at, updated_at, deleted, deleted_at)",
+      "VALUES (\\$1, \\$2, \\$3, \\$4, \\$5, \\$6)",
+      "ON CONFLICT (id) DO UPDATE",
+      "    SET name = \\$2, updated_at = \\$4;",
+      "$0"
+    ],
+    "description": "INSERT with Puerto standard columns + upsert."
+  },
+  "Puerto — Select active rows": {
+    "prefix": "sql-select-active",
+    "scope": "sql",
+    "body": [
+      "SELECT id, created_at, updated_at, deleted, deleted_at, ${2:name}",
+      "FROM ${1:entities}",
+      "WHERE deleted = false",
+      "ORDER BY created_at DESC;",
+      "$0"
+    ],
+    "description": "Select live (not soft-deleted) rows."
+  },
+  "Puerto — Update": {
+    "prefix": "sql-update",
+    "scope": "sql",
+    "body": [
+      "UPDATE ${1:entities}",
+      "SET ${2:name} = \\$2, updated_at = NOW()",
+      "WHERE id = \\$1 AND deleted = false;",
+      "$0"
+    ],
+    "description": "UPDATE with Puerto soft-delete guard."
+  },
+  "Puerto — Soft delete": {
+    "prefix": "sql-soft-delete",
+    "scope": "sql",
+    "body": [
+      "UPDATE ${1:entities}",
+      "SET deleted = true, deleted_at = NOW(), updated_at = NOW()",
+      "WHERE id = \\$1 AND deleted = false;",
+      "$0"
+    ],
+    "description": "Soft delete by id — sets deleted = true and deleted_at."
+  }
+}

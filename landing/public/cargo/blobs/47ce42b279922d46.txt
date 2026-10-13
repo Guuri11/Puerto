@@ -1,0 +1,32 @@
+import type { CustomerDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface CustomerProblem {
+  field: keyof CustomerDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "customer.invalid_email": "Email is not valid",
+  "customer.validation_error.name_empty": "Name is required",
+  "customer.invalid_tag": "Tags are not valid",
+  "customer.duplicate": "A customer with these values already exists",
+  "customer.not_found": "This customer no longer exists",
+  "customer.repository_error": "The customer could not be saved, try again later",
+  "customer.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof CustomerDraft> = {
+  "customer.invalid_email": "email",
+  "customer.validation_error.name_empty": "name",
+  "customer.invalid_tag": "tags",
+};
+
+export function toProblem(code: string): CustomerProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}

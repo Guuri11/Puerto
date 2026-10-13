@@ -1,0 +1,74 @@
+use crate::domain::product::model::Product;
+use crate::domain::product::model::ProductProps;
+
+pub struct ProductMother {
+    name: Option<String>,
+    price: Option<i64>,
+    sku: Option<String>,
+}
+
+impl ProductMother {
+    pub fn new() -> Self {
+        Self {
+            name: None,
+            price: None,
+            sku: None,
+        }
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
+        self
+    }
+
+    pub fn with_price(mut self, price: i64) -> Self {
+        self.price = Some(price);
+        self
+    }
+
+    pub fn with_sku(mut self, sku: &str) -> Self {
+        self.sku = Some(sku.to_string());
+        self
+    }
+
+    pub fn with_empty_name(mut self) -> Self {
+        self.name = Some(String::new());
+        self
+    }
+
+    pub fn with_empty_sku(mut self) -> Self {
+        self.sku = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> Product {
+        Product::new(ProductProps {
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+            price: self.price.unwrap_or(42),
+            sku: self.sku.unwrap_or_else(|| "example".to_string()),
+        })
+        .expect("ProductMother: failed to build valid Product")
+    }
+
+    pub fn build_props(self) -> ProductProps {
+        ProductProps {
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+            price: self.price.unwrap_or(42),
+            sku: self.sku.unwrap_or_else(|| "example".to_string()),
+        }
+    }
+
+    pub fn random() -> Product {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Product> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for ProductMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}

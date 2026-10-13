@@ -1,0 +1,35 @@
+# Puerto
+
+> Puerto is an open-source (MIT) Rust framework that generates Domain-Driven Design and Clean Architecture backends from one manifest, puerto.toml: a Cargo workspace with business, infrastructure and presentation crates, plus a React frontend typed from the API's OpenAPI spec. It is a code generator (the `puerto` CLI) and a set of runtime crates (puerto-core, puerto-web, puerto-sqlx, puerto-events, puerto-kafka, puerto-mail, puerto-auth) updated with `cargo update`.
+
+Install with `cargo install puerto --locked`. HTTP is poem with poem-openapi; the database is Postgres through SQLx. Puerto is pre-1.0: minor versions can change generated code and come with a migration guide.
+
+## Start
+
+- [What Puerto is](https://puerto-rs.vercel.app/docs/): the two halves (generator and runtime) and the three principles.
+- [Quick start](https://puerto-rs.vercel.app/docs/start/quick-start/): from an empty directory to a CRUD API with screens.
+- [The architecture](https://puerto-rs.vercel.app/docs/start/architecture/): the dependency rule, a request end to end, and what the compiler enforces.
+
+## Guides
+
+- [Entities and fields](https://puerto-rs.vercel.app/docs/guides/entities/): `puerto generate scaffold`.
+- [Use cases](https://puerto-rs.vercel.app/docs/guides/use-cases/): custom use cases, endpoints and their tests.
+- [Database and migrations](https://puerto-rs.vercel.app/docs/guides/database/): `--db`, SQLx offline cache, migrations.
+- [Domain events](https://puerto-rs.vercel.app/docs/guides/events/): transactional outbox, worker, consumers, Postgres or Kafka transport.
+- [Mail](https://puerto-rs.vercel.app/docs/guides/mail/): mail ports, templates, sent once per event.
+- [Authentication](https://puerto-rs.vercel.app/docs/guides/auth/): OIDC (Auth0, Keycloak) or local accounts, roles per route.
+- [The web frontend](https://puerto-rs.vercel.app/docs/guides/web/): React + daisyUI on Bun, typed from OpenAPI.
+- [Working with agents](https://puerto-rs.vercel.app/docs/guides/agents/): AGENTS.md, compiler feedback, review tiers.
+
+## Reference
+
+- [CLI](https://puerto-rs.vercel.app/docs/reference/cli/)
+- [puerto.toml](https://puerto-rs.vercel.app/docs/reference/puerto-toml/)
+- [Error contract](https://puerto-rs.vercel.app/docs/reference/errors/)
+- [Decisions (ADRs)](https://puerto-rs.vercel.app/docs/decisions/)
+
+## What Puerto is not
+
+- Not a web framework or an ORM: it decides how poem, SQLx and the rest fit together.
+- Not MVC: business rules live in a `business` crate that depends on no framework.
+- Source: https://github.com/Guuri11/Puerto · Author: Sergio Gurillo

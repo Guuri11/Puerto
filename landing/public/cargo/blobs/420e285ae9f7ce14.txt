@@ -1,0 +1,30 @@
+pub mod domain {
+    pub mod product {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_product;
+            pub mod delete_product;
+            pub mod get_product;
+            pub mod list_products;
+            pub mod update_product;
+        }
+    }
+}
+pub mod application {
+    pub mod product {
+        pub mod create_product;
+        pub mod delete_product;
+        pub mod get_product;
+        pub mod list_products;
+        pub mod update_product;
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod tests {
+    pub mod mothers {
+        pub mod product_mother;
+    }
+}

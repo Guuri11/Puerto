@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/product/messages";
+import type { Product } from "../../../../domain/product/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
+import { ProductFormView, toProductDraft, toProductForm } from "../views/product-form-view";
+
+/** Creates a product, or edits the one with `id`. */
+export function ProductFormContainer({ id }: { id?: string }) {
+  const { productRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : productRepository.get(id)),
+    [productRepository, id],
+  );
+  const title = id === undefined ? "New product" : "Edit product";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <ProductForm existing={existing.data} />}
+      <Link href={id === undefined ? "/products" : `/products/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function ProductForm({ existing }: { existing: Product | null }) {
+  const { productRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toProductForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toProductDraft(values);
+      const saved =
+        existing === null
+          ? await productRepository.create(draft)
+          : await productRepository.update(existing.id, draft);
+      navigate(`/products/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <ProductFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
+      </div>
+    </div>
+  );
+}

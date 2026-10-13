@@ -1,0 +1,118 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::Page;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::Customer,
+    repository::CustomerRepositoryTrait,
+    use_cases::list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
+};
+
+pub struct ListCustomersUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
+    async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError> {
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_customers: start"
+        );
+        self.repository
+            .find_all(params.page)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_customers: repository failed"))
+            .map_err(CustomerError::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::value_objects::Email;
+    use crate::domain::customer::{
+        model::{Customer, CustomerProps},
+        repository::mocks::MockCustomerRepository,
+    };
+    use puerto_core::PageRequest;
+
+    #[tokio::test]
+    async fn should_return_the_page_of_customers() {
+        let entities = vec![
+            Customer::new(CustomerProps {
+                email: Email::new("first".to_string()).expect("valid Email"),
+                name: "first".to_string(),
+                tags: vec![],
+            })
+            .unwrap(),
+            Customer::new(CustomerProps {
+                email: Email::new("second".to_string()).expect("valid Email"),
+                name: "second".to_string(),
+                tags: vec![],
+            })
+            .unwrap(),
+        ];
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+        let use_case = ListCustomersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListCustomersParams {
+                page: PageRequest::default(),
+            })
+            .await;
+
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_an_empty_page_when_no_customers_exist() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListCustomersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListCustomersParams {
+                page: PageRequest::default(),
+            })
+            .await;
+
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListCustomersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListCustomersParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
+    }
+}

@@ -1,0 +1,109 @@
+use business::domain::customer::errors::CustomerError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
+
+use crate::api::error::IntoErrorResponse;
+
+impl IntoErrorResponse for CustomerError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            CustomerError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            CustomerError::NotFound => StatusCode::NOT_FOUND,
+            CustomerError::Duplicate => StatusCode::CONFLICT,
+            CustomerError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            CustomerError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            CustomerError::Forbidden => StatusCode::FORBIDDEN,
+            CustomerError::InvalidEmail => StatusCode::UNPROCESSABLE_ENTITY,
+            CustomerError::InvalidTag => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) =
+            CustomerError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "customer.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "customer.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "customer.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "customer.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "customer.unknown");
+    }
+
+    #[test]
+    fn should_map_forbidden_to_403_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::Forbidden.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body.name, "customer.forbidden");
+    }
+
+    #[test]
+    fn should_map_invalid_email_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::InvalidEmail.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "customer.invalid_email");
+    }
+
+    #[test]
+    fn should_map_invalid_tag_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = CustomerError::InvalidTag.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "customer.invalid_tag");
+    }
+}

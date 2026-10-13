@@ -1,0 +1,148 @@
+use std::sync::Arc;
+
+use crate::domain::customer::value_objects::Email;
+use crate::domain::customer::value_objects::Tag;
+use async_trait::async_trait;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::{Customer, CustomerProps},
+    repository::CustomerRepositoryTrait,
+    use_cases::create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
+};
+
+pub struct CreateCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateCustomerUseCaseTrait for CreateCustomerUseCaseImpl {
+    async fn execute(&self, params: CreateCustomerParams) -> Result<Customer, CustomerError> {
+        tracing::info!("create_customer: start");
+        let email = Email::new(params.email)?;
+        let tags: Vec<Tag> = params
+            .tags
+            .into_iter()
+            .map(Tag::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        let entity = Customer::new(CustomerProps {
+            email,
+            name: params.name,
+            tags,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_customer: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_customer: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_customer: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::repository::mocks::MockCustomerRepository;
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+    use puerto_core::RepositoryError;
+
+    #[tokio::test]
+    async fn should_create_customer_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "example".to_string(),
+                name: "example".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "example".to_string(),
+                name: "example".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.duplicate");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let mock_repo = MockCustomerRepository::new();
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "example".to_string(),
+                name: "".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "customer.validation_error.name_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_email_is_empty() {
+        // Arrange
+        let mock_repo = MockCustomerRepository::new();
+        let use_case = CreateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "".to_string(),
+                name: "example".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.invalid_email");
+    }
+}

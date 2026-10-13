@@ -1,0 +1,42 @@
+import { Link, useLocation, useSearch } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { CustomerListView } from "../views/customer-list-view";
+
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
+export function CustomerListContainer() {
+  const { customerRepository } = useDependencies();
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const customers = useAsync(
+    () => customerRepository.list({ limit: PAGE_SIZE, offset }),
+    [customerRepository, offset],
+  );
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Customers</h1>
+        <Link href="/customers/new" className="btn btn-primary">
+          New customer
+        </Link>
+      </div>
+      {customers.status === "loading" && <span className="loading loading-spinner" />}
+      {customers.status === "error" && <ErrorAlert error={customers.error} />}
+      {customers.status === "ok" &&
+        (customers.data.total === 0 ? (
+          <EmptyState message="No customers yet." />
+        ) : (
+          <>
+            <CustomerListView customers={customers.data.items} />
+            <Pagination {...customers.data} onOffsetChange={goTo} />
+          </>
+        ))}
+    </section>
+  );
+}

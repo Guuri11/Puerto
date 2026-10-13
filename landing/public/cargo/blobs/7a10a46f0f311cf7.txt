@@ -1,0 +1,141 @@
+// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
+// fields. A response is built once per request and returned: boxing the DTO would only add an
+// allocation.
+#![allow(clippy::large_enum_variant)]
+
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::product::dto::{ProductDto, ProductPageDto};
+
+#[derive(ApiResponse)]
+pub enum CreateProductResponse {
+    #[oai(status = 201)]
+    Created(Json<ProductDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl CreateProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum GetProductResponse {
+    #[oai(status = 200)]
+    Ok(Json<ProductDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl GetProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum ListProductsResponse {
+    #[oai(status = 200)]
+    Ok(Json<ProductPageDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl ListProductsResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum UpdateProductResponse {
+    #[oai(status = 200)]
+    Ok(Json<ProductDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl UpdateProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum DeleteProductResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 403)]
+    Forbidden(Json<ErrorResponse>),
+    #[oai(status = 404)]
+    NotFound(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl DeleteProductResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::FORBIDDEN => Self::Forbidden(error),
+            StatusCode::NOT_FOUND => Self::NotFound(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}

@@ -1,0 +1,29 @@
+use async_trait::async_trait;
+
+use crate::domain::product::{errors::ProductError, model::ProductId};
+
+#[derive(Debug, Clone)]
+pub struct DeleteProductParams {
+    pub id: ProductId,
+}
+
+#[async_trait]
+pub trait DeleteProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteProductUseCase {}
+
+        #[async_trait]
+        impl DeleteProductUseCaseTrait for DeleteProductUseCase {
+            async fn execute(&self, params: DeleteProductParams) -> Result<(), ProductError>;
+        }
+    }
+}

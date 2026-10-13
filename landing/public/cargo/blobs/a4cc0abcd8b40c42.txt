@@ -1,0 +1,70 @@
+use crate::domain::order::model::Order;
+use crate::domain::order::model::OrderProps;
+use crate::domain::order::value_objects::Amount;
+use crate::domain::order::value_objects::Status;
+
+pub struct OrderMother {
+    amount: Option<Amount>,
+    status: Option<Status>,
+    note: Option<String>,
+}
+
+impl OrderMother {
+    pub fn new() -> Self {
+        Self {
+            amount: None,
+            status: None,
+            note: None,
+        }
+    }
+
+    pub fn with_amount(mut self, amount: Amount) -> Self {
+        self.amount = Some(amount);
+        self
+    }
+
+    pub fn with_status(mut self, status: Status) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    pub fn with_note(mut self, note: &str) -> Self {
+        self.note = Some(note.to_string());
+        self
+    }
+
+    pub fn build(self) -> Order {
+        Order::new(OrderProps {
+            amount: self
+                .amount
+                .unwrap_or_else(|| Amount::new(1.5).expect("valid Amount")),
+            status: self.status.unwrap_or(Status::Pending),
+            note: self.note,
+        })
+        .expect("OrderMother: failed to build valid Order")
+    }
+
+    pub fn build_props(self) -> OrderProps {
+        OrderProps {
+            amount: self
+                .amount
+                .unwrap_or_else(|| Amount::new(1.5).expect("valid Amount")),
+            status: self.status.unwrap_or(Status::Pending),
+            note: self.note,
+        }
+    }
+
+    pub fn random() -> Order {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Order> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for OrderMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}

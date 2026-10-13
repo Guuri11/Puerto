@@ -1,0 +1,50 @@
+import { OrderError } from "../domain/order/errors";
+import type { Order, OrderDraft } from "../domain/order/model";
+import type { OrderRepository } from "../domain/order/repository";
+
+/** Valid orders for tests; pass `overrides` for the fields a test is about. */
+export const OrderMother = {
+  draft(overrides: Partial<OrderDraft> = {}): OrderDraft {
+    return {
+      amount: 1.5,
+      status: "Pending",
+      note: "example",
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Order> = {}): Order {
+    return { id: crypto.randomUUID(), ...OrderMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `OrderRepository`. Override a method to make it fail. */
+export function fakeOrderRepository(seed: Order[] = []): OrderRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new OrderError("order.not_found");
+    return found;
+  };
+  return {
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

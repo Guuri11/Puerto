@@ -1,0 +1,172 @@
+---
+/**
+ * Las tres capas como tres contenedores idénticos apilados: el diagrama de la regla de
+ * dependencias. Lo usan la home y las docs (por eso su CSS no depende de Tailwind).
+ *
+ * Es una lista ordenada de verdad: de fuera hacia dentro. El color nunca va solo, cada caja
+ * lleva su nombre. → DESIGN.md § 2 y § 12
+ */
+interface Props {
+  /** En la home, los contenedores entran apilándose (los anima la página, no este componente). */
+  animate?: boolean;
+}
+
+const { animate = false } = Astro.props;
+
+const layers = [
+  {
+    id: 'presentation',
+    code: 'PRE',
+    crate: 'presentation/',
+    holds: 'Routes, DTOs, response enums, error mapping, the wiring',
+    knows: 'business, infrastructure',
+  },
+  {
+    id: 'infrastructure',
+    code: 'INF',
+    crate: 'infrastructure/',
+    holds: 'Adapters: Postgres repositories, units of work, mailers',
+    knows: 'business',
+  },
+  {
+    id: 'business',
+    code: 'BUS',
+    crate: 'business/',
+    holds: 'Domain models, value objects, ports, use cases',
+    knows: 'nothing in the workspace',
+  },
+] as const;
+---
+
+<figure class="stack not-content" data-stack={animate ? '' : undefined}>
+  <ol class="stack__list" aria-label="The three crates, from the outside in">
+    {
+      layers.map((l, i) => (
+        <li class={`stack__box stack__box--${l.id}`} style={`--i: ${i}`} data-stack-box>
+          <div class="stack__head">
+            <span class="stack__name">{l.id}</span>
+            <span class="stack__code" aria-hidden="true">
+              {l.code}
+            </span>
+          </div>
+          <p class="stack__holds">{l.holds}</p>
+          <p class="stack__knows">
+            <span class="stack__crate">{l.crate}</span> depends on {l.knows}
+          </p>
+        </li>
+      ))
+    }
+  </ol>
+  <figcaption class="stack__caption">
+    Dependencies point inward only. Each layer is a crate, so the rule is checked by the compiler.
+  </figcaption>
+</figure>
+
+<style>
+  .stack {
+    margin: 2rem 0;
+    max-width: 44rem;
+  }
+
+  .stack__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+  }
+
+  /* Tres cajas iguales; el desplazamiento es el de la grúa, como en el logo. */
+  .stack__box {
+    position: relative;
+    width: min(calc(100% - 3.25rem), 38rem);
+    padding: 1rem 1.25rem 1.1rem;
+    color: #f4f1ea;
+    background-color: var(--layer);
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0 22px,
+      rgb(255 255 255 / 0.07) 22px 24px
+    );
+    margin: 0;
+  }
+
+  .stack__box--presentation {
+    --layer: var(--color-layer-presentation);
+    margin-inline-start: 1.5rem;
+  }
+  .stack__box--infrastructure {
+    --layer: var(--color-layer-infrastructure);
+    margin-inline-start: 3.25rem;
+  }
+  .stack__box--business {
+    --layer: var(--color-layer-business);
+    margin-inline-start: 0;
+  }
+
+  @media (width < 640px) {
+    .stack__box--presentation {
+      margin-inline-start: 0.75rem;
+    }
+    .stack__box--infrastructure {
+      margin-inline-start: 1.5rem;
+    }
+    .stack__box {
+      width: calc(100% - 1.5rem);
+    }
+  }
+
+  .stack__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+  }
+
+  .stack__name {
+    font-family: var(--font-stencil);
+    font-weight: 800;
+    font-size: 1.625rem;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .stack__code {
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 87.5;
+    font-size: 0.75rem;
+    opacity: 0.8;
+  }
+
+  .stack__holds {
+    margin: 0.5rem 0 0;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+
+  .stack__knows {
+    margin: 0.25rem 0 0;
+    font-size: 0.8125rem;
+    opacity: 0.85;
+  }
+
+  .stack__crate {
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 87.5;
+  }
+
+  .stack__caption {
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    color: inherit;
+    opacity: 0.8;
+  }
+
+  /* En la home se apilan al entrar en pantalla; sin JS o con movimiento reducido, quietos. */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(:root.js) [data-stack] .stack__box {
+      opacity: 0;
+    }
+  }
+</style>

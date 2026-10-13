@@ -1,0 +1,33 @@
+import { Link } from "wouter";
+import type { Customer } from "../../../../domain/customer/model";
+
+export function CustomerListView({ customers }: { customers: Customer[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Tags</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {customers.map((customer) => (
+            <tr key={customer.id}>
+              <td>{customer.email}</td>
+              <td>{customer.name}</td>
+              <td>{customer.tags.join(", ")}</td>
+              <td className="text-right">
+                <Link href={`/customers/${customer.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

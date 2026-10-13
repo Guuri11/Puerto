@@ -1,0 +1,56 @@
+---
+title: Installation
+description: Install the Puerto CLI with cargo, and the tools a generated project uses for its database, its tests and its frontend.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## The CLI
+
+```bash
+cargo install puerto --locked
+puerto --version
+```
+
+`--locked` builds with the dependency versions Puerto was tested with. Puerto needs Rust 1.85 or
+newer to build. The projects it generates pin their own toolchain (see below), so
+[rustup](https://rustup.rs) is the recommended way to have Rust.
+
+Shell completions are one command away:
+
+```bash
+puerto completions zsh > ~/.zfunc/_puerto     # bash, elvish, fish, powershell, zsh
+```
+
+## What a generated project uses
+
+Puerto only writes files. Running the project takes the usual tools, and its `Makefile` installs
+the Rust ones:
+
+```bash
+make setup    # cargo-nextest, cargo-audit, and sqlx-cli in --db projects
+```
+
+| Tool | When | Why |
+|---|---|---|
+| [rustup](https://rustup.rs) | always | The project's `rust-toolchain.toml` pins Rust 1.95.0 with `rustfmt` and `clippy`, so `make lint` gives the same answer on every machine ([ADR-0009](/docs/decisions/adr/0009-generated-projects-pin-their-toolchain/)) |
+| [cargo-nextest](https://nexte.st) | always | `make test` runs the workspace with it |
+| Docker | `--db`, `--events`, `--auth oidc`, mail | `docker-compose.yml` runs Postgres, Mailpit, Keycloak or Redpanda for development |
+| [sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli) | `--db` | `make sqlx/migrate` and `make sqlx/prepare` |
+| [Bun](https://bun.sh) | the web frontend (default) | `web/` is React on Bun. `--no-web` leaves it out |
+| `cmake`, libcurl headers | `--events kafka` | `rdkafka` builds librdkafka from source |
+
+<Aside type="note">
+For a Kafka project, the libcurl headers are `libcurl4-openssl-dev` on Debian and Ubuntu and
+`curl` on Arch, and they come with Xcode on macOS.
+</Aside>
+
+## Upgrading
+
+```bash
+cargo install puerto --locked --force
+```
+
+A project depends on the runtime crates of the minor version that generated it. When you upgrade
+the CLI, read [Upgrading](/docs/guides/upgrading/): `puerto validate` warns when the two drift
+apart.

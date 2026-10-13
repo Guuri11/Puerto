@@ -1,0 +1,138 @@
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use super::errors::ProductError;
+
+/// The id of every `Product`: a `Uuid` that cannot be passed where another entity's id is expected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProductId(Uuid);
+
+impl ProductId {
+    /// A new, random id — for an entity being created.
+    pub fn generate() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
+    pub fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub fn value(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for ProductId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProductProps {
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Product {
+    pub id: ProductId,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+}
+
+impl Product {
+    pub fn new(props: ProductProps) -> Result<Self, ProductError> {
+        if props.name.trim().is_empty() {
+            return Err(ProductError::ValidationError("name_empty".into()));
+        }
+        if props.sku.trim().is_empty() {
+            return Err(ProductError::ValidationError("sku_empty".into()));
+        }
+        let now = chrono::Utc::now();
+        Ok(Self {
+            id: ProductId::generate(),
+            created_at: now,
+            updated_at: now,
+            deleted: false,
+            deleted_at: None,
+            name: props.name,
+            price: props.price,
+            sku: props.sku,
+        })
+    }
+
+    pub fn from_repository(data: Product) -> Self {
+        data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_create_product_when_fields_are_valid() {
+        let result = Product::new(ProductProps {
+            name: "example".to_string(),
+            price: 42,
+            sku: "example".to_string(),
+        });
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[test]
+    fn should_reject_product_when_name_is_empty() {
+        let result = Product::new(ProductProps {
+            name: "".into(),
+            price: 42,
+            sku: "example".to_string(),
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.name_empty"
+        );
+    }
+
+    #[test]
+    fn should_reject_product_when_name_is_only_whitespace() {
+        let result = Product::new(ProductProps {
+            name: "   ".into(),
+            price: 42,
+            sku: "example".to_string(),
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn should_reject_product_when_sku_is_empty() {
+        let result = Product::new(ProductProps {
+            name: "example".to_string(),
+            price: 42,
+            sku: "".into(),
+        });
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.sku_empty"
+        );
+    }
+
+    #[test]
+    fn should_reject_product_when_sku_is_only_whitespace() {
+        let result = Product::new(ProductProps {
+            name: "example".to_string(),
+            price: 42,
+            sku: "   ".into(),
+        });
+        assert!(result.is_err());
+    }
+}

@@ -1,0 +1,170 @@
+use async_trait::async_trait;
+use sqlx::PgPool;
+
+use business::domain::order::{
+    events::OrderEvent,
+    model::Order,
+    unit_of_work::{OrderUnitOfWork, OrderUnitOfWorkFactory},
+};
+use puerto_core::RepositoryError;
+use puerto_sqlx::uow::PgTransaction;
+
+use super::entity::OrderDb;
+use crate::db::map_sqlx_error;
+
+/// Opens a Postgres transaction per write: the order row and its outbox event commit together.
+pub struct PgOrderUnitOfWorkFactory {
+    pub pool: PgPool,
+}
+
+impl PgOrderUnitOfWorkFactory {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl OrderUnitOfWorkFactory for PgOrderUnitOfWorkFactory {
+    async fn begin(&self) -> Result<Box<dyn OrderUnitOfWork>, RepositoryError> {
+        let tx = PgTransaction::begin(&self.pool).await?;
+        Ok(Box::new(PgOrderUnitOfWork { tx }))
+    }
+}
+
+struct PgOrderUnitOfWork {
+    tx: PgTransaction,
+}
+
+#[async_trait]
+impl OrderUnitOfWork for PgOrderUnitOfWork {
+    async fn save(&mut self, entity: &Order) -> Result<(), RepositoryError> {
+        tracing::debug!(id = %entity.id, "save");
+        let db = OrderDb::from(entity);
+        sqlx::query!(
+            "INSERT INTO orders (id, created_at, updated_at, deleted, deleted_at, amount, status, note)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (id) DO UPDATE
+             SET updated_at = $3, deleted = $4, deleted_at = $5, amount = $6, status = $7, note = $8",
+            db.id,
+            db.created_at,
+            db.updated_at,
+            db.deleted,
+            db.deleted_at,
+            db.amount,
+            db.status,
+            db.note,
+        )
+        .execute(self.tx.tx())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "save failed");
+            map_sqlx_error(&e)
+        })?;
+        Ok(())
+    }
+
+    async fn record(&mut self, event: OrderEvent) -> Result<(), RepositoryError> {
+        self.tx.record(&event).await
+    }
+
+    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        self.tx.commit().await
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use business::domain::order::{
+        events::OrderSnapshot, model::OrderProps, repository::OrderRepositoryTrait,
+    };
+
+    use crate::order::repository::PgOrderRepository;
+    use business::domain::order::value_objects::Amount;
+    use business::domain::order::value_objects::Status;
+
+    fn new_order() -> Order {
+        Order::new(OrderProps {
+            amount: Amount::new(1.5).expect("valid Amount"),
+            status: Status::Pending,
+            note: None,
+        })
+        .unwrap()
+    }
+
+    /// What a create use case does: save, record, commit.
+    async fn create(pool: &PgPool, entity: &Order) -> Result<(), RepositoryError> {
+        let mut uow = PgOrderUnitOfWorkFactory::new(pool.clone()).begin().await?;
+        uow.save(entity).await?;
+        uow.record(OrderEvent::Created(OrderSnapshot::from_entity(entity)))
+            .await?;
+        uow.commit().await
+    }
+
+    async fn count(pool: &PgPool, sql: &str) -> i64 {
+        sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_write_the_order_and_its_event_when_committed(pool: PgPool) {
+        // Arrange
+        let entity = new_order();
+
+        // Act
+        create(&pool, &entity).await.unwrap();
+
+        // Assert
+        let found = PgOrderRepository::new(pool.clone())
+            .find_by_id(entity.id)
+            .await
+            .unwrap();
+        assert!(found.is_some());
+        let (event_type, aggregate_id): (String, uuid::Uuid) =
+            sqlx::query_as("SELECT event_type, aggregate_id FROM outbox")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(event_type, "order_created");
+        assert_eq!(aggregate_id, entity.id.value());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_write_nothing_when_dropped_without_commit(pool: PgPool) {
+        // Arrange
+        let entity = new_order();
+
+        // Act
+        {
+            let mut uow = PgOrderUnitOfWorkFactory::new(pool.clone())
+                .begin()
+                .await
+                .unwrap();
+            uow.save(&entity).await.unwrap();
+            uow.record(OrderEvent::Created(OrderSnapshot::from_entity(&entity)))
+                .await
+                .unwrap();
+        }
+
+        // Assert
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM orders").await, 0);
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_update_the_order_when_saved_again(pool: PgPool) {
+        // Arrange
+        let entity = new_order();
+        create(&pool, &entity).await.unwrap();
+
+        // Act
+        let mut uow = PgOrderUnitOfWorkFactory::new(pool.clone())
+            .begin()
+            .await
+            .unwrap();
+        uow.save(&entity).await.unwrap();
+        uow.commit().await.unwrap();
+
+        // Assert
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM orders").await, 1);
+    }
+}

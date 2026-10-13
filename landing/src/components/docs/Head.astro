@@ -1,0 +1,15 @@
+---
+/**
+ * El <head> de Starlight, más lo que la marca necesita: el color del navegador y la
+ * imagen social. El resto (canonical, title, description, og) ya lo pone Starlight.
+ */
+import Default from '@astrojs/starlight/components/Head.astro';
+---
+
+<Default><slot /></Default>
+<meta name="theme-color" content="#101215" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#e9e5dc" media="(prefers-color-scheme: light)" />
+<meta property="og:image" content={new URL('/og.png', Astro.site).href} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />

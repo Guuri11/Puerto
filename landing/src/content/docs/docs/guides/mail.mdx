@@ -1,0 +1,123 @@
+---
+title: Mail
+description: Generate a mail as a domain port with its templates, send it exactly once per event from the worker, and see every mail in development with Mailpit.
+---
+
+import { FileTree, Aside } from '@astrojs/starlight/components';
+
+In Puerto a mail is a domain concept with a port, like a repository. The code that decides to
+send it depends on `WelcomeMailer`, never on SMTP, and its text lives in three template files
+you edit like any other file.
+
+```bash
+puerto generate mail welcome -- name:String plan:opt:String
+```
+
+```txt title="output"
+✓ Mail 'welcome' added — yours from here on:
+  business/src/domain/mail/welcome.rs       WelcomeMail + the port WelcomeMailer
+  infrastructure/src/mail/welcome.rs        TemplateWelcomeMailer, with its tests
+  infrastructure/mail/welcome/              subject.txt, body.html, body.txt
+  Mailpit added to docker-compose.yml; SMTP_URL and MAIL_FROM to .env. See the mails with `make mail/ui`.
+```
+
+The fields after `--` are the values the text shows. They are primitives or `opt:<type>`, and
+the recipient `to` is always there.
+
+## The three pieces
+
+<FileTree>
+- business/src/domain/mail/welcome.rs **WelcomeMail** and the port **WelcomeMailer**
+- infrastructure/src/mail/welcome.rs **TemplateWelcomeMailer**: renders, then sends
+- infrastructure/mail/welcome/
+  - subject.txt
+  - body.html
+  - body.txt
+</FileTree>
+
+```rust title="business/src/domain/mail/welcome.rs (excerpt)"
+#[derive(Debug, Clone, PartialEq)]
+pub struct WelcomeMail {
+    pub to: String,
+    pub name: String,
+    pub plan: Option<String>,
+}
+
+#[async_trait]
+pub trait WelcomeMailer: Send + Sync {
+    async fn send(&self, mail: &WelcomeMail) -> Result<(), MailError>;
+}
+```
+
+The templates are [minijinja](https://github.com/mitsuhiko/minijinja), in strict mode: an
+unknown variable is an error, not an empty string. Wrap an optional field in a check:
+
+```jinja title="infrastructure/mail/welcome/body.txt"
+Welcome
+
+Name: {{ name }}
+{% if plan is not none %}Plan: {{ plan }}
+{% endif %}
+```
+
+`TemplateWelcomeMailer`'s tests render every template, so a typo in one fails `make test`, not
+a customer's inbox.
+
+## Sending it when something happens
+
+In a project with [domain events](/docs/guides/events/), tie the mail to an event and Puerto
+writes the consumer that sends it:
+
+```bash
+puerto generate mail welcome --on customer_created --to email
+```
+
+`--to` names the snapshot's `String` field that holds the address. The fields come from the
+event's snapshot, so you do not list them. The worker gets
+`worker/src/consumers/mail_welcome.rs`, which builds the mail from the snapshot and sends it
+**once per event**:
+
+```rust title="worker/src/consumers/mail_welcome.rs (excerpt)"
+let mail = match event.event_type.as_str() {
+    CUSTOMER_CREATED => match event.decode::<CustomerSnapshot>() {
+        Ok(customer) => WelcomeMail {
+            to: customer.email.clone(),
+            name: customer.name,
+            nickname: customer.nickname,
+        },
+        Err(err) => return HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),
+    },
+    _ => return HandlerOutcome::Ack,
+};
+```
+
+Events are delivered at least once, so `send_once` from `puerto-mail` keeps a `sent_mails` row
+per event: a redelivered event does not send the mail again. A crash between the send and that
+row sends it twice, never zero times. A permanent SMTP failure (`5xx`) is dead-lettered, and a
+temporary one (`4xx`, a server that is down) is retried
+([ADR-0020](/docs/decisions/adr/0020-mail-port-per-mail-sent-from-the-worker/)).
+
+<Aside type="caution">
+Keep the consumer's `MAIL` constant as it is. It is the key in `sent_mails`, and renaming it
+sends every past mail again on the next redelivery.
+</Aside>
+
+## Sending from a use case
+
+Without events, the port is there and the implementation is there, but Puerto does not wire a
+mailer into a use case yet. Hold an `Arc<dyn WelcomeMailer>` in the use case and test it with
+`mocks::MockWelcomeMailer`. That is the piece the next phases add, for password resets.
+
+## Development and production
+
+`docker-compose.yml` runs [Mailpit](https://mailpit.axllent.org), which catches every mail sent
+in development. Nothing reaches a real inbox.
+
+```bash
+make mail/ui      # open Mailpit
+```
+
+| Variable | Development | Production |
+|---|---|---|
+| `SMTP_URL` | `smtp://localhost:1025` (Mailpit) | your provider's SMTP URL |
+| `MAIL_FROM` | `no-reply@<project>.localhost` | a sender your domain authorizes |

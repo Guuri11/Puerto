@@ -1,0 +1,61 @@
+use business::domain::product::model::Product;
+use poem_openapi::Object;
+use puerto_core::Page;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProductDto {
+    pub id: Uuid,
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+}
+
+impl ProductDto {
+    pub fn from_domain(entity: &Product) -> Self {
+        Self {
+            id: entity.id.value(),
+            name: entity.name.clone(),
+            price: entity.price,
+            sku: entity.sku.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateProductRequest {
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+}
+
+/// One page of Products: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct ProductPageDto {
+    pub items: Vec<ProductDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl ProductPageDto {
+    pub fn from_domain(page: &Page<Product>) -> Self {
+        Self {
+            items: page.items.iter().map(ProductDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateProductRequest {
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+}

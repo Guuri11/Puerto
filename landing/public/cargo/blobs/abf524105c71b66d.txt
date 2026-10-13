@@ -1,0 +1,99 @@
+import type { CustomerProblem } from "../../../../domain/customer/messages";
+import type { Customer, CustomerDraft } from "../../../../domain/customer/model";
+import { splitList } from "../../../shared/forms";
+import { FieldError } from "../../../shared/ui/field-error";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface CustomerFormValues {
+  email: string;
+  name: string;
+  tags: string;
+}
+
+/** The inputs for `customer`, empty when there is none yet. */
+export function toCustomerForm(customer: Customer | null): CustomerFormValues {
+  if (customer === null) {
+    return {
+      email: "",
+      name: "",
+      tags: "",
+    };
+  }
+  return {
+    email: customer.email,
+    name: customer.name,
+    tags: customer.tags.join(", "),
+  };
+}
+
+export function toCustomerDraft(values: CustomerFormValues): CustomerDraft {
+  return {
+    email: values.email,
+    name: values.name,
+    tags: splitList(values.tags),
+  };
+}
+
+export function CustomerFormView({
+  values,
+  saving,
+  problem,
+  onChange,
+  onSubmit,
+}: {
+  values: CustomerFormValues;
+  saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: CustomerProblem | null;
+  onChange: (values: CustomerFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Email</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problem?.field === "email"}
+          required
+          value={values.email}
+          onChange={(event) => onChange({ ...values, email: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="email" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Name</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problem?.field === "name"}
+          required
+          value={values.name}
+          onChange={(event) => onChange({ ...values, name: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="name" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Tags</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problem?.field === "tags"}
+          value={values.tags}
+          onChange={(event) => onChange({ ...values, tags: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="tags" />
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}

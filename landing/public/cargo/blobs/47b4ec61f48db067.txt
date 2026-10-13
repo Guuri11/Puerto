@@ -1,0 +1,22 @@
+import type { Middleware } from "openapi-fetch";
+import type { AuthGateway } from "../../domain/auth/session";
+
+/**
+ * Signs every API call with the user's token; a `401` means the session is gone, so it signs in
+ * again and comes back to the page it was on.
+ */
+export function bearerMiddleware(auth: AuthGateway): Middleware {
+  return {
+    async onRequest({ request }) {
+      const token = await auth.accessToken();
+      if (token !== null) request.headers.set("Authorization", `Bearer ${token}`);
+      return request;
+    },
+    async onResponse({ response }) {
+      if (response.status === 401) {
+        void auth.login(window.location.pathname + window.location.search);
+      }
+      return response;
+    },
+  };
+}

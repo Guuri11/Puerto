@@ -1,0 +1,110 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import type { ProductDraft } from "../../../../domain/product/model";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductFormContainer } from "./product-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: ProductDraft) {
+  await screen.findByText("Save");
+  type("Name", draft.name);
+  type("Price", String(draft.price));
+  type("Sku", draft.sku);
+}
+
+describe("ProductFormContainer", () => {
+  test("should create the product from what was typed and show it", async () => {
+    // Arrange
+    const draft = ProductMother.draft();
+    const productRepository = fakeProductRepository();
+    const { history } = renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/products/"));
+    const {
+      items: [created],
+    } = await productRepository.list({ limit: 1, offset: 0 });
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/products/${created?.id}`);
+  });
+
+  test("should save the edited product when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+    const { history } = renderScreen(<ProductFormContainer id={seeded.id} />, {
+      productRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/products/${seeded.id}`));
+    expect(await productRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the code itself when the API answers one the form does not know", async () => {
+    // Arrange
+    const code = "product.validation_error.invalid";
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError(code)),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+
+  test("should say a product with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError("product.duplicate")),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A product with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError("product.validation_error.name_empty")),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Name is required")).toBeTruthy();
+    const input = screen.getByLabelText("Name");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

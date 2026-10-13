@@ -1,0 +1,49 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
+import { renderScreen } from "../../../../test-support/render";
+import { OrderDetailContainer } from "./order-detail-container";
+
+describe("OrderDetailContainer", () => {
+  test("should show the order when it exists", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const orderRepository = fakeOrderRepository([seeded]);
+
+    // Act
+    renderScreen(<OrderDetailContainer id={seeded.id} />, { orderRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the order does not exist", async () => {
+    // Arrange
+    const orderRepository = fakeOrderRepository();
+
+    // Act
+    renderScreen(<OrderDetailContainer id={crypto.randomUUID()} />, { orderRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("order.not_found");
+  });
+
+  test("should delete the order only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const fake = fakeOrderRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<OrderDetailContainer id={seeded.id} />, {
+      orderRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/orders"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});

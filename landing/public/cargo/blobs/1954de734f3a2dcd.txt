@@ -1,0 +1,73 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen } from "@testing-library/react";
+import { OrderError } from "../../../../domain/order/errors";
+import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
+import { renderScreen } from "../../../../test-support/render";
+import { OrderListContainer } from "./order-list-container";
+
+describe("OrderListContainer", () => {
+  test("should show a row per order when there are some", async () => {
+    // Arrange
+    const seed = [OrderMother.random(), OrderMother.random()];
+    const orderRepository = fakeOrderRepository(seed);
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => OrderMother.random());
+    const orderRepository = fakeOrderRepository(seed);
+    renderScreen(<OrderListContainer />, { orderRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
+  });
+
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => OrderMother.random());
+    const orderRepository = fakeOrderRepository(seed);
+    const path = "/orders?page=2";
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
+  test("should say so when there is no order", async () => {
+    // Arrange
+    const orderRepository = fakeOrderRepository();
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository });
+
+    // Assert
+    expect(await screen.findByText("No orders yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the orders cannot be listed", async () => {
+    // Arrange
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      list: () => Promise.reject(new OrderError("order.repository_error")),
+    };
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("order.repository_error");
+  });
+});

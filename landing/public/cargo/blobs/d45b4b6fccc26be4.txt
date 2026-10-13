@@ -1,0 +1,104 @@
+import type { OrderProblem } from "../../../../domain/order/messages";
+import { type Order, type OrderDraft, parseStatus } from "../../../../domain/order/model";
+import { textOf, textOrNull } from "../../../shared/forms";
+import { FieldError } from "../../../shared/ui/field-error";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface OrderFormValues {
+  amount: string;
+  status: string;
+  note: string;
+}
+
+/** The inputs for `order`, empty when there is none yet. */
+export function toOrderForm(order: Order | null): OrderFormValues {
+  if (order === null) {
+    return {
+      amount: "",
+      status: "",
+      note: "",
+    };
+  }
+  return {
+    amount: String(order.amount),
+    status: order.status,
+    note: textOf(order.note),
+  };
+}
+
+export function toOrderDraft(values: OrderFormValues): OrderDraft {
+  return {
+    amount: Number(values.amount),
+    status: parseStatus(values.status),
+    note: textOrNull(values.note),
+  };
+}
+
+export function OrderFormView({
+  values,
+  saving,
+  problem,
+  onChange,
+  onSubmit,
+}: {
+  values: OrderFormValues;
+  saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: OrderProblem | null;
+  onChange: (values: OrderFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Amount</span>
+        <input
+          className="input w-full"
+          type="number"
+          aria-invalid={problem?.field === "amount"}
+          step="any"
+          required
+          value={values.amount}
+          onChange={(event) => onChange({ ...values, amount: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="amount" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Status</span>
+        <select
+          className="select w-full"
+          aria-invalid={problem?.field === "status"}
+          required
+          value={values.status}
+          onChange={(event) => onChange({ ...values, status: event.target.value })}
+        >
+          <option value="">Choose…</option>
+          <option value="Pending">Pending</option>
+          <option value="Confirmed">Confirmed</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+      </label>
+      <FieldError problem={problem} field="status" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Note</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problem?.field === "note"}
+          value={values.note}
+          onChange={(event) => onChange({ ...values, note: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="note" />
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}

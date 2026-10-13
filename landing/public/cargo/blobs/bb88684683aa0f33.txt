@@ -1,0 +1,32 @@
+use async_trait::async_trait;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderId},
+};
+
+#[derive(Debug, Clone)]
+pub struct GetOrderParams {
+    pub id: OrderId,
+}
+
+#[async_trait]
+pub trait GetOrderUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetOrderParams) -> Result<Order, OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetOrderUseCase {}
+
+        #[async_trait]
+        impl GetOrderUseCaseTrait for GetOrderUseCase {
+            async fn execute(&self, params: GetOrderParams) -> Result<Order, OrderError>;
+        }
+    }
+}

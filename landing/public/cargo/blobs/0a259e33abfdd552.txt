@@ -1,0 +1,28 @@
+use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
+
+use super::model::{Customer, CustomerId};
+
+#[async_trait]
+pub trait CustomerRepositoryTrait: Send + Sync {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError>;
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
+    // No `save`: writes go through `CustomerUnitOfWorkFactory`, which records their events.
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CustomerRepository {}
+
+        #[async_trait]
+        impl CustomerRepositoryTrait for CustomerRepository {
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError>;
+            async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
+        }
+    }
+}

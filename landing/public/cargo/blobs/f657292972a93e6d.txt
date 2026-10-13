@@ -1,0 +1,179 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+
+use crate::domain::product::{
+    errors::ProductError,
+    events::{ProductEvent, ProductSnapshot},
+    model::{Product, ProductProps},
+    unit_of_work::ProductUnitOfWorkFactory,
+    use_cases::create_product::{CreateProductParams, CreateProductUseCaseTrait},
+};
+
+pub struct CreateProductUseCaseImpl {
+    pub uow_factory: Arc<dyn ProductUnitOfWorkFactory>,
+}
+
+#[async_trait]
+impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
+    async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError> {
+        tracing::info!("create_product: start");
+        let failed =
+            |e: &RepositoryError| tracing::error!(error = %e, "create_product: repository failed");
+        let entity = Product::new(ProductProps {
+            name: params.name,
+            price: params.price,
+            sku: params.sku,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_product: rejected"))?;
+        let mut uow = self.uow_factory.begin().await.inspect_err(failed)?;
+        uow.save(&entity).await.inspect_err(failed)?;
+        uow.record(ProductEvent::Created(ProductSnapshot::from_entity(&entity)))
+            .await
+            .inspect_err(failed)?;
+        uow.commit().await.inspect_err(failed)?;
+        tracing::info!(id = %entity.id, "create_product: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
+    use puerto_core::DomainEvent;
+
+    #[tokio::test]
+    async fn should_record_product_created_when_fields_are_valid() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = CreateProductUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "example".to_string(),
+                price: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        let entity = match result {
+            Ok(entity) => entity,
+            Err(e) => panic!("create failed: {e}"),
+        };
+        assert_eq!(entity.name, "example");
+        let recorded = uow_factory.recorded();
+        assert!(recorded.committed);
+        assert_eq!(recorded.saved.len(), 1);
+        assert_eq!(recorded.events.len(), 1);
+        assert_eq!(recorded.events[0].event_type(), "product_created");
+        assert_eq!(recorded.events[0].aggregate_id(), entity.id.value());
+    }
+
+    #[tokio::test]
+    async fn should_not_commit_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let uow_factory =
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Save, RepositoryError::Duplicate);
+        let use_case = CreateProductUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "example".to_string(),
+                price: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.duplicate");
+        let recorded = uow_factory.recorded();
+        assert!(!recorded.committed);
+        assert!(recorded.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_commit_fails() {
+        // Arrange
+        let uow_factory =
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, RepositoryError::Unavailable);
+        let use_case = CreateProductUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "example".to_string(),
+                price: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.repository_error");
+        assert!(!uow_factory.recorded().committed);
+    }
+
+    #[tokio::test]
+    async fn should_return_error_and_record_nothing_when_name_is_empty() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = CreateProductUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "".to_string(),
+                price: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.name_empty"
+        );
+        assert!(uow_factory.recorded().saved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_return_error_and_record_nothing_when_sku_is_empty() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = CreateProductUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "example".to_string(),
+                price: 42,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.sku_empty"
+        );
+        assert!(uow_factory.recorded().saved.is_empty());
+    }
+}

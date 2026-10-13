@@ -1,0 +1,521 @@
+use std::sync::Arc;
+
+use business::domain::customer::model::CustomerId;
+use business::domain::customer::use_cases::{
+    create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
+    delete_customer::{DeleteCustomerParams, DeleteCustomerUseCaseTrait},
+    get_customer::{GetCustomerParams, GetCustomerUseCaseTrait},
+    list_customers::{ListCustomersParams, ListCustomersUseCaseTrait},
+    update_customer::{UpdateCustomerParams, UpdateCustomerUseCaseTrait},
+};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_core::PageRequest;
+use puerto_web::auth::BearerAuth;
+use puerto_web::require_role;
+use uuid::Uuid;
+
+use crate::api::customer::dto::{
+    CreateCustomerRequest, CustomerDto, CustomerPageDto, UpdateCustomerRequest,
+};
+use crate::api::customer::responses::{
+    CreateCustomerResponse, DeleteCustomerResponse, GetCustomerResponse, ListCustomersResponse,
+    UpdateCustomerResponse,
+};
+use crate::api::error::IntoErrorResponse;
+use crate::api::tags::ApiTags;
+
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
+pub struct CustomerApi {
+    pub create_customer: Arc<dyn CreateCustomerUseCaseTrait>,
+    pub get_customer: Arc<dyn GetCustomerUseCaseTrait>,
+    pub list_customers: Arc<dyn ListCustomersUseCaseTrait>,
+    pub update_customer: Arc<dyn UpdateCustomerUseCaseTrait>,
+    pub delete_customer: Arc<dyn DeleteCustomerUseCaseTrait>,
+}
+
+#[OpenApi]
+impl CustomerApi {
+    /// Create a new Customer
+    #[oai(path = "/customers", method = "post", tag = "ApiTags::Customer")]
+    async fn create(
+        &self,
+        auth: BearerAuth,
+        body: Json<CreateCustomerRequest>,
+    ) -> CreateCustomerResponse {
+        match self
+            .create_customer
+            .execute(CreateCustomerParams {
+                actor: auth.0,
+                email: body.email.clone(),
+                name: body.name.clone(),
+                tags: body.tags.clone(),
+            })
+            .await
+        {
+            Ok(entity) => CreateCustomerResponse::Created(Json(CustomerDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_customer failed");
+                CreateCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Customer by ID
+    #[oai(path = "/customers/:id", method = "get", tag = "ApiTags::Customer")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetCustomerResponse {
+        match self
+            .get_customer
+            .execute(GetCustomerParams {
+                id: CustomerId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entity) => GetCustomerResponse::Ok(Json(CustomerDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_customer failed");
+                GetCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List Customers, one page at a time (`limit` is capped by the domain)
+    #[oai(path = "/customers", method = "get", tag = "ApiTags::Customer")]
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListCustomersResponse {
+        match self
+            .list_customers
+            .execute(ListCustomersParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListCustomersResponse::Ok(Json(CustomerPageDto::from_domain(&page))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_customers failed");
+                ListCustomersResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Customer
+    #[oai(path = "/customers/:id", method = "put", tag = "ApiTags::Customer")]
+    async fn update(
+        &self,
+        auth: BearerAuth,
+        id: Path<Uuid>,
+        body: Json<UpdateCustomerRequest>,
+    ) -> UpdateCustomerResponse {
+        match self
+            .update_customer
+            .execute(UpdateCustomerParams {
+                actor: auth.0,
+                id: CustomerId::from_uuid(id.0),
+                email: body.email.clone(),
+                name: body.name.clone(),
+                tags: body.tags.clone(),
+            })
+            .await
+        {
+            Ok(entity) => UpdateCustomerResponse::Ok(Json(CustomerDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_customer failed");
+                UpdateCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Customer
+    #[oai(path = "/customers/:id", method = "delete", tag = "ApiTags::Customer")]
+    #[require_role("admin")]
+    async fn delete(&self, auth: BearerAuth, id: Path<Uuid>) -> DeleteCustomerResponse {
+        match self
+            .delete_customer
+            .execute(DeleteCustomerParams {
+                actor: auth.0,
+                id: CustomerId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => DeleteCustomerResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_customer failed");
+                DeleteCustomerResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::customer::errors::CustomerError;
+    use business::domain::customer::use_cases::{
+        create_customer::mocks::MockCreateCustomerUseCase,
+        delete_customer::mocks::MockDeleteCustomerUseCase,
+        get_customer::mocks::MockGetCustomerUseCase,
+        list_customers::mocks::MockListCustomersUseCase,
+        update_customer::mocks::MockUpdateCustomerUseCase,
+    };
+    use business::tests::mothers::customer_mother::CustomerMother;
+    use business::tests::mothers::principal_mother::PrincipalMother;
+    use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
+    use puerto_core::auth::mocks::MockAuthenticator;
+    use puerto_core::auth::{AuthError, Authenticator};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateCustomerUseCase,
+        get: MockGetCustomerUseCase,
+        list: MockListCustomersUseCase,
+        update: MockUpdateCustomerUseCase,
+        delete: MockDeleteCustomerUseCase,
+    }
+
+    /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
+    fn authenticator() -> Arc<dyn Authenticator> {
+        let mut authenticator = MockAuthenticator::new();
+        authenticator
+            .expect_authenticate()
+            .returning(|token| match token {
+                "caller" => Ok(PrincipalMother::new().with_roles(["admin"]).build()),
+                "nobody" => Ok(PrincipalMother::random()),
+                _ => Err(AuthError::Invalid),
+            });
+        Arc::new(authenticator)
+    }
+
+    impl Mocks {
+        /// Every request signed in as `caller`.
+        fn client(self) -> TestClient<impl poem::Endpoint> {
+            self.client_with(Some("Bearer caller"))
+        }
+
+        /// `authorization`: the header every request sends; `None` sends none.
+        fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
+            let api = CustomerApi {
+                create_customer: Arc::new(self.create),
+                get_customer: Arc::new(self.get),
+                list_customers: Arc::new(self.list),
+                update_customer: Arc::new(self.update),
+                delete_customer: Arc::new(self.delete),
+            };
+            let client = TestClient::new(
+                Route::new()
+                    .nest("/", OpenApiService::new(api, "test", "1.0"))
+                    .data(authenticator()),
+            );
+            match authorization {
+                Some(value) => client.default_header("Authorization", value),
+                None => client,
+            }
+        }
+    }
+
+    fn create_request() -> CreateCustomerRequest {
+        CreateCustomerRequest {
+            email: "example".to_string(),
+            name: "example".to_string(),
+            tags: vec![],
+        }
+    }
+
+    fn update_request() -> UpdateCustomerRequest {
+        UpdateCustomerRequest {
+            email: "example".to_string(),
+            name: "example".to_string(),
+            tags: vec![],
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/customers/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_customer_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(CustomerMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/customers")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_customer_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(CustomerError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/customers")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_customer_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(CustomerMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_customer_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(CustomerError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_a_page_of_customers_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(CustomerMother::random_vec(2), 7, params.page)));
+
+        // Act
+        let response = mocks.client().get("/customers").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks
+            .client()
+            .get("/customers?limit=5&offset=10")
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(CustomerError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/customers").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_customer_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(CustomerMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_customer() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(CustomerError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_customer_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_customer() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(CustomerError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_creating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .post("/customers")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_updating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_deleting_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks.client_with(None).delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_403_when_deleting_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .delete(item_path())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+}

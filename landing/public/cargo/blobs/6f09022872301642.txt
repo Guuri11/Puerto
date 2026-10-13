@@ -1,0 +1,33 @@
+import { Link } from "wouter";
+import type { Order } from "../../../../domain/order/model";
+
+export function OrderListView({ orders }: { orders: Order[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Note</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((order) => (
+            <tr key={order.id}>
+              <td>{order.amount}</td>
+              <td>{order.status}</td>
+              <td>{order.note ?? "—"}</td>
+              <td className="text-right">
+                <Link href={`/orders/${order.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

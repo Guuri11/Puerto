@@ -1,0 +1,146 @@
+import { describe, expect, test } from "bun:test";
+import { AuthError } from "../../domain/auth/session";
+import { localAuthGateway, TOKEN_KEY } from "./local-auth-gateway";
+
+/** A `Storage` of its own per test. */
+function memoryStorage(seed: Record<string, string> = {}): Storage {
+  const items = new Map(Object.entries(seed));
+  return {
+    get length() {
+      return items.size;
+    },
+    clear: () => items.clear(),
+    getItem: (key) => items.get(key) ?? null,
+    key: (index) => [...items.keys()][index] ?? null,
+    removeItem: (key) => {
+      items.delete(key);
+    },
+    setItem: (key, value) => {
+      items.set(key, value);
+    },
+  };
+}
+
+/** An API answering each path with its `[status, body]`; `requests` records what it was asked. */
+function api(answers: Record<string, [number, unknown]>) {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const fetch = async (url: string, init: RequestInit) => {
+    requests.push({ url, init });
+    const [status, body] = answers[url] ?? [404, null];
+    return body === null ? new Response(null, { status }) : Response.json(body, { status });
+  };
+  return { fetch, requests };
+}
+
+const ADA = { id: crypto.randomUUID(), email: "ada@example.com", name: "Ada", roles: ["admin"] };
+
+describe("localAuthGateway", () => {
+  test("should store the token and load the user when signing in", async () => {
+    // Arrange
+    const storage = memoryStorage();
+    const { fetch, requests } = api({
+      "/api/auth/login": [200, { token: "opaque", expiresAt: "2030-01-01T00:00:00Z" }],
+      "/api/me": [200, ADA],
+    });
+    const gateway = localAuthGateway({ storage, fetch });
+
+    // Act
+    await gateway.signIn("ada@example.com", "correct horse battery");
+    const user = await gateway.currentUser();
+
+    // Assert
+    expect(storage.getItem(TOKEN_KEY)).toBe("opaque");
+    expect(await gateway.accessToken()).toBe("opaque");
+    expect(user).toEqual(ADA);
+    expect(requests[1]?.init.headers).toEqual({ Authorization: "Bearer opaque" });
+  });
+
+  test("should reject with the API's code when the password is wrong", async () => {
+    // Arrange
+    const code = "auth.invalid_credentials";
+    const storage = memoryStorage();
+    const { fetch } = api({ "/api/auth/login": [401, { name: code, message: code }] });
+
+    // Act
+    const result = localAuthGateway({ storage, fetch }).signIn("ada@example.com", "wrong!");
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(AuthError);
+    await expect(result).rejects.toMatchObject({ code });
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  test("should forget a session the API no longer accepts", async () => {
+    // Arrange
+    const storage = memoryStorage({ [TOKEN_KEY]: "expired" });
+    const { fetch } = api({ "/api/me": [401, { name: "auth.unauthenticated" }] });
+
+    // Act
+    const user = await localAuthGateway({ storage, fetch }).currentUser();
+
+    // Assert
+    expect(user).toBeNull();
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  test("should drop the session and go to the sign-in page, then back, when a call is refused", async () => {
+    // Arrange: what the bearer middleware does on a 401.
+    const storage = memoryStorage({ [TOKEN_KEY]: "revoked" });
+    const visited: string[] = [];
+    const gateway = localAuthGateway({
+      storage,
+      fetch: api({}).fetch,
+      goTo: (url) => visited.push(url),
+    });
+
+    // Act
+    await gateway.login("/orders?page=2");
+
+    // Assert
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+    expect(visited).toEqual(["/login?next=%2Forders%3Fpage%3D2"]);
+  });
+
+  test("should revoke the session, then forget it, when signing out", async () => {
+    // Arrange
+    const storage = memoryStorage({ [TOKEN_KEY]: "opaque" });
+    const { fetch, requests } = api({ "/api/auth/logout": [204, null] });
+
+    // Act
+    await localAuthGateway({ storage, fetch }).logout();
+
+    // Assert
+    expect(requests[0]?.url).toBe("/api/auth/logout");
+    expect(requests[0]?.init.headers).toEqual({ Authorization: "Bearer opaque" });
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  test("should sign out here even when the API cannot be reached", async () => {
+    // Arrange
+    const storage = memoryStorage({ [TOKEN_KEY]: "opaque" });
+    const fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+
+    // Act
+    await localAuthGateway({ storage, fetch }).logout();
+
+    // Assert
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  test("should send the registration and answer the new account", async () => {
+    // Arrange
+    const { fetch, requests } = api({ "/api/auth/register": [201, { ...ADA, roles: [] }] });
+    const registration = {
+      email: "ada@example.com",
+      password: "correct horse battery",
+      name: "Ada",
+    };
+
+    // Act
+    const user = await localAuthGateway({ storage: memoryStorage(), fetch }).register(registration);
+
+    // Assert
+    expect(JSON.parse(String(requests[0]?.init.body))).toEqual(registration);
+    expect(user.email).toBe("ada@example.com");
+  });
+});

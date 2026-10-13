@@ -1,0 +1,30 @@
+use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
+
+use crate::domain::product::{errors::ProductError, model::Product};
+
+#[derive(Debug, Clone)]
+pub struct ListProductsParams {
+    pub page: PageRequest,
+}
+
+#[async_trait]
+pub trait ListProductsUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListProductsUseCase {}
+
+        #[async_trait]
+        impl ListProductsUseCaseTrait for ListProductsUseCase {
+            async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+        }
+    }
+}

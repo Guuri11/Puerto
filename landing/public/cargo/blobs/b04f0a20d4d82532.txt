@@ -1,0 +1,36 @@
+[project]
+name = "shop"
+db = true
+web = true
+events = "db"
+
+[[entity]]
+name = "Order"
+use_cases = [
+    "create_order",
+    "get_order",
+    "list_orders",
+    "update_order",
+    "delete_order",
+]
+db = true
+
+[[entity.fields]]
+name = "amount"
+type = "f64"
+value_object = "Amount"
+
+[[entity.fields]]
+name = "status"
+type = "String"
+value_object = "Status"
+value_object_kind = "enum"
+enum_variants = [
+    "Pending",
+    "Confirmed",
+    "Cancelled",
+]
+
+[[entity.fields]]
+name = "note"
+type = "Option<String>"

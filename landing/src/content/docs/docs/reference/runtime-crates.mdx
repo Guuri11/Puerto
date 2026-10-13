@@ -1,0 +1,59 @@
+---
+title: Runtime crates
+description: The puerto-* crates a generated project depends on, what each one owns, which layer may use it, and how they are versioned with the CLI.
+---
+
+What is the same in every project and not meant to be edited is not generated: it is a crate. The
+runtime follows the same dependency rule as your project, so it is split by layer instead of being
+one crate with features ([ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)).
+The framework is hexagonal too: `puerto-core` holds the ports, and the other crates are adapters.
+
+| Crate | Owns | Used by | Present when |
+|---|---|---|---|
+| [`puerto-core`](https://docs.rs/puerto-core) | `RepositoryError`, `PageRequest` / `Page<T>`; the event envelope, delivery policy and transport ports; the mail ports; the auth port and `Principal` | every crate, the domain included: it depends on little more than `thiserror` | always |
+| [`puerto-web`](https://docs.rs/puerto-web) | the server (`App`), `Config`, CORS, health probes, graceful shutdown, `ErrorResponse`, `BearerAuth`, `#[require_role]` | `presentation` only | always |
+| [`puerto-sqlx`](https://docs.rs/puerto-sqlx) | the pool, migrations at startup, the readiness ping, `map_sqlx_error`; the unit of work, outbox and `db` transport; the sent-mail log; local sessions and credentials | `infrastructure` only | `--db` |
+| [`puerto-events`](https://docs.rs/puerto-events) | the worker: the outbox relay, the consume loops, their health probes and shutdown | `worker` | `--events` |
+| [`puerto-kafka`](https://docs.rs/puerto-kafka) | the Kafka publisher and subscription | `worker` | `--events kafka` |
+| [`puerto-mail`](https://docs.rs/puerto-mail) | the SMTP adapter, the template renderer, `send_once` | `infrastructure`, `worker` | a mail |
+| [`puerto-auth`](https://docs.rs/puerto-auth) | feature `oidc`: `OidcAuthenticator`; feature `local`: argon2id hashing | `presentation` | `--auth` |
+| [`puerto-macros`](https://docs.rs/puerto-macros) | `#[require_role]` | through `puerto-web` | `--auth` |
+
+## How a project depends on them
+
+Once, in the root `Cargo.toml`, on the minor that generated the project:
+
+```toml title="Cargo.toml"
+[workspace.dependencies]
+puerto-core = "0.19"
+puerto-web = "0.19"
+puerto-sqlx = "0.19"
+```
+
+Then each crate inherits what its layer may use:
+
+```toml title="infrastructure/Cargo.toml"
+[dependencies]
+puerto-core = { workspace = true }
+puerto-sqlx = { workspace = true }
+
+[dev-dependencies]
+puerto-core = { workspace = true, features = ["test-utils"] }
+```
+
+`test-utils` exposes test doubles (`MockAuthenticator`, `RecordingMailer`, `InMemorySentMails`)
+to a project's tests and keeps them out of its binaries.
+
+## The contract
+
+- **Lockstep.** The CLI and every runtime crate share one version. `puerto 0.19` generates
+  projects that ask for `0.19`, and `puerto validate` warns when they drift apart.
+- **The app calls the runtime.** There is no `Hooks` trait to implement and no container that
+  calls into your code: `main.rs` and `bootstrap.rs` call runtime building blocks, in plain Rust
+  you can follow.
+- **`#[non_exhaustive]` from day one.** Every public enum and struct you may receive can grow
+  without a breaking change.
+- **Ports in core, adapters in their crates.** To swap an adapter, implement the port. A project
+  only compiles the adapters it uses: a project without Kafka never builds `rdkafka`.
+- **Traits you implement for your own types stay in your project.** `IntoErrorResponse` is
+  generated into `presentation`, because Rust's orphan rule would refuse it otherwise.

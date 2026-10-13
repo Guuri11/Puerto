@@ -1,0 +1,200 @@
+use async_trait::async_trait;
+use sqlx::PgPool;
+
+use business::domain::customer::{
+    events::CustomerEvent,
+    model::Customer,
+    unit_of_work::{CustomerUnitOfWork, CustomerUnitOfWorkFactory},
+};
+use puerto_core::RepositoryError;
+use puerto_sqlx::uow::PgTransaction;
+
+use super::entity::CustomerDb;
+use crate::db::map_sqlx_error;
+
+/// Opens a Postgres transaction per write: the customer row and its outbox event commit together.
+pub struct PgCustomerUnitOfWorkFactory {
+    pub pool: PgPool,
+}
+
+impl PgCustomerUnitOfWorkFactory {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl CustomerUnitOfWorkFactory for PgCustomerUnitOfWorkFactory {
+    async fn begin(&self) -> Result<Box<dyn CustomerUnitOfWork>, RepositoryError> {
+        let tx = PgTransaction::begin(&self.pool).await?;
+        Ok(Box::new(PgCustomerUnitOfWork { tx }))
+    }
+}
+
+struct PgCustomerUnitOfWork {
+    tx: PgTransaction,
+}
+
+#[async_trait]
+impl CustomerUnitOfWork for PgCustomerUnitOfWork {
+    async fn save(&mut self, entity: &Customer) -> Result<(), RepositoryError> {
+        tracing::debug!(id = %entity.id, "save");
+        let db = CustomerDb::from(entity);
+        sqlx::query!(
+            "INSERT INTO customers (id, created_at, updated_at, deleted, deleted_at, email, name, tags)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (id) DO UPDATE
+             SET updated_at = $3, deleted = $4, deleted_at = $5, email = $6, name = $7, tags = $8",
+            db.id,
+            db.created_at,
+            db.updated_at,
+            db.deleted,
+            db.deleted_at,
+            db.email,
+            db.name,
+            &db.tags,
+        )
+        .execute(self.tx.tx())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "save failed");
+            map_sqlx_error(&e)
+        })?;
+        Ok(())
+    }
+
+    async fn record(&mut self, event: CustomerEvent) -> Result<(), RepositoryError> {
+        self.tx.record(&event).await
+    }
+
+    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        self.tx.commit().await
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use business::domain::customer::{
+        events::CustomerSnapshot, model::CustomerProps, repository::CustomerRepositoryTrait,
+    };
+
+    use crate::customer::repository::PgCustomerRepository;
+    use business::domain::customer::value_objects::Email;
+    use uuid::Uuid;
+
+    fn new_customer() -> Customer {
+        Customer::new(CustomerProps {
+            email: Email::new(Uuid::new_v4().to_string()).expect("valid Email"),
+            name: "example".to_string(),
+            tags: vec![],
+        })
+        .unwrap()
+    }
+
+    /// What a create use case does: save, record, commit.
+    async fn create(pool: &PgPool, entity: &Customer) -> Result<(), RepositoryError> {
+        let mut uow = PgCustomerUnitOfWorkFactory::new(pool.clone())
+            .begin()
+            .await?;
+        uow.save(entity).await?;
+        uow.record(CustomerEvent::Created(CustomerSnapshot::from_entity(
+            entity,
+        )))
+        .await?;
+        uow.commit().await
+    }
+
+    async fn count(pool: &PgPool, sql: &str) -> i64 {
+        sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_write_the_customer_and_its_event_when_committed(pool: PgPool) {
+        // Arrange
+        let entity = new_customer();
+
+        // Act
+        create(&pool, &entity).await.unwrap();
+
+        // Assert
+        let found = PgCustomerRepository::new(pool.clone())
+            .find_by_id(entity.id)
+            .await
+            .unwrap();
+        assert!(found.is_some());
+        let (event_type, aggregate_id): (String, uuid::Uuid) =
+            sqlx::query_as("SELECT event_type, aggregate_id FROM outbox")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(event_type, "customer_created");
+        assert_eq!(aggregate_id, entity.id.value());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_write_nothing_when_dropped_without_commit(pool: PgPool) {
+        // Arrange
+        let entity = new_customer();
+
+        // Act
+        {
+            let mut uow = PgCustomerUnitOfWorkFactory::new(pool.clone())
+                .begin()
+                .await
+                .unwrap();
+            uow.save(&entity).await.unwrap();
+            uow.record(CustomerEvent::Created(CustomerSnapshot::from_entity(
+                &entity,
+            )))
+            .await
+            .unwrap();
+        }
+
+        // Assert
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM customers").await, 0);
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_update_the_customer_when_saved_again(pool: PgPool) {
+        // Arrange
+        let mut entity = new_customer();
+        create(&pool, &entity).await.unwrap();
+        entity.name = "updated".to_string();
+        entity.updated_at = chrono::Utc::now();
+
+        // Act
+        let mut uow = PgCustomerUnitOfWorkFactory::new(pool.clone())
+            .begin()
+            .await
+            .unwrap();
+        uow.save(&entity).await.unwrap();
+        uow.commit().await.unwrap();
+
+        // Assert
+        let found = PgCustomerRepository::new(pool)
+            .find_by_id(entity.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.name, "updated");
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_write_neither_row_nor_event_when_the_email_is_taken(pool: PgPool) {
+        // Arrange
+        let first = new_customer();
+        create(&pool, &first).await.unwrap();
+        let mut second = new_customer();
+        second.email = first.email.clone();
+
+        // Act
+        let result = create(&pool, &second).await;
+
+        // Assert
+        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM customers").await, 1);
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
+    }
+}

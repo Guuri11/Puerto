@@ -1,0 +1,14 @@
+import type { Order } from "../../../../domain/order/model";
+
+export function OrderDetailView({ order }: { order: Order }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Amount</dt>
+      <dd>{order.amount}</dd>
+      <dt className="font-semibold">Status</dt>
+      <dd>{order.status}</dd>
+      <dt className="font-semibold">Note</dt>
+      <dd>{order.note ?? "—"}</dd>
+    </dl>
+  );
+}

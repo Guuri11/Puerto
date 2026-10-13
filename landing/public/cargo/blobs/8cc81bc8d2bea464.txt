@@ -1,0 +1,53 @@
+pub mod domain {
+
+    pub mod user {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod login;
+            pub mod logout;
+            pub mod register_user;
+        }
+    }
+
+    pub mod order {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod create_order;
+            pub mod delete_order;
+            pub mod get_order;
+            pub mod list_orders;
+            pub mod update_order;
+        }
+
+        pub mod value_objects;
+    }
+}
+pub mod application {
+
+    pub mod user {
+        pub mod login;
+        pub mod logout;
+        pub mod register_user;
+    }
+
+    pub mod order {
+        pub mod create_order;
+        pub mod delete_order;
+        pub mod get_order;
+        pub mod list_orders;
+        pub mod update_order;
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod tests {
+    pub mod mothers {
+        pub mod principal_mother;
+
+        pub mod order_mother;
+    }
+}

@@ -1,0 +1,58 @@
+use puerto_core::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum CustomerError {
+    #[error("customer.validation_error.{0}")]
+    ValidationError(String),
+    #[error("customer.not_found")]
+    NotFound,
+    #[error("customer.duplicate")]
+    Duplicate,
+    #[error("customer.repository_error")]
+    RepositoryError,
+    #[error("customer.unknown")]
+    Unknown,
+    /// The caller may not do this with this data: a rule of the use case, on its `actor`.
+    #[error("customer.forbidden")]
+    Forbidden,
+    #[error("customer.invalid_email")]
+    InvalidEmail,
+    #[error("customer.invalid_tag")]
+    InvalidTag,
+}
+
+impl From<RepositoryError> for CustomerError {
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = CustomerError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "customer.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = CustomerError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "customer.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = CustomerError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "customer.repository_error");
+    }
+}

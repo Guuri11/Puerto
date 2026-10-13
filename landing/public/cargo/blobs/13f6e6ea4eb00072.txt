@@ -1,0 +1,55 @@
+use business::domain::order::value_objects::Amount;
+use business::domain::order::value_objects::Status;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use business::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderId},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct OrderDb {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub amount: f64,
+    pub status: String,
+    pub note: Option<String>,
+}
+
+impl TryFrom<OrderDb> for Order {
+    type Error = OrderError;
+
+    fn try_from(row: OrderDb) -> Result<Self, Self::Error> {
+        Ok(Self::from_repository(Order {
+            id: OrderId::from_uuid(row.id),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            deleted: row.deleted,
+            deleted_at: row.deleted_at,
+            amount: Amount::new(row.amount)?,
+            status: row.status.parse::<Status>()?,
+            note: row.note,
+        }))
+    }
+}
+
+impl From<&Order> for OrderDb {
+    fn from(entity: &Order) -> Self {
+        Self {
+            id: entity.id.value(),
+            created_at: entity.created_at,
+            updated_at: entity.updated_at,
+            deleted: entity.deleted,
+            deleted_at: entity.deleted_at,
+            amount: entity.amount.value(),
+            status: entity.status.as_str().to_string(),
+            note: entity.note.clone(),
+        }
+    }
+}

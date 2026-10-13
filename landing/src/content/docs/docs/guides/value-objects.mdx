@@ -1,0 +1,121 @@
+---
+title: Value objects
+description: Wrap primitive fields in types of their own, validate them once in the domain, and share them across entities with puerto generate value-object.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A value object is a value with a meaning and a rule: an `Email` is a string, but not every string
+is an email. Giving it its own type means the rule is checked once, when the value is built,
+and nothing downstream can hand a raw string to code that expects an email.
+
+## Declaring one on a field
+
+The second part of the field is the value object's name:
+
+```bash
+puerto generate scaffold Order -- amount:Amount:f64 status:Status:enum:Pending/Confirmed/Cancelled
+```
+
+```rust title="business/src/domain/order/value_objects.rs"
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Amount(f64);
+
+impl Amount {
+    pub fn new(value: f64) -> Result<Self, OrderError> {
+        Ok(Self(value))
+    }
+
+    pub fn value(&self) -> f64 {
+        self.0
+    }
+}
+```
+
+`new` is where the rule goes, and it starts empty because only you know it:
+
+```rust
+pub fn new(value: f64) -> Result<Self, OrderError> {
+    if value <= 0.0 {
+        return Err(OrderError::InvalidAmount);
+    }
+    Ok(Self(value))
+}
+```
+
+`OrderError::InvalidAmount` is already generated, along with its `422` mapping. The API answers
+`order.invalid_amount`, and the web form shows "Amount is not valid" under the amount input.
+
+## Enums
+
+`status:Status:enum:Pending/Confirmed/Cancelled` generates a Rust `enum` with `FromStr` and
+`as_str()`:
+
+```rust
+let status: Status = "Confirmed".parse()?;   // Err(OrderError::InvalidStatus) for anything else
+status.as_str();                               // "Confirmed"
+```
+
+It implements `FromStr` rather than an inherent `from_str`, so clippy stays quiet and `.parse()`
+needs no import ([ADR-0001](/docs/decisions/adr/0001-enum-value-objects-implement-fromstr/)). On
+the wire it is a string. The frontend narrows it to a union, `"Pending" | "Confirmed" |
+"Cancelled"`, and renders a `<select>`.
+
+## Optional and repeated
+
+```bash
+puerto generate scaffold Customer -- nickname:Nick:opt:String tags:Tag:vec:String
+```
+
+`nickname` is an `Option<Nick>` and `tags` a `Vec<Tag>`. Each element is validated by the same
+`new`.
+
+## Shared value objects
+
+When several entities use the same concept, declare it once:
+
+```bash
+puerto generate value-object Email String
+puerto generate scaffold Customer -- email:Email! name:String
+puerto generate scaffold Supplier -- email:Email name:String
+```
+
+The type is inferred from the declaration, so `email:Email` is enough. Shared value objects live
+in `business/src/domain/shared/` with their own error, and `puerto.toml` records them:
+
+```toml
+[[value_object]]
+name = "Email"
+type = "String"
+```
+
+A shared value object starts with a real rule, a non-empty trimmed value, which you can tighten
+in one place for every entity:
+
+```rust title="business/src/domain/shared/value_objects.rs"
+impl Email {
+    pub fn new(value: String) -> Result<Self, EmailError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(EmailError::Invalid);
+        }
+        Ok(Self { value: trimmed })
+    }
+}
+```
+
+Each entity still reports it in its own terms: a bad email in a customer is
+`customer.invalid_email`, in a supplier `supplier.invalid_email`.
+
+## Where value objects stop
+
+Value objects live in the domain. Infrastructure and presentation see the primitive: the row has
+a `String` column and the DTO a `String` field. The conversion happens at the boundary, in code
+Puerto generates: the use case builds the value object from the params, and the row and the DTO
+unwrap it with `.value()`.
+
+<Aside type="note">
+A value object never reaches serde. Event snapshots, which do, carry the primitive
+([ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) § 3), so the
+domain model stays free to change without changing a public contract.
+</Aside>

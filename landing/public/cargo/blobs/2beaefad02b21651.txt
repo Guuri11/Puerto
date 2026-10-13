@@ -1,0 +1,58 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductDetailView } from "../views/product-detail-view";
+
+export function ProductDetailContainer({ id }: { id: string }) {
+  const { productRepository } = useDependencies();
+  const product = useAsync(() => productRepository.get(id), [productRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await productRepository.remove(id);
+      navigate("/products");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Product</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {product.status === "loading" && <span className="loading loading-spinner" />}
+      {product.status === "error" && <ErrorAlert error={product.error} />}
+      {product.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <ProductDetailView product={product.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/products/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/products" className="link">
+        Back to products
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this product?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}

@@ -1,0 +1,30 @@
+import type { OrderDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface OrderProblem {
+  field: keyof OrderDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "order.invalid_amount": "Amount is not valid",
+  "order.invalid_status": "Status is not valid",
+  "order.duplicate": "An order with these values already exists",
+  "order.not_found": "This order no longer exists",
+  "order.repository_error": "The order could not be saved, try again later",
+  "order.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof OrderDraft> = {
+  "order.invalid_amount": "amount",
+  "order.invalid_status": "status",
+};
+
+export function toProblem(code: string): OrderProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}

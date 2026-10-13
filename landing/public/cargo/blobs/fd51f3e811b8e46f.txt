@@ -1,0 +1,11 @@
+import type { Page, PageRequest } from "../shared/page";
+import type { Customer, CustomerDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `CustomerError` the API answered. */
+export interface CustomerRepository {
+  list(page: PageRequest): Promise<Page<Customer>>;
+  get(id: string): Promise<Customer>;
+  create(draft: CustomerDraft): Promise<Customer>;
+  update(id: string, draft: CustomerDraft): Promise<Customer>;
+  remove(id: string): Promise<void>;
+}

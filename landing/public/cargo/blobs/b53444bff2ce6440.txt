@@ -1,0 +1,64 @@
+import { ProductError } from "../../domain/product/errors";
+import type { Product, ProductDraft } from "../../domain/product/model";
+import type { ProductRepository } from "../../domain/product/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type ProductDto = components["schemas"]["ProductDto"];
+type ProductRequest = components["schemas"]["CreateProductRequest"];
+
+function toProduct(dto: ProductDto): Product {
+  return {
+    id: dto.id,
+    name: dto.name,
+    price: dto.price,
+    sku: dto.sku,
+  };
+}
+
+function toRequest(draft: ProductDraft): ProductRequest {
+  return {
+    name: draft.name,
+    price: draft.price,
+    sku: draft.sku,
+  };
+}
+
+/** `ProductRepository` over the REST API (`/products`). */
+export function productRepositoryHttp(api: ApiClient): ProductRepository {
+  return {
+    async list(page) {
+      const { data, error, response } = await api.GET("/products", {
+        params: { query: page },
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return { ...data, items: data.items.map(toProduct) };
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/products/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/products", { body: toRequest(draft) });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/products/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/products/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new ProductError(apiErrorCode(error, response));
+    },
+  };
+}

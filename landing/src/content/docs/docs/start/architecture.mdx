@@ -1,0 +1,118 @@
+---
+title: The architecture
+description: "Why Puerto generates Domain-Driven Design instead of MVC, how a request flows through the layers, and what keeps the dependency rule from eroding."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import LayerStack from '@/components/LayerStack.astro';
+
+## Why not MVC
+
+MVC is a good way to start and a hard way to grow. Business rules end up wherever it was
+convenient to write them: a callback on the model, a check in the controller, a query scope.
+Testing a rule then means a database and an HTTP request, and changing the database means
+touching the rules.
+
+Puerto generates the alternative from the first command. **Domain-Driven Design** gives the
+vocabulary (entities, value objects, repositories, domain events) and **Clean Architecture**,
+also known as hexagonal or ports and adapters, gives the rule that keeps it clean.
+
+## The dependency rule
+
+<LayerStack />
+
+Dependencies point inward only:
+
+```txt
+presentation → infrastructure → business (application → domain)
+```
+
+- **`business`** holds the domain (models, value objects, errors, the repository **ports**, the
+  use case traits) and the application (the use case implementations). It depends on no other
+  crate of the workspace, no database driver and no HTTP framework. Its tests need nothing but
+  `cargo test`.
+- **`infrastructure`** holds the **adapters** that implement the domain's ports: an in-memory or
+  Postgres repository, an SMTP mailer, a unit of work. It knows `business`, never
+  `presentation`.
+- **`presentation`** is HTTP: routes, DTOs, response enums, error mapping. It is just another
+  adapter, the one that turns requests into use case calls.
+
+This is not a guideline you keep by discipline: each layer is a crate, and a crate cannot import
+what it does not depend on. A domain model that tries to use `sqlx` does not compile.
+
+## A request, end to end
+
+`POST /api/products` with `{"name":"Lamp","price":4900,"sku":"LMP-01"}`:
+
+1. **`presentation`**. `ProductApi::create` receives `Json<CreateProductRequest>`, a DTO. It
+   builds `CreateProductParams` and calls `self.create_product.execute(params)`.
+   `create_product` is an `Arc<dyn CreateProductUseCaseTrait>`: the route depends on a port, not
+   an implementation ([ADR-0012](/docs/decisions/adr/0012-presentation-holds-use-case-ports/)).
+2. **`business::application`**. `CreateProductUseCaseImpl` builds the entity with
+   `Product::new(props)`, where the domain's rules run, and calls
+   `self.repository.save(&entity)` on an `Arc<dyn ProductRepositoryTrait>`.
+3. **`infrastructure`**. `PgProductRepository::save` writes the row. A unique violation comes
+   back from Postgres as `RepositoryError::Duplicate`, converted once in `puerto-sqlx`
+   ([ADR-0015](/docs/decisions/adr/0015-repositories-return-one-repository-error/)).
+4. **Back up.** `ProductError::Duplicate` reaches the route, and `error_mapper.rs` maps it to
+   `409` with `{"name":"product.duplicate"}`. The mapper has no catch-all arm: a new error
+   variant does not compile until someone decides its status
+   ([ADR-0007](/docs/decisions/adr/0007-error-contract-code-in-name-422/)).
+
+The domain never sees JSON, and the route never sees SQL.
+
+## Wiring without a container
+
+Who decides that `ProductApi::create_product` is a `CreateProductUseCaseImpl` backed by a
+`PgProductRepository`? One file: `presentation/src/generated/bootstrap.rs`, the **composition
+root**. Puerto generates it from `puerto.toml`, as plain Rust you can read:
+
+```rust title="presentation/src/generated/bootstrap.rs (excerpt, --db)"
+let product_repo: Arc<dyn ProductRepositoryTrait> =
+    Arc::new(PgProductRepository::new(pool.clone()));
+let create_product = Arc::new(CreateProductUseCaseImpl {
+    repository: Arc::clone(&product_repo),
+});
+let get_product = Arc::new(GetProductUseCaseImpl {
+    repository: Arc::clone(&product_repo),
+});
+// list_products, update_product, delete_product: the same
+let product_api = ProductApi {
+    create_product,
+    get_product,
+    list_products,
+    update_product,
+    delete_product,
+};
+```
+
+There is no runtime container, no reflection, and no macro that registers routes behind your
+back. "Go to definition" works everywhere, for you and for an agent. The price is that you never
+edit this file by hand: change `puerto.toml` and run `puerto generate bootstrap`.
+
+Your own wiring, extra middleware or routes outside the OpenAPI service goes in
+`presentation/src/app.rs`, a file Puerto writes once and never touches again.
+
+## The frontend follows the same rule
+
+`web/` has the same layers: `domain` (types and the repository port) ← `application` ←
+`infrastructure` (the HTTP adapter) ← `presentation` (screens). The rule is checked by
+`dependency-cruiser` in `make web/lint`, and the OpenAPI spec is the contract between the two
+halves. See [The web frontend](/docs/guides/web/).
+
+<Aside type="note" title="Not everything is a layer">
+Puerto does not generate a layer that would be empty. A CRUD use case on the frontend only
+delegates to the API, so `web/src/application/` stays empty until there is real logic to put
+there ([ADR-0013](/docs/decisions/adr/0013-web-frontend-react-daisyui-bun/)).
+</Aside>
+
+## What the compiler enforces for you
+
+| If someone… | …then | Because |
+|---|---|---|
+| imports `sqlx` in a domain model | it does not compile | `business` does not depend on it |
+| passes a `CustomerId` where a `ProductId` goes | it does not compile | ids are generated newtypes ([ADR-0014](/docs/decisions/adr/0014-entity-ids-are-generated-newtypes/)) |
+| writes through the repository in an events project | it does not compile | the repository has no `save`; writes go through the unit of work ([ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/)) |
+| adds an error variant without a status | it does not compile | mappers are exhaustive ([ADR-0007](/docs/decisions/adr/0007-error-contract-code-in-name-422/)) |
+| removes an event a consumer listens to | the worker does not compile | consumers match on generated constants |
+| changes a DTO without `make web/sync` | `make test` fails | the exported spec is compared in a test |

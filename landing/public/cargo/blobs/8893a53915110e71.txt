@@ -1,0 +1,31 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CurrentUserMother, fakeAuthGateway } from "../../../test-support/auth";
+import { renderScreen } from "../../../test-support/render";
+import { UserMenu } from "./user-menu";
+
+describe("UserMenu", () => {
+  test("should show who is signed in", async () => {
+    // Arrange
+    const user = CurrentUserMother.random({ name: "Ada Lovelace" });
+
+    // Act
+    renderScreen(<UserMenu />, {}, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+    expect(screen.getByText("Sign out")).toBeTruthy();
+  });
+
+  test("should start a sign-in from the current page when Sign in is pressed", async () => {
+    // Arrange
+    const auth = fakeAuthGateway();
+    renderScreen(<UserMenu />, { auth }, "/products");
+
+    // Act
+    fireEvent.click(await screen.findByText("Sign in"));
+
+    // Assert
+    await waitFor(() => expect(auth.logins).toEqual(["/products"]));
+  });
+});

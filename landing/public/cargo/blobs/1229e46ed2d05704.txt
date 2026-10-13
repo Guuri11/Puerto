@@ -1,0 +1,98 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::order::{
+    errors::OrderError,
+    repository::OrderRepositoryTrait,
+    use_cases::delete_order::{DeleteOrderParams, DeleteOrderUseCaseTrait},
+};
+
+pub struct DeleteOrderUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+}
+
+#[async_trait]
+impl DeleteOrderUseCaseTrait for DeleteOrderUseCaseImpl {
+    async fn execute(&self, params: DeleteOrderParams) -> Result<(), OrderError> {
+        tracing::info!(id = %params.id, "delete_order: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_order: repository failed"))?
+            .ok_or_else(|| {
+                let err = OrderError::NotFound;
+                tracing::warn!(error = %err, "delete_order: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "delete_order: repository failed"))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::value_objects::Amount;
+    use crate::domain::order::value_objects::Status;
+    use crate::domain::order::{
+        model::{Order, OrderId, OrderProps},
+        repository::mocks::MockOrderRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_soft_delete_order_when_id_exists() {
+        let entity = Order::new(OrderProps {
+            amount: Amount::new(1.5).expect("valid Amount"),
+            status: Status::Pending,
+            note: None,
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = DeleteOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteOrderParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+            })
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_order_does_not_exist() {
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = DeleteOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(DeleteOrderParams {
+                actor: PrincipalMother::random(),
+                id: OrderId::generate(),
+            })
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.not_found");
+    }
+}

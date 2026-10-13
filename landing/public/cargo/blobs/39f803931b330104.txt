@@ -1,0 +1,31 @@
+use async_trait::async_trait;
+
+use crate::domain::order::{errors::OrderError, model::Order};
+
+#[derive(Debug, Clone)]
+pub struct CreateOrderParams {
+    pub amount: f64,
+    pub status: String,
+    pub note: Option<String>,
+}
+
+#[async_trait]
+pub trait CreateOrderUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateOrderUseCase {}
+
+        #[async_trait]
+        impl CreateOrderUseCaseTrait for CreateOrderUseCase {
+            async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError>;
+        }
+    }
+}

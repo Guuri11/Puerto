@@ -1,0 +1,110 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CustomerError } from "../../../../domain/customer/errors";
+import type { CustomerDraft } from "../../../../domain/customer/model";
+import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
+import { renderScreen } from "../../../../test-support/render";
+import { CustomerFormContainer } from "./customer-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: CustomerDraft) {
+  await screen.findByText("Save");
+  type("Email", draft.email);
+  type("Name", draft.name);
+  type("Tags", draft.tags.join(", "));
+}
+
+describe("CustomerFormContainer", () => {
+  test("should create the customer from what was typed and show it", async () => {
+    // Arrange
+    const draft = CustomerMother.draft();
+    const customerRepository = fakeCustomerRepository();
+    const { history } = renderScreen(<CustomerFormContainer />, { customerRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/customers/"));
+    const {
+      items: [created],
+    } = await customerRepository.list({ limit: 1, offset: 0 });
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/customers/${created?.id}`);
+  });
+
+  test("should save the edited customer when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const customerRepository = fakeCustomerRepository([seeded]);
+    const { history } = renderScreen(<CustomerFormContainer id={seeded.id} />, {
+      customerRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/customers/${seeded.id}`));
+    expect(await customerRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the code itself when the API answers one the form does not know", async () => {
+    // Arrange
+    const code = "customer.validation_error.invalid";
+    const customerRepository = {
+      ...fakeCustomerRepository(),
+      create: () => Promise.reject(new CustomerError(code)),
+    };
+    renderScreen(<CustomerFormContainer />, { customerRepository });
+    await fillIn(CustomerMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+
+  test("should say a customer with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const customerRepository = {
+      ...fakeCustomerRepository(),
+      create: () => Promise.reject(new CustomerError("customer.duplicate")),
+    };
+    renderScreen(<CustomerFormContainer />, { customerRepository });
+    await fillIn(CustomerMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A customer with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const customerRepository = {
+      ...fakeCustomerRepository(),
+      create: () => Promise.reject(new CustomerError("customer.invalid_email")),
+    };
+    renderScreen(<CustomerFormContainer />, { customerRepository });
+    await fillIn(CustomerMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Email is not valid")).toBeTruthy();
+    const input = screen.getByLabelText("Email");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

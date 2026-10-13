@@ -1,0 +1,115 @@
+use std::sync::Arc;
+
+use crate::domain::order::value_objects::Amount;
+use crate::domain::order::value_objects::Status;
+use async_trait::async_trait;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::Order,
+    repository::OrderRepositoryTrait,
+    use_cases::update_order::{UpdateOrderParams, UpdateOrderUseCaseTrait},
+};
+
+pub struct UpdateOrderUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateOrderUseCaseTrait for UpdateOrderUseCaseImpl {
+    async fn execute(&self, params: UpdateOrderParams) -> Result<Order, OrderError> {
+        tracing::info!(id = %params.id, "update_order: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_order: repository failed"))?
+            .ok_or_else(|| {
+                let err = OrderError::NotFound;
+                tracing::warn!(error = %err, "update_order: rejected");
+                err
+            })?;
+        let amount = Amount::new(params.amount)?;
+        let status = params.status.parse::<Status>()?;
+        entity.amount = amount;
+        entity.status = status;
+        entity.note = params.note;
+        entity.updated_at = chrono::Utc::now();
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_order: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::value_objects::Amount;
+    use crate::domain::order::value_objects::Status;
+    use crate::domain::order::{
+        model::{Order, OrderId, OrderProps},
+        repository::mocks::MockOrderRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_update_order_when_params_are_valid() {
+        // Arrange
+        let entity = Order::new(OrderProps {
+            amount: Amount::new(1.5).expect("valid Amount"),
+            status: Status::Pending,
+            note: None,
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateOrderParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                amount: 1.5,
+                status: "Pending".to_string(),
+                note: None,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_order_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateOrderParams {
+                actor: PrincipalMother::random(),
+                id: OrderId::generate(),
+                amount: 1.5,
+                status: "Pending".to_string(),
+                note: None,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.not_found");
+    }
+}

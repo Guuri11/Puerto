@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.astro/
+.env
+.env.production
+.DS_Store
+test-results/
+playwright-report/
+
+# Capturas de revisión: se regeneran, no se versionan
+capturas/
+
+# Material en crudo del cliente: audios transcritos, conversaciones, documentos.
+# Son datos personales suyos y no viajan al repositorio. Se quedan en local.
+docs/material-cliente/
+
+# Copiados del repo por scripts/sync-repo-docs.mjs: la fuente es ../docs/adr y ../CHANGELOG.md
+src/content/docs/docs/decisions/adr/
+src/content/docs/docs/changelog.md
+src/content/docs/docs/reference/cli.md
+src/content/docs/docs/reference/make.md

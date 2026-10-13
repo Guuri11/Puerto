@@ -1,0 +1,82 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CustomerError } from "../../../../domain/customer/errors";
+import { CurrentUserMother } from "../../../../test-support/auth";
+import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
+import { renderScreen } from "../../../../test-support/render";
+import { CustomerDetailContainer } from "./customer-detail-container";
+
+describe("CustomerDetailContainer", () => {
+  test("should show the customer when it exists", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const customerRepository = fakeCustomerRepository([seeded]);
+
+    // Act
+    renderScreen(<CustomerDetailContainer id={seeded.id} />, { customerRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the customer does not exist", async () => {
+    // Arrange
+    const customerRepository = fakeCustomerRepository();
+
+    // Act
+    renderScreen(<CustomerDetailContainer id={crypto.randomUUID()} />, { customerRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("customer.not_found");
+  });
+
+  test("should delete the customer only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const fake = fakeCustomerRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<CustomerDetailContainer id={seeded.id} />, {
+      customerRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/customers"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+
+  test("should not offer Delete to a user without its role", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const customerRepository = fakeCustomerRepository([seeded]);
+    const user = CurrentUserMother.random();
+
+    // Act
+    renderScreen(<CustomerDetailContainer id={seeded.id} />, { customerRepository }, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("Email", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("Delete", { selector: ".card-actions *" })).toBeNull();
+  });
+
+  test("should show auth.forbidden when the API refuses the deletion", async () => {
+    // Arrange
+    const seeded = CustomerMother.random();
+    const customerRepository = {
+      ...fakeCustomerRepository([seeded]),
+      remove: () => Promise.reject(new CustomerError("auth.forbidden")),
+    };
+    renderScreen(<CustomerDetailContainer id={seeded.id} />, { customerRepository });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.forbidden");
+  });
+});

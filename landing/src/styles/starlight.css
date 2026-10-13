@@ -1,0 +1,261 @@
+/* ---------------------------------------------------------------------------
+   Starlight con la identidad de Puerto. Las docs siguen la preferencia del sistema,
+   con los dos temas diseñados: noche (oscuro) y día (claro). → DESIGN.md § 2 y § 8
+
+   Lo que NO se toca: la estructura de Starlight. Se cambian tokens y tipografía, no
+   el layout: así una actualización de Starlight no rompe nada.
+   --------------------------------------------------------------------------- */
+@import './tokens.css';
+
+:root {
+  --sl-font: var(--font-sans);
+  --sl-font-mono: var(--font-mono);
+
+  /* Noche */
+  --sl-color-white: #f4f1ea;
+  --sl-color-gray-1: #e6e1d6;
+  --sl-color-gray-2: #d2ccbf;
+  --sl-color-gray-3: #9a968c;
+  --sl-color-gray-4: #6e6b64;
+  --sl-color-gray-5: #2a2e33;
+  --sl-color-gray-6: #171a1e;
+  --sl-color-black: #101215;
+
+  --sl-color-accent-low: #3a3000;
+  --sl-color-accent: #f5b700;
+  --sl-color-accent-high: #f5b700;
+  --sl-color-text: #e6e1d6;
+  --sl-color-text-accent: #f5b700;
+  --sl-color-text-invert: #15171a;
+  --sl-color-bg-nav: #101215;
+  --sl-color-bg-sidebar: #101215;
+  --sl-color-bg-inline-code: #1f2328;
+  --sl-color-hairline-light: #2a2e33;
+  --sl-color-hairline: #22262b;
+
+  /* Las asides no usan los colores de capa: esos solo dicen «qué capa» (DESIGN.md § 2). */
+  --sl-color-blue-low: #171a1e;
+  --sl-color-blue: #9a968c;
+  --sl-color-blue-high: #e6e1d6;
+  --sl-color-purple-low: #171a1e;
+  --sl-color-purple: #9a968c;
+  --sl-color-purple-high: #e6e1d6;
+  --sl-color-green-low: #171a1e;
+  --sl-color-green: #9a968c;
+  --sl-color-green-high: #e6e1d6;
+  --sl-color-orange-low: #2b2400;
+  --sl-color-orange: #f5b700;
+  --sl-color-orange-high: #f5d880;
+  --sl-color-red-low: #2b2400;
+  --sl-color-red: #f5b700;
+  --sl-color-red-high: #f5d880;
+
+  --sl-nav-height: 4rem;
+  --sl-text-h1: clamp(2.75rem, 5vw, 4rem);
+  --sl-text-h2: 2.125rem;
+  --sl-text-h3: 1.375rem;
+  --sl-text-h4: 1.125rem;
+}
+
+:root[data-theme='light'] {
+  /* Día: hormigón y tinta. El amarillo nunca es texto aquí (1,4:1). */
+  --sl-color-white: #15171a;
+  --sl-color-gray-1: #22252a;
+  --sl-color-gray-2: #34332f;
+  --sl-color-gray-3: #5a574f;
+  --sl-color-gray-4: #857f74;
+  --sl-color-gray-5: #c9c3b6;
+  --sl-color-gray-6: #dcd7cc;
+  --sl-color-gray-7: #f4f1ea;
+  --sl-color-black: #e9e5dc;
+
+  --sl-color-accent-low: #f7e3a3;
+  --sl-color-accent: #f5b700;
+  --sl-color-accent-high: #15171a;
+  --sl-color-text: #22252a;
+  --sl-color-text-accent: #15171a;
+  --sl-color-text-invert: #15171a;
+  --sl-color-bg-nav: #e9e5dc;
+  --sl-color-bg-sidebar: #e9e5dc;
+  --sl-color-bg-inline-code: #dcd7cc;
+  --sl-color-hairline-light: #c9c3b6;
+  --sl-color-hairline: #d3cdc1;
+  --sl-color-hairline-shade: #c9c3b6;
+
+  --sl-color-blue-low: #f4f1ea;
+  --sl-color-blue: #5a574f;
+  --sl-color-blue-high: #15171a;
+  --sl-color-purple-low: #f4f1ea;
+  --sl-color-purple: #5a574f;
+  --sl-color-purple-high: #15171a;
+  --sl-color-green-low: #f4f1ea;
+  --sl-color-green: #5a574f;
+  --sl-color-green-high: #15171a;
+  --sl-color-orange-low: #fbecc0;
+  --sl-color-orange: #15171a;
+  --sl-color-orange-high: #15171a;
+  --sl-color-red-low: #fbecc0;
+  --sl-color-red: #15171a;
+  --sl-color-red-high: #15171a;
+}
+
+/* Cero radios: candado 2. Solo se carga en las docs. */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+}
+
+/* ── Cabecera: la línea pintada del muelle debajo ──────────────────────────── */
+/* Solo el <header> de la página: `.header` lo usan también el div interior de Starlight y los
+   marcos de Expressive Code. */
+header.header {
+  border-bottom: 2px solid var(--sl-color-white);
+}
+
+/* ── Títulos ────────────────────────────────────────────────────────────── */
+h1#_top,
+.sl-markdown-content :is(h2) {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  line-height: 0.95;
+}
+
+h1#_top {
+  font-size: var(--sl-text-h1);
+}
+
+/* La línea del muelle a todo el ancho de la columna: va en el envoltorio que pone Starlight,
+   no en el h2, que mide lo que mide su texto. */
+.sl-markdown-content .sl-heading-wrapper.level-h2 {
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--sl-color-white);
+}
+
+.sl-markdown-content h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--sl-text-h3);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.sl-markdown-content h4 {
+  font-weight: 700;
+}
+
+/* ── Texto y enlaces ────────────────────────────────────────────────────── */
+.sl-markdown-content {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-white);
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  text-decoration-color: currentColor;
+}
+
+.sl-markdown-content :not(pre) > code {
+  font-variation-settings: 'wdth' 87.5;
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+}
+
+code,
+pre,
+kbd {
+  font-variation-settings: 'wdth' 87.5;
+}
+
+/* Tablas: manifiesto, filetes horizontales y cabecera en stencil. */
+.sl-markdown-content table {
+  font-size: 0.9375rem;
+}
+
+.sl-markdown-content th {
+  font-family: var(--font-stencil);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--sl-color-white);
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+.sidebar-content .group-label .large,
+.sidebar-content summary .group-label {
+  font-family: var(--font-stencil);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  color: var(--sl-color-white);
+}
+
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+  background-color: var(--color-accent);
+  color: #15171a;
+  font-weight: 600;
+}
+
+/* ── Foco ───────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+:root[data-theme='light'] :focus-visible {
+  outline-color: var(--color-ink);
+}
+
+/* ── Asides: «caution» y «danger» llevan la franja de señalización ───────── */
+.starlight-aside {
+  border-inline-start-width: 4px;
+}
+
+.starlight-aside--caution,
+.starlight-aside--danger {
+  border-image: var(--hazard) 1;
+  border-inline-start-width: 6px;
+}
+
+/* ── Etiquetas de capa, para usar en MDX: <span class="layer layer-business"> ─ */
+.layer {
+  display: inline-block;
+  padding: 0.05em 0.45em;
+  font-family: var(--font-stencil);
+  font-weight: 700;
+  font-size: 0.8em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #f4f1ea;
+  background: var(--layer);
+}
+
+.layer-business {
+  --layer: var(--color-layer-business);
+}
+.layer-infrastructure {
+  --layer: var(--color-layer-infrastructure);
+}
+.layer-presentation {
+  --layer: var(--color-layer-presentation);
+}
+
+/* Botones de Starlight (LinkButton, hero) con la forma de los de la home. */
+.sl-link-button.primary {
+  background: var(--color-accent);
+  color: #15171a;
+  border: 2px solid #15171a;
+}

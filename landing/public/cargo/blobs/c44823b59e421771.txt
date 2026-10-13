@@ -1,0 +1,27 @@
+[project]
+name = "shop"
+
+[[entity]]
+name = "Customer"
+use_cases = [
+    "create_customer",
+    "get_customer",
+    "list_customers",
+    "update_customer",
+    "delete_customer",
+]
+
+[[entity.fields]]
+name = "email"
+type = "String"
+unique = true
+value_object = "Email"
+
+[[entity.fields]]
+name = "name"
+type = "String"
+
+[[entity.fields]]
+name = "tags"
+type = "Vec<String>"
+value_object = "Tag"

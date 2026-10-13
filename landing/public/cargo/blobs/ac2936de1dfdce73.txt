@@ -1,0 +1,38 @@
+[project]
+name = "shop"
+db = true
+web = true
+auth = "oidc"
+
+[[entity]]
+name = "Customer"
+use_cases = [
+    "create_customer",
+    "get_customer",
+    "list_customers",
+    "update_customer",
+    "delete_customer",
+]
+db = true
+public = [
+    "list_customers",
+    "get_customer",
+]
+
+[entity.roles]
+delete_customer = ["admin"]
+
+[[entity.fields]]
+name = "email"
+type = "String"
+unique = true
+value_object = "Email"
+
+[[entity.fields]]
+name = "name"
+type = "String"
+
+[[entity.fields]]
+name = "tags"
+type = "Vec<String>"
+value_object = "Tag"

@@ -1,0 +1,65 @@
+---
+title: Layer by layer
+description: Generate an entity one layer at a time, domain first, to design the model before the plumbing or to keep a coding agent's context small.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+`puerto generate scaffold` is four generators run in order. Run them yourself when you want to
+stop between layers: to get the domain right before anything depends on it, or to give an agent
+one layer to work on at a time.
+
+<Steps>
+
+1. **The domain**, with its fields. They are written to `puerto.toml`, so the next commands pick
+   them up.
+
+   ```bash
+   puerto generate domain Invoice -- number:String! total:i64 due:DateTime
+   ```
+
+   The model, errors, value objects, the repository port and the five use case ports, plus the
+   Object Mother. This is the moment to write the rules in `Invoice::new` and run
+   `cargo test -p business`: nothing else exists yet that could break.
+
+2. **The application**: the five use case implementations and their tests.
+
+   ```bash
+   puerto generate application Invoice
+   ```
+
+3. **The repository**: in memory, or Postgres with its row and migration in a `--db` project.
+
+   ```bash
+   puerto generate repository Invoice
+   ```
+
+4. **The presentation**: routes, DTOs, responses, the error mapper. It regenerates
+   `bootstrap.rs`, so this is when the entity is wired and served.
+
+   ```bash
+   puerto generate presentation Invoice
+   ```
+
+5. **The screens**, in a web project.
+
+   ```bash
+   puerto generate web Invoice
+   make web/sync
+   ```
+
+</Steps>
+
+`application`, `repository`, `presentation` and `web` refuse an entity that is not in
+`puerto.toml` yet, and each one prints the next command.
+
+## When the wiring is out of date
+
+`bootstrap.rs` wires what `puerto.toml` declares. If the manifest lists an entity whose files are
+not on disk yet, `puerto generate bootstrap` refuses rather than write Rust that does not compile;
+`--allow-missing` writes it anyway, for the middle of a layer-by-layer session.
+
+```bash
+puerto validate              # what puerto.toml says against what is on disk
+puerto generate bootstrap    # rewrite bootstrap.rs (and events.rs, registry.rs, the web's generated files)
+```

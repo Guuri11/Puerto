@@ -1,0 +1,75 @@
+use crate::domain::customer::model::Customer;
+use crate::domain::customer::model::CustomerProps;
+use crate::domain::customer::value_objects::Email;
+use crate::domain::customer::value_objects::Tag;
+
+pub struct CustomerMother {
+    email: Option<Email>,
+    name: Option<String>,
+    tags: Option<Vec<Tag>>,
+}
+
+impl CustomerMother {
+    pub fn new() -> Self {
+        Self {
+            email: None,
+            name: None,
+            tags: None,
+        }
+    }
+
+    pub fn with_email(mut self, email: Email) -> Self {
+        self.email = Some(email);
+        self
+    }
+
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Vec<Tag>) -> Self {
+        self.tags = Some(tags);
+        self
+    }
+
+    pub fn with_empty_name(mut self) -> Self {
+        self.name = Some(String::new());
+        self
+    }
+
+    pub fn build(self) -> Customer {
+        Customer::new(CustomerProps {
+            email: self
+                .email
+                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+            tags: self.tags.unwrap_or_default(),
+        })
+        .expect("CustomerMother: failed to build valid Customer")
+    }
+
+    pub fn build_props(self) -> CustomerProps {
+        CustomerProps {
+            email: self
+                .email
+                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            name: self.name.unwrap_or_else(|| "example".to_string()),
+            tags: self.tags.unwrap_or_default(),
+        }
+    }
+
+    pub fn random() -> Customer {
+        Self::new().build()
+    }
+
+    pub fn random_vec(n: usize) -> Vec<Customer> {
+        (0..n).map(|_| Self::random()).collect()
+    }
+}
+
+impl Default for CustomerMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}

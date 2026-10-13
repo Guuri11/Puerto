@@ -1,0 +1,15 @@
+-- Puerto migration: create_product_table
+-- Run `make sqlx/prepare` after editing this file.
+
+CREATE TABLE products (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    price BIGINT NOT NULL,
+    sku TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;

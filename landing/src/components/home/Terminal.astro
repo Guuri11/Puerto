@@ -1,0 +1,1015 @@
+---
+/**
+ * La terminal: el visitante elige una carga (una entidad) y los flags de `puerto new`, y ve lo
+ * que escribe el CLI publicado. Nada de lo que enseña está escrito a mano: árbol, comandos,
+ * stdout y ficheros salen de `pnpm harvest` (scripts/harvest.mjs). → DESIGN.md § 8
+ *
+ * Se renderiza en el servidor con la combinación por defecto, para que sin JavaScript (y para
+ * los buscadores) haya contenido real. El script la reconstruye igual al cambiar algo.
+ */
+import { entities, matrix, readCargo, layerOf, harvestVersion } from '@/lib/cargo';
+
+const DEFAULT = { entity: 'product', db: true, events: null, auth: null, web: true };
+const comboId = (f: { db: boolean; events: string | null; auth: string | null; web: boolean }, e: string) =>
+  [f.db ? 'db' : 'nodb', f.events ? `ev-${f.events}` : 'noev', f.auth ? `auth-${f.auth}` : 'noauth', f.web ? 'web' : 'noweb'].join('_') + `__${e}`;
+
+const initial = readCargo(comboId(DEFAULT, DEFAULT.entity));
+const written = initial.files.filter((f) => f.status !== 'kept');
+
+const LAYER_ORDER = ['business', 'infrastructure', 'presentation', 'worker', 'web', 'root'] as const;
+const LAYER_LABEL: Record<string, string> = {
+  business: 'business',
+  infrastructure: 'infrastructure',
+  presentation: 'presentation',
+  worker: 'worker',
+  web: 'web',
+  root: 'project root',
+};
+
+function groups(files: typeof initial.files) {
+  return LAYER_ORDER.map((layer) => ({
+    layer,
+    files: files.filter((f) => layerOf(f.path) === layer),
+  })).filter((g) => g.files.length);
+}
+
+const split = (path: string) => {
+  const i = path.lastIndexOf('/');
+  return i < 0 ? { dir: '', name: path } : { dir: path.slice(0, i + 1), name: path.slice(i + 1) };
+};
+const inLayer = (path: string, layer: string) => (layer === 'root' ? path : path.slice(path.indexOf('/') + 1));
+
+const data = {
+  matrix: matrix.map((m) => ({ id: m.id })),
+  entities,
+  version: harvestVersion,
+  initial,
+};
+---
+
+<section class="try" id="try" aria-labelledby="try-title">
+  <div class="frame try__head">
+    <h2 class="h2" id="try-title" data-reveal>One command.<br />Every layer.</h2>
+    <p class="lede try__lede" data-reveal>
+      Pick an entity and the flags of <code>puerto new</code>. Every file below was written
+      by <code>puerto {harvestVersion}</code> itself, captured when this site was built.
+      Nothing is typed for the page.
+    </p>
+  </div>
+
+  <div class="frame">
+    <div class="term" data-terminal>
+      <script type="application/json" data-terminal-data set:html={JSON.stringify(data)} />
+
+      <div class="term__bar">
+        <span class="term__manifest">Manifest</span>
+        <span class="term__cargo" data-summary>
+          Cargo <b>{entities.find((e) => e.id === DEFAULT.entity)?.name}</b> ·
+          <b>{written.filter((f) => f.status === 'added').length}</b> files written ·
+          <b>{written.filter((f) => f.status === 'changed').length}</b> patched ·
+          {initial.files.length} in the project
+        </span>
+      </div>
+
+      <div class="term__tabs" role="tablist" aria-label="Terminal panels">
+        <button type="button" role="tab" aria-selected="true" aria-controls="term-compose" data-tab="compose">Compose</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="term-tree" data-tab="tree">Files</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="term-file" data-tab="file">Code</button>
+      </div>
+
+      <div class="term__grid" data-active="compose">
+        <form class="term__compose" id="term-compose" role="tabpanel" data-panel="compose" aria-label="What to generate">
+          <fieldset class="term__set">
+            <legend class="term__legend">Cargo</legend>
+            {
+              entities.map((e) => (
+                <label class="term__cargo-option">
+                  <input type="radio" name="entity" value={e.id} checked={e.id === DEFAULT.entity} />
+                  <span class="term__cargo-name">{e.name}</span>
+                  <span class="term__cargo-fields">{e.fields.join(' ')}</span>
+                </label>
+              ))
+            }
+          </fieldset>
+
+          <fieldset class="term__set">
+            <legend class="term__legend">puerto new</legend>
+            <label class="term__flag">
+              <input type="checkbox" name="db" checked={DEFAULT.db} />
+              <span><code>--db</code> Postgres and SQLx</span>
+            </label>
+            <label class="term__flag">
+              <input type="checkbox" name="web" checked={DEFAULT.web} />
+              <span><code>web/</code> React frontend <small>(off: <code>--no-web</code>)</small></span>
+            </label>
+            <div class="term__choice" role="radiogroup" aria-label="Domain events">
+              <span class="term__choice-label"><code>--events</code></span>
+              {
+                [
+                  ['', 'none'],
+                  ['db', 'db'],
+                  ['kafka', 'kafka'],
+                ].map(([v, t]) => (
+                  <label class="term__pill">
+                    <input type="radio" name="events" value={v} checked={v === ''} />
+                    <span>{t}</span>
+                  </label>
+                ))
+              }
+            </div>
+            <div class="term__choice" role="radiogroup" aria-label="Authentication">
+              <span class="term__choice-label"><code>--auth</code></span>
+              {
+                [
+                  ['', 'none'],
+                  ['oidc', 'oidc'],
+                  ['local', 'local'],
+                ].map(([v, t]) => (
+                  <label class="term__pill">
+                    <input type="radio" name="auth" value={v} checked={v === ''} />
+                    <span>{t}</span>
+                  </label>
+                ))
+              }
+            </div>
+            <p class="term__hint" data-hint>Events and local accounts need <code>--db</code>.</p>
+          </fieldset>
+
+          <div class="term__commands">
+            <div class="term__commands-head">
+              <span class="term__legend">Run</span>
+              <button type="button" class="term__copy" data-copy-commands aria-live="polite">Copy</button>
+            </div>
+            <pre class="term__cmd" data-commands>{initial.commands.map((c) => `$ ${c}`).join('\n')}</pre>
+          </div>
+        </form>
+
+        <div class="term__tree" id="term-tree" role="tabpanel" aria-label="Files" data-panel="tree">
+          <div class="term__tree-head">
+            <span class="term__legend">Files</span>
+            <div class="term__scope" role="radiogroup" aria-label="Which files">
+              <label class="term__pill">
+                <input type="radio" name="scope" value="written" checked />
+                <span>Scaffold wrote</span>
+              </label>
+              <label class="term__pill">
+                <input type="radio" name="scope" value="all" />
+                <span>Whole project</span>
+              </label>
+            </div>
+          </div>
+          <div class="term__tree-body" data-tree>
+            <button type="button" class="term__row term__row--stdout" data-stdout aria-current="true">
+              <span class="term__row-name">stdout</span>
+              <span class="term__row-meta">what the CLI printed</span>
+            </button>
+            {
+              groups(written).map((g) => (
+                <div class={`term__group term__group--${g.layer}`}>
+                  <div class="term__group-head">
+                    <span class="term__group-name">{LAYER_LABEL[g.layer]}</span>
+                    <span class="term__group-count">{g.files.length}</span>
+                  </div>
+                  <ul>
+                    {g.files.map((f) => {
+                      const { dir, name } = split(inLayer(f.path, g.layer));
+                      return (
+                        <li>
+                          <button type="button" class="term__row" data-hash={f.hash} data-path={f.path}>
+                            <span class="term__row-name">
+                              <span class="term__row-dir">{dir}</span>
+                              {name}
+                            </span>
+                            <span class={`term__badge term__badge--${f.status}`}>
+                              {f.status === 'added' ? '+' : f.status === 'changed' ? '~' : ''}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+
+        <div class="term__file" id="term-file" role="tabpanel" aria-label="Code" data-panel="file">
+          <div class="term__file-head">
+            <span class="term__file-path" data-file-path aria-live="polite">stdout</span>
+            <span class="term__file-meta" data-file-meta></span>
+          </div>
+          <div class="term__file-body" data-file-body tabindex="0" aria-label="File contents">
+            <pre class="term__stdout">{initial.commands.map((c, i) => `$ ${c}\n${i === 0 ? initial.stdout.new : initial.stdout.scaffold}`).join('\n')}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style is:global>
+  /* Global a propósito: el árbol y el visor se pintan con innerHTML desde el script, y el CSS
+     con scope de Astro no llega a ese HTML. Todo va con el prefijo `term__` / `try`. */
+  .try {
+    padding-block: clamp(4rem, 9vw, 7rem) clamp(5rem, 12vw, 10rem);
+  }
+
+  .try__head {
+    display: grid;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  @media (width >= 1024px) {
+    .try__head {
+      grid-template-columns: 1fr 1fr;
+      align-items: end;
+    }
+  }
+
+  .try__lede code {
+    font-size: 0.85em;
+  }
+
+  /* ── El panel de noche ─────────────────────────────────────────────────── */
+  .term {
+    --term-ink: var(--color-night-ink);
+    --term-muted: var(--color-night-muted);
+    --term-rule: var(--color-night-rule);
+    background: var(--color-night);
+    color: var(--term-ink);
+    border: 2px solid var(--color-ink);
+    box-shadow: var(--shadow-hard-lg);
+    font-size: 0.875rem;
+  }
+
+  .term :focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
+  .term__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--term-rule);
+    background: var(--color-night-surface);
+  }
+
+  .term__manifest {
+    padding: 0.15rem 0.5rem;
+    background: var(--color-accent);
+    color: var(--color-ink);
+    font-family: var(--font-stencil);
+    font-weight: 800;
+    font-size: 0.8125rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .term__cargo {
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 87.5;
+    font-size: 0.75rem;
+    color: var(--term-muted);
+  }
+
+  .term__cargo b {
+    color: var(--term-ink);
+    font-weight: 600;
+  }
+
+  /* Pestañas: solo en móvil y tableta. → DESIGN.md § 9 */
+  .term__tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-bottom: 1px solid var(--term-rule);
+  }
+
+  .term__tabs button {
+    min-height: 44px;
+    background: none;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    color: var(--term-muted);
+    font-family: var(--font-stencil);
+    font-weight: 700;
+    font-size: 0.875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .term__tabs button[aria-selected='true'] {
+    color: var(--term-ink);
+    border-bottom-color: var(--color-accent);
+  }
+
+  .term__grid > [data-panel] {
+    display: none;
+  }
+
+  .term__grid[data-active='compose'] > [data-panel='compose'],
+  .term__grid[data-active='tree'] > [data-panel='tree'],
+  .term__grid[data-active='file'] > [data-panel='file'] {
+    display: block;
+  }
+
+  @media (width >= 1024px) {
+    .term__tabs {
+      display: none;
+    }
+
+    .term__grid {
+      display: grid;
+      grid-template-columns: minmax(17rem, 0.95fr) minmax(16rem, 1fr) minmax(0, 1.9fr);
+      height: min(46rem, 80vh);
+    }
+
+    .term__grid > [data-panel] {
+      display: block !important;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .term__compose,
+    .term__tree {
+      border-right: 1px solid var(--term-rule);
+    }
+  }
+
+  /* ── Compositor ─────────────────────────────────────────────────────────── */
+  .term__compose {
+    padding: 1rem;
+  }
+
+  .term__set {
+    border: 0;
+    margin: 0 0 1.25rem;
+    padding: 0;
+  }
+
+  .term__legend {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-family: var(--font-stencil);
+    font-weight: 700;
+    font-size: 0.8125rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--term-muted);
+  }
+
+  .term input {
+    accent-color: var(--color-accent);
+  }
+
+  .term__cargo-option {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.625rem;
+    align-items: baseline;
+    min-height: 44px;
+    padding: 0.5rem 0.625rem;
+    border: 1px solid var(--term-rule);
+    margin-bottom: -1px;
+    cursor: pointer;
+  }
+
+  .term__cargo-option:has(input:checked) {
+    border-color: var(--color-accent);
+    position: relative;
+    background: rgb(245 183 0 / 0.07);
+  }
+
+  .term__cargo-name {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.25rem;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .term__cargo-fields {
+    grid-column: 2;
+    margin-top: 0.25rem;
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 80;
+    font-size: 0.6875rem;
+    color: var(--term-muted);
+    word-break: break-word;
+  }
+
+  .term__flag {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-height: 44px;
+    cursor: pointer;
+  }
+
+  .term__flag small {
+    color: var(--term-muted);
+  }
+
+  .term code {
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 87.5;
+    font-size: 0.8125rem;
+    color: var(--color-accent);
+  }
+
+  .term__choice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 44px;
+  }
+
+  .term__choice-label {
+    width: 4.5rem;
+  }
+
+  .term__pill {
+    position: relative;
+    cursor: pointer;
+  }
+
+  .term__pill input {
+    position: absolute;
+    opacity: 0;
+    inset: 0;
+    cursor: pointer;
+  }
+
+  .term__pill span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding-inline: 0.625rem;
+    border: 1px solid var(--term-rule);
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 87.5;
+    font-size: 0.75rem;
+  }
+
+  @media (pointer: coarse) {
+    .term__pill span {
+      min-height: 44px;
+    }
+  }
+
+  .term__pill input:checked + span {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .term__pill input:focus-visible + span {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .term__pill input:disabled + span {
+    opacity: 0.35;
+    text-decoration: line-through;
+    cursor: not-allowed;
+  }
+
+  .term__hint {
+    margin: 0.5rem 0 0;
+    font-size: 0.75rem;
+    color: var(--term-muted);
+  }
+
+  .term__commands-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .term__copy {
+    min-height: 32px;
+    padding-inline: 0.75rem;
+    background: none;
+    border: 1px solid var(--term-rule);
+    color: var(--term-ink);
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .term__cmd {
+    margin: 0;
+    padding: 0.75rem;
+    background: var(--color-night-surface);
+    border: 1px solid var(--term-rule);
+    font-size: 0.75rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* ── Árbol ──────────────────────────────────────────────────────────────── */
+  .term__tree-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-night);
+    border-bottom: 1px solid var(--term-rule);
+  }
+
+  .term__tree-head .term__legend {
+    margin: 0;
+  }
+
+  .term__scope {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .term__tree-body {
+    padding: 0.5rem 0 1rem;
+  }
+
+  .term__group {
+    --layer: var(--term-muted);
+    margin-top: 0.75rem;
+  }
+
+  .term__group--business {
+    --layer: var(--color-layer-business-night);
+  }
+  .term__group--infrastructure {
+    --layer: var(--color-layer-infrastructure-night);
+  }
+  .term__group--presentation {
+    --layer: var(--color-layer-presentation-night);
+  }
+
+  .term__group-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0 1rem 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-left: 6px solid var(--layer);
+    background: color-mix(in oklab, var(--layer) 16%, transparent);
+  }
+
+  .term__group-name {
+    font-family: var(--font-stencil);
+    font-weight: 800;
+    font-size: 0.9375rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--layer);
+  }
+
+  .term__group-count {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--term-muted);
+  }
+
+  .term__tree ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .term__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 32px;
+    padding: 0.25rem 1rem 0.25rem 1.5rem;
+    background: none;
+    border: 0;
+    border-left: 3px solid transparent;
+    color: var(--term-ink);
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 80;
+    font-size: 0.75rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  @media (pointer: coarse) {
+    .term__row {
+      min-height: 44px;
+    }
+  }
+
+  .term__row:hover {
+    background: var(--color-night-surface);
+  }
+
+  .term__row[aria-current='true'] {
+    background: var(--color-night-surface);
+    border-left-color: var(--color-accent);
+  }
+
+  /* La carpeta en su línea, más pequeña; el nombre del fichero entero debajo. */
+  .term__row-dir {
+    display: block;
+    color: var(--term-muted);
+    font-size: 0.625rem;
+    overflow-wrap: anywhere;
+  }
+
+  .term__row-dir:empty {
+    display: none;
+  }
+
+  .term__row-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .term__row--stdout {
+    padding-left: 1rem;
+  }
+
+  .term__row-meta {
+    color: var(--term-muted);
+    font-size: 0.6875rem;
+  }
+
+  .term__badge {
+    flex-shrink: 0;
+    width: 1rem;
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .term__badge--added {
+    color: var(--color-layer-presentation-night);
+  }
+
+  .term__badge--changed {
+    color: var(--color-accent);
+  }
+
+  /* ── Fichero ────────────────────────────────────────────────────────────── */
+  /* El visor es una columna: cabecera fija y cuerpo con scroll. */
+  .term__grid[data-active='file'] > .term__file {
+    display: flex;
+    flex-direction: column;
+  }
+
+  @media (width >= 1024px) {
+    .term__grid > .term__file {
+      display: flex !important;
+      flex-direction: column;
+    }
+  }
+
+  .term__file-head {
+    position: sticky;
+    top: 0;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--term-rule);
+    background: var(--color-night);
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 87.5;
+    font-size: 0.75rem;
+  }
+
+  .term__file-path {
+    overflow-wrap: anywhere;
+  }
+
+  .term__file-meta {
+    flex-shrink: 0;
+    color: var(--term-muted);
+  }
+
+  .term__file-body {
+    flex: 1;
+    min-height: 20rem;
+    overflow: auto;
+  }
+
+  .term__file-body pre,
+  .term__stdout {
+    margin: 0;
+    padding: 1rem;
+    background: transparent !important;
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 87.5;
+    font-size: 0.75rem;
+    line-height: 1.65;
+    tab-size: 4;
+  }
+
+  .term__stdout {
+    white-space: pre-wrap;
+    color: var(--term-ink);
+  }
+
+  @media (width < 1024px) {
+    .term__file-body {
+      max-height: 70vh;
+    }
+  }
+
+  /* Al final a propósito: con dedo, todo lo pulsable de la terminal llega a 44px y tiene que
+     ganar a las alturas de escritorio declaradas arriba. */
+  @media (pointer: coarse) {
+    .term__copy,
+    .term__row {
+      min-height: 44px;
+    }
+  }
+
+  .term__note {
+    margin: 0;
+    padding: 1rem;
+    color: var(--term-muted);
+  }
+</style>
+
+<script>
+  import { gsap } from 'gsap';
+
+  type Status = 'added' | 'changed' | 'kept';
+  interface CargoFile {
+    path: string;
+    hash: string;
+    status: Status;
+    lines: number;
+  }
+  interface Cargo {
+    id: string;
+    commands: string[];
+    stdout: { new: string; scaffold: string };
+    files: CargoFile[];
+  }
+  interface Data {
+    matrix: { id: string }[];
+    entities: { id: string; name: string; fields: string[] }[];
+    version: string;
+    initial: Cargo;
+  }
+
+  const LAYERS = ['business', 'infrastructure', 'presentation', 'worker', 'web', 'root'] as const;
+  const LABEL: Record<string, string> = {
+    business: 'business',
+    infrastructure: 'infrastructure',
+    presentation: 'presentation',
+    worker: 'worker',
+    web: 'web',
+    root: 'project root',
+  };
+  const layerOf = (p: string) => {
+    const top = p.split('/')[0];
+    return (LAYERS as readonly string[]).includes(top) && top !== 'root' ? top : 'root';
+  };
+  const esc = (s: string) =>
+    s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+  const root = document.querySelector<HTMLElement>('[data-terminal]');
+  if (root) {
+    const data: Data = JSON.parse(root.querySelector('[data-terminal-data]')!.textContent!);
+    const form = root.querySelector<HTMLFormElement>('.term__compose')!;
+    const tree = root.querySelector<HTMLElement>('[data-tree]')!;
+    const grid = root.querySelector<HTMLElement>('.term__grid')!;
+    const filePath = root.querySelector<HTMLElement>('[data-file-path]')!;
+    const fileMeta = root.querySelector<HTMLElement>('[data-file-meta]')!;
+    const fileBody = root.querySelector<HTMLElement>('[data-file-body]')!;
+    const commandsEl = root.querySelector<HTMLElement>('[data-commands]')!;
+    const summary = root.querySelector<HTMLElement>('[data-summary]')!;
+    const scopeInputs = root.querySelectorAll<HTMLInputElement>('input[name="scope"]');
+
+    const motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const cargoCache = new Map<string, Promise<Cargo>>([[data.initial.id, Promise.resolve(data.initial)]]);
+    const codeCache = new Map<string, Promise<string>>();
+    let current: Cargo = data.initial;
+    let selected: string | null = null; // hash, or null for stdout
+    let shown = new Set(data.initial.files.filter((f) => f.status !== 'kept').map((f) => f.path));
+
+    const state = () => {
+      const fd = new FormData(form);
+      return {
+        entity: String(fd.get('entity')),
+        db: fd.get('db') === 'on',
+        web: fd.get('web') === 'on',
+        events: (fd.get('events') as string) || null,
+        auth: (fd.get('auth') as string) || null,
+      };
+    };
+
+    const comboId = (s: ReturnType<typeof state>) =>
+      [s.db ? 'db' : 'nodb', s.events ? `ev-${s.events}` : 'noev', s.auth ? `auth-${s.auth}` : 'noauth', s.web ? 'web' : 'noweb'].join('_') +
+      `__${s.entity}`;
+
+    /** `--events` y `--auth local` necesitan `--db`, como en el CLI. */
+    const enforce = () => {
+      const db = (form.elements.namedItem('db') as HTMLInputElement).checked;
+      form.querySelectorAll<HTMLInputElement>('input[name="events"]').forEach((i) => {
+        i.disabled = !db && i.value !== '';
+        if (i.disabled && i.checked) form.querySelector<HTMLInputElement>('input[name="events"][value=""]')!.checked = true;
+      });
+      const local = form.querySelector<HTMLInputElement>('input[name="auth"][value="local"]')!;
+      local.disabled = !db;
+      if (local.disabled && local.checked) form.querySelector<HTMLInputElement>('input[name="auth"][value=""]')!.checked = true;
+    };
+
+    /** La combinación vive en la URL, para poder enlazarla desde las docs o un mensaje. */
+    const syncUrl = () => {
+      const s = state();
+      const q = new URLSearchParams();
+      if (s.entity !== 'product') q.set('cargo', s.entity);
+      if (!s.db) q.set('db', '0');
+      if (!s.web) q.set('web', '0');
+      if (s.events) q.set('events', s.events);
+      if (s.auth) q.set('auth', s.auth);
+      const query = q.toString();
+      history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
+    };
+
+    const fromUrl = () => {
+      const q = new URLSearchParams(location.search);
+      if (![...q.keys()].length) return false;
+      const set = (name: string, value: string) => {
+        const input = form.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
+        if (input) input.checked = true;
+      };
+      if (q.get('cargo')) set('entity', q.get('cargo')!);
+      (form.elements.namedItem('db') as HTMLInputElement).checked = q.get('db') !== '0';
+      (form.elements.namedItem('web') as HTMLInputElement).checked = q.get('web') !== '0';
+      set('events', q.get('events') ?? '');
+      set('auth', q.get('auth') ?? '');
+      return true;
+    };
+
+    const loadCargo = (id: string) => {
+      if (!cargoCache.has(id)) cargoCache.set(id, fetch(`/cargo/${id}.json`).then((r) => r.json()));
+      return cargoCache.get(id)!;
+    };
+
+    const loadCode = (hash: string) => {
+      if (!codeCache.has(hash)) codeCache.set(hash, fetch(`/cargo/hl/${hash}.html`).then((r) => r.text()));
+      return codeCache.get(hash)!;
+    };
+
+    const scope = () => [...scopeInputs].find((i) => i.checked)?.value ?? 'written';
+
+    const renderSummary = () => {
+      const entity = data.entities.find((e) => current.id.endsWith(`__${e.id}`));
+      const added = current.files.filter((f) => f.status === 'added').length;
+      const changed = current.files.filter((f) => f.status === 'changed').length;
+      summary.innerHTML = `Cargo <b>${esc(entity?.name ?? '')}</b> · <b>${added}</b> files written · <b>${changed}</b> patched · ${current.files.length} in the project`;
+      commandsEl.textContent = current.commands.map((c) => `$ ${c}`).join('\n');
+    };
+
+    const renderTree = () => {
+      const files = scope() === 'all' ? current.files : current.files.filter((f) => f.status !== 'kept');
+      const before = shown;
+      shown = new Set(files.map((f) => f.path));
+      const html = [
+        `<button type="button" class="term__row term__row--stdout" data-stdout aria-current="${selected === null}"><span class="term__row-name">stdout</span><span class="term__row-meta">what the CLI printed</span></button>`,
+      ];
+      for (const layer of LAYERS) {
+        const group = files.filter((f) => layerOf(f.path) === layer);
+        if (!group.length) continue;
+        html.push(
+          `<div class="term__group term__group--${layer}"><div class="term__group-head"><span class="term__group-name">${LABEL[layer]}</span><span class="term__group-count">${group.length}</span></div><ul>`,
+        );
+        for (const f of group) {
+          const rel = layer === 'root' ? f.path : f.path.slice(f.path.indexOf('/') + 1);
+          const cut = rel.lastIndexOf('/') + 1;
+          const badge = f.status === 'added' ? '+' : f.status === 'changed' ? '~' : '';
+          const isNew = !before.has(f.path) ? ' data-new' : '';
+          html.push(
+            `<li><button type="button" class="term__row" data-hash="${f.hash}" data-path="${esc(f.path)}" aria-current="${selected === f.hash}"${isNew}><span class="term__row-name"><span class="term__row-dir">${esc(rel.slice(0, cut))}</span>${esc(rel.slice(cut))}</span><span class="term__badge term__badge--${f.status}" aria-label="${f.status}">${badge}</span></button></li>`,
+          );
+        }
+        html.push('</ul></div>');
+      }
+      tree.innerHTML = html.join('');
+
+      // Estiba: lo que acaba de llegar baja de la grúa. Comunica qué cambió. → DESIGN.md § 10
+      if (motion) {
+        const arrived = tree.querySelectorAll('[data-new]');
+        if (arrived.length && arrived.length < 120) {
+          gsap.from(arrived, { y: -12, opacity: 0, duration: 0.35, ease: 'power2.out', stagger: 0.012 });
+        }
+      }
+    };
+
+    const showStdout = () => {
+      selected = null;
+      filePath.textContent = 'stdout';
+      fileMeta.textContent = `puerto ${data.version}`;
+      const text = current.commands
+        .map((c, i) => `$ ${c}\n${i === 0 ? current.stdout.new : current.stdout.scaffold}`)
+        .join('\n');
+      fileBody.innerHTML = `<pre class="term__stdout">${esc(text)}</pre>`;
+    };
+
+    const showFile = async (hash: string, path: string) => {
+      selected = hash;
+      const f = current.files.find((x) => x.hash === hash && x.path === path);
+      filePath.textContent = path;
+      fileMeta.textContent = f ? `${f.lines} lines · ${f.status === 'added' ? 'written' : f.status === 'changed' ? 'patched' : 'from puerto new'}` : '';
+      fileBody.setAttribute('aria-busy', 'true');
+      fileBody.innerHTML = '<p class="term__note">Loading…</p>';
+      let html: string;
+      try {
+        html = await loadCode(hash);
+      } catch {
+        codeCache.delete(hash);
+        fileBody.innerHTML = '<p class="term__note">This file did not load. Check your connection and pick it again.</p>';
+        fileBody.removeAttribute('aria-busy');
+        return;
+      }
+      if (selected !== hash) return;
+      // Fragmento estático generado en build por este mismo sitio (src/pages/cargo/hl/).
+      fileBody.innerHTML = html;
+      fileBody.removeAttribute('aria-busy');
+      fileBody.scrollTop = 0;
+    };
+
+    const select = (btn: HTMLElement) => {
+      tree.querySelectorAll('.term__row').forEach((r) => r.setAttribute('aria-current', 'false'));
+      btn.setAttribute('aria-current', 'true');
+      if (btn.hasAttribute('data-stdout')) showStdout();
+      else void showFile(btn.dataset.hash!, btn.dataset.path!);
+      if (!window.matchMedia('(width >= 1024px)').matches) setTab('file');
+    };
+
+    const update = async () => {
+      enforce();
+      const id = comboId(state());
+      syncUrl();
+      let next: Cargo;
+      try {
+        next = await loadCargo(id);
+      } catch {
+        cargoCache.delete(id);
+        fileBody.innerHTML = '<p class="term__note">This combination did not load. Check your connection and change a flag again.</p>';
+        return;
+      }
+      if (comboId(state()) !== id) return; // llegó tarde: ya se eligió otra cosa
+      const keepPath = selected ? current.files.find((f) => f.hash === selected)?.path : null;
+      current = next;
+      renderSummary();
+      const still = keepPath ? current.files.find((f) => f.path === keepPath) : null;
+      selected = still ? still.hash : null;
+      renderTree();
+      if (still) void showFile(still.hash, still.path);
+      else showStdout();
+    };
+
+    const setTab = (name: string) => {
+      grid.dataset.active = name;
+      root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((t) =>
+        t.setAttribute('aria-selected', String(t.dataset.tab === name)),
+      );
+    };
+
+    form.addEventListener('change', () => void update());
+    scopeInputs.forEach((i) => i.addEventListener('change', renderTree));
+    tree.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.term__row');
+      if (btn) select(btn);
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((t) =>
+      t.addEventListener('click', () => setTab(t.dataset.tab!)),
+    );
+
+    const copy = root.querySelector<HTMLButtonElement>('[data-copy-commands]')!;
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(current.commands.join('\n'));
+        copy.textContent = 'Copied';
+      } catch {
+        copy.textContent = 'Select and copy';
+      }
+      setTimeout(() => (copy.textContent = 'Copy'), 1600);
+    });
+
+    if (fromUrl()) void update();
+    else {
+      enforce();
+      showStdout();
+    }
+  }
+</script>

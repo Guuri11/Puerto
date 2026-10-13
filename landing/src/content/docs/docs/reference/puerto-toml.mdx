@@ -1,0 +1,122 @@
+---
+title: The puerto.toml manifest
+description: The full schema of puerto.toml, the manifest every Puerto generator reads and updates - project flags, entities, fields, value objects, consumers and mails.
+---
+
+`puerto.toml` is the source of truth of a project. The generators write it, `bootstrap.rs`,
+`events.rs`, `registry.rs` and the frontend's generated files are derived from it, and
+`puerto validate` checks the code against it. You can edit it by hand; run
+`puerto generate bootstrap` and `puerto validate` afterwards.
+
+A complete example, from a project with a database, events, auth and a mail:
+
+```toml title="puerto.toml"
+[project]
+name = "shop"
+db = true
+web = true
+events = "db"
+auth = "local"
+
+[[entity]]
+name = "Product"
+use_cases = [
+    "create_product",
+    "get_product",
+    "list_products",
+    "update_product",
+    "delete_product",
+    "reprice_product",
+]
+db = true
+public = ["list_products", "get_product"]
+events = ["product_published"]
+
+[entity.roles]
+delete_product = ["admin"]
+
+[[entity.fields]]
+name = "name"
+type = "String"
+
+[[entity.fields]]
+name = "sku"
+type = "String"
+unique = true
+
+[[entity.fields]]
+name = "status"
+type = "String"
+value_object = "Status"
+value_object_kind = "enum"
+enum_variants = ["Draft", "Published"]
+
+[[value_object]]
+name = "Email"
+type = "String"
+
+[[consumer]]
+name = "notify_new_product"
+events = ["product_created", "product_published"]
+
+[[mail]]
+name = "welcome"
+on = ["customer_created"]
+```
+
+## `[project]`
+
+| Key | Type | Set by | Meaning |
+|---|---|---|---|
+| `name` | string | `new --name` | The project's name: crates, database, topics |
+| `db` | bool | `new --db` | Postgres through SQLx. Absent means `false` |
+| `web` | bool | `new` (default), `--no-web` | The React frontend in `web/` |
+| `events` | `"db"` \| `"kafka"` | `new --events` | Domain events and their transport. Needs `db` |
+| `auth` | `"oidc"` \| `"local"` | `new --auth` | Authentication mode. `local` needs `db` |
+
+## `[[entity]]`
+
+| Key | Type | Set by | Meaning |
+|---|---|---|---|
+| `name` | string | `scaffold`, `domain` | PascalCase |
+| `use_cases` | string[] | `scaffold`, `use-case` | Every use case `bootstrap.rs` wires. The five CRUD ones make it a CRUD entity, with routes and screens |
+| `db` | bool | `scaffold` in a `db` project | Postgres repository instead of in memory |
+| `public` | string[] | `scaffold --public` | Auth projects: use cases whose routes need no token |
+| `roles` | table | `scaffold --role` | Auth projects: `use_case = ["role", …]`; the caller needs all of them |
+| `events` | string[] | `generate event` | Custom event types, beyond `_created`, `_updated`, `_deleted` |
+
+## `[[entity.fields]]`
+
+| Key | Type | Meaning |
+|---|---|---|
+| `name` | string | snake_case |
+| `type` | string | `String`, `i64`, `f64`, `bool`, `Uuid`, `DateTime<Utc>`, `HashMap<String, String>`, or `Option<…>` / `Vec<…>` of them. See [Field types](/docs/reference/field-types/) |
+| `unique` | bool | A partial unique index, and `409` on a duplicate |
+| `value_object` | string | The value object wrapping it, local or shared |
+| `value_object_kind` | `"enum"` | An enum value object; `type` is then `String` |
+| `enum_variants` | string[] | Its PascalCase variants |
+
+## `[[value_object]]`
+
+Shared value objects, declared by `generate value-object`: `name` (PascalCase) and `type` (its
+inner primitive). A field that names one without a type uses this one.
+
+## `[[consumer]]`
+
+Events projects. Written by `generate consumer`: `name` (snake_case, the handler's file and its
+consumer group) and `events` (the event types it handles). A consumer whose file is missing makes
+`validate` fail and `generate bootstrap` refuse.
+
+## `[[mail]]`
+
+Written by `generate mail`: `name`, and `on` when the worker sends it on events.
+
+## What `puerto validate` checks
+
+- Names: PascalCase entities, snake_case fields and use cases, no Rust keywords, no SQL reserved
+  words in `db` projects, no names the generated code already uses.
+- Types: every field type is one Puerto generates, and every shared value object exists.
+- Consistency: `events` and `auth = "local"` need `db`; every declared entity, consumer and mail
+  has its files; in web projects, every CRUD entity has its screens; in auth projects, each
+  route's `BearerAuth` and `#[require_role]` match `public` and `roles`.
+- The runtime: a warning for each `puerto-*` crate on another minor than the CLI.

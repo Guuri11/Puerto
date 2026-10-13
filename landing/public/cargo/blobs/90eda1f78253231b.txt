@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/order/messages";
+import type { Order } from "../../../../domain/order/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
+import { OrderFormView, toOrderDraft, toOrderForm } from "../views/order-form-view";
+
+/** Creates an order, or edits the one with `id`. */
+export function OrderFormContainer({ id }: { id?: string }) {
+  const { orderRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : orderRepository.get(id)),
+    [orderRepository, id],
+  );
+  const title = id === undefined ? "New order" : "Edit order";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <OrderForm existing={existing.data} />}
+      <Link href={id === undefined ? "/orders" : `/orders/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function OrderForm({ existing }: { existing: Order | null }) {
+  const { orderRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toOrderForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toOrderDraft(values);
+      const saved =
+        existing === null
+          ? await orderRepository.create(draft)
+          : await orderRepository.update(existing.id, draft);
+      navigate(`/orders/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <OrderFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
+      </div>
+    </div>
+  );
+}

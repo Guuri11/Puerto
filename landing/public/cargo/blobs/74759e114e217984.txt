@@ -1,0 +1,62 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "../../../core/auth";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { CustomerDetailView } from "../views/customer-detail-view";
+
+export function CustomerDetailContainer({ id }: { id: string }) {
+  const { customerRepository } = useDependencies();
+  const { can } = useAuth();
+  const customer = useAsync(() => customerRepository.get(id), [customerRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await customerRepository.remove(id);
+      navigate("/customers");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Customer</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {customer.status === "loading" && <span className="loading loading-spinner" />}
+      {customer.status === "error" && <ErrorAlert error={customer.error} />}
+      {customer.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <CustomerDetailView customer={customer.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/customers/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              {can("admin") && (
+                <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/customers" className="link">
+        Back to customers
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this customer?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}

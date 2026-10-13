@@ -1,24 +1,38 @@
 {
-  "name": "puerto-framework-web",
+  "name": "puerto-site",
   "type": "module",
-  "version": "0.0.1",
-  "engines": {
-    "node": ">=22.0.0"
-  },
+  "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
+    "sync": "node scripts/sync-repo-docs.mjs",
+    "dev": "node scripts/sync-repo-docs.mjs && astro dev",
+    "build": "node scripts/sync-repo-docs.mjs && astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "check": "node scripts/sync-repo-docs.mjs && astro check",
+    "harvest": "node scripts/harvest.mjs",
+    "test:e2e": "pnpm build && astro preview stop > /dev/null 2>&1; astro preview --port 4347 > /dev/null && playwright test",
+    "capture:compiler": "node scripts/capture-compiler.mjs",
+    "brand:images": "node scripts/brand-images.mjs",
+    "brand:repo": "node scripts/repo-brand.mjs"
   },
   "dependencies": {
-    "@astrojs/sitemap": "^3.7.1",
-    "@tailwindcss/vite": "^4.2.1",
-    "astro": "^6.0.4",
-    "gsap": "^3.14.2",
-    "tailwindcss": "^4.2.1"
+    "@astrojs/sitemap": "^3.7.3",
+    "@astrojs/starlight": "^0.42.6",
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource-variable/big-shoulders": "^5.3.0",
+    "@fontsource-variable/big-shoulders-stencil": "^5.3.0",
+    "@fontsource-variable/martian-mono": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.3.8",
+    "gsap": "^3.15.0",
+    "shiki": "4.4.3",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2"
-  }
+    "@astrojs/check": "^0.9.10",
+    "@playwright/test": "^1.50.0",
+    "sharp": "^0.35.4",
+    "typescript": "^6.0.3"
+  },
+  "packageManager": "pnpm@11.9.0"
 }

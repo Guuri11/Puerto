@@ -1,0 +1,22 @@
+SERVICE_PORT=8080
+ENV=development
+RUST_LOG=info
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# Database
+DB_HOST_PORT=5432
+DATABASE_URL=postgres://devuser:password@localhost:5432/shop
+
+# Worker
+WORKER_PORT=8081
+
+# Kafka (Redpanda in docker-compose.yml)
+KAFKA_BROKERS=localhost:9092
+
+# Auth — the OpenID Connect provider (ADR-0021). Keycloak (docker-compose.yml) in
+# development: `make auth/ui`; sign in as admin@shop.localhost / admin-dev-only.
+# Auth0: AUTH_ISSUER=https://<tenant>.auth0.com/, AUTH_AUDIENCE=<the API identifier>,
+# AUTH_ROLES_CLAIM=<the claim an Action adds, e.g. https://example.com/roles>
+AUTH_ISSUER=http://localhost:8180/realms/shop
+AUTH_AUDIENCE=api
+AUTH_ROLES_CLAIM=realm_access.roles

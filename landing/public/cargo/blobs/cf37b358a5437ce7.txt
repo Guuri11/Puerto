@@ -1,0 +1,13 @@
+-- Puerto migration: create_order_table
+-- Run `make sqlx/prepare` after editing this file.
+
+CREATE TABLE orders (
+    id UUID PRIMARY KEY,
+    amount DOUBLE PRECISION NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMPTZ
+);

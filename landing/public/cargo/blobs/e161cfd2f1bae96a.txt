@@ -1,0 +1,39 @@
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::{Customer, CustomerId},
+};
+
+#[derive(Debug, Clone)]
+pub struct UpdateCustomerParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub id: CustomerId,
+    pub email: String,
+    pub name: String,
+    pub tags: Vec<String>,
+}
+
+#[async_trait]
+pub trait UpdateCustomerUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateCustomerParams) -> Result<Customer, CustomerError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateCustomerUseCase {}
+
+        #[async_trait]
+        impl UpdateCustomerUseCaseTrait for UpdateCustomerUseCase {
+            async fn execute(&self, params: UpdateCustomerParams) -> Result<Customer, CustomerError>;
+        }
+    }
+}

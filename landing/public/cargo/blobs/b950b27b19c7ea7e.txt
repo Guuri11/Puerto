@@ -1,0 +1,85 @@
+use business::domain::user::errors::UserError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
+
+use crate::api::error::IntoErrorResponse;
+
+impl IntoErrorResponse for UserError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            UserError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            UserError::InvalidCredentials => StatusCode::UNAUTHORIZED,
+            UserError::NotFound => StatusCode::NOT_FOUND,
+            UserError::Duplicate => StatusCode::CONFLICT,
+            UserError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            UserError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mapped(err: UserError) -> (StatusCode, String) {
+        let (status, Json(body)) = err.into_error_response();
+        (status, body.name)
+    }
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        assert_eq!(
+            mapped(UserError::ValidationError("password_too_short".into())),
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "user.validation_error.password_too_short".into()
+            )
+        );
+    }
+
+    #[test]
+    fn should_map_invalid_credentials_to_401_with_its_code() {
+        assert_eq!(
+            mapped(UserError::InvalidCredentials),
+            (StatusCode::UNAUTHORIZED, "auth.invalid_credentials".into())
+        );
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        assert_eq!(
+            mapped(UserError::NotFound),
+            (StatusCode::NOT_FOUND, "user.not_found".into())
+        );
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        assert_eq!(
+            mapped(UserError::Duplicate),
+            (StatusCode::CONFLICT, "user.duplicate".into())
+        );
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        assert_eq!(
+            mapped(UserError::RepositoryError),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "user.repository_error".into()
+            )
+        );
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        assert_eq!(
+            mapped(UserError::Unknown),
+            (StatusCode::INTERNAL_SERVER_ERROR, "user.unknown".into())
+        );
+    }
+}

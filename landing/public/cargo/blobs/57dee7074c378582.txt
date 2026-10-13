@@ -1,0 +1,41 @@
+use puerto_core::auth::Principal;
+use uuid::Uuid;
+
+/// Callers for tests (ADR-0021): a signed-in user with a fresh id, with or without roles.
+pub struct PrincipalMother {
+    roles: Vec<String>,
+}
+
+impl PrincipalMother {
+    pub fn new() -> Self {
+        Self { roles: vec![] }
+    }
+
+    pub fn with_roles<I, S>(mut self, roles: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.roles = roles.into_iter().map(Into::into).collect();
+        self
+    }
+
+    pub fn build(self) -> Principal {
+        let user_id = Uuid::new_v4();
+        Principal::new(user_id, format!("subject-{user_id}"))
+            .with_email(format!("{}@example.com", user_id.simple()))
+            .with_name("Ada Lovelace")
+            .with_roles(self.roles)
+    }
+
+    /// A signed-in caller with no role.
+    pub fn random() -> Principal {
+        Self::new().build()
+    }
+}
+
+impl Default for PrincipalMother {
+    fn default() -> Self {
+        Self::new()
+    }
+}

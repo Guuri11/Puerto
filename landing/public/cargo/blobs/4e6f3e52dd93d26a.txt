@@ -1,0 +1,41 @@
+use puerto_core::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum UserError {
+    #[error("user.not_found")]
+    NotFound,
+    #[error("user.duplicate")]
+    Duplicate,
+    #[error("user.repository_error")]
+    RepositoryError,
+}
+
+impl From<RepositoryError> for UserError {
+    /// `RepositoryError` is `#[non_exhaustive]`: one a later version adds is the store's problem
+    /// (500) until it gets a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_user_duplicate() {
+        let err = UserError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "user.duplicate");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = UserError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "user.repository_error");
+    }
+}

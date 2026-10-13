@@ -1,0 +1,33 @@
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::customer::{errors::CustomerError, model::CustomerId};
+
+#[derive(Debug, Clone)]
+pub struct DeleteCustomerParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub id: CustomerId,
+}
+
+#[async_trait]
+pub trait DeleteCustomerUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteCustomerParams) -> Result<(), CustomerError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteCustomerUseCase {}
+
+        #[async_trait]
+        impl DeleteCustomerUseCaseTrait for DeleteCustomerUseCase {
+            async fn execute(&self, params: DeleteCustomerParams) -> Result<(), CustomerError>;
+        }
+    }
+}

@@ -1,0 +1,15 @@
+{
+  "Web — HTTP repository method": {
+    "prefix": "web-repo-method",
+    "body": [
+      "async ${1:method}(id) {",
+      "\tconst { data, error, response } = await api.${2:GET}(\"/${3:entities}/{id}\", {",
+      "\t\tparams: { path: { id } },",
+      "\t});",
+      "\tif (data === undefined) throw new ${4:Entity}Error(apiErrorCode(error, response));",
+      "\treturn to${4:Entity}(data);",
+      "},"
+    ],
+    "description": "A method of the HTTP repository (infrastructure/<entity>/<entity>-repository-http.ts): an openapi-fetch call, the API's error code as the entity's Error. Declare it on the port (domain/<entity>/repository.ts) and the fake (test-support/<entity>.ts) too."
+  }
+}

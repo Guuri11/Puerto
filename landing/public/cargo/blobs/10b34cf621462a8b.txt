@@ -1,0 +1,137 @@
+use std::sync::Arc;
+
+use crate::domain::order::value_objects::Amount;
+use crate::domain::order::value_objects::Status;
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+
+use crate::domain::order::{
+    errors::OrderError,
+    events::{OrderEvent, OrderSnapshot},
+    model::Order,
+    repository::OrderRepositoryTrait,
+    unit_of_work::OrderUnitOfWorkFactory,
+    use_cases::update_order::{UpdateOrderParams, UpdateOrderUseCaseTrait},
+};
+
+pub struct UpdateOrderUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+    pub uow_factory: Arc<dyn OrderUnitOfWorkFactory>,
+}
+
+#[async_trait]
+impl UpdateOrderUseCaseTrait for UpdateOrderUseCaseImpl {
+    async fn execute(&self, params: UpdateOrderParams) -> Result<Order, OrderError> {
+        tracing::info!(id = %params.id, "update_order: start");
+        let failed =
+            |e: &RepositoryError| tracing::error!(error = %e, "update_order: repository failed");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(failed)?
+            .ok_or_else(|| {
+                let err = OrderError::NotFound;
+                tracing::warn!(error = %err, "update_order: rejected");
+                err
+            })?;
+        let amount = Amount::new(params.amount)?;
+        let status = params.status.parse::<Status>()?;
+        entity.amount = amount;
+        entity.status = status;
+        entity.note = params.note;
+        entity.updated_at = chrono::Utc::now();
+        let mut uow = self.uow_factory.begin().await.inspect_err(failed)?;
+        uow.save(&entity).await.inspect_err(failed)?;
+        uow.record(OrderEvent::Updated(OrderSnapshot::from_entity(&entity)))
+            .await
+            .inspect_err(failed)?;
+        uow.commit().await.inspect_err(failed)?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::value_objects::Amount;
+    use crate::domain::order::value_objects::Status;
+    use crate::domain::order::{
+        model::{OrderId, OrderProps},
+        repository::mocks::MockOrderRepository,
+        unit_of_work::mocks::RecordingUnitOfWorkFactory,
+    };
+    use puerto_core::DomainEvent;
+
+    fn repository_holding(entity: Order) -> MockOrderRepository {
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo
+    }
+
+    #[tokio::test]
+    async fn should_record_order_updated_when_params_are_valid() {
+        // Arrange
+        let entity = Order::new(OrderProps {
+            amount: Amount::new(1.5).expect("valid Amount"),
+            status: Status::Pending,
+            note: None,
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = UpdateOrderUseCaseImpl {
+            repository: Arc::new(repository_holding(entity)),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateOrderParams {
+                id: entity_id,
+                amount: 1.5,
+                status: "Pending".to_string(),
+                note: None,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        let recorded = uow_factory.recorded();
+        assert!(recorded.committed);
+        assert_eq!(recorded.events.len(), 1);
+        assert_eq!(recorded.events[0].event_type(), "order_updated");
+        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_and_record_nothing_when_the_order_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = UpdateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateOrderParams {
+                id: OrderId::generate(),
+                amount: 1.5,
+                status: "Pending".to_string(),
+                note: None,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.not_found");
+        let recorded = uow_factory.recorded();
+        assert!(recorded.saved.is_empty());
+        assert!(recorded.events.is_empty());
+    }
+}

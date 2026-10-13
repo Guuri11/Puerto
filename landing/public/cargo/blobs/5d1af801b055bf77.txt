@@ -1,0 +1,30 @@
+use async_trait::async_trait;
+use puerto_core::{Page, PageRequest};
+
+use crate::domain::order::{errors::OrderError, model::Order};
+
+#[derive(Debug, Clone)]
+pub struct ListOrdersParams {
+    pub page: PageRequest,
+}
+
+#[async_trait]
+pub trait ListOrdersUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListOrdersUseCase {}
+
+        #[async_trait]
+        impl ListOrdersUseCaseTrait for ListOrdersUseCase {
+            async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError>;
+        }
+    }
+}

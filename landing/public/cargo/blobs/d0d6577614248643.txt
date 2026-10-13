@@ -1,0 +1,8 @@
+# Pins the Rust version this project builds, lints and tests with. `make lint` runs clippy with
+# `-D warnings`, and clippy gains lints between releases: without a pin, whether a clean checkout
+# passes its own lint depends on whose machine runs it. This is the version Puerto's own test
+# matrix generates and lints projects with — bump it deliberately, then fix what the new clippy
+# reports.
+[toolchain]
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]

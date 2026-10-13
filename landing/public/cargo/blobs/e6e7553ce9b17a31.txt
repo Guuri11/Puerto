@@ -1,0 +1,6 @@
+//! The database adapter — pool, migrations at startup, readiness ping, driver-error mapping — is
+//! `puerto-sqlx`'s (ADR-0017 of Puerto). Only the migrations are this project's.
+pub use puerto_sqlx::*;
+
+/// `infrastructure/migrations/`, embedded at compile time and applied at startup by `bootstrap.rs`.
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");

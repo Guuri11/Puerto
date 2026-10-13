@@ -1,0 +1,192 @@
+use std::sync::Arc;
+
+use crate::domain::customer::value_objects::Email;
+use crate::domain::customer::value_objects::Tag;
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    events::{CustomerEvent, CustomerSnapshot},
+    model::{Customer, CustomerProps},
+    unit_of_work::CustomerUnitOfWorkFactory,
+    use_cases::create_customer::{CreateCustomerParams, CreateCustomerUseCaseTrait},
+};
+
+pub struct CreateCustomerUseCaseImpl {
+    pub uow_factory: Arc<dyn CustomerUnitOfWorkFactory>,
+}
+
+#[async_trait]
+impl CreateCustomerUseCaseTrait for CreateCustomerUseCaseImpl {
+    async fn execute(&self, params: CreateCustomerParams) -> Result<Customer, CustomerError> {
+        tracing::info!("create_customer: start");
+        let failed =
+            |e: &RepositoryError| tracing::error!(error = %e, "create_customer: repository failed");
+        let email = Email::new(params.email)?;
+        let tags: Vec<Tag> = params
+            .tags
+            .into_iter()
+            .map(Tag::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        let entity = Customer::new(CustomerProps {
+            email,
+            name: params.name,
+            tags,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_customer: rejected"))?;
+        let mut uow = self.uow_factory.begin().await.inspect_err(failed)?;
+        uow.save(&entity).await.inspect_err(failed)?;
+        uow.record(CustomerEvent::Created(CustomerSnapshot::from_entity(
+            &entity,
+        )))
+        .await
+        .inspect_err(failed)?;
+        uow.commit().await.inspect_err(failed)?;
+        tracing::info!(id = %entity.id, "create_customer: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+    use puerto_core::DomainEvent;
+
+    #[tokio::test]
+    async fn should_record_customer_created_when_fields_are_valid() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = CreateCustomerUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "example".to_string(),
+                name: "example".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        let entity = match result {
+            Ok(entity) => entity,
+            Err(e) => panic!("create failed: {e}"),
+        };
+        assert_eq!(entity.name, "example");
+        let recorded = uow_factory.recorded();
+        assert!(recorded.committed);
+        assert_eq!(recorded.saved.len(), 1);
+        assert_eq!(recorded.events.len(), 1);
+        assert_eq!(recorded.events[0].event_type(), "customer_created");
+        assert_eq!(recorded.events[0].aggregate_id(), entity.id.value());
+    }
+
+    #[tokio::test]
+    async fn should_not_commit_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let uow_factory =
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Save, RepositoryError::Duplicate);
+        let use_case = CreateCustomerUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "example".to_string(),
+                name: "example".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.duplicate");
+        let recorded = uow_factory.recorded();
+        assert!(!recorded.committed);
+        assert!(recorded.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_return_repository_error_when_the_commit_fails() {
+        // Arrange
+        let uow_factory =
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, RepositoryError::Unavailable);
+        let use_case = CreateCustomerUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "example".to_string(),
+                name: "example".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.repository_error");
+        assert!(!uow_factory.recorded().committed);
+    }
+
+    #[tokio::test]
+    async fn should_return_error_and_record_nothing_when_name_is_empty() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = CreateCustomerUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "example".to_string(),
+                name: "".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "customer.validation_error.name_empty"
+        );
+        assert!(uow_factory.recorded().saved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_return_error_and_record_nothing_when_email_is_empty() {
+        // Arrange
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = CreateCustomerUseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateCustomerParams {
+                actor: PrincipalMother::random(),
+                email: "".to_string(),
+                name: "example".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.invalid_email");
+        assert!(uow_factory.recorded().saved.is_empty());
+    }
+}

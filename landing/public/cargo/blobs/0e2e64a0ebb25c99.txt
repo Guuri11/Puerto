@@ -1,0 +1,14 @@
+mod consumers;
+mod generated;
+
+/// The second process of this project (ADR-0018 of Puerto): it relays the outbox the API writes
+/// and runs the consumers. The loops, health probes and graceful shutdown come from the Puerto
+/// runtime, `puerto-events`; the wiring is in `generated/registry.rs`, the consumers in
+/// `consumers/`.
+#[tokio::main]
+async fn main() -> Result<(), puerto_events::Error> {
+    let config = puerto_events::WorkerConfig::from_env()?;
+    puerto_events::Worker::new(config)
+        .try_run(generated::registry::build_worker)
+        .await
+}

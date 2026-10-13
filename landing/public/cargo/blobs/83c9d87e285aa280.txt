@@ -1,0 +1,194 @@
+use std::sync::Arc;
+
+use crate::domain::customer::value_objects::Email;
+use crate::domain::customer::value_objects::Tag;
+use async_trait::async_trait;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::Customer,
+    repository::CustomerRepositoryTrait,
+    use_cases::update_customer::{UpdateCustomerParams, UpdateCustomerUseCaseTrait},
+};
+
+pub struct UpdateCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateCustomerUseCaseTrait for UpdateCustomerUseCaseImpl {
+    async fn execute(&self, params: UpdateCustomerParams) -> Result<Customer, CustomerError> {
+        tracing::info!(id = %params.id, "update_customer: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_customer: repository failed"))?
+            .ok_or_else(|| {
+                let err = CustomerError::NotFound;
+                tracing::warn!(error = %err, "update_customer: rejected");
+                err
+            })?;
+        if params.name.trim().is_empty() {
+            let err = CustomerError::ValidationError("name_empty".into());
+            tracing::warn!(error = %err, "update_customer: rejected");
+            return Err(err);
+        }
+        let email = Email::new(params.email)?;
+        let tags: Vec<Tag> = params
+            .tags
+            .into_iter()
+            .map(Tag::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        entity.email = email;
+        entity.name = params.name;
+        entity.tags = tags;
+        entity.updated_at = chrono::Utc::now();
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_customer: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::value_objects::Email;
+    use crate::domain::customer::{
+        model::{Customer, CustomerId, CustomerProps},
+        repository::mocks::MockCustomerRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_update_customer_when_params_are_valid() {
+        // Arrange
+        let entity = Customer::new(CustomerProps {
+            email: Email::new("original".to_string()).expect("valid Email"),
+            name: "original".to_string(),
+            tags: vec![],
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCustomerParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                email: "updated".to_string(),
+                name: "updated".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().name, "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_customer_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCustomerParams {
+                actor: PrincipalMother::random(),
+                id: CustomerId::generate(),
+                email: "new".to_string(),
+                name: "new".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let entity = Customer::new(CustomerProps {
+            email: Email::new("original".to_string()).expect("valid Email"),
+            name: "original".to_string(),
+            tags: vec![],
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCustomerParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                email: "updated".to_string(),
+                name: "".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "customer.validation_error.name_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_email_is_empty() {
+        // Arrange
+        let entity = Customer::new(CustomerProps {
+            email: Email::new("original".to_string()).expect("valid Email"),
+            name: "original".to_string(),
+            tags: vec![],
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateCustomerParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                email: "".to_string(),
+                name: "updated".to_string(),
+                tags: vec![],
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.invalid_email");
+    }
+}

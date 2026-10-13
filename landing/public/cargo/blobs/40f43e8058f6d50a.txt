@@ -1,0 +1,58 @@
+use puerto_core::RepositoryError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum OrderError {
+    #[error("order.validation_error.{0}")]
+    ValidationError(String),
+    #[error("order.not_found")]
+    NotFound,
+    #[error("order.duplicate")]
+    Duplicate,
+    #[error("order.repository_error")]
+    RepositoryError,
+    #[error("order.unknown")]
+    Unknown,
+    /// The caller may not do this with this data: a rule of the use case, on its `actor`.
+    #[error("order.forbidden")]
+    Forbidden,
+    #[error("order.invalid_amount")]
+    InvalidAmount,
+    #[error("order.invalid_status")]
+    InvalidStatus,
+}
+
+impl From<RepositoryError> for OrderError {
+    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+    /// a later version adds is the store's problem (500) until it gets a meaning here.
+    fn from(err: RepositoryError) -> Self {
+        match err {
+            RepositoryError::Duplicate => Self::Duplicate,
+            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            _ => Self::RepositoryError,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_convert_a_duplicate_into_the_entity_duplicate() {
+        let err = OrderError::from(RepositoryError::Duplicate);
+        assert_eq!(err.to_string(), "order.duplicate");
+    }
+
+    #[test]
+    fn should_convert_invalid_data_into_a_repository_error() {
+        let err = OrderError::from(RepositoryError::InvalidData);
+        assert_eq!(err.to_string(), "order.repository_error");
+    }
+
+    #[test]
+    fn should_convert_an_unavailable_store_into_a_repository_error() {
+        let err = OrderError::from(RepositoryError::Unavailable);
+        assert_eq!(err.to_string(), "order.repository_error");
+    }
+}

@@ -1,0 +1,520 @@
+use std::sync::Arc;
+
+use business::domain::product::model::ProductId;
+use business::domain::product::use_cases::{
+    create_product::{CreateProductParams, CreateProductUseCaseTrait},
+    delete_product::{DeleteProductParams, DeleteProductUseCaseTrait},
+    get_product::{GetProductParams, GetProductUseCaseTrait},
+    list_products::{ListProductsParams, ListProductsUseCaseTrait},
+    update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
+};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_core::PageRequest;
+use puerto_web::auth::BearerAuth;
+use puerto_web::require_role;
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::product::dto::{
+    CreateProductRequest, ProductDto, ProductPageDto, UpdateProductRequest,
+};
+use crate::api::product::responses::{
+    CreateProductResponse, DeleteProductResponse, GetProductResponse, ListProductsResponse,
+    UpdateProductResponse,
+};
+use crate::api::tags::ApiTags;
+
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
+pub struct ProductApi {
+    pub create_product: Arc<dyn CreateProductUseCaseTrait>,
+    pub get_product: Arc<dyn GetProductUseCaseTrait>,
+    pub list_products: Arc<dyn ListProductsUseCaseTrait>,
+    pub update_product: Arc<dyn UpdateProductUseCaseTrait>,
+    pub delete_product: Arc<dyn DeleteProductUseCaseTrait>,
+}
+
+#[OpenApi]
+impl ProductApi {
+    /// Create a new Product
+    #[oai(path = "/products", method = "post", tag = "ApiTags::Product")]
+    async fn create(
+        &self,
+        auth: BearerAuth,
+        body: Json<CreateProductRequest>,
+    ) -> CreateProductResponse {
+        match self
+            .create_product
+            .execute(CreateProductParams {
+                actor: auth.0,
+                name: body.name.clone(),
+                price: body.price,
+                sku: body.sku.clone(),
+            })
+            .await
+        {
+            Ok(entity) => CreateProductResponse::Created(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_product failed");
+                CreateProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Product by ID
+    #[oai(path = "/products/:id", method = "get", tag = "ApiTags::Product")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
+        match self
+            .get_product
+            .execute(GetProductParams {
+                id: ProductId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_product failed");
+                GetProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List Products, one page at a time (`limit` is capped by the domain)
+    #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListProductsResponse {
+        match self
+            .list_products
+            .execute(ListProductsParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListProductsResponse::Ok(Json(ProductPageDto::from_domain(&page))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_products failed");
+                ListProductsResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Product
+    #[oai(path = "/products/:id", method = "put", tag = "ApiTags::Product")]
+    async fn update(
+        &self,
+        auth: BearerAuth,
+        id: Path<Uuid>,
+        body: Json<UpdateProductRequest>,
+    ) -> UpdateProductResponse {
+        match self
+            .update_product
+            .execute(UpdateProductParams {
+                actor: auth.0,
+                id: ProductId::from_uuid(id.0),
+                name: body.name.clone(),
+                price: body.price,
+                sku: body.sku.clone(),
+            })
+            .await
+        {
+            Ok(entity) => UpdateProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_product failed");
+                UpdateProductResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Product
+    #[oai(path = "/products/:id", method = "delete", tag = "ApiTags::Product")]
+    #[require_role("admin")]
+    async fn delete(&self, auth: BearerAuth, id: Path<Uuid>) -> DeleteProductResponse {
+        match self
+            .delete_product
+            .execute(DeleteProductParams {
+                actor: auth.0,
+                id: ProductId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => DeleteProductResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_product failed");
+                DeleteProductResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::product::errors::ProductError;
+    use business::domain::product::use_cases::{
+        create_product::mocks::MockCreateProductUseCase,
+        delete_product::mocks::MockDeleteProductUseCase, get_product::mocks::MockGetProductUseCase,
+        list_products::mocks::MockListProductsUseCase,
+        update_product::mocks::MockUpdateProductUseCase,
+    };
+    use business::tests::mothers::principal_mother::PrincipalMother;
+    use business::tests::mothers::product_mother::ProductMother;
+    use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
+    use puerto_core::auth::mocks::MockAuthenticator;
+    use puerto_core::auth::{AuthError, Authenticator};
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateProductUseCase,
+        get: MockGetProductUseCase,
+        list: MockListProductsUseCase,
+        update: MockUpdateProductUseCase,
+        delete: MockDeleteProductUseCase,
+    }
+
+    /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
+    fn authenticator() -> Arc<dyn Authenticator> {
+        let mut authenticator = MockAuthenticator::new();
+        authenticator
+            .expect_authenticate()
+            .returning(|token| match token {
+                "caller" => Ok(PrincipalMother::new().with_roles(["admin"]).build()),
+                "nobody" => Ok(PrincipalMother::random()),
+                _ => Err(AuthError::Invalid),
+            });
+        Arc::new(authenticator)
+    }
+
+    impl Mocks {
+        /// Every request signed in as `caller`.
+        fn client(self) -> TestClient<impl poem::Endpoint> {
+            self.client_with(Some("Bearer caller"))
+        }
+
+        /// `authorization`: the header every request sends; `None` sends none.
+        fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
+            let api = ProductApi {
+                create_product: Arc::new(self.create),
+                get_product: Arc::new(self.get),
+                list_products: Arc::new(self.list),
+                update_product: Arc::new(self.update),
+                delete_product: Arc::new(self.delete),
+            };
+            let client = TestClient::new(
+                Route::new()
+                    .nest("/", OpenApiService::new(api, "test", "1.0"))
+                    .data(authenticator()),
+            );
+            match authorization {
+                Some(value) => client.default_header("Authorization", value),
+                None => client,
+            }
+        }
+    }
+
+    fn create_request() -> CreateProductRequest {
+        CreateProductRequest {
+            name: "example".to_string(),
+            price: 42,
+            sku: "example".to_string(),
+        }
+    }
+
+    fn update_request() -> UpdateProductRequest {
+        UpdateProductRequest {
+            name: "example".to_string(),
+            price: 42,
+            sku: "example".to_string(),
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/products/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_product_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_product_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(ProductError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_product_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_product_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_a_page_of_products_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(ProductMother::random_vec(2), 7, params.page)));
+
+        // Act
+        let response = mocks.client().get("/products").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks
+            .client()
+            .get("/products?limit=5&offset=10")
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(ProductError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/products").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_product_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(ProductMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_product() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_product_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_product() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(ProductError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_creating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .post("/products")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_updating_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(None)
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_401_when_deleting_without_a_token() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks.client_with(None).delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_403_when_deleting_without_the_role() {
+        // Arrange — no expectation: the use case is never reached
+        let mocks = Mocks::default();
+
+        // Act
+        let response = mocks
+            .client_with(Some("Bearer nobody"))
+            .delete(item_path())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::FORBIDDEN);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("auth.forbidden");
+    }
+}

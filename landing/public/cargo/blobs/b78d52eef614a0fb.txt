@@ -1,0 +1,32 @@
+use async_trait::async_trait;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    model::{Customer, CustomerId},
+};
+
+#[derive(Debug, Clone)]
+pub struct GetCustomerParams {
+    pub id: CustomerId,
+}
+
+#[async_trait]
+pub trait GetCustomerUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetCustomerParams) -> Result<Customer, CustomerError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetCustomerUseCase {}
+
+        #[async_trait]
+        impl GetCustomerUseCaseTrait for GetCustomerUseCase {
+            async fn execute(&self, params: GetCustomerParams) -> Result<Customer, CustomerError>;
+        }
+    }
+}

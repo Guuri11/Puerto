@@ -1,0 +1,100 @@
+{
+  "Web — HTTP repository method": {
+    "body": [
+      "async ${1:method}(id) {",
+      "\tconst { data, error, response } = await api.${2:GET}(\"/${3:entities}/{id}\", {",
+      "\t\tparams: { path: { id } },",
+      "\t});",
+      "\tif (data === undefined) throw new ${4:Entity}Error(apiErrorCode(error, response));",
+      "\treturn to${4:Entity}(data);",
+      "},"
+    ],
+    "description": "A method of the HTTP repository (infrastructure/<entity>/<entity>-repository-http.ts): an openapi-fetch call, the API's error code as the entity's Error. Declare it on the port (domain/<entity>/repository.ts) and the fake (test-support/<entity>.ts) too.",
+    "prefix": "web-repo-method",
+    "scope": "typescript"
+  },
+  "Web — container + view": {
+    "body": [
+      "import type { ${1:Entity} } from \"../../../../domain/${2:entity-name}/model\";",
+      "import { useDependencies } from \"../../../core/dependencies\";",
+      "import { useAsync } from \"../../../core/hooks/use-async\";",
+      "import { ErrorAlert } from \"../../../shared/ui/error-alert\";",
+      "",
+      "export function ${1:Entity}${3:Summary}Container({ id }: { id: string }) {",
+      "\tconst { ${4:entity}Repository } = useDependencies();",
+      "\tconst ${4:entity} = useAsync(() => ${4:entity}Repository.get(id), [${4:entity}Repository, id]);",
+      "",
+      "\treturn (",
+      "\t\t<section className=\"space-y-4\">",
+      "\t\t\t{${4:entity}.status === \"loading\" && <span className=\"loading loading-spinner\" />}",
+      "\t\t\t{${4:entity}.status === \"error\" && <ErrorAlert error={${4:entity}.error} />}",
+      "\t\t\t{${4:entity}.status === \"ok\" && <${1:Entity}${3:Summary}View ${4:entity}={${4:entity}.data} />}",
+      "\t\t</section>",
+      "\t);",
+      "}",
+      "",
+      "/** Props only. Move it to `views/` once it grows: containers load, views render. */",
+      "function ${1:Entity}${3:Summary}View({ ${4:entity} }: { ${4:entity}: ${1:Entity} }) {",
+      "\treturn <p>{${4:entity}.id}</p>;$0",
+      "}"
+    ],
+    "description": "A container (features/<entity>/containers/): loads through useDependencies() + useAsync, renders loading / error / its view.",
+    "prefix": "web-container",
+    "scope": "typescriptreact"
+  },
+  "Web — container test": {
+    "body": [
+      "import { describe, expect, test } from \"bun:test\";",
+      "import { screen } from \"@testing-library/react\";",
+      "import { ${1:Entity}Mother, fake${1:Entity}Repository } from \"../../../../test-support/${2:entity-name}\";",
+      "import { renderScreen } from \"../../../../test-support/render\";",
+      "import { ${1:Entity}${3:Summary}Container } from \"./${2:entity-name}-${5:summary}-container\";",
+      "",
+      "describe(\"${1:Entity}${3:Summary}Container\", () => {",
+      "\ttest(\"should show the ${6:entity label} when it exists\", async () => {",
+      "\t\t// Arrange",
+      "\t\tconst seeded = ${1:Entity}Mother.random();",
+      "\t\tconst ${4:entity}Repository = fake${1:Entity}Repository([seeded]);",
+      "",
+      "\t\t// Act",
+      "\t\trenderScreen(<${1:Entity}${3:Summary}Container id={seeded.id} />, { ${4:entity}Repository });",
+      "",
+      "\t\t// Assert",
+      "\t\texpect(await screen.findByText(seeded.id)).toBeTruthy();",
+      "\t});",
+      "});"
+    ],
+    "description": "A container test: render it with the in-memory fake repository, assert on what the user sees.",
+    "prefix": "web-container-test",
+    "scope": "typescriptreact"
+  },
+  "Web — form field": {
+    "body": [
+      "<label className=\"fieldset\">",
+      "\t<span className=\"fieldset-legend\">${1:Label}</span>",
+      "\t<input",
+      "\t\tclassName=\"input w-full\"",
+      "\t\ttype=\"${2:text}\"",
+      "\t\trequired",
+      "\t\taria-invalid={problem?.field === \"${3:field}\"}",
+      "\t\tvalue={values.${3:field}}",
+      "\t\tonChange={(event) => onChange({ ...values, ${3:field}: event.target.value })}",
+      "\t/>",
+      "</label>",
+      "<FieldError problem={problem} field=\"${3:field}\" />"
+    ],
+    "description": "A daisyUI input bound to the form view's values (views/<entity>-form-view.tsx), and the API's message about it underneath; add the field to <Entity>FormValues and its two mappings.",
+    "prefix": "web-form-field",
+    "scope": "typescriptreact"
+  },
+  "Web — route": {
+    "body": [
+      "<Route key=\"${1:/entities/:id/summary}\" path=\"${1:/entities/:id/summary}\">",
+      "\t{(params) => <${2:Entity}${3:Summary}Container id={params.id} />}",
+      "</Route>,"
+    ],
+    "description": "A route in customRoutes (presentation/core/routes.tsx — yours; core/generated/routes.tsx is rewritten).",
+    "prefix": "web-route",
+    "scope": "typescriptreact"
+  }
+}

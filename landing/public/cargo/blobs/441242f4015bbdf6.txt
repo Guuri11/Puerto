@@ -1,0 +1,32 @@
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
+
+#[derive(Debug, Clone)]
+pub struct GetProductParams {
+    pub id: ProductId,
+}
+
+#[async_trait]
+pub trait GetProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub GetProductUseCase {}
+
+        #[async_trait]
+        impl GetProductUseCaseTrait for GetProductUseCase {
+            async fn execute(&self, params: GetProductParams) -> Result<Product, ProductError>;
+        }
+    }
+}

@@ -1,0 +1,63 @@
+use business::domain::customer::value_objects::Email;
+use business::domain::customer::value_objects::Tag;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use business::domain::customer::{
+    errors::CustomerError,
+    model::{Customer, CustomerId},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct CustomerDb {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub email: String,
+    pub name: String,
+    pub tags: Vec<String>,
+}
+
+impl TryFrom<CustomerDb> for Customer {
+    type Error = CustomerError;
+
+    fn try_from(row: CustomerDb) -> Result<Self, Self::Error> {
+        Ok(Self::from_repository(Customer {
+            id: CustomerId::from_uuid(row.id),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            deleted: row.deleted,
+            deleted_at: row.deleted_at,
+            email: Email::new(row.email)?,
+            name: row.name,
+            tags: row
+                .tags
+                .into_iter()
+                .map(Tag::new)
+                .collect::<Result<Vec<_>, _>>()?,
+        }))
+    }
+}
+
+impl From<&Customer> for CustomerDb {
+    fn from(entity: &Customer) -> Self {
+        Self {
+            id: entity.id.value(),
+            created_at: entity.created_at,
+            updated_at: entity.updated_at,
+            deleted: entity.deleted,
+            deleted_at: entity.deleted_at,
+            email: entity.email.value().to_string(),
+            name: entity.name.clone(),
+            tags: entity
+                .tags
+                .iter()
+                .map(|v| v.value().to_string())
+                .collect::<Vec<_>>(),
+        }
+    }
+}

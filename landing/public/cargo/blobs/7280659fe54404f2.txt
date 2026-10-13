@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/customer/messages";
+import type { Customer } from "../../../../domain/customer/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
+import { CustomerFormView, toCustomerDraft, toCustomerForm } from "../views/customer-form-view";
+
+/** Creates a customer, or edits the one with `id`. */
+export function CustomerFormContainer({ id }: { id?: string }) {
+  const { customerRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : customerRepository.get(id)),
+    [customerRepository, id],
+  );
+  const title = id === undefined ? "New customer" : "Edit customer";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <CustomerForm existing={existing.data} />}
+      <Link href={id === undefined ? "/customers" : `/customers/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function CustomerForm({ existing }: { existing: Customer | null }) {
+  const { customerRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toCustomerForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toCustomerDraft(values);
+      const saved =
+        existing === null
+          ? await customerRepository.create(draft)
+          : await customerRepository.update(existing.id, draft);
+      navigate(`/customers/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <CustomerFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,193 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
+};
+
+pub struct UpdateProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl UpdateProductUseCaseTrait for UpdateProductUseCaseImpl {
+    async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError> {
+        tracing::info!(id = %params.id, "update_product: start");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_product: repository failed"))?
+            .ok_or_else(|| {
+                let err = ProductError::NotFound;
+                tracing::warn!(error = %err, "update_product: rejected");
+                err
+            })?;
+        if params.name.trim().is_empty() {
+            let err = ProductError::ValidationError("name_empty".into());
+            tracing::warn!(error = %err, "update_product: rejected");
+            return Err(err);
+        }
+        if params.sku.trim().is_empty() {
+            let err = ProductError::ValidationError("sku_empty".into());
+            tracing::warn!(error = %err, "update_product: rejected");
+            return Err(err);
+        }
+        entity.name = params.name;
+        entity.price = params.price;
+        entity.sku = params.sku;
+        entity.updated_at = chrono::Utc::now();
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "update_product: repository failed"))?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::{
+        model::{Product, ProductId, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+
+    #[tokio::test]
+    async fn should_update_product_when_params_are_valid() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: "original".to_string(),
+            price: 42,
+            sku: "original".to_string(),
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                name: "updated".to_string(),
+                price: 42,
+                sku: "updated".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().name, "updated");
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_when_product_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                actor: PrincipalMother::random(),
+                id: ProductId::generate(),
+                name: "new".to_string(),
+                price: 42,
+                sku: "new".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.not_found");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: "original".to_string(),
+            price: 42,
+            sku: "original".to_string(),
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                name: "".to_string(),
+                price: 42,
+                sku: "updated".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.name_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_sku_is_empty() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: "original".to_string(),
+            price: 42,
+            sku: "original".to_string(),
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+                name: "updated".to_string(),
+                price: 42,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.sku_empty"
+        );
+    }
+}

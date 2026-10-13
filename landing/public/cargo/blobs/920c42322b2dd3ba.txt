@@ -1,0 +1,33 @@
+//! Yours: `puerto new --auth local` writes this file once.
+
+use async_trait::async_trait;
+use puerto_core::auth::Session;
+
+use crate::domain::user::errors::UserError;
+
+pub struct LoginParams {
+    pub email: String,
+    pub password: String,
+}
+
+/// Opens a session for the account `email`, when `password` is its password.
+#[async_trait]
+pub trait LoginUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: LoginParams) -> Result<Session, UserError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub LoginUseCase {}
+
+        #[async_trait]
+        impl LoginUseCaseTrait for LoginUseCase {
+            async fn execute(&self, params: LoginParams) -> Result<Session, UserError>;
+        }
+    }
+}

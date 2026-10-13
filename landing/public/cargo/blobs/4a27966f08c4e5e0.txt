@@ -1,0 +1,39 @@
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
+
+#[derive(Debug, Clone)]
+pub struct UpdateProductParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub id: ProductId,
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+}
+
+#[async_trait]
+pub trait UpdateProductUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub UpdateProductUseCase {}
+
+        #[async_trait]
+        impl UpdateProductUseCaseTrait for UpdateProductUseCase {
+            async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError>;
+        }
+    }
+}

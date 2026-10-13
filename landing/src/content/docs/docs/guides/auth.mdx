@@ -1,0 +1,162 @@
+---
+title: Authentication
+description: "Protect a Puerto API with OpenID Connect (Auth0, Keycloak) or with accounts in its own database, require roles per route, sign in from the frontend."
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+Auth is one decision at `puerto new`, and the rest follows from it.
+
+```bash
+puerto new --name shop --db --auth oidc     # Auth0, Keycloak or any OpenID Connect provider
+puerto new --name shop --db --auth local    # accounts and sessions in this database
+```
+
+Both modes share one port, `Authenticator`, and one `User` entity, so the routes, the use cases
+and the screens are the same either way. Moving from local accounts to a provider does not touch
+your domain ([ADR-0021](/docs/decisions/adr/0021-auth-one-authenticator-port-oidc-or-local/)).
+
+<Tabs>
+<TabItem label="oidc">
+The API is an OAuth2 **resource server**: it verifies the provider's JWT access tokens (RS256 or
+ES256, `iss`, `aud`, `exp`/`nbf`) against its JWKS, which is cached and refetched at most once a
+minute when an unknown `kid` appears. Auth0 and Keycloak are configuration, not adapters.
+
+The first request of a caller creates their `User` row (just-in-time provisioning, cached).
+**Roles come from the token only**, from the claim `AUTH_ROLES_CLAIM` names.
+
+```ini title=".env"
+AUTH_ISSUER=http://localhost:8180/realms/shop
+AUTH_AUDIENCE=api
+AUTH_ROLES_CLAIM=realm_access.roles
+```
+
+For Auth0: `AUTH_ISSUER=https://<tenant>.auth0.com/`, `AUTH_AUDIENCE` set to the API identifier,
+and `AUTH_ROLES_CLAIM` set to `permissions` or to the claim an Action adds.
+
+In development, `docker-compose.yml` runs Keycloak with a realm of its own: a public `web`
+client with PKCE, `admin@shop.localhost` with the `admin` role, and `user@shop.localhost`
+without it.
+
+```bash
+make auth/ui                                       # the Keycloak console
+make -s auth/token EMAIL=user@shop.localhost       # an access token, for curl
+```
+
+`--auth oidc` works without `--db` too; then the users are kept in memory.
+</TabItem>
+<TabItem label="local">
+The API **is** the identity provider. It needs `--db`.
+
+| Route | Does |
+|---|---|
+| `POST /api/auth/register` | creates an account |
+| `POST /api/auth/login` | answers an opaque session token |
+| `POST /api/auth/logout` | revokes it |
+| `GET /api/me` | the caller, as the API resolved them |
+
+Passwords are argon2id hashes in `credentials`, so `User` carries no secret. A session token is
+256 random bits, and the database keeps only its SHA-256. Revoking one is a `DELETE`, and there is
+no signing key to rotate. An unknown email and a wrong password get the same
+`401 auth.invalid_credentials`, in the same time.
+
+```ini title=".env"
+AUTH_SESSION_TTL=30d      # 30d, 12h, 90m
+```
+
+Roles are the `users.roles` column, and they apply from the next request:
+
+```bash
+make auth/grant EMAIL=ada@example.com ROLE=admin
+```
+
+Registration is open. `register_user`, `login` and `logout`
+(`business/src/{domain,application}/user/`) and `presentation/src/api/auth/` are yours: close
+registration or add rules there.
+</TabItem>
+</Tabs>
+
+## Protected by default
+
+In an auth project every scaffolded route is protected. A handler that takes `auth: BearerAuth`
+answers `401 auth.unauthenticated` before it runs when the token is missing, unknown or expired.
+Open routes and role checks are flags of the scaffold:
+
+```bash
+puerto generate scaffold Product \
+  --public list_products,get_product \
+  --role delete_product=admin \
+  -- name:String price:i64 sku:String!
+```
+
+```rust title="presentation/src/api/product/routes.rs (excerpt)"
+/// Delete a Product
+#[oai(path = "/products/:id", method = "delete", tag = "ApiTags::Product")]
+#[require_role("admin")]
+async fn delete(&self, auth: BearerAuth, id: Path<Uuid>) -> DeleteProductResponse {
+    match self
+        .delete_product
+        .execute(DeleteProductParams {
+            actor: auth.0,
+            id: ProductId::from_uuid(id.0),
+        })
+        .await
+    // …
+```
+
+`#[require_role("admin")]` adds a `403 auth.forbidden` check at the top of the handler. Two
+roles on one route mean the caller needs both. The flags land in `puerto.toml`:
+
+```toml
+[[entity]]
+name = "Product"
+public = ["list_products", "get_product"]
+
+[entity.roles]
+delete_product = ["admin"]
+```
+
+`puerto validate` checks that `routes.rs` still says the same as the manifest. Change both
+together.
+
+## Rules that depend on data
+
+"Only the owner can edit it" is not an attribute: it depends on the row. Protected use cases
+receive the caller as `actor: Principal` (`user_id`, `subject`, `email`, `name`, `roles`) and
+decide. With an `owner:Uuid` field on the entity:
+
+```rust
+if product.owner != params.actor.user_id {
+    return Err(ProductError::Forbidden);   // 403 product.forbidden
+}
+```
+
+The domain sees a `Principal`, never a token. Tests build one with `PrincipalMother`, and route
+tests use a `MockAuthenticator`.
+
+## The frontend
+
+`useAuth()` gives `{ user, can(role), login, logout }`, where `user` comes from `GET /me`. The
+generated route table wraps every non-public screen in `<RequireAuth>`, which sends whoever is
+not signed in to sign in, as a `401` from any call does. Generated screens hide the actions the
+user's roles do not allow, but the API decides: its `403` reaches the alert as `auth.forbidden`.
+
+| | OIDC | Local |
+|---|---|---|
+| Sign in | Authorization Code + PKCE (`oidc-client-ts`) | `/login` and `/register` pages |
+| Token kept | in memory; a reload goes back through the provider | `localStorage`; Sign out revokes it |
+
+<Aside type="caution" title="Tier 1">
+Authentication and authorization checks are in the generated `AGENTS.md`'s Tier 1: a person reads
+the whole diff before it is committed, however green the tests are.
+</Aside>
+
+## Errors
+
+| Status | Code | When |
+|---|---|---|
+| 401 | `auth.unauthenticated` | no token, or an invalid or expired one |
+| 401 | `auth.invalid_credentials` | local login with a wrong email or password |
+| 403 | `auth.forbidden` | the caller lacks a role `#[require_role]` asks for |
+| 403 | `<entity>.forbidden` | a use case's own rule refused the caller |
+| 503 | `auth.unavailable` | the provider could not be reached |

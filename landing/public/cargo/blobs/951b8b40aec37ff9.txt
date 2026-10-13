@@ -1,0 +1,47 @@
+# Worker — AI Agent Notes
+
+The second process of this project (ADR-0018 of Puerto). The API's units of work write every
+event to the `outbox` table in the entity's own transaction; this process **relays** the outbox
+to the transport and **runs the consumers**. It is a composition root, like `presentation`: no
+business logic lives here — a consumer decodes the event and calls a use case.
+
+## Layer Structure
+
+```
+worker/src/
+├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).try_run(…)` (never changes)
+├── generated.rs             # `pub mod registry;`
+├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
+├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
+└── consumers/
+    └── <consumer>.rs        # Yours: an `EventHandler`, written once by `puerto generate consumer`
+```
+
+## Critical Rules
+
+- **Add a consumer with `puerto generate consumer <name> --on <event_type>[,…]`** — it declares
+  `[[consumer]]` in `puerto.toml`, writes the handler and its tests, and regenerates
+  `generated/registry.rs`. Never wire one by hand.
+- **Handlers must be idempotent.** Delivery is at-least-once: the same `event.id` can arrive
+  twice. Check whether the work was already done (keyed on `event.id`) before doing it again.
+- **Answer honestly**: `Ack` when done; `Retry` for a failure that may pass (redelivered with a
+  1 s → 300 s backoff, `MAX_DELIVERIES` times); `HandlerOutcome::dead_letter(reason, detail)` for
+  one that never will. A payload that does not decode is `REASON_PAYLOAD_INVALID`. Nothing is
+  dropped without a row in `dead_letters` (`make events/dead-letters`).
+- **Decode the snapshot, never the domain model**: `event.decode::<ProductSnapshot>()`. The
+  snapshot is the event's public contract.
+
+## Health and shutdown
+
+Served by the Puerto runtime, `puerto-events`, on `WORKER_PORT` (8081).
+
+- `GET /health` — liveness: the process answers.
+- `GET /health/ready` — readiness: `503` until the relay and every consumer have finished a pass
+  that did not fail recently (a database that is down shows up here).
+- On SIGTERM / Ctrl-C each loop finishes the batch it is handling, for up to 8 s.
+
+## Configuration
+
+`WORKER_PORT` (8081), `RELAY_BATCH_SIZE` (100), `RELAY_POLL_INTERVAL_MS` (500),
+`CONSUMER_POLL_INTERVAL_MS` (500), `MAX_DELIVERIES` (5), `RETRY_MAX_DELAY_MS` (unset: the backoff
+above), plus `DATABASE_URL`. A value that is set but invalid stops the worker at startup.

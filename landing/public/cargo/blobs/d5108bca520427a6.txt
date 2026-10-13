@@ -1,0 +1,111 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { OrderError } from "../../../../domain/order/errors";
+import type { OrderDraft } from "../../../../domain/order/model";
+import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
+import { renderScreen } from "../../../../test-support/render";
+import { textOf } from "../../../shared/forms";
+import { OrderFormContainer } from "./order-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: OrderDraft) {
+  await screen.findByText("Save");
+  type("Amount", String(draft.amount));
+  type("Status", draft.status);
+  type("Note", textOf(draft.note));
+}
+
+describe("OrderFormContainer", () => {
+  test("should create the order from what was typed and show it", async () => {
+    // Arrange
+    const draft = OrderMother.draft();
+    const orderRepository = fakeOrderRepository();
+    const { history } = renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/orders/"));
+    const {
+      items: [created],
+    } = await orderRepository.list({ limit: 1, offset: 0 });
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/orders/${created?.id}`);
+  });
+
+  test("should save the edited order when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const orderRepository = fakeOrderRepository([seeded]);
+    const { history } = renderScreen(<OrderFormContainer id={seeded.id} />, {
+      orderRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/orders/${seeded.id}`));
+    expect(await orderRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the code itself when the API answers one the form does not know", async () => {
+    // Arrange
+    const code = "order.validation_error.invalid";
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      create: () => Promise.reject(new OrderError(code)),
+    };
+    renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(OrderMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+
+  test("should say a order with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      create: () => Promise.reject(new OrderError("order.duplicate")),
+    };
+    renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(OrderMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "An order with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      create: () => Promise.reject(new OrderError("order.invalid_amount")),
+    };
+    renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(OrderMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Amount is not valid")).toBeTruthy();
+    const input = screen.getByLabelText("Amount");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

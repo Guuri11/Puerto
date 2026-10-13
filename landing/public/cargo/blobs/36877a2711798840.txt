@@ -1,0 +1,41 @@
+//! Yours: `puerto new --auth local` writes this file once.
+//!
+//! No `Debug` on the requests: they carry a password, and a `{:?}` in a log line must not print it.
+
+use chrono::{DateTime, Utc};
+use poem_openapi::Object;
+use puerto_core::auth::Session;
+
+#[derive(Object)]
+#[oai(rename_all = "camelCase")]
+pub struct RegisterRequest {
+    pub email: String,
+    #[oai(write_only)]
+    pub password: String,
+    pub name: Option<String>,
+}
+
+#[derive(Object)]
+#[oai(rename_all = "camelCase")]
+pub struct LoginRequest {
+    pub email: String,
+    #[oai(write_only)]
+    pub password: String,
+}
+
+/// A signed-in session: send `token` as `Authorization: Bearer <token>` until `expiresAt`.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct SessionDto {
+    pub token: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+impl SessionDto {
+    pub fn from_session(session: Session) -> Self {
+        Self {
+            token: session.token,
+            expires_at: session.expires_at,
+        }
+    }
+}

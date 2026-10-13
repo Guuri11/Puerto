@@ -1,0 +1,65 @@
+use business::domain::customer::model::Customer;
+use poem_openapi::Object;
+use puerto_core::Page;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CustomerDto {
+    pub id: Uuid,
+    pub email: String,
+    pub name: String,
+    pub tags: Vec<String>,
+}
+
+impl CustomerDto {
+    pub fn from_domain(entity: &Customer) -> Self {
+        Self {
+            id: entity.id.value(),
+            email: entity.email.value().to_string(),
+            name: entity.name.clone(),
+            tags: entity
+                .tags
+                .iter()
+                .map(|v| v.value().to_string())
+                .collect::<Vec<_>>(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateCustomerRequest {
+    pub email: String,
+    pub name: String,
+    pub tags: Vec<String>,
+}
+
+/// One page of Customers: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CustomerPageDto {
+    pub items: Vec<CustomerDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl CustomerPageDto {
+    pub fn from_domain(page: &Page<Customer>) -> Self {
+        Self {
+            items: page.items.iter().map(CustomerDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateCustomerRequest {
+    pub email: String,
+    pub name: String,
+    pub tags: Vec<String>,
+}

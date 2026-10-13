@@ -1,0 +1,28 @@
+[project]
+name = "shop"
+db = true
+web = true
+
+[[entity]]
+name = "Product"
+use_cases = [
+    "create_product",
+    "get_product",
+    "list_products",
+    "update_product",
+    "delete_product",
+]
+db = true
+
+[[entity.fields]]
+name = "name"
+type = "String"
+
+[[entity.fields]]
+name = "price"
+type = "i64"
+
+[[entity.fields]]
+name = "sku"
+type = "String"
+unique = true

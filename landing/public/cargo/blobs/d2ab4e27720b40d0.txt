@@ -1,0 +1,62 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "../../../core/auth";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { OrderDetailView } from "../views/order-detail-view";
+
+export function OrderDetailContainer({ id }: { id: string }) {
+  const { orderRepository } = useDependencies();
+  const { can } = useAuth();
+  const order = useAsync(() => orderRepository.get(id), [orderRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await orderRepository.remove(id);
+      navigate("/orders");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Order</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {order.status === "loading" && <span className="loading loading-spinner" />}
+      {order.status === "error" && <ErrorAlert error={order.error} />}
+      {order.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <OrderDetailView order={order.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/orders/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              {can("admin") && (
+                <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/orders" className="link">
+        Back to orders
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this order?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}

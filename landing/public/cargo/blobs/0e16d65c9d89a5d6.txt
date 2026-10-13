@@ -1,0 +1,64 @@
+import { OrderError } from "../../domain/order/errors";
+import { type Order, type OrderDraft, parseStatus } from "../../domain/order/model";
+import type { OrderRepository } from "../../domain/order/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type OrderDto = components["schemas"]["OrderDto"];
+type OrderRequest = components["schemas"]["CreateOrderRequest"];
+
+function toOrder(dto: OrderDto): Order {
+  return {
+    id: dto.id,
+    amount: dto.amount,
+    status: parseStatus(dto.status),
+    note: dto.note ?? null,
+  };
+}
+
+function toRequest(draft: OrderDraft): OrderRequest {
+  return {
+    amount: draft.amount,
+    status: draft.status,
+    note: draft.note ?? undefined,
+  };
+}
+
+/** `OrderRepository` over the REST API (`/orders`). */
+export function orderRepositoryHttp(api: ApiClient): OrderRepository {
+  return {
+    async list(page) {
+      const { data, error, response } = await api.GET("/orders", {
+        params: { query: page },
+      });
+      if (data === undefined) throw new OrderError(apiErrorCode(error, response));
+      return { ...data, items: data.items.map(toOrder) };
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/orders/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new OrderError(apiErrorCode(error, response));
+      return toOrder(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/orders", { body: toRequest(draft) });
+      if (data === undefined) throw new OrderError(apiErrorCode(error, response));
+      return toOrder(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/orders/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new OrderError(apiErrorCode(error, response));
+      return toOrder(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/orders/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new OrderError(apiErrorCode(error, response));
+    },
+  };
+}

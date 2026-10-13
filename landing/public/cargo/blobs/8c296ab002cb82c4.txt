@@ -1,0 +1,35 @@
+use async_trait::async_trait;
+use puerto_core::auth::Principal;
+
+use crate::domain::order::{errors::OrderError, model::Order};
+
+#[derive(Debug, Clone)]
+pub struct CreateOrderParams {
+    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
+    /// it here and answers `Forbidden`.
+    pub actor: Principal,
+    pub amount: f64,
+    pub status: String,
+    pub note: Option<String>,
+}
+
+#[async_trait]
+pub trait CreateOrderUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CreateOrderUseCase {}
+
+        #[async_trait]
+        impl CreateOrderUseCaseTrait for CreateOrderUseCase {
+            async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError>;
+        }
+    }
+}

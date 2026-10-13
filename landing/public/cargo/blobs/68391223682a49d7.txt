@@ -1,0 +1,35 @@
+/** The signed-in user as the API resolved them (`GET /me`): never the provider's own claims. */
+export interface CurrentUser {
+  id: string;
+  email: string | null;
+  name: string | null;
+  /** What the API checks with `#[require_role]`. */
+  roles: string[];
+}
+
+/**
+ * Who is signed in, and how to sign in and out. The adapter talks to the provider (OIDC) or to
+ * the API (local); screens reach it through `useAuth()`.
+ */
+export interface AuthGateway {
+  /** The signed-in user, or `null` when nobody is. */
+  currentUser(): Promise<CurrentUser | null>;
+  /** The bearer token for the API, or `null` when nobody is signed in. */
+  accessToken(): Promise<string | null>;
+  /** Signs in, then comes back to `returnTo` (a path of this app). */
+  login(returnTo: string): Promise<void>;
+  /** Finishes a sign-in on `/auth/callback`; answers the path `login` was given. */
+  completeLogin(): Promise<string>;
+  logout(): Promise<void>;
+}
+
+/** A sign-in the provider or the API refused, or a `GET /me` that failed. */
+export class AuthError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "AuthError";
+    this.code = code;
+  }
+}

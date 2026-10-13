@@ -1,0 +1,9 @@
+export interface Customer {
+  id: string;
+  email: string;
+  name: string;
+  tags: string[];
+}
+
+/** What a create or an update sends: a customer without its id. */
+export type CustomerDraft = Omit<Customer, "id">;

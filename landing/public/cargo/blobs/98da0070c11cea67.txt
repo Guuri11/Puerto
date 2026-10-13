@@ -1,0 +1,211 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+
+use crate::domain::product::{
+    errors::ProductError,
+    events::{ProductEvent, ProductSnapshot},
+    model::Product,
+    repository::ProductRepositoryTrait,
+    unit_of_work::ProductUnitOfWorkFactory,
+    use_cases::update_product::{UpdateProductParams, UpdateProductUseCaseTrait},
+};
+
+pub struct UpdateProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+    pub uow_factory: Arc<dyn ProductUnitOfWorkFactory>,
+}
+
+#[async_trait]
+impl UpdateProductUseCaseTrait for UpdateProductUseCaseImpl {
+    async fn execute(&self, params: UpdateProductParams) -> Result<Product, ProductError> {
+        tracing::info!(id = %params.id, "update_product: start");
+        let failed =
+            |e: &RepositoryError| tracing::error!(error = %e, "update_product: repository failed");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(failed)?
+            .ok_or_else(|| {
+                let err = ProductError::NotFound;
+                tracing::warn!(error = %err, "update_product: rejected");
+                err
+            })?;
+        if params.name.trim().is_empty() {
+            let err = ProductError::ValidationError("name_empty".into());
+            tracing::warn!(error = %err, "update_product: rejected");
+            return Err(err);
+        }
+        if params.sku.trim().is_empty() {
+            let err = ProductError::ValidationError("sku_empty".into());
+            tracing::warn!(error = %err, "update_product: rejected");
+            return Err(err);
+        }
+        entity.name = params.name;
+        entity.price = params.price;
+        entity.sku = params.sku;
+        entity.updated_at = chrono::Utc::now();
+        let mut uow = self.uow_factory.begin().await.inspect_err(failed)?;
+        uow.save(&entity).await.inspect_err(failed)?;
+        uow.record(ProductEvent::Updated(ProductSnapshot::from_entity(&entity)))
+            .await
+            .inspect_err(failed)?;
+        uow.commit().await.inspect_err(failed)?;
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::{
+        model::{ProductId, ProductProps},
+        repository::mocks::MockProductRepository,
+        unit_of_work::mocks::RecordingUnitOfWorkFactory,
+    };
+    use puerto_core::DomainEvent;
+
+    fn repository_holding(entity: Product) -> MockProductRepository {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        mock_repo
+    }
+
+    #[tokio::test]
+    async fn should_record_product_updated_when_params_are_valid() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: "original".to_string(),
+            price: 42,
+            sku: "original".to_string(),
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(repository_holding(entity)),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                id: entity_id,
+                name: "updated".to_string(),
+                price: 42,
+                sku: "updated".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap().name, "updated");
+        let recorded = uow_factory.recorded();
+        assert!(recorded.committed);
+        assert_eq!(recorded.events.len(), 1);
+        assert_eq!(recorded.events[0].event_type(), "product_updated");
+        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_and_record_nothing_when_the_product_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                id: ProductId::generate(),
+                name: "new".to_string(),
+                price: 42,
+                sku: "new".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.not_found");
+        let recorded = uow_factory.recorded();
+        assert!(recorded.saved.is_empty());
+        assert!(recorded.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_return_error_and_record_nothing_when_name_is_empty() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: "original".to_string(),
+            price: 42,
+            sku: "original".to_string(),
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(repository_holding(entity)),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                id: entity_id,
+                name: "".to_string(),
+                price: 42,
+                sku: "updated".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.name_empty"
+        );
+        assert!(uow_factory.recorded().saved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_return_error_and_record_nothing_when_sku_is_empty() {
+        // Arrange
+        let entity = Product::new(ProductProps {
+            name: "original".to_string(),
+            price: 42,
+            sku: "original".to_string(),
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = UpdateProductUseCaseImpl {
+            repository: Arc::new(repository_holding(entity)),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(UpdateProductParams {
+                id: entity_id,
+                name: "updated".to_string(),
+                price: 42,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.sku_empty"
+        );
+        assert!(uow_factory.recorded().saved.is_empty());
+    }
+}

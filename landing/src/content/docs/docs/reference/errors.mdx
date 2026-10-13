@@ -1,0 +1,77 @@
+---
+title: Error contract
+description: The error contract of every Puerto API - machine-readable codes in name, which HTTP status each error maps to, and how a new error variant gets one.
+---
+
+Every error a Puerto API answers has the same body, `ErrorResponse` from `puerto-web`:
+
+```json
+{ "name": "product.validation_error.name_empty", "message": "product.validation_error.name_empty" }
+```
+
+- **`name` is the code**, machine-readable and stable: clients branch on it. For domain errors,
+  `message` is the same code. Errors are never sentences in the backend; turning a code into a
+  sentence is the client's job (the generated frontend does it in `messages.ts`).
+- Codes are `<entity>.<error>`, all lowercase: `product.not_found`,
+  `product.validation_error.<detail>`, `customer.invalid_email`.
+
+## Status by error
+
+Each entity's error enum, and the status its mapper gives each variant:
+
+| Variant | Code | Status |
+|---|---|---|
+| `ValidationError(detail)` | `<entity>.validation_error.<detail>` | `422` |
+| `Invalid<Vo>` (one per value object) | `<entity>.invalid_<vo>` | `422` |
+| `NotFound` | `<entity>.not_found` | `404` |
+| `Duplicate` | `<entity>.duplicate` | `409` |
+| `Forbidden` (auth projects) | `<entity>.forbidden` | `403` |
+| `RepositoryError` | `<entity>.repository_error` | `500` |
+| `Unknown` | `<entity>.unknown` | `500` |
+
+`400` is left to poem, for a body it cannot parse. So a client can tell "malformed JSON" (400)
+from "the title is empty" (422) by the status alone
+([ADR-0007](/docs/decisions/adr/0007-error-contract-code-in-name-422/)).
+
+## Errors that are not the entity's
+
+| Status | Code | From |
+|---|---|---|
+| `401` | `auth.unauthenticated` | `BearerAuth`: no token, or an invalid or expired one |
+| `401` | `auth.invalid_credentials` | local login |
+| `403` | `auth.forbidden` | `#[require_role]` |
+| `503` | `auth.unavailable` | the OIDC provider could not be reached |
+| `500` | `auth.not_configured` | a protected route with no `Authenticator` registered |
+
+## Repository failures
+
+Repositories answer one `RepositoryError` from `puerto-core` with three variants, the three
+outcomes a use case treats differently. Each entity error converts from it
+([ADR-0015](/docs/decisions/adr/0015-repositories-return-one-repository-error/)):
+
+| `RepositoryError` | Becomes | Status |
+|---|---|---|
+| `Duplicate` | `<entity>.duplicate` | `409` |
+| `InvalidData` (a stored row the domain rejects) | `<entity>.repository_error` | `500` |
+| `Unavailable` (the store failed) | `<entity>.repository_error` | `500` |
+
+"Not found" is not a repository error: `find_by_id` answers `Ok(None)` and the use case decides.
+
+## Adding an error
+
+Add the variant to the entity's error enum with its `#[error("…")]` code. The mapper in
+`presentation/src/api/<entity>/error_mapper.rs` has no catch-all arm, so the project does not
+compile until you give the new variant a status. Add its test next to the others, one per arm:
+
+```rust
+#[test]
+fn should_map_validation_error_to_422_with_its_code() {
+    // Act
+    let (status, Json(body)) =
+        ProductError::ValidationError("name_empty".into()).into_error_response();
+
+    // Assert
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body.name, "product.validation_error.name_empty");
+}
+```

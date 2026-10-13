@@ -1,0 +1,125 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+
+use crate::domain::customer::{
+    errors::CustomerError,
+    events::{CustomerEvent, CustomerSnapshot},
+    repository::CustomerRepositoryTrait,
+    unit_of_work::CustomerUnitOfWorkFactory,
+    use_cases::delete_customer::{DeleteCustomerParams, DeleteCustomerUseCaseTrait},
+};
+
+pub struct DeleteCustomerUseCaseImpl {
+    pub repository: Arc<dyn CustomerRepositoryTrait>,
+    pub uow_factory: Arc<dyn CustomerUnitOfWorkFactory>,
+}
+
+#[async_trait]
+impl DeleteCustomerUseCaseTrait for DeleteCustomerUseCaseImpl {
+    async fn execute(&self, params: DeleteCustomerParams) -> Result<(), CustomerError> {
+        tracing::info!(id = %params.id, "delete_customer: start");
+        let failed =
+            |e: &RepositoryError| tracing::error!(error = %e, "delete_customer: repository failed");
+        let mut entity = self
+            .repository
+            .find_by_id(params.id)
+            .await
+            .inspect_err(failed)?
+            .ok_or_else(|| {
+                let err = CustomerError::NotFound;
+                tracing::warn!(error = %err, "delete_customer: rejected");
+                err
+            })?;
+        let now = chrono::Utc::now();
+        entity.deleted = true;
+        entity.deleted_at = Some(now);
+        entity.updated_at = now;
+        let mut uow = self.uow_factory.begin().await.inspect_err(failed)?;
+        uow.save(&entity).await.inspect_err(failed)?;
+        uow.record(CustomerEvent::Deleted(CustomerSnapshot::from_entity(
+            &entity,
+        )))
+        .await
+        .inspect_err(failed)?;
+        uow.commit().await.inspect_err(failed)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::customer::value_objects::Email;
+    use crate::domain::customer::{
+        model::{Customer, CustomerId, CustomerProps},
+        repository::mocks::MockCustomerRepository,
+        unit_of_work::mocks::RecordingUnitOfWorkFactory,
+    };
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+    use puerto_core::DomainEvent;
+
+    #[tokio::test]
+    async fn should_record_customer_deleted_when_id_exists() {
+        // Arrange
+        let entity = Customer::new(CustomerProps {
+            email: Email::new("example".to_string()).expect("valid Email"),
+            name: "example".to_string(),
+            tags: vec![],
+        })
+        .unwrap();
+        let entity_id = entity.id;
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo
+            .expect_find_by_id()
+            .returning(move |_| Ok(Some(entity.clone())));
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = DeleteCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(DeleteCustomerParams {
+                actor: PrincipalMother::random(),
+                id: entity_id,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        let recorded = uow_factory.recorded();
+        assert!(recorded.committed);
+        assert!(recorded.saved.iter().all(|saved| saved.deleted));
+        assert_eq!(recorded.events.len(), 1);
+        assert_eq!(recorded.events[0].event_type(), "customer_deleted");
+        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+    }
+
+    #[tokio::test]
+    async fn should_return_not_found_and_record_nothing_when_the_customer_does_not_exist() {
+        // Arrange
+        let mut mock_repo = MockCustomerRepository::new();
+        mock_repo.expect_find_by_id().returning(|_| Ok(None));
+        let uow_factory = RecordingUnitOfWorkFactory::new();
+        let use_case = DeleteCustomerUseCaseImpl {
+            repository: Arc::new(mock_repo),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Act
+        let result = use_case
+            .execute(DeleteCustomerParams {
+                actor: PrincipalMother::random(),
+                id: CustomerId::generate(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "customer.not_found");
+        assert!(uow_factory.recorded().events.is_empty());
+    }
+}

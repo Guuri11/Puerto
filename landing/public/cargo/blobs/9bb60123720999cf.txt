@@ -1,0 +1,11 @@
+import type { Page, PageRequest } from "../shared/page";
+import type { Product, ProductDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `ProductError` the API answered. */
+export interface ProductRepository {
+  list(page: PageRequest): Promise<Page<Product>>;
+  get(id: string): Promise<Product>;
+  create(draft: ProductDraft): Promise<Product>;
+  update(id: string, draft: ProductDraft): Promise<Product>;
+  remove(id: string): Promise<void>;
+}

@@ -1,0 +1,89 @@
+---
+title: Field types
+description: Every field type Puerto generates, with its CLI syntax and what it becomes in Rust, in Postgres, on the wire and in the generated form.
+---
+
+A field is declared once, as `name:Type` after the `--` of `generate scaffold` or `generate
+domain`, and Puerto carries its type through every layer. The decision for each type is made in
+one place in the generator, `generators/types.rs`
+([ADR-0011](/docs/decisions/adr/0011-templates-own-shape-types-own-decisions/)).
+
+## Primitives
+
+| CLI | Rust | Postgres | TypeScript | Form control |
+|---|---|---|---|---|
+| `title:String` | `String` | `TEXT NOT NULL` | `string` | text input, `required` |
+| `count:i64` | `i64` | `BIGINT NOT NULL` | `number` | number input |
+| `ratio:f64` | `f64` | `DOUBLE PRECISION NOT NULL` | `number` | number input, `step=any` |
+| `active:bool` | `bool` | `BOOLEAN NOT NULL` | `boolean` | checkbox |
+| `ref:Uuid` | `Uuid` | `UUID NOT NULL` | `string` | text input, `required` |
+| `due:DateTime` | `DateTime<Utc>` | `TIMESTAMPTZ NOT NULL` | `string` (ISO 8601) | `datetime-local` |
+| `meta:map` | `HashMap<String, String>` | `JSONB NOT NULL` | `Record<string, string>` | textarea, `key=value` per line |
+
+`DateTime` and `map` are shorthands: the manifest stores `DateTime<Utc>` and
+`HashMap<String, String>`.
+
+## Optional and repeated
+
+| CLI | Rust | Postgres | TypeScript |
+|---|---|---|---|
+| `note:opt:String` | `Option<String>` | `TEXT` (nullable) | `string \| null` |
+| `stock:opt:i64` | `Option<i64>` | `BIGINT` | `number \| null` |
+| `score:opt:f64` | `Option<f64>` | `DOUBLE PRECISION` | `number \| null` |
+| `done:opt:bool` | `Option<bool>` | `BOOLEAN` | `boolean \| null` |
+| `seen:opt:DateTime` | `Option<DateTime<Utc>>` | `TIMESTAMPTZ` | `string \| null` |
+| `tags:vec:String` | `Vec<String>` | `TEXT[] NOT NULL DEFAULT '{}'` | `string[]` |
+| `ids:vec:i64` | `Vec<i64>` | `BIGINT[] NOT NULL DEFAULT '{}'` | `number[]` |
+
+An optional field is not `required` in the form, and an empty input is sent as `null`. A vector
+is a comma-separated text input.
+
+## Value objects
+
+A value object wraps a primitive in a type of its own, so the domain can validate it once and
+nothing can pass a raw string where an `Email` goes. See [Value objects](/docs/guides/value-objects/).
+
+| CLI | Rust (domain) | On the wire |
+|---|---|---|
+| `email:Email:String` | `Email(String)` | `string` |
+| `amount:Amount:f64` | `Amount(f64)` | `number` |
+| `nickname:Nick:opt:String` | `Option<Nick>` | `string \| null` |
+| `tags:Tag:vec:String` | `Vec<Tag>` | `string[]` |
+| `status:Status:enum:Draft/Paid` | `enum Status { Draft, Paid }` | `"Draft" \| "Paid"` (a `<select>`) |
+| `email:Email` | the shared `Email` | its inner type |
+
+The last row uses a **shared** value object, declared once with
+`puerto generate value-object Email String` and reused by any entity.
+
+## Unique
+
+Append `!` to any field: `sku:String!`, `email:Email:String!`. In Postgres it becomes a named
+**partial** unique index, so a soft-deleted row does not keep its value taken
+([ADR-0003](/docs/decisions/adr/0003-unique-indexes-are-partial/)):
+
+```sql
+CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;
+```
+
+A duplicate is `409` with `{entity}.duplicate`, from Postgres and from the in-memory repository
+alike.
+
+## Columns every entity has
+
+`id` (`UUID PRIMARY KEY`, the entity's own `{Entity}Id` in the domain), `created_at`,
+`updated_at`, `deleted` and `deleted_at`. Deletes are soft: every generated query filters
+`WHERE deleted = false`.
+
+## Names that are refused
+
+Puerto refuses a name when it would not compile or not migrate, at the command that introduced it
+rather than at `cargo build`:
+
+- Field names that every entity already has (`id`, `created_at`, `updated_at`, `deleted`,
+  `deleted_at`) and Rust keywords (`type`, `match`…). Field names are snake_case.
+- In `--db` projects, PostgreSQL reserved words as field names (`order`, `user`, `desc`…). A
+  project without a database may use them
+  ([ADR-0005](/docs/decisions/adr/0005-sql-reserved-words-only-in-db-projects/)).
+- Entity names that would collide with a type or module the generated code already uses, such as
+  `Tracing` ([ADR-0006](/docs/decisions/adr/0006-logging-through-tracing-not-a-logger-port/)).
+  In auth projects `User`, `Me` and `Auth` are taken too. Entity names are PascalCase.

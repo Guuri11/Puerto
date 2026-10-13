@@ -1,0 +1,194 @@
+use async_trait::async_trait;
+use sqlx::PgPool;
+
+use business::domain::customer::{
+    model::{Customer, CustomerId},
+    repository::CustomerRepositoryTrait,
+};
+use puerto_core::{Page, PageRequest, RepositoryError};
+
+use super::entity::CustomerDb;
+use crate::db::map_sqlx_error;
+
+pub struct PgCustomerRepository {
+    pub pool: PgPool,
+}
+
+impl PgCustomerRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
+/// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
+fn to_domain(row: CustomerDb) -> Result<Customer, RepositoryError> {
+    Customer::try_from(row).map_err(|e| {
+        tracing::error!(error = %e, "stored row is not a valid customer");
+        RepositoryError::InvalidData
+    })
+}
+
+#[async_trait]
+impl CustomerRepositoryTrait for PgCustomerRepository {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError> {
+        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        let rows = sqlx::query_as!(
+            CustomerDb,
+            "SELECT id, created_at, updated_at, deleted, deleted_at, email, name, tags
+             FROM customers WHERE deleted = false
+             ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
+            i64::from(page.limit()),
+            i64::from(page.offset())
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all failed");
+            map_sqlx_error(&e)
+        })?;
+        let total = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) AS "total!" FROM customers WHERE deleted = false"#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all count failed");
+            map_sqlx_error(&e)
+        })?;
+
+        let items = rows
+            .into_iter()
+            .map(to_domain)
+            .collect::<Result<Vec<_>, _>>()?;
+        // COUNT(*) is never negative.
+        let total = u64::try_from(total).unwrap_or_default();
+        Ok(Page::new(items, total, page))
+    }
+
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError> {
+        tracing::debug!(%id, "find_by_id");
+        let row = sqlx::query_as!(
+            CustomerDb,
+            "SELECT id, created_at, updated_at, deleted, deleted_at, email, name, tags
+             FROM customers WHERE id = $1 AND deleted = false",
+            id.value()
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_by_id failed");
+            map_sqlx_error(&e)
+        })?;
+
+        row.map(to_domain).transpose()
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use business::domain::customer::model::CustomerProps;
+    use business::domain::customer::unit_of_work::CustomerUnitOfWorkFactory;
+
+    use crate::customer::unit_of_work::PgCustomerUnitOfWorkFactory;
+
+    use business::domain::customer::value_objects::Email;
+    use uuid::Uuid;
+
+    fn test_repo(pool: PgPool) -> PgCustomerRepository {
+        PgCustomerRepository::new(pool)
+    }
+
+    /// The repository only reads: rows are written through the unit of work.
+    async fn store(pool: &PgPool, entity: &Customer) {
+        let mut uow = PgCustomerUnitOfWorkFactory::new(pool.clone())
+            .begin()
+            .await
+            .unwrap();
+        uow.save(entity).await.unwrap();
+        uow.commit().await.unwrap();
+    }
+
+    async fn seed(pool: &PgPool) -> Customer {
+        let entity = Customer::new(CustomerProps {
+            email: Email::new(Uuid::new_v4().to_string()).expect("valid Email"),
+            name: "example".to_string(),
+            tags: vec![],
+        })
+        .unwrap();
+        store(pool, &entity).await;
+        entity
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_persist_and_retrieve_by_id(pool: PgPool) {
+        // Arrange
+        let entity = seed(&pool).await;
+
+        // Act
+        let found = test_repo(pool)
+            .find_by_id(entity.id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Assert
+        assert_eq!(found.id, entity.id);
+        assert_eq!(found.email, entity.email);
+        assert_eq!(found.name, entity.name);
+        assert_eq!(found.tags, entity.tags);
+        assert!(!found.deleted);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_none_for_nonexistent_id(pool: PgPool) {
+        // Act
+        let result = test_repo(pool)
+            .find_by_id(CustomerId::generate())
+            .await
+            .unwrap();
+
+        // Assert
+        assert!(result.is_none());
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_list_all_customers_excluding_deleted(pool: PgPool) {
+        // Arrange
+        seed(&pool).await;
+        let mut deleted = seed(&pool).await;
+        deleted.deleted = true;
+        deleted.deleted_at = Some(deleted.updated_at);
+        store(&pool, &deleted).await;
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::default())
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
+        // Arrange
+        for _ in 0..3 {
+            seed(&pool).await;
+        }
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(PageRequest::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, 3);
+        assert_eq!((page.limit, page.offset), (2, 2));
+    }
+}

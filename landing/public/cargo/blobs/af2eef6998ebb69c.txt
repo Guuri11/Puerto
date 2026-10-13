@@ -1,0 +1,39 @@
+use super::errors::CustomerError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Email {
+    value: String,
+}
+
+impl Email {
+    pub fn new(value: String) -> Result<Self, CustomerError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(CustomerError::InvalidEmail);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tag {
+    value: String,
+}
+
+impl Tag {
+    pub fn new(value: String) -> Result<Self, CustomerError> {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            return Err(CustomerError::InvalidTag);
+        }
+        Ok(Self { value: trimmed })
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}

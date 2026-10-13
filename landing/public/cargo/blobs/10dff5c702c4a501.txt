@@ -1,0 +1,60 @@
+import { describe, expect, test } from "bun:test";
+import createClient from "openapi-fetch";
+import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
+import { bearerMiddleware } from "./bearer-middleware";
+
+/** One endpoint is enough: the middleware does not look at the path. */
+interface paths {
+  "/me": { get: { responses: { 200: { content: { "application/json": unknown } } } } };
+}
+
+/** A client whose every request is answered with `status`, signed by `auth`. */
+function answering(status: number, auth: ReturnType<typeof fakeAuthGateway>) {
+  const requests: Request[] = [];
+  const api = createClient<paths>({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return Response.json({}, { status });
+    },
+  });
+  api.use(bearerMiddleware(auth));
+  return { api, requests };
+}
+
+describe("bearerMiddleware", () => {
+  test("should send the user's token when someone is signed in", async () => {
+    // Arrange
+    const user = CurrentUserMother.random();
+    const { api, requests } = answering(200, fakeAuthGateway({ user }));
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(requests[0]?.headers.get("Authorization")).toBe(`Bearer token-of-${user.id}`);
+  });
+
+  test("should send no token when nobody is signed in", async () => {
+    // Arrange
+    const { api, requests } = answering(200, fakeAuthGateway());
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(requests[0]?.headers.has("Authorization")).toBe(false);
+  });
+
+  test("should sign in again when the API answers 401", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
+    const { api } = answering(401, auth);
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(auth.logins).toHaveLength(1);
+  });
+});

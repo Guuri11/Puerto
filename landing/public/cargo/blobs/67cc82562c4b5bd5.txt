@@ -1,0 +1,70 @@
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::ErrorResponse;
+
+use crate::api::auth::dto::SessionDto;
+use crate::api::me::dto::MeDto;
+
+#[derive(ApiResponse)]
+pub enum RegisterResponse {
+    #[oai(status = 201)]
+    Created(Json<MeDto>),
+    #[oai(status = 422)]
+    UnprocessableEntity(Json<ErrorResponse>),
+    #[oai(status = 409)]
+    Conflict(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl RegisterResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+            StatusCode::CONFLICT => Self::Conflict(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum LoginResponse {
+    #[oai(status = 200)]
+    Ok(Json<SessionDto>),
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl LoginResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum LogoutResponse {
+    #[oai(status = 204)]
+    NoContent,
+    #[oai(status = 401)]
+    Unauthorized(Json<ErrorResponse>),
+    /// The session could not be checked: the database is down (`BearerAuth`).
+    #[oai(status = 503)]
+    Unavailable(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+impl LogoutResponse {
+    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
+            _ => Self::InternalError(error),
+        }
+    }
+}

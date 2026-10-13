@@ -1,0 +1,72 @@
+import { describe, expect, test } from "bun:test";
+import { ProductError } from "../../domain/product/errors";
+import { ProductMother } from "../../test-support/product";
+import { createApiClient } from "../http/client";
+import { productRepositoryHttp } from "./product-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: productRepositoryHttp(api), requests };
+}
+
+describe("productRepositoryHttp", () => {
+  test("should ask for the page and return its products", async () => {
+    // Arrange
+    const product = ProductMother.random();
+    const page = { items: [product], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
+
+    // Act
+    const listed = await repository.list({ limit: 20, offset: 20 });
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/products?limit=20&offset=20");
+    expect(listed).toEqual(page);
+  });
+
+  test("should send the draft when creating a product", async () => {
+    // Arrange
+    const draft = ProductMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the product does not exist", async () => {
+    // Arrange
+    const code = "product.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(ProductError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the product", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/products/42");
+  });
+});

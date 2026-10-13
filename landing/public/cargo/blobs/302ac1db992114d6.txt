@@ -1,0 +1,15 @@
+-- Puerto migration: create_customer_table
+-- Run `make sqlx/prepare` after editing this file.
+
+CREATE TABLE customers (
+    id UUID PRIMARY KEY,
+    email TEXT NOT NULL,
+    name TEXT NOT NULL,
+    tags TEXT[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX customers_email_key ON customers (email) WHERE deleted = false;

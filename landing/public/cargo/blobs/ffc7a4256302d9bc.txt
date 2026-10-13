@@ -1,0 +1,53 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use business::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductId},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ProductDb {
+    pub id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+}
+
+impl TryFrom<ProductDb> for Product {
+    type Error = ProductError;
+
+    fn try_from(row: ProductDb) -> Result<Self, Self::Error> {
+        Ok(Self::from_repository(Product {
+            id: ProductId::from_uuid(row.id),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            deleted: row.deleted,
+            deleted_at: row.deleted_at,
+            name: row.name,
+            price: row.price,
+            sku: row.sku,
+        }))
+    }
+}
+
+impl From<&Product> for ProductDb {
+    fn from(entity: &Product) -> Self {
+        Self {
+            id: entity.id.value(),
+            created_at: entity.created_at,
+            updated_at: entity.updated_at,
+            deleted: entity.deleted,
+            deleted_at: entity.deleted_at,
+            name: entity.name.clone(),
+            price: entity.price,
+            sku: entity.sku.clone(),
+        }
+    }
+}

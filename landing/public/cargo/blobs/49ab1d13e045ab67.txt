@@ -1,0 +1,13 @@
+/**
+ * A request about an order that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `order.not_found`, `order.validation_error.<field>_empty`.
+ */
+export class OrderError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "OrderError";
+    this.code = code;
+  }
+}

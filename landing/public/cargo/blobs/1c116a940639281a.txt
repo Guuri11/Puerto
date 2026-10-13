@@ -1,0 +1,55 @@
+pub mod domain {
+
+    pub mod user {
+        pub mod errors;
+        pub mod model;
+        pub mod repository;
+        pub mod use_cases {
+            pub mod login;
+            pub mod logout;
+            pub mod register_user;
+        }
+    }
+
+    pub mod customer {
+        pub mod errors;
+        pub mod events;
+        pub mod model;
+        pub mod repository;
+        pub mod unit_of_work;
+        pub mod use_cases {
+            pub mod create_customer;
+            pub mod delete_customer;
+            pub mod get_customer;
+            pub mod list_customers;
+            pub mod update_customer;
+        }
+
+        pub mod value_objects;
+    }
+}
+pub mod application {
+
+    pub mod user {
+        pub mod login;
+        pub mod logout;
+        pub mod register_user;
+    }
+
+    pub mod customer {
+        pub mod create_customer;
+        pub mod delete_customer;
+        pub mod get_customer;
+        pub mod list_customers;
+        pub mod update_customer;
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod tests {
+    pub mod mothers {
+        pub mod principal_mother;
+
+        pub mod customer_mother;
+    }
+}

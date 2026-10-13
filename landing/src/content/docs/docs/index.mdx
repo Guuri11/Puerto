@@ -1,0 +1,80 @@
+---
+title: What Puerto is
+description: Puerto generates Rust projects with Domain-Driven Design and Clean Architecture. One manifest, every layer, compiled, linted and tested.
+---
+
+import { LinkCard } from '@astrojs/starlight/components';
+
+Puerto is a Rust framework for building backends the way Rails and Laravel let you build them:
+one command gives you the whole piece, wired and tested. The difference is the shape of what you
+get. Instead of models and controllers, Puerto generates a **Domain-Driven Design** project with
+**Clean Architecture**: your business rules live in a crate that depends on no framework, and
+everything else is an adapter around it.
+
+```bash
+puerto new --name shop --db
+cd shop
+puerto generate scaffold Product -- name:String price:i64 sku:String!
+make run    # Swagger UI on http://localhost:8080
+```
+
+That `scaffold` writes a `Product` entity with its own id type, a validated model, an error enum,
+a repository port and its Postgres adapter, a migration with a partial unique index, five use
+cases with their unit tests, five routes with their route tests, the DTOs, the error mapping, the
+dependency wiring and a React screen for each action. Then it formats everything with
+`cargo fmt`. Nothing is left as `todo!()`.
+
+## Two halves
+
+**A generator.** The `puerto` CLI writes code from `puerto.toml`, the manifest that describes
+your entities, their fields and their use cases. Generated code is yours: plain Rust in your
+repository, with no macro hiding the wiring, so you, your editor and your agent can follow every
+call.
+
+**A runtime.** What is identical in every project and not meant to be edited is not copied in. It
+lives in crates (`puerto-core`, `puerto-web`, `puerto-sqlx` and the rest) released in lockstep
+with the CLI, so a fix reaches your project through `cargo update`.
+[ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/) draws the line.
+
+## Three principles
+
+**Convention over configuration.** Directory layout, error codes, dependency injection, logging,
+tests and module declarations are decided once, so every Puerto project looks the same. Whoever
+opens one, a teammate or an agent, already knows where everything is.
+
+**The compiler is the reviewer.** Puerto prefers a compile error to a convention you have to
+remember. Each entity's id is its own type, so passing a customer id where an order id goes does
+not compile. In a project with domain events the repository has no `save`, so a write that skips
+the outbox does not compile. Error mappers have no catch-all arm, so a new error variant does not
+compile until it has an HTTP status.
+
+**AI-ready.** Every project ships an `AGENTS.md`, and a `CLAUDE.md` that imports it, describing
+its architecture, commands and conventions. Puerto's tests check it against the generator, so it
+cannot drift. Add the compiler's precise errors, and an agent working on a Puerto project gets
+corrected in seconds instead of in review. See [Working with agents](/docs/guides/agents/).
+
+## Who it is for
+
+Rust developers who miss the productivity of Rails, Laravel or Django and do not want to design
+an architecture from scratch for every service. And teams that write much of their code with
+coding agents, and want a structure that keeps that code honest.
+
+## What it is not
+
+- **Not a web framework.** HTTP is [poem](https://github.com/poem-web/poem) with poem-openapi, and
+  the database is [SQLx](https://github.com/launchbadge/sqlx) on Postgres. Puerto decides how they
+  fit together; it does not replace them.
+- **Not an ORM.** Repositories are written-out SQL that you can read and change.
+- **Not stable yet.** Puerto is `0.x`. Breaking changes ship with a migration guide in the
+  [changelog](/docs/changelog/).
+
+<LinkCard
+  title="Install Puerto"
+  description="One cargo command."
+  href="/docs/start/installation/"
+/>
+<LinkCard
+  title="Build your first entity"
+  description="From an empty directory to a CRUD API with its frontend."
+  href="/docs/start/quick-start/"
+/>

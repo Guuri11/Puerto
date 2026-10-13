@@ -1,0 +1,11 @@
+import type { Page, PageRequest } from "../shared/page";
+import type { Order, OrderDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `OrderError` the API answered. */
+export interface OrderRepository {
+  list(page: PageRequest): Promise<Page<Order>>;
+  get(id: string): Promise<Order>;
+  create(draft: OrderDraft): Promise<Order>;
+  update(id: string, draft: OrderDraft): Promise<Order>;
+  remove(id: string): Promise<void>;
+}

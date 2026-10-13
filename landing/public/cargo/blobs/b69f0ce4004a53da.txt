@@ -1,0 +1,29 @@
+use async_trait::async_trait;
+
+use crate::domain::order::{errors::OrderError, model::OrderId};
+
+#[derive(Debug, Clone)]
+pub struct DeleteOrderParams {
+    pub id: OrderId,
+}
+
+#[async_trait]
+pub trait DeleteOrderUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: DeleteOrderParams) -> Result<(), OrderError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub DeleteOrderUseCase {}
+
+        #[async_trait]
+        impl DeleteOrderUseCaseTrait for DeleteOrderUseCase {
+            async fn execute(&self, params: DeleteOrderParams) -> Result<(), OrderError>;
+        }
+    }
+}

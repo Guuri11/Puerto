@@ -1,27 +1,121 @@
 ---
-import { siteConfig } from '@/config/site';
+/** El pie no se anima nunca. → .claude/rules/motion.md */
+import Logo from '@/components/Logo.astro';
+import { site } from '@/config/site';
+import { version } from '@/lib/repo';
+
+const columns = [
+  {
+    title: 'Learn',
+    links: [
+      { text: 'Quick start', href: '/docs/start/quick-start/' },
+      { text: 'The architecture', href: '/docs/start/architecture/' },
+      { text: 'Guides', href: '/docs/guides/entities/' },
+      { text: 'CLI reference', href: '/docs/reference/cli/' },
+    ],
+  },
+  {
+    title: 'Project',
+    links: [
+      { text: 'Decisions', href: '/docs/decisions/' },
+      { text: 'Changelog', href: '/docs/changelog/' },
+      { text: 'GitHub', href: site.repo },
+      { text: 'crates.io', href: site.crate },
+    ],
+  },
+];
 ---
 
-<footer class="border-t border-puerto-steel/40 bg-puerto-deep">
-  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
-    <a href="/" aria-label="Puerto home">
-      <img
-        src={siteConfig.logo.src}
-        alt={siteConfig.logo.alt}
-        width={80}
-        height={18}
-        class="h-5 w-auto opacity-70 transition-opacity hover:opacity-100"
-      />
-    </a>
+<footer class="footer">
+  <div class="frame footer__inner">
+    <div class="footer__brand">
+      <Logo />
+      <p class="footer__tagline label">{site.tagline}</p>
+    </div>
 
-    <nav class="flex items-center gap-6" aria-label="Footer navigation">
-      <a href="/docs" class="font-sans text-sm text-puerto-mist transition-colors hover:text-puerto-ice">Docs</a>
-      <a href={siteConfig.github} target="_blank" rel="noopener noreferrer" class="font-sans text-sm text-puerto-mist transition-colors hover:text-puerto-ice">GitHub</a>
-      <a href="https://github.com/Guuri11/Puerto/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="font-sans text-sm text-puerto-mist transition-colors hover:text-puerto-ice">MIT License</a>
-    </nav>
+    {
+      columns.map((c) => (
+        <nav aria-label={c.title}>
+          <h2 class="footer__title label">{c.title}</h2>
+          <ul>
+            {c.links.map((l) => (
+              <li>
+                <a href={l.href} rel={l.href.startsWith('http') ? 'noopener' : undefined}>
+                  {l.text}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ))
+    }
+  </div>
 
-    <p class="font-sans text-xs text-puerto-mist/60">
-      Built with Puerto · {new Date().getFullYear()}
+  <div class="frame">
+    <p class="footer__legal mono">
+      puerto {version} · {site.license} license · built by{' '}
+      <a href={site.author.url} rel="noopener">{site.author.name}</a>
     </p>
   </div>
 </footer>
+
+<style>
+  .footer {
+    border-top: 2px solid var(--color-ink);
+    padding-top: 3.5rem;
+    padding-bottom: max(2rem, env(safe-area-inset-bottom));
+  }
+
+  .footer__inner {
+    display: grid;
+    gap: 2.5rem;
+  }
+
+  .footer__tagline {
+    margin-top: 0.75rem;
+    color: var(--color-ink-muted);
+  }
+
+  .footer__title {
+    margin-bottom: 0.75rem;
+    color: var(--color-ink-muted);
+  }
+
+  .footer ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .footer nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    color: var(--color-ink);
+    text-decoration: none;
+  }
+
+  .footer nav a:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--color-accent);
+    text-decoration-thickness: 2px;
+  }
+
+  .footer__legal {
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--color-rule);
+    font-size: 0.75rem;
+    color: var(--color-ink-muted);
+  }
+
+  .footer__legal a {
+    color: inherit;
+  }
+
+  @media (width >= 768px) {
+    .footer__inner {
+      grid-template-columns: 2fr 1fr 1fr;
+    }
+  }
+</style>

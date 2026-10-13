@@ -1,0 +1,223 @@
+---
+title: Use cases
+description: Add a use case that is not CRUD with puerto generate use-case, put its rule in the domain, test it, and expose it through an endpoint with its own route test.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+A use case is one thing your application does: create a product, publish an order, close an
+account. The five CRUD use cases come with the scaffold. Everything else is a use case you add.
+
+This guide adds `reprice_product`: change a product's price, refusing anything that is not a
+positive amount. Every snippet below was compiled and tested in a generated project.
+
+<Steps>
+
+1. **Generate it.**
+
+   ```bash
+   puerto generate use-case Product reprice_product
+   ```
+
+   ```txt title="output"
+   ✓ Use case RepriceProduct added to Product (2 files).
+     puerto.toml updated + bootstrap.rs regenerated.
+     ProductApi now holds `reprice_product` — call it from an endpoint in presentation/src/api/product/routes.rs.
+   ```
+
+   It writes the port (`domain/product/use_cases/reprice_product.rs`: the params and the trait,
+   with a mock) and its implementation (`application/product/reprice_product.rs`), adds the action
+   to `puerto.toml`, wires it in `bootstrap.rs` and adds the field to `ProductApi`. The action
+   must be snake_case. Naming one that exists is refused, and nothing is overwritten
+   ([ADR-0004](/docs/decisions/adr/0004-generate-use-case-never-overwrites/)).
+
+2. **Say what it takes.** The params are a guess (`name: String`). Make them what the use case
+   needs:
+
+   ```rust title="business/src/domain/product/use_cases/reprice_product.rs"
+   pub struct RepriceProductParams {
+       pub id: ProductId,
+       pub price: i64,
+   }
+   ```
+
+3. **Put the rule in the domain.** Not in the use case and not in the route: on the entity, where
+   every use case that changes a price goes through it.
+
+   ```rust title="business/src/domain/product/model.rs"
+   /// A price is a positive amount of cents.
+   pub fn reprice(&mut self, price: i64) -> Result<(), ProductError> {
+       if price <= 0 {
+           return Err(ProductError::ValidationError("price_not_positive".into()));
+       }
+       self.price = price;
+       self.updated_at = chrono::Utc::now();
+       Ok(())
+   }
+   ```
+
+4. **Write the use case.** It orchestrates: load, apply the rule, save.
+
+   ```rust title="business/src/application/product/reprice_product.rs"
+   async fn execute(&self, params: RepriceProductParams) -> Result<Product, ProductError> {
+       tracing::info!(id = %params.id, "reprice_product: start");
+       let mut product = self
+           .repository
+           .find_by_id(params.id)
+           .await?
+           .ok_or(ProductError::NotFound)?;
+       product.reprice(params.price)?;
+       self.repository.save(&product).await?;
+       tracing::info!(id = %product.id, "reprice_product: done");
+       Ok(product)
+   }
+   ```
+
+   The repository answers `Result<_, RepositoryError>`, and `?` turns that into a
+   `ProductError` through the generated `From` impl. A use case logs `start` and `done` with the
+   id, never the params, because they are user data.
+
+5. **Test it.** The generated test is marked `#[ignore = "write this test"]` so it cannot pass by
+   accident. Replace it:
+
+   ```rust
+   #[tokio::test]
+   async fn should_reject_the_price_when_it_is_not_positive() {
+       // Arrange
+       let product = ProductMother::random();
+       let id = product.id;
+       let mut mock_repo = MockProductRepository::new();
+       mock_repo
+           .expect_find_by_id()
+           .returning(move |_| Ok(Some(product.clone())));
+       mock_repo.expect_save().never();
+       let use_case = RepriceProductUseCaseImpl {
+           repository: Arc::new(mock_repo),
+       };
+
+       // Act
+       let result = use_case
+           .execute(RepriceProductParams { id, price: 0 })
+           .await;
+
+       // Assert
+       assert_eq!(
+           result.unwrap_err().to_string(),
+           "product.validation_error.price_not_positive"
+       );
+   }
+   ```
+
+   `ProductMother` lives in `business/src/tests/mothers/` (`use crate::tests::mothers::product_mother::ProductMother;`).
+
+6. **Expose it.** Puerto does not generate the endpoint: an action name says nothing about the
+   method, the path or the body. Add a request DTO and a response enum next to the generated
+   ones, then the route:
+
+   ```rust title="presentation/src/api/product/routes.rs"
+   /// Change a Product's price
+   #[oai(path = "/products/:id/price", method = "put", tag = "ApiTags::Product")]
+   async fn reprice(
+       &self,
+       id: Path<Uuid>,
+       body: Json<RepriceProductRequest>,
+   ) -> RepriceProductResponse {
+       match self
+           .reprice_product
+           .execute(RepriceProductParams {
+               id: ProductId::from_uuid(id.0),
+               price: body.price,
+           })
+           .await
+       {
+           Ok(entity) => RepriceProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
+           Err(err) => {
+               let (status, error) = err.into_error_response();
+               tracing::warn!(code = %error.0.name, "reprice_product failed");
+               RepriceProductResponse::from_status(status, error)
+           }
+       }
+   }
+   ```
+
+   ```rust title="presentation/src/api/product/responses.rs"
+   #[derive(ApiResponse)]
+   pub enum RepriceProductResponse {
+       #[oai(status = 200)]
+       Ok(Json<ProductDto>),
+       #[oai(status = 404)]
+       NotFound(Json<ErrorResponse>),
+       #[oai(status = 422)]
+       UnprocessableEntity(Json<ErrorResponse>),
+       #[oai(status = 500)]
+       InternalError(Json<ErrorResponse>),
+   }
+
+   impl RepriceProductResponse {
+       pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+           match status {
+               StatusCode::NOT_FOUND => Self::NotFound(error),
+               StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
+               _ => Self::InternalError(error),
+           }
+       }
+   }
+   ```
+
+7. **Test the route.** The route tests already have a `Mocks` struct with a mock for your use
+   case. Drive the real `OpenApiService`:
+
+   ```rust
+   #[tokio::test]
+   async fn should_respond_422_when_the_new_price_is_not_positive() {
+       // Arrange
+       let mut mocks = Mocks::default();
+       mocks
+           .reprice_product
+           .expect_execute()
+           .returning(|_| Err(ProductError::ValidationError("price_not_positive".into())));
+
+       // Act
+       let response = mocks
+           .client()
+           .put(format!("/products/{}/price", Uuid::new_v4()))
+           .body_json(&RepriceProductRequest { price: 0 }.to_json())
+           .send()
+           .await;
+
+       // Assert
+       response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+   }
+   ```
+
+</Steps>
+
+Run `make test`, `make lint` and `make format`, and in a web project `make web/sync`, because the
+API changed.
+
+<Aside type="tip">
+The snippets `poem-endpoint-action`, `poem-response-enum` and `poem-route-test` write steps 6
+and 7 for you in Zed and VS Code. See [IDE snippets](/docs/guides/configuration/#ide-snippets).
+</Aside>
+
+## In a project with domain events
+
+The repository has no `save` there: writes go through the unit of work, so the event is recorded
+in the same transaction. The generated implementation already holds a `uow_factory`. Step 4
+becomes:
+
+```rust
+let mut uow = self.uow_factory.begin().await?;
+uow.save(&product).await?;
+uow.record(ProductEvent::Updated(ProductSnapshot::from_entity(&product))).await?;
+uow.commit().await?;
+```
+
+Writing `self.repository.save(…)` there is a compile error, not a bug found in production. See
+[Domain events](/docs/guides/events/).
+
+## In a project with auth
+
+A protected use case's params carry `actor: Principal`, which the handler fills with `auth.0`.
+Rules that depend on who is asking ("only the owner edits") go in the use case, returning
+`ProductError::Forbidden`. See [Authentication](/docs/guides/auth/).

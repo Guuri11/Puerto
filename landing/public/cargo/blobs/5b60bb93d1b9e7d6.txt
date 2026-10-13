@@ -1,0 +1,61 @@
+use business::domain::order::model::Order;
+use poem_openapi::Object;
+use puerto_core::Page;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct OrderDto {
+    pub id: Uuid,
+    pub amount: f64,
+    pub status: String,
+    pub note: Option<String>,
+}
+
+impl OrderDto {
+    pub fn from_domain(entity: &Order) -> Self {
+        Self {
+            id: entity.id.value(),
+            amount: entity.amount.value(),
+            status: entity.status.as_str().to_string(),
+            note: entity.note.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct CreateOrderRequest {
+    pub amount: f64,
+    pub status: String,
+    pub note: Option<String>,
+}
+
+/// One page of Orders: `total` counts them all, `limit` is the one the API applied.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct OrderPageDto {
+    pub items: Vec<OrderDto>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+impl OrderPageDto {
+    pub fn from_domain(page: &Page<Order>) -> Self {
+        Self {
+            items: page.items.iter().map(OrderDto::from_domain).collect(),
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct UpdateOrderRequest {
+    pub amount: f64,
+    pub status: String,
+    pub note: Option<String>,
+}

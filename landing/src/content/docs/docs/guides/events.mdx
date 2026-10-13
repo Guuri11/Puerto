@@ -1,0 +1,229 @@
+---
+title: Domain events
+description: Record an event with every write through a transactional outbox, react to it in a separate worker process, and choose Postgres or Kafka as the transport.
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Sooner or later something has to happen *because* something else happened: send a welcome mail
+when a customer signs up, update a projection when an order is paid, tell another service. If
+each reaction is a call inside the use case, every new reaction means editing a use case that
+already works, and a failure halfway leaves the database and the world disagreeing.
+
+Puerto solves it with the **transactional outbox**. Every write records an event in the same
+database transaction as the data, and a second process delivers it, at least once, to whoever
+subscribed. The use case does not know who listens.
+
+```bash
+puerto new --name shop --db --events db      # or --events kafka
+```
+
+Events need `--db`: the guarantee comes from the transaction.
+[ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) has the whole design.
+
+## How it flows
+
+```txt
+API process
+  create_product
+    uow = uow_factory.begin()
+    uow.save(&product)              ┐
+    uow.record(Created(snapshot))   ├ one transaction:
+    uow.commit()                    ┘ the products row + the outbox row
+
+worker process
+  relay       reads the outbox in order and hands each event to the transport
+                db:    one event_deliveries row per subscribed consumer
+                kafka: topic shop.product, keyed by the product id
+  consumers   handle(envelope) → Ack | Retry | DeadLetter
+```
+
+If the process dies before `commit`, neither the product nor the event exists. If it dies after,
+both do, and the worker will deliver the event when it runs.
+
+## Writes go through the unit of work
+
+In an events project each entity gets a unit of work, and **its repository loses `save`**:
+
+```rust title="business/src/domain/product/repository.rs"
+pub trait ProductRepositoryTrait: Send + Sync {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
+    // No `save`: writes go through `ProductUnitOfWorkFactory`, which records their events.
+}
+```
+
+So a write that skips the outbox is not a bug you find in production. It does not compile:
+
+```txt
+error[E0599]: no method named `save` found for struct `Arc<(dyn ProductRepositoryTrait + 'static)>` in the current scope
+note: `ProductUnitOfWork` defines an item `save`, perhaps you need to implement it
+```
+
+The generated create, update and delete use cases already write through it:
+
+```rust
+let mut uow = self.uow_factory.begin().await?;
+uow.save(&entity).await?;
+uow.record(ProductEvent::Created(ProductSnapshot::from_entity(&entity))).await?;
+uow.commit().await?;
+```
+
+Dropping the unit of work without `commit` rolls everything back, so an early `?` is the
+rollback. One aggregate per transaction: a use case that must write two atomically is written by
+hand against a port of your own.
+
+## The event is a contract, not the model
+
+`business/src/domain/product/events.rs` is regenerated from `puerto.toml`. It holds the event
+enum and a **snapshot**: the entity as the API shows it, primitives only, with value objects
+unwrapped.
+
+```rust title="business/src/domain/product/events.rs (excerpt)"
+pub const PRODUCT_CREATED: &str = "product_created";
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductSnapshot {
+    pub id: Uuid,
+    pub name: String,
+    pub price: i64,
+    pub sku: String,
+}
+
+pub enum ProductEvent {
+    Created(ProductSnapshot),
+    Updated(ProductSnapshot),
+    Deleted(ProductSnapshot),
+}
+```
+
+The domain model never touches serde. Consumers decode the snapshot, so renaming a field
+changes a public contract, and it shows up in `events.rs`, where it can be reviewed.
+
+## Your own events
+
+```bash
+puerto generate event Product product_published
+```
+
+```txt title="output"
+✓ Event 'product_published' added to Product: ProductEvent::Published
+  business/src/domain/product/events.rs regenerated.
+  Record it from a use case: uow.record(ProductEvent::Published(ProductSnapshot::from_entity(&entity)))
+```
+
+Event types are snake_case and past tense: something that already happened.
+
+## Consumers
+
+<Steps>
+
+1. **Generate one.**
+
+   ```bash
+   puerto generate consumer notify_new_product --on product_created,product_published
+   ```
+
+   ```txt title="output"
+   ✓ Consumer 'notify_new_product' added, on: product_created, product_published
+     worker/src/consumers/notify_new_product.rs — yours: make it idempotent, it can see an event twice.
+     worker/src/generated/registry.rs regenerated. Run it with `make worker`.
+   ```
+
+2. **Write what it does.** The stub decodes the snapshot and acknowledges:
+
+   ```rust title="worker/src/consumers/notify_new_product.rs (excerpt)"
+   #[async_trait]
+   impl EventHandler for NotifyNewProduct {
+       async fn handle(&self, event: &EventEnvelope) -> HandlerOutcome {
+           match event.event_type.as_str() {
+               PRODUCT_CREATED => match event.decode::<ProductSnapshot>() {
+                   Ok(product) => {
+                       tracing::info!(event_id = %event.id, product_id = %product.id, "notify_new_product: product_created");
+                       HandlerOutcome::Ack
+                   }
+                   Err(err) => HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),
+               },
+               // …
+               _ => HandlerOutcome::Ack,
+           }
+       }
+   }
+   ```
+
+   Answer `Ack` when done, `Retry` for a failure that may pass (a timeout, a service that is
+   down), and `HandlerOutcome::dead_letter(…)` for one that never will.
+
+3. **Make it idempotent.** Delivery is **at least once**: after a crash or a redeploy the same
+   event can arrive twice, with the same `event.id`. Check whether the work was already done,
+   keyed on `event.id`, before doing it again. The generated tests deliver the same envelope
+   twice for that reason.
+
+4. **Run the worker.**
+
+   ```bash
+   make worker      # relays the outbox, runs the consumers; health on :8081
+   ```
+
+</Steps>
+
+Event types are generated constants, so removing an event that a consumer listens to breaks the
+worker's build instead of silently starving the consumer.
+
+## Retries and dead letters
+
+Every transport applies the same delivery policy, from `puerto-core`:
+
+| Delivery that failed | 1st | 2nd | 3rd | 4th | 5th |
+|---|---|---|---|---|---|
+| Then | wait 1 s | wait 5 s | wait 15 s | wait 60 s | dead letter |
+
+A `Retry` on the last allowed delivery (`MAX_DELIVERIES`, 5 by default) retires the event with a
+row in `dead_letters`; raise the cap and the waits continue at 300 s. Nothing is dropped without
+a dead letter, and if writing it fails, the event is delivered again. A handler that panics
+counts as a `Retry`.
+
+```bash
+make events/dead-letters     # the 20 most recent: consumer, event type, attempts, reason
+```
+
+## Transports
+
+<Tabs>
+<TabItem label="db">
+No broker. The relay inserts one `event_deliveries` row per subscribed consumer in the same
+transaction that marks the outbox row published, and each consumer claims its rows with
+`FOR UPDATE SKIP LOCKED`. Order per aggregate holds with one worker replica per consumer.
+A consumer added later receives the events relayed after it is deployed.
+</TabItem>
+<TabItem label="kafka">
+The relay produces to the topic `<project>.<aggregate>` (`shop.product`), keyed by the aggregate
+id, with the envelope fields as headers. Each consumer is a consumer group named
+`<project>.<consumer>`, and offsets are committed after the outcome. A retry is held in process,
+which stops the subscription and keeps the order. The outbox and the dead letters stay in
+Postgres. `docker-compose.yml` runs Redpanda for development, and building needs `cmake` and the
+libcurl headers.
+</TabItem>
+</Tabs>
+
+## Running more than one worker
+
+The relay takes a Postgres advisory lock, so with several replicas exactly one relays and the
+outbox order holds. Consumers scale with replicas. Each worker serves `/health` and
+`/health/ready` on `WORKER_PORT`: it is ready while every loop has finished a pass that did not
+fail within its interval, so a database that is down shows up as not ready.
+
+| Variable | Default | |
+|---|---|---|
+| `WORKER_PORT` | `8081` | health probes |
+| `RELAY_BATCH_SIZE` | `100` | outbox rows per relay pass |
+| `RELAY_POLL_INTERVAL_MS` | `500` | relay sleep when idle |
+| `CONSUMER_POLL_INTERVAL_MS` | `500` | consumer sleep when idle |
+| `MAX_DELIVERIES` | `5` | attempts before the dead letter |
+| `RETRY_MAX_DELAY_MS` | the policy's | caps the backoff (tests use `0`) |
+
+<Aside type="tip">
+Mail is the first consumer most projects need, and Puerto writes it for you:
+`puerto generate mail welcome --on customer_created --to email`. See [Mail](/docs/guides/mail/).
+</Aside>

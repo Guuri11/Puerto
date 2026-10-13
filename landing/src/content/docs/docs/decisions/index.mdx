@@ -1,0 +1,42 @@
+---
+title: Why decisions are written down
+description: Puerto's architecture decision records - every trade-off that is not visible in the code, with its context, the alternatives and the consequences.
+---
+
+import { adrs } from '@/lib/repo';
+
+The code says *what*. An architecture decision record says *why*: the context, the options that
+were weighed, the one that was taken and what it costs. Puerto keeps one for every decision that
+is not visible in the code, so that a later session, a person's or an agent's, inherits the
+reason instead of re-deriving it or quietly reverting it.
+
+An accepted ADR is never rewritten. When a decision changes, a new ADR supersedes it, and both
+link to each other. These pages are the files in
+[`docs/adr/`](https://github.com/Guuri11/Puerto/tree/main/docs/adr), published as they are.
+
+<table>
+  <thead>
+    <tr><th>#</th><th>Decision</th><th>Accepted</th></tr>
+  </thead>
+  <tbody>
+    {adrs.map((adr) => (
+      <tr>
+        <td><code>{adr.number}</code></td>
+        <td><a href={`/docs/decisions/adr/${adr.slug}/`}>{adr.title}</a></td>
+        <td>{adr.date}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+## Where to start
+
+- [0017: Runtime crates next to the generator](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)
+  draws the line between what Puerto generates and what it ships as a dependency, and compares
+  Loco, Pavex, Laravel, Rails and Spring Boot.
+- [0018: Domain events](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) is the
+  outbox, the unit of work and the worker.
+- [0021: Auth](/docs/decisions/adr/0021-auth-one-authenticator-port-oidc-or-local/) is one port
+  with two adapters, OIDC or local sessions.
+- [0010: Generated agent rules are tested](/docs/decisions/adr/0010-generated-agent-rules-are-tested/)
+  is why `AGENTS.md` cannot drift.

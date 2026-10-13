@@ -1,0 +1,102 @@
+---
+title: Configuration and running
+description: "The environment a Puerto project reads, its health probes and graceful shutdown, where your own middleware goes, logging, and its IDE snippets."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Environment
+
+Configuration is read once at startup, from the environment and from `.env` (a variable already
+set wins). A value that is set but invalid stops the server with a message. It never falls back
+to a default: a typo in `SERVICE_PORT` would otherwise start the server on a port nobody routes
+to.
+
+| Variable | Default | |
+|---|---|---|
+| `SERVICE_PORT` | `8080` | the port the API listens on |
+| `CORS_ALLOWED_ORIGINS` | any origin | comma-separated; `.env` lists the dev servers |
+| `RUST_LOG` | `info` | the `tracing` filter |
+| `PUERTO_BANNER` | `true` | `false` hides the startup banner |
+| `DATABASE_URL` | — | `--db` projects |
+| `WORKER_PORT` and the worker's variables | `8081` | [Running more than one worker](/docs/guides/events/#running-more-than-one-worker) |
+| `AUTH_*` | — | [Authentication](/docs/guides/auth/) |
+| `SMTP_URL`, `MAIL_FROM` | — | [Mail](/docs/guides/mail/#development-and-production) |
+
+`.env.example` documents every variable the project uses, and `.env` is its development copy.
+
+## What the server gives you
+
+`main.rs` is four lines: it reads `Config` and hands `bootstrap.rs`'s routes to `puerto-web`'s
+`App`, which serves:
+
+| Path | |
+|---|---|
+| `/api/…` | the API |
+| `/` | the Swagger UI |
+| `/health` | liveness: `200 ok` while the process answers |
+| `/health/ready` | readiness: `200 ready`, or `503` when a dependency does not answer (`SELECT 1` with `--db`) |
+
+On Ctrl-C or SIGTERM it stops accepting connections and gives in-flight requests 8 seconds to
+finish, below `docker stop`'s default of 10
+([ADR-0008](/docs/decisions/adr/0008-liveness-readiness-graceful-shutdown/)). A failure at
+startup, such as a database that is down, is an error message and exit code 1, never a panic.
+
+## Your own middleware and routes
+
+`presentation/src/app.rs` is written once by `puerto new` and never touched again:
+
+```rust title="presentation/src/app.rs"
+//! Yours: `puerto new` writes this file once and no generator touches it again.
+//!
+//! `generated/bootstrap.rs` hands every route — the API, the Swagger UI, the health probes — to
+//! `configure` last. Add middleware (`routes.with(…)`) or routes of your own (`routes.at(…)`) here.
+
+use poem::{Endpoint, Route};
+
+pub fn configure(routes: Route) -> impl Endpoint {
+    routes
+}
+```
+
+Rate limiting, request ids, a webhook endpoint outside the OpenAPI service: they go here, and
+regenerating `bootstrap.rs` never loses them.
+
+## Logging
+
+Plain `tracing`, with no logger to inject
+([ADR-0006](/docs/decisions/adr/0006-logging-through-tracing-not-a-logger-port/)). Every request
+is logged with its method, path, status and duration, and every use case logs `start` and `done`
+with its id. Never log the params or a request body: they are user data.
+
+```rust
+tracing::info!(id = %product.id, "reprice_product: done");
+```
+
+## The toolchain
+
+`rust-toolchain.toml` pins Rust `1.95.0` with `rustfmt` and `clippy`, and every crate uses
+edition 2024. Clippy gains lints between releases, so pinning is what makes `make lint` answer the
+same on every machine and in CI. Bump it on purpose, then fix what the new clippy reports
+([ADR-0009](/docs/decisions/adr/0009-generated-projects-pin-their-toolchain/)).
+
+## IDE snippets
+
+`puerto new` writes snippets for Zed (`.zed/snippets/`, loaded automatically) and VS Code
+(`.vscode/*.code-snippets`). Neovim with LuaSnip can load the VS Code ones:
+
+```lua
+require("luasnip.loaders.from_vscode").lazy_load({ paths = { "./.vscode" } })
+```
+
+They follow the generator's own shapes: `domain-model`, `repository-trait`, `app-use-case`,
+`uow-write`, `poem-endpoint-action`, `poem-response-enum`, `poem-route-test`, `consumer-arm`,
+`object-mother`, `sqlx-test`, `vo-enum` and more for Rust; `migration-create-table`,
+`migration-unique-index` and `sql-soft-delete` for SQL; `web-container`, `web-repo-method`,
+`web-form-field` and `web-route` for the frontend. Rewrite them with
+`puerto generate snippets [--ide zed|vscode]`.
+
+<Aside type="tip">
+The snippets are tested in Puerto's own suite: an entity is built from them alone and run
+through clippy and the tests, so a snippet cannot fall behind the generator.
+</Aside>

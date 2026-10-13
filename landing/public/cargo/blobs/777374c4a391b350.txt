@@ -1,0 +1,7 @@
+pub mod user {
+    pub mod provisioning;
+    pub mod repository;
+}
+pub mod product {
+    pub mod repository;
+}

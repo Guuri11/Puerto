@@ -1,0 +1,82 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import { CurrentUserMother } from "../../../../test-support/auth";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductDetailContainer } from "./product-detail-container";
+
+describe("ProductDetailContainer", () => {
+  test("should show the product when it exists", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+
+    // Act
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the product does not exist", async () => {
+    // Arrange
+    const productRepository = fakeProductRepository();
+
+    // Act
+    renderScreen(<ProductDetailContainer id={crypto.randomUUID()} />, { productRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("product.not_found");
+  });
+
+  test("should delete the product only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const fake = fakeProductRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<ProductDetailContainer id={seeded.id} />, {
+      productRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/products"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+
+  test("should not offer Delete to a user without its role", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+    const user = CurrentUserMother.random();
+
+    // Act
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository }, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("Name", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("Delete", { selector: ".card-actions *" })).toBeNull();
+  });
+
+  test("should show auth.forbidden when the API refuses the deletion", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = {
+      ...fakeProductRepository([seeded]),
+      remove: () => Promise.reject(new ProductError("auth.forbidden")),
+    };
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.forbidden");
+  });
+});

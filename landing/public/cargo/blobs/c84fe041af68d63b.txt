@@ -1,0 +1,25 @@
+use poem_openapi::Object;
+use puerto_core::auth::Principal;
+use uuid::Uuid;
+
+/// The caller as the API resolved them: the id of their `User` row and the roles the API checks.
+/// The frontend reads this, never the provider's claims.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct MeDto {
+    pub id: Uuid,
+    pub email: Option<String>,
+    pub name: Option<String>,
+    pub roles: Vec<String>,
+}
+
+impl MeDto {
+    pub fn from_principal(principal: &Principal) -> Self {
+        Self {
+            id: principal.user_id,
+            email: principal.email.clone(),
+            name: principal.name.clone(),
+            roles: principal.roles.clone(),
+        }
+    }
+}

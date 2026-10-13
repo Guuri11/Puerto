@@ -1,0 +1,8 @@
+# Todo abierto, crawlers de IA incluidos: que un asistente sepa contestar qué es Puerto es
+# parte del plan.
+User-agent: *
+Allow: /
+Disallow: /cargo/
+
+# El dominio definitivo es el de Vercel (CLAUDE.md). Cambiar junto con astro.config.mjs.
+Sitemap: https://puerto-rs.vercel.app/sitemap-index.xml

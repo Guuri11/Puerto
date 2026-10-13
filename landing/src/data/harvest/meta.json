@@ -1,0 +1,892 @@
+{
+  "version": "0.19.0",
+  "entities": [
+    {
+      "id": "product",
+      "name": "Product",
+      "fields": [
+        "name:String",
+        "price:i64",
+        "sku:String!"
+      ]
+    },
+    {
+      "id": "order",
+      "name": "Order",
+      "fields": [
+        "amount:Amount:f64",
+        "status:Status:enum:Pending/Confirmed/Cancelled",
+        "note:opt:String"
+      ]
+    },
+    {
+      "id": "customer",
+      "name": "Customer",
+      "fields": [
+        "email:Email:String!",
+        "name:String",
+        "tags:Tag:vec:String"
+      ]
+    }
+  ],
+  "matrix": [
+    {
+      "id": "nodb_noev_noauth_web__product",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": null,
+        "web": true
+      },
+      "entity": "product",
+      "total": 106,
+      "added": 37,
+      "changed": 8
+    },
+    {
+      "id": "nodb_noev_noauth_web__order",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": null,
+        "web": true
+      },
+      "entity": "order",
+      "total": 107,
+      "added": 38,
+      "changed": 8
+    },
+    {
+      "id": "nodb_noev_noauth_web__customer",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": null,
+        "web": true
+      },
+      "entity": "customer",
+      "total": 107,
+      "added": 38,
+      "changed": 8
+    },
+    {
+      "id": "nodb_noev_noauth_noweb__product",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": null,
+        "web": false
+      },
+      "entity": "product",
+      "total": 49,
+      "added": 20,
+      "changed": 6
+    },
+    {
+      "id": "nodb_noev_noauth_noweb__order",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": null,
+        "web": false
+      },
+      "entity": "order",
+      "total": 50,
+      "added": 21,
+      "changed": 6
+    },
+    {
+      "id": "nodb_noev_noauth_noweb__customer",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": null,
+        "web": false
+      },
+      "entity": "customer",
+      "total": 50,
+      "added": 21,
+      "changed": 6
+    },
+    {
+      "id": "nodb_noev_auth-oidc_web__product",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "product",
+      "total": 132,
+      "added": 37,
+      "changed": 9
+    },
+    {
+      "id": "nodb_noev_auth-oidc_web__order",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "order",
+      "total": 133,
+      "added": 38,
+      "changed": 9
+    },
+    {
+      "id": "nodb_noev_auth-oidc_web__customer",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "customer",
+      "total": 133,
+      "added": 38,
+      "changed": 9
+    },
+    {
+      "id": "nodb_noev_auth-oidc_noweb__product",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "product",
+      "total": 60,
+      "added": 20,
+      "changed": 6
+    },
+    {
+      "id": "nodb_noev_auth-oidc_noweb__order",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "order",
+      "total": 61,
+      "added": 21,
+      "changed": 6
+    },
+    {
+      "id": "nodb_noev_auth-oidc_noweb__customer",
+      "flags": {
+        "db": false,
+        "events": null,
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "customer",
+      "total": 61,
+      "added": 21,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_noauth_web__product",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": null,
+        "web": true
+      },
+      "entity": "product",
+      "total": 111,
+      "added": 39,
+      "changed": 8
+    },
+    {
+      "id": "db_noev_noauth_web__order",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": null,
+        "web": true
+      },
+      "entity": "order",
+      "total": 112,
+      "added": 40,
+      "changed": 8
+    },
+    {
+      "id": "db_noev_noauth_web__customer",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": null,
+        "web": true
+      },
+      "entity": "customer",
+      "total": 112,
+      "added": 40,
+      "changed": 8
+    },
+    {
+      "id": "db_noev_noauth_noweb__product",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": null,
+        "web": false
+      },
+      "entity": "product",
+      "total": 54,
+      "added": 22,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_noauth_noweb__order",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": null,
+        "web": false
+      },
+      "entity": "order",
+      "total": 55,
+      "added": 23,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_noauth_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": null,
+        "web": false
+      },
+      "entity": "customer",
+      "total": 55,
+      "added": 23,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_auth-oidc_web__product",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "product",
+      "total": 137,
+      "added": 39,
+      "changed": 9
+    },
+    {
+      "id": "db_noev_auth-oidc_web__order",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "order",
+      "total": 138,
+      "added": 40,
+      "changed": 9
+    },
+    {
+      "id": "db_noev_auth-oidc_web__customer",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "customer",
+      "total": 138,
+      "added": 40,
+      "changed": 9
+    },
+    {
+      "id": "db_noev_auth-oidc_noweb__product",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "product",
+      "total": 65,
+      "added": 22,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_auth-oidc_noweb__order",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "order",
+      "total": 66,
+      "added": 23,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_auth-oidc_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "customer",
+      "total": 66,
+      "added": 23,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_auth-local_web__product",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "local",
+        "web": true
+      },
+      "entity": "product",
+      "total": 149,
+      "added": 39,
+      "changed": 9
+    },
+    {
+      "id": "db_noev_auth-local_web__order",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "local",
+        "web": true
+      },
+      "entity": "order",
+      "total": 150,
+      "added": 40,
+      "changed": 9
+    },
+    {
+      "id": "db_noev_auth-local_web__customer",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "local",
+        "web": true
+      },
+      "entity": "customer",
+      "total": 150,
+      "added": 40,
+      "changed": 9
+    },
+    {
+      "id": "db_noev_auth-local_noweb__product",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "local",
+        "web": false
+      },
+      "entity": "product",
+      "total": 75,
+      "added": 22,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_auth-local_noweb__order",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "local",
+        "web": false
+      },
+      "entity": "order",
+      "total": 76,
+      "added": 23,
+      "changed": 6
+    },
+    {
+      "id": "db_noev_auth-local_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": null,
+        "auth": "local",
+        "web": false
+      },
+      "entity": "customer",
+      "total": 76,
+      "added": 23,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_noauth_web__product",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": null,
+        "web": true
+      },
+      "entity": "product",
+      "total": 121,
+      "added": 42,
+      "changed": 8
+    },
+    {
+      "id": "db_ev-db_noauth_web__order",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": null,
+        "web": true
+      },
+      "entity": "order",
+      "total": 122,
+      "added": 43,
+      "changed": 8
+    },
+    {
+      "id": "db_ev-db_noauth_web__customer",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": null,
+        "web": true
+      },
+      "entity": "customer",
+      "total": 122,
+      "added": 43,
+      "changed": 8
+    },
+    {
+      "id": "db_ev-db_noauth_noweb__product",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": null,
+        "web": false
+      },
+      "entity": "product",
+      "total": 64,
+      "added": 25,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_noauth_noweb__order",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": null,
+        "web": false
+      },
+      "entity": "order",
+      "total": 65,
+      "added": 26,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_noauth_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": null,
+        "web": false
+      },
+      "entity": "customer",
+      "total": 65,
+      "added": 26,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_auth-oidc_web__product",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "product",
+      "total": 147,
+      "added": 42,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-db_auth-oidc_web__order",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "order",
+      "total": 148,
+      "added": 43,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-db_auth-oidc_web__customer",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "customer",
+      "total": 148,
+      "added": 43,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-db_auth-oidc_noweb__product",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "product",
+      "total": 75,
+      "added": 25,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_auth-oidc_noweb__order",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "order",
+      "total": 76,
+      "added": 26,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_auth-oidc_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "customer",
+      "total": 76,
+      "added": 26,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_auth-local_web__product",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "local",
+        "web": true
+      },
+      "entity": "product",
+      "total": 159,
+      "added": 42,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-db_auth-local_web__order",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "local",
+        "web": true
+      },
+      "entity": "order",
+      "total": 160,
+      "added": 43,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-db_auth-local_web__customer",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "local",
+        "web": true
+      },
+      "entity": "customer",
+      "total": 160,
+      "added": 43,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-db_auth-local_noweb__product",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "local",
+        "web": false
+      },
+      "entity": "product",
+      "total": 85,
+      "added": 25,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_auth-local_noweb__order",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "local",
+        "web": false
+      },
+      "entity": "order",
+      "total": 86,
+      "added": 26,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-db_auth-local_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": "db",
+        "auth": "local",
+        "web": false
+      },
+      "entity": "customer",
+      "total": 86,
+      "added": 26,
+      "changed": 6
+    },
+    {
+      "id": "db_ev-kafka_noauth_web__product",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": null,
+        "web": true
+      },
+      "entity": "product",
+      "total": 121,
+      "added": 42,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-kafka_noauth_web__order",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": null,
+        "web": true
+      },
+      "entity": "order",
+      "total": 122,
+      "added": 43,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-kafka_noauth_web__customer",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": null,
+        "web": true
+      },
+      "entity": "customer",
+      "total": 122,
+      "added": 43,
+      "changed": 9
+    },
+    {
+      "id": "db_ev-kafka_noauth_noweb__product",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": null,
+        "web": false
+      },
+      "entity": "product",
+      "total": 64,
+      "added": 25,
+      "changed": 7
+    },
+    {
+      "id": "db_ev-kafka_noauth_noweb__order",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": null,
+        "web": false
+      },
+      "entity": "order",
+      "total": 65,
+      "added": 26,
+      "changed": 7
+    },
+    {
+      "id": "db_ev-kafka_noauth_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": null,
+        "web": false
+      },
+      "entity": "customer",
+      "total": 65,
+      "added": 26,
+      "changed": 7
+    },
+    {
+      "id": "db_ev-kafka_auth-oidc_web__product",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "product",
+      "total": 147,
+      "added": 42,
+      "changed": 10
+    },
+    {
+      "id": "db_ev-kafka_auth-oidc_web__order",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "order",
+      "total": 148,
+      "added": 43,
+      "changed": 10
+    },
+    {
+      "id": "db_ev-kafka_auth-oidc_web__customer",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "oidc",
+        "web": true
+      },
+      "entity": "customer",
+      "total": 148,
+      "added": 43,
+      "changed": 10
+    },
+    {
+      "id": "db_ev-kafka_auth-oidc_noweb__product",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "product",
+      "total": 75,
+      "added": 25,
+      "changed": 7
+    },
+    {
+      "id": "db_ev-kafka_auth-oidc_noweb__order",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "order",
+      "total": 76,
+      "added": 26,
+      "changed": 7
+    },
+    {
+      "id": "db_ev-kafka_auth-oidc_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "oidc",
+        "web": false
+      },
+      "entity": "customer",
+      "total": 76,
+      "added": 26,
+      "changed": 7
+    },
+    {
+      "id": "db_ev-kafka_auth-local_web__product",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "local",
+        "web": true
+      },
+      "entity": "product",
+      "total": 159,
+      "added": 42,
+      "changed": 10
+    },
+    {
+      "id": "db_ev-kafka_auth-local_web__order",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "local",
+        "web": true
+      },
+      "entity": "order",
+      "total": 160,
+      "added": 43,
+      "changed": 10
+    },
+    {
+      "id": "db_ev-kafka_auth-local_web__customer",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "local",
+        "web": true
+      },
+      "entity": "customer",
+      "total": 160,
+      "added": 43,
+      "changed": 10
+    },
+    {
+      "id": "db_ev-kafka_auth-local_noweb__product",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "local",
+        "web": false
+      },
+      "entity": "product",
+      "total": 85,
+      "added": 25,
+      "changed": 7
+    },
+    {
+      "id": "db_ev-kafka_auth-local_noweb__order",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "local",
+        "web": false
+      },
+      "entity": "order",
+      "total": 86,
+      "added": 26,
+      "changed": 7
+    },
+    {
+      "id": "db_ev-kafka_auth-local_noweb__customer",
+      "flags": {
+        "db": true,
+        "events": "kafka",
+        "auth": "local",
+        "web": false
+      },
+      "entity": "customer",
+      "total": 86,
+      "added": 26,
+      "changed": 7
+    }
+  ]
+}

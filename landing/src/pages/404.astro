@@ -1,0 +1,47 @@
+---
+/** El 404: salidas, no una disculpa. Las docs viejas de /docs (una sola página) llegan aquí. */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Not found"
+  description="This address does not exist on the Puerto site. The documentation, the quick start and the decisions are one click away from here."
+  path="/404/"
+  noindex
+>
+  <section class="frame section nf">
+    <p class="label nf__code">404 · No such berth</p>
+    <h1 class="display nf__title">Nothing<br />docked here.</h1>
+    <p class="lede">The page moved, or never existed. Try one of these.</p>
+    <ul class="nf__links">
+      <li><a class="link" href="/docs/">What Puerto is</a></li>
+      <li><a class="link" href="/docs/start/quick-start/">Quick start</a></li>
+      <li><a class="link" href="/docs/reference/cli/">CLI reference</a></li>
+      <li><a class="link" href="/docs/decisions/">Decisions</a></li>
+    </ul>
+    <a class="btn btn-primary" href="/">Back to the home page</a>
+  </section>
+</BaseLayout>
+
+<style>
+  .nf {
+    display: grid;
+    gap: 1.5rem;
+    justify-items: start;
+  }
+
+  .nf__code {
+    color: var(--color-ink-muted);
+  }
+
+  .nf__title {
+    margin: 0;
+  }
+
+  .nf__links {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: grid;
+    gap: 0.5rem;
+  }
+</style>

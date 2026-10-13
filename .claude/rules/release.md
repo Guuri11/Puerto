@@ -160,6 +160,8 @@ Every release — automated or manual — must pass:
 - [ ] `cargo package --list` — template files present in package
 - [ ] `cargo publish --dry-run` — no publish errors
 - [ ] `CHANGELOG.md` has an entry for this version
+- [ ] `make site/data` — the website's terminal, CLI reference and compiler capture follow the new
+      version (`landing/`'s tests fail until they do); commit what it changes
 - [ ] Every published crate's `Cargo.toml` has `description`, `license`, `repository`, `rust-version`
 - [ ] Breaking changes have a `## Migration Guide` in the changelog
 

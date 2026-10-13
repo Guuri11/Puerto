@@ -1,0 +1,165 @@
+---
+title: Database and migrations
+description: Start a Puerto project with Postgres and SQLx, run its migrations, keep the SQLx offline cache, and test repositories against a real database.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+`puerto new --db` gives a project a Postgres database through [SQLx](https://github.com/launchbadge/sqlx):
+checked SQL, written out in each repository, with no ORM in between. A project without `--db`
+keeps its data in memory, which is good enough to try an idea and is lost on restart.
+
+## Starting a database project
+
+<Steps>
+
+1. **Create it and add an entity.**
+
+   ```bash
+   puerto new --name shop --db
+   cd shop
+   puerto generate scaffold Product -- name:String price:i64 sku:String!
+   ```
+
+   ```txt title="output (end)"
+   ✓ Migration 'create_product_table' created in infrastructure/migrations/
+     Schema pre-filled — run: make sqlx/migrate && make sqlx/prepare
+   ```
+
+2. **Install the tools, once.**
+
+   ```bash
+   make setup    # cargo-nextest, sqlx-cli, cargo-audit
+   ```
+
+3. **Migrate and prepare.** Both start Postgres in Docker first (`docker-compose.yml`, `postgres:16`).
+
+   ```bash
+   make sqlx/migrate     # apply the migrations
+   make sqlx/prepare     # write .sqlx/, the offline query cache
+   ```
+
+4. **Run it.**
+
+   ```bash
+   make run
+   ```
+
+   On startup the API connects, runs pending migrations and serves. If the database is down it
+   says so and exits, instead of panicking:
+
+   ```txt
+   … — is the database up? `make docker-compose/up`
+   ```
+
+</Steps>
+
+## What `--db` changes
+
+| | In memory | `--db` |
+|---|---|---|
+| Repository | `InMemoryProductRepository` | `PgProductRepository` + `entity.rs` (the row) |
+| Migration | none | `create_product_table.sql`, schema pre-filled from the fields |
+| `/health/ready` | always ready | runs `SELECT 1`; `503` when Postgres does not answer |
+| Tests | unit | unit + `#[sqlx::test]` integration tests per repository |
+| Files | | `.env`, `.env.example`, `docker-compose.yml`, `.cargo/config.toml` |
+
+The scaffold writes the whole table, so there is nothing to fill in:
+
+```sql title="infrastructure/migrations/…_create_product_table.sql"
+-- Puerto migration: create_product_table
+-- Run `make sqlx/prepare` after editing this file.
+
+CREATE TABLE products (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    price BIGINT NOT NULL,
+    sku TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;
+```
+
+Deletes are soft, so the unique index is partial: a deleted product does not keep its SKU taken
+([ADR-0003](/docs/decisions/adr/0003-unique-indexes-are-partial/)).
+
+## Writing a migration
+
+```bash
+puerto generate migration add_stock_to_products
+```
+
+```txt title="output"
+✓ Migration 'add_stock_to_products' created in infrastructure/migrations/
+  Edit the file, then run: make sqlx/migrate && make sqlx/prepare
+```
+
+Puerto writes the file itself (no `sqlx` CLI needed for this step) with a version that is unique
+even within the same second. The command is refused in a project without `--db`.
+
+<Aside type="caution" title="Read every migration">
+A migration fails slowly and expensively: the generated `AGENTS.md` lists migrations as Tier 1,
+where a person reads the whole diff before it is committed, however green the tests are.
+</Aside>
+
+## The offline cache
+
+`query_as!` checks every query against the database **at compile time**. So that the project
+builds without a running Postgres (in CI, on a fresh clone), `.cargo/config.toml` sets
+`SQLX_OFFLINE=true` and SQLx reads the answers from `.sqlx/`. Commit that directory.
+
+After changing a query or a migration:
+
+```bash
+make sqlx/prepare     # regenerate .sqlx/ against the live database
+make sqlx/check       # verify .sqlx/ matches the queries (for CI)
+```
+
+`make sqlx/online` and `make sqlx/offline` switch the mode for local work.
+
+## Errors from the driver
+
+Every Pg repository maps driver errors through one function, `map_sqlx_error`, from
+`puerto-sqlx`: a unique violation becomes `RepositoryError::Duplicate` (`409`), and anything
+else `Unavailable`. A row the domain rejects (stored data gone bad) is logged and reported as
+`InvalidData`, a `500`, never a `422` that would blame the caller
+([ADR-0015](/docs/decisions/adr/0015-repositories-return-one-repository-error/)).
+
+## Integration tests
+
+Each Pg repository comes with `#[sqlx::test]` tests: SQLx creates a fresh database per test,
+applies the migrations, and drops it afterwards.
+
+```rust
+#[sqlx::test(migrations = "./migrations")]
+async fn should_persist_and_retrieve_by_id(pool: PgPool) {
+    // Arrange
+    let entity = seed(&pool).await;
+
+    // Act
+    let found = test_repo(pool)
+        .find_by_id(entity.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Assert
+    assert_eq!(found.id, entity.id);
+    // …
+}
+```
+
+They need `DATABASE_URL` and a running Postgres: `make test/infrastructure`, or `make test` with
+`make docker-compose/up` first.
+
+## Housekeeping
+
+| Command | Does |
+|---|---|
+| `make db-up` / `make db-down` | Start or stop the containers |
+| `make reset-db` | Drop everything and re-run the migrations. Asks you to type `DESTROY` |
+| `make generate/migration NAME=…` | The same as `puerto generate migration` |

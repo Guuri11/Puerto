@@ -1,0 +1,98 @@
+use business::domain::order::errors::OrderError;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::ErrorResponse;
+
+use crate::api::error::IntoErrorResponse;
+
+impl IntoErrorResponse for OrderError {
+    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
+    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        let status = match &self {
+            OrderError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            OrderError::NotFound => StatusCode::NOT_FOUND,
+            OrderError::Duplicate => StatusCode::CONFLICT,
+            OrderError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+            OrderError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+            OrderError::InvalidAmount => StatusCode::UNPROCESSABLE_ENTITY,
+            OrderError::InvalidStatus => StatusCode::UNPROCESSABLE_ENTITY,
+        };
+        (status, Json(ErrorResponse::from_code(self.to_string())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_map_validation_error_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) =
+            OrderError::ValidationError("name_empty".into()).into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "order.validation_error.name_empty");
+    }
+
+    #[test]
+    fn should_map_not_found_to_404_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::NotFound.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.name, "order.not_found");
+    }
+
+    #[test]
+    fn should_map_duplicate_to_409_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::Duplicate.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.name, "order.duplicate");
+    }
+
+    #[test]
+    fn should_map_repository_error_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::RepositoryError.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "order.repository_error");
+    }
+
+    #[test]
+    fn should_map_unknown_to_500_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::Unknown.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(body.name, "order.unknown");
+    }
+
+    #[test]
+    fn should_map_invalid_amount_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::InvalidAmount.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "order.invalid_amount");
+    }
+
+    #[test]
+    fn should_map_invalid_status_to_422_with_its_code() {
+        // Act
+        let (status, Json(body)) = OrderError::InvalidStatus.into_error_response();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.name, "order.invalid_status");
+    }
+}

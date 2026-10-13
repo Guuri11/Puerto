@@ -1,0 +1,29 @@
+use async_trait::async_trait;
+use puerto_core::{Page, PageRequest, RepositoryError};
+
+use super::model::{Order, OrderId};
+
+#[async_trait]
+pub trait OrderRepositoryTrait: Send + Sync {
+    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
+    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
+    async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub OrderRepository {}
+
+        #[async_trait]
+        impl OrderRepositoryTrait for OrderRepository {
+            async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
+            async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
+            async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
+        }
+    }
+}

@@ -1,0 +1,118 @@
+use std::sync::Arc;
+
+use crate::domain::order::value_objects::Amount;
+use crate::domain::order::value_objects::Status;
+use async_trait::async_trait;
+
+use crate::domain::order::{
+    errors::OrderError,
+    model::{Order, OrderProps},
+    repository::OrderRepositoryTrait,
+    use_cases::create_order::{CreateOrderParams, CreateOrderUseCaseTrait},
+};
+
+pub struct CreateOrderUseCaseImpl {
+    pub repository: Arc<dyn OrderRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateOrderUseCaseTrait for CreateOrderUseCaseImpl {
+    async fn execute(&self, params: CreateOrderParams) -> Result<Order, OrderError> {
+        tracing::info!("create_order: start");
+        let amount = Amount::new(params.amount)?;
+        let status = params.status.parse::<Status>()?;
+        let entity = Order::new(OrderProps {
+            amount,
+            status,
+            note: params.note,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_order: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_order: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_order: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::order::repository::mocks::MockOrderRepository;
+    use crate::tests::mothers::principal_mother::PrincipalMother;
+    use puerto_core::RepositoryError;
+
+    #[tokio::test]
+    async fn should_create_order_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateOrderParams {
+                actor: PrincipalMother::random(),
+                amount: 1.5,
+                status: "Pending".to_string(),
+                note: None,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().status.as_str(), "Pending");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateOrderParams {
+                actor: PrincipalMother::random(),
+                amount: 1.5,
+                status: "Pending".to_string(),
+                note: None,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.duplicate");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_status_is_empty() {
+        // Arrange
+        let mock_repo = MockOrderRepository::new();
+        let use_case = CreateOrderUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateOrderParams {
+                actor: PrincipalMother::random(),
+                amount: 1.5,
+                status: "".to_string(),
+                note: None,
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "order.invalid_status");
+    }
+}

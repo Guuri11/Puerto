@@ -1,0 +1,42 @@
+import { Link, useLocation, useSearch } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { ProductListView } from "../views/product-list-view";
+
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
+export function ProductListContainer() {
+  const { productRepository } = useDependencies();
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const products = useAsync(
+    () => productRepository.list({ limit: PAGE_SIZE, offset }),
+    [productRepository, offset],
+  );
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Products</h1>
+        <Link href="/products/new" className="btn btn-primary">
+          New product
+        </Link>
+      </div>
+      {products.status === "loading" && <span className="loading loading-spinner" />}
+      {products.status === "error" && <ErrorAlert error={products.error} />}
+      {products.status === "ok" &&
+        (products.data.total === 0 ? (
+          <EmptyState message="No products yet." />
+        ) : (
+          <>
+            <ProductListView products={products.data.items} />
+            <Pagination {...products.data} onOffsetChange={goTo} />
+          </>
+        ))}
+    </section>
+  );
+}

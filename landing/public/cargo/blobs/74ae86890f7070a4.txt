@@ -1,0 +1,399 @@
+use std::sync::Arc;
+
+use business::domain::order::model::OrderId;
+use business::domain::order::use_cases::{
+    create_order::{CreateOrderParams, CreateOrderUseCaseTrait},
+    delete_order::{DeleteOrderParams, DeleteOrderUseCaseTrait},
+    get_order::{GetOrderParams, GetOrderUseCaseTrait},
+    list_orders::{ListOrdersParams, ListOrdersUseCaseTrait},
+    update_order::{UpdateOrderParams, UpdateOrderUseCaseTrait},
+};
+use poem_openapi::{
+    OpenApi,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_core::PageRequest;
+use uuid::Uuid;
+
+use crate::api::error::IntoErrorResponse;
+use crate::api::order::dto::{CreateOrderRequest, OrderDto, OrderPageDto, UpdateOrderRequest};
+use crate::api::order::responses::{
+    CreateOrderResponse, DeleteOrderResponse, GetOrderResponse, ListOrdersResponse,
+    UpdateOrderResponse,
+};
+use crate::api::tags::ApiTags;
+
+/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
+pub struct OrderApi {
+    pub create_order: Arc<dyn CreateOrderUseCaseTrait>,
+    pub get_order: Arc<dyn GetOrderUseCaseTrait>,
+    pub list_orders: Arc<dyn ListOrdersUseCaseTrait>,
+    pub update_order: Arc<dyn UpdateOrderUseCaseTrait>,
+    pub delete_order: Arc<dyn DeleteOrderUseCaseTrait>,
+}
+
+#[OpenApi]
+impl OrderApi {
+    /// Create a new Order
+    #[oai(path = "/orders", method = "post", tag = "ApiTags::Order")]
+    async fn create(&self, body: Json<CreateOrderRequest>) -> CreateOrderResponse {
+        match self
+            .create_order
+            .execute(CreateOrderParams {
+                amount: body.amount,
+                status: body.status.clone(),
+                note: body.note.clone(),
+            })
+            .await
+        {
+            Ok(entity) => CreateOrderResponse::Created(Json(OrderDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "create_order failed");
+                CreateOrderResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Get a Order by ID
+    #[oai(path = "/orders/:id", method = "get", tag = "ApiTags::Order")]
+    async fn get_by_id(&self, id: Path<Uuid>) -> GetOrderResponse {
+        match self
+            .get_order
+            .execute(GetOrderParams {
+                id: OrderId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entity) => GetOrderResponse::Ok(Json(OrderDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "get_order failed");
+                GetOrderResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// List Orders, one page at a time (`limit` is capped by the domain)
+    #[oai(path = "/orders", method = "get", tag = "ApiTags::Order")]
+    async fn list(
+        &self,
+        limit: Query<Option<u32>>,
+        offset: Query<Option<u32>>,
+    ) -> ListOrdersResponse {
+        match self
+            .list_orders
+            .execute(ListOrdersParams {
+                page: PageRequest::new(limit.0, offset.0),
+            })
+            .await
+        {
+            Ok(page) => ListOrdersResponse::Ok(Json(OrderPageDto::from_domain(&page))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::error!(code = %error.0.name, "list_orders failed");
+                ListOrdersResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Update a Order
+    #[oai(path = "/orders/:id", method = "put", tag = "ApiTags::Order")]
+    async fn update(&self, id: Path<Uuid>, body: Json<UpdateOrderRequest>) -> UpdateOrderResponse {
+        match self
+            .update_order
+            .execute(UpdateOrderParams {
+                id: OrderId::from_uuid(id.0),
+                amount: body.amount,
+                status: body.status.clone(),
+                note: body.note.clone(),
+            })
+            .await
+        {
+            Ok(entity) => UpdateOrderResponse::Ok(Json(OrderDto::from_domain(&entity))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "update_order failed");
+                UpdateOrderResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Delete a Order
+    #[oai(path = "/orders/:id", method = "delete", tag = "ApiTags::Order")]
+    async fn delete(&self, id: Path<Uuid>) -> DeleteOrderResponse {
+        match self
+            .delete_order
+            .execute(DeleteOrderParams {
+                id: OrderId::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => DeleteOrderResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                tracing::warn!(code = %error.0.name, "delete_order failed");
+                DeleteOrderResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::order::errors::OrderError;
+    use business::domain::order::use_cases::{
+        create_order::mocks::MockCreateOrderUseCase, delete_order::mocks::MockDeleteOrderUseCase,
+        get_order::mocks::MockGetOrderUseCase, list_orders::mocks::MockListOrdersUseCase,
+        update_order::mocks::MockUpdateOrderUseCase,
+    };
+    use business::tests::mothers::order_mother::OrderMother;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_core::Page;
+
+    use super::*;
+
+    /// One mock per use case. A test sets expectations only on the one its route should call: a
+    /// route that reaches for another use case panics instead of passing.
+    #[derive(Default)]
+    struct Mocks {
+        create: MockCreateOrderUseCase,
+        get: MockGetOrderUseCase,
+        list: MockListOrdersUseCase,
+        update: MockUpdateOrderUseCase,
+        delete: MockDeleteOrderUseCase,
+    }
+
+    impl Mocks {
+        fn client(self) -> TestClient<Route> {
+            let api = OrderApi {
+                create_order: Arc::new(self.create),
+                get_order: Arc::new(self.get),
+                list_orders: Arc::new(self.list),
+                update_order: Arc::new(self.update),
+                delete_order: Arc::new(self.delete),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn create_request() -> CreateOrderRequest {
+        CreateOrderRequest {
+            amount: 1.5,
+            status: "example".to_string(),
+            note: None,
+        }
+    }
+
+    fn update_request() -> UpdateOrderRequest {
+        UpdateOrderRequest {
+            amount: 1.5,
+            status: "example".to_string(),
+            note: None,
+        }
+    }
+
+    fn item_path() -> String {
+        format!("/orders/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn should_respond_201_when_order_is_created() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/orders")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn should_respond_422_when_order_is_invalid() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .create
+            .expect_execute()
+            .returning(|_| Err(OrderError::ValidationError("invalid".to_string())));
+
+        // Act
+        let response = mocks
+            .client()
+            .post("/orders")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_order_is_found() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_order_does_not_exist() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .get
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
+
+        // Act
+        let response = mocks.client().get(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_with_a_page_of_orders_when_listing() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|params| Ok(Page::new(OrderMother::random_vec(2), 7, params.page)));
+
+        // Act
+        let response = mocks.client().get("/orders").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+        let json = response.json().await;
+        let body = json.value().object();
+        body.get("items").array().assert_len(2);
+        body.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn should_pass_limit_and_offset_to_the_use_case() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get("/orders?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_500_when_listing_fails_in_the_repository() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .returning(|_| Err(OrderError::RepositoryError));
+
+        // Act
+        let response = mocks.client().get("/orders").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn should_respond_200_when_order_is_updated() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Ok(OrderMother::random()));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_updating_a_missing_order() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .update
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
+
+        // Act
+        let response = mocks
+            .client()
+            .put(item_path())
+            .body_json(&update_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn should_respond_204_when_order_is_deleted() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks.delete.expect_execute().returning(|_| Ok(()));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_respond_404_when_deleting_a_missing_order() {
+        // Arrange
+        let mut mocks = Mocks::default();
+        mocks
+            .delete
+            .expect_execute()
+            .returning(|_| Err(OrderError::NotFound));
+
+        // Act
+        let response = mocks.client().delete(item_path()).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+}

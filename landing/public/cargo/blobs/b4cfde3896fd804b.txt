@@ -1,0 +1,117 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::Page;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::Product,
+    repository::ProductRepositoryTrait,
+    use_cases::list_products::{ListProductsParams, ListProductsUseCaseTrait},
+};
+
+pub struct ListProductsUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
+    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError> {
+        tracing::info!(
+            limit = params.page.limit(),
+            offset = params.page.offset(),
+            "list_products: start"
+        );
+        self.repository
+            .find_all(params.page)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "list_products: repository failed"))
+            .map_err(ProductError::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::{
+        model::{Product, ProductProps},
+        repository::mocks::MockProductRepository,
+    };
+    use puerto_core::PageRequest;
+
+    #[tokio::test]
+    async fn should_return_the_page_of_products() {
+        let entities = vec![
+            Product::new(ProductProps {
+                name: "first".to_string(),
+                price: 42,
+                sku: "first".to_string(),
+            })
+            .unwrap(),
+            Product::new(ProductProps {
+                name: "second".to_string(),
+                price: 42,
+                sku: "second".to_string(),
+            })
+            .unwrap(),
+        ];
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+        let use_case = ListProductsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListProductsParams {
+                page: PageRequest::default(),
+            })
+            .await;
+
+        let page = result.unwrap();
+        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.total, 2);
+    }
+
+    #[tokio::test]
+    async fn should_return_an_empty_page_when_no_products_exist() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListProductsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListProductsParams {
+                page: PageRequest::default(),
+            })
+            .await;
+
+        let page = result.unwrap();
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, 0);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_requested_page_to_the_repository() {
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(|page| page.limit() == 5 && page.offset() == 10)
+            .returning(|page| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListProductsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListProductsParams {
+                page: PageRequest::new(Some(5), Some(10)),
+            })
+            .await;
+
+        assert_eq!(result.unwrap().offset, 10);
+    }
+}

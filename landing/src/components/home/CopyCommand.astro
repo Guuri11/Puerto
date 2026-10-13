@@ -1,0 +1,77 @@
+---
+/** Un comando con su botón de copiar. El prompt `$` no se copia. */
+interface Props {
+  command: string;
+  label?: string;
+}
+
+const { command, label = 'Copy command' } = Astro.props;
+---
+
+<div class="cmd" data-copy-block>
+  <code class="cmd__text"><span class="cmd__prompt" aria-hidden="true">$</span> {command}</code>
+  <button type="button" class="cmd__btn" data-copy={command} aria-label={label}>
+    <span data-copy-label aria-live="polite">Copy</span>
+  </button>
+</div>
+
+<style>
+  .cmd {
+    display: flex;
+    align-items: stretch;
+    max-width: 34rem;
+    background: var(--color-night);
+    color: var(--color-night-ink);
+    border: 2px solid var(--color-ink);
+  }
+
+  .cmd__text {
+    flex: 1;
+    min-width: 0;
+    padding: 0.875rem 1rem;
+    font-family: var(--font-mono);
+    font-variation-settings: 'wdth' 87.5;
+    font-size: 0.875rem;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .cmd__prompt {
+    color: var(--color-night-muted);
+    user-select: none;
+  }
+
+  .cmd__btn {
+    flex-shrink: 0;
+    min-width: 5.5rem;
+    min-height: 48px;
+    border: 0;
+    border-left: 2px solid var(--color-ink);
+    background: var(--color-accent);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .cmd__btn:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    const label = btn.querySelector<HTMLElement>('[data-copy-label]')!;
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy!);
+        label.textContent = 'Copied';
+      } catch {
+        label.textContent = 'Select it';
+      }
+      setTimeout(() => (label.textContent = 'Copy'), 1600);
+    });
+  });
+</script>

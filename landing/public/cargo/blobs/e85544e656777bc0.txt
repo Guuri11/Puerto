@@ -1,0 +1,116 @@
+use async_trait::async_trait;
+use puerto_core::RepositoryError;
+
+use super::{events::OrderEvent, model::Order};
+
+/// One transaction over a order (ADR-0018 § 2): what it saves and the events it records are
+/// written together on `commit`, or not at all. Dropping it without `commit` rolls it back, so an
+/// early `?` is the rollback.
+#[async_trait]
+pub trait OrderUnitOfWork: Send {
+    async fn save(&mut self, entity: &Order) -> Result<(), RepositoryError>;
+    async fn record(&mut self, event: OrderEvent) -> Result<(), RepositoryError>;
+    async fn commit(self: Box<Self>) -> Result<(), RepositoryError>;
+}
+
+/// Opens a [`OrderUnitOfWork`]: what every order write goes through. The repository only
+/// reads, so a write that skips the outbox does not compile.
+#[async_trait]
+pub trait OrderUnitOfWorkFactory: Send + Sync {
+    async fn begin(&self) -> Result<Box<dyn OrderUnitOfWork>, RepositoryError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use std::sync::{Arc, Mutex, MutexGuard};
+
+    use super::*;
+
+    /// Where a [`RecordingUnitOfWorkFactory`] fails, when scripted to.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum FailAt {
+        Begin,
+        Save,
+        Commit,
+    }
+
+    /// What the units of work of a [`RecordingUnitOfWorkFactory`] were asked to do.
+    #[derive(Debug, Clone, Default)]
+    pub struct Recorded {
+        pub saved: Vec<Order>,
+        pub events: Vec<OrderEvent>,
+        pub committed: bool,
+    }
+
+    /// A fake factory for use case tests: its units of work record what they save and record and
+    /// whether they committed, and fail where scripted.
+    #[derive(Clone, Default)]
+    pub struct RecordingUnitOfWorkFactory {
+        recorded: Arc<Mutex<Recorded>>,
+        failure: Option<(FailAt, RepositoryError)>,
+    }
+
+    impl RecordingUnitOfWorkFactory {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        pub fn failing_at(at: FailAt, error: RepositoryError) -> Self {
+            Self {
+                failure: Some((at, error)),
+                ..Self::default()
+            }
+        }
+
+        pub fn recorded(&self) -> Recorded {
+            lock(&self.recorded).clone()
+        }
+
+        fn fail_at(&self, at: FailAt) -> Result<(), RepositoryError> {
+            match self.failure {
+                Some((failing, error)) if failing == at => Err(error),
+                _ => Ok(()),
+            }
+        }
+    }
+
+    fn lock(recorded: &Mutex<Recorded>) -> MutexGuard<'_, Recorded> {
+        recorded
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    struct RecordingUnitOfWork {
+        factory: RecordingUnitOfWorkFactory,
+    }
+
+    #[async_trait]
+    impl OrderUnitOfWork for RecordingUnitOfWork {
+        async fn save(&mut self, entity: &Order) -> Result<(), RepositoryError> {
+            self.factory.fail_at(FailAt::Save)?;
+            lock(&self.factory.recorded).saved.push(entity.clone());
+            Ok(())
+        }
+
+        async fn record(&mut self, event: OrderEvent) -> Result<(), RepositoryError> {
+            lock(&self.factory.recorded).events.push(event);
+            Ok(())
+        }
+
+        async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+            self.factory.fail_at(FailAt::Commit)?;
+            lock(&self.factory.recorded).committed = true;
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl OrderUnitOfWorkFactory for RecordingUnitOfWorkFactory {
+        async fn begin(&self) -> Result<Box<dyn OrderUnitOfWork>, RepositoryError> {
+            self.fail_at(FailAt::Begin)?;
+            Ok(Box::new(RecordingUnitOfWork {
+                factory: self.clone(),
+            }))
+        }
+    }
+}

@@ -1,0 +1,138 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use crate::domain::product::{
+    errors::ProductError,
+    model::{Product, ProductProps},
+    repository::ProductRepositoryTrait,
+    use_cases::create_product::{CreateProductParams, CreateProductUseCaseTrait},
+};
+
+pub struct CreateProductUseCaseImpl {
+    pub repository: Arc<dyn ProductRepositoryTrait>,
+}
+
+#[async_trait]
+impl CreateProductUseCaseTrait for CreateProductUseCaseImpl {
+    async fn execute(&self, params: CreateProductParams) -> Result<Product, ProductError> {
+        tracing::info!("create_product: start");
+        let entity = Product::new(ProductProps {
+            name: params.name,
+            price: params.price,
+            sku: params.sku,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "create_product: rejected"))?;
+        self.repository
+            .save(&entity)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "create_product: repository failed"))?;
+        tracing::info!(id = %entity.id, "create_product: done");
+        Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::product::repository::mocks::MockProductRepository;
+    use puerto_core::RepositoryError;
+
+    #[tokio::test]
+    async fn should_create_product_when_fields_are_valid() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo.expect_save().returning(|_| Ok(()));
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "example".to_string(),
+                price: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().name, "example");
+    }
+
+    #[tokio::test]
+    async fn should_return_duplicate_when_the_store_rejects_a_duplicate() {
+        // Arrange
+        let mut mock_repo = MockProductRepository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::Duplicate));
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "example".to_string(),
+                price: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "product.duplicate");
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_name_is_empty() {
+        // Arrange
+        let mock_repo = MockProductRepository::new();
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "".to_string(),
+                price: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.name_empty"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_return_error_when_sku_is_empty() {
+        // Arrange
+        let mock_repo = MockProductRepository::new();
+        let use_case = CreateProductUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(CreateProductParams {
+                name: "example".to_string(),
+                price: 42,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "product.validation_error.sku_empty"
+        );
+    }
+}
