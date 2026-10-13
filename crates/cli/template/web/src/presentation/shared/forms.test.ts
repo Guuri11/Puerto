@@ -6,6 +6,7 @@ import {
   fromDateTimeLocal,
   numberOrNull,
   parseEntries,
+  referenceOptions,
   splitList,
   splitNumbers,
   textOf,
@@ -55,5 +56,12 @@ describe("forms", () => {
     expect(fromDateTimeLocal(text)).toBe(iso);
     expect(toDateTimeLocal(null)).toBe("");
     expect(dateTimeOrNull("")).toBeNull();
+  });
+
+  test("should offer a reference's targets once they have loaded", () => {
+    const loaded = { status: "ok" as const, data: { items: [{ id: "c1", name: "Ada" }] } };
+
+    expect(referenceOptions(loaded, (item) => item.name)).toEqual([{ id: "c1", label: "Ada" }]);
+    expect(referenceOptions({ status: "loading" }, (item: { id: string }) => item.id)).toEqual([]);
   });
 });

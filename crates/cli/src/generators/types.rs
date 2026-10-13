@@ -643,7 +643,8 @@ pub struct WebFieldCtx {
     /// What a screen calls it: `In stock`.
     pub label: String,
     pub ts_type: String,
-    /// `text`, `number`, `checkbox`, `datetime-local`, `textarea` or `select`.
+    /// `text`, `number`, `checkbox`, `datetime-local`, `textarea`, `select`, or `reference`: a
+    /// select of the target's items, loaded by the form container (ADR-0022).
     pub input: &'static str,
     /// A number input that takes decimals (`step="any"`).
     pub decimal: bool,
@@ -651,7 +652,7 @@ pub struct WebFieldCtx {
     pub required: bool,
     /// A `select`'s options, after an empty one labelled `placeholder`.
     pub options: Vec<WebOption>,
-    pub placeholder: &'static str,
+    pub placeholder: String,
     /// The form value of a new, empty form.
     pub empty_form: &'static str,
     /// The form value read out of `{entity}` (the entity's variable) and out of `draft`.
@@ -673,6 +674,8 @@ pub struct WebFieldCtx {
     pub display_helpers: Vec<&'static str>,
     /// An enum VO: the union type (`Status`), its `parseStatus` in `model.ts`.
     pub enum_type: String,
+    /// A reference: the target's list path, which its detail page sits under (`/customers`).
+    pub ref_path: String,
 }
 
 /// An enum value object as `model.ts` declares it: `statusValues`, `type Status`, `parseStatus`.
@@ -780,7 +783,18 @@ fn web_display(shape: WebShape, optional: bool, access: &str) -> (String, Vec<&'
 
 pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
     let camel = crate::generators::naming::snake_to_camel(&field.name);
-    let words = crate::generators::naming::snake_to_words(&field.name);
+    // A reference is named after what it points to: `customer_id` is the `Customer` input.
+    let words = crate::generators::naming::snake_to_words(match field.references {
+        Some(_) => field.name.strip_suffix("_id").unwrap_or(&field.name),
+        None => &field.name,
+    });
+    let target = field.references.as_deref().map(|target| {
+        let snake = crate::generators::naming::pascal_to_snake(target);
+        (
+            crate::generators::naming::pluralize(&snake),
+            crate::generators::naming::snake_to_words(&snake),
+        )
+    });
     let optional = field.field_type.starts_with("Option<");
     let shape = web_shape(field);
     let vo = field.value_object.clone().unwrap_or_default();
@@ -818,6 +832,9 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
             "true".into(),
         ),
         WebShape::DateTime => ("string".into(), "datetime-local", MOTHER_DATE_TIME.into()),
+        WebShape::Text if target.is_some() => {
+            ("string".into(), "reference", "crypto.randomUUID()".into())
+        }
         WebShape::Text if vo_inner_type(field) == "Uuid" => {
             ("string".into(), "text", "crypto.randomUUID()".into())
         }
@@ -883,10 +900,11 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
                 shape,
                 WebShape::Checkbox | WebShape::List { .. } | WebShape::Map
             ),
-        placeholder: if shape == WebShape::Enum {
-            "Choose…"
-        } else {
-            "—"
+        placeholder: match &target {
+            Some(_) if optional => "None".to_string(),
+            Some((_, words)) => format!("Choose {}", with_article(words)),
+            None if shape == WebShape::Enum => "Choose…".to_string(),
+            None => "—".to_string(),
         },
         options,
         empty_form: if input == "checkbox" { "false" } else { "\"\"" },
@@ -915,8 +933,21 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
         } else {
             String::new()
         },
+        ref_path: target
+            .as_ref()
+            .map_or_else(String::new, |(plural, _)| format!("/{plural}")),
         camel,
     }
+}
+
+/// `a` or `an` by the first letter — good enough for entity names (`an order item`, `a user`).
+pub fn with_article(words: &str) -> String {
+    let article = if words.starts_with(['a', 'e', 'i', 'o', 'u']) {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {words}")
 }
 
 #[cfg(test)]

@@ -135,7 +135,7 @@ the customer's repository. With a database the column is a foreign key, and a wr
 customer that does not exist answers `422` `order.validation_error.customer_id_not_found`.
 Deleting a customer (a soft delete) leaves its orders pointing at it. The list filters by each
 reference: `GET /orders?customerId=…` (`ListOrdersParams { customer_id }`, `OrderFilter` in the
-repository port).
+repository port). On the web the reference is a `<select>` of customers and a link on the detail.
 
 ### Generated vs yours
 

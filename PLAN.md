@@ -3020,17 +3020,26 @@ answers 422 `order.validation_error.customer_id_not_found`. Snapshots re-recorde
 Test scenarios: route — the query reaches the use case as the filter; application — the filter
 reaches the repository; Pg — a filtered page holds only that customer's orders and their total.
 
-### 18.5 — The frontend
+### 18.5 — The frontend ✅
 
-- The form's input for a reference is a `<select>` filled from the target's repository (`list` of
-  the first `MAX_PAGE_LIMIT` items), labelled by the target's first required `String` field, else
-  its id; `opt` adds an empty option. `dependencies.ts` hands the form container the target's
-  repository.
-- The detail view shows the reference as a link to `/customers/:id`.
-- `messages.ts` maps `order.validation_error.customer_id_not_found` to the `customerId` field.
+- The form's input for a reference is a `<select>` labelled after the field without its `_id`
+  (`Customer`, `Reviewer`), filled from the target's repository (`list` of the first
+  `MAX_PAGE_LIMIT` = 100 items, `domain/shared/page.ts`), each option labelled by the target's first
+  required `String` field (enum VOs aside), else its id. A required reference's empty option is
+  `Choose a customer` (`required`), an optional one's `None`. The inner form loads the targets
+  itself, once per target entity: the select is empty while they load, an error shows in the
+  alert. `dependencies.ts` is unchanged: `useDependencies()` already holds every repository.
+- `presentation/shared/forms.ts` gains `ReferenceOption` and `referenceOptions(loaded, label)`; the
+  form view takes `options: {Entity}FormOptions` (one `ReferenceOption[]` per reference).
+- The detail view shows a reference as `<ReferenceLink path="/customers" id={order.customerId} />`
+  (`presentation/shared/ui/reference-link.tsx`): a link to the target's page, `—` for `null`.
+- `messages.ts` maps `order.validation_error.customer_id_not_found` to `customerId`, "Customer
+  does not exist".
 
-Test scenarios: the form lists the targets and submits the chosen id; the missing-reference code
-shows under the field; the detail links to the target. `make test/full` runs the web scenario.
+Test scenarios: the form offers the targets (one option per target in each of its selects) and
+submits the chosen id (the create and edit tests seed the targets their draft names); the
+missing-reference code shows under the field; the detail links to the target; `referenceOptions`
+and `ReferenceLink` have their own tests. `make test/full` runs the web scenario.
 
 ### Out of scope (Phase 18)
 

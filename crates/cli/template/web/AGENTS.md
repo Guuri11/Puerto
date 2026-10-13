@@ -54,6 +54,11 @@ repository port directly; write a use case in `src/application/` once there is l
   list: `toProblem(code)` answers the text and the form field it is about. The form shows it under
   that input (`FieldError`, `aria-invalid`), anything else in the alert; an unknown code shows as
   it is. English — that file is where to translate (a forced re-scaffold rewrites it).
+- **References** (`customer_id:ref:Customer`): the form's input is a `<select>` of the target's
+  first 100 items (`MAX_PAGE_LIMIT`), loaded by the form container through the target's
+  repository and labelled by its first required text field; the detail links to the target's page
+  (`shared/ui/reference-link.tsx`). A target that does not exist answers
+  `order.validation_error.customer_id_not_found`, shown under the select.
 - **Never hand-edit `src/presentation/core/generated/`** — `dependencies.ts` (the composition
   root) and `routes.tsx` (the route table) are rewritten from `puerto.toml` by
   `puerto generate scaffold`, `puerto generate web` and `puerto generate bootstrap`. A screen of

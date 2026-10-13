@@ -4,6 +4,10 @@ import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { toProblem } from "../../../../domain/{{ kebab }}/messages";
+{%- if targets %}
+import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
+import { referenceOptions } from "../../../shared/forms";
+{%- endif %}
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { {{ pascal }}FormView, to{{ pascal }}Draft, to{{ pascal }}Form } from "../views/{{ kebab }}-form-view";
 
@@ -30,7 +34,26 @@ export function {{ pascal }}FormContainer({ id }: { id?: string }) {
 }
 
 function {{ pascal }}Form({ existing }: { existing: {{ pascal }} | null }) {
-  const { {{ camel }}Repository } = useDependencies();
+{%- if form_deps_inline %}
+  const { {{ camel }}Repository{% for t in targets %}, {{ t.camel }}Repository{% endfor %} } = useDependencies();
+{%- else %}
+  const {
+    {{ camel }}Repository,
+{%- for t in targets %}
+    {{ t.camel }}Repository,
+{%- endfor %}
+  } = useDependencies();
+{%- endif %}
+{%- for t in targets %}
+{%- if t.load_inline %}
+  const {{ t.plural_ident }} = useAsync(() => {{ t.camel }}Repository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }), [{{ t.camel }}Repository]);
+{%- else %}
+  const {{ t.plural_ident }} = useAsync(
+    () => {{ t.camel }}Repository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
+    [{{ t.camel }}Repository],
+  );
+{%- endif %}
+{%- endfor %}
   const [, navigate] = useLocation();
   const [values, setValues] = useState(to{{ pascal }}Form(existing));
   const [saving, setSaving] = useState(false);
@@ -57,8 +80,18 @@ function {{ pascal }}Form({ existing }: { existing: {{ pascal }} | null }) {
     <div className="card bg-base-100">
       <div className="card-body">
         {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+{%- for t in targets %}
+        {{ "{" }}{{ t.plural_ident }}.status === "error" && <ErrorAlert error={{ "{" }}{{ t.plural_ident }}.error} />}
+{%- endfor %}
         <{{ pascal }}FormView
           values={values}
+{%- if targets %}
+          options={{ "{{" }}
+{%- for t in targets %}{% for c in t.fields %}
+            {{ c }}: referenceOptions({{ t.plural_ident }}, ({{ t.ident }}) => {{ t.ident }}.{{ t.label }}),
+{%- endfor %}{% endfor %}
+          }}
+{%- endif %}
           saving={saving}
           problem={problem}
           onChange={setValues}

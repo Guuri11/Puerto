@@ -22,6 +22,21 @@ describe("{{ pascal }}DetailContainer", () => {
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
   });
+{%- for f in fields %}{% if f.input == "reference" %}
+
+  test("should link the {{ f.label | lower }} to its page", async () => {
+    // Arrange
+    const seeded = {{ pascal }}Mother.random();
+    const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
+
+    // Act
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.{{ f.camel }}{% if not f.required %} ?? ""{% endif %} });
+    expect(link.getAttribute("href")).toBe(`{{ f.ref_path }}/${seeded.{{ f.camel }}}`);
+  });
+{%- endif %}{% endfor %}
 
   test("should show the not-found code when the {{ words }} does not exist", async () => {
     // Arrange

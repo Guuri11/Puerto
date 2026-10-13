@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
 import type { {{ pascal }}Draft } from "../../../../domain/{{ kebab }}/model";
+{%- for t in targets %}
+import { fake{{ t.pascal }}Repository, {{ t.pascal }}Mother } from "../../../../test-support/{{ t.kebab }}";
+{%- endfor %}
 import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
 import { renderScreen } from "../../../../test-support/render";
 {%- if fill_helpers %}
@@ -12,6 +15,32 @@ import { {{ pascal }}FormContainer } from "./{{ kebab }}-form-container";
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
+{%- if targets %}
+
+/** Picks `id` in a reference's select, once its targets have loaded. */
+async function choose(label: string, id: string) {
+  const select = screen.getByLabelText(label);
+  await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
+  fireEvent.change(select, { target: { value: id } });
+}
+
+/** The repositories the selects read, holding what `draft` references. */
+function referencedBy(draft: {{ pascal }}Draft) {
+  return {
+{%- for t in targets %}
+{%- if t.seeds_inline %}
+    {{ t.camel }}Repository: fake{{ t.pascal }}Repository([{{ t.seeds | join(sep=", ") }}]),
+{%- else %}
+    {{ t.camel }}Repository: fake{{ t.pascal }}Repository([
+{%- for seed in t.seeds %}
+      {{ seed }},
+{%- endfor %}
+    ]),
+{%- endif %}
+{%- endfor %}
+  };
+}
+{%- endif %}
 
 /** Fills the empty form with `draft`, the way a user would. */
 async function fillIn(draft: {{ pascal }}Draft) {
@@ -19,6 +48,8 @@ async function fillIn(draft: {{ pascal }}Draft) {
 {%- for f in fields %}
 {%- if f.input == "checkbox" %}
   if (draft.{{ f.camel }}) fireEvent.click(screen.getByLabelText("{{ f.label }}"));
+{%- elif f.input == "reference" %}
+  await choose("{{ f.label }}", {{ f.draft_to_form }});
 {%- else %}
   type("{{ f.label }}", {{ f.draft_to_form }});
 {%- endif %}
@@ -30,7 +61,14 @@ describe("{{ pascal }}FormContainer", () => {
     // Arrange
     const draft = {{ pascal }}Mother.draft();
     const {{ camel }}Repository = fake{{ pascal }}Repository();
+{%- if targets %}
+    const { history } = renderScreen(<{{ pascal }}FormContainer />, {
+      {{ camel }}Repository,
+      ...referencedBy(draft),
+    });
+{%- else %}
     const { history } = renderScreen(<{{ pascal }}FormContainer />, { {{ camel }}Repository });
+{%- endif %}
     await fillIn(draft);
 
     // Act
@@ -51,6 +89,9 @@ describe("{{ pascal }}FormContainer", () => {
     const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
     const { history } = renderScreen(<{{ pascal }}FormContainer id={seeded.id} />, {
       {{ camel }}Repository,
+{%- if targets %}
+      ...referencedBy(seeded),
+{%- endif %}
     });
 
     // Act
@@ -68,8 +109,17 @@ describe("{{ pascal }}FormContainer", () => {
       ...fake{{ pascal }}Repository(),
       create: () => Promise.reject(new {{ pascal }}Error(code)),
     };
+{%- if targets %}
+    const draft = {{ pascal }}Mother.draft();
+    renderScreen(<{{ pascal }}FormContainer />, {
+      {{ camel }}Repository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
+{%- else %}
     renderScreen(<{{ pascal }}FormContainer />, { {{ camel }}Repository });
     await fillIn({{ pascal }}Mother.draft());
+{%- endif %}
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -84,8 +134,17 @@ describe("{{ pascal }}FormContainer", () => {
       ...fake{{ pascal }}Repository(),
       create: () => Promise.reject(new {{ pascal }}Error("{{ snake }}.duplicate")),
     };
+{%- if targets %}
+    const draft = {{ pascal }}Mother.draft();
+    renderScreen(<{{ pascal }}FormContainer />, {
+      {{ camel }}Repository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
+{%- else %}
     renderScreen(<{{ pascal }}FormContainer />, { {{ camel }}Repository });
     await fillIn({{ pascal }}Mother.draft());
+{%- endif %}
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -95,16 +154,47 @@ describe("{{ pascal }}FormContainer", () => {
       "{{ duplicate_text }}",
     );
   });
+{%- for t in targets %}
+
+  test("should offer every {{ t.words }} in the selects that reference one", async () => {
+    // Arrange
+    const {{ t.ident }} = {{ t.pascal }}Mother.random();
+
+    // Act
+    renderScreen(<{{ pascal }}FormContainer />, {
+      {{ camel }}Repository: fake{{ pascal }}Repository(),
+      {{ t.camel }}Repository: fake{{ t.pascal }}Repository([{{ t.ident }}]),
+    });
+
+    // Assert
+    const options = await screen.findAllByRole("option", { name: {{ t.ident }}.{{ t.label }} });
+    expect(options).toHaveLength({{ t.fields | length }});
+  });
+{%- endfor %}
 {%- if field_problem %}
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
     const {{ camel }}Repository = {
       ...fake{{ pascal }}Repository(),
+{%- if field_problem_inline %}
       create: () => Promise.reject(new {{ pascal }}Error("{{ field_problem.code }}")),
+{%- else %}
+      create: () =>
+        Promise.reject(new {{ pascal }}Error("{{ field_problem.code }}")),
+{%- endif %}
     };
+{%- if targets %}
+    const draft = {{ pascal }}Mother.draft();
+    renderScreen(<{{ pascal }}FormContainer />, {
+      {{ camel }}Repository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
+{%- else %}
     renderScreen(<{{ pascal }}FormContainer />, { {{ camel }}Repository });
     await fillIn({{ pascal }}Mother.draft());
+{%- endif %}
 
     // Act
     fireEvent.click(screen.getByText("Save"));

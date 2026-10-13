@@ -14,3 +14,6 @@ export interface Page<T> {
 
 /** The page size the list screens ask for. */
 export const PAGE_SIZE = 20;
+
+/** The largest page the API answers (the domain caps `limit`): what a reference's select offers. */
+export const MAX_PAGE_LIMIT = 100;

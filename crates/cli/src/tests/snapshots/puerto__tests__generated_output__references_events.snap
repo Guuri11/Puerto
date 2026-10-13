@@ -121,7 +121,7 @@ the customer's repository. With a database the column is a foreign key, and a wr
 customer that does not exist answers `422` `order.validation_error.customer_id_not_found`.
 Deleting a customer (a soft delete) leaves its orders pointing at it. The list filters by each
 reference: `GET /orders?customerId=…` (`ListOrdersParams { customer_id }`, `OrderFilter` in the
-repository port).
+repository port). On the web the reference is a `<select>` of customers and a link on the detail.
 
 ### Generated vs yours
 
@@ -9152,6 +9152,7 @@ export interface DeliveryProblem {
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
+  "delivery.validation_error.purchase_id_not_found": "Purchase does not exist",
   "delivery.validation_error.carrier_empty": "Carrier is required",
   "delivery.duplicate": "A delivery with these values already exists",
   "delivery.not_found": "This delivery no longer exists",
@@ -9161,6 +9162,7 @@ const TEXTS: Record<string, string> = {
 
 /** The input each field's code is about. */
 const FIELDS: Record<string, keyof DeliveryDraft> = {
+  "delivery.validation_error.purchase_id_not_found": "purchaseId",
   "delivery.validation_error.carrier_empty": "carrier",
 };
 
@@ -9220,6 +9222,8 @@ export interface PurchaseProblem {
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
+  "purchase.validation_error.supplier_id_not_found": "Supplier does not exist",
+  "purchase.validation_error.approver_id_not_found": "Approver does not exist",
   "purchase.duplicate": "A purchase with these values already exists",
   "purchase.not_found": "This purchase no longer exists",
   "purchase.repository_error": "The purchase could not be saved, try again later",
@@ -9227,7 +9231,10 @@ const TEXTS: Record<string, string> = {
 };
 
 /** The input each field's code is about. */
-const FIELDS: Record<string, keyof PurchaseDraft> = {};
+const FIELDS: Record<string, keyof PurchaseDraft> = {
+  "purchase.validation_error.supplier_id_not_found": "supplierId",
+  "purchase.validation_error.approver_id_not_found": "approverId",
+};
 
 export function toProblem(code: string): PurchaseProblem {
   return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
@@ -9884,6 +9891,19 @@ describe("DeliveryDetailContainer", () => {
     expect(await screen.findByText("Edit")).toBeTruthy();
   });
 
+  test("should link the purchase to its page", async () => {
+    // Arrange
+    const seeded = DeliveryMother.random();
+    const deliveryRepository = fakeDeliveryRepository([seeded]);
+
+    // Act
+    renderScreen(<DeliveryDetailContainer id={seeded.id} />, { deliveryRepository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.purchaseId });
+    expect(link.getAttribute("href")).toBe(`/purchases/${seeded.purchaseId}`);
+  });
+
   test("should show the not-found code when the delivery does not exist", async () => {
     // Arrange
     const deliveryRepository = fakeDeliveryRepository();
@@ -9981,6 +10001,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { DeliveryError } from "../../../../domain/delivery/errors";
 import type { DeliveryDraft } from "../../../../domain/delivery/model";
 import { DeliveryMother, fakeDeliveryRepository } from "../../../../test-support/delivery";
+import { fakePurchaseRepository, PurchaseMother } from "../../../../test-support/purchase";
 import { renderScreen } from "../../../../test-support/render";
 import { DeliveryFormContainer } from "./delivery-form-container";
 
@@ -9988,10 +10009,24 @@ function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
+/** Picks `id` in a reference's select, once its targets have loaded. */
+async function choose(label: string, id: string) {
+  const select = screen.getByLabelText(label);
+  await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
+  fireEvent.change(select, { target: { value: id } });
+}
+
+/** The repositories the selects read, holding what `draft` references. */
+function referencedBy(draft: DeliveryDraft) {
+  return {
+    purchaseRepository: fakePurchaseRepository([PurchaseMother.random({ id: draft.purchaseId })]),
+  };
+}
+
 /** Fills the empty form with `draft`, the way a user would. */
 async function fillIn(draft: DeliveryDraft) {
   await screen.findByText("Save");
-  type("Purchase id", draft.purchaseId);
+  await choose("Purchase", draft.purchaseId);
   type("Carrier", draft.carrier);
 }
 
@@ -10000,7 +10035,10 @@ describe("DeliveryFormContainer", () => {
     // Arrange
     const draft = DeliveryMother.draft();
     const deliveryRepository = fakeDeliveryRepository();
-    const { history } = renderScreen(<DeliveryFormContainer />, { deliveryRepository });
+    const { history } = renderScreen(<DeliveryFormContainer />, {
+      deliveryRepository,
+      ...referencedBy(draft),
+    });
     await fillIn(draft);
 
     // Act
@@ -10021,6 +10059,7 @@ describe("DeliveryFormContainer", () => {
     const deliveryRepository = fakeDeliveryRepository([seeded]);
     const { history } = renderScreen(<DeliveryFormContainer id={seeded.id} />, {
       deliveryRepository,
+      ...referencedBy(seeded),
     });
 
     // Act
@@ -10038,8 +10077,12 @@ describe("DeliveryFormContainer", () => {
       ...fakeDeliveryRepository(),
       create: () => Promise.reject(new DeliveryError(code)),
     };
-    renderScreen(<DeliveryFormContainer />, { deliveryRepository });
-    await fillIn(DeliveryMother.draft());
+    const draft = DeliveryMother.draft();
+    renderScreen(<DeliveryFormContainer />, {
+      deliveryRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -10054,8 +10097,12 @@ describe("DeliveryFormContainer", () => {
       ...fakeDeliveryRepository(),
       create: () => Promise.reject(new DeliveryError("delivery.duplicate")),
     };
-    renderScreen(<DeliveryFormContainer />, { deliveryRepository });
-    await fillIn(DeliveryMother.draft());
+    const draft = DeliveryMother.draft();
+    renderScreen(<DeliveryFormContainer />, {
+      deliveryRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -10066,21 +10113,41 @@ describe("DeliveryFormContainer", () => {
     );
   });
 
+  test("should offer every purchase in the selects that reference one", async () => {
+    // Arrange
+    const purchase = PurchaseMother.random();
+
+    // Act
+    renderScreen(<DeliveryFormContainer />, {
+      deliveryRepository: fakeDeliveryRepository(),
+      purchaseRepository: fakePurchaseRepository([purchase]),
+    });
+
+    // Assert
+    const options = await screen.findAllByRole("option", { name: purchase.id });
+    expect(options).toHaveLength(1);
+  });
+
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
     const deliveryRepository = {
       ...fakeDeliveryRepository(),
-      create: () => Promise.reject(new DeliveryError("delivery.validation_error.carrier_empty")),
+      create: () =>
+        Promise.reject(new DeliveryError("delivery.validation_error.purchase_id_not_found")),
     };
-    renderScreen(<DeliveryFormContainer />, { deliveryRepository });
-    await fillIn(DeliveryMother.draft());
+    const draft = DeliveryMother.draft();
+    renderScreen(<DeliveryFormContainer />, {
+      deliveryRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
-    expect(await screen.findByText("Carrier is required")).toBeTruthy();
-    const input = screen.getByLabelText("Carrier");
+    expect(await screen.findByText("Purchase does not exist")).toBeTruthy();
+    const input = screen.getByLabelText("Purchase");
     expect(input.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -10091,8 +10158,10 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toProblem } from "../../../../domain/delivery/messages";
 import type { Delivery } from "../../../../domain/delivery/model";
+import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
+import { referenceOptions } from "../../../shared/forms";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { DeliveryFormView, toDeliveryDraft, toDeliveryForm } from "../views/delivery-form-view";
 
@@ -10119,7 +10188,11 @@ export function DeliveryFormContainer({ id }: { id?: string }) {
 }
 
 function DeliveryForm({ existing }: { existing: Delivery | null }) {
-  const { deliveryRepository } = useDependencies();
+  const { deliveryRepository, purchaseRepository } = useDependencies();
+  const purchases = useAsync(
+    () => purchaseRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
+    [purchaseRepository],
+  );
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toDeliveryForm(existing));
   const [saving, setSaving] = useState(false);
@@ -10146,8 +10219,12 @@ function DeliveryForm({ existing }: { existing: Delivery | null }) {
     <div className="card bg-base-100">
       <div className="card-body">
         {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        {purchases.status === "error" && <ErrorAlert error={purchases.error} />}
         <DeliveryFormView
           values={values}
+          options={{
+            purchaseId: referenceOptions(purchases, (purchase) => purchase.id),
+          }}
           saving={saving}
           problem={problem}
           onChange={setValues}
@@ -10279,12 +10356,15 @@ export function DeliveryListContainer() {
 
 === web/src/presentation/features/delivery/views/delivery-detail-view.tsx ===
 import type { Delivery } from "../../../../domain/delivery/model";
+import { ReferenceLink } from "../../../shared/ui/reference-link";
 
 export function DeliveryDetailView({ delivery }: { delivery: Delivery }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
-      <dt className="font-semibold">Purchase id</dt>
-      <dd>{delivery.purchaseId}</dd>
+      <dt className="font-semibold">Purchase</dt>
+      <dd>
+        <ReferenceLink path="/purchases" id={delivery.purchaseId} />
+      </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{delivery.carrier}</dd>
     </dl>
@@ -10294,6 +10374,7 @@ export function DeliveryDetailView({ delivery }: { delivery: Delivery }) {
 === web/src/presentation/features/delivery/views/delivery-form-view.tsx ===
 import type { DeliveryProblem } from "../../../../domain/delivery/messages";
 import type { Delivery, DeliveryDraft } from "../../../../domain/delivery/model";
+import type { ReferenceOption } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
@@ -10316,6 +10397,11 @@ export function toDeliveryForm(delivery: Delivery | null): DeliveryFormValues {
   };
 }
 
+/** What each reference's select offers. */
+export interface DeliveryFormOptions {
+  purchaseId: ReferenceOption[];
+}
+
 export function toDeliveryDraft(values: DeliveryFormValues): DeliveryDraft {
   return {
     purchaseId: values.purchaseId,
@@ -10325,12 +10411,14 @@ export function toDeliveryDraft(values: DeliveryFormValues): DeliveryDraft {
 
 export function DeliveryFormView({
   values,
+  options,
   saving,
   problem,
   onChange,
   onSubmit,
 }: {
   values: DeliveryFormValues;
+  options: DeliveryFormOptions;
   saving: boolean;
   /** What the API said about the last submit: shown under its input. */
   problem: DeliveryProblem | null;
@@ -10346,15 +10434,21 @@ export function DeliveryFormView({
       }}
     >
       <label className="fieldset">
-        <span className="fieldset-legend">Purchase id</span>
-        <input
-          className="input w-full"
-          type="text"
+        <span className="fieldset-legend">Purchase</span>
+        <select
+          className="select w-full"
           aria-invalid={problem?.field === "purchaseId"}
           required
           value={values.purchaseId}
           onChange={(event) => onChange({ ...values, purchaseId: event.target.value })}
-        />
+        >
+          <option value="">Choose a purchase</option>
+          {options.purchaseId.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
       <FieldError problem={problem} field="purchaseId" />
       <label className="fieldset">
@@ -10386,7 +10480,7 @@ export function DeliveryListView({ deliveries }: { deliveries: Delivery[] }) {
       <table className="table">
         <thead>
           <tr>
-            <th>Purchase id</th>
+            <th>Purchase</th>
             <th>Carrier</th>
             <th />
           </tr>
@@ -10427,6 +10521,32 @@ describe("PurchaseDetailContainer", () => {
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should link the supplier to its page", async () => {
+    // Arrange
+    const seeded = PurchaseMother.random();
+    const purchaseRepository = fakePurchaseRepository([seeded]);
+
+    // Act
+    renderScreen(<PurchaseDetailContainer id={seeded.id} />, { purchaseRepository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.supplierId });
+    expect(link.getAttribute("href")).toBe(`/suppliers/${seeded.supplierId}`);
+  });
+
+  test("should link the approver to its page", async () => {
+    // Arrange
+    const seeded = PurchaseMother.random();
+    const purchaseRepository = fakePurchaseRepository([seeded]);
+
+    // Act
+    renderScreen(<PurchaseDetailContainer id={seeded.id} />, { purchaseRepository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.approverId ?? "" });
+    expect(link.getAttribute("href")).toBe(`/suppliers/${seeded.approverId}`);
   });
 
   test("should show the not-found code when the purchase does not exist", async () => {
@@ -10527,6 +10647,7 @@ import { PurchaseError } from "../../../../domain/purchase/errors";
 import type { PurchaseDraft } from "../../../../domain/purchase/model";
 import { fakePurchaseRepository, PurchaseMother } from "../../../../test-support/purchase";
 import { renderScreen } from "../../../../test-support/render";
+import { fakeSupplierRepository, SupplierMother } from "../../../../test-support/supplier";
 import { textOf } from "../../../shared/forms";
 import { PurchaseFormContainer } from "./purchase-form-container";
 
@@ -10534,11 +10655,28 @@ function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
+/** Picks `id` in a reference's select, once its targets have loaded. */
+async function choose(label: string, id: string) {
+  const select = screen.getByLabelText(label);
+  await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
+  fireEvent.change(select, { target: { value: id } });
+}
+
+/** The repositories the selects read, holding what `draft` references. */
+function referencedBy(draft: PurchaseDraft) {
+  return {
+    supplierRepository: fakeSupplierRepository([
+      SupplierMother.random({ id: draft.supplierId }),
+      SupplierMother.random({ id: draft.approverId ?? crypto.randomUUID() }),
+    ]),
+  };
+}
+
 /** Fills the empty form with `draft`, the way a user would. */
 async function fillIn(draft: PurchaseDraft) {
   await screen.findByText("Save");
-  type("Supplier id", draft.supplierId);
-  type("Approver id", textOf(draft.approverId));
+  await choose("Supplier", draft.supplierId);
+  await choose("Approver", textOf(draft.approverId));
   type("Total", String(draft.total));
 }
 
@@ -10547,7 +10685,10 @@ describe("PurchaseFormContainer", () => {
     // Arrange
     const draft = PurchaseMother.draft();
     const purchaseRepository = fakePurchaseRepository();
-    const { history } = renderScreen(<PurchaseFormContainer />, { purchaseRepository });
+    const { history } = renderScreen(<PurchaseFormContainer />, {
+      purchaseRepository,
+      ...referencedBy(draft),
+    });
     await fillIn(draft);
 
     // Act
@@ -10568,6 +10709,7 @@ describe("PurchaseFormContainer", () => {
     const purchaseRepository = fakePurchaseRepository([seeded]);
     const { history } = renderScreen(<PurchaseFormContainer id={seeded.id} />, {
       purchaseRepository,
+      ...referencedBy(seeded),
     });
 
     // Act
@@ -10585,8 +10727,12 @@ describe("PurchaseFormContainer", () => {
       ...fakePurchaseRepository(),
       create: () => Promise.reject(new PurchaseError(code)),
     };
-    renderScreen(<PurchaseFormContainer />, { purchaseRepository });
-    await fillIn(PurchaseMother.draft());
+    const draft = PurchaseMother.draft();
+    renderScreen(<PurchaseFormContainer />, {
+      purchaseRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -10601,8 +10747,12 @@ describe("PurchaseFormContainer", () => {
       ...fakePurchaseRepository(),
       create: () => Promise.reject(new PurchaseError("purchase.duplicate")),
     };
-    renderScreen(<PurchaseFormContainer />, { purchaseRepository });
-    await fillIn(PurchaseMother.draft());
+    const draft = PurchaseMother.draft();
+    renderScreen(<PurchaseFormContainer />, {
+      purchaseRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -10612,6 +10762,45 @@ describe("PurchaseFormContainer", () => {
       "A purchase with these values already exists",
     );
   });
+
+  test("should offer every supplier in the selects that reference one", async () => {
+    // Arrange
+    const supplier = SupplierMother.random();
+
+    // Act
+    renderScreen(<PurchaseFormContainer />, {
+      purchaseRepository: fakePurchaseRepository(),
+      supplierRepository: fakeSupplierRepository([supplier]),
+    });
+
+    // Assert
+    const options = await screen.findAllByRole("option", { name: supplier.name });
+    expect(options).toHaveLength(2);
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const purchaseRepository = {
+      ...fakePurchaseRepository(),
+      create: () =>
+        Promise.reject(new PurchaseError("purchase.validation_error.supplier_id_not_found")),
+    };
+    const draft = PurchaseMother.draft();
+    renderScreen(<PurchaseFormContainer />, {
+      purchaseRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Supplier does not exist")).toBeTruthy();
+    const input = screen.getByLabelText("Supplier");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/purchase/containers/purchase-form-container.tsx ===
@@ -10619,8 +10808,10 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toProblem } from "../../../../domain/purchase/messages";
 import type { Purchase } from "../../../../domain/purchase/model";
+import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
+import { referenceOptions } from "../../../shared/forms";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { PurchaseFormView, toPurchaseDraft, toPurchaseForm } from "../views/purchase-form-view";
 
@@ -10647,7 +10838,11 @@ export function PurchaseFormContainer({ id }: { id?: string }) {
 }
 
 function PurchaseForm({ existing }: { existing: Purchase | null }) {
-  const { purchaseRepository } = useDependencies();
+  const { purchaseRepository, supplierRepository } = useDependencies();
+  const suppliers = useAsync(
+    () => supplierRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
+    [supplierRepository],
+  );
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toPurchaseForm(existing));
   const [saving, setSaving] = useState(false);
@@ -10674,8 +10869,13 @@ function PurchaseForm({ existing }: { existing: Purchase | null }) {
     <div className="card bg-base-100">
       <div className="card-body">
         {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        {suppliers.status === "error" && <ErrorAlert error={suppliers.error} />}
         <PurchaseFormView
           values={values}
+          options={{
+            supplierId: referenceOptions(suppliers, (supplier) => supplier.name),
+            approverId: referenceOptions(suppliers, (supplier) => supplier.name),
+          }}
           saving={saving}
           problem={problem}
           onChange={setValues}
@@ -10807,14 +11007,19 @@ export function PurchaseListContainer() {
 
 === web/src/presentation/features/purchase/views/purchase-detail-view.tsx ===
 import type { Purchase } from "../../../../domain/purchase/model";
+import { ReferenceLink } from "../../../shared/ui/reference-link";
 
 export function PurchaseDetailView({ purchase }: { purchase: Purchase }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
-      <dt className="font-semibold">Supplier id</dt>
-      <dd>{purchase.supplierId}</dd>
-      <dt className="font-semibold">Approver id</dt>
-      <dd>{purchase.approverId ?? "—"}</dd>
+      <dt className="font-semibold">Supplier</dt>
+      <dd>
+        <ReferenceLink path="/suppliers" id={purchase.supplierId} />
+      </dd>
+      <dt className="font-semibold">Approver</dt>
+      <dd>
+        <ReferenceLink path="/suppliers" id={purchase.approverId} />
+      </dd>
       <dt className="font-semibold">Total</dt>
       <dd>{purchase.total}</dd>
     </dl>
@@ -10824,7 +11029,7 @@ export function PurchaseDetailView({ purchase }: { purchase: Purchase }) {
 === web/src/presentation/features/purchase/views/purchase-form-view.tsx ===
 import type { PurchaseProblem } from "../../../../domain/purchase/messages";
 import type { Purchase, PurchaseDraft } from "../../../../domain/purchase/model";
-import { textOf, textOrNull } from "../../../shared/forms";
+import { type ReferenceOption, textOf, textOrNull } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
@@ -10850,6 +11055,12 @@ export function toPurchaseForm(purchase: Purchase | null): PurchaseFormValues {
   };
 }
 
+/** What each reference's select offers. */
+export interface PurchaseFormOptions {
+  supplierId: ReferenceOption[];
+  approverId: ReferenceOption[];
+}
+
 export function toPurchaseDraft(values: PurchaseFormValues): PurchaseDraft {
   return {
     supplierId: values.supplierId,
@@ -10860,12 +11071,14 @@ export function toPurchaseDraft(values: PurchaseFormValues): PurchaseDraft {
 
 export function PurchaseFormView({
   values,
+  options,
   saving,
   problem,
   onChange,
   onSubmit,
 }: {
   values: PurchaseFormValues;
+  options: PurchaseFormOptions;
   saving: boolean;
   /** What the API said about the last submit: shown under its input. */
   problem: PurchaseProblem | null;
@@ -10881,26 +11094,38 @@ export function PurchaseFormView({
       }}
     >
       <label className="fieldset">
-        <span className="fieldset-legend">Supplier id</span>
-        <input
-          className="input w-full"
-          type="text"
+        <span className="fieldset-legend">Supplier</span>
+        <select
+          className="select w-full"
           aria-invalid={problem?.field === "supplierId"}
           required
           value={values.supplierId}
           onChange={(event) => onChange({ ...values, supplierId: event.target.value })}
-        />
+        >
+          <option value="">Choose a supplier</option>
+          {options.supplierId.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
       <FieldError problem={problem} field="supplierId" />
       <label className="fieldset">
-        <span className="fieldset-legend">Approver id</span>
-        <input
-          className="input w-full"
-          type="text"
+        <span className="fieldset-legend">Approver</span>
+        <select
+          className="select w-full"
           aria-invalid={problem?.field === "approverId"}
           value={values.approverId}
           onChange={(event) => onChange({ ...values, approverId: event.target.value })}
-        />
+        >
+          <option value="">None</option>
+          {options.approverId.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
       <FieldError problem={problem} field="approverId" />
       <label className="fieldset">
@@ -10932,8 +11157,8 @@ export function PurchaseListView({ purchases }: { purchases: Purchase[] }) {
       <table className="table">
         <thead>
           <tr>
-            <th>Supplier id</th>
-            <th>Approver id</th>
+            <th>Supplier</th>
+            <th>Approver</th>
             <th>Total</th>
             <th />
           </tr>

@@ -17,7 +17,9 @@ use crate::generators::naming::{
     snake_to_kebab, snake_to_words, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
-use crate::generators::types::{WebEnumCtx, WebFieldCtx, web_enum_ctx, web_field_ctx};
+use crate::generators::types::{
+    WebEnumCtx, WebFieldCtx, web_enum_ctx, web_field_ctx, with_article,
+};
 use crate::puerto_toml::{Entity, Field, PuertoConfig};
 
 /// Every frontend file `scaffold` writes for one entity, relative to the project root — what the
@@ -161,16 +163,6 @@ fn identifier(name: &str, suffix: &str) -> String {
     }
 }
 
-/// `a` or `an` by the first letter — good enough for entity names (`an order item`, `a user`).
-fn with_article(words: &str) -> String {
-    let article = if words.starts_with(['a', 'e', 'i', 'o', 'u']) {
-        "an"
-    } else {
-        "a"
-    };
-    format!("{article} {words}")
-}
-
 fn web_entity_ctx(pascal: &str) -> WebEntityCtx {
     let snake = pascal_to_snake(pascal);
     let plural = pluralize(&snake);
@@ -221,7 +213,87 @@ fn web_access_ctx(access: &Access, snake: &str) -> WebAccessCtx {
     }
 }
 
-fn entity_template_ctx(pascal: &str, fields: &[Field], access: &Access) -> tera::Context {
+/// An entity this one references, as its form loads it (ADR-0022): once, whatever the number of
+/// references to it.
+#[derive(Serialize)]
+struct WebTargetCtx {
+    #[serde(flatten)]
+    entity: WebEntityCtx,
+    /// What an option shows: the target's first required `String` field (camelCase), else `id`.
+    label: String,
+    /// The references to it, in field order (camelCase) — their selects share its options.
+    fields: Vec<String>,
+    /// The `useAsync(…)` loading it fits on one line.
+    load_inline: bool,
+    /// The form test's targets for `draft`: one `{Target}Mother.random({ id })` per reference.
+    seeds: Vec<String>,
+    /// `{target}Repository: fake{Target}Repository([…seeds]),` fits on one line.
+    seeds_inline: bool,
+}
+
+/// The entities `fields` reference, in the order they are first named. `config` gives their
+/// fields; without it (or without the target in it) an option shows the id.
+fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTargetCtx> {
+    let mut targets: Vec<WebTargetCtx> = vec![];
+    for f in fields {
+        let Some(target) = f.references.as_deref() else {
+            continue;
+        };
+        let camel = snake_to_camel(&f.name);
+        let optional = f.field_type.starts_with("Option<");
+        // A Mother's optional reference is present; `??` only satisfies the type.
+        let seed = format!(
+            "{target}Mother.random({{ id: draft.{camel}{} }})",
+            if optional {
+                " ?? crypto.randomUUID()"
+            } else {
+                ""
+            }
+        );
+        if let Some(known) = targets.iter_mut().find(|t| t.entity.pascal == target) {
+            known.fields.push(camel);
+            known.seeds.push(seed);
+            continue;
+        }
+        let label = config
+            .and_then(|c| c.entity.iter().find(|e| e.name == target))
+            .and_then(|e| {
+                effective_fields(&e.fields)
+                    .into_iter()
+                    .find(|t| t.field_type == "String" && !crate::generators::types::is_enum_vo(t))
+            })
+            .map_or_else(|| "id".to_string(), |t| snake_to_camel(&t.name));
+        let entity = web_entity_ctx(target);
+        let load_inline = fits(&format!(
+            "  const {} = useAsync(() => {}Repository.list({{ limit: MAX_PAGE_LIMIT, offset: 0 }}), [{}Repository]);",
+            entity.plural_ident, entity.camel, entity.camel
+        ));
+        targets.push(WebTargetCtx {
+            entity,
+            label,
+            fields: vec![camel],
+            load_inline,
+            seeds: vec![seed],
+            seeds_inline: false,
+        });
+    }
+    for t in &mut targets {
+        t.seeds_inline = fits(&format!(
+            "    {}Repository: fake{}Repository([{}]),",
+            t.entity.camel,
+            t.entity.pascal,
+            t.seeds.join(", ")
+        ));
+    }
+    targets
+}
+
+fn entity_template_ctx(
+    pascal: &str,
+    fields: &[Field],
+    access: &Access,
+    config: Option<&PuertoConfig>,
+) -> tera::Context {
     let entity = web_entity_ctx(pascal);
     let web_fields: Vec<WebFieldCtx> = effective_fields(fields)
         .iter()
@@ -248,21 +320,37 @@ fn entity_template_ctx(pascal: &str, fields: &[Field], access: &Access) -> tera:
     };
     let mut ctx = tera::Context::from_serialize(&entity).unwrap_or_default();
     ctx.insert("access", &web_access_ctx(access, &entity.snake));
-    ctx.insert("form_helpers", &{
-        let mut names = helpers(|f| &f.to_form_helpers);
-        names.extend(helpers(|f| &f.from_form_helpers));
-        names.sort_unstable();
-        names.dedup();
-        names
-    });
+    let targets = web_targets(&effective_fields(fields), config);
+    let mut form_helpers = helpers(|f| &f.to_form_helpers);
+    form_helpers.extend(helpers(|f| &f.from_form_helpers));
+    form_helpers.sort_unstable();
+    form_helpers.dedup();
+    // Biome's `useImportType`: an import of types only is `import type { … }`.
+    let form_helpers_type_only = form_helpers.is_empty() && !targets.is_empty();
+    if !targets.is_empty() {
+        form_helpers.push(if form_helpers_type_only {
+            "ReferenceOption"
+        } else {
+            "type ReferenceOption"
+        });
+    }
+    ctx.insert("form_helpers", &form_helpers);
+    ctx.insert("form_helpers_type_only", &form_helpers_type_only);
     ctx.insert("fill_helpers", &helpers(|f| &f.to_form_helpers));
     ctx.insert("display_helpers", &helpers(|f| &f.display_helpers));
     ctx.insert("enums", &enums);
     let problems = web_problems(&entity, &effective_fields(fields), &web_fields);
+    let field_problem = problems.iter().find(|p| p.field.is_some());
     ctx.insert(
-        "field_problem",
-        &problems.iter().find(|p| p.field.is_some()),
+        "field_problem_inline",
+        &field_problem.is_some_and(|p| {
+            fits(&format!(
+                "      create: () => Promise.reject(new {}Error(\"{}\")),",
+                entity.pascal, p.code
+            ))
+        }),
     );
+    ctx.insert("field_problem", &field_problem);
     ctx.insert("problems", &problems);
     ctx.insert(
         "duplicate_text",
@@ -272,6 +360,18 @@ fn entity_template_ctx(pascal: &str, fields: &[Field], access: &Access) -> tera:
         ),
     );
     ctx.insert("fields", &web_fields);
+    ctx.insert(
+        "form_deps_inline",
+        &fits(&format!(
+            "  const {{ {}Repository{} }} = useDependencies();",
+            entity.camel,
+            targets
+                .iter()
+                .map(|t| format!(", {}Repository", t.entity.camel))
+                .collect::<String>()
+        )),
+    );
+    ctx.insert("targets", &targets);
     ctx
 }
 
@@ -312,6 +412,12 @@ fn web_problems(
             add(
                 format!("{snake}.validation_error.{}_empty", f.name),
                 format!("{} is required", web.label),
+            );
+        }
+        if f.references.is_some() {
+            add(
+                format!("{snake}.validation_error.{}_not_found", f.name),
+                format!("{} does not exist", web.label),
             );
         }
         if let Some(vo) = &f.value_object {
@@ -389,7 +495,8 @@ pub fn write_web_files(
     base: &Path,
     fields: &[Field],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = entity_template_ctx(pascal, fields, &Access::of(base, pascal));
+    let config = crate::puerto_toml::read(base).ok();
+    let ctx = entity_template_ctx(pascal, fields, &Access::of(base, pascal), config.as_ref());
     let snake = pascal_to_snake(pascal);
     for (path, template) in web_entity_files(&snake).iter().zip(ENTITY_TEMPLATES) {
         write_file(&base.join(path), &render_ts(template, &ctx)?)?;

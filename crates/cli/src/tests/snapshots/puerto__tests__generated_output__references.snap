@@ -99,7 +99,7 @@ the customer's repository. With a database the column is a foreign key, and a wr
 customer that does not exist answers `422` `order.validation_error.customer_id_not_found`.
 Deleting a customer (a soft delete) leaves its orders pointing at it. The list filters by each
 reference: `GET /orders?customerId=…` (`ListOrdersParams { customer_id }`, `OrderFilter` in the
-repository port).
+repository port). On the web the reference is a `<select>` of customers and a link on the detail.
 
 ### Generated vs yours
 
@@ -6817,6 +6817,8 @@ export interface OrderProblem {
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
+  "order.validation_error.customer_id_not_found": "Customer does not exist",
+  "order.validation_error.reviewer_id_not_found": "Reviewer does not exist",
   "order.duplicate": "An order with these values already exists",
   "order.not_found": "This order no longer exists",
   "order.repository_error": "The order could not be saved, try again later",
@@ -6824,7 +6826,10 @@ const TEXTS: Record<string, string> = {
 };
 
 /** The input each field's code is about. */
-const FIELDS: Record<string, keyof OrderDraft> = {};
+const FIELDS: Record<string, keyof OrderDraft> = {
+  "order.validation_error.customer_id_not_found": "customerId",
+  "order.validation_error.reviewer_id_not_found": "reviewerId",
+};
 
 export function toProblem(code: string): OrderProblem {
   return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
@@ -6883,6 +6888,7 @@ export interface ShipmentProblem {
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
+  "shipment.validation_error.order_id_not_found": "Order does not exist",
   "shipment.validation_error.carrier_empty": "Carrier is required",
   "shipment.duplicate": "A shipment with these values already exists",
   "shipment.not_found": "This shipment no longer exists",
@@ -6892,6 +6898,7 @@ const TEXTS: Record<string, string> = {
 
 /** The input each field's code is about. */
 const FIELDS: Record<string, keyof ShipmentDraft> = {
+  "shipment.validation_error.order_id_not_found": "orderId",
   "shipment.validation_error.carrier_empty": "carrier",
 };
 
@@ -8022,6 +8029,32 @@ describe("OrderDetailContainer", () => {
     expect(await screen.findByText("Edit")).toBeTruthy();
   });
 
+  test("should link the customer to its page", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const orderRepository = fakeOrderRepository([seeded]);
+
+    // Act
+    renderScreen(<OrderDetailContainer id={seeded.id} />, { orderRepository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.customerId });
+    expect(link.getAttribute("href")).toBe(`/customers/${seeded.customerId}`);
+  });
+
+  test("should link the reviewer to its page", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const orderRepository = fakeOrderRepository([seeded]);
+
+    // Act
+    renderScreen(<OrderDetailContainer id={seeded.id} />, { orderRepository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.reviewerId ?? "" });
+    expect(link.getAttribute("href")).toBe(`/customers/${seeded.reviewerId}`);
+  });
+
   test("should show the not-found code when the order does not exist", async () => {
     // Arrange
     const orderRepository = fakeOrderRepository();
@@ -8118,6 +8151,7 @@ import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { OrderError } from "../../../../domain/order/errors";
 import type { OrderDraft } from "../../../../domain/order/model";
+import { CustomerMother, fakeCustomerRepository } from "../../../../test-support/customer";
 import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
 import { renderScreen } from "../../../../test-support/render";
 import { textOf } from "../../../shared/forms";
@@ -8127,11 +8161,28 @@ function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
+/** Picks `id` in a reference's select, once its targets have loaded. */
+async function choose(label: string, id: string) {
+  const select = screen.getByLabelText(label);
+  await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
+  fireEvent.change(select, { target: { value: id } });
+}
+
+/** The repositories the selects read, holding what `draft` references. */
+function referencedBy(draft: OrderDraft) {
+  return {
+    customerRepository: fakeCustomerRepository([
+      CustomerMother.random({ id: draft.customerId }),
+      CustomerMother.random({ id: draft.reviewerId ?? crypto.randomUUID() }),
+    ]),
+  };
+}
+
 /** Fills the empty form with `draft`, the way a user would. */
 async function fillIn(draft: OrderDraft) {
   await screen.findByText("Save");
-  type("Customer id", draft.customerId);
-  type("Reviewer id", textOf(draft.reviewerId));
+  await choose("Customer", draft.customerId);
+  await choose("Reviewer", textOf(draft.reviewerId));
   type("Total", String(draft.total));
 }
 
@@ -8140,7 +8191,10 @@ describe("OrderFormContainer", () => {
     // Arrange
     const draft = OrderMother.draft();
     const orderRepository = fakeOrderRepository();
-    const { history } = renderScreen(<OrderFormContainer />, { orderRepository });
+    const { history } = renderScreen(<OrderFormContainer />, {
+      orderRepository,
+      ...referencedBy(draft),
+    });
     await fillIn(draft);
 
     // Act
@@ -8161,6 +8215,7 @@ describe("OrderFormContainer", () => {
     const orderRepository = fakeOrderRepository([seeded]);
     const { history } = renderScreen(<OrderFormContainer id={seeded.id} />, {
       orderRepository,
+      ...referencedBy(seeded),
     });
 
     // Act
@@ -8178,8 +8233,12 @@ describe("OrderFormContainer", () => {
       ...fakeOrderRepository(),
       create: () => Promise.reject(new OrderError(code)),
     };
-    renderScreen(<OrderFormContainer />, { orderRepository });
-    await fillIn(OrderMother.draft());
+    const draft = OrderMother.draft();
+    renderScreen(<OrderFormContainer />, {
+      orderRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -8194,8 +8253,12 @@ describe("OrderFormContainer", () => {
       ...fakeOrderRepository(),
       create: () => Promise.reject(new OrderError("order.duplicate")),
     };
-    renderScreen(<OrderFormContainer />, { orderRepository });
-    await fillIn(OrderMother.draft());
+    const draft = OrderMother.draft();
+    renderScreen(<OrderFormContainer />, {
+      orderRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -8205,6 +8268,44 @@ describe("OrderFormContainer", () => {
       "An order with these values already exists",
     );
   });
+
+  test("should offer every customer in the selects that reference one", async () => {
+    // Arrange
+    const customer = CustomerMother.random();
+
+    // Act
+    renderScreen(<OrderFormContainer />, {
+      orderRepository: fakeOrderRepository(),
+      customerRepository: fakeCustomerRepository([customer]),
+    });
+
+    // Assert
+    const options = await screen.findAllByRole("option", { name: customer.name });
+    expect(options).toHaveLength(2);
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      create: () => Promise.reject(new OrderError("order.validation_error.customer_id_not_found")),
+    };
+    const draft = OrderMother.draft();
+    renderScreen(<OrderFormContainer />, {
+      orderRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Customer does not exist")).toBeTruthy();
+    const input = screen.getByLabelText("Customer");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
 
 === web/src/presentation/features/order/containers/order-form-container.tsx ===
@@ -8212,8 +8313,10 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { toProblem } from "../../../../domain/order/messages";
 import type { Order } from "../../../../domain/order/model";
+import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
+import { referenceOptions } from "../../../shared/forms";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { OrderFormView, toOrderDraft, toOrderForm } from "../views/order-form-view";
 
@@ -8240,7 +8343,11 @@ export function OrderFormContainer({ id }: { id?: string }) {
 }
 
 function OrderForm({ existing }: { existing: Order | null }) {
-  const { orderRepository } = useDependencies();
+  const { orderRepository, customerRepository } = useDependencies();
+  const customers = useAsync(
+    () => customerRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
+    [customerRepository],
+  );
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toOrderForm(existing));
   const [saving, setSaving] = useState(false);
@@ -8267,8 +8374,13 @@ function OrderForm({ existing }: { existing: Order | null }) {
     <div className="card bg-base-100">
       <div className="card-body">
         {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        {customers.status === "error" && <ErrorAlert error={customers.error} />}
         <OrderFormView
           values={values}
+          options={{
+            customerId: referenceOptions(customers, (customer) => customer.name),
+            reviewerId: referenceOptions(customers, (customer) => customer.name),
+          }}
           saving={saving}
           problem={problem}
           onChange={setValues}
@@ -8400,14 +8512,19 @@ export function OrderListContainer() {
 
 === web/src/presentation/features/order/views/order-detail-view.tsx ===
 import type { Order } from "../../../../domain/order/model";
+import { ReferenceLink } from "../../../shared/ui/reference-link";
 
 export function OrderDetailView({ order }: { order: Order }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
-      <dt className="font-semibold">Customer id</dt>
-      <dd>{order.customerId}</dd>
-      <dt className="font-semibold">Reviewer id</dt>
-      <dd>{order.reviewerId ?? "—"}</dd>
+      <dt className="font-semibold">Customer</dt>
+      <dd>
+        <ReferenceLink path="/customers" id={order.customerId} />
+      </dd>
+      <dt className="font-semibold">Reviewer</dt>
+      <dd>
+        <ReferenceLink path="/customers" id={order.reviewerId} />
+      </dd>
       <dt className="font-semibold">Total</dt>
       <dd>{order.total}</dd>
     </dl>
@@ -8417,7 +8534,7 @@ export function OrderDetailView({ order }: { order: Order }) {
 === web/src/presentation/features/order/views/order-form-view.tsx ===
 import type { OrderProblem } from "../../../../domain/order/messages";
 import type { Order, OrderDraft } from "../../../../domain/order/model";
-import { textOf, textOrNull } from "../../../shared/forms";
+import { type ReferenceOption, textOf, textOrNull } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
@@ -8443,6 +8560,12 @@ export function toOrderForm(order: Order | null): OrderFormValues {
   };
 }
 
+/** What each reference's select offers. */
+export interface OrderFormOptions {
+  customerId: ReferenceOption[];
+  reviewerId: ReferenceOption[];
+}
+
 export function toOrderDraft(values: OrderFormValues): OrderDraft {
   return {
     customerId: values.customerId,
@@ -8453,12 +8576,14 @@ export function toOrderDraft(values: OrderFormValues): OrderDraft {
 
 export function OrderFormView({
   values,
+  options,
   saving,
   problem,
   onChange,
   onSubmit,
 }: {
   values: OrderFormValues;
+  options: OrderFormOptions;
   saving: boolean;
   /** What the API said about the last submit: shown under its input. */
   problem: OrderProblem | null;
@@ -8474,26 +8599,38 @@ export function OrderFormView({
       }}
     >
       <label className="fieldset">
-        <span className="fieldset-legend">Customer id</span>
-        <input
-          className="input w-full"
-          type="text"
+        <span className="fieldset-legend">Customer</span>
+        <select
+          className="select w-full"
           aria-invalid={problem?.field === "customerId"}
           required
           value={values.customerId}
           onChange={(event) => onChange({ ...values, customerId: event.target.value })}
-        />
+        >
+          <option value="">Choose a customer</option>
+          {options.customerId.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
       <FieldError problem={problem} field="customerId" />
       <label className="fieldset">
-        <span className="fieldset-legend">Reviewer id</span>
-        <input
-          className="input w-full"
-          type="text"
+        <span className="fieldset-legend">Reviewer</span>
+        <select
+          className="select w-full"
           aria-invalid={problem?.field === "reviewerId"}
           value={values.reviewerId}
           onChange={(event) => onChange({ ...values, reviewerId: event.target.value })}
-        />
+        >
+          <option value="">None</option>
+          {options.reviewerId.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
       <FieldError problem={problem} field="reviewerId" />
       <label className="fieldset">
@@ -8525,8 +8662,8 @@ export function OrderListView({ orders }: { orders: Order[] }) {
       <table className="table">
         <thead>
           <tr>
-            <th>Customer id</th>
-            <th>Reviewer id</th>
+            <th>Customer</th>
+            <th>Reviewer</th>
             <th>Total</th>
             <th />
           </tr>
@@ -8568,6 +8705,19 @@ describe("ShipmentDetailContainer", () => {
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should link the order to its page", async () => {
+    // Arrange
+    const seeded = ShipmentMother.random();
+    const shipmentRepository = fakeShipmentRepository([seeded]);
+
+    // Act
+    renderScreen(<ShipmentDetailContainer id={seeded.id} />, { shipmentRepository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.orderId });
+    expect(link.getAttribute("href")).toBe(`/orders/${seeded.orderId}`);
   });
 
   test("should show the not-found code when the shipment does not exist", async () => {
@@ -8666,6 +8816,7 @@ import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { ShipmentError } from "../../../../domain/shipment/errors";
 import type { ShipmentDraft } from "../../../../domain/shipment/model";
+import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
 import { renderScreen } from "../../../../test-support/render";
 import { fakeShipmentRepository, ShipmentMother } from "../../../../test-support/shipment";
 import { ShipmentFormContainer } from "./shipment-form-container";
@@ -8674,10 +8825,24 @@ function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
+/** Picks `id` in a reference's select, once its targets have loaded. */
+async function choose(label: string, id: string) {
+  const select = screen.getByLabelText(label);
+  await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
+  fireEvent.change(select, { target: { value: id } });
+}
+
+/** The repositories the selects read, holding what `draft` references. */
+function referencedBy(draft: ShipmentDraft) {
+  return {
+    orderRepository: fakeOrderRepository([OrderMother.random({ id: draft.orderId })]),
+  };
+}
+
 /** Fills the empty form with `draft`, the way a user would. */
 async function fillIn(draft: ShipmentDraft) {
   await screen.findByText("Save");
-  type("Order id", draft.orderId);
+  await choose("Order", draft.orderId);
   type("Carrier", draft.carrier);
 }
 
@@ -8686,7 +8851,10 @@ describe("ShipmentFormContainer", () => {
     // Arrange
     const draft = ShipmentMother.draft();
     const shipmentRepository = fakeShipmentRepository();
-    const { history } = renderScreen(<ShipmentFormContainer />, { shipmentRepository });
+    const { history } = renderScreen(<ShipmentFormContainer />, {
+      shipmentRepository,
+      ...referencedBy(draft),
+    });
     await fillIn(draft);
 
     // Act
@@ -8707,6 +8875,7 @@ describe("ShipmentFormContainer", () => {
     const shipmentRepository = fakeShipmentRepository([seeded]);
     const { history } = renderScreen(<ShipmentFormContainer id={seeded.id} />, {
       shipmentRepository,
+      ...referencedBy(seeded),
     });
 
     // Act
@@ -8724,8 +8893,12 @@ describe("ShipmentFormContainer", () => {
       ...fakeShipmentRepository(),
       create: () => Promise.reject(new ShipmentError(code)),
     };
-    renderScreen(<ShipmentFormContainer />, { shipmentRepository });
-    await fillIn(ShipmentMother.draft());
+    const draft = ShipmentMother.draft();
+    renderScreen(<ShipmentFormContainer />, {
+      shipmentRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -8740,8 +8913,12 @@ describe("ShipmentFormContainer", () => {
       ...fakeShipmentRepository(),
       create: () => Promise.reject(new ShipmentError("shipment.duplicate")),
     };
-    renderScreen(<ShipmentFormContainer />, { shipmentRepository });
-    await fillIn(ShipmentMother.draft());
+    const draft = ShipmentMother.draft();
+    renderScreen(<ShipmentFormContainer />, {
+      shipmentRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -8752,21 +8929,41 @@ describe("ShipmentFormContainer", () => {
     );
   });
 
+  test("should offer every order in the selects that reference one", async () => {
+    // Arrange
+    const order = OrderMother.random();
+
+    // Act
+    renderScreen(<ShipmentFormContainer />, {
+      shipmentRepository: fakeShipmentRepository(),
+      orderRepository: fakeOrderRepository([order]),
+    });
+
+    // Assert
+    const options = await screen.findAllByRole("option", { name: order.id });
+    expect(options).toHaveLength(1);
+  });
+
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
     const shipmentRepository = {
       ...fakeShipmentRepository(),
-      create: () => Promise.reject(new ShipmentError("shipment.validation_error.carrier_empty")),
+      create: () =>
+        Promise.reject(new ShipmentError("shipment.validation_error.order_id_not_found")),
     };
-    renderScreen(<ShipmentFormContainer />, { shipmentRepository });
-    await fillIn(ShipmentMother.draft());
+    const draft = ShipmentMother.draft();
+    renderScreen(<ShipmentFormContainer />, {
+      shipmentRepository,
+      ...referencedBy(draft),
+    });
+    await fillIn(draft);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
-    expect(await screen.findByText("Carrier is required")).toBeTruthy();
-    const input = screen.getByLabelText("Carrier");
+    expect(await screen.findByText("Order does not exist")).toBeTruthy();
+    const input = screen.getByLabelText("Order");
     expect(input.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
@@ -8775,10 +8972,12 @@ describe("ShipmentFormContainer", () => {
 === web/src/presentation/features/shipment/containers/shipment-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
 import { toProblem } from "../../../../domain/shipment/messages";
 import type { Shipment } from "../../../../domain/shipment/model";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
+import { referenceOptions } from "../../../shared/forms";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
 import { ShipmentFormView, toShipmentDraft, toShipmentForm } from "../views/shipment-form-view";
 
@@ -8805,7 +9004,11 @@ export function ShipmentFormContainer({ id }: { id?: string }) {
 }
 
 function ShipmentForm({ existing }: { existing: Shipment | null }) {
-  const { shipmentRepository } = useDependencies();
+  const { shipmentRepository, orderRepository } = useDependencies();
+  const orders = useAsync(
+    () => orderRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
+    [orderRepository],
+  );
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toShipmentForm(existing));
   const [saving, setSaving] = useState(false);
@@ -8832,8 +9035,12 @@ function ShipmentForm({ existing }: { existing: Shipment | null }) {
     <div className="card bg-base-100">
       <div className="card-body">
         {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        {orders.status === "error" && <ErrorAlert error={orders.error} />}
         <ShipmentFormView
           values={values}
+          options={{
+            orderId: referenceOptions(orders, (order) => order.id),
+          }}
           saving={saving}
           problem={problem}
           onChange={setValues}
@@ -8965,12 +9172,15 @@ export function ShipmentListContainer() {
 
 === web/src/presentation/features/shipment/views/shipment-detail-view.tsx ===
 import type { Shipment } from "../../../../domain/shipment/model";
+import { ReferenceLink } from "../../../shared/ui/reference-link";
 
 export function ShipmentDetailView({ shipment }: { shipment: Shipment }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
-      <dt className="font-semibold">Order id</dt>
-      <dd>{shipment.orderId}</dd>
+      <dt className="font-semibold">Order</dt>
+      <dd>
+        <ReferenceLink path="/orders" id={shipment.orderId} />
+      </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{shipment.carrier}</dd>
     </dl>
@@ -8980,6 +9190,7 @@ export function ShipmentDetailView({ shipment }: { shipment: Shipment }) {
 === web/src/presentation/features/shipment/views/shipment-form-view.tsx ===
 import type { ShipmentProblem } from "../../../../domain/shipment/messages";
 import type { Shipment, ShipmentDraft } from "../../../../domain/shipment/model";
+import type { ReferenceOption } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
@@ -9002,6 +9213,11 @@ export function toShipmentForm(shipment: Shipment | null): ShipmentFormValues {
   };
 }
 
+/** What each reference's select offers. */
+export interface ShipmentFormOptions {
+  orderId: ReferenceOption[];
+}
+
 export function toShipmentDraft(values: ShipmentFormValues): ShipmentDraft {
   return {
     orderId: values.orderId,
@@ -9011,12 +9227,14 @@ export function toShipmentDraft(values: ShipmentFormValues): ShipmentDraft {
 
 export function ShipmentFormView({
   values,
+  options,
   saving,
   problem,
   onChange,
   onSubmit,
 }: {
   values: ShipmentFormValues;
+  options: ShipmentFormOptions;
   saving: boolean;
   /** What the API said about the last submit: shown under its input. */
   problem: ShipmentProblem | null;
@@ -9032,15 +9250,21 @@ export function ShipmentFormView({
       }}
     >
       <label className="fieldset">
-        <span className="fieldset-legend">Order id</span>
-        <input
-          className="input w-full"
-          type="text"
+        <span className="fieldset-legend">Order</span>
+        <select
+          className="select w-full"
           aria-invalid={problem?.field === "orderId"}
           required
           value={values.orderId}
           onChange={(event) => onChange({ ...values, orderId: event.target.value })}
-        />
+        >
+          <option value="">Choose an order</option>
+          {options.orderId.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </label>
       <FieldError problem={problem} field="orderId" />
       <label className="fieldset">
@@ -9072,7 +9296,7 @@ export function ShipmentListView({ shipments }: { shipments: Shipment[] }) {
       <table className="table">
         <thead>
           <tr>
-            <th>Order id</th>
+            <th>Order</th>
             <th>Carrier</th>
             <th />
           </tr>

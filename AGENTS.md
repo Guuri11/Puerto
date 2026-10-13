@@ -367,7 +367,10 @@ make format/fix    # cargo fmt --all
   `ValidationError("customer_id_not_found")` (422). Pg tests seed targets through the target's
   `integration_tests::seed` (every Pg repository's test module is `pub(crate)`). The list filters
   by each reference: `GET /orders?customerId=` → `ListOrdersParams { customer_id }` →
-  `find_all(page, OrderFilter)` (Pg: `$3::uuid IS NULL OR customer_id = $3`). `scaffold` refuses
+  `find_all(page, OrderFilter)` (Pg: `$3::uuid IS NULL OR customer_id = $3`). Web: a `<select>`
+  of the target's first `MAX_PAGE_LIMIT` items (`referenceOptions`, labelled by its first required
+  `String` field, else its id), `<ReferenceLink>` on the detail, `customer_id_not_found` under the
+  select (`messages.ts`). `scaffold` refuses
   a target with no code yet; no self references, `vec:ref:` or `ref:User` yet
 - `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
   (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`

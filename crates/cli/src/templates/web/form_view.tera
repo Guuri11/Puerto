@@ -1,7 +1,7 @@
 {% if enums %}import { {% for e in enums %}parse{{ e.name }}, {% endfor %}type {{ pascal }}, type {{ pascal }}Draft }{% else %}import type { {{ pascal }}, {{ pascal }}Draft }{% endif %} from "../../../../domain/{{ kebab }}/model";
 import type { {{ pascal }}Problem } from "../../../../domain/{{ kebab }}/messages";
 {%- if form_helpers %}
-import { {{ form_helpers | join(sep=", ") }} } from "../../../shared/forms";
+import {% if form_helpers_type_only %}type {% endif %}{ {{ form_helpers | join(sep=", ") }} } from "../../../shared/forms";
 {%- endif %}
 import { FieldError } from "../../../shared/ui/field-error";
 
@@ -28,6 +28,15 @@ export function to{{ pascal }}Form({{ ident }}: {{ pascal }} | null): {{ pascal 
   };
 }
 
+{% if targets -%}
+/** What each reference's select offers. */
+export interface {{ pascal }}FormOptions {
+{%- for f in fields %}{% if f.input == "reference" %}
+  {{ f.camel }}: ReferenceOption[];
+{%- endif %}{% endfor %}
+}
+
+{% endif -%}
 export function to{{ pascal }}Draft(values: {{ pascal }}FormValues): {{ pascal }}Draft {
   return {
 {%- for f in fields %}
@@ -38,12 +47,18 @@ export function to{{ pascal }}Draft(values: {{ pascal }}FormValues): {{ pascal }
 
 export function {{ pascal }}FormView({
   values,
+{%- if targets %}
+  options,
+{%- endif %}
   saving,
   problem,
   onChange,
   onSubmit,
 }: {
   values: {{ pascal }}FormValues;
+{%- if targets %}
+  options: {{ pascal }}FormOptions;
+{%- endif %}
   saving: boolean;
   /** What the API said about the last submit: shown under its input. */
   problem: {{ pascal }}Problem | null;
@@ -85,6 +100,27 @@ export function {{ pascal }}FormView({
 {%- for o in f.options %}
           <option value="{{ o.value }}">{{ o.label }}</option>
 {%- endfor %}
+        </select>
+      </label>
+      <FieldError problem={problem} field="{{ f.camel }}" />
+{%- elif f.input == "reference" %}
+      <label className="fieldset">
+        <span className="fieldset-legend">{{ f.label }}</span>
+        <select
+          className="select w-full"
+          aria-invalid={problem?.field === "{{ f.camel }}"}
+{%- if f.required %}
+          required
+{%- endif %}
+          value={values.{{ f.camel }}}
+          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
+        >
+          <option value="">{{ f.placeholder }}</option>
+          {options.{{ f.camel }}.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </label>
       <FieldError problem={problem} field="{{ f.camel }}" />

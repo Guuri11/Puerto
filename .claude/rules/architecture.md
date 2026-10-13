@@ -275,6 +275,10 @@ navigation, no lazy loading; a use case that needs the customer asks its reposit
   declared next to the port, only for an entity with references. Pg: one static query, `AND
   ($3::uuid IS NULL OR customer_id = $3)` on the page and its `COUNT`. `GET
   /orders?customerId=&limit=&offset=`
+- Web (18.5): the form's `<select>` lists the target's first `MAX_PAGE_LIMIT` items, loaded by the
+  inner form once per target entity (`referenceOptions(loaded, label)` in `shared/forms.ts`); the
+  detail shows `<ReferenceLink path="/customers" id={…} />`; `messages.ts` maps
+  `customer_id_not_found` to `customerId`
 
 ### Domain events (`[project] events` — ADR-0018)
 

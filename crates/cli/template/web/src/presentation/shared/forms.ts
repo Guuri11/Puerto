@@ -71,3 +71,19 @@ export function dateTimeOrNull(text: string): string | null {
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString();
 }
+
+/** A choice of a reference's `<select>`: the id it sends and what it shows. */
+export interface ReferenceOption {
+  id: string;
+  label: string;
+}
+
+/** The choices of a reference's `<select>`: none until its targets have loaded. */
+export function referenceOptions<T extends { id: string }>(
+  loaded: { status: "loading" } | { status: "error" } | { status: "ok"; data: { items: T[] } },
+  label: (item: T) => string,
+): ReferenceOption[] {
+  return loaded.status === "ok"
+    ? loaded.data.items.map((item) => ({ id: item.id, label: label(item) }))
+    : [];
+}

@@ -2,13 +2,22 @@ import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
 {%- if display_helpers %}
 import { {{ display_helpers | join(sep=", ") }} } from "../../../shared/forms";
 {%- endif %}
+{%- if targets %}
+import { ReferenceLink } from "../../../shared/ui/reference-link";
+{%- endif %}
 
 export function {{ pascal }}DetailView({ {{ ident }} }: { {{ ident }}: {{ pascal }} }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
 {%- for f in fields %}
       <dt className="font-semibold">{{ f.label }}</dt>
+{%- if f.input == "reference" %}
+      <dd>
+        <ReferenceLink path="{{ f.ref_path }}" id={{ "{" }}{{ ident }}.{{ f.camel }}} />
+      </dd>
+{%- else %}
       <dd>{{ "{" }}{{ f.display }}}</dd>
+{%- endif %}
 {%- endfor %}
     </dl>
   );

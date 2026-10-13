@@ -910,3 +910,135 @@ fn should_filter_the_page_and_its_total_in_postgres() {
         cleanup(&dir);
     }
 }
+
+// ── 18.5: the frontend ──────────────────────────────────────────────────────
+
+const ORDER_WEB: &str = "web/src/presentation/features/order";
+
+#[test]
+fn should_choose_a_reference_from_a_select_of_its_targets() {
+    let (dir, output) = order_project("references_web_form", false, false);
+
+    let view = read(&output, &format!("{ORDER_WEB}/views/order-form-view.tsx"));
+    assert!(
+        view.contains("export interface OrderFormOptions {\n  customerId: ReferenceOption[];\n  reviewerId: ReferenceOption[];\n}"),
+        "{view}"
+    );
+    assert!(
+        view.contains("<span className=\"fieldset-legend\">Customer</span>"),
+        "{view}"
+    );
+    assert!(
+        view.contains("<option value=\"\">Choose a customer</option>"),
+        "{view}"
+    );
+    assert!(view.contains("<option value=\"\">None</option>"), "{view}");
+    assert!(
+        view.contains("{options.customerId.map((option) => ("),
+        "{view}"
+    );
+
+    let container = read(
+        &output,
+        &format!("{ORDER_WEB}/containers/order-form-container.tsx"),
+    );
+    assert!(
+        container.contains("customerRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 })"),
+        "{container}"
+    );
+    // One load per target entity, whatever the number of references to it.
+    assert_eq!(
+        container.matches("customerRepository.list(").count(),
+        1,
+        "{container}"
+    );
+    assert!(
+        container.contains("customerId: referenceOptions(customers, (customer) => customer.name),"),
+        "{container}"
+    );
+
+    let test = read(
+        &output,
+        &format!("{ORDER_WEB}/containers/order-form-container.test.tsx"),
+    );
+    assert!(test.contains("...referencedBy(draft),"), "{test}");
+    assert!(
+        test.contains("CustomerMother.random({ id: draft.customerId }),"),
+        "{test}"
+    );
+    assert!(
+        test.contains("test(\"should offer every customer in the selects that reference one\""),
+        "{test}"
+    );
+
+    let page = read(&output, "web/src/domain/shared/page.ts");
+    assert!(
+        page.contains("export const MAX_PAGE_LIMIT = 100;"),
+        "{page}"
+    );
+    let forms = read(&output, "web/src/presentation/shared/forms.ts");
+    assert!(
+        forms.contains("export function referenceOptions<"),
+        "{forms}"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn should_label_a_target_without_a_string_field_by_its_id() {
+    let dir = temp_dir("references_web_label_id");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some("shop".into()), false, &dir).unwrap();
+    let weight = vec![puerto_toml::parse_field_arg("weight:i64").unwrap()];
+    scaffold::run_scaffold("Pallet", &output, &weight, OverwritePolicy::Ask).unwrap();
+    let parcel = vec![puerto_toml::parse_field_arg("pallet_id:ref:Pallet").unwrap()];
+    scaffold::run_scaffold("Parcel", &output, &parcel, OverwritePolicy::Ask).unwrap();
+
+    let container = read(
+        &output,
+        "web/src/presentation/features/parcel/containers/parcel-form-container.tsx",
+    );
+    assert!(container.contains("(pallet) => pallet.id)"), "{container}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
+    let (dir, output) = order_project("references_web_detail", false, false);
+
+    let detail = read(&output, &format!("{ORDER_WEB}/views/order-detail-view.tsx"));
+    assert!(
+        detail.contains("<ReferenceLink path=\"/customers\" id={order.customerId} />"),
+        "{detail}"
+    );
+    assert!(
+        output
+            .join("web/src/presentation/shared/ui/reference-link.tsx")
+            .exists()
+    );
+    let detail_test = read(
+        &output,
+        &format!("{ORDER_WEB}/containers/order-detail-container.test.tsx"),
+    );
+    assert!(
+        detail_test.contains("test(\"should link the reviewer to its page\""),
+        "{detail_test}"
+    );
+
+    let messages = read(&output, "web/src/domain/order/messages.ts");
+    assert!(
+        messages.contains(
+            "\"order.validation_error.customer_id_not_found\": \"Customer does not exist\","
+        ),
+        "{messages}"
+    );
+    assert!(
+        messages.contains("\"order.validation_error.reviewer_id_not_found\": \"reviewerId\","),
+        "{messages}"
+    );
+
+    cleanup(&dir);
+}
