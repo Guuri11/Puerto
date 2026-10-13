@@ -24,3 +24,13 @@ Nothing tested them, so they drifted from the generator.
 
 Agent instructions are now part of the generated output and break the build when they drift. They
 still say nothing project-specific; that belongs in the project's own docs and ADRs.
+
+## Addendum (2026-10-13, Phase 17.3)
+
+The root file grew lines that only hold with `web/` inside sections every project keeps (the
+command table, *Generated vs yours*, the checklist). `--no-web` used to drop a whole `## ` section;
+these lines sit between `<!-- web -->` and `<!-- /web -->` on their own lines instead, and
+`puerto new` keeps or drops them and always removes the markers (`project::web_blocks`). A table
+row cannot be wrapped that way — a comment line breaks the table — so web-only facts go in a
+paragraph after the table, not in a row. A `--no-web` project's `AGENTS.md` names no `web/`
+(tested).

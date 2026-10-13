@@ -646,6 +646,8 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     }
     if scenario.no_web {
         scaffold::apply_no_web(output).unwrap();
+    } else {
+        crate::generators::project::keep_web_blocks(output).unwrap();
     }
     if let Some(mode) = scenario.auth {
         crate::generators::auth::apply_auth_to_new_project(output, mode).unwrap();

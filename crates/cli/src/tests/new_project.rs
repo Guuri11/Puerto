@@ -831,3 +831,27 @@ fn makefile_runs_the_frontend_checks_when_web_exists() {
     }
     cleanup(&dir);
 }
+
+#[test]
+fn web_only_agent_rules_stay_in_a_web_project_without_their_markers() {
+    // 17.3: the root AGENTS.md keeps its web-only lines between `<!-- web -->` markers, so
+    // `--no-web` drops them; a web project keeps the lines and never shows the markers.
+    let dir = temp_dir("agents_web_blocks");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = crate::commands::new::new_project(
+        Some("with-web".into()),
+        crate::commands::new::NewOptions {
+            no_db: true,
+            ..Default::default()
+        },
+        Some(dir.clone()),
+    )
+    .unwrap();
+
+    let agents = fs::read_to_string(output.join("AGENTS.md")).unwrap();
+    assert!(!agents.contains("<!--"), "{agents}");
+    assert!(agents.contains("puerto generate web <Name>"), "{agents}");
+    assert!(agents.contains("make web/sync"), "{agents}");
+    cleanup(&dir);
+}

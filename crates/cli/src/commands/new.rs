@@ -191,6 +191,8 @@ pub fn new_project(
 
     if resolved_no_web {
         crate::generators::project::apply_no_web(&output)?;
+    } else {
+        crate::generators::project::keep_web_blocks(&output)?;
     }
 
     // Last: the demo strip rewrites the `lib.rs` and `api.rs` files auth declares its modules in,

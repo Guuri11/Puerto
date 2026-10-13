@@ -466,7 +466,8 @@ pub fn apply_no_web(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     let agents_path = base.join("AGENTS.md");
     let agents = fs::read_to_string(&agents_path)?;
-    fs::write(&agents_path, without_section(&agents, AGENTS_WEB_SECTION))?;
+    let agents = without_section(&agents, AGENTS_WEB_SECTION);
+    fs::write(&agents_path, web_blocks(&agents, false))?;
 
     let mut config = crate::puerto_toml::read(base)?;
     config.project.web = false;
@@ -474,6 +475,34 @@ pub fn apply_no_web(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     crate::generators::bootstrap::regenerate_bootstrap(base)?;
 
+    Ok(())
+}
+
+/// The markers around the root `AGENTS.md` lines that only hold with `web/` — inside sections
+/// that stay, so [`without_section`] cannot drop them.
+const WEB_BLOCK_START: &str = "<!-- web -->";
+const WEB_BLOCK_END: &str = "<!-- /web -->";
+
+/// `markdown` with its web-only blocks kept (`web`) or dropped, and the marker lines gone.
+fn web_blocks(markdown: &str, web: bool) -> String {
+    let mut out = String::with_capacity(markdown.len());
+    let mut inside = false;
+    for line in markdown.split_inclusive('\n') {
+        match line.trim_end() {
+            WEB_BLOCK_START => inside = true,
+            WEB_BLOCK_END => inside = false,
+            _ if inside && !web => {}
+            _ => out.push_str(line),
+        }
+    }
+    out
+}
+
+/// Keeps the root `AGENTS.md`'s web-only blocks of a project with `web/`, without their markers.
+pub fn keep_web_blocks(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let agents_path = base.join("AGENTS.md");
+    let agents = fs::read_to_string(&agents_path)?;
+    fs::write(&agents_path, web_blocks(&agents, true))?;
     Ok(())
 }
 
@@ -492,6 +521,18 @@ fn without_section(markdown: &str, heading: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::without_section;
+
+    #[test]
+    fn should_drop_web_blocks_and_their_markers_when_there_is_no_web() {
+        let markdown = "a\n<!-- web -->\nw\n<!-- /web -->\nb\n";
+        assert_eq!(super::web_blocks(markdown, false), "a\nb\n");
+    }
+
+    #[test]
+    fn should_keep_web_blocks_without_their_markers_when_there_is_web() {
+        let markdown = "a\n<!-- web -->\nw\n<!-- /web -->\nb\n";
+        assert_eq!(super::web_blocks(markdown, true), "a\nw\nb\n");
+    }
 
     #[test]
     fn should_keep_the_next_section_when_removing_one_in_the_middle() {
