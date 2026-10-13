@@ -51,7 +51,7 @@ test/infrastructure: ## Run infrastructure layer tests (requires DB)
 
 lint: ## Clippy with -D warnings
 	@echo "${CYAN}Linting code...${NC}"
-	$(CARGO) clippy --workspace -- -D warnings
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	@if [ -d web ]; then $(MAKE) web/lint; fi
 
 format: ## Check code formatting
@@ -203,19 +203,9 @@ events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
 	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d shop -c \
 		"SELECT recorded_at, consumer, event_type, attempts, reason, detail FROM dead_letters ORDER BY recorded_at DESC LIMIT 20"
 
-.PHONY: auth/ui auth/token
+.PHONY: auth/grant
 
-auth/ui: docker-compose/up ## The Keycloak console: users, roles, sessions
-	@echo "${GREEN}Keycloak: http://localhost:8180/admin/master/console/#/shop (admin / admin)${NC}"
-	@echo "${GREEN}Sign in to the app as admin@shop.localhost / admin-dev-only (role admin)${NC}"
-
-# The development realm's `dev-cli` client (password grant): curl -H "Authorization: Bearer
-# $(make -s auth/token)" … An EMAIL from the shell's environment is not taken for one.
-AUTH_ISSUER ?= $(shell sed -n 's/^AUTH_ISSUER=//p' .env 2>/dev/null)
-TOKEN_EMAIL = $(if $(filter command line,$(origin EMAIL)),$(EMAIL),admin@shop.localhost)
-
-auth/token: ## A development access token: make -s auth/token [EMAIL=user@shop.localhost]
-	@curl -sf "$(AUTH_ISSUER)/protocol/openid-connect/token" -d grant_type=password -d client_id=dev-cli \
-		--data-urlencode "username=$(TOKEN_EMAIL)" --data-urlencode "password=admin-dev-only" \
-		| sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p' | grep . \
-		|| { echo "${RED}no token for $(TOKEN_EMAIL) from $(AUTH_ISSUER) — is Keycloak up? make docker-compose/up${NC}" >&2; exit 1; }
+auth/grant: docker-compose/up ## Give an account a role: make auth/grant EMAIL=ada@example.com ROLE=admin
+	@test -n "$(EMAIL)" -a -n "$(ROLE)" || { echo "${RED}usage: make auth/grant EMAIL=… ROLE=…${NC}"; exit 1; }
+	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d shop -v ON_ERROR_STOP=1 -c \
+		"UPDATE users SET roles = array_append(roles, '$(ROLE)'), updated_at = now() WHERE issuer = 'local' AND subject = lower(trim('$(EMAIL)')) AND NOT '$(ROLE)' = ANY(roles)"

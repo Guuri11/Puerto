@@ -25,11 +25,10 @@ help: ## Show available commands
 setup: ## Install required dev tools (run once after cloning)
 	@echo "${CYAN}Setting up development environment...${NC}"
 	$(CARGO) install cargo-nextest --locked
-	$(CARGO) install sqlx-cli --no-default-features --features postgres --locked
 	$(CARGO) install cargo-audit --locked
 
 run: ## Run the API server (http://localhost:8080)
-	@echo "${GREEN}Starting API server...${NC}"
+	@echo "${GREEN}Starting API server (in memory: data is lost on restart)...${NC}"
 	$(CARGO) run -p presentation
 
 test: ## Run all tests
@@ -51,7 +50,7 @@ test/infrastructure: ## Run infrastructure layer tests (requires DB)
 
 lint: ## Clippy with -D warnings
 	@echo "${CYAN}Linting code...${NC}"
-	$(CARGO) clippy --workspace -- -D warnings
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	@if [ -d web ]; then $(MAKE) web/lint; fi
 
 format: ## Check code formatting
@@ -128,67 +127,3 @@ web/sync: web/require-install ## After a scaffold or a DTO change: export the Op
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formatting web/ (Biome, no lint fixes)...${NC}"
 	cd web && $(BUN) run format
-
-.PHONY: db-up db-down docker-compose/up docker-compose/down reset-db \
-        sqlx/online sqlx/offline sqlx/migrate sqlx/prepare sqlx/check \
-        generate/migration
-
-DOCKER         := docker
-DOCKER_COMPOSE := docker compose
-
-db-up: docker-compose/up ## Start database containers
-
-db-down: docker-compose/down ## Stop database containers
-
-docker-compose/up: ## Start all containers
-	@echo "${CYAN}Starting containers...${NC}"
-	$(DOCKER_COMPOSE) up -d --wait
-
-docker-compose/down: ## Stop all containers
-	@echo "${CYAN}Stopping containers...${NC}"
-	$(DOCKER_COMPOSE) down
-
-reset-db: ## Wipe database and re-run migrations (DESTRUCTIVE)
-	@printf "${RED}This destroys ALL database data. Type DESTROY to confirm: ${NC}"; \
-	read CONFIRM; \
-	if [ "$$CONFIRM" != "DESTROY" ]; then \
-		echo "${GREEN}Cancelled${NC}"; \
-		exit 1; \
-	fi; \
-	echo "${CYAN}Stopping containers and removing volumes...${NC}"; \
-	$(DOCKER_COMPOSE) down -v; \
-	echo "${CYAN}Restarting containers...${NC}"; \
-	$(DOCKER_COMPOSE) up -d --wait; \
-	echo "${GREEN}Running migrations...${NC}"; \
-	sqlx migrate run --source infrastructure/migrations
-
-# The template's `run` and `test/infrastructure` keep their recipes; here they gain the database.
-run test/infrastructure: docker-compose/up
-
-sqlx/online: ## Switch SQLx to ONLINE mode (check against live DB)
-	@printf '[env]\nSQLX_OFFLINE = "false"\n' > .cargo/config.toml
-	@echo "${GREEN}SQLx ONLINE mode${NC}"
-
-sqlx/offline: ## Switch SQLx to OFFLINE mode (use saved cache)
-	@printf '[env]\nSQLX_OFFLINE = "true"\n' > .cargo/config.toml
-	@echo "${GREEN}SQLx OFFLINE mode${NC}"
-
-sqlx/migrate: docker-compose/up ## Run pending database migrations
-	@echo "${GREEN}Running migrations...${NC}"
-	sqlx migrate run --source infrastructure/migrations
-
-sqlx/prepare: docker-compose/up ## Regenerate SQLx offline cache (requires live DB)
-	@echo "${GREEN}Preparing SQLx cache...${NC}"
-	SQLX_OFFLINE=false $(CARGO) sqlx prepare --workspace
-
-sqlx/check: docker-compose/up ## Verify SQLx cache matches current queries
-	@echo "${GREEN}Checking SQLx cache...${NC}"
-	SQLX_OFFLINE=false $(CARGO) sqlx prepare --workspace --check
-
-generate/migration: ## Create a new SQLx migration — make generate/migration NAME=add_users
-	@if [ -z "$$NAME" ]; then \
-		echo "${RED}Error: provide name — make generate/migration NAME=add_users_table${NC}"; \
-		exit 1; \
-	fi
-	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
-	puerto generate migration $$NAME

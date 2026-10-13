@@ -1,3 +1,35 @@
+## [0.19.1] - 2026-10-13
+
+The agent instructions every project ships, checked against what Puerto writes (PLAN Phase 17).
+
+### 🐛 Bug Fixes
+
+- `puerto generate scaffold <Name> --force` in a `--db` project (and `puerto generate repository`
+  on a scaffolded entity) no longer writes a second `create_<entity>_table` migration, which made
+  `sqlx migrate run` fail on the existing table. The existing migration is kept and the command says
+  how a changed field set is migrated: edit it if it was never applied, else
+  `puerto generate migration` with the `ALTER TABLE`. An existing project with a duplicate only
+  needs the newer file deleted (if it was never applied)
+- The generated `make lint` runs `clippy --workspace --all-targets`: the project's test code was
+  never linted. An existing project can add `--all-targets` to its Makefile's `lint` target
+
+### 📚 Documentation
+
+- The generated root `AGENTS.md` says how to work with Puerto: every command and when it applies,
+  the field syntax (value objects, enums, shared value objects), which files a generator rewrites
+  and which are yours, how an entity's fields change once its table exists, the loop (generate,
+  then test first — what `generate use-case` leaves to fill in) and a checklist with
+  `puerto validate`, `make web/sync` and the `--db` steps. A test fails when a `puerto generate`
+  subcommand is not named there
+- `business/AGENTS.md` describes what a use case file holds (its mock included), the unit of work
+  of `events` projects, `domain/mail` and `domain/user`
+
+### Release
+
+- Publish order: `puerto-core` → `puerto-macros` → `puerto-web` → `puerto-sqlx` →
+  `puerto-events` → `puerto-kafka` → `puerto-mail` → `puerto-auth` → `puerto` (runtime crates
+  unchanged, republished at the CLI's version)
+
 ## [0.19.0] - 2026-10-13
 
 Auth (PLAN Phase 16, [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md)): one

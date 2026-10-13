@@ -51,7 +51,7 @@ test/infrastructure: ## Run infrastructure layer tests (requires DB)
 
 lint: ## Clippy with -D warnings
 	@echo "${CYAN}Linting code...${NC}"
-	$(CARGO) clippy --workspace -- -D warnings
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	@if [ -d web ]; then $(MAKE) web/lint; fi
 
 format: ## Check code formatting
@@ -192,10 +192,3 @@ generate/migration: ## Create a new SQLx migration — make generate/migration N
 	fi
 	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
 	puerto generate migration $$NAME
-
-.PHONY: auth/grant
-
-auth/grant: docker-compose/up ## Give an account a role: make auth/grant EMAIL=ada@example.com ROLE=admin
-	@test -n "$(EMAIL)" -a -n "$(ROLE)" || { echo "${RED}usage: make auth/grant EMAIL=… ROLE=…${NC}"; exit 1; }
-	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d shop -v ON_ERROR_STOP=1 -c \
-		"UPDATE users SET roles = array_append(roles, '$(ROLE)'), updated_at = now() WHERE issuer = 'local' AND subject = lower(trim('$(EMAIL)')) AND NOT '$(ROLE)' = ANY(roles)"

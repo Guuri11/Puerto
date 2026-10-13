@@ -9,13 +9,17 @@ business/src/
 ├── lib.rs                    # The whole module tree, as nested `pub mod {}` blocks — no `mod.rs`
 ├── domain/
 │   ├── shared/               # Shared value objects (`[[value_object]]` in puerto.toml), if any
+│   ├── mail/<name>.rs        # A mail and its port `{Name}Mailer`, once `puerto generate mail` ran
+│   ├── user/                 # The caller as a `User`, in an auth project
 │   └── <entity>/
 │       ├── model.rs          # Entity + Props + constructors
 │       ├── value_objects.rs  # Value objects of this entity, if any
 │       ├── errors.rs         # EntityError enum (thiserror, machine-readable codes)
 │       ├── repository.rs     # Repository trait (port) + mockall mock
+│       ├── events.rs         # AUTO-GENERATED snapshot + events — `events` projects, never hand-edit
+│       ├── unit_of_work.rs   # The write port: begin → save → record → commit — `events` projects
 │       └── use_cases/
-│           └── <action>.rs   # Params struct + UseCaseTrait (declared in lib.rs)
+│           └── <action>.rs   # Params + UseCaseTrait + mocks::Mock<Action>UseCase (declared in lib.rs)
 ├── application/
 │   └── <entity>/
 │       └── <action>.rs       # UseCaseImpl + its tests
@@ -36,7 +40,13 @@ Adding a use case is one line in `lib.rs` (under both `domain::<entity>::use_cas
   a mock returns `Err(RepositoryError::Unavailable)` to test a failure path. It is
   `#[non_exhaustive]`: the `From` impl keeps a `_` arm for failures a later runtime adds.
 - **Paged lists** take a `puerto_core::PageRequest` and answer a `puerto_core::Page<T>`.
-- **Use case file structure**: exactly `Params struct` + `Trait`. The `Impl` struct lives in the **application layer**.
+- **Use case file structure**: the `Params` struct, the `UseCaseTrait` and its
+  `mocks::Mock<Action>UseCase` (the route tests use it). The `Impl` struct lives in the
+  **application layer**.
+- **Events projects**: a repository port only reads. A write goes through the entity's unit of
+  work — `uow_factory.begin()`, `save`, `record(<Entity>Event::…)`, `commit` — and its tests use
+  `unit_of_work::mocks::RecordingUnitOfWorkFactory` (`recorded()` says what was saved,
+  recorded and committed).
 - **Dependencies injected as `Arc<dyn Trait>`** — never concrete types.
 - **No `unwrap()`/`expect()`** outside of tests.
 - **Logging with `tracing` directly** (`tracing::info!(id = %params.id, "get_product: start")`) —
