@@ -3,10 +3,18 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/rust-2024-orange?logo=rust&logoColor=white" alt="Rust 2024"/>
-  <img src="https://img.shields.io/badge/architecture-DDD%20%2B%20Clean%20Arch-6366f1" alt="DDD + Clean Architecture"/>
-  <img src="https://img.shields.io/badge/api-poem--openapi-0891b2" alt="poem-openapi"/>
-  <img src="https://img.shields.io/badge/async-tokio-0891b2?logo=tokio" alt="tokio"/>
+  <a href="https://puerto-rs.vercel.app/docs/"><img src="https://img.shields.io/badge/docs-puerto--rs.vercel.app-F5B700?labelColor=15171A" alt="Documentation"/></a>
+  <a href="https://crates.io/crates/puerto"><img src="https://img.shields.io/crates/v/puerto?color=15171A&labelColor=5A574F" alt="crates.io"/></a>
+  <img src="https://img.shields.io/badge/rust-2024-15171A?logo=rust&logoColor=white&labelColor=5A574F" alt="Rust 2024"/>
+  <img src="https://img.shields.io/badge/architecture-DDD%20%2B%20Clean%20Arch-15171A?labelColor=5A574F" alt="DDD + Clean Architecture"/>
+  <img src="https://img.shields.io/badge/license-MIT-15171A?labelColor=5A574F" alt="MIT license"/>
+</p>
+
+<p align="center">
+  <b><a href="https://puerto-rs.vercel.app">Website</a></b> ·
+  <b><a href="https://puerto-rs.vercel.app/docs/start/quick-start/">Quick start</a></b> ·
+  <b><a href="https://puerto-rs.vercel.app/docs/">Documentation</a></b> ·
+  <b><a href="https://puerto-rs.vercel.app/docs/decisions/">Decisions</a></b>
 </p>
 
 ---

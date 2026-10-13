@@ -1,66 +1,61 @@
-# Puerto — Brand Assets
+# Puerto — Brand
+
+The full visual contract (colours with measured contrast, type scale, motion, do's and don'ts) is
+[`landing/DESIGN.md`](../../landing/DESIGN.md). This page is the short version for the repository.
+
+**Every file here is generated** by `landing/scripts/repo-brand.mjs` from the same tokens as the
+website. Change the script, not the files:
+
+```bash
+cd landing && pnpm brand:repo
+```
+
+## The idea
+
+The standard shipping container made trade fast because every box is the same size. Puerto does
+that to code: every project has the same shape. The symbol is **three identical containers**,
+stacked the way a crane leaves them, one per layer of a Puerto project.
 
 ## Files
 
-| File                 | Size     | Use                                    |
-| -------------------- | -------- | -------------------------------------- |
-| `logo-icon.svg`      | 64×64    | Favicon, GitHub profile, app icon      |
-| `logo-full.svg`      | 420×80   | README, docs (light background)        |
-| `logo-full-dark.svg` | 420×80   | README dark mode, website header       |
-| `github-social.svg`  | 1280×640 | GitHub social preview (convert to PNG) |
-| `favicon.svg`        | 32×32    | Browser tab, simplified icon           |
+| File | Size | Use |
+|---|---|---|
+| `github-social.svg` / `.png` | 1280×640 | README header; upload the PNG in *Settings → Social preview* |
+| `logo-full.svg` | 312×80 | Wordmark + symbol on light backgrounds |
+| `logo-full-dark.svg` | 312×80 | The same on dark backgrounds |
+| `logo-icon.svg`, `logo-icon-64.png`, `logo-icon-128.png` | 64×64 | Avatar, app icon |
+| `favicon.svg`, `favicon.png` | 32×32 | Browser tab: the symbol without ribs, light and dark aware |
 
-## Color Palette
+The SVGs embed the subset of the fonts they use, so they render the same wherever an `<img>`
+shows them, GitHub included.
 
-| Token                 | Hex       | Use                                 |
-| --------------------- | --------- | ----------------------------------- |
-| `puerto-deep`         | `#0D1B2A` | Main background (dark)              |
-| `puerto-navy`         | `#1E3A5F` | Ship hull, secondary bg, cards      |
-| `puerto-steel`        | `#2D5986` | Borders, deck, UI chrome            |
-| `puerto-teal`         | `#0891B2` | Business layer, primary accent      |
-| `puerto-indigo`       | `#6366F1` | Infrastructure layer, links         |
-| `puerto-indigo-light` | `#818CF8` | Infrastructure (on dark bg)         |
-| `puerto-rust`         | `#F97316` | Presentation layer, CTA, accent dot |
-| `puerto-ice`          | `#F1F5F9` | Main text (on dark bg)              |
-| `puerto-mist`         | `#94A3B8` | Secondary text, badges              |
+## Colour
 
-## Container Color Meaning
+| Token | Hex | Use |
+|---|---|---|
+| Concrete | `#E9E5DC` | Background |
+| Ink | `#15171A` | Text, rules |
+| Crane yellow | `#F5B700` | The one accent: calls to action, hazard stripes. Never text on light |
+| Night | `#101215` | Code and terminal panels; the dark theme |
 
-The 3 container colors map directly to Puerto's 3 workspace crates:
+The three layer colours mean **which layer**, everywhere, and nothing else:
 
-- **Teal `#0891B2`** → `business/` (domain + application)
-- **Indigo `#6366F1`** → `infrastructure/`
-- **Orange `#F97316`** → `presentation/`
+| Layer | Day | Night |
+|---|---|---|
+| `presentation` | `#2F6B4F` | `#6DBE93` |
+| `infrastructure` | `#A33B20` | `#E58A6A` |
+| `business` | `#1D4E89` | `#6FA3E0` |
 
-## Typography
+## Type
 
-- **Logo / Code elements**: JetBrains Mono Bold — `font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace`
-- **Body / Prose**: System UI — `font-family: system-ui, -apple-system, sans-serif`
+- **Big Shoulders Stencil** — the wordmark and labels.
+- **Big Shoulders** — headlines, upper case.
+- **Archivo** — text.
+- **Martian Mono** — code and commands.
 
-## Converting SVG → PNG
+All four are on Google Fonts (SIL Open Font License); the website self-hosts them.
 
-For GitHub social preview (requires `rsvg-convert` or `sharp`):
-
-```bash
-# Using rsvg-convert (apt install librsvg2-bin)
-rsvg-convert -w 1280 -h 640 github-social.svg > github-social.png
-
-# Using Inkscape
-inkscape --export-png=github-social.png -w 1280 -h 640 github-social.svg
-
-# Using sharp-cli (npx)
-npx sharp-cli --input github-social.svg --output github-social.png
-```
-
-## Usage in README
-
-```markdown
-<p align="center">
-  <img src="assets/brand/logo-full.svg" alt="Puerto" width="300"/>
-</p>
-```
-
-For dark/light mode aware README (GitHub supports `#gh-dark-mode-only` / `#gh-light-mode-only`):
+## Using the logo in Markdown
 
 ```markdown
 <p align="center">
@@ -69,14 +64,9 @@ For dark/light mode aware README (GitHub supports `#gh-dark-mode-only` / `#gh-li
 </p>
 ```
 
-## Tagline
+## Don'ts
 
-> **Scaffold. Structure. Ship.**
-
-## Do's and Don'ts
-
-- **Do** maintain clear space around the logo equal to the icon height
-- **Do** use the dark variant on dark backgrounds
-- **Don't** change the container colors (they have semantic meaning)
-- **Don't** use the logo smaller than 120px wide (full) or 24px (icon only)
-- **Don't** add effects, gradients, or drop shadows to the logo
+- Don't recolour the containers, or use the layer colours for anything but layers.
+- Don't add anchors, waves, ships or any nautical decoration. This is a cargo port.
+- Don't use the full symbol below 20 px; use `favicon.svg`, which drops the ribs.
+- Don't add gradients, glows or shadows.
