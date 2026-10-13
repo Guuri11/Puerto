@@ -2643,7 +2643,8 @@ Done in three commits: the schema and `validate` (1/3), `new --auth oidc` (2/3),
 - The CRUD response enums already had `Unauthorized`/`Forbidden`; protected routes gain only the
   503 `Unavailable` (constructed in `from_status`, so it is no dead code).
 - Two roles on one route are two `#[require_role]`s: the caller needs **both** (as stacked
-  `[Authorize]` in ASP.NET). "Any of" would need a macro form of its own.
+  `[Authorize]` in ASP.NET). "Any of" would need a macro form of its own — kept as is (confirmed
+  2026-10-13).
 - The drift check also flags a protected use case whose handler takes no `BearerAuth` — the
   dangerous direction of drift.
 - The Greeting demo is `public`; `User`, `Me` and `Auth` are reserved entity names.
@@ -2653,7 +2654,7 @@ Done in three commits: the schema and `validate` (1/3), `new --auth oidc` (2/3),
   and `AUTH_OIDC_EVENTS` (unit-of-work writes with an actor) under `make test/db`.
 - Verified by hand against the generated Keycloak: `make docker-compose/up` gets healthy, a token
   of the `web` client gets `/api/me` with the provisioned user (once), another audience is 401.
-  The `web` client has no password grant: 16.8 needs a way to get a token (a dev-only client).
+  The `web` client has no password grant: 16.8 adds a dev-only client for it (see 16.8).
 
 Tier 1. New matrix scenarios `AUTH_OIDC` (no db, web) and `AUTH_OIDC_DB` (`make test/db`).
 - `--auth oidc|local` on `new`; interactive flow asks (default none). `[project] auth`.
@@ -2720,6 +2721,17 @@ Tier 1. New matrix scenario `AUTH_LOCAL` (db, web; `make test/db`).
   next to the field.
 
 ### 16.8 — End to end
+
+Getting a token (decided 2026-10-13: whatever makes e2e simplest, on the realm users get). The
+generated `realm.json` gains a dev-only client `dev-cli` — public, password grant only
+(`directAccessGrantsEnabled`, no standard flow, no redirect URIs), the same `api` audience mapper
+as `web` — and a second user `user@<project>.localhost` with no realm role, same dev password.
+`make auth/token [EMAIL=…]` prints an access token from it (`curl` to the token endpoint), so a
+developer can `curl -H "Authorization: Bearer $(make -s auth/token)" …` the API too. The e2e tests
+use the same client against the generated realm, not a fixture of their own: `admin@` is the
+caller with the role, `user@` the one without (403). The password grant is a dev-realm
+convenience only: the `AGENTS.md` Auth section says `dev-cli` is not to be created in a real
+provider.
 
 `make test/auth` (Keycloak) and `make test/db` (local) run a generated project's API as a real
 process: no token → 401; a token without the role → 403 on a protected route, 200 on a public
