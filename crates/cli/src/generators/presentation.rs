@@ -104,8 +104,11 @@ fn build_routes_crud_ctx(
             test_imports.push(import);
         }
     }
+    let mut reference_imports = vec![];
+    crate::generators::domain::push_reference_imports(&mut reference_imports, &eff, "business");
     let mut ctx = simple_ctx(pascal, snake, &eff);
     ctx.insert("test_imports", &test_imports);
+    ctx.insert("reference_imports", &reference_imports);
     insert_access(&mut ctx, snake, access);
     ctx
 }

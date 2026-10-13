@@ -118,9 +118,16 @@ Fields go after `--`, one argument each, no quoting:
 | `label:Label:vec:String` | a list of value objects |
 | `status:Status:enum:Draft/Published` | an enum value object (`"Draft".parse::<Status>()`) |
 | `email:Email` | a shared value object declared with `generate value-object` (type inferred) |
+| `customer_id:ref:Customer` | a reference: the `CustomerId` of a `Customer` scaffolded before (`!`: one-to-one) |
+| `reviewer_id:ref:opt:Customer` | an optional reference |
 
 Prefer a value object to a bare primitive when the field has a rule: the rule then lives in one
 place, and an invalid value is an error code (`product.invalid_name`, `422`) everywhere.
+
+An entity refers to another by its id, never by holding it: a use case that needs the customer asks
+the customer's repository. With a database the column is a foreign key, and a write naming a
+customer that does not exist answers `422` `order.validation_error.customer_id_not_found`.
+Deleting a customer (a soft delete) leaves its orders pointing at it.
 
 ### Generated vs yours
 
@@ -3404,8 +3411,9 @@ impl OrderRepositoryTrait for PgOrderRepository {
     }
 }
 
+/// `pub(crate)`: an entity that references Order seeds its rows with this module's `seed`.
 #[cfg(test)]
-mod integration_tests {
+pub(crate) mod integration_tests {
     use super::*;
     use business::domain::order::model::OrderProps;
 
@@ -3413,8 +3421,14 @@ mod integration_tests {
         PgOrderRepository::new(pool)
     }
 
-    async fn seed(pool: &PgPool) -> Order {
-        let entity = Order::new(OrderProps { total: 42 }).unwrap();
+    /// A valid order, not stored.
+    fn build() -> Order {
+        Order::new(OrderProps { total: 42 }).unwrap()
+    }
+
+    /// A stored order.
+    pub(crate) async fn seed(pool: &PgPool) -> Order {
+        let entity = build();
         test_repo(pool.clone()).save(&entity).await.unwrap();
         entity
     }
@@ -3677,8 +3691,9 @@ impl ProductRepositoryTrait for PgProductRepository {
     }
 }
 
+/// `pub(crate)`: an entity that references Product seeds its rows with this module's `seed`.
 #[cfg(test)]
-mod integration_tests {
+pub(crate) mod integration_tests {
     use super::*;
     use business::domain::product::model::ProductProps;
 
@@ -3690,14 +3705,20 @@ mod integration_tests {
         PgProductRepository::new(pool)
     }
 
-    async fn seed(pool: &PgPool) -> Product {
-        let entity = Product::new(ProductProps {
+    /// A valid product, not stored.
+    fn build() -> Product {
+        Product::new(ProductProps {
             name: Name::new("example".to_string()).expect("valid Name"),
             sku: Uuid::new_v4().to_string(),
             price: 42,
             status: Status::Draft,
         })
-        .unwrap();
+        .unwrap()
+    }
+
+    /// A stored product.
+    pub(crate) async fn seed(pool: &PgPool) -> Product {
+        let entity = build();
         test_repo(pool.clone()).save(&entity).await.unwrap();
         entity
     }
@@ -3797,13 +3818,7 @@ mod integration_tests {
     async fn should_reject_a_duplicate_sku(pool: PgPool) {
         // Arrange
         let first = seed(&pool).await;
-        let mut second = Product::new(ProductProps {
-            name: Name::new("example".to_string()).expect("valid Name"),
-            sku: Uuid::new_v4().to_string(),
-            price: 42,
-            status: Status::Draft,
-        })
-        .unwrap();
+        let mut second = build();
         second.sku = first.sku.clone();
 
         // Act

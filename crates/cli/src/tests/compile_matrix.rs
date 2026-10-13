@@ -373,6 +373,64 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
     )],
 };
 
+/// Phase 18 (ADR-0022): references — required, optional, two to one target, a chain
+/// (`Shipment` → `Order` → `Customer`) and a unique one (one-to-one).
+const REFERENCE_ENTITIES: &[(&str, &[&str])] = &[
+    ("Customer", &["name:Name:String", "email:String!"]),
+    (
+        "Order",
+        &[
+            "customer_id:ref:Customer",
+            "reviewer_id:ref:opt:Customer",
+            "total:i64",
+        ],
+    ),
+    ("Shipment", &["order_id:ref:Order!", "carrier:String"]),
+];
+
+pub(super) const REFERENCES: Scenario = Scenario {
+    name: "references",
+    db: false,
+    events: None,
+    auth: None,
+    access: &[],
+    no_demo: false,
+    no_web: false,
+    shared_vos: &[],
+    mails: &[],
+    use_cases: &[],
+    entity_events: &[],
+    consumers: &[],
+    entities: REFERENCE_ENTITIES,
+};
+
+pub(super) const REFERENCES_DB: Scenario = Scenario {
+    name: "references_db",
+    db: true,
+    ..REFERENCES
+};
+
+/// [`REFERENCES_DB`]'s shapes under other names: `#[sqlx::test]` names its database after the
+/// test's path, so two scenarios with the same entities collide on one server when they run at once.
+pub(super) const REFERENCES_EVENTS: Scenario = Scenario {
+    name: "references_events",
+    db: true,
+    events: Some("db"),
+    entities: &[
+        ("Supplier", &["name:Name:String", "email:String!"]),
+        (
+            "Purchase",
+            &[
+                "supplier_id:ref:Supplier",
+                "approver_id:ref:opt:Supplier",
+                "total:i64",
+            ],
+        ),
+        ("Delivery", &["purchase_id:ref:Purchase!", "carrier:String"]),
+    ],
+    ..REFERENCES
+};
+
 pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     name: "postgres_every_type",
     db: true,
@@ -868,6 +926,12 @@ fn compiles_with_shared_value_objects() {
 
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
+fn compiles_with_references_between_entities() {
+    assert_scenario_compiles(&REFERENCES);
+}
+
+#[test]
+#[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_multiple_entities() {
     assert_scenario_compiles(&MULTI_ENTITY);
 }
@@ -1047,6 +1111,20 @@ fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests(
     // Nothing in the matrix generated a `--db` project, which is how `HashMap` columns, the Pg
     // repository test imports, timestamp round-trips and `unique` seeds all shipped broken.
     assert_postgres_scenario_is_clean(&POSTGRES_EVERY_TYPE, "puerto_matrix");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_references_project_compiles_lints_and_passes_integration_tests() {
+    // Phase 18: foreign keys, a missing target → `MissingReference`, rows seeded through their
+    // targets' own seeds.
+    assert_postgres_scenario_is_clean(&REFERENCES_DB, "puerto_matrix_references");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_references_events_project_compiles_lints_and_passes_integration_tests() {
+    assert_postgres_scenario_is_clean(&REFERENCES_EVENTS, "puerto_matrix_references_events");
 }
 
 #[test]

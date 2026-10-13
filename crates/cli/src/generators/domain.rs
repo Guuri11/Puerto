@@ -7,8 +7,8 @@ use crate::generators::naming::{
 };
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
-    FieldCtx, field_ctx, is_enum_vo, is_shared_vo, is_value_object, literal_import, resolve_type,
-    vo_import_path, vo_inner_type,
+    FieldCtx, field_ctx, field_rust_type, is_enum_vo, is_reference, is_shared_vo, is_value_object,
+    literal_import, reference_import, resolve_type, type_import, vo_import_path, vo_inner_type,
 };
 use crate::patchers::lib_rs::{
     patch_business_lib_domain_crud, patch_business_lib_shared, patch_business_lib_value_objects,
@@ -32,10 +32,7 @@ pub fn generate_model(
 
     let mut imports: Vec<String> = vec![];
     for f in &eff {
-        if let Some(imp) = resolve_type(&f.field_type)
-            .ok()
-            .and_then(|m| m.needs_import)
-        {
+        if let Some(imp) = type_import(f) {
             // `model.tera` already imports chrono and uuid for the system fields (`id`,
             // `created_at`, …). A `DateTime<Utc>` or `Uuid` field would otherwise re-import
             // them: E0252, the name is defined multiple times.
@@ -55,6 +52,7 @@ pub fn generate_model(
             imports.push(import);
         }
     }
+    push_reference_imports(&mut imports, &eff, "crate");
 
     let field_ctxs: Vec<FieldCtx> = eff
         .iter()
@@ -64,6 +62,15 @@ pub fn generate_model(
     ctx.insert("imports", &imports);
     ctx.insert("fields", &field_ctxs);
     render("domain/model.tera", &ctx)
+}
+
+/// Appends the id type of every reference among `fields`, as crate `krate` reaches it, once each.
+pub(crate) fn push_reference_imports(imports: &mut Vec<String>, fields: &[Field], krate: &str) {
+    for import in fields.iter().filter_map(|f| reference_import(f, krate)) {
+        if !imports.contains(&import) {
+            imports.push(import);
+        }
+    }
 }
 
 pub fn generate_mother(
@@ -82,9 +89,7 @@ pub fn generate_mother(
         if is_value_object(f) {
             literal_import(f)
         } else {
-            resolve_type(&f.field_type)
-                .ok()
-                .and_then(|m| m.needs_import)
+            type_import(f)
         }
     });
     let vo_imports = eff
@@ -96,6 +101,7 @@ pub fn generate_mother(
             imports.push(import);
         }
     }
+    push_reference_imports(&mut imports, &eff, "crate");
 
     let field_ctxs: Vec<FieldCtx> = eff
         .iter()
@@ -197,19 +203,24 @@ fn generate_use_case_trait(
     actor: bool,
 ) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
-    let mut extra_imports: Vec<&str> = vec![];
-    for imp in eff.iter().filter_map(|f| {
-        resolve_type(&f.field_type)
-            .ok()
-            .and_then(|m| m.needs_import)
-    }) {
-        if !template_imports.contains(&imp) && !extra_imports.contains(&imp) {
-            extra_imports.push(imp);
+    let mut extra_imports: Vec<String> = vec![];
+    for imp in eff.iter().filter_map(type_import) {
+        if !template_imports.contains(&imp) && !extra_imports.iter().any(|i| i == imp) {
+            extra_imports.push(imp.to_string());
         }
     }
+    push_reference_imports(&mut extra_imports, &eff, "crate");
+    // Params hold primitives — but a reference's id type, like the entity's own id.
     let params_fields: Vec<serde_json::Value> = eff
         .iter()
-        .map(|f| json!({ "name": f.name, "field_type": f.field_type }))
+        .map(|f| {
+            let ty = if is_reference(f) {
+                field_rust_type(f)
+            } else {
+                f.field_type.clone()
+            };
+            json!({ "name": f.name, "field_type": ty })
+        })
         .collect();
 
     let mut ctx = entity_ctx(pascal, snake);
@@ -301,6 +312,10 @@ pub fn write_domain_files(
     let mut errors_ctx = entity_ctx(pascal, snake);
     errors_ctx.insert("vo_fields", &vo_fields);
     errors_ctx.insert("auth", &access.is_auth());
+    errors_ctx.insert("references", &eff.iter().any(is_reference));
+    if let Some(first) = eff.iter().find(|f| is_reference(f)) {
+        errors_ctx.insert("first_reference", &first.name);
+    }
     let ctx = entity_ctx(pascal, snake);
     let config = crate::puerto_toml::read(base).ok();
     let events = config.as_ref().is_some_and(|c| c.project.has_events());

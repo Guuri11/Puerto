@@ -10,8 +10,9 @@ use business::domain::{{ snake }}::{
 use puerto_core::{Page, PageRequest, RepositoryError};
 
 use super::entity::{{ pascal }}Db;
-use crate::db::map_sqlx_error;
-
+{% if references and not events %}use crate::db::{ForeignKey, map_sqlx_error, map_sqlx_error_with};
+{% else %}use crate::db::map_sqlx_error;
+{% endif %}
 pub struct Pg{{ pascal }}Repository {
     pub pool: PgPool,
 }
@@ -21,7 +22,7 @@ impl Pg{{ pascal }}Repository {
         Self { pool }
     }
 }
-
+{% if references and not events %}{% include "infrastructure/references.tera" %}{% endif %}
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
 fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, RepositoryError> {
@@ -102,14 +103,15 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            map_sqlx_error(&e)
+            {% if references %}map_sqlx_error_with(&e, REFERENCES){% else %}map_sqlx_error(&e){% endif %}
         })?;
         Ok(())
     }
 {% endif %}}
 
+/// `pub(crate)`: an entity that references {{ pascal }} seeds its rows with this module's `seed`.
 #[cfg(test)]
-mod integration_tests {
+pub(crate) mod integration_tests {
     use super::*;
     use business::domain::{{ snake }}::model::{{ pascal }}Props;
 {% if events %}    use business::domain::{{ snake }}::unit_of_work::{{ pascal }}UnitOfWorkFactory;
@@ -117,7 +119,8 @@ mod integration_tests {
     use crate::{{ snake }}::unit_of_work::Pg{{ pascal }}UnitOfWorkFactory;
 {% endif %}
 {% for import in test_imports %}    use {{ import }};
-{% endfor %}
+{% endfor %}{% if not events %}{% for import in reference_imports %}    use {{ import }};
+{% endfor %}{% endif %}
     fn test_repo(pool: PgPool) -> Pg{{ pascal }}Repository {
         Pg{{ pascal }}Repository::new(pool)
     }
@@ -129,10 +132,16 @@ mod integration_tests {
         uow.commit().await.unwrap();
     }
 {% endif %}
-    async fn seed(pool: &PgPool) -> {{ pascal }} {
-        let entity = {{ pascal }}::new({{ pascal }}Props {
+    /// A valid {{ snake }}, not stored{% if seeds_references %}: the rows it references are seeded first{% endif %}.
+    {% if seeds_references %}async fn build(pool: &PgPool){% else %}fn build(){% endif %} -> {{ pascal }} {
+        {{ pascal }}::new({{ pascal }}Props {
 {% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
-{% endfor %}        }).unwrap();
+{% endfor %}        }).unwrap()
+    }
+
+    /// A stored {{ snake }}.
+    pub(crate) async fn seed(pool: &PgPool) -> {{ pascal }} {
+        let entity = build({% if seeds_references %}pool).await{% else %}){% endif %};
         {% if events %}store(pool, &entity).await;{% else %}test_repo(pool.clone()).save(&entity).await.unwrap();{% endif %}
         entity
     }
@@ -224,9 +233,7 @@ mod integration_tests {
     async fn should_reject_a_duplicate_{{ u.name }}(pool: PgPool) {
         // Arrange
         let first = seed(&pool).await;
-        let mut second = {{ pascal }}::new({{ pascal }}Props {
-{% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
-{% endfor %}        }).unwrap();
+        let mut second = build({% if seeds_references %}&pool).await{% else %}){% endif %};
         second.{{ u.name }} = first.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
 
         // Act
@@ -235,4 +242,18 @@ mod integration_tests {
         // Assert
         assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
     }
-{% endif %}}
+{% endif %}{% if not events %}{% for r in references %}
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_reject_a_missing_{{ r.field }}(pool: PgPool) {
+        // Arrange: a {{ r.field }} no row has.
+        let mut entity = build({% if seeds_references %}&pool).await{% else %}){% endif %};
+        entity.{{ r.field }} = {% if r.optional %}Some({{ r.id }}::generate()){% else %}{{ r.id }}::generate(){% endif %};
+
+        // Act
+        let result = test_repo(pool).save(&entity).await;
+
+        // Assert
+        assert_eq!(result.unwrap_err(), RepositoryError::MissingReference("{{ r.field }}"));
+    }
+{% endfor %}{% endif %}}

@@ -10,8 +10,9 @@ use puerto_core::RepositoryError;
 use puerto_sqlx::uow::PgTransaction;
 
 use super::entity::{{ pascal }}Db;
-use crate::db::map_sqlx_error;
-
+{% if references %}use crate::db::{ForeignKey, map_sqlx_error_with};
+{% else %}use crate::db::map_sqlx_error;
+{% endif %}
 /// Opens a Postgres transaction per write: the {{ snake }} row and its outbox event commit together.
 pub struct Pg{{ pascal }}UnitOfWorkFactory {
     pub pool: PgPool,
@@ -22,7 +23,7 @@ impl Pg{{ pascal }}UnitOfWorkFactory {
         Self { pool }
     }
 }
-
+{% if references %}{% include "infrastructure/references.tera" %}{% endif %}
 #[async_trait]
 impl {{ pascal }}UnitOfWorkFactory for Pg{{ pascal }}UnitOfWorkFactory {
     async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, RepositoryError> {
@@ -56,7 +57,7 @@ impl {{ pascal }}UnitOfWork for Pg{{ pascal }}UnitOfWork {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            map_sqlx_error(&e)
+            {% if references %}map_sqlx_error_with(&e, REFERENCES){% else %}map_sqlx_error(&e){% endif %}
         })?;
         Ok(())
     }
@@ -79,8 +80,9 @@ mod integration_tests {
 
     use crate::{{ snake }}::repository::Pg{{ pascal }}Repository;
 {% for import in test_imports %}    use {{ import }};
+{% endfor %}{% for import in reference_imports %}    use {{ import }};
 {% endfor %}
-    fn new_{{ snake }}() -> {{ pascal }} {
+    {% if seeds_references %}async fn new_{{ snake }}(pool: &PgPool){% else %}fn new_{{ snake }}(){% endif %} -> {{ pascal }} {
         {{ pascal }}::new({{ pascal }}Props {
 {% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
 {% endfor %}        }).unwrap()
@@ -101,7 +103,7 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_write_the_{{ snake }}_and_its_event_when_committed(pool: PgPool) {
         // Arrange
-        let entity = new_{{ snake }}();
+        let entity = new_{{ snake }}({% if seeds_references %}&pool).await{% else %}){% endif %};
 
         // Act
         create(&pool, &entity).await.unwrap();
@@ -121,7 +123,7 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_write_nothing_when_dropped_without_commit(pool: PgPool) {
         // Arrange
-        let entity = new_{{ snake }}();
+        let entity = new_{{ snake }}({% if seeds_references %}&pool).await{% else %}){% endif %};
 
         // Act
         {
@@ -138,7 +140,7 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_update_the_{{ snake }}_when_saved_again(pool: PgPool) {
         // Arrange
-{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entity = new_{{ snake }}();
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entity = new_{{ snake }}({% if seeds_references %}&pool).await{% else %}){% endif %};
         create(&pool, &entity).await.unwrap();
         entity.{{ f.name }} = {% if f.is_vo %}{{ f.vo }}::new("updated".to_string()).unwrap(){% else %}"updated".to_string(){% endif %};
         entity.updated_at = chrono::Utc::now();
@@ -151,7 +153,7 @@ mod integration_tests {
         // Assert
         let found = Pg{{ pascal }}Repository::new(pool).find_by_id(entity.id).await.unwrap().unwrap();
         assert_eq!(found.{{ f.name }}{% if f.is_vo %}.value(){% endif %}, "updated");
-{% else %}        let entity = new_{{ snake }}();
+{% else %}        let entity = new_{{ snake }}({% if seeds_references %}&pool).await{% else %}){% endif %};
         create(&pool, &entity).await.unwrap();
 
         // Act
@@ -167,9 +169,9 @@ mod integration_tests {
     #[sqlx::test(migrations = "./migrations")]
     async fn should_write_neither_row_nor_event_when_the_{{ u.name }}_is_taken(pool: PgPool) {
         // Arrange
-        let first = new_{{ snake }}();
+        let first = new_{{ snake }}({% if seeds_references %}&pool).await{% else %}){% endif %};
         create(&pool, &first).await.unwrap();
-        let mut second = new_{{ snake }}();
+        let mut second = new_{{ snake }}({% if seeds_references %}&pool).await{% else %}){% endif %};
         second.{{ u.name }} = first.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
 
         // Act
@@ -180,4 +182,19 @@ mod integration_tests {
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
-{% endif %}}
+{% endif %}{% for r in references %}
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_reject_a_missing_{{ r.field }}(pool: PgPool) {
+        // Arrange: a {{ r.field }} no row has.
+        let mut entity = new_{{ snake }}({% if seeds_references %}&pool).await{% else %}){% endif %};
+        entity.{{ r.field }} = {% if r.optional %}Some({{ r.id }}::generate()){% else %}{{ r.id }}::generate(){% endif %};
+
+        // Act
+        let result = create(&pool, &entity).await;
+
+        // Assert
+        assert_eq!(result.unwrap_err(), RepositoryError::MissingReference("{{ r.field }}"));
+        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+    }
+{% endfor %}}

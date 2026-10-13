@@ -103,6 +103,7 @@ puerto generate scaffold Product name:String price:i64! sku:String
 | `Option<i64>` | `BIGINT` (nullable) | `integer(int64)?` | `None` |
 | `Option<bool>` | `BOOLEAN` (nullable) | `boolean?` | `None` |
 | `Option<f64>` | `DOUBLE` (nullable) | `number(double)?` | `None` |
+| `Option<Uuid>` | `UUID` (nullable) | `string(uuid)?` | `None` |
 | `Option<DateTime<Utc>>` | `TIMESTAMPTZ` (nullable) | `string(date-time)?` | `None` |
 | `Vec<String>` | `TEXT[]` | `array[string]` | `vec![]` |
 | `Vec<i64>` | `BIGINT[]` | `array[integer]` | `vec![]` |

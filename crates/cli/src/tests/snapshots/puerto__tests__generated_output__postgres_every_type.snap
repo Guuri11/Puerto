@@ -104,9 +104,16 @@ Fields go after `--`, one argument each, no quoting:
 | `label:Label:vec:String` | a list of value objects |
 | `status:Status:enum:Draft/Published` | an enum value object (`"Draft".parse::<Status>()`) |
 | `email:Email` | a shared value object declared with `generate value-object` (type inferred) |
+| `customer_id:ref:Customer` | a reference: the `CustomerId` of a `Customer` scaffolded before (`!`: one-to-one) |
+| `reviewer_id:ref:opt:Customer` | an optional reference |
 
 Prefer a value object to a bare primitive when the field has a rule: the rule then lives in one
 place, and an invalid value is an error code (`product.invalid_name`, `422`) everywhere.
+
+An entity refers to another by its id, never by holding it: a use case that needs the customer asks
+the customer's repository. With a database the column is a foreign key, and a write naming a
+customer that does not exist answers `422` `order.validation_error.customer_id_not_found`.
+Deleting a customer (a soft delete) leaves its orders pointing at it.
 
 ### Generated vs yours
 
@@ -4937,8 +4944,9 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
     }
 }
 
+/// `pub(crate)`: an entity that references Customer seeds its rows with this module's `seed`.
 #[cfg(test)]
-mod integration_tests {
+pub(crate) mod integration_tests {
     use super::*;
     use business::domain::customer::model::CustomerProps;
 
@@ -4954,8 +4962,9 @@ mod integration_tests {
         PgCustomerRepository::new(pool)
     }
 
-    async fn seed(pool: &PgPool) -> Customer {
-        let entity = Customer::new(CustomerProps {
+    /// A valid customer, not stored.
+    fn build() -> Customer {
+        Customer::new(CustomerProps {
             email: Email::new("example".to_string()).expect("valid Email"),
             name: Name::new("example".to_string()).expect("valid Name"),
             code: Code::new(Uuid::new_v4().to_string()).expect("valid Code"),
@@ -4966,7 +4975,12 @@ mod integration_tests {
             labels: vec![],
             status: Status::Active,
         })
-        .unwrap();
+        .unwrap()
+    }
+
+    /// A stored customer.
+    pub(crate) async fn seed(pool: &PgPool) -> Customer {
+        let entity = build();
         test_repo(pool.clone()).save(&entity).await.unwrap();
         entity
     }
@@ -5070,18 +5084,7 @@ mod integration_tests {
     async fn should_reject_a_duplicate_code(pool: PgPool) {
         // Arrange
         let first = seed(&pool).await;
-        let mut second = Customer::new(CustomerProps {
-            email: Email::new("example".to_string()).expect("valid Email"),
-            name: Name::new("example".to_string()).expect("valid Name"),
-            code: Code::new(Uuid::new_v4().to_string()).expect("valid Code"),
-            age: Age::new(42).expect("valid Age"),
-            joined: Joined::new(chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap())
-                .expect("valid Joined"),
-            middle: None,
-            labels: vec![],
-            status: Status::Active,
-        })
-        .unwrap();
+        let mut second = build();
         second.code = first.code.clone();
 
         // Act
@@ -5331,8 +5334,9 @@ impl ProductRepositoryTrait for PgProductRepository {
     }
 }
 
+/// `pub(crate)`: an entity that references Product seeds its rows with this module's `seed`.
 #[cfg(test)]
-mod integration_tests {
+pub(crate) mod integration_tests {
     use super::*;
     use business::domain::product::model::ProductProps;
 
@@ -5342,8 +5346,9 @@ mod integration_tests {
         PgProductRepository::new(pool)
     }
 
-    async fn seed(pool: &PgPool) -> Product {
-        let entity = Product::new(ProductProps {
+    /// A valid product, not stored.
+    fn build() -> Product {
+        Product::new(ProductProps {
             title: "example".to_string(),
             sku: Uuid::new_v4().to_string(),
             price: (Uuid::new_v4().as_u128() >> 65) as i64,
@@ -5358,7 +5363,12 @@ mod integration_tests {
             scores: vec![],
             meta: std::collections::HashMap::new(),
         })
-        .unwrap();
+        .unwrap()
+    }
+
+    /// A stored product.
+    pub(crate) async fn seed(pool: &PgPool) -> Product {
+        let entity = build();
         test_repo(pool.clone()).save(&entity).await.unwrap();
         entity
     }
@@ -5467,22 +5477,7 @@ mod integration_tests {
     async fn should_reject_a_duplicate_sku(pool: PgPool) {
         // Arrange
         let first = seed(&pool).await;
-        let mut second = Product::new(ProductProps {
-            title: "example".to_string(),
-            sku: Uuid::new_v4().to_string(),
-            price: (Uuid::new_v4().as_u128() >> 65) as i64,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: std::collections::HashMap::new(),
-        })
-        .unwrap();
+        let mut second = build();
         second.sku = first.sku.clone();
 
         // Act
@@ -5655,8 +5650,9 @@ impl TicketRepositoryTrait for PgTicketRepository {
     }
 }
 
+/// `pub(crate)`: an entity that references Ticket seeds its rows with this module's `seed`.
 #[cfg(test)]
-mod integration_tests {
+pub(crate) mod integration_tests {
     use super::*;
     use business::domain::ticket::model::TicketProps;
 
@@ -5666,8 +5662,14 @@ mod integration_tests {
         PgTicketRepository::new(pool)
     }
 
-    async fn seed(pool: &PgPool) -> Ticket {
-        let entity = Ticket::new(TicketProps { state: State::Open }).unwrap();
+    /// A valid ticket, not stored.
+    fn build() -> Ticket {
+        Ticket::new(TicketProps { state: State::Open }).unwrap()
+    }
+
+    /// A stored ticket.
+    pub(crate) async fn seed(pool: &PgPool) -> Ticket {
+        let entity = build();
         test_repo(pool.clone()).save(&entity).await.unwrap();
         entity
     }

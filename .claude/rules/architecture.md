@@ -257,6 +257,20 @@ offset }`. The CRUD port reads `find_all(&self, page: PageRequest) -> Result<Pag
 RepositoryError>`, `ListEntitiesParams { page }` returns a `Page`, and `GET /entities?limit=&offset=`
 answers `EntityPageDto`. Pg: `ORDER BY created_at DESC, id LIMIT $1 OFFSET $2` + `COUNT(*)`.
 
+### References (ADR-0022)
+
+`customer_id:ref:Customer` — an aggregate holds another's **id**, never the aggregate: no
+navigation, no lazy loading; a use case that needs the customer asks its repository.
+
+- Domain, Params, repository port, Mother and tests: `CustomerId` (imported from
+  `crate::domain::customer::model`). Rows, DTOs and the events snapshot: `Uuid` (`from_uuid` /
+  `.value()` at the edges, like the entity's own id)
+- The database checks existence, not the use case: `CONSTRAINT orders_customer_id_fkey REFERENCES
+  customers (id)` + `orders_customer_id_idx`. The write that breaks it maps, through the
+  repository's (or unit of work's) `REFERENCES: &[ForeignKey]`, to
+  `RepositoryError::MissingReference("customer_id")` → `OrderError::ValidationError("customer_id_not_found")` → 422
+- Soft deletes leave references pointing at the deleted row; in-memory projects check nothing
+
 ### Domain events (`[project] events` — ADR-0018)
 
 A project created with `puerto new --db --events db|kafka`. Each **CRUD** entity gets two more

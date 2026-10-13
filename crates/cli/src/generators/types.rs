@@ -98,6 +98,15 @@ const TYPE_REGISTRY: &[TypeMapping] = &[
         needs_import: Some("uuid::Uuid"),
     },
     TypeMapping {
+        rust_type: "Option<Uuid>",
+        sql_type: "UUID",
+        sql_nullable: true,
+        openapi_type: "string",
+        openapi_format: Some("uuid"),
+        default_expr: "None",
+        needs_import: Some("uuid::Uuid"),
+    },
+    TypeMapping {
         rust_type: "DateTime<Utc>",
         sql_type: "TIMESTAMPTZ",
         sql_nullable: false,
@@ -188,6 +197,36 @@ pub fn is_shared_vo(field: &Field, shared_vos: &[ValueObjectDefinition]) -> bool
         .is_some_and(|vo| shared_vos.iter().any(|d| d.name == vo))
 }
 
+/// A reference to another entity (ADR-0022): its id is what the field holds.
+pub fn is_reference(field: &Field) -> bool {
+    field.references.is_some()
+}
+
+/// The id type a reference holds — `CustomerId` for `references = "Customer"`.
+pub fn reference_id(field: &Field) -> Option<String> {
+    field
+        .references
+        .as_deref()
+        .map(|target| format!("{target}Id"))
+}
+
+/// The path of a reference's id type from crate `krate` (`crate` in `business`, `business`
+/// elsewhere): `{krate}::domain::customer::model::CustomerId`.
+pub fn reference_import(field: &Field, krate: &str) -> Option<String> {
+    let target = field.references.as_deref()?;
+    let snake = crate::generators::naming::pascal_to_snake(target);
+    Some(format!("{krate}::domain::{snake}::model::{target}Id"))
+}
+
+/// What naming the field's **domain** type needs from the registry: nothing for a reference,
+/// whose type is the target's id (see [`reference_import`]).
+pub fn type_import(field: &Field) -> Option<&'static str> {
+    if is_reference(field) {
+        return None;
+    }
+    resolve_type(&field.field_type).ok()?.needs_import
+}
+
 /// The import a **value literal** of this field needs — as opposed to `needs_import`, which is what
 /// naming the field's *type* needs.
 ///
@@ -197,7 +236,8 @@ pub fn is_shared_vo(field: &Field, shared_vos: &[ValueObjectDefinition]) -> bool
 /// generated project's `make lint`). `Option<…>` / `Vec<…>` literals are `None` / `vec![]`, and
 /// enum VOs a variant path: none needs a primitive import.
 pub fn literal_import(field: &Field) -> Option<&'static str> {
-    if is_enum_vo(field) {
+    // A reference's literal is its id type's (`CustomerId::generate()`): see [`reference_import`].
+    if is_enum_vo(field) || is_reference(field) {
         return None;
     }
     match field.field_type.as_str() {
@@ -240,6 +280,13 @@ pub fn vo_inner_type(field: &Field) -> String {
 }
 
 pub fn field_rust_type(field: &Field) -> String {
+    if let Some(id) = reference_id(field) {
+        return if field.field_type.starts_with("Option<") {
+            format!("Option<{id}>")
+        } else {
+            id
+        };
+    }
     match &field.value_object {
         Some(vo) => {
             if field.field_type.starts_with("Option<") {
@@ -293,8 +340,18 @@ pub struct FieldCtx {
     pub from_row: String,
     /// The domain value built from a use case param (`params.{name}`).
     pub from_params: String,
-    /// The registry default for the primitive type — what Params literals in tests hold.
+    /// The registry default for the primitive type — what request bodies in route tests hold.
     pub default_literal: String,
+    /// What Params literals in tests hold: [`Self::default_literal`], but a reference's id type.
+    pub params_literal: String,
+    /// The type in use case Params: the primitive, but a reference's id type.
+    pub params_type: String,
+    /// The Params value built from a borrowed request body (`body.{name}`) in the routes.
+    pub from_body: String,
+    /// A reference (ADR-0022): the target entity (`""` otherwise) and its snake_case form.
+    pub is_ref: bool,
+    pub ref_target: String,
+    pub ref_target_snake: String,
     /// An enum VO's first variant (`""` otherwise): the valid value tests pass for it.
     pub first_variant: String,
     /// Object Mother: what `{Entity}Mother` stores in its `Option<…>` slot, the parameter type of
@@ -308,7 +365,32 @@ pub struct FieldCtx {
 pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinition]) -> FieldCtx {
     let vo = field.value_object.clone().unwrap_or_default();
     let is_map = field.field_type == "HashMap<String, String>";
+    let default_literal = resolve_type(&field.field_type)
+        .map_or("", |m| m.default_expr)
+        .to_string();
+    let ref_target = field.references.clone().unwrap_or_default();
     FieldCtx {
+        params_literal: if is_reference(field) {
+            props_literal(field)
+        } else {
+            default_literal.clone()
+        },
+        params_type: if is_reference(field) {
+            field_rust_type(field)
+        } else {
+            field.field_type.clone()
+        },
+        from_body: match reference_id(field) {
+            Some(id) if field.field_type.starts_with("Option<") => {
+                format!("body.{}.map({id}::from_uuid)", field.name)
+            }
+            Some(id) => format!("{id}::from_uuid(body.{})", field.name),
+            None if field_needs_clone(&field.field_type) => format!("body.{}.clone()", field.name),
+            None => format!("body.{}", field.name),
+        },
+        is_ref: is_reference(field),
+        ref_target_snake: crate::generators::naming::pascal_to_snake(&ref_target),
+        ref_target,
         unique: field.unique,
         seed_literal: seed_literal(field),
         field_type: field.field_type.clone(),
@@ -317,9 +399,7 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         accessor: field_value_accessor(field, "entity"),
         needs_clone: field_needs_clone(&field.field_type),
         from_params: field_vo_conversion(field, "params.", pascal, shared_vos),
-        default_literal: resolve_type(&field.field_type)
-            .map_or("", |m| m.default_expr)
-            .to_string(),
+        default_literal,
         first_variant: field
             .enum_variants
             .as_deref()
@@ -328,6 +408,12 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
             .unwrap_or_default(),
         from_row: if is_map {
             format!("row.{}.0", field.name)
+        } else if let Some(id) = reference_id(field) {
+            if field.field_type.starts_with("Option<") {
+                format!("row.{}.map({id}::from_uuid)", field.name)
+            } else {
+                format!("{id}::from_uuid(row.{})", field.name)
+            }
         } else {
             field_vo_conversion(field, "row.", pascal, shared_vos)
         },
@@ -355,7 +441,9 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
 /// The Object Mother stores every field as `Option<…>`, so an `Option` primitive is stored as its
 /// inner type and an `Option<Vo>` as the VO.
 fn mother_storage(field: &Field) -> String {
-    if is_value_object(field) && !is_vec_vo(field) {
+    if let Some(id) = reference_id(field) {
+        id
+    } else if is_value_object(field) && !is_vec_vo(field) {
         field.value_object.clone().unwrap_or_default()
     } else if !is_value_object(field) && field.field_type.starts_with("Option<") {
         vo_inner_type(field)
@@ -371,6 +459,9 @@ fn mother_build(field: &Field) -> String {
     }
     if is_vec_vo(field) {
         return format!("{slot}.unwrap_or_default()");
+    }
+    if let Some(id) = reference_id(field) {
+        return format!("{slot}.unwrap_or_else({id}::generate)");
     }
     if is_value_object(field) {
         return if is_enum_vo(field) {
@@ -427,7 +518,13 @@ pub fn seed_literal(field: &Field) -> String {
 /// The value-object shape of a literal around `value(primitive type)`.
 fn literal_with(field: &Field, value: impl Fn(&str) -> String) -> String {
     let vo = field.value_object.as_deref().unwrap_or_default();
-    if is_option_vo(field) {
+    if let Some(id) = reference_id(field) {
+        if field.field_type.starts_with("Option<") {
+            "None".to_string()
+        } else {
+            format!("{id}::generate()")
+        }
+    } else if is_option_vo(field) {
         "None".to_string()
     } else if is_vec_vo(field) {
         "vec![]".to_string()
@@ -460,7 +557,13 @@ pub fn field_needs_clone(field_type: &str) -> bool {
 pub fn field_value_accessor(field: &Field, owner: &str) -> String {
     let access = format!("{owner}.{}", field.name);
     let string_inner = vo_inner_type(field) == "String";
-    if is_enum_vo(field) {
+    if is_reference(field) {
+        if field.field_type.starts_with("Option<") {
+            format!("{access}.map(|v| v.value())")
+        } else {
+            format!("{access}.value()")
+        }
+    } else if is_enum_vo(field) {
         format!("{access}.as_str().to_string()")
     } else if is_option_vo(field) {
         if string_inner {

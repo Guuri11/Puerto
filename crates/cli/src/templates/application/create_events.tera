@@ -96,7 +96,34 @@ mod tests {
         assert!(!recorded.committed);
         assert!(recorded.events.is_empty());
     }
+{% for r in fields | filter(attribute="is_ref", value=true) %}
+    #[tokio::test]
+    async fn should_return_a_validation_error_when_the_{{ r.name }}_does_not_exist() {
+        // Arrange: the store found no {{ r.ref_target }} with that id.
+        let uow_factory = RecordingUnitOfWorkFactory::failing_at(
+            FailAt::Save,
+            RepositoryError::MissingReference("{{ r.name }}"),
+        );
+        let use_case = Create{{ pascal }}UseCaseImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
 
+        // Act
+        let result = use_case
+            .execute(Create{{ pascal }}Params {
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example") }}            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "{{ snake }}.validation_error.{{ r.name }}_not_found"
+        );
+        assert!(!uow_factory.recorded().committed);
+    }
+{% endfor %}
     #[tokio::test]
     async fn should_return_repository_error_when_the_commit_fails() {
         // Arrange

@@ -171,7 +171,7 @@ type = "Vec<String>"           # array field
 | `f64` | `DOUBLE` | `number(double)` | `1.5` |
 | `Uuid` | `UUID` | `string(uuid)` | `Uuid::new_v4()` |
 | `DateTime<Utc>` | `TIMESTAMPTZ` | `string(date-time)` | `Utc::now()` |
-| `Option<T>` (`T` = `String`, `i64`, `bool`, `f64`, `DateTime<Utc>`) | nullable SQL | `T?` | `None` |
+| `Option<T>` (`T` = `String`, `i64`, `bool`, `f64`, `Uuid`, `DateTime<Utc>`) | nullable SQL | `T?` | `None` |
 | `Vec<String>` | `TEXT[]` | `array[string]` | `vec![]` |
 | `Vec<i64>` | `BIGINT[]` | `array[integer]` | `vec![]` |
 | `HashMap<String, String>` | `JSONB` (row field `sqlx::types::Json<…>`) | `object` | `HashMap::new()` |
@@ -223,6 +223,7 @@ puerto generate scaffold <Name> --public list_products --role delete_product=adm
 puerto generate scaffold <Name> -- status:Status:enum:Active/Inactive   # Enum VO
 puerto generate scaffold <Name> -- mid:MiddleName:opt:String            # Option VO
 puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
+puerto generate scaffold Order -- customer_id:ref:Customer reviewer_id:ref:opt:Customer   # References (ADR-0022): the target's id, a foreign key
 puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String; DateTime shorthand ok)
 puerto generate event <Entity> <name>      # events projects: a custom event (product_published) + regenerates events.rs
 puerto generate consumer <name> --on product_created,product_published   # events projects: a worker consumer + regenerates registry.rs
@@ -358,6 +359,14 @@ make format/fix    # cargo fmt --all
   gateway and signs the client, `routes.tsx` wraps every screen whose use case is protected in
   `<RequireAuth>`, `roles.ts` lists the roles. Scaffolded screens hide New/Edit/Delete behind
   `can(role)` when the use case has a role, with a test each, and a 403 test on a protected delete
+- References (ADR-0022): `customer_id:ref:Customer` (`[[entity.fields]] references`) — the
+  domain, Params and Mother hold `CustomerId` (`CustomerId::generate()` in tests), rows and DTOs a
+  `Uuid`; `--db`: `CONSTRAINT orders_customer_id_fkey REFERENCES customers (id)` + an index, the
+  Pg repository (unit of work in `events` projects) maps `23503` through its `REFERENCES` table to
+  `RepositoryError::MissingReference(field)`, which `errors.rs` turns into
+  `ValidationError("customer_id_not_found")` (422). Pg tests seed targets through the target's
+  `integration_tests::seed` (every Pg repository's test module is `pub(crate)`). `scaffold` refuses
+  a target with no code yet; no self references, `vec:ref:` or `ref:User` yet
 - `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
   (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`
   (`Template{Name}Mailer` over `puerto-mail`, with render tests) and

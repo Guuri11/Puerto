@@ -26,7 +26,11 @@ impl From<RepositoryError> for {{ pascal }}Error {
     fn from(err: RepositoryError) -> Self {
         match err {
             RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+{% if references %}            // A reference names a row that does not exist: the caller's input, on that field.
+            RepositoryError::MissingReference(field) => {
+                Self::ValidationError(format!("{field}_not_found"))
+            }
+{% endif %}            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
             _ => Self::RepositoryError,
         }
     }
@@ -48,7 +52,13 @@ mod tests {
         assert_eq!(err.to_string(), "{{ snake }}.repository_error");
     }
 
-    #[test]
+{% if references %}    #[test]
+    fn should_convert_a_missing_reference_into_a_validation_error_on_its_field() {
+        let err = {{ pascal }}Error::from(RepositoryError::MissingReference("{{ first_reference }}"));
+        assert_eq!(err.to_string(), "{{ snake }}.validation_error.{{ first_reference }}_not_found");
+    }
+
+{% endif %}    #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
         let err = {{ pascal }}Error::from(RepositoryError::Unavailable);
         assert_eq!(err.to_string(), "{{ snake }}.repository_error");

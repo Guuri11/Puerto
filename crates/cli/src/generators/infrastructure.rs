@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::generators::domain::push_reference_imports;
 use crate::generators::effective_fields;
 use crate::generators::migration::run_create_table_migration;
 use crate::generators::naming::{
@@ -7,8 +8,8 @@ use crate::generators::naming::{
 };
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
-    FieldCtx, field_ctx, is_shared_vo, is_value_object, literal_names_vo, resolve_type,
-    seed_literal,
+    FieldCtx, field_ctx, is_reference, is_shared_vo, is_value_object, literal_names_vo,
+    reference_id, resolve_type, seed_literal,
 };
 use crate::patchers::lib_rs::patch_infra_lib;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
@@ -93,6 +94,7 @@ pub fn generate_infra_entity(
             imports.push(import);
         }
     }
+    push_reference_imports(&mut imports, &eff, "business");
 
     let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("imports", &imports);
@@ -138,6 +140,42 @@ fn pg_crud_ctx(
 
     // SQL text stays a Rust computation: the `$n` numbering is index-dependent.
     let mut ctx = seed_ctx(pascal, snake, fields, shared_vos);
+    // A row's references must exist: it is seeded with a target seeded first, through the
+    // target's own repository tests (transitively, for the target's own references).
+    let mut field_ctxs = field_ctxs(&eff, pascal, shared_vos);
+    for f in field_ctxs
+        .iter_mut()
+        .filter(|f| f.is_ref && !f.field_type.starts_with("Option<"))
+    {
+        f.seed_literal = format!(
+            "crate::{}::repository::integration_tests::seed(pool).await.id",
+            f.ref_target_snake
+        );
+    }
+    ctx.insert("fields", &field_ctxs);
+    let table = pluralize(snake);
+    let references: Vec<serde_json::Value> = eff
+        .iter()
+        .filter(|f| is_reference(f))
+        .map(|f| {
+            serde_json::json!({
+                "constraint": foreign_key_name(&table, &f.name),
+                "field": f.name,
+                "id": reference_id(f),
+                "import": crate::generators::types::reference_import(f, "business"),
+                "optional": f.field_type.starts_with("Option<"),
+            })
+        })
+        .collect();
+    ctx.insert("references", &references);
+    let mut reference_imports = vec![];
+    push_reference_imports(&mut reference_imports, &eff, "business");
+    ctx.insert("reference_imports", &reference_imports);
+    ctx.insert(
+        "seeds_references",
+        &eff.iter()
+            .any(|f| is_reference(f) && !f.field_type.starts_with("Option<")),
+    );
     ctx.insert("all_cols", &sql_col_list(&eff));
     ctx.insert("select_cols", &sql_select_list(&eff));
     ctx.insert("has_map", &eff.iter().any(|f| f.field_type == MAP_TYPE));
@@ -152,6 +190,17 @@ fn seed_ctx(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
+) -> tera::Context {
+    seed_ctx_with(pascal, snake, fields, shared_vos, &[])
+}
+
+/// [`seed_ctx`] with more test imports.
+fn seed_ctx_with(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+    more_test_imports: &[String],
 ) -> tera::Context {
     let eff = effective_fields(fields);
 
@@ -168,6 +217,11 @@ fn seed_ctx(
     // `Uuid` since ids are `{Entity}Id`.
     if eff.iter().any(|f| seed_literal(f).contains("Uuid::")) {
         test_imports.push("uuid::Uuid".to_string());
+    }
+    for import in more_test_imports {
+        if !test_imports.contains(import) {
+            test_imports.push(import.clone());
+        }
     }
 
     let mut ctx = entity_ctx(pascal, snake);
@@ -192,15 +246,29 @@ fn field_ctxs(eff: &[Field], pascal: &str, shared_vos: &[ValueObjectDefinition])
         .collect()
 }
 
+/// The name of a reference's foreign key — the one the repository maps back to its field.
+fn foreign_key_name(table: &str, field: &str) -> String {
+    format!("{table}_{field}_fkey")
+}
+
 pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
     let eff = effective_fields(fields);
+    let table = pluralize(snake);
     let custom_cols: String = eff
         .iter()
-        .map(|f| format!("{},", sql_ddl_col(&f.name, &f.field_type)))
+        .map(|f| match f.references.as_deref() {
+            // ADR-0022: the database checks the target exists, under a name the repository maps.
+            Some(target) => format!(
+                "{} CONSTRAINT {} REFERENCES {} (id),",
+                sql_ddl_col(&f.name, &f.field_type),
+                foreign_key_name(&table, &f.name),
+                pluralize(&pascal_to_snake(target)),
+            ),
+            None => format!("{},", sql_ddl_col(&f.name, &f.field_type)),
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
-    let table = pluralize(snake);
     let mut sql = format!(
         "CREATE TABLE {table} (\n    id UUID PRIMARY KEY,\n{custom_cols}\n    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    deleted BOOLEAN NOT NULL DEFAULT FALSE,\n    deleted_at TIMESTAMPTZ\n);\n",
     );
@@ -221,6 +289,17 @@ pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
         })
         .collect();
     sql.push_str(&unique_indexes);
+
+    // A reference is what its entity is looked up by; a unique one already has its index.
+    let reference_indexes: String = eff
+        .iter()
+        .filter(|f| f.references.is_some() && !f.unique)
+        .map(|f| {
+            let name = &f.name;
+            format!("\nCREATE INDEX {table}_{name}_idx ON {table} ({name});\n")
+        })
+        .collect();
+    sql.push_str(&reference_indexes);
     sql
 }
 
@@ -253,7 +332,16 @@ pub fn write_repository_files(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
             &render(
                 "infrastructure/repository_inmemory_crud.tera",
-                &seed_ctx(pascal, snake, fields, shared_vos),
+                // A required reference is seeded `CustomerId::generate()`: nothing checks it.
+                &seed_ctx_with(pascal, snake, fields, shared_vos, &{
+                    let required: Vec<Field> = effective_fields(fields)
+                        .into_iter()
+                        .filter(|f| !f.field_type.starts_with("Option<"))
+                        .collect();
+                    let mut imports = vec![];
+                    push_reference_imports(&mut imports, &required, "business");
+                    imports
+                }),
             )?,
         )?;
     }

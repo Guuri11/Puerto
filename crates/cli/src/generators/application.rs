@@ -6,7 +6,8 @@ use crate::generators::naming::{
 };
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
-    FieldCtx, field_ctx, is_value_object, literal_import, literal_names_vo, vo_import_path,
+    FieldCtx, field_ctx, is_value_object, literal_import, literal_names_vo, reference_import,
+    vo_import_path,
 };
 use crate::patchers::lib_rs::patch_business_lib_application_crud;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
@@ -57,7 +58,12 @@ fn use_case_context(
         .iter()
         .filter(|f| !matches!(test_imports, TestImports::ParamsOnly) && literal_names_vo(f))
         .map(|f| vo_import_path(f, snake, shared_vos));
-    for import in literal_imports.chain(named_vos) {
+    // `CustomerId::generate()` in Params and Props literals; an optional reference's is `None`.
+    let required_references = eff
+        .iter()
+        .filter(|f| !f.field_type.starts_with("Option<"))
+        .filter_map(|f| reference_import(f, "crate"));
+    for import in literal_imports.chain(named_vos).chain(required_references) {
         if !tests.contains(&import) {
             tests.push(import);
         }

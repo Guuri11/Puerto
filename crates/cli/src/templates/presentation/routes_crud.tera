@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use business::domain::{{ snake }}::model::{{ pascal }}Id;
-use business::domain::{{ snake }}::use_cases::{
+{% for import in reference_imports %}use {{ import }};
+{% endfor %}use business::domain::{{ snake }}::use_cases::{
     create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
     delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
     get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
@@ -47,7 +48,7 @@ impl {{ pascal }}Api {
             .create_{{ snake }}
             .execute(Create{{ pascal }}Params {
 {% if access.create.protected %}                actor: auth.0,
-{% endif %}{% for f in fields %}                {{ f.name }}: body.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %},
+{% endif %}{% for f in fields %}                {{ f.name }}: {{ f.from_body }},
 {% endfor %}            })
             .await
         {
@@ -108,7 +109,7 @@ impl {{ pascal }}Api {
             .execute(Update{{ pascal }}Params {
 {% if access.update.protected %}                actor: auth.0,
 {% endif %}                id: {{ pascal }}Id::from_uuid(id.0),
-{% for f in fields %}                {{ f.name }}: body.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %},
+{% for f in fields %}                {{ f.name }}: {{ f.from_body }},
 {% endfor %}            })
             .await
         {
@@ -267,7 +268,34 @@ mod tests {
         // Assert
         response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     }
+{% for f in fields | filter(attribute="is_ref", value=true) %}
+    #[tokio::test]
+    async fn should_respond_422_when_a_referenced_{{ f.name }}_does_not_exist() {
+        // Arrange: the database found no {{ f.ref_target }} with that id (ADR-0022 of Puerto).
+        let mut mocks = Mocks::default();
+        mocks.create.expect_execute().returning(|_| {
+            Err({{ pascal }}Error::ValidationError("{{ f.name }}_not_found".to_string()))
+        });
 
+        // Act
+        let response = mocks
+            .client()
+            .post("/{{ plural }}")
+            .body_json(&create_request().to_json())
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string("{{ snake }}.validation_error.{{ f.name }}_not_found");
+    }
+{% endfor %}
     #[tokio::test]
     async fn should_respond_200_when_{{ snake }}_is_found() {
         // Arrange

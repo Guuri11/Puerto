@@ -2966,7 +2966,12 @@ unlisted one → `Unavailable`; `23505` still `Duplicate`; a non-database error 
 Test scenarios: each parse form, `!` on both; each refusal, by `validate` and by `scaffold`; a
 valid `ref:` round-trips through `puerto.toml`.
 
-### 18.3 — Generated backend
+### 18.3 — Generated backend ✅
+
+`Option<Uuid>` joined the type registry for `ref:opt:` (so `opt:Uuid` is a primitive too). Pg
+repositories split their test `seed` into `build` (unstored) + `seed`, both reachable as
+`crate::<target>::repository::integration_tests::*` (`pub(crate)`): a reference seeds its target
+through the target's own `seed`, transitively.
 
 For `Order` with `customer_id:ref:Customer` (and the `opt` form where it differs):
 

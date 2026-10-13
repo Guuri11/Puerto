@@ -26,6 +26,10 @@ infrastructure/
   (`puerto_core::RepositoryError`): log the driver error with context, then convert
   it with `db::map_sqlx_error` (`puerto-sqlx`'s: `23505` unique violation → `Duplicate`, the rest → `Unavailable`);
   a row the domain rejects is `InvalidData`. Never leak a driver error upward.
+- An entity with references (`ref:`) writes through `db::map_sqlx_error_with(&e, REFERENCES)`:
+  `23503` on one of its foreign keys → `MissingReference("<field>")`. A foreign key added by hand
+  goes in that `REFERENCES` table too. Its Pg tests seed the referenced rows first, with the
+  target's `integration_tests::seed`.
 
 ## In-memory (default without `--db`)
 

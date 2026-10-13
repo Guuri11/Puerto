@@ -582,6 +582,8 @@ fn root_agent_rules_document_the_field_syntax() {
         "label:Label:vec:String",
         "status:Status:enum:Draft/Published",
         "email:Email",
+        "customer_id:ref:Customer",
+        "reviewer_id:ref:opt:Customer",
     ] {
         assert!(
             agents.contains(form),

@@ -1,0 +1,9 @@
+
+/// The foreign keys a write goes through (ADR-0022 of Puerto): the database rejects a reference to
+/// a row that does not exist, and the field it names is the caller's error.
+const REFERENCES: &[ForeignKey] = &[
+{% for r in references %}    ForeignKey {
+        constraint: "{{ r.constraint }}",
+        field: "{{ r.field }}",
+    },
+{% endfor %}];

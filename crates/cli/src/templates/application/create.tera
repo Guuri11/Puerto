@@ -82,7 +82,33 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.duplicate");
     }
-{% for f in required | concat(with=fields | filter(attribute="is_vo", value=true) | filter(attribute="field_type", value="String")) %}
+{% for r in fields | filter(attribute="is_ref", value=true) %}
+    #[tokio::test]
+    async fn should_return_a_validation_error_when_the_{{ r.name }}_does_not_exist() {
+        // Arrange: the store found no {{ r.ref_target }} with that id.
+        let mut mock_repo = Mock{{ pascal }}Repository::new();
+        mock_repo
+            .expect_save()
+            .returning(|_| Err(RepositoryError::MissingReference("{{ r.name }}")));
+        let use_case = Create{{ pascal }}UseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        // Act
+        let result = use_case
+            .execute(Create{{ pascal }}Params {
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}{{ macros::params(fields=fields, word="example") }}            })
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "{{ snake }}.validation_error.{{ r.name }}_not_found"
+        );
+    }
+{% endfor %}{% for f in required | concat(with=fields | filter(attribute="is_vo", value=true) | filter(attribute="field_type", value="String")) %}
     #[tokio::test]
     async fn should_return_error_when_{{ f.name }}_is_empty() {
         // Arrange
