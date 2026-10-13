@@ -1,0 +1,35 @@
+{% raw %}import { render } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { Router } from "wouter";
+import { memoryLocation } from "wouter/memory-location";
+import type { CurrentUser } from "../domain/auth/session";
+import { AuthProvider } from "../presentation/core/auth";
+import { DependenciesProvider } from "../presentation/core/dependencies";
+import type { Dependencies } from "../presentation/core/generated/dependencies";
+import { CurrentUserMother, fakeAuthGateway } from "./auth";
+
+/**
+ * Renders a screen with the adapters it uses (`dependencies` needs only those) at `path`, signed in
+ * as `user`: by default a caller holding every role, `null` for nobody. `history` records every
+ * location the screen navigates to.
+ */
+export function renderScreen(
+  ui: ReactNode,
+  dependencies: Partial<Dependencies>,
+  path = "/",
+  { user = CurrentUserMother.caller() }: { user?: CurrentUser | null } = {},
+) {
+  const location = memoryLocation({ path, record: true });
+  const result = render(
+    // A screen that reaches for an adapter it was not given fails loudly: it is `undefined`.
+    <DependenciesProvider
+      value={{ auth: fakeAuthGateway({ user }), ...dependencies } as Dependencies}
+    >
+      <Router hook={location.hook}>
+        <AuthProvider>{ui}</AuthProvider>
+      </Router>
+    </DependenciesProvider>,
+  );
+  return { ...result, history: location.history };
+}
+{% endraw %}

@@ -2,22 +2,44 @@
 //
 // The composition root: the only module that imports `infrastructure/`. Screens reach the
 // adapters through `useDependencies()`, so a test hands them a fake instead.
-{% if entities %}
+{% if entities or auth %}
+{% if auth -%}
+import type { AuthGateway } from "../../../domain/auth/session";
+import { oidcAuthGateway, oidcSettingsFromEnv } from "../../../infrastructure/auth/oidc-auth-gateway";
+{% if entities -%}
+import { bearerMiddleware } from "../../../infrastructure/auth/bearer-middleware";
+{% endif -%}
+{% endif -%}
 {% for e in entities -%}
 import type { {{ e.pascal }}Repository } from "../../../domain/{{ e.kebab }}/repository";
 import { {{ e.camel }}RepositoryHttp } from "../../../infrastructure/{{ e.kebab }}/{{ e.kebab }}-repository-http";
 {% endfor -%}
+{% if entities -%}
 import { createApiClient } from "../../../infrastructure/http/client";
-
+{% endif %}
 export interface Dependencies {
+{%- if auth %}
+  auth: AuthGateway;
+{%- endif %}
 {%- for e in entities %}
   {{ e.camel }}Repository: {{ e.pascal }}Repository;
 {%- endfor %}
 }
 
 export function createDependencies(): Dependencies {
+{%- if auth %}
+  const auth = oidcAuthGateway(oidcSettingsFromEnv());
+{%- endif %}
+{%- if entities %}
   const api = createApiClient();
+{%- if auth %}
+  api.use(bearerMiddleware(auth));
+{%- endif %}
+{%- endif %}
   return {
+{%- if auth %}
+    auth,
+{%- endif %}
 {%- for e in entities %}
     {{ e.camel }}Repository: {{ e.camel }}RepositoryHttp(api),
 {%- endfor %}

@@ -324,6 +324,15 @@ make format/fix    # cargo fmt --all
   `actor: Principal`, their responses a 503 `Unavailable`; `{Entity}Error::Forbidden` (403) with
   its mapper test; route tests sign in through a `MockAuthenticator` (`caller` holds every role,
   `nobody` none) and add a 401 per protected route and a 403 per role-protected one
+- `--auth oidc` with `web/` (16.5): written once — `domain/auth/session.ts` (`AuthGateway`,
+  `CurrentUser`), `infrastructure/auth/{oidc-auth-gateway,bearer-middleware}.ts`
+  (`oidc-client-ts`, pinned, in memory; dependency-cruiser keeps it there),
+  `presentation/core/auth.tsx` (`AuthProvider`, `useAuth`, `RequireAuth`), `/auth/callback`, a
+  user menu in the layout, `test-support/auth.ts` and a `renderScreen` that signs in a caller
+  holding every role; `VITE_AUTH_*` in `web/.env`. Regenerated: `dependencies.ts` builds the
+  gateway and signs the client, `routes.tsx` wraps every screen whose use case is protected in
+  `<RequireAuth>`, `roles.ts` lists the roles. Scaffolded screens hide New/Edit/Delete behind
+  `can(role)` when the use case has a role, with a test each, and a 403 test on a protected delete
 - `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
   (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`
   (`Template{Name}Mailer` over `puerto-mail`, with render tests) and

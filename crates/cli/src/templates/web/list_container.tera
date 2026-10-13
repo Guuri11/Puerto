@@ -1,5 +1,8 @@
 import { Link, useLocation, useSearch } from "wouter";
 import { PAGE_SIZE } from "../../../../domain/shared/page";
+{% if access.create_roles -%}
+import { useAuth } from "../../../core/auth";
+{% endif -%}
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { EmptyState } from "../../../shared/ui/empty-state";
@@ -10,6 +13,9 @@ import { {{ pascal }}ListView } from "../views/{{ kebab }}-list-view";
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function {{ pascal }}ListContainer() {
   const { {{ camel }}Repository } = useDependencies();
+{%- if access.create_roles %}
+  const { can } = useAuth();
+{%- endif %}
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
@@ -22,9 +28,17 @@ export function {{ pascal }}ListContainer() {
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{{ label_plural }}</h1>
+{%- if access.create_roles %}
+        {{ "{" }}{% for r in access.create_roles %}can("{{ r }}") && {% endfor %}(
+          <Link href="/{{ plural }}/new" className="btn btn-primary">
+            New {{ words }}
+          </Link>
+        )}
+{%- else %}
         <Link href="/{{ plural }}/new" className="btn btn-primary">
           New {{ words }}
         </Link>
+{%- endif %}
       </div>
       {{ "{" }}{{ plural_ident }}.status === "loading" && <span className="loading loading-spinner" />}
       {{ "{" }}{{ plural_ident }}.status === "error" && <ErrorAlert error={{ "{" }}{{ plural_ident }}.error} />}

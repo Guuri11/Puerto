@@ -9,11 +9,12 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::generators::auth::Access;
 use crate::generators::conflict::{OverwritePolicy, guard_files_overwrite};
 use crate::generators::effective_fields;
 use crate::generators::naming::{
-    capitalize, crud_use_cases, pascal_to_snake, pluralize, snake_to_camel, snake_to_kebab,
-    snake_to_words, to_pascal_case, write_file,
+    capitalize, crud_use_case, crud_use_cases, pascal_to_snake, pluralize, snake_to_camel,
+    snake_to_kebab, snake_to_words, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{WebEnumCtx, WebFieldCtx, web_enum_ctx, web_field_ctx};
@@ -198,7 +199,29 @@ fn web_entity_ctx(pascal: &str) -> WebEntityCtx {
     }
 }
 
-fn entity_template_ctx(pascal: &str, fields: &[Field]) -> tera::Context {
+/// What the screens of an auth project check (`PLAN.md` § 16.5): the roles that hide an action, and
+/// whether deleting is protected (the use case may still answer `403`). Empty outside auth.
+#[derive(Serialize)]
+struct WebAccessCtx {
+    auth: bool,
+    create_roles: Vec<String>,
+    update_roles: Vec<String>,
+    delete_roles: Vec<String>,
+    delete_protected: bool,
+}
+
+fn web_access_ctx(access: &Access, snake: &str) -> WebAccessCtx {
+    let uc = |action: &str| crud_use_case(action, snake);
+    WebAccessCtx {
+        auth: access.is_auth(),
+        create_roles: access.roles(&uc("create")),
+        update_roles: access.roles(&uc("update")),
+        delete_roles: access.roles(&uc("delete")),
+        delete_protected: access.is_protected(&uc("delete")),
+    }
+}
+
+fn entity_template_ctx(pascal: &str, fields: &[Field], access: &Access) -> tera::Context {
     let entity = web_entity_ctx(pascal);
     let web_fields: Vec<WebFieldCtx> = effective_fields(fields)
         .iter()
@@ -224,6 +247,7 @@ fn entity_template_ctx(pascal: &str, fields: &[Field]) -> tera::Context {
         names
     };
     let mut ctx = tera::Context::from_serialize(&entity).unwrap_or_default();
+    ctx.insert("access", &web_access_ctx(access, &entity.snake));
     ctx.insert("form_helpers", &{
         let mut names = helpers(|f| &f.to_form_helpers);
         names.extend(helpers(|f| &f.from_form_helpers));
@@ -365,7 +389,7 @@ pub fn write_web_files(
     base: &Path,
     fields: &[Field],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = entity_template_ctx(pascal, fields);
+    let ctx = entity_template_ctx(pascal, fields, &Access::of(base, pascal));
     let snake = pascal_to_snake(pascal);
     for (path, template) in web_entity_files(&snake).iter().zip(ENTITY_TEMPLATES) {
         write_file(&base.join(path), &render_ts(template, &ctx)?)?;
@@ -388,6 +412,11 @@ struct RoutedEntityCtx {
     /// `<Route path="/…/:id/edit">{(params) => …}</Route>` fits on one line.
     edit_route_inline: bool,
     detail_route_inline: bool,
+    /// The screen sits behind `<RequireAuth>`: a use case it calls is protected (auth projects).
+    list_guarded: bool,
+    new_guarded: bool,
+    edit_guarded: bool,
+    detail_guarded: bool,
 }
 
 /// Indentation of a `<Route>` inside `AppRoutes`.
@@ -397,12 +426,15 @@ fn fits(line: &str) -> bool {
     line.chars().count() <= LINE_WIDTH
 }
 
-fn generated_ctx(entities: &[Entity]) -> tera::Context {
-    let mut sliced: Vec<RoutedEntityCtx> = entities
+fn generated_ctx(config: &PuertoConfig) -> tera::Context {
+    let mut sliced: Vec<RoutedEntityCtx> = config
+        .entity
         .iter()
         .filter(|e| has_web_slice(e))
         .map(|e| {
             let entity = web_entity_ctx(&e.name);
+            let access = Access::in_config(config, &e.name);
+            let guarded = |action: &str| access.is_protected(&crud_use_case(action, &entity.snake));
             let route = |suffix: &str, container: &str| {
                 fits(&format!(
                     "{:ROUTE_INDENT$}<Route path=\"/{}/:id{suffix}\">{{(params) => <{}{container} id={{params.id}} />}}</Route>",
@@ -412,6 +444,11 @@ fn generated_ctx(entities: &[Entity]) -> tera::Context {
             RoutedEntityCtx {
                 edit_route_inline: route("/edit", "FormContainer"),
                 detail_route_inline: route("", "DetailContainer"),
+                list_guarded: guarded("list"),
+                new_guarded: guarded("create"),
+                // The form loads the entity, then saves it.
+                edit_guarded: guarded("get") || guarded("update"),
+                detail_guarded: guarded("get"),
                 entity,
             }
         })
@@ -426,20 +463,43 @@ fn generated_ctx(entities: &[Entity]) -> tera::Context {
         )),
         _ => false,
     };
+    // Every role a screen checks, once each: what the screen tests' caller holds.
+    let mut roles: Vec<String> = vec![];
+    for entity in config.entity.iter().filter(|e| has_web_slice(e)) {
+        let access = Access::in_config(config, &entity.name);
+        for role in access.all_roles(&entity.use_cases) {
+            if !roles.contains(&role) {
+                roles.push(role);
+            }
+        }
+    }
     let mut ctx = tera::Context::new();
+    ctx.insert("auth", &config.project.has_auth());
+    ctx.insert(
+        "guarded",
+        &sliced
+            .iter()
+            .any(|e| e.list_guarded || e.new_guarded || e.edit_guarded || e.detail_guarded),
+    );
     ctx.insert("entities", &sliced);
     ctx.insert("nav_inline", &nav_inline);
+    ctx.insert("roles", &roles);
     ctx
 }
 
 /// `web/src/presentation/core/generated/dependencies.ts` — the composition root.
-pub fn generate_web_dependencies(entities: &[Entity]) -> Result<String, RenderError> {
-    render_ts("web/dependencies.tera", &generated_ctx(entities))
+pub fn generate_web_dependencies(config: &PuertoConfig) -> Result<String, RenderError> {
+    render_ts("web/dependencies.tera", &generated_ctx(config))
 }
 
 /// `web/src/presentation/core/generated/routes.tsx` — the route table and the nav entries.
-pub fn generate_web_routes(entities: &[Entity]) -> Result<String, RenderError> {
-    render_ts("web/routes.tera", &generated_ctx(entities))
+pub fn generate_web_routes(config: &PuertoConfig) -> Result<String, RenderError> {
+    render_ts("web/routes.tera", &generated_ctx(config))
+}
+
+/// `web/src/presentation/core/generated/roles.ts` — auth projects only.
+pub fn generate_web_roles(config: &PuertoConfig) -> Result<String, RenderError> {
+    render_ts("web/roles.tera", &generated_ctx(config))
 }
 
 /// Rewrites both `core/generated/*` files from puerto.toml. Nothing in a project without `web`.
@@ -453,12 +513,12 @@ pub fn regenerate_web(
     let generated = base.join("web/src/presentation/core/generated");
     write_file(
         &generated.join("dependencies.ts"),
-        &generate_web_dependencies(&config.entity)?,
+        &generate_web_dependencies(config)?,
     )?;
-    write_file(
-        &generated.join("routes.tsx"),
-        &generate_web_routes(&config.entity)?,
-    )?;
+    write_file(&generated.join("routes.tsx"), &generate_web_routes(config)?)?;
+    if config.project.has_auth() {
+        write_file(&generated.join("roles.ts"), &generate_web_roles(config)?)?;
+    }
     Ok(())
 }
 

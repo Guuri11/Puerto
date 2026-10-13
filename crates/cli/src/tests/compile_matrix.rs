@@ -629,15 +629,15 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     if let Some(transport) = scenario.events {
         scaffold::apply_events_to_new_project(output, transport).unwrap();
     }
-    // `puerto new`'s order: the demo strip rewrites the files auth declares its modules in.
+    // `puerto new`'s order: auth last, after the strips.
     if scenario.no_demo {
         scaffold::apply_no_demo(output).unwrap();
     }
-    if let Some(mode) = scenario.auth {
-        crate::generators::auth::apply_auth_to_new_project(output, mode).unwrap();
-    }
     if scenario.no_web {
         scaffold::apply_no_web(output).unwrap();
+    }
+    if let Some(mode) = scenario.auth {
+        crate::generators::auth::apply_auth_to_new_project(output, mode).unwrap();
     }
     // `puerto new`, and every later command that writes Rust, ends with `cargo fmt`: the next
     // step's patchers read formatted code, as they do for a user.

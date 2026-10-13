@@ -154,6 +154,19 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 - A rule that depends on data ("only the owner edits") belongs in the use case, not in an
   attribute.
 
+### Auth in `web/`
+
+- `useAuth()` (`presentation/core/auth.tsx`) gives `{ user, can(role), login, logout }`; `user` is
+  `GET /me`, never the token. Generated screens hide what `can` denies, but the API decides: its
+  `403` reaches the alert as `auth.forbidden`.
+- `core/generated/routes.tsx` wraps every non-public screen in `<RequireAuth>`, which signs in and
+  comes back. Wrap your own routes in `routes.tsx` the same way.
+- The token stays in memory and `oidc-client-ts` stays in `infrastructure/auth/`
+  (`make web/lint` checks it): a reload signs in again through the provider's session.
+  `web/.env` holds `VITE_AUTH_*`.
+- Screen tests sign in a caller holding every role (`renderScreen`); pass `{ user }` for another one
+  (`CurrentUserMother`), or `{ auth: fakeAuthGateway(…) }` to see the sign-ins it starts.
+
 ## Conventions
 
 - **TDD.** Write the failing test first, then the minimum code. Test names:
@@ -5063,6 +5076,180 @@ events = [
     "product_published",
 ]
 
+=== web/.dependency-cruiser.cjs ===
+// The Dependency Rule of the frontend — the same one the Rust crates follow:
+//
+//   presentation → infrastructure → application → domain
+//
+// `bun run lint:arch` fails on any import that points the other way.
+module.exports = {
+  forbidden: [
+    {
+      name: "only-the-auth-adapter-imports-oidc-client-ts",
+      comment:
+        "The provider's client stays behind AuthGateway: screens see a CurrentUser, never a token.",
+      severity: "error",
+      from: { pathNot: "^src/infrastructure/auth/" },
+      to: { path: "oidc-client-ts" },
+    },
+    {
+      name: "domain-imports-nothing",
+      comment: "domain/ is plain TypeScript: no npm package, no other layer.",
+      severity: "error",
+      from: { path: "^src/domain/" },
+      to: { pathNot: "^src/domain/" },
+    },
+    {
+      name: "application-imports-domain-only",
+      comment: "A use case takes its ports as arguments; it never reaches an adapter or a screen.",
+      severity: "error",
+      from: { path: "^src/application/" },
+      to: { pathNot: "^src/(application|domain)/" },
+    },
+    {
+      name: "infrastructure-implements-domain-ports",
+      comment: "Adapters know the domain, never the screens or the use cases.",
+      severity: "error",
+      from: { path: "^src/infrastructure/" },
+      to: { path: "^src/(application|presentation)/" },
+    },
+    {
+      name: "only-the-composition-root-imports-infrastructure",
+      comment:
+        "Screens reach adapters through useDependencies(); only core/generated/dependencies.ts builds them.",
+      severity: "error",
+      from: {
+        path: "^src/presentation/",
+        pathNot: "^src/presentation/core/generated/dependencies\\.ts$",
+      },
+      to: { path: "^src/infrastructure/" },
+    },
+    {
+      name: "test-support-never-reaches-an-adapter",
+      comment:
+        "Mothers and fakes stand in for adapters: they build domain values, never call the API.",
+      severity: "error",
+      from: { path: "^src/test-support/" },
+      to: { path: "^src/(application|infrastructure)/" },
+    },
+    {
+      name: "only-tests-import-test-support",
+      comment: "Fakes and mothers are for tests; the app never ships them.",
+      severity: "error",
+      from: { path: "^src/", pathNot: ["^src/test-support/", "\\.test\\.tsx?$"] },
+      to: { path: "^src/test-support/" },
+    },
+    {
+      name: "no-circular",
+      severity: "error",
+      from: {},
+      to: { circular: true },
+    },
+  ],
+  options: {
+    doNotFollow: { path: "node_modules" },
+    tsPreCompilationDeps: true,
+    tsConfig: { fileName: "tsconfig.json" },
+  },
+};
+
+=== web/.env ===
+# Auth — the OpenID Connect provider the browser signs in with (ADR-0021). Keycloak in
+# development; Auth0: VITE_AUTH_ISSUER=https://<tenant>.auth0.com/, VITE_AUTH_CLIENT_ID=<the
+# SPA's client id>, VITE_AUTH_AUDIENCE=<the API identifier, AUTH_AUDIENCE of the API>.
+VITE_AUTH_ISSUER=http://localhost:8180/realms/snapshot
+VITE_AUTH_CLIENT_ID=web
+VITE_AUTH_AUDIENCE=
+
+=== web/.env.example ===
+# Auth — the OpenID Connect provider the browser signs in with (ADR-0021). Keycloak in
+# development; Auth0: VITE_AUTH_ISSUER=https://<tenant>.auth0.com/, VITE_AUTH_CLIENT_ID=<the
+# SPA's client id>, VITE_AUTH_AUDIENCE=<the API identifier, AUTH_AUDIENCE of the API>.
+VITE_AUTH_ISSUER=http://localhost:8180/realms/snapshot
+VITE_AUTH_CLIENT_ID=web
+VITE_AUTH_AUDIENCE=
+
+=== web/package.json ===
+{
+  "name": "web",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "scripts": {
+    "dev": "bun --bun vite",
+    "build": "tsc --noEmit && bun --bun vite build",
+    "preview": "bun --bun vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome check --write --linter-enabled=false .",
+    "lint:arch": "bun --bun depcruise src",
+    "test": "bun test",
+    "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/infrastructure/http/schema.d.ts"
+  },
+  "dependencies": {
+    "oidc-client-ts": "3.5.0",
+    "openapi-fetch": "0.17.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "wouter": "3.13.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@happy-dom/global-registrator": "20.14.6",
+    "@tailwindcss/vite": "4.3.3",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/react": "16.3.3",
+    "@types/bun": "1.4.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "daisyui": "5.7.47",
+    "dependency-cruiser": "18.5.0",
+    "openapi-typescript": "7.13.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vite": "8.3.4"
+  }
+}
+
+=== web/src/domain/auth/session.ts ===
+/** The signed-in user as the API resolved them (`GET /me`): never the provider's own claims. */
+export interface CurrentUser {
+  id: string;
+  email: string | null;
+  name: string | null;
+  /** What the API checks with `#[require_role]`. */
+  roles: string[];
+}
+
+/**
+ * Who is signed in, and how to sign in and out. The adapter talks to the provider (OIDC) or to
+ * the API (local); screens reach it through `useAuth()`.
+ */
+export interface AuthGateway {
+  /** The signed-in user, or `null` when nobody is. */
+  currentUser(): Promise<CurrentUser | null>;
+  /** The bearer token for the API, or `null` when nobody is signed in. */
+  accessToken(): Promise<string | null>;
+  /** Signs in, then comes back to `returnTo` (a path of this app). */
+  login(returnTo: string): Promise<void>;
+  /** Finishes a sign-in on `/auth/callback`; answers the path `login` was given. */
+  completeLogin(): Promise<string>;
+  logout(): Promise<void>;
+}
+
+/** A sign-in the provider or the API refused, or a `GET /me` that failed. */
+export class AuthError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "AuthError";
+    this.code = code;
+  }
+}
+
 === web/src/domain/product/errors.ts ===
 /**
  * A request about a product that the API refused. `code` is the API's `ErrorResponse.name`:
@@ -5151,6 +5338,301 @@ export interface ProductRepository {
   create(draft: ProductDraft): Promise<Product>;
   update(id: string, draft: ProductDraft): Promise<Product>;
   remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/auth/bearer-middleware.test.ts ===
+import { describe, expect, test } from "bun:test";
+import createClient from "openapi-fetch";
+import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
+import { bearerMiddleware } from "./bearer-middleware";
+
+/** One endpoint is enough: the middleware does not look at the path. */
+interface paths {
+  "/me": { get: { responses: { 200: { content: { "application/json": unknown } } } } };
+}
+
+/** A client whose every request is answered with `status`, signed by `auth`. */
+function answering(status: number, auth: ReturnType<typeof fakeAuthGateway>) {
+  const requests: Request[] = [];
+  const api = createClient<paths>({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return Response.json({}, { status });
+    },
+  });
+  api.use(bearerMiddleware(auth));
+  return { api, requests };
+}
+
+describe("bearerMiddleware", () => {
+  test("should send the user's token when someone is signed in", async () => {
+    // Arrange
+    const user = CurrentUserMother.random();
+    const { api, requests } = answering(200, fakeAuthGateway({ user }));
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(requests[0]?.headers.get("Authorization")).toBe(`Bearer token-of-${user.id}`);
+  });
+
+  test("should send no token when nobody is signed in", async () => {
+    // Arrange
+    const { api, requests } = answering(200, fakeAuthGateway());
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(requests[0]?.headers.has("Authorization")).toBe(false);
+  });
+
+  test("should sign in again when the API answers 401", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
+    const { api } = answering(401, auth);
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(auth.logins).toHaveLength(1);
+  });
+});
+
+=== web/src/infrastructure/auth/bearer-middleware.ts ===
+import type { Middleware } from "openapi-fetch";
+import type { AuthGateway } from "../../domain/auth/session";
+
+/**
+ * Signs every API call with the user's token; a `401` means the session is gone, so it signs in
+ * again and comes back to the page it was on.
+ */
+export function bearerMiddleware(auth: AuthGateway): Middleware {
+  return {
+    async onRequest({ request }) {
+      const token = await auth.accessToken();
+      if (token !== null) request.headers.set("Authorization", `Bearer ${token}`);
+      return request;
+    },
+    async onResponse({ response }) {
+      if (response.status === 401) {
+        void auth.login(window.location.pathname + window.location.search);
+      }
+      return response;
+    },
+  };
+}
+
+=== web/src/infrastructure/auth/oidc-auth-gateway.test.ts ===
+import { describe, expect, test } from "bun:test";
+import type { User } from "oidc-client-ts";
+import { AuthError } from "../../domain/auth/session";
+import { type OidcClient, oidcAuthGatewayOver, oidcSettingsFromEnv } from "./oidc-auth-gateway";
+
+/** A client signed in with `user` (`null`: nobody); `redirects` records each redirect. */
+function client(user: Partial<User> | null) {
+  const redirects: unknown[] = [];
+  const fake: OidcClient = {
+    getUser: async () => user as User | null,
+    signinRedirect: async (args) => {
+      redirects.push(args);
+    },
+    signinRedirectCallback: async () => ({ state: "/orders" }) as User,
+    signoutRedirect: async () => {},
+  };
+  return { fake, redirects };
+}
+
+/** A `/me` answering `status` and `body`; `requests` records what it was asked. */
+function me(status: number, body: unknown) {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const fetchMe = async (url: string, init: RequestInit) => {
+    requests.push({ url, init });
+    return Response.json(body, { status });
+  };
+  return { fetchMe, requests };
+}
+
+describe("oidcAuthGateway", () => {
+  test("should ask the API who the token belongs to when someone is signed in", async () => {
+    // Arrange
+    const { fake } = client({ access_token: "abc", expired: false });
+    const id = crypto.randomUUID();
+    const { fetchMe, requests } = me(200, { id, email: "ada@example.com", roles: ["admin"] });
+
+    // Act
+    const user = await oidcAuthGatewayOver(fake, fetchMe).currentUser();
+
+    // Assert
+    expect(requests[0]?.url).toBe("/api/me");
+    expect(requests[0]?.init.headers).toEqual({ Authorization: "Bearer abc" });
+    expect(user).toEqual({ id, email: "ada@example.com", name: null, roles: ["admin"] });
+  });
+
+  test("should have no user and no token when the session expired", async () => {
+    // Arrange
+    const { fake } = client({ access_token: "abc", expired: true });
+    const { fetchMe, requests } = me(200, {});
+    const gateway = oidcAuthGatewayOver(fake, fetchMe);
+
+    // Act
+    const user = await gateway.currentUser();
+
+    // Assert
+    expect(user).toBeNull();
+    expect(await gateway.accessToken()).toBeNull();
+    expect(requests).toHaveLength(0);
+  });
+
+  test("should fail with the API's code when it refuses the token", async () => {
+    // Arrange
+    const { fake } = client({ access_token: "abc", expired: false });
+    const code = "auth.unauthenticated";
+    const { fetchMe } = me(401, { name: code, message: code });
+
+    // Act
+    const result = oidcAuthGatewayOver(fake, fetchMe).currentUser();
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(AuthError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should come back to the page the sign-in started on", async () => {
+    // Arrange
+    const { fake, redirects } = client(null);
+    const gateway = oidcAuthGatewayOver(fake, me(200, {}).fetchMe);
+
+    // Act
+    await gateway.login("/orders");
+    const back = await gateway.completeLogin();
+
+    // Assert
+    expect(redirects).toEqual([{ state: "/orders" }]);
+    expect(back).toBe("/orders");
+  });
+});
+
+describe("oidcSettingsFromEnv", () => {
+  test("should name the missing variable when web/.env has no issuer", () => {
+    // Act
+    const read = () => oidcSettingsFromEnv({ VITE_AUTH_CLIENT_ID: "web" });
+
+    // Assert
+    expect(read).toThrow("VITE_AUTH_ISSUER is not set");
+  });
+
+  test("should leave the audience empty when it is not set", () => {
+    // Act
+    const settings = oidcSettingsFromEnv({
+      VITE_AUTH_ISSUER: "http://localhost:8180/realms/shop",
+      VITE_AUTH_CLIENT_ID: "web",
+    });
+
+    // Assert
+    expect(settings.audience).toBe("");
+  });
+});
+
+=== web/src/infrastructure/auth/oidc-auth-gateway.ts ===
+import { InMemoryWebStorage, UserManager, WebStorageStateStore } from "oidc-client-ts";
+import { AuthError, type AuthGateway, type CurrentUser } from "../../domain/auth/session";
+
+/** Where the provider is and who this app is to it — `web/.env`. */
+export interface OidcSettings {
+  /** `VITE_AUTH_ISSUER`: Keycloak's realm URL, `https://<tenant>.auth0.com/`. */
+  issuer: string;
+  /** `VITE_AUTH_CLIENT_ID`: a public client, Authorization Code + PKCE. */
+  clientId: string;
+  /** `VITE_AUTH_AUDIENCE`: Auth0's API identifier. Empty for Keycloak, whose mapper adds it. */
+  audience: string;
+}
+
+/** The settings from `web/.env`; a missing one is a startup error, not a redirect to nowhere. */
+export function oidcSettingsFromEnv(env: Record<string, unknown> = import.meta.env): OidcSettings {
+  const read = (name: string, required: boolean) => {
+    const value = env[name];
+    if (typeof value === "string" && value !== "") return value;
+    if (required) throw new Error(`${name} is not set: copy web/.env.example to web/.env`);
+    return "";
+  };
+  return {
+    issuer: read("VITE_AUTH_ISSUER", true),
+    clientId: read("VITE_AUTH_CLIENT_ID", true),
+    audience: read("VITE_AUTH_AUDIENCE", false),
+  };
+}
+
+/** What the gateway needs of `oidc-client-ts`'s `UserManager`. */
+export type OidcClient = Pick<
+  UserManager,
+  "getUser" | "signinRedirect" | "signinRedirectCallback" | "signoutRedirect"
+>;
+
+/** `AuthGateway` over an OpenID Connect provider (Keycloak, Auth0): Authorization Code + PKCE. */
+export function oidcAuthGateway(settings: OidcSettings): AuthGateway {
+  const origin = window.location.origin;
+  const client = new UserManager({
+    authority: settings.issuer,
+    client_id: settings.clientId,
+    redirect_uri: `${origin}/auth/callback`,
+    post_logout_redirect_uri: origin,
+    scope: "openid profile email",
+    // In memory, never in storage a script could read: a reload signs in again, through the
+    // provider's own session (ADR-0021 § 5).
+    userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
+    extraQueryParams: settings.audience === "" ? {} : { audience: settings.audience },
+  });
+  return oidcAuthGatewayOver(client, (url, init) => fetch(url, init));
+}
+
+interface MeBody {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  roles: string[];
+}
+
+/** How the gateway asks the API for `/me`. */
+export type FetchMe = (url: string, init: RequestInit) => Promise<Response>;
+
+/** `ErrorResponse.name` of a failed `/me`, or `http.<status>` for a body that is not one. */
+async function errorCode(response: Response): Promise<string> {
+  const body: unknown = await response.json().catch(() => null);
+  if (typeof body === "object" && body !== null && "name" in body) {
+    const { name } = body;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+/** The gateway over any client and `fetch`: what the tests drive. */
+export function oidcAuthGatewayOver(client: OidcClient, fetchMe: FetchMe): AuthGateway {
+  const accessToken = async () => {
+    const user = await client.getUser();
+    return user === null || user.expired === true ? null : user.access_token;
+  };
+  return {
+    accessToken,
+    async currentUser(): Promise<CurrentUser | null> {
+      const token = await accessToken();
+      if (token === null) return null;
+      // The API's view of the caller: its user id and the roles it checks.
+      const response = await fetchMe("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new AuthError(await errorCode(response));
+      const me = (await response.json()) as MeBody;
+      return { id: me.id, email: me.email ?? null, name: me.name ?? null, roles: me.roles };
+    },
+    login: (returnTo) => client.signinRedirect({ state: returnTo }),
+    async completeLogin() {
+      const user = await client.signinRedirectCallback();
+      return typeof user.state === "string" ? user.state : "/";
+    },
+    logout: () => client.signoutRedirect(),
+  };
 }
 
 === web/src/infrastructure/http/client.ts ===
@@ -5325,26 +5807,247 @@ export function productRepositoryHttp(api: ApiClient): ProductRepository {
   };
 }
 
+=== web/src/main.tsx ===
+import "./index.css";
+
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { AuthProvider } from "./presentation/core/auth";
+import { DependenciesProvider } from "./presentation/core/dependencies";
+import { createDependencies } from "./presentation/core/generated/dependencies";
+import { AppRoutes, navEntries } from "./presentation/core/generated/routes";
+import { Layout } from "./presentation/shared/ui/layout";
+
+const root = document.getElementById("root");
+if (root === null) {
+  throw new Error("index.html has no #root element");
+}
+
+createRoot(root).render(
+  <StrictMode>
+    <DependenciesProvider value={createDependencies()}>
+      <AuthProvider>
+        <Layout title={document.title} nav={navEntries}>
+          <AppRoutes />
+        </Layout>
+      </AuthProvider>
+    </DependenciesProvider>
+  </StrictMode>,
+);
+
+=== web/src/presentation/core/auth.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen, waitFor } from "@testing-library/react";
+import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
+import { renderScreen } from "../../test-support/render";
+import { RequireAuth, useAuth } from "./auth";
+
+function Secret() {
+  const { can } = useAuth();
+  return <p>{can("admin") ? "admin area" : "member area"}</p>;
+}
+
+describe("RequireAuth", () => {
+  test("should start a sign-in that comes back here when nobody is signed in", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: null });
+
+    // Act
+    renderScreen(
+      <RequireAuth>
+        <Secret />
+      </RequireAuth>,
+      { auth },
+      "/orders?page=2",
+    );
+
+    // Assert
+    await waitFor(() => expect(auth.logins).toEqual(["/orders?page=2"]));
+    expect(screen.queryByText("member area")).toBeNull();
+  });
+
+  test("should show the page to a signed-in user without signing in again", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
+
+    // Act
+    renderScreen(
+      <RequireAuth>
+        <Secret />
+      </RequireAuth>,
+      { auth },
+    );
+
+    // Assert
+    expect(await screen.findByText("member area")).toBeTruthy();
+    expect(auth.logins).toEqual([]);
+  });
+});
+
+describe("useAuth", () => {
+  test("should allow a role only when the user holds it", async () => {
+    // Arrange
+    const user = CurrentUserMother.random({ roles: ["admin"] });
+
+    // Act
+    renderScreen(<Secret />, {}, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("admin area")).toBeTruthy();
+  });
+});
+
+describe("AuthProvider", () => {
+  test("should show the error code when the API does not accept the session", async () => {
+    // Arrange
+    const auth = {
+      ...fakeAuthGateway(),
+      currentUser: () => Promise.reject(new Error("auth.unauthenticated")),
+    };
+
+    // Act
+    renderScreen(<Secret />, { auth });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.unauthenticated");
+  });
+});
+
+=== web/src/presentation/core/auth.tsx ===
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useLocation, useSearch } from "wouter";
+import type { CurrentUser } from "../../domain/auth/session";
+import { ErrorAlert } from "../shared/ui/error-alert";
+import { useDependencies } from "./dependencies";
+
+export interface Auth {
+  /** The signed-in user, `null` when nobody is. */
+  user: CurrentUser | null;
+  /** Whether the user holds `role`. Screens hide what the API would refuse; the API still decides. */
+  can(role: string): boolean;
+  /** Signs in, then comes back to the current page. */
+  login(): Promise<void>;
+  logout(): Promise<void>;
+  /** Finishes a sign-in (`/auth/callback`): answers the page to go back to. */
+  completeLogin(): Promise<string>;
+}
+
+type State =
+  | { status: "loading" }
+  | { status: "ready"; user: CurrentUser | null }
+  | { status: "error"; error: unknown };
+
+const AuthContext = createContext<Auth | null>(null);
+
+/** Asks the gateway who is signed in once, before rendering the app: no screen flickers. */
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const { auth } = useDependencies();
+  const [location] = useLocation();
+  const search = useSearch();
+  const [state, setState] = useState<State>({ status: "loading" });
+
+  useEffect(() => {
+    auth.currentUser().then(
+      (user) => setState({ status: "ready", user }),
+      (error: unknown) => setState({ status: "error", error }),
+    );
+  }, [auth]);
+
+  const here = search === "" ? location : `${location}?${search}`;
+  const login = useCallback(() => auth.login(here), [auth, here]);
+  const completeLogin = useCallback(async () => {
+    const back = await auth.completeLogin();
+    setState({ status: "ready", user: await auth.currentUser() });
+    return back;
+  }, [auth]);
+  const user = state.status === "ready" ? state.user : null;
+  const value = useMemo<Auth>(
+    () => ({
+      user,
+      can: (role) => user?.roles.includes(role) ?? false,
+      login,
+      logout: () => auth.logout(),
+      completeLogin,
+    }),
+    [user, login, auth, completeLogin],
+  );
+
+  if (state.status === "loading") return <span className="loading loading-spinner" />;
+  if (state.status === "error") return <ErrorAlert error={state.error} />;
+  return <AuthContext value={value}>{children}</AuthContext>;
+}
+
+export function useAuth(): Auth {
+  const auth = useContext(AuthContext);
+  if (auth === null) {
+    throw new Error("useAuth() called outside <AuthProvider>");
+  }
+  return auth;
+}
+
+/** Renders `children` for a signed-in user; anyone else is sent to sign in, and back here. */
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, login } = useAuth();
+  const started = useRef(false);
+
+  useEffect(() => {
+    // Once: StrictMode runs effects twice.
+    if (user !== null || started.current) return;
+    started.current = true;
+    void login();
+  }, [user, login]);
+
+  return user === null ? <span className="loading loading-spinner" /> : children;
+}
+
 === web/src/presentation/core/generated/dependencies.ts ===
 // AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
 //
 // The composition root: the only module that imports `infrastructure/`. Screens reach the
 // adapters through `useDependencies()`, so a test hands them a fake instead.
 
+import type { AuthGateway } from "../../../domain/auth/session";
 import type { ProductRepository } from "../../../domain/product/repository";
+import { bearerMiddleware } from "../../../infrastructure/auth/bearer-middleware";
+import {
+  oidcAuthGateway,
+  oidcSettingsFromEnv,
+} from "../../../infrastructure/auth/oidc-auth-gateway";
 import { createApiClient } from "../../../infrastructure/http/client";
 import { productRepositoryHttp } from "../../../infrastructure/product/product-repository-http";
 
 export interface Dependencies {
+  auth: AuthGateway;
   productRepository: ProductRepository;
 }
 
 export function createDependencies(): Dependencies {
+  const auth = oidcAuthGateway(oidcSettingsFromEnv());
   const api = createApiClient();
+  api.use(bearerMiddleware(auth));
   return {
+    auth,
     productRepository: productRepositoryHttp(api),
   };
 }
+
+=== web/src/presentation/core/generated/roles.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+/**
+ * Every role a generated screen checks (`roles` in puerto.toml). The screen tests' caller holds
+ * them all (`CurrentUserMother.caller()`).
+ */
+export const ROLES: string[] = ["admin"];
 
 === web/src/presentation/core/generated/routes.tsx ===
 // AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
@@ -5353,9 +6056,11 @@ import { Route, Switch } from "wouter";
 import { ProductDetailContainer } from "../../features/product/containers/product-detail-container";
 import { ProductFormContainer } from "../../features/product/containers/product-form-container";
 import { ProductListContainer } from "../../features/product/containers/product-list-container";
+import { AuthCallbackPage } from "../../pages/auth-callback";
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+import { RequireAuth } from "../auth";
 import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [{ label: "Products", href: "/products" }];
@@ -5366,15 +6071,32 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+      <Route path="/auth/callback">
+        <AuthCallbackPage />
+      </Route>
       {customRoutes}
       <Route path="/products">
         <ProductListContainer />
       </Route>
       <Route path="/products/new">
-        <ProductFormContainer />
+        <RequireAuth>
+          <ProductFormContainer />
+        </RequireAuth>
       </Route>
-      <Route path="/products/:id/edit">{(params) => <ProductFormContainer id={params.id} />}</Route>
-      <Route path="/products/:id">{(params) => <ProductDetailContainer id={params.id} />}</Route>
+      <Route path="/products/:id/edit">
+        {(params) => (
+          <RequireAuth>
+            <ProductFormContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+      <Route path="/products/:id">
+        {(params) => (
+          <RequireAuth>
+            <ProductDetailContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
       <Route>
         <NotFoundPage />
       </Route>
@@ -5385,6 +6107,8 @@ export function AppRoutes() {
 === web/src/presentation/features/product/containers/product-detail-container.test.tsx ===
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import { CurrentUserMother } from "../../../../test-support/auth";
 import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
 import { renderScreen } from "../../../../test-support/render";
 import { ProductDetailContainer } from "./product-detail-container";
@@ -5431,11 +6155,43 @@ describe("ProductDetailContainer", () => {
     await waitFor(() => expect(history.at(-1)).toBe("/products"));
     expect(remove).toHaveBeenCalledWith(seeded.id);
   });
+
+  test("should not offer Delete to a user without its role", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+    const user = CurrentUserMother.random();
+
+    // Act
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository }, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("Name", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("Delete", { selector: ".card-actions *" })).toBeNull();
+  });
+
+  test("should show auth.forbidden when the API refuses the deletion", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = {
+      ...fakeProductRepository([seeded]),
+      remove: () => Promise.reject(new ProductError("auth.forbidden")),
+    };
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.forbidden");
+  });
 });
 
 === web/src/presentation/features/product/containers/product-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useAuth } from "../../../core/auth";
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
@@ -5444,6 +6200,7 @@ import { ProductDetailView } from "../views/product-detail-view";
 
 export function ProductDetailContainer({ id }: { id: string }) {
   const { productRepository } = useDependencies();
+  const { can } = useAuth();
   const product = useAsync(() => productRepository.get(id), [productRepository, id]);
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
@@ -5473,9 +6230,11 @@ export function ProductDetailContainer({ id }: { id: string }) {
               <Link href={`/products/${id}/edit`} className="btn">
                 Edit
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
-              </button>
+              {can("admin") && (
+                <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                  Delete
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -6042,6 +6801,200 @@ export function ProductListView({ products }: { products: Product[] }) {
   );
 }
 
+=== web/src/presentation/pages/auth-callback.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen, waitFor } from "@testing-library/react";
+import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
+import { renderScreen } from "../../test-support/render";
+import { AuthCallbackPage } from "./auth-callback";
+
+describe("AuthCallbackPage", () => {
+  test("should go back to the page the sign-in started on", async () => {
+    // Arrange
+    const auth = { ...fakeAuthGateway(), completeLogin: async () => "/orders?page=2" };
+
+    // Act
+    const { history } = renderScreen(<AuthCallbackPage />, { auth }, "/auth/callback");
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/orders?page=2"));
+  });
+
+  test("should show why when the provider's answer is refused", async () => {
+    // Arrange
+    const auth = {
+      ...fakeAuthGateway({ user: CurrentUserMother.random() }),
+      completeLogin: () => Promise.reject(new Error("No matching state found in storage")),
+    };
+
+    // Act
+    renderScreen(<AuthCallbackPage />, { auth }, "/auth/callback");
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "No matching state found in storage",
+    );
+  });
+});
+
+=== web/src/presentation/pages/auth-callback.tsx ===
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { useAuth } from "../core/auth";
+import { ErrorAlert } from "../shared/ui/error-alert";
+
+/** Where the provider sends the user back after signing in (`redirect_uri`). */
+export function AuthCallbackPage() {
+  const { completeLogin } = useAuth();
+  const [, navigate] = useLocation();
+  const [failure, setFailure] = useState<unknown>(null);
+  const started = useRef(false);
+
+  useEffect(() => {
+    // Once: StrictMode runs effects twice, and the provider's answer can be redeemed only once.
+    if (started.current) return;
+    started.current = true;
+    completeLogin().then((back) => navigate(back, { replace: true }), setFailure);
+  }, [completeLogin, navigate]);
+
+  return failure === null ? (
+    <span className="loading loading-spinner" />
+  ) : (
+    <ErrorAlert error={failure} />
+  );
+}
+
+=== web/src/presentation/shared/ui/layout.tsx ===
+import type { ReactNode } from "react";
+import { Link } from "wouter";
+import { UserMenu } from "./user-menu";
+
+export interface NavEntry {
+  label: string;
+  href: string;
+}
+
+export function Layout({
+  title,
+  nav,
+  children,
+}: {
+  title: string;
+  nav: NavEntry[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-h-screen bg-base-200">
+      <header className="navbar bg-base-100 shadow-sm">
+        <Link href="/" className="btn btn-ghost text-xl">
+          {title}
+        </Link>
+        <nav>
+          <ul className="menu menu-horizontal">
+            {nav.map((entry) => (
+              <li key={entry.href}>
+                <Link href={entry.href}>{entry.label}</Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="ml-auto">
+          <UserMenu />
+        </div>
+      </header>
+      <main className="container mx-auto max-w-5xl p-4">{children}</main>
+    </div>
+  );
+}
+
+=== web/src/presentation/shared/ui/user-menu.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CurrentUserMother, fakeAuthGateway } from "../../../test-support/auth";
+import { renderScreen } from "../../../test-support/render";
+import { UserMenu } from "./user-menu";
+
+describe("UserMenu", () => {
+  test("should show who is signed in", async () => {
+    // Arrange
+    const user = CurrentUserMother.random({ name: "Ada Lovelace" });
+
+    // Act
+    renderScreen(<UserMenu />, {}, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+    expect(screen.getByText("Sign out")).toBeTruthy();
+  });
+
+  test("should start a sign-in from the current page when Sign in is pressed", async () => {
+    // Arrange
+    const auth = fakeAuthGateway();
+    renderScreen(<UserMenu />, { auth }, "/products");
+
+    // Act
+    fireEvent.click(await screen.findByText("Sign in"));
+
+    // Assert
+    await waitFor(() => expect(auth.logins).toEqual(["/products"]));
+  });
+});
+
+=== web/src/presentation/shared/ui/user-menu.tsx ===
+import { useAuth } from "../../core/auth";
+
+/** Who is signed in, and the button to sign in or out. */
+export function UserMenu() {
+  const { user, login, logout } = useAuth();
+  if (user === null) {
+    return (
+      <button type="button" className="btn btn-ghost" onClick={() => void login()}>
+        Sign in
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm">{user.name ?? user.email ?? "Signed in"}</span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void logout()}>
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+=== web/src/test-support/auth.ts ===
+import type { AuthGateway, CurrentUser } from "../domain/auth/session";
+import { ROLES } from "../presentation/core/generated/roles";
+
+/** Signed-in users for tests; pass `overrides` for what a test is about. */
+export const CurrentUserMother = {
+  random(overrides: Partial<CurrentUser> = {}): CurrentUser {
+    const id = crypto.randomUUID();
+    return { id, email: `ada-${id.slice(0, 8)}@example.com`, name: "Ada", roles: [], ...overrides };
+  },
+
+  /** Holds every role a generated screen checks: what `renderScreen` signs in by default. */
+  caller(): CurrentUser {
+    return CurrentUserMother.random({ roles: [...ROLES] });
+  },
+};
+
+/** An `AuthGateway` with `user` signed in (`null`: nobody). `logins` records each `login` call. */
+export function fakeAuthGateway({ user = null }: { user?: CurrentUser | null } = {}) {
+  const logins: string[] = [];
+  const gateway: AuthGateway = {
+    currentUser: async () => user,
+    accessToken: async () => (user === null ? null : `token-of-${user.id}`),
+    login: async (returnTo) => {
+      logins.push(returnTo);
+    },
+    completeLogin: async () => "/",
+    logout: async () => {},
+  };
+  return { ...gateway, logins };
+}
+
 === web/src/test-support/product.ts ===
 import { ProductError } from "../domain/product/errors";
 import type { Product, ProductDraft } from "../domain/product/model";
@@ -6096,6 +7049,42 @@ export function fakeProductRepository(seed: Product[] = []): ProductRepository {
       store.delete(id);
     },
   };
+}
+
+=== web/src/test-support/render.tsx ===
+import { render } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { Router } from "wouter";
+import { memoryLocation } from "wouter/memory-location";
+import type { CurrentUser } from "../domain/auth/session";
+import { AuthProvider } from "../presentation/core/auth";
+import { DependenciesProvider } from "../presentation/core/dependencies";
+import type { Dependencies } from "../presentation/core/generated/dependencies";
+import { CurrentUserMother, fakeAuthGateway } from "./auth";
+
+/**
+ * Renders a screen with the adapters it uses (`dependencies` needs only those) at `path`, signed in
+ * as `user`: by default a caller holding every role, `null` for nobody. `history` records every
+ * location the screen navigates to.
+ */
+export function renderScreen(
+  ui: ReactNode,
+  dependencies: Partial<Dependencies>,
+  path = "/",
+  { user = CurrentUserMother.caller() }: { user?: CurrentUser | null } = {},
+) {
+  const location = memoryLocation({ path, record: true });
+  const result = render(
+    // A screen that reaches for an adapter it was not given fails loudly: it is `undefined`.
+    <DependenciesProvider
+      value={{ auth: fakeAuthGateway({ user }), ...dependencies } as Dependencies}
+    >
+      <Router hook={location.hook}>
+        <AuthProvider>{ui}</AuthProvider>
+      </Router>
+    </DependenciesProvider>,
+  );
+  return { ...result, history: location.history };
 }
 
 === worker/AGENTS.md ===

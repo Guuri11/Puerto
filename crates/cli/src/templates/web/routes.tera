@@ -6,9 +6,15 @@ import { {{ e.pascal }}DetailContainer } from "../../features/{{ e.kebab }}/cont
 import { {{ e.pascal }}FormContainer } from "../../features/{{ e.kebab }}/containers/{{ e.kebab }}-form-container";
 import { {{ e.pascal }}ListContainer } from "../../features/{{ e.kebab }}/containers/{{ e.kebab }}-list-container";
 {% endfor -%}
+{% if auth -%}
+import { AuthCallbackPage } from "../../pages/auth-callback";
+{% endif -%}
 import { HomePage } from "../../pages/home";
 import { NotFoundPage } from "../../pages/not-found";
 import type { NavEntry } from "../../shared/ui/layout";
+{% if guarded -%}
+import { RequireAuth } from "../auth";
+{% endif -%}
 import { customRoutes } from "../routes";
 
 export const navEntries: NavEntry[] = [
@@ -26,22 +32,55 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
+{%- if auth %}
+      <Route path="/auth/callback">
+        <AuthCallbackPage />
+      </Route>
+{%- endif %}
       {customRoutes}
 {%- for e in entities %}
       <Route path="/{{ e.plural }}">
+{%- if e.list_guarded %}
+        <RequireAuth>
+          <{{ e.pascal }}ListContainer />
+        </RequireAuth>
+{%- else %}
         <{{ e.pascal }}ListContainer />
+{%- endif %}
       </Route>
       <Route path="/{{ e.plural }}/new">
+{%- if e.new_guarded %}
+        <RequireAuth>
+          <{{ e.pascal }}FormContainer />
+        </RequireAuth>
+{%- else %}
         <{{ e.pascal }}FormContainer />
+{%- endif %}
       </Route>
-{%- if e.edit_route_inline %}
+{%- if e.edit_guarded %}
+      <Route path="/{{ e.plural }}/:id/edit">
+        {(params) => (
+          <RequireAuth>
+            <{{ e.pascal }}FormContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+{%- elif e.edit_route_inline %}
       <Route path="/{{ e.plural }}/:id/edit">{(params) => <{{ e.pascal }}FormContainer id={params.id} />}</Route>
 {%- else %}
       <Route path="/{{ e.plural }}/:id/edit">
         {(params) => <{{ e.pascal }}FormContainer id={params.id} />}
       </Route>
 {%- endif %}
-{%- if e.detail_route_inline %}
+{%- if e.detail_guarded %}
+      <Route path="/{{ e.plural }}/:id">
+        {(params) => (
+          <RequireAuth>
+            <{{ e.pascal }}DetailContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+{%- elif e.detail_route_inline %}
       <Route path="/{{ e.plural }}/:id">{(params) => <{{ e.pascal }}DetailContainer id={params.id} />}</Route>
 {%- else %}
       <Route path="/{{ e.plural }}/:id">

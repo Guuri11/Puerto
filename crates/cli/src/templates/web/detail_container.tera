@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+{% if access.update_roles or access.delete_roles -%}
+import { useAuth } from "../../../core/auth";
+{% endif -%}
 import { useDependencies } from "../../../core/dependencies";
 import { useAsync } from "../../../core/hooks/use-async";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
@@ -8,6 +11,9 @@ import { {{ pascal }}DetailView } from "../views/{{ kebab }}-detail-view";
 
 export function {{ pascal }}DetailContainer({ id }: { id: string }) {
   const { {{ camel }}Repository } = useDependencies();
+{%- if access.update_roles or access.delete_roles %}
+  const { can } = useAuth();
+{%- endif %}
   const {{ ident }} = useAsync(() => {{ camel }}Repository.get(id), [{{ camel }}Repository, id]);
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
@@ -34,12 +40,28 @@ export function {{ pascal }}DetailContainer({ id }: { id: string }) {
           <div className="card-body">
             <{{ pascal }}DetailView {{ ident }}={{ "{" }}{{ ident }}.data} />
             <div className="card-actions justify-end">
+{%- if access.update_roles %}
+              {{ "{" }}{% for r in access.update_roles %}can("{{ r }}") && {% endfor %}(
+                <Link href={`/{{ plural }}/${id}/edit`} className="btn">
+                  Edit
+                </Link>
+              )}
+{%- else %}
               <Link href={`/{{ plural }}/${id}/edit`} className="btn">
                 Edit
               </Link>
+{%- endif %}
+{%- if access.delete_roles %}
+              {{ "{" }}{% for r in access.delete_roles %}can("{{ r }}") && {% endfor %}(
+                <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                  Delete
+                </button>
+              )}
+{%- else %}
               <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
                 Delete
               </button>
+{%- endif %}
             </div>
           </div>
         </div>

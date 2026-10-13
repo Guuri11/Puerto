@@ -178,14 +178,14 @@ pub fn new_project(
         crate::generators::project::apply_no_demo(&output)?;
     }
 
-    // After the demo strip, which rewrites the `lib.rs` and `api.rs` files auth declares its
-    // modules in; before the frontend strip, so the web files are written while `web/` is there.
-    if let Some(mode) = &resolved_auth {
-        crate::generators::auth::apply_auth_to_new_project(&output, mode)?;
-    }
-
     if resolved_no_web {
         crate::generators::project::apply_no_web(&output)?;
+    }
+
+    // Last: the demo strip rewrites the `lib.rs` and `api.rs` files auth declares its modules in,
+    // and auth writes the frontend's files only when `web/` stays.
+    if let Some(mode) = &resolved_auth {
+        crate::generators::auth::apply_auth_to_new_project(&output, mode)?;
     }
 
     crate::snippets::apply(&output, None)?;

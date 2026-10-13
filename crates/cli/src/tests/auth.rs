@@ -443,3 +443,228 @@ fn a_custom_use_case_of_an_auth_project_takes_the_caller() {
     assert!(params.contains("pub actor: Principal,"), "{params}");
     cleanup(&dir);
 }
+
+// ── Phase 16.5: the frontend, OIDC ───────────────────────────────────────────
+
+fn auth_web_project(name: &str) -> (PathBuf, PathBuf) {
+    new_auth_project(
+        name,
+        NewOptions {
+            no_db: true,
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn new_with_auth_and_web_writes_the_gateway_the_provider_and_the_callback() {
+    let (dir, output) = auth_web_project("auth_web_files");
+
+    for file in [
+        "web/src/domain/auth/session.ts",
+        "web/src/infrastructure/auth/oidc-auth-gateway.ts",
+        "web/src/infrastructure/auth/oidc-auth-gateway.test.ts",
+        "web/src/infrastructure/auth/bearer-middleware.ts",
+        "web/src/infrastructure/auth/bearer-middleware.test.ts",
+        "web/src/presentation/core/auth.tsx",
+        "web/src/presentation/core/auth.test.tsx",
+        "web/src/presentation/pages/auth-callback.tsx",
+        "web/src/presentation/pages/auth-callback.test.tsx",
+        "web/src/presentation/shared/ui/user-menu.tsx",
+        "web/src/presentation/shared/ui/user-menu.test.tsx",
+        "web/src/test-support/auth.ts",
+    ] {
+        assert!(output.join(file).exists(), "{file} missing");
+    }
+    // The app runs inside the provider, the layout shows who is signed in, tests sign a caller in.
+    assert!(read(&output, "web/src/main.tsx").contains("<AuthProvider>"));
+    assert!(read(&output, "web/src/presentation/shared/ui/layout.tsx").contains("<UserMenu />"));
+    let render = read(&output, "web/src/test-support/render.tsx");
+    assert!(render.contains("CurrentUserMother.caller()"), "{render}");
+    assert!(!render.contains("{% raw %}"), "{render}");
+    // The composition root builds the gateway and signs every call; the callback has its route.
+    let dependencies = read(
+        &output,
+        "web/src/presentation/core/generated/dependencies.ts",
+    );
+    assert!(
+        dependencies.contains("auth: AuthGateway;"),
+        "{dependencies}"
+    );
+    assert!(
+        dependencies.contains("oidcAuthGateway(oidcSettingsFromEnv())"),
+        "{dependencies}"
+    );
+    let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
+    assert!(
+        routes.contains("<Route path=\"/auth/callback\">"),
+        "{routes}"
+    );
+    assert!(
+        output
+            .join("web/src/presentation/core/generated/roles.ts")
+            .exists()
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn new_with_auth_and_web_pins_the_client_and_keeps_it_in_the_adapter() {
+    let (dir, output) = auth_web_project("auth_web_package");
+
+    let package = read(&output, "web/package.json");
+    assert!(
+        package.contains(&format!(
+            "\"oidc-client-ts\": \"{}\",",
+            crate::generators::auth::OIDC_CLIENT_TS_VERSION
+        )),
+        "{package}"
+    );
+    // Dependencies stay sorted: `oidc-client-ts` before `openapi-fetch`.
+    assert!(package.find("oidc-client-ts").unwrap() < package.find("openapi-fetch").unwrap());
+    let cruiser = read(&output, "web/.dependency-cruiser.cjs");
+    assert!(
+        cruiser.contains("only-the-auth-adapter-imports-oidc-client-ts"),
+        "{cruiser}"
+    );
+    for file in ["web/.env", "web/.env.example"] {
+        let env = read(&output, file);
+        assert!(
+            env.contains("VITE_AUTH_ISSUER=http://localhost:8180/realms/auth-web-package"),
+            "{file}: {env}"
+        );
+        assert!(env.contains("VITE_AUTH_CLIENT_ID=web\n"), "{file}: {env}");
+        assert!(env.contains("VITE_AUTH_AUDIENCE=\n"), "{file}: {env}");
+    }
+    assert!(read(&output, "AGENTS.md").contains(crate::generators::auth::AGENTS_AUTH_WEB_SECTION));
+    cleanup(&dir);
+}
+
+#[test]
+fn new_with_auth_and_no_web_writes_nothing_for_the_frontend() {
+    let (dir, output) = auth_project("auth_no_web");
+
+    assert!(!output.join("web").exists());
+    assert!(!read(&output, "AGENTS.md").contains(crate::generators::auth::AGENTS_AUTH_WEB_SECTION));
+    cleanup(&dir);
+}
+
+fn scaffold_web_product(output: &Path, access: &scaffold::ScaffoldAccess) {
+    scaffold::run_scaffold_with_access(
+        "Product",
+        output,
+        &[scaffold_test_field("title", "String")],
+        OverwritePolicy::Force,
+        access,
+    )
+    .unwrap();
+}
+
+#[test]
+fn scaffold_in_an_auth_web_project_guards_every_screen_but_the_public_ones() {
+    let (dir, output) = auth_web_project("auth_web_routes");
+
+    scaffold_web_product(
+        &output,
+        &access(&["list_products", "get_product"], &["create_product=admin"]),
+    );
+
+    let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
+    // List and detail are public; new and edit (create, update) are not.
+    assert!(
+        routes.contains("<Route path=\"/products\">\n        <ProductListContainer />"),
+        "{routes}"
+    );
+    assert!(
+        routes.contains("<Route path=\"/products/new\">\n        <RequireAuth>\n          <ProductFormContainer />"),
+        "{routes}"
+    );
+    assert!(
+        routes.contains(
+            "<Route path=\"/products/:id/edit\">\n        {(params) => (\n          <RequireAuth>"
+        ),
+        "{routes}"
+    );
+    assert!(
+        routes.contains("<Route path=\"/products/:id\">{(params) => <ProductDetailContainer"),
+        "{routes}"
+    );
+    let roles = read(&output, "web/src/presentation/core/generated/roles.ts");
+    assert!(roles.contains("[\"admin\"]"), "{roles}");
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_in_an_auth_web_project_hides_the_actions_a_role_guards() {
+    let (dir, output) = auth_web_project("auth_web_screens");
+
+    scaffold_web_product(
+        &output,
+        &access(
+            &[],
+            &[
+                "create_product=admin",
+                "delete_product=admin",
+                "delete_product=owner",
+            ],
+        ),
+    );
+
+    let containers = "web/src/presentation/features/product/containers";
+    let list = read(&output, &format!("{containers}/product-list-container.tsx"));
+    assert!(list.contains("{can(\"admin\") && ("), "{list}");
+    let detail = read(
+        &output,
+        &format!("{containers}/product-detail-container.tsx"),
+    );
+    assert!(
+        detail.contains("{can(\"admin\") && can(\"owner\") && ("),
+        "{detail}"
+    );
+    // Updating needs no role: Edit is always offered.
+    assert!(
+        !detail.contains("can(\"admin\") && (\n                <Link"),
+        "{detail}"
+    );
+    let detail_test = read(
+        &output,
+        &format!("{containers}/product-detail-container.test.tsx"),
+    );
+    assert!(
+        detail_test.contains("should not offer Delete to a user without its role"),
+        "{detail_test}"
+    );
+    assert!(
+        detail_test.contains("should show auth.forbidden when the API refuses the deletion"),
+        "{detail_test}"
+    );
+    let list_test = read(
+        &output,
+        &format!("{containers}/product-list-container.test.tsx"),
+    );
+    assert!(
+        list_test.contains("should not offer New to a user without its role"),
+        "{list_test}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn scaffold_in_an_auth_web_project_without_roles_checks_none() {
+    let (dir, output) = auth_web_project("auth_web_no_roles");
+
+    scaffold_web_product(&output, &access(&[], &[]));
+
+    let containers = "web/src/presentation/features/product/containers";
+    for file in ["product-list-container.tsx", "product-detail-container.tsx"] {
+        let src = read(&output, &format!("{containers}/{file}"));
+        assert!(!src.contains("useAuth"), "{file}: {src}");
+    }
+    // A protected deletion can still be refused by the use case itself.
+    let detail_test = read(
+        &output,
+        &format!("{containers}/product-detail-container.test.tsx"),
+    );
+    assert!(detail_test.contains("auth.forbidden"), "{detail_test}");
+    cleanup(&dir);
+}

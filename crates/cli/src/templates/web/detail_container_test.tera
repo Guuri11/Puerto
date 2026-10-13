@@ -1,5 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+{% if access.delete_protected -%}
+import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
+{% endif -%}
+{% if access.update_roles or access.delete_roles -%}
+import { CurrentUserMother } from "../../../../test-support/auth";
+{% endif -%}
 import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
 import { renderScreen } from "../../../../test-support/render";
 import { {{ pascal }}DetailContainer } from "./{{ kebab }}-detail-container";
@@ -46,4 +52,42 @@ describe("{{ pascal }}DetailContainer", () => {
     await waitFor(() => expect(history.at(-1)).toBe("/{{ plural }}"));
     expect(remove).toHaveBeenCalledWith(seeded.id);
   });
+{%- for action in ["Edit", "Delete"] %}
+{%- if action == "Edit" %}{% set guard = access.update_roles %}{% else %}{% set guard = access.delete_roles %}{% endif %}
+{%- if guard %}
+
+  test("should not offer {{ action }} to a user without its role", async () => {
+    // Arrange
+    const seeded = {{ pascal }}Mother.random();
+    const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
+    const user = CurrentUserMother.random();
+
+    // Act
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository }, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("{{ fields[0].label }}", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("{{ action }}", { selector: ".card-actions *" })).toBeNull();
+  });
+{%- endif %}
+{%- endfor %}
+{%- if access.delete_protected %}
+
+  test("should show auth.forbidden when the API refuses the deletion", async () => {
+    // Arrange
+    const seeded = {{ pascal }}Mother.random();
+    const {{ camel }}Repository = {
+      ...fake{{ pascal }}Repository([seeded]),
+      remove: () => Promise.reject(new {{ pascal }}Error("auth.forbidden")),
+    };
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.forbidden");
+  });
+{%- endif %}
 });

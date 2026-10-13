@@ -1,0 +1,109 @@
+import { describe, expect, test } from "bun:test";
+import type { User } from "oidc-client-ts";
+import { AuthError } from "../../domain/auth/session";
+import { type OidcClient, oidcAuthGatewayOver, oidcSettingsFromEnv } from "./oidc-auth-gateway";
+
+/** A client signed in with `user` (`null`: nobody); `redirects` records each redirect. */
+function client(user: Partial<User> | null) {
+  const redirects: unknown[] = [];
+  const fake: OidcClient = {
+    getUser: async () => user as User | null,
+    signinRedirect: async (args) => {
+      redirects.push(args);
+    },
+    signinRedirectCallback: async () => ({ state: "/orders" }) as User,
+    signoutRedirect: async () => {},
+  };
+  return { fake, redirects };
+}
+
+/** A `/me` answering `status` and `body`; `requests` records what it was asked. */
+function me(status: number, body: unknown) {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const fetchMe = async (url: string, init: RequestInit) => {
+    requests.push({ url, init });
+    return Response.json(body, { status });
+  };
+  return { fetchMe, requests };
+}
+
+describe("oidcAuthGateway", () => {
+  test("should ask the API who the token belongs to when someone is signed in", async () => {
+    // Arrange
+    const { fake } = client({ access_token: "abc", expired: false });
+    const id = crypto.randomUUID();
+    const { fetchMe, requests } = me(200, { id, email: "ada@example.com", roles: ["admin"] });
+
+    // Act
+    const user = await oidcAuthGatewayOver(fake, fetchMe).currentUser();
+
+    // Assert
+    expect(requests[0]?.url).toBe("/api/me");
+    expect(requests[0]?.init.headers).toEqual({ Authorization: "Bearer abc" });
+    expect(user).toEqual({ id, email: "ada@example.com", name: null, roles: ["admin"] });
+  });
+
+  test("should have no user and no token when the session expired", async () => {
+    // Arrange
+    const { fake } = client({ access_token: "abc", expired: true });
+    const { fetchMe, requests } = me(200, {});
+    const gateway = oidcAuthGatewayOver(fake, fetchMe);
+
+    // Act
+    const user = await gateway.currentUser();
+
+    // Assert
+    expect(user).toBeNull();
+    expect(await gateway.accessToken()).toBeNull();
+    expect(requests).toHaveLength(0);
+  });
+
+  test("should fail with the API's code when it refuses the token", async () => {
+    // Arrange
+    const { fake } = client({ access_token: "abc", expired: false });
+    const code = "auth.unauthenticated";
+    const { fetchMe } = me(401, { name: code, message: code });
+
+    // Act
+    const result = oidcAuthGatewayOver(fake, fetchMe).currentUser();
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(AuthError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should come back to the page the sign-in started on", async () => {
+    // Arrange
+    const { fake, redirects } = client(null);
+    const gateway = oidcAuthGatewayOver(fake, me(200, {}).fetchMe);
+
+    // Act
+    await gateway.login("/orders");
+    const back = await gateway.completeLogin();
+
+    // Assert
+    expect(redirects).toEqual([{ state: "/orders" }]);
+    expect(back).toBe("/orders");
+  });
+});
+
+describe("oidcSettingsFromEnv", () => {
+  test("should name the missing variable when web/.env has no issuer", () => {
+    // Act
+    const read = () => oidcSettingsFromEnv({ VITE_AUTH_CLIENT_ID: "web" });
+
+    // Assert
+    expect(read).toThrow("VITE_AUTH_ISSUER is not set");
+  });
+
+  test("should leave the audience empty when it is not set", () => {
+    // Act
+    const settings = oidcSettingsFromEnv({
+      VITE_AUTH_ISSUER: "http://localhost:8180/realms/shop",
+      VITE_AUTH_CLIENT_ID: "web",
+    });
+
+    // Assert
+    expect(settings.audience).toBe("");
+  });
+});

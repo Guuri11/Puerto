@@ -44,12 +44,12 @@ fn template_generated_web_files_are_exactly_what_the_generator_writes_for_no_ent
 
     assert_eq!(
         read(&output, &format!("{generated}/dependencies.ts")),
-        generate_web_dependencies(&config.entity).unwrap(),
+        generate_web_dependencies(&config).unwrap(),
         "template/{generated}/dependencies.ts is stale"
     );
     assert_eq!(
         read(&output, &format!("{generated}/routes.tsx")),
-        generate_web_routes(&config.entity).unwrap(),
+        generate_web_routes(&config).unwrap(),
         "template/{generated}/routes.tsx is stale"
     );
     cleanup(&dir);

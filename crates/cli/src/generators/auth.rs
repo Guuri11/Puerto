@@ -19,6 +19,8 @@ pub const KEYCLOAK_PORT: u16 = 8180;
 pub const DEV_PASSWORD: &str = "admin-dev-only";
 /// The audience Keycloak's mapper adds to the `web` client's tokens, and `AUTH_AUDIENCE`.
 pub const AUDIENCE: &str = "api";
+/// The OpenID Connect client of the frontend, pinned like every `web/package.json` dependency.
+pub const OIDC_CLIENT_TS_VERSION: &str = "3.5.0";
 
 /// The modes `puerto new --auth` writes today. `local` is accepted by the schema and arrives with
 /// its own adapter (`PLAN.md` § 16.6).
@@ -45,9 +47,13 @@ pub struct Access {
 impl Access {
     /// The entity `pascal`'s, as `puerto.toml` at `base` records it.
     pub fn of(base: &Path, pascal: &str) -> Self {
-        let Ok(config) = crate::puerto_toml::read(base) else {
-            return Self::default();
-        };
+        crate::puerto_toml::read(base)
+            .map(|config| Self::in_config(&config, pascal))
+            .unwrap_or_default()
+    }
+
+    /// The entity `pascal`'s, as `config` records it.
+    pub fn in_config(config: &crate::puerto_toml::PuertoConfig, pascal: &str) -> Self {
         let entity = config.entity.iter().find(|e| e.name == pascal);
         Self {
             auth: config.project.has_auth(),
@@ -339,6 +345,102 @@ fn add_makefile_targets(base: &Path, project: &str) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+/// The frontend's auth files, written once under `web/` (their templates mirror the paths). The
+/// last three replace the template's own: the app runs inside `AuthProvider`, the layout shows the
+/// user, and `renderScreen` signs a caller in.
+const WEB_FILES: [&str; 15] = [
+    "src/domain/auth/session.ts",
+    "src/infrastructure/auth/oidc-auth-gateway.ts",
+    "src/infrastructure/auth/oidc-auth-gateway.test.ts",
+    "src/infrastructure/auth/bearer-middleware.ts",
+    "src/infrastructure/auth/bearer-middleware.test.ts",
+    "src/presentation/core/auth.tsx",
+    "src/presentation/core/auth.test.tsx",
+    "src/presentation/pages/auth-callback.tsx",
+    "src/presentation/pages/auth-callback.test.tsx",
+    "src/presentation/shared/ui/user-menu.tsx",
+    "src/presentation/shared/ui/user-menu.test.tsx",
+    "src/test-support/auth.ts",
+    "src/main.tsx",
+    "src/presentation/shared/ui/layout.tsx",
+    "src/test-support/render.tsx",
+];
+
+/// The dependency-cruiser rule that keeps the provider's client behind `AuthGateway`.
+const CRUISER_RULE: &str = r#"    {
+      name: "only-the-auth-adapter-imports-oidc-client-ts",
+      comment:
+        "The provider's client stays behind AuthGateway: screens see a CurrentUser, never a token.",
+      severity: "error",
+      from: { pathNot: "^src/infrastructure/auth/" },
+      to: { path: "oidc-client-ts" },
+    },
+"#;
+
+/// `oidc-client-ts` in `web/package.json`, before `openapi-fetch` (dependencies stay sorted).
+fn add_oidc_client(package: &str) -> Option<String> {
+    if package.contains("\"oidc-client-ts\"") {
+        return Some(package.to_string());
+    }
+    let at = package.find("    \"openapi-fetch\": ")?;
+    Some(format!(
+        "{}    \"oidc-client-ts\": \"{OIDC_CLIENT_TS_VERSION}\",\n{}",
+        &package[..at],
+        &package[at..]
+    ))
+}
+
+/// The provider and client `oidc-client-ts` signs in with — read by `oidcSettingsFromEnv()`.
+fn web_env(project: &str) -> String {
+    format!(
+        "# Auth — the OpenID Connect provider the browser signs in with (ADR-0021). Keycloak in\n\
+         # development; Auth0: VITE_AUTH_ISSUER=https://<tenant>.auth0.com/, VITE_AUTH_CLIENT_ID=<the\n\
+         # SPA's client id>, VITE_AUTH_AUDIENCE=<the API identifier, AUTH_AUDIENCE of the API>.\n\
+         VITE_AUTH_ISSUER=http://localhost:{KEYCLOAK_PORT}/realms/{project}\n\
+         VITE_AUTH_CLIENT_ID=web\n\
+         VITE_AUTH_AUDIENCE=\n"
+    )
+}
+
+/// The frontend half (`PLAN.md` § 16.5): sign in with the provider, send the token, guard screens.
+fn write_web(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let web = base.join("web");
+    for file in WEB_FILES {
+        write_file(
+            &web.join(file),
+            &render_static(&format!("auth/web/{file}.tera"))?,
+        )?;
+    }
+
+    let path = web.join("package.json");
+    let package = fs::read_to_string(&path)?;
+    let package = add_oidc_client(&package)
+        .ok_or_else(|| format!("{}: no `openapi-fetch` dependency", path.display()))?;
+    fs::write(&path, package)?;
+
+    let path = web.join(".dependency-cruiser.cjs");
+    let cruiser = fs::read_to_string(&path)?;
+    if !cruiser.contains("oidc-client-ts") {
+        let cruiser = insert_after_line(&cruiser, "  forbidden: [", CRUISER_RULE.trim_end())
+            .ok_or_else(|| format!("{}: no `forbidden: [`", path.display()))?;
+        fs::write(&path, cruiser)?;
+    }
+
+    for file in [".env", ".env.example"] {
+        let path = web.join(file);
+        let mut content = fs::read_to_string(&path).unwrap_or_default();
+        if content.contains("VITE_AUTH_ISSUER") {
+            continue;
+        }
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(&web_env(project));
+        fs::write(&path, content)?;
+    }
+    Ok(())
+}
+
 /// The root `AGENTS.md` section an auth project gets (ADR-0010: what it names is tested).
 pub const AGENTS_AUTH_SECTION: &str = r#"## Auth (`[project] auth`)
 
@@ -365,7 +467,23 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 
 "#;
 
-fn add_agents_section(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+/// What follows [`AGENTS_AUTH_SECTION`] in a project with `web/`.
+pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth in `web/`
+
+- `useAuth()` (`presentation/core/auth.tsx`) gives `{ user, can(role), login, logout }`; `user` is
+  `GET /me`, never the token. Generated screens hide what `can` denies, but the API decides: its
+  `403` reaches the alert as `auth.forbidden`.
+- `core/generated/routes.tsx` wraps every non-public screen in `<RequireAuth>`, which signs in and
+  comes back. Wrap your own routes in `routes.tsx` the same way.
+- The token stays in memory and `oidc-client-ts` stays in `infrastructure/auth/`
+  (`make web/lint` checks it): a reload signs in again through the provider's session.
+  `web/.env` holds `VITE_AUTH_*`.
+- Screen tests sign in a caller holding every role (`renderScreen`); pass `{ user }` for another one
+  (`CurrentUserMother`), or `{ auth: fakeAuthGateway(…) }` to see the sign-ins it starts.
+
+"#;
+
+fn add_agents_section(base: &Path, web: bool) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("AGENTS.md");
     let Ok(agents) = fs::read_to_string(&path) else {
         return Ok(());
@@ -373,10 +491,15 @@ fn add_agents_section(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if agents.contains(AGENTS_AUTH_SECTION) {
         return Ok(());
     }
+    let section = if web {
+        format!("{AGENTS_AUTH_SECTION}{AGENTS_AUTH_WEB_SECTION}")
+    } else {
+        AGENTS_AUTH_SECTION.to_string()
+    };
     // Before the conventions: next to the rules about what is generated.
     let out = match agents.find("## Conventions") {
-        Some(at) => format!("{}{AGENTS_AUTH_SECTION}{}", &agents[..at], &agents[at..]),
-        None => format!("{agents}\n{AGENTS_AUTH_SECTION}"),
+        Some(at) => format!("{}{section}{}", &agents[..at], &agents[at..]),
+        None => format!("{agents}\n{section}"),
     };
     fs::write(&path, out)?;
     Ok(())
@@ -406,7 +529,10 @@ pub fn apply_auth_to_new_project(
     write_keycloak(base, &project)?;
     add_env(base, &project)?;
     add_makefile_targets(base, &project)?;
-    add_agents_section(base)?;
+    if config.project.web {
+        write_web(base, &project)?;
+    }
+    add_agents_section(base, config.project.web)?;
 
     crate::generators::bootstrap::regenerate_bootstrap(base)?;
     Ok(())
@@ -484,6 +610,21 @@ mod tests {
         let use_cases = ["create_product".to_string(), "delete_product".to_string()];
         assert_eq!(access.roles("delete_product"), vec!["admin", "owner"]);
         assert_eq!(access.all_roles(&use_cases), vec!["admin", "owner"]);
+    }
+
+    #[test]
+    fn should_add_the_oidc_client_before_openapi_fetch_once() {
+        let package =
+            "  \"dependencies\": {\n    \"openapi-fetch\": \"0.17.0\",\n    \"react\": \"19\"\n";
+        let added = add_oidc_client(package).unwrap();
+        assert_eq!(
+            added,
+            format!(
+                "  \"dependencies\": {{\n    \"oidc-client-ts\": \"{OIDC_CLIENT_TS_VERSION}\",\n    \"openapi-fetch\": \"0.17.0\",\n    \"react\": \"19\"\n"
+            )
+        );
+        assert_eq!(add_oidc_client(&added).unwrap(), added);
+        assert_eq!(add_oidc_client("{}"), None);
     }
 
     #[test]

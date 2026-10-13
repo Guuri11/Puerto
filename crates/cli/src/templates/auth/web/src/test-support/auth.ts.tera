@@ -1,0 +1,30 @@
+import type { AuthGateway, CurrentUser } from "../domain/auth/session";
+import { ROLES } from "../presentation/core/generated/roles";
+
+/** Signed-in users for tests; pass `overrides` for what a test is about. */
+export const CurrentUserMother = {
+  random(overrides: Partial<CurrentUser> = {}): CurrentUser {
+    const id = crypto.randomUUID();
+    return { id, email: `ada-${id.slice(0, 8)}@example.com`, name: "Ada", roles: [], ...overrides };
+  },
+
+  /** Holds every role a generated screen checks: what `renderScreen` signs in by default. */
+  caller(): CurrentUser {
+    return CurrentUserMother.random({ roles: [...ROLES] });
+  },
+};
+
+/** An `AuthGateway` with `user` signed in (`null`: nobody). `logins` records each `login` call. */
+export function fakeAuthGateway({ user = null }: { user?: CurrentUser | null } = {}) {
+  const logins: string[] = [];
+  const gateway: AuthGateway = {
+    currentUser: async () => user,
+    accessToken: async () => (user === null ? null : `token-of-${user.id}`),
+    login: async (returnTo) => {
+      logins.push(returnTo);
+    },
+    completeLogin: async () => "/",
+    logout: async () => {},
+  };
+  return { ...gateway, logins };
+}

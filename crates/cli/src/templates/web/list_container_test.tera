@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
 import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
+{% if access.create_roles -%}
+import { CurrentUserMother } from "../../../../test-support/auth";
+{% endif -%}
 import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
 import { renderScreen } from "../../../../test-support/render";
 import { {{ pascal }}ListContainer } from "./{{ kebab }}-list-container";
@@ -70,4 +73,19 @@ describe("{{ pascal }}ListContainer", () => {
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.repository_error");
   });
+{%- if access.create_roles %}
+
+  test("should not offer New to a user without its role", async () => {
+    // Arrange
+    const {{ camel }}Repository = fake{{ pascal }}Repository([{{ pascal }}Mother.random()]);
+    const user = CurrentUserMother.random();
+
+    // Act
+    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository }, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("View")).toBeTruthy();
+    expect(screen.queryByText("New {{ words }}")).toBeNull();
+  });
+{%- endif %}
 });

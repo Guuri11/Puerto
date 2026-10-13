@@ -110,12 +110,13 @@ never reads provider-specific claims. `User` becomes a reserved entity name in a
 ### 5. The frontend: an `AuthGateway` port, bearer tokens, two adapters
 
 - `domain/auth/session.ts`: `CurrentUser` (from `GET /me`) and the port `AuthGateway {
-  currentUser, accessToken, login, logout }`.
+  currentUser, accessToken, login, completeLogin, logout }` (`completeLogin` redeems the
+  provider's answer on `/auth/callback`; a no-op for local).
 - `infrastructure/auth/oidc-auth-gateway.ts` — `oidc-client-ts`, Authorization Code + PKCE, works
   with Auth0 (plus the `audience` parameter) and Keycloak; `local-auth-gateway.ts` — the
   `/auth/*` endpoints.
-- `infrastructure/http/client.ts`: an openapi-fetch middleware adds `Authorization: Bearer …`; a
-  401 starts `login()`.
+- `infrastructure/auth/bearer-middleware.ts`: an openapi-fetch middleware, attached to the client
+  by the composition root, adds `Authorization: Bearer …`; a 401 starts `login()`.
 - `presentation/core/auth.tsx`: `AuthProvider` + `useAuth()` → `{ user, can(role), login, logout
   }`; the generated route table wraps every non-public route in `<RequireAuth>`; generated screens
   hide actions the user's roles do not allow. The API stays the authority: a 403 reaches the

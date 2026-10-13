@@ -1,0 +1,25 @@
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { useAuth } from "../core/auth";
+import { ErrorAlert } from "../shared/ui/error-alert";
+
+/** Where the provider sends the user back after signing in (`redirect_uri`). */
+export function AuthCallbackPage() {
+  const { completeLogin } = useAuth();
+  const [, navigate] = useLocation();
+  const [failure, setFailure] = useState<unknown>(null);
+  const started = useRef(false);
+
+  useEffect(() => {
+    // Once: StrictMode runs effects twice, and the provider's answer can be redeemed only once.
+    if (started.current) return;
+    started.current = true;
+    completeLogin().then((back) => navigate(back, { replace: true }), setFailure);
+  }, [completeLogin, navigate]);
+
+  return failure === null ? (
+    <span className="loading loading-spinner" />
+  ) : (
+    <ErrorAlert error={failure} />
+  );
+}

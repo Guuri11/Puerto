@@ -2501,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`). Next: **16.5**. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`) · 16.5. Next: **16.6**. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
@@ -2680,7 +2680,33 @@ Tier 1. New matrix scenarios `AUTH_OIDC` (no db, web) and `AUTH_OIDC_DB` (`make 
   `AUTH_ROLES_CLAIM`. `make auth/ui` prints the Keycloak console. Root `AGENTS.md` gains an "Auth"
   section (tested, ADR-0010): `public`/`roles`, `actor`, roles from the token only.
 
-### 16.5 — The frontend, OIDC
+### 16.5 — The frontend, OIDC ✅
+
+Done. Beyond or apart from the spec:
+- `AuthGateway` gained `completeLogin()` (the `/auth/callback` page redeems the provider's answer
+  through the port; it answers the path `login(returnTo)` started from). The local adapter (16.7)
+  makes it a no-op.
+- The bearer middleware is `infrastructure/auth/bearer-middleware.ts`, attached in the generated
+  `dependencies.ts` (`api.use(bearerMiddleware(auth))`), not a `createApiClient(auth)` parameter:
+  `client.ts` stays the same in every project, and a fresh auth project (no `client.ts`, no
+  `schema.d.ts` yet) still typechecks. For the same reason the gateway reads `GET /api/me` with
+  `fetch`, not the typed client.
+- `AuthProvider` renders nothing but a spinner until the first `currentUser()` answers: no button
+  flickers in, and the screen tests see the user from the first render. A `/me` the API refuses
+  shows its code instead of signing in again — a token the provider issues and the API rejects
+  (wrong audience) would otherwise loop through the provider forever.
+- `renderScreen(ui, deps, path, { user })` signs in `CurrentUserMother.caller()` by default: a
+  user holding every role of `core/generated/roles.ts` (AUTO-GENERATED, auth projects only), like
+  the route tests' `caller`. The existing screen tests run unchanged; `{ user }` picks another.
+- Screens hide an action only when its use case has a role: `can("a") && can("b")` (both, as the
+  API). An action that is protected without a role stays visible, and `<RequireAuth>` signs in
+  when it is followed. The edit screen is guarded when `get` or `update` is protected.
+- `new --auth` now runs after the demo and frontend strips: the demo strip used to undo auth's
+  module declarations (`9fdff50`), and auth writes `web/` only when it stays.
+- Verified by hand against the generated Keycloak: the public list without signing in, Sign in →
+  Keycloak (PKCE `S256`) → back to the same page, `New` shown for `admin`, a create carries the
+  token (no 401), `Delete` hidden without `owner`, a reload re-enters through the provider's session
+  and keeps the query string, Sign out returns home.
 
 Tier 1 (web template + slices).
 - `web/` gains `oidc-client-ts` (exact version); `web/.env`: `VITE_AUTH_ISSUER`,
