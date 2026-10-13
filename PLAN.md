@@ -2501,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`) · 16.5 · 16.6 · 16.7. Next: **16.8**. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`) · 16.5 · 16.6 · 16.7 · 16.8 — done. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
@@ -2808,7 +2808,23 @@ Done. Beyond or apart from the spec:
   the user; a 401 on any call clears it and goes to `/login`; register shows a duplicate email
   next to the field.
 
-### 16.8 — End to end
+### 16.8 — End to end ✅
+
+Done. Beyond or apart from the spec:
+- `make auth/token` reads `AUTH_ISSUER` from `.env` (overridable on the command line, which is how
+  the e2e test points it at the throwaway Keycloak) and has no `docker-compose/up` prerequisite: it
+  only asks, and says to start Keycloak when nothing answers. `EMAIL` counts only when given on the
+  command line — a shell's own `EMAIL` (Debian sets one) is not taken for a realm user.
+- The OIDC e2e imports the project's own `realm.json` through Keycloak's admin API (the test
+  container gets `KC_BOOTSTRAP_ADMIN_*`), so `make test/auth` also starts a Postgres (`:55434`) for
+  `AUTH_OIDC_DB`, and needs `sqlx-cli`. Tokens come from running the generated `make -s auth/token`.
+- "Provisions once" is checked across a restart too: within one process the 60 s cache would pass
+  it without touching the table.
+- The local e2e also covers a taken email (409) and a wrong password (401
+  `auth.invalid_credentials`). It is named `postgres_…`, so `make test/db` runs it.
+- `worker_e2e::build_project` became `build_scenario_project` (+ a hook) and `http` gained
+  `http_as` (a bearer token), shared by `auth_e2e.rs`.
+
 
 Getting a token (decided 2026-10-13: whatever makes e2e simplest, on the realm users get). The
 generated `realm.json` gains a dev-only client `dev-cli` — public, password grant only

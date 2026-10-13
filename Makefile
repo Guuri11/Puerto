@@ -79,15 +79,19 @@ test/mail: ## Slow test: the SMTP adapter against a throwaway Mailpit (needs Doc
 		$(CARGO) test -p puerto-mail --test mailpit -- --ignored; \
 		status=$$?; docker stop puerto-test-mailpit >/dev/null; exit $$status
 
-test/auth: ## Slow test: the OIDC adapter against a throwaway Keycloak (needs Docker)
-	@echo "${YELLOW}Starting throwaway Keycloak on :58180 (realms puerto, other)...${NC}"
+test/auth: ## Slow test: the OIDC adapter and a generated OIDC project against a throwaway Keycloak + Postgres (needs Docker + sqlx-cli)
+	@echo "${YELLOW}Starting throwaway Keycloak on :58180 (realms puerto, other) and Postgres on :55434...${NC}"
 	@docker run -d --rm --name puerto-test-keycloak -p 58180:8080 \
+		-e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
 		-v $(CURDIR)/crates/auth/tests/fixtures/keycloak:/opt/keycloak/data/import:ro \
 		quay.io/keycloak/keycloak:26.8.0 start-dev --import-realm >/dev/null
+	@docker run -d --rm --name puerto-test-pg-auth -e POSTGRES_PASSWORD=pg -p 55434:5432 postgres:16-alpine >/dev/null
 	@until curl -sf http://localhost:58180/realms/other/.well-known/openid-configuration >/dev/null; do sleep 1; done
-	PUERTO_TEST_KEYCLOAK_URL=http://localhost:58180 \
-		$(CARGO) test -p puerto-auth --test keycloak -- --ignored; \
-		status=$$?; docker stop puerto-test-keycloak >/dev/null; exit $$status
+	@until docker exec puerto-test-pg-auth pg_isready -U postgres -q; do sleep 1; done
+	PUERTO_TEST_KEYCLOAK_URL=http://localhost:58180 PUERTO_TEST_DATABASE_URL=postgres://postgres:pg@localhost:55434 \
+		sh -c '$(CARGO) test -p puerto-auth --test keycloak -- --ignored \
+		&& $(CARGO) nextest run -p puerto --run-ignored all -E "test(/(^|::)keycloak_/)"'; \
+		status=$$?; docker stop puerto-test-keycloak puerto-test-pg-auth >/dev/null; exit $$status
 
 test/mutation: ## Slow: mutation testing on Puerto's pure logic (see .cargo/mutants.toml)
 	@echo "${YELLOW}Running cargo-mutants...${NC}"

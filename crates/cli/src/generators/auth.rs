@@ -436,11 +436,22 @@ run: docker-compose/up
 fn auth_makefile_targets(project: &str) -> String {
     format!(
         r#"
-.PHONY: auth/ui
+.PHONY: auth/ui auth/token
 
 auth/ui: docker-compose/up ## The Keycloak console: users, roles, sessions
 	@echo "${{GREEN}}Keycloak: http://localhost:{KEYCLOAK_PORT}/admin/master/console/#/{project} (admin / admin)${{NC}}"
 	@echo "${{GREEN}}Sign in to the app as admin@{host}.localhost / {DEV_PASSWORD} (role admin)${{NC}}"
+
+# The development realm's `dev-cli` client (password grant): curl -H "Authorization: Bearer
+# $(make -s auth/token)" … An EMAIL from the shell's environment is not taken for one.
+AUTH_ISSUER ?= $(shell sed -n 's/^AUTH_ISSUER=//p' .env 2>/dev/null)
+TOKEN_EMAIL = $(if $(filter command line,$(origin EMAIL)),$(EMAIL),admin@{host}.localhost)
+
+auth/token: ## A development access token: make -s auth/token [EMAIL=user@{host}.localhost]
+	@curl -sf "$(AUTH_ISSUER)/protocol/openid-connect/token" -d grant_type=password -d client_id=dev-cli \
+		--data-urlencode "username=$(TOKEN_EMAIL)" --data-urlencode "password={DEV_PASSWORD}" \
+		| sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p' | grep . \
+		|| {{ echo "${{RED}}no token for $(TOKEN_EMAIL) from $(AUTH_ISSUER) — is Keycloak up? make docker-compose/up${{NC}}" >&2; exit 1; }}
 "#,
         host = host(project)
     )
@@ -628,6 +639,9 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
   build one with `PrincipalMother`. `generate use-case` adds it too.
 - **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `users.roles` column is not read.
+- Calling the API by hand: `curl -H "Authorization: Bearer $(make -s auth/token)" …` —
+  `admin@…` holds `admin`, `make -s auth/token EMAIL=user@…` no role. It asks the development
+  realm's `dev-cli` client (password grant): never create such a client in a real provider.
 - Every caller is a `User` (`business/src/domain/user/`), created on their first request by
   `infrastructure/src/user/provisioning.rs`. Point at a person with a `UserId`, never with the
   provider's subject. These files are yours.

@@ -31,6 +31,27 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "dev-cli",
+      "name": "{{ project }} development tokens (make auth/token) — never in a real provider",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [
+        {
+          "name": "audience-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -45,6 +66,18 @@
         { "type": "password", "value": "{{ password }}", "temporary": false }
       ],
       "realmRoles": ["admin", "default-roles-{{ realm }}"]
+    },
+    {
+      "username": "user",
+      "email": "user@{{ host }}.localhost",
+      "firstName": "User",
+      "lastName": "{{ project }}",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "{{ password }}", "temporary": false }
+      ],
+      "realmRoles": ["default-roles-{{ realm }}"]
     }
   ]
 }

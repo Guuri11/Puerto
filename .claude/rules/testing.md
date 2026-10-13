@@ -157,7 +157,7 @@ make test        # Fast — structural tests (file layout, cargo-generate output
 make test/full   # Slow — generates real projects, runs their clippy (-D warnings) and tests, and the
                  #        generated frontend's checks (needs `bun` on PATH)
 make test/db     # Slow — a generated --db project against a throwaway Postgres + Mailpit (Docker)
-make test/auth   # Slow — the OIDC adapter against a throwaway Keycloak (Docker)
+make test/auth   # Slow — the OIDC adapter + a generated OIDC project against a throwaway Keycloak + Postgres
 make test/mutation  # Slow — cargo-mutants on Puerto's pure logic (validation, migrations, types, patchers)
 ```
 

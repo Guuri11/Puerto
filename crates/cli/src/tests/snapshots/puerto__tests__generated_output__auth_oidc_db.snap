@@ -111,6 +111,9 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
   build one with `PrincipalMother`. `generate use-case` adds it too.
 - **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `users.roles` column is not read.
+- Calling the API by hand: `curl -H "Authorization: Bearer $(make -s auth/token)" …` —
+  `admin@…` holds `admin`, `make -s auth/token EMAIL=user@…` no role. It asks the development
+  realm's `dev-cli` client (password grant): never create such a client in a real provider.
 - Every caller is a `User` (`business/src/domain/user/`), created on their first request by
   `infrastructure/src/user/provisioning.rs`. Point at a person with a `UserId`, never with the
   provider's subject. These files are yours.
@@ -373,11 +376,22 @@ generate/migration: ## Create a new SQLx migration — make generate/migration N
 	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
 	puerto generate migration $$NAME
 
-.PHONY: auth/ui
+.PHONY: auth/ui auth/token
 
 auth/ui: docker-compose/up ## The Keycloak console: users, roles, sessions
 	@echo "${GREEN}Keycloak: http://localhost:8180/admin/master/console/#/snapshot (admin / admin)${NC}"
 	@echo "${GREEN}Sign in to the app as admin@snapshot.localhost / admin-dev-only (role admin)${NC}"
+
+# The development realm's `dev-cli` client (password grant): curl -H "Authorization: Bearer
+# $(make -s auth/token)" … An EMAIL from the shell's environment is not taken for one.
+AUTH_ISSUER ?= $(shell sed -n 's/^AUTH_ISSUER=//p' .env 2>/dev/null)
+TOKEN_EMAIL = $(if $(filter command line,$(origin EMAIL)),$(EMAIL),admin@snapshot.localhost)
+
+auth/token: ## A development access token: make -s auth/token [EMAIL=user@snapshot.localhost]
+	@curl -sf "$(AUTH_ISSUER)/protocol/openid-connect/token" -d grant_type=password -d client_id=dev-cli \
+		--data-urlencode "username=$(TOKEN_EMAIL)" --data-urlencode "password=admin-dev-only" \
+		| sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p' | grep . \
+		|| { echo "${RED}no token for $(TOKEN_EMAIL) from $(AUTH_ISSUER) — is Keycloak up? make docker-compose/up${NC}" >&2; exit 1; }
 
 === business/src/application/greeting/get_greeting.rs ===
 (deleted)
@@ -3028,6 +3042,27 @@ tokio = { version = "1", features = ["rt", "macros"] }
           }
         }
       ]
+    },
+    {
+      "clientId": "dev-cli",
+      "name": "snapshot development tokens (make auth/token) — never in a real provider",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [
+        {
+          "name": "audience-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -3042,6 +3077,18 @@ tokio = { version = "1", features = ["rt", "macros"] }
         { "type": "password", "value": "admin-dev-only", "temporary": false }
       ],
       "realmRoles": ["admin", "default-roles-snapshot"]
+    },
+    {
+      "username": "user",
+      "email": "user@snapshot.localhost",
+      "firstName": "User",
+      "lastName": "snapshot",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "admin-dev-only", "temporary": false }
+      ],
+      "realmRoles": ["default-roles-snapshot"]
     }
   ]
 }

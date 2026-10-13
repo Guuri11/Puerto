@@ -37,6 +37,7 @@ fn generate_project(name: &str, destination: &Path) -> Result<PathBuf, Box<dyn s
 }
 
 mod auth;
+mod auth_e2e;
 mod bootstrap_gen;
 mod cli_surface;
 mod compile_matrix;

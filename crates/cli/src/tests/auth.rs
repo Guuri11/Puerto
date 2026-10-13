@@ -212,6 +212,62 @@ fn new_with_auth_points_env_and_make_at_the_development_provider() {
 }
 
 #[test]
+fn new_with_auth_gives_development_a_password_grant_client_and_a_user_without_roles() {
+    let (dir, output) = new_auth_project(
+        "auth_new_token",
+        NewOptions {
+            no_db: true,
+            no_web: true,
+            ..Default::default()
+        },
+    );
+
+    let realm = read(&output, "infrastructure/keycloak/realm.json");
+    let realm: serde_json::Value = serde_json::from_str(&realm).expect("realm.json is JSON");
+    let clients = realm["clients"].as_array().unwrap();
+    let web = clients.iter().find(|c| c["clientId"] == "web").unwrap();
+    assert_eq!(
+        web["directAccessGrantsEnabled"], false,
+        "web keeps PKCE only"
+    );
+    let dev = clients.iter().find(|c| c["clientId"] == "dev-cli").unwrap();
+    assert_eq!(dev["publicClient"], true);
+    assert_eq!(dev["directAccessGrantsEnabled"], true);
+    assert_eq!(dev["standardFlowEnabled"], false);
+    assert_eq!(dev["redirectUris"], serde_json::json!([]));
+    assert_eq!(
+        dev["protocolMappers"], web["protocolMappers"],
+        "the same `api` audience as web's tokens"
+    );
+    let users = realm["users"].as_array().unwrap();
+    let user = users
+        .iter()
+        .find(|u| u["email"] == "user@auth-new-token.localhost")
+        .expect("a second user");
+    assert_eq!(
+        user["realmRoles"],
+        serde_json::json!(["default-roles-auth-new-token"]),
+        "no `admin`"
+    );
+    assert_eq!(
+        user["credentials"], users[0]["credentials"],
+        "same dev password"
+    );
+
+    let makefile = read(&output, "Makefile");
+    assert!(makefile.contains("\nauth/token: ##"), "{makefile}");
+    assert!(makefile.contains("client_id=dev-cli"), "{makefile}");
+    assert!(
+        makefile.contains("admin@auth-new-token.localhost"),
+        "admin@ by default: {makefile}"
+    );
+    let agents = read(&output, "AGENTS.md");
+    assert!(agents.contains("make -s auth/token"), "{agents}");
+    assert!(agents.contains("`dev-cli`"), "{agents}");
+    cleanup(&dir);
+}
+
+#[test]
 fn new_with_auth_adds_the_auth_section_to_agents_md() {
     let (dir, output) = new_auth_project(
         "auth_new_agents",

@@ -154,7 +154,7 @@ Every release — automated or manual — must pass:
 - [ ] `make test/db` — the `--db` scenario against Postgres
 - [ ] `make test/kafka` — the Kafka transport against Redpanda
 - [ ] `make test/mail` — the SMTP adapter against Mailpit
-- [ ] `make test/auth` — the OIDC adapter against Keycloak
+- [ ] `make test/auth` — the OIDC adapter and a generated OIDC project against Keycloak + Postgres
 - [ ] `make lint` — zero clippy warnings
 - [ ] `make format` — no formatting diff
 - [ ] `cargo package --list` — template files present in package

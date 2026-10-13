@@ -51,13 +51,27 @@ pub(super) fn free_port() -> u16 {
 
 /// One HTTP/1.1 request: `(status, body)`, or `None` when nothing answers yet.
 pub(super) fn http(port: u16, method: &str, path: &str, body: &str) -> Option<(u16, String)> {
+    http_as(port, method, path, body, None)
+}
+
+/// [`http`] with `Authorization: Bearer <token>` when there is one.
+pub(super) fn http_as(
+    port: u16,
+    method: &str,
+    path: &str,
+    body: &str,
+    token: Option<&str>,
+) -> Option<(u16, String)> {
+    let authorization = token
+        .map(|t| format!("Authorization: Bearer {t}\r\n"))
+        .unwrap_or_default();
     let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .ok()?;
     let request = format!(
         "{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\
-         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+         {authorization}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
     stream.write_all(request.as_bytes()).ok()?;
@@ -135,22 +149,37 @@ pub(super) fn build_project(
     extra_consumers: &[(&str, &[&str])],
     extra_env: &[(&str, String)],
 ) -> Option<Project> {
+    build_scenario_project(scenario, name, database, extra_env, |output| {
+        for (consumer, events) in extra_consumers {
+            let events: Vec<String> = events.iter().map(|e| e.to_string()).collect();
+            scaffold::run_generate_consumer(consumer, &events, output).unwrap();
+        }
+        scaffold::run_generate_consumer("always_retry", &["product_created".into()], output)
+            .unwrap();
+        fs::write(
+            output.join("worker/src/consumers/always_retry.rs"),
+            ALWAYS_RETRY,
+        )
+        .unwrap();
+    })
+}
+
+/// `scenario`, then `extend`, migrated into a fresh `database` and built — `None` without a
+/// test database server.
+pub(super) fn build_scenario_project(
+    scenario: &Scenario,
+    name: &str,
+    database: &str,
+    extra_env: &[(&str, String)],
+    extend: impl FnOnce(&Path),
+) -> Option<Project> {
     let server = test_database_server()?;
     let dir = scenario_workspace(&format!("{}_e2e", scenario.name));
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project(name, &dir).unwrap();
     apply_scenario(scenario, &output);
-    for (consumer, events) in extra_consumers {
-        let events: Vec<String> = events.iter().map(|e| e.to_string()).collect();
-        scaffold::run_generate_consumer(consumer, &events, &output).unwrap();
-    }
-    scaffold::run_generate_consumer("always_retry", &["product_created".into()], &output).unwrap();
-    fs::write(
-        output.join("worker/src/consumers/always_retry.rs"),
-        ALWAYS_RETRY,
-    )
-    .unwrap();
+    extend(&output);
     patch_runtime_crates(&output);
 
     let database_url = format!("{server}/{database}");
@@ -193,7 +222,7 @@ pub(super) fn build_project(
         .expect("failed to run cargo");
     if !built.status.success() {
         eprintln!("{}", String::from_utf8_lossy(&built.stderr));
-        panic!("the events project did not build");
+        panic!("the {} project did not build", scenario.name);
     }
     Some(Project { dir, output, env })
 }

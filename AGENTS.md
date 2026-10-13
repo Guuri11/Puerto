@@ -250,10 +250,12 @@ make run           # Run puerto CLI (prompts for project name)
 make test          # Fast structural tests (verifies generated file structure)
 make test/full     # Slow: generates real projects, runs their `clippy --all-targets -D warnings` + tests
                    #       and the generated frontend's checks (needs `bun` on PATH)
-make test/db       # Slow: a generated --db project against a throwaway Postgres + Mailpit (Docker + sqlx-cli)
+make test/db       # Slow: a generated --db project against a throwaway Postgres + Mailpit (Docker + sqlx-cli);
+                   #       also the e2e of a local-auth project's API (register → login → /me → logout)
 make test/kafka    # Slow: the Kafka transport against a throwaway Redpanda (+ Postgres, Mailpit; Docker, cmake)
 make test/mail     # Slow: the SMTP adapter against a throwaway Mailpit (Docker)
-make test/auth     # Slow: the OIDC adapter against a throwaway Keycloak 26.8 (Docker)
+make test/auth     # Slow: the OIDC adapter + a generated OIDC project's API against a throwaway Keycloak 26.8
+                   #       and Postgres (Docker + sqlx-cli)
 make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
 make test/snapshots # Re-record generated-output snapshots after an intended output change
 make lint          # cargo clippy --workspace --all-targets -- -D warnings
@@ -322,7 +324,9 @@ make format/fix    # cargo fmt --all
   (`puerto_auth::OidcAuthenticator`, a startup error with a hint when it is down) and hands the
   routes `.data(Arc<dyn Authenticator>)`. Keycloak 26.8 in `docker-compose.yml` with
   `infrastructure/keycloak/realm.json` (client `web`, audience mapper `api`, user
-  `admin@<project>.localhost`), `AUTH_*` in `.env`, `make auth/ui`, a root `AGENTS.md` section.
+  `admin@<project>.localhost`; a dev-only client `dev-cli` with the password grant and a user
+  `user@<project>.localhost` without roles), `AUTH_*` in `.env`, `make auth/ui`, `make -s auth/token
+  [EMAIL=…]` (an access token from `dev-cli`), a root `AGENTS.md` section.
   The Greeting demo is `public`. `scaffold` in an auth
   project: every CRUD handler takes `auth: BearerAuth` except `--public` ones, `--role` adds
   `#[require_role]` (both recorded in `[[entity]] public` / `roles`); protected params carry
