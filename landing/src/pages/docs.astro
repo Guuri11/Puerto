@@ -24,6 +24,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <a href="#database" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Database (SQLx)</a>
           <a href="#events" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Domain events</a>
           <a href="#mail" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Mail</a>
+          <a href="#auth" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Auth</a>
           <a href="#architecture" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Architecture</a>
           <a href="#runtime" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Runtime crates</a>
           <a href="#production" class="doc-link block rounded px-3 py-1.5 font-sans text-sm text-puerto-mist transition-colors hover:bg-puerto-navy hover:text-puerto-ice">Production defaults</a>
@@ -501,6 +502,36 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           </ul>
         </section>
 
+        <!-- Auth -->
+        <section id="auth" class="mt-16 scroll-mt-28">
+          <h2 class="font-mono text-2xl font-bold text-puerto-ice">Auth</h2>
+          <p class="mt-3 font-sans text-puerto-mist">
+            One port, <code class="font-mono text-xs text-puerto-mist">Authenticator</code>, answered by an OpenID Connect provider or by the project's own accounts. Chosen once, at <code class="font-mono text-xs text-puerto-ice">puerto new</code>; every scaffold after it protects its routes.
+          </p>
+          <div class="mt-4 space-y-3">
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 border-l-4 border-l-puerto-indigo bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto new --name shop --auth oidc</code>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto new --name shop --db --auth local</code>
+            </div>
+            <div class="code-block flex items-center gap-3 rounded-md border border-puerto-steel/40 bg-puerto-navy px-5 py-4">
+              <span class="font-mono text-sm text-puerto-teal select-none">$</span>
+              <code class="font-mono text-sm text-puerto-ice">puerto generate scaffold Product --public list_products,get_product --role delete_product=admin -- name:String price:i64</code>
+            </div>
+          </div>
+          <ul class="mt-4 space-y-2 font-sans text-sm text-puerto-mist">
+            <li>• <code class="font-mono text-xs text-puerto-teal">--auth oidc</code> — the API verifies the provider's bearer tokens (RS256/ES256, issuer, audience, expiry) at <code class="font-mono text-xs text-puerto-mist">AUTH_ISSUER</code>: Auth0 or any OIDC provider in production, Keycloak in <code class="font-mono text-xs text-puerto-rust">docker-compose.yml</code> for development, with a realm of its own (<code class="font-mono text-xs text-puerto-ice">make auth/ui</code>). Roles come from the token.</li>
+            <li>• <code class="font-mono text-xs text-puerto-teal">--auth local</code> — <code class="font-mono text-xs text-puerto-ice">POST /auth/register</code>, <code class="font-mono text-xs text-puerto-ice">/auth/login</code> and <code class="font-mono text-xs text-puerto-ice">/auth/logout</code>; argon2id passwords, opaque session tokens of which the database keeps only a hash. Roles are a column: <code class="font-mono text-xs text-puerto-ice">make auth/grant EMAIL=… ROLE=admin</code>.</li>
+            <li>• Every caller is a <code class="font-mono text-xs text-puerto-mist">User</code> (<code class="font-mono text-xs text-puerto-rust">business/src/domain/user/</code>) — an OIDC caller is created on their first request — and <code class="font-mono text-xs text-puerto-ice">GET /me</code> answers who the API thinks they are.</li>
+            <li>• A handler with <code class="font-mono text-xs text-puerto-mist">auth: BearerAuth</code> answers <code class="font-mono text-xs text-puerto-teal">401</code> before it runs; <code class="font-mono text-xs text-puerto-mist">#[require_role("admin")]</code> adds the <code class="font-mono text-xs text-puerto-teal">403</code>. Protected use cases receive the caller as <code class="font-mono text-xs text-puerto-mist">actor</code>. Route tests prove each 401 and 403, and <code class="font-mono text-xs text-puerto-ice">puerto validate</code> checks <code class="font-mono text-xs text-puerto-rust">routes.rs</code> still matches <code class="font-mono text-xs text-puerto-rust">puerto.toml</code>.</li>
+            <li>• With <code class="font-mono text-xs text-puerto-rust">web/</code>, the frontend signs in (the provider with PKCE, or <span class="font-mono text-xs">/login</span> and <span class="font-mono text-xs">/register</span>), wraps protected screens in <code class="font-mono text-xs text-puerto-mist">&lt;RequireAuth&gt;</code> and hides the actions a role guards.</li>
+            <li>• Calling the API by hand in an OIDC project: <code class="font-mono text-xs text-puerto-ice">curl -H "Authorization: Bearer $(make -s auth/token)" …</code> — a development-only client of the generated realm.</li>
+          </ul>
+        </section>
+
         <!-- Architecture -->
         <section id="architecture" class="mt-16 scroll-mt-28">
           <h2 class="font-mono text-2xl font-bold text-puerto-ice">Architecture</h2>
@@ -551,12 +582,13 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 </tr>
               </thead>
               <tbody>
-                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">puerto-core</td><td class="py-2 pr-6 text-xs"><code class="text-puerto-ice">RepositoryError</code>, <code class="text-puerto-ice">PageRequest</code>, <code class="text-puerto-ice">Page&lt;T&gt;</code>; the event envelope, <code class="text-puerto-ice">EventHandler</code> and the transport ports — no I/O, no runtime</td><td class="py-2 font-mono text-xs">business</td></tr>
-                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-rust">puerto-web</td><td class="py-2 pr-6 text-xs">the server (tracing, CORS, graceful shutdown), <code class="text-puerto-ice">Config::from_env</code>, <code class="text-puerto-ice">/health</code> + <code class="text-puerto-ice">/health/ready</code>, <code class="text-puerto-ice">ErrorResponse</code></td><td class="py-2 font-mono text-xs">presentation</td></tr>
-                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-indigo-light">puerto-sqlx</td><td class="py-2 pr-6 text-xs">the Postgres pool, migrations at startup, the readiness ping, <code class="text-puerto-ice">map_sqlx_error</code>; with events, the unit of work, the outbox and the <code class="text-puerto-ice">db</code> transport</td><td class="py-2 whitespace-nowrap font-mono text-xs">infrastructure (<span class="text-puerto-teal">--db</span>)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">puerto-core</td><td class="py-2 pr-6 text-xs"><code class="text-puerto-ice">RepositoryError</code>, <code class="text-puerto-ice">PageRequest</code>, <code class="text-puerto-ice">Page&lt;T&gt;</code>; the event envelope, <code class="text-puerto-ice">EventHandler</code> and the transport ports; <code class="text-puerto-ice">Principal</code>, <code class="text-puerto-ice">Authenticator</code> — no I/O, no runtime</td><td class="py-2 font-mono text-xs">business</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-rust">puerto-web</td><td class="py-2 pr-6 text-xs">the server (tracing, CORS, graceful shutdown), <code class="text-puerto-ice">Config::from_env</code>, <code class="text-puerto-ice">/health</code> + <code class="text-puerto-ice">/health/ready</code>, <code class="text-puerto-ice">ErrorResponse</code>; <code class="text-puerto-ice">BearerAuth</code> and <code class="text-puerto-ice">#[require_role]</code> (from <span class="text-puerto-teal">puerto-macros</span>)</td><td class="py-2 font-mono text-xs">presentation</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-indigo-light">puerto-sqlx</td><td class="py-2 pr-6 text-xs">the Postgres pool, migrations at startup, the readiness ping, <code class="text-puerto-ice">map_sqlx_error</code>; with events, the unit of work, the outbox and the <code class="text-puerto-ice">db</code> transport; local accounts' sessions and credentials</td><td class="py-2 whitespace-nowrap font-mono text-xs">infrastructure (<span class="text-puerto-teal">--db</span>)</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">puerto-events</td><td class="py-2 pr-6 text-xs">the worker: the outbox relay, the consume loops and their delivery policy, health probes, graceful shutdown</td><td class="py-2 whitespace-nowrap font-mono text-xs">worker (<span class="text-puerto-teal">--events</span>)</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-rust">puerto-kafka</td><td class="py-2 pr-6 text-xs">the Kafka transport: <code class="text-puerto-ice">KafkaPublisher</code>, <code class="text-puerto-ice">KafkaSubscription</code></td><td class="py-2 whitespace-nowrap font-mono text-xs">worker (<span class="text-puerto-teal">--events kafka</span>)</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-indigo-light">puerto-mail</td><td class="py-2 pr-6 text-xs">mail: <code class="text-puerto-ice">SmtpMailer</code>, <code class="text-puerto-ice">Templates</code>, <code class="text-puerto-ice">send_once</code>, test fakes</td><td class="py-2 whitespace-nowrap font-mono text-xs">infrastructure, worker (<span class="text-puerto-teal">generate mail</span>)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">puerto-auth</td><td class="py-2 pr-6 text-xs">auth adapters: <code class="text-puerto-ice">OidcAuthenticator</code> (discovery, JWKS), <code class="text-puerto-ice">Argon2Hasher</code></td><td class="py-2 whitespace-nowrap font-mono text-xs">infrastructure (<span class="text-puerto-teal">--auth</span>)</td></tr>
               </tbody>
             </table>
           </div>
@@ -613,8 +645,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 </tr>
               </thead>
               <tbody>
-                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">puerto new</td><td class="py-2 text-xs">New workspace — <code class="text-puerto-ice">--name</code>, <code class="text-puerto-ice">--db</code> / <code class="text-puerto-ice">--no-db</code>, <code class="text-puerto-ice">--events db|kafka</code>, <code class="text-puerto-ice">--no-demo</code>, <code class="text-puerto-ice">--no-web</code>, <code class="text-puerto-ice">--destination</code></td></tr>
-                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate scaffold &lt;Name&gt;</td><td class="py-2 text-xs">Every layer of an entity, its screens and its migration — fields after <code class="text-puerto-ice">--</code>, <code class="text-puerto-ice">--force</code> to overwrite</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">puerto new</td><td class="py-2 text-xs">New workspace — <code class="text-puerto-ice">--name</code>, <code class="text-puerto-ice">--db</code> / <code class="text-puerto-ice">--no-db</code>, <code class="text-puerto-ice">--events db|kafka</code>, <code class="text-puerto-ice">--auth oidc|local</code>, <code class="text-puerto-ice">--no-demo</code>, <code class="text-puerto-ice">--no-web</code>, <code class="text-puerto-ice">--destination</code></td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate scaffold &lt;Name&gt;</td><td class="py-2 text-xs">Every layer of an entity, its screens and its migration — fields after <code class="text-puerto-ice">--</code>, <code class="text-puerto-ice">--force</code> to overwrite; in an auth project <code class="text-puerto-ice">--public uc,…</code> and <code class="text-puerto-ice">--role uc=role</code></td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate &lt;layer&gt; &lt;Name&gt;</td><td class="py-2 text-xs">One layer at a time: <code class="text-puerto-ice">domain</code>, <code class="text-puerto-ice">application</code>, <code class="text-puerto-ice">repository</code>, <code class="text-puerto-ice">presentation</code>, <code class="text-puerto-ice">web</code> (which takes <code class="text-puerto-ice">--force</code>)</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate use-case &lt;Entity&gt; &lt;action&gt;</td><td class="py-2 text-xs">A use case trait, its implementation and its mock, wired into the entity's API</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-teal">generate value-object &lt;Name&gt; &lt;type&gt;</td><td class="py-2 text-xs">A shared value object any entity can use by name</td></tr>
@@ -639,6 +671,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make web/dev · make web/sync</td><td class="py-2 text-xs">The frontend on <code class="text-puerto-teal">:5173</code> · the API types after a DTO change</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make sqlx/migrate · make sqlx/prepare</td><td class="py-2 text-xs">Apply migrations · refresh the offline query cache</td></tr>
                 <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make events/dead-letters</td><td class="py-2 text-xs">The 20 most recent events no consumer could handle</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make auth/ui · make -s auth/token</td><td class="py-2 text-xs">OIDC: the Keycloak console · a development access token (<code class="text-puerto-teal">EMAIL=user@…</code> for one without roles)</td></tr>
+                <tr class="border-b border-puerto-steel/10"><td class="py-2 pr-6 whitespace-nowrap font-mono text-xs text-puerto-ice">make auth/grant EMAIL= ROLE=</td><td class="py-2 text-xs">Local accounts: give one a role, from its next request</td></tr>
               </tbody>
             </table>
           </div>

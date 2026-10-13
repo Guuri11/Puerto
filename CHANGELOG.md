@@ -1,3 +1,57 @@
+## [0.19.0] - 2026-10-13
+
+Auth (PLAN Phase 16, [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md)): one
+`Authenticator` port, answered by an OpenID Connect provider (Auth0, Keycloak) or by accounts and
+sessions in the project's own database. A project without `--auth` is generated exactly as in 0.18.
+
+### 🚀 Features
+
+- **`puerto new --auth oidc`**: the API verifies the provider's bearer tokens (RS256/ES256, `iss`,
+  `aud`, `exp`/`nbf`, JWKS refetched on an unknown `kid` at most once a minute). Written once and
+  yours: the `User` entity (in memory, or `PgUserRepository` with a `users` migration in `--db`),
+  `ProvisioningAuthenticator` (a caller becomes a `User` on their first request) and `GET /me`.
+  Keycloak 26.8 in `docker-compose.yml` with a realm of its own (client `web`, PKCE; a dev-only
+  password-grant client `dev-cli`; `admin@<project>.localhost` with `admin`, `user@` without),
+  `AUTH_*` in `.env`, `make auth/ui`, `make -s auth/token [EMAIL=…]`, an Auth section in `AGENTS.md`
+- **`puerto new --db --auth local`**: accounts in Postgres — `POST /auth/register`, `/auth/login`
+  (an opaque session token; the row keeps its SHA-256), `/auth/logout`; argon2id passwords; an
+  unknown email and a wrong password get the same 401 in the same time. `AUTH_SESSION_TTL`,
+  `make auth/grant EMAIL=… ROLE=…`
+- **Protected scaffolds**: in an auth project every CRUD handler takes `auth: BearerAuth`
+  (401 `auth.unauthenticated`, 503 `auth.unavailable`) except `--public <uc>,…`;
+  `--role <uc>=<role>` adds `#[require_role("<role>")]` (403 `auth.forbidden`; two roles: both
+  required). Protected params carry `actor: Principal`; route tests sign in through a
+  `MockAuthenticator` and add a 401 per protected route and a 403 per role. `generate use-case`
+  protects the new use case too
+- **The frontend signs in**: OIDC through `oidc-client-ts` (token in memory, `/auth/callback`),
+  local through `/login` and `/register` (token in `localStorage`). `AuthProvider` / `useAuth` /
+  `RequireAuth`, a bearer middleware, a user menu; generated routes wrap protected screens in
+  `<RequireAuth>` and screens hide the actions a role guards (`can(role)`)
+- `puerto.toml` gains `[project] auth = "oidc" | "local"` and `[[entity]] public` / `roles`;
+  `puerto validate` checks them and that `routes.rs` still says the same (`BearerAuth`,
+  `require_role`)
+- New runtime crates **`puerto-macros`** (`#[require_role]`, reached as `puerto_web::require_role`)
+  and **`puerto-auth`** (`OidcAuthenticator`, `Argon2Hasher`). `puerto-core::auth` (`Principal`,
+  `Authenticator`, the local ports and their mocks), `puerto-web::auth` (`BearerAuth`,
+  `forbidden()`, `bearer_token`), `puerto-sqlx::auth` (`PgSessions`, `PgCredentials`, the `users`
+  and `auth` migrations)
+- `make test/auth` runs the OIDC adapter and a generated OIDC project's API against Keycloak +
+  Postgres; `make test/db` runs a local-auth project's API end to end
+
+### 🐛 Bug Fixes
+
+- `puerto new --auth oidc --no-demo` compiles: auth runs after the demo strip
+
+### Migration Guide
+
+Nothing to migrate: 0.19 changes no project generated without `--auth`. Bump the runtime crates to
+`0.19`. In an auth project, `User`, `Me` and `Auth` are reserved entity names.
+
+### Release
+
+- Publish order: `puerto-core` → `puerto-macros` → `puerto-web` → `puerto-sqlx` →
+  `puerto-events` → `puerto-kafka` → `puerto-mail` → `puerto-auth` → `puerto`
+
 ## [0.18.0] - 2026-10-12
 
 Mail (PLAN Phase 14, [ADR-0020](docs/adr/0020-mail-port-per-mail-sent-from-the-worker.md)): a

@@ -295,7 +295,7 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
             </svg>
           </div>
           <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Zero Boilerplate</h3>
-          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Full DDD entity across all layers with one command. Repository traits, mocks, unit tests and route tests included.</p>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed">Full DDD entity across all layers with one command. Repository traits, mocks, unit tests and route tests included — and wired: <code class="text-puerto-indigo-light text-xs">bootstrap.rs</code> is generated from <code class="text-puerto-indigo-light text-xs">puerto.toml</code>.</p>
         </div>
 
         <!-- Type-Safe -->
@@ -309,15 +309,15 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
           <p class="font-sans text-sm text-puerto-mist leading-relaxed">Strict Rust types from domain to API layer. Define fields once in <code class="text-puerto-teal text-xs">puerto.toml</code> — structs, DTOs, and SQL columns are generated with the right types automatically. Every entity's id is its own type.</p>
         </div>
 
-        <!-- Auto-wired DI -->
+        <!-- Auth -->
         <div class="feature-card group rounded-lg border border-puerto-steel/40 bg-puerto-deep p-6 shadow-card transition-colors hover:border-puerto-rust">
           <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-puerto-rust/10">
             <svg class="h-5 w-5 text-puerto-rust" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
             </svg>
           </div>
-          <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Auto-wired DI</h3>
-          <p class="font-sans text-sm text-puerto-mist leading-relaxed"><code class="text-puerto-rust text-xs">bootstrap.rs</code> generated automatically from <code class="text-puerto-rust text-xs">puerto.toml</code>. No manual dependency wiring.</p>
+          <h3 class="mb-2 font-mono text-base font-semibold text-puerto-ice">Auth, OIDC or Local</h3>
+          <p class="font-sans text-sm text-puerto-mist leading-relaxed"><code class="text-puerto-rust text-xs">--auth oidc</code> verifies Auth0 or Keycloak tokens; <code class="text-puerto-rust text-xs">--auth local</code> keeps accounts and sessions in Postgres. Every scaffolded route is protected unless <code class="text-puerto-rust text-xs">--public</code>; <code class="text-puerto-rust text-xs">--role</code> adds a 403 check — with its tests, and screens that sign in.</p>
         </div>
 
         <!-- SQLx -->
