@@ -2723,6 +2723,35 @@ Tier 1 (web template + slices).
 
 ### 16.6 — `puerto new --auth local` (backend)
 
+Design, settled when starting it (2026-10-13) — where it differs from the list below, this wins:
+- **Ports in `puerto-core::auth`** (as mail's are in `puerto_core::mail`), with mocks behind
+  `test-utils`: `PasswordHasher` (`async hash`, `async verify(password, Option<String>)` — the hash `CredentialStore` answered; `None`
+  runs the same work against a fixed hash and answers `false`, so an unknown email costs what a
+  wrong password costs), `CredentialStore` (`set_password_hash`, `password_hash` by user id),
+  `SessionStore` (`open(user_id) -> Session { token, expires_at }`, `revoke(token)`). The
+  generated use cases depend on these, never on argon2 or sqlx.
+- **`puerto-auth`, feature `local`**: `Argon2Hasher` (argon2id, crate defaults, on
+  `spawn_blocking`) implements `PasswordHasher`; `hash_password` / `verify_password` underneath.
+- **`puerto-sqlx::auth`** owns the session token (32 random bytes, base64url; the row keeps its
+  SHA-256), not `puerto-auth`: `PgSessions` hashes the presented token on every request, and a
+  `puerto-sqlx → puerto-auth` dependency would reorder the release for nothing. `PgSessions`
+  implements `SessionStore` and `Authenticator` (a join on `users`; unknown → `Invalid`, past
+  `expires_at` → `Expired`, store down → `Unavailable`); `PgCredentials` implements
+  `CredentialStore`. `session_ttl_from_env()`: `AUTH_SESSION_TTL` as `<n>d|h|m`, default `30d`.
+- **`users.sql` moves into `puerto-sqlx`** (`USERS_MIGRATION`): `PgSessions` reads the table, so
+  its schema is a runtime contract now. The CLI's copy stays byte for byte (tested, like
+  `outbox.sql`); `AUTH_MIGRATION` (`credentials`, `sessions`, both referencing `users`) after it.
+- **A local user** is `User::register(email, name)`: issuer `local`, subject the email trimmed and
+  lowercased, so `UNIQUE (issuer, subject)` makes the email unique. `register_user` writes the user,
+  then its credentials; a user left without credentials (the second write failed) is taken over by
+  the next registration with that email instead of answering `user.duplicate` forever.
+- `UserError` (local) adds `ValidationError` (`email_invalid`, `password_too_short`),
+  `InvalidCredentials` (`auth.invalid_credentials`, 401) and `Unknown` (a hasher failure, 500).
+  `POST /auth/register` answers `201` with the `MeDto` of the new user; `POST /auth/logout` takes
+  `BearerAuth` and revokes the presented token (read from the request).
+- **`--auth local` needs `--db`, and `--no-web` until 16.7** (no frontend can sign in yet): both
+  refused before anything is written. The matrix scenario `AUTH_LOCAL` is `no_web` until then.
+
 Tier 1. New matrix scenario `AUTH_LOCAL` (db, web; `make test/db`).
 - `puerto-auth`, feature `local`: `hash_password` / `verify_password` (argon2id, crate defaults),
   `SessionToken::generate()` (32 random bytes, base64url) and `SessionToken::hash()` (SHA-256).

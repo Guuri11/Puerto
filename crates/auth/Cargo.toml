@@ -3,7 +3,7 @@ name = "puerto-auth"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Puerto runtime — auth for Puerto projects: the OIDC adapter of the Authenticator port (Auth0, Keycloak or any OpenID Connect provider)."
+description = "Puerto runtime — auth for Puerto projects: the OIDC adapter of the Authenticator port (Auth0, Keycloak or any OpenID Connect provider) and argon2id password hashing for local accounts."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -13,6 +13,9 @@ categories = ["authentication", "web-programming"]
 [features]
 # The OIDC adapter (ADR-0021 § 1): `OidcAuthenticator`, `OidcConfig`, `RolesClaim`.
 oidc = ["dep:jsonwebtoken", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio"]
+# Local accounts (ADR-0021 § 2): `local::Argon2Hasher`, the `PasswordHasher` of a `--auth local`
+# project. The sessions are `puerto-sqlx`'s.
+local = ["dep:argon2", "dep:tokio", "tokio/rt"]
 
 [dependencies]
 puerto-core = { workspace = true }
@@ -27,11 +30,13 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 tokio = { version = "1", features = ["sync"], optional = true }
+# argon2id with the crate's defaults (19 MiB, 2 passes): what OWASP recommends. Pure Rust.
+argon2 = { version = "0.5", features = ["std"], optional = true }
 uuid = "1"
 
 [dev-dependencies]
 # Its own features for its tests: `make test` builds the workspace without features.
-puerto-auth = { path = ".", features = ["oidc"] }
+puerto-auth = { path = ".", features = ["oidc", "local"] }
 # PEM keys sign the test tokens.
 jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto", "use_pem"] }
 base64 = "0.22"

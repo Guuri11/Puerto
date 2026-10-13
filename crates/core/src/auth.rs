@@ -4,8 +4,11 @@
 //! side (`BearerAuth`, `#[require_role]`) `puerto-web`'s.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::RepositoryError;
 
 /// The authenticated caller.
 ///
@@ -90,6 +93,60 @@ pub trait Authenticator: Send + Sync {
     async fn authenticate(&self, token: &str) -> Result<Principal, AuthError>;
 }
 
+// ── Local mode (ADR-0021 § 2): the API is the identity provider ─────────────────
+
+/// Hashing a password failed — ours, not the caller's (500).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("auth.hash_failed")]
+pub struct HashError;
+
+/// Turns passwords into stored hashes and checks them. `puerto_auth::Argon2Hasher` in a project;
+/// the generated `register_user` and `login` use cases see only this port.
+#[async_trait]
+pub trait PasswordHasher: Send + Sync {
+    async fn hash(&self, password: &str) -> Result<String, HashError>;
+
+    /// Whether `password` matches `hash`. `None` — an unknown email — still does the work against
+    /// a fixed hash and answers `false`: the caller cannot tell the two cases apart by the time
+    /// the answer takes.
+    async fn verify(&self, password: &str, hash: Option<String>) -> bool;
+}
+
+/// Where each user's password hash is kept, apart from the user (`User` carries no secret).
+#[async_trait]
+pub trait CredentialStore: Send + Sync {
+    async fn password_hash(&self, user_id: Uuid) -> Result<Option<String>, RepositoryError>;
+    /// Sets or replaces the user's hash.
+    async fn set_password_hash(&self, user_id: Uuid, hash: &str) -> Result<(), RepositoryError>;
+}
+
+/// A session `login` opened: the opaque token the client sends back as a bearer token, and when
+/// it stops being accepted.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Session {
+    pub token: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+impl Session {
+    pub fn new(token: impl Into<String>, expires_at: DateTime<Utc>) -> Self {
+        Self {
+            token: token.into(),
+            expires_at,
+        }
+    }
+}
+
+/// Opens and revokes sessions. `puerto_sqlx::auth::PgSessions` keeps them, and is the
+/// [`Authenticator`] of a local project too.
+#[async_trait]
+pub trait SessionStore: Send + Sync {
+    async fn open(&self, user_id: Uuid) -> Result<Session, RepositoryError>;
+    /// Revokes the session `token` opened; an unknown token is already revoked.
+    async fn revoke(&self, token: &str) -> Result<(), RepositoryError>;
+}
+
 #[cfg(any(test, feature = "test-utils"))]
 pub mod mocks {
     use super::*;
@@ -103,11 +160,43 @@ pub mod mocks {
             async fn authenticate(&self, token: &str) -> Result<Principal, AuthError>;
         }
     }
+
+    mock! {
+        pub PasswordHasher {}
+
+        #[async_trait]
+        impl PasswordHasher for PasswordHasher {
+            async fn hash(&self, password: &str) -> Result<String, HashError>;
+            async fn verify(&self, password: &str, hash: Option<String>) -> bool;
+        }
+    }
+
+    mock! {
+        pub CredentialStore {}
+
+        #[async_trait]
+        impl CredentialStore for CredentialStore {
+            async fn password_hash(&self, user_id: Uuid) -> Result<Option<String>, RepositoryError>;
+            async fn set_password_hash(&self, user_id: Uuid, hash: &str) -> Result<(), RepositoryError>;
+        }
+    }
+
+    mock! {
+        pub SessionStore {}
+
+        #[async_trait]
+        impl SessionStore for SessionStore {
+            async fn open(&self, user_id: Uuid) -> Result<Session, RepositoryError>;
+            async fn revoke(&self, token: &str) -> Result<(), RepositoryError>;
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::mocks::MockAuthenticator;
+    use super::mocks::{
+        MockAuthenticator, MockCredentialStore, MockPasswordHasher, MockSessionStore,
+    };
     use super::*;
 
     #[test]
@@ -162,6 +251,55 @@ mod tests {
         assert_eq!(AuthError::Invalid.to_string(), "auth.invalid");
         assert_eq!(AuthError::Expired.to_string(), "auth.expired");
         assert_eq!(AuthError::Unavailable.to_string(), "auth.unavailable");
+    }
+
+    #[test]
+    fn should_keep_the_token_and_its_expiry_when_a_session_is_built() {
+        // Arrange
+        let expires_at = chrono::Utc::now();
+
+        // Act
+        let session = Session::new("opaque", expires_at);
+
+        // Assert
+        assert_eq!(session.token, "opaque");
+        assert_eq!(session.expires_at, expires_at);
+        assert_eq!(HashError.to_string(), "auth.hash_failed");
+    }
+
+    #[tokio::test]
+    async fn should_drive_the_local_ports_when_mocked() {
+        // Arrange
+        let user_id = Uuid::now_v7();
+        let mut hasher = MockPasswordHasher::new();
+        hasher
+            .expect_verify()
+            .returning(|password, hash| hash.as_deref() == Some("h") && password == "secret");
+        let mut credentials = MockCredentialStore::new();
+        credentials
+            .expect_password_hash()
+            .returning(|_| Ok(Some("h".to_string())));
+        let mut sessions = MockSessionStore::new();
+        sessions
+            .expect_open()
+            .returning(|_| Ok(Session::new("t", chrono::Utc::now())));
+        let (hasher, credentials, sessions): (
+            &dyn PasswordHasher,
+            &dyn CredentialStore,
+            &dyn SessionStore,
+        ) = (&hasher, &credentials, &sessions);
+
+        // Act
+        let hash = credentials.password_hash(user_id).await;
+        let accepted = hasher.verify("secret", Some("h".to_string())).await;
+        let unknown = hasher.verify("secret", None).await;
+        let session = sessions.open(user_id).await;
+
+        // Assert
+        assert_eq!(hash, Ok(Some("h".to_string())));
+        assert!(accepted);
+        assert!(!unknown);
+        assert_eq!(session.map(|s| s.token), Ok("t".to_string()));
     }
 
     #[tokio::test]
