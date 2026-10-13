@@ -270,6 +270,11 @@ navigation, no lazy loading; a use case that needs the customer asks its reposit
   repository's (or unit of work's) `REFERENCES: &[ForeignKey]`, to
   `RepositoryError::MissingReference("customer_id")` → `OrderError::ValidationError("customer_id_not_found")` → 422
 - Soft deletes leave references pointing at the deleted row; in-memory projects check nothing
+- The list filters by each reference (18.4): `ListOrdersParams { page, customer_id:
+  Option<CustomerId>, … }` → `find_all(page, OrderFilter { customer_id, … })` — `OrderFilter` is
+  declared next to the port, only for an entity with references. Pg: one static query, `AND
+  ($3::uuid IS NULL OR customer_id = $3)` on the page and its `COUNT`. `GET
+  /orders?customerId=&limit=&offset=`
 
 ### Domain events (`[project] events` — ADR-0018)
 

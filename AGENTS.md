@@ -365,7 +365,9 @@ make format/fix    # cargo fmt --all
   Pg repository (unit of work in `events` projects) maps `23503` through its `REFERENCES` table to
   `RepositoryError::MissingReference(field)`, which `errors.rs` turns into
   `ValidationError("customer_id_not_found")` (422). Pg tests seed targets through the target's
-  `integration_tests::seed` (every Pg repository's test module is `pub(crate)`). `scaffold` refuses
+  `integration_tests::seed` (every Pg repository's test module is `pub(crate)`). The list filters
+  by each reference: `GET /orders?customerId=` → `ListOrdersParams { customer_id }` →
+  `find_all(page, OrderFilter)` (Pg: `$3::uuid IS NULL OR customer_id = $3`). `scaffold` refuses
   a target with no code yet; no self references, `vec:ref:` or `ref:User` yet
 - `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
   (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`

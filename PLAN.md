@@ -3008,7 +3008,7 @@ and `references_db` (the same with `--db --events db`, `clippy -D warnings` + te
 `make test/db` runs the Pg tests above and an API e2e: creating an order for an unknown customer
 answers 422 `order.validation_error.customer_id_not_found`. Snapshots re-recorded.
 
-### 18.4 — List by reference
+### 18.4 — List by reference ✅
 
 - `ListOrdersParams { page, customer_id: Option<CustomerId> }` — one optional filter per
   reference; `find_all(page, filter: OrderFilter)` with `OrderFilter { customer_id:

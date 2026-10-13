@@ -113,7 +113,9 @@ place, and an invalid value is an error code (`product.invalid_name`, `422`) eve
 An entity refers to another by its id, never by holding it: a use case that needs the customer asks
 the customer's repository. With a database the column is a foreign key, and a write naming a
 customer that does not exist answers `422` `order.validation_error.customer_id_not_found`.
-Deleting a customer (a soft delete) leaves its orders pointing at it.
+Deleting a customer (a soft delete) leaves its orders pointing at it. The list filters by each
+reference: `GET /orders?customerId=…` (`ListOrdersParams { customer_id }`, `OrderFilter` in the
+repository port).
 
 ### Generated vs yours
 
@@ -1415,7 +1417,7 @@ use puerto_core::Page;
 use crate::domain::order::{
     errors::OrderError,
     model::Order,
-    repository::OrderRepositoryTrait,
+    repository::{OrderFilter, OrderRepositoryTrait},
     use_cases::list_orders::{ListOrdersParams, ListOrdersUseCaseTrait},
 };
 
@@ -1432,7 +1434,13 @@ impl ListOrdersUseCaseTrait for ListOrdersUseCaseImpl {
             "list_orders: start"
         );
         self.repository
-            .find_all(params.page)
+            .find_all(
+                params.page,
+                OrderFilter {
+                    customer_id: params.customer_id,
+                    reviewer_id: params.reviewer_id,
+                },
+            )
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_orders: repository failed"))
             .map_err(OrderError::from)
@@ -1468,7 +1476,7 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page, _| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListOrdersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -1476,6 +1484,8 @@ mod tests {
         let result = use_case
             .execute(ListOrdersParams {
                 page: PageRequest::default(),
+                customer_id: None,
+                reviewer_id: None,
             })
             .await;
 
@@ -1489,7 +1499,7 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
         let use_case = ListOrdersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -1497,6 +1507,8 @@ mod tests {
         let result = use_case
             .execute(ListOrdersParams {
                 page: PageRequest::default(),
+                customer_id: None,
+                reviewer_id: None,
             })
             .await;
 
@@ -1510,8 +1522,8 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page, _| page.limit() == 5 && page.offset() == 10)
+            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
         let use_case = ListOrdersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -1519,10 +1531,38 @@ mod tests {
         let result = use_case
             .execute(ListOrdersParams {
                 page: PageRequest::new(Some(5), Some(10)),
+                customer_id: None,
+                reviewer_id: None,
             })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_filter_to_the_repository() {
+        let filter = OrderFilter {
+            customer_id: Some(CustomerId::generate()),
+            reviewer_id: Some(CustomerId::generate()),
+        };
+        let mut mock_repo = MockOrderRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(move |_, f| *f == filter)
+            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListOrdersUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListOrdersParams {
+                page: PageRequest::default(),
+                customer_id: filter.customer_id,
+                reviewer_id: filter.reviewer_id,
+            })
+            .await;
+
+        assert!(result.is_ok());
     }
 }
 
@@ -1980,7 +2020,7 @@ use puerto_core::Page;
 use crate::domain::shipment::{
     errors::ShipmentError,
     model::Shipment,
-    repository::ShipmentRepositoryTrait,
+    repository::{ShipmentFilter, ShipmentRepositoryTrait},
     use_cases::list_shipments::{ListShipmentsParams, ListShipmentsUseCaseTrait},
 };
 
@@ -1997,7 +2037,12 @@ impl ListShipmentsUseCaseTrait for ListShipmentsUseCaseImpl {
             "list_shipments: start"
         );
         self.repository
-            .find_all(params.page)
+            .find_all(
+                params.page,
+                ShipmentFilter {
+                    order_id: params.order_id,
+                },
+            )
             .await
             .inspect_err(|e| tracing::error!(error = %e, "list_shipments: repository failed"))
             .map_err(ShipmentError::from)
@@ -2031,7 +2076,7 @@ mod tests {
         let mut mock_repo = MockShipmentRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page, _| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = ListShipmentsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -2039,6 +2084,7 @@ mod tests {
         let result = use_case
             .execute(ListShipmentsParams {
                 page: PageRequest::default(),
+                order_id: None,
             })
             .await;
 
@@ -2052,7 +2098,7 @@ mod tests {
         let mut mock_repo = MockShipmentRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
         let use_case = ListShipmentsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -2060,6 +2106,7 @@ mod tests {
         let result = use_case
             .execute(ListShipmentsParams {
                 page: PageRequest::default(),
+                order_id: None,
             })
             .await;
 
@@ -2073,8 +2120,8 @@ mod tests {
         let mut mock_repo = MockShipmentRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page, _| page.limit() == 5 && page.offset() == 10)
+            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
         let use_case = ListShipmentsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -2082,10 +2129,35 @@ mod tests {
         let result = use_case
             .execute(ListShipmentsParams {
                 page: PageRequest::new(Some(5), Some(10)),
+                order_id: None,
             })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_filter_to_the_repository() {
+        let filter = ShipmentFilter {
+            order_id: Some(OrderId::generate()),
+        };
+        let mut mock_repo = MockShipmentRepository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(move |_, f| *f == filter)
+            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+        let use_case = ListShipmentsUseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(ListShipmentsParams {
+                page: PageRequest::default(),
+                order_id: filter.order_id,
+            })
+            .await;
+
+        assert!(result.is_ok());
     }
 }
 
@@ -2779,10 +2851,22 @@ use async_trait::async_trait;
 use puerto_core::{Page, PageRequest, RepositoryError};
 
 use super::model::{Order, OrderId};
+use crate::domain::customer::model::CustomerId;
+
+/// What `find_all` narrows the page to: one id per reference, `None` does not filter.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OrderFilter {
+    pub customer_id: Option<CustomerId>,
+    pub reviewer_id: Option<CustomerId>,
+}
 
 #[async_trait]
 pub trait OrderRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
+    async fn find_all(
+        &self,
+        page: PageRequest,
+        filter: OrderFilter,
+    ) -> Result<Page<Order>, RepositoryError>;
     async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
     async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
 }
@@ -2798,7 +2882,7 @@ pub mod mocks {
 
         #[async_trait]
         impl OrderRepositoryTrait for OrderRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest, filter: OrderFilter) -> Result<Page<Order>, RepositoryError>;
             async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
             async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
         }
@@ -2908,11 +2992,16 @@ pub mod mocks {
 use async_trait::async_trait;
 use puerto_core::{Page, PageRequest};
 
+use crate::domain::customer::model::CustomerId;
 use crate::domain::order::{errors::OrderError, model::Order};
 
 #[derive(Debug, Clone)]
 pub struct ListOrdersParams {
     pub page: PageRequest,
+    /// Only the orders whose `customer_id` is this one, when set.
+    pub customer_id: Option<CustomerId>,
+    /// Only the orders whose `reviewer_id` is this one, when set.
+    pub reviewer_id: Option<CustomerId>,
 }
 
 #[async_trait]
@@ -3153,10 +3242,21 @@ use async_trait::async_trait;
 use puerto_core::{Page, PageRequest, RepositoryError};
 
 use super::model::{Shipment, ShipmentId};
+use crate::domain::order::model::OrderId;
+
+/// What `find_all` narrows the page to: one id per reference, `None` does not filter.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ShipmentFilter {
+    pub order_id: Option<OrderId>,
+}
 
 #[async_trait]
 pub trait ShipmentRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Shipment>, RepositoryError>;
+    async fn find_all(
+        &self,
+        page: PageRequest,
+        filter: ShipmentFilter,
+    ) -> Result<Page<Shipment>, RepositoryError>;
     async fn find_by_id(&self, id: ShipmentId) -> Result<Option<Shipment>, RepositoryError>;
     async fn save(&self, entity: &Shipment) -> Result<(), RepositoryError>;
 }
@@ -3172,7 +3272,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ShipmentRepositoryTrait for ShipmentRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Shipment>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest, filter: ShipmentFilter) -> Result<Page<Shipment>, RepositoryError>;
             async fn find_by_id(&self, id: ShipmentId) -> Result<Option<Shipment>, RepositoryError>;
             async fn save(&self, entity: &Shipment) -> Result<(), RepositoryError>;
         }
@@ -3281,11 +3381,14 @@ pub mod mocks {
 use async_trait::async_trait;
 use puerto_core::{Page, PageRequest};
 
+use crate::domain::order::model::OrderId;
 use crate::domain::shipment::{errors::ShipmentError, model::Shipment};
 
 #[derive(Debug, Clone)]
 pub struct ListShipmentsParams {
     pub page: PageRequest,
+    /// Only the shipments whose `order_id` is this one, when set.
+    pub order_id: Option<OrderId>,
 }
 
 #[async_trait]
@@ -4121,7 +4224,7 @@ use sqlx::PgPool;
 
 use business::domain::order::{
     model::{Order, OrderId},
-    repository::OrderRepositoryTrait,
+    repository::{OrderFilter, OrderRepositoryTrait},
 };
 use puerto_core::{Page, PageRequest, RepositoryError};
 
@@ -4162,15 +4265,24 @@ fn to_domain(row: OrderDb) -> Result<Order, RepositoryError> {
 
 #[async_trait]
 impl OrderRepositoryTrait for PgOrderRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError> {
+    async fn find_all(
+        &self,
+        page: PageRequest,
+        filter: OrderFilter,
+    ) -> Result<Page<Order>, RepositoryError> {
         tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        // One static query whatever the filter: an unset id is NULL and matches every row.
+        let customer_id = filter.customer_id.map(|id| id.value());
+        let reviewer_id = filter.reviewer_id.map(|id| id.value());
         let rows = sqlx::query_as!(
             OrderDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, customer_id, reviewer_id, total
-             FROM orders WHERE deleted = false
+             FROM orders WHERE deleted = false AND ($3::uuid IS NULL OR customer_id = $3) AND ($4::uuid IS NULL OR reviewer_id = $4)
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
             i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.offset()),
+            customer_id,
+            reviewer_id
         )
         .fetch_all(&self.pool)
         .await
@@ -4178,14 +4290,17 @@ impl OrderRepositoryTrait for PgOrderRepository {
             tracing::error!(error = %e, "find_all failed");
             map_sqlx_error(&e)
         })?;
-        let total =
-            sqlx::query_scalar!(r#"SELECT COUNT(*) AS "total!" FROM orders WHERE deleted = false"#)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "find_all count failed");
-                    map_sqlx_error(&e)
-                })?;
+        let total = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) AS "total!" FROM orders WHERE deleted = false AND ($1::uuid IS NULL OR customer_id = $1) AND ($2::uuid IS NULL OR reviewer_id = $2)"#,
+            customer_id,
+            reviewer_id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "find_all count failed");
+            map_sqlx_error(&e)
+        })?;
 
         let items = rows
             .into_iter()
@@ -4328,7 +4443,7 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default())
+            .find_all(PageRequest::default(), OrderFilter::default())
             .await
             .unwrap();
 
@@ -4346,7 +4461,7 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PageRequest::new(Some(2), Some(2)), OrderFilter::default())
             .await
             .unwrap();
 
@@ -4386,6 +4501,64 @@ pub(crate) mod integration_tests {
             result.unwrap_err(),
             RepositoryError::MissingReference("reviewer_id")
         );
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_list_only_the_orders_of_the_requested_customer_id(pool: PgPool) {
+        // Arrange: one order with this customer_id, one without.
+        let target = crate::customer::repository::integration_tests::seed(&pool).await;
+        let mut wanted = build(&pool).await;
+        wanted.customer_id = target.id;
+        test_repo(pool.clone()).save(&wanted).await.unwrap();
+        seed(&pool).await;
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(
+                PageRequest::default(),
+                OrderFilter {
+                    customer_id: Some(target.id),
+                    reviewer_id: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(
+            page.items.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![wanted.id]
+        );
+        assert_eq!(page.total, 1);
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_list_only_the_orders_of_the_requested_reviewer_id(pool: PgPool) {
+        // Arrange: one order with this reviewer_id, one without.
+        let target = crate::customer::repository::integration_tests::seed(&pool).await;
+        let mut wanted = build(&pool).await;
+        wanted.reviewer_id = Some(target.id);
+        test_repo(pool.clone()).save(&wanted).await.unwrap();
+        seed(&pool).await;
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(
+                PageRequest::default(),
+                OrderFilter {
+                    customer_id: None,
+                    reviewer_id: Some(target.id),
+                },
+            )
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(
+            page.items.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![wanted.id]
+        );
+        assert_eq!(page.total, 1);
     }
 }
 
@@ -4448,7 +4621,7 @@ use sqlx::PgPool;
 
 use business::domain::shipment::{
     model::{Shipment, ShipmentId},
-    repository::ShipmentRepositoryTrait,
+    repository::{ShipmentFilter, ShipmentRepositoryTrait},
 };
 use puerto_core::{Page, PageRequest, RepositoryError};
 
@@ -4483,15 +4656,22 @@ fn to_domain(row: ShipmentDb) -> Result<Shipment, RepositoryError> {
 
 #[async_trait]
 impl ShipmentRepositoryTrait for PgShipmentRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Shipment>, RepositoryError> {
+    async fn find_all(
+        &self,
+        page: PageRequest,
+        filter: ShipmentFilter,
+    ) -> Result<Page<Shipment>, RepositoryError> {
         tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+        // One static query whatever the filter: an unset id is NULL and matches every row.
+        let order_id = filter.order_id.map(|id| id.value());
         let rows = sqlx::query_as!(
             ShipmentDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, order_id, carrier
-             FROM shipments WHERE deleted = false
+             FROM shipments WHERE deleted = false AND ($3::uuid IS NULL OR order_id = $3)
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
             i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.offset()),
+            order_id
         )
         .fetch_all(&self.pool)
         .await
@@ -4500,7 +4680,8 @@ impl ShipmentRepositoryTrait for PgShipmentRepository {
             map_sqlx_error(&e)
         })?;
         let total = sqlx::query_scalar!(
-            r#"SELECT COUNT(*) AS "total!" FROM shipments WHERE deleted = false"#
+            r#"SELECT COUNT(*) AS "total!" FROM shipments WHERE deleted = false AND ($1::uuid IS NULL OR order_id = $1)"#,
+            order_id
         )
         .fetch_one(&self.pool)
         .await
@@ -4653,7 +4834,7 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default())
+            .find_all(PageRequest::default(), ShipmentFilter::default())
             .await
             .unwrap();
 
@@ -4671,7 +4852,10 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(
+                PageRequest::new(Some(2), Some(2)),
+                ShipmentFilter::default(),
+            )
             .await
             .unwrap();
 
@@ -4709,6 +4893,34 @@ pub(crate) mod integration_tests {
             result.unwrap_err(),
             RepositoryError::MissingReference("order_id")
         );
+    }
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_list_only_the_shipments_of_the_requested_order_id(pool: PgPool) {
+        // Arrange: one shipment with this order_id, one without.
+        let target = crate::order::repository::integration_tests::seed(&pool).await;
+        let mut wanted = build(&pool).await;
+        wanted.order_id = target.id;
+        test_repo(pool.clone()).save(&wanted).await.unwrap();
+        seed(&pool).await;
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(
+                PageRequest::default(),
+                ShipmentFilter {
+                    order_id: Some(target.id),
+                },
+            )
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(
+            page.items.iter().map(|row| row.id).collect::<Vec<_>>(),
+            vec![wanted.id]
+        );
+        assert_eq!(page.total, 1);
     }
 }
 
@@ -5801,11 +6013,15 @@ impl OrderApi {
         &self,
         limit: Query<Option<u32>>,
         offset: Query<Option<u32>>,
+        #[oai(name = "customerId")] customer_id: Query<Option<Uuid>>,
+        #[oai(name = "reviewerId")] reviewer_id: Query<Option<Uuid>>,
     ) -> ListOrdersResponse {
         match self
             .list_orders
             .execute(ListOrdersParams {
                 page: PageRequest::new(limit.0, offset.0),
+                customer_id: customer_id.0.map(CustomerId::from_uuid),
+                reviewer_id: reviewer_id.0.map(CustomerId::from_uuid),
             })
             .await
         {
@@ -6083,6 +6299,50 @@ mod tests {
 
         // Act
         let response = mocks.client().get("/orders?limit=5&offset=10").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_customer_id_filter_to_the_use_case() {
+        // Arrange
+        let customer_id = Uuid::new_v4();
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(move |params| params.customer_id == Some(CustomerId::from_uuid(customer_id)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks
+            .client()
+            .get(format!("/orders?customerId={customer_id}"))
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_reviewer_id_filter_to_the_use_case() {
+        // Arrange
+        let reviewer_id = Uuid::new_v4();
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(move |params| params.reviewer_id == Some(CustomerId::from_uuid(reviewer_id)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks
+            .client()
+            .get(format!("/orders?reviewerId={reviewer_id}"))
+            .send()
+            .await;
 
         // Assert
         response.assert_status(StatusCode::OK);
@@ -6548,11 +6808,13 @@ impl ShipmentApi {
         &self,
         limit: Query<Option<u32>>,
         offset: Query<Option<u32>>,
+        #[oai(name = "orderId")] order_id: Query<Option<Uuid>>,
     ) -> ListShipmentsResponse {
         match self
             .list_shipments
             .execute(ListShipmentsParams {
                 page: PageRequest::new(limit.0, offset.0),
+                order_id: order_id.0.map(OrderId::from_uuid),
             })
             .await
         {
@@ -6806,6 +7068,28 @@ mod tests {
         let response = mocks
             .client()
             .get("/shipments?limit=5&offset=10")
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn should_pass_the_order_id_filter_to_the_use_case() {
+        // Arrange
+        let order_id = Uuid::new_v4();
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(move |params| params.order_id == Some(OrderId::from_uuid(order_id)))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks
+            .client()
+            .get(format!("/shipments?orderId={order_id}"))
             .send()
             .await;
 

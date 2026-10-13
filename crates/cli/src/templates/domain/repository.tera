@@ -2,10 +2,17 @@ use async_trait::async_trait;
 use puerto_core::{Page, PageRequest, RepositoryError};
 
 use super::model::{{ "{" }}{{ pascal }}, {{ pascal }}Id};
-
+{% for import in reference_imports %}use {{ import }};
+{% endfor %}{% set refs = fields | filter(attribute="is_ref", value=true) %}{% if refs %}
+/// What `find_all` narrows the page to: one id per reference, `None` does not filter.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct {{ pascal }}Filter {
+{% for r in refs %}    pub {{ r.name }}: Option<{{ r.ref_target }}Id>,
+{% endfor %}}
+{% endif %}
 #[async_trait]
 pub trait {{ pascal }}RepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<{{ pascal }}>, RepositoryError>;
+    async fn find_all(&self, page: PageRequest{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Page<{{ pascal }}>, RepositoryError>;
     async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
 {% if events %}    // No `save`: writes go through `{{ pascal }}UnitOfWorkFactory`, which records their events.
 {% else %}    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
@@ -22,7 +29,7 @@ pub mod mocks {
 
         #[async_trait]
         impl {{ pascal }}RepositoryTrait for {{ pascal }}Repository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<{{ pascal }}>, RepositoryError>;
+            async fn find_all(&self, page: PageRequest{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Page<{{ pascal }}>, RepositoryError>;
             async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
 {% if not events %}            async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
 {% endif %}        }

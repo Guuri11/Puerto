@@ -1,4 +1,4 @@
-use std::sync::Arc;
+{% set refs = fields | filter(attribute="is_ref", value=true) %}use std::sync::Arc;
 
 use business::domain::{{ snake }}::model::{{ pascal }}Id;
 {% for import in reference_imports %}use {{ import }};
@@ -82,13 +82,14 @@ impl {{ pascal }}Api {
     /// List {{ plural_pascal }}, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.list.roles %}    #[require_role("{{ role }}")]
-{% endfor %}    async fn list(&self, {% if access.list.protected %}auth: BearerAuth, {% endif %}limit: Query<Option<u32>>, offset: Query<Option<u32>>) -> List{{ plural_pascal }}Response {
+{% endfor %}    async fn list(&self, {% if access.list.protected %}auth: BearerAuth, {% endif %}limit: Query<Option<u32>>, offset: Query<Option<u32>>{% for r in refs %}, #[oai(name = "{{ r.camel }}")] {{ r.name }}: Query<Option<Uuid>>{% endfor %}) -> List{{ plural_pascal }}Response {
         match self
             .list_{{ plural }}
             .execute(List{{ plural_pascal }}Params {
 {% if access.list.protected %}                actor: auth.0,
 {% endif %}                page: PageRequest::new(limit.0, offset.0),
-            })
+{% for r in refs %}                {{ r.name }}: {{ r.name }}.0.map({{ r.ref_target }}Id::from_uuid),
+{% endfor %}            })
             .await
         {
             Ok(page) => List{{ plural_pascal }}Response::Ok(Json({{ pascal }}PageDto::from_domain(&page))),
@@ -359,7 +360,25 @@ mod tests {
         response.assert_status(StatusCode::OK);
     }
 
-    #[tokio::test]
+{% for r in refs %}    #[tokio::test]
+    async fn should_pass_the_{{ r.name }}_filter_to_the_use_case() {
+        // Arrange
+        let {{ r.name }} = Uuid::new_v4();
+        let mut mocks = Mocks::default();
+        mocks
+            .list
+            .expect_execute()
+            .withf(move |params| params.{{ r.name }} == Some({{ r.ref_target }}Id::from_uuid({{ r.name }})))
+            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+
+        // Act
+        let response = mocks.client().get(format!("/{{ plural }}?{{ r.camel }}={{ "{" }}{{ r.name }}}")).send().await;
+
+        // Assert
+        response.assert_status(StatusCode::OK);
+    }
+
+{% endfor %}    #[tokio::test]
     async fn should_respond_500_when_listing_fails_in_the_repository() {
         // Arrange
         let mut mocks = Mocks::default();

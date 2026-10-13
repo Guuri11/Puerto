@@ -1,4 +1,4 @@
-{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% set refs = fields | filter(attribute="is_ref", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 use puerto_core::Page;
@@ -6,7 +6,7 @@ use puerto_core::Page;
 use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
     model::{{ pascal }},
-    repository::{{ pascal }}RepositoryTrait,
+    repository::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
     use_cases::list_{{ plural }}::{List{{ plural_pascal }}Params, List{{ plural_pascal }}UseCaseTrait},
 };
 
@@ -19,8 +19,14 @@ impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl 
     async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Page<{{ pascal }}>, {{ pascal }}Error> {
         tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_{{ plural }}: start");
         self.repository
-            .find_all(params.page)
-            .await
+{% if refs %}            .find_all(
+                params.page,
+                {{ pascal }}Filter {
+{% for r in refs %}                    {{ r.name }}: params.{{ r.name }},
+{% endfor %}                },
+            )
+{% else %}            .find_all(params.page)
+{% endif %}            .await
             .inspect_err(|e| tracing::error!(error = %e, "list_{{ plural }}: repository failed"))
             .map_err({{ pascal }}Error::from)
     }
@@ -36,7 +42,8 @@ mod tests {
         repository::mocks::Mock{{ pascal }}Repository,
     };
 {% for import in test_imports %}    use {{ import }};
-{% endfor %}
+{% endfor %}{% for import in reference_imports %}{% if import not in test_imports %}    use {{ import }};
+{% endif %}{% endfor %}
 
     #[tokio::test]
     async fn should_return_the_page_of_{{ plural }}() {
@@ -49,13 +56,13 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page{% if refs %}, _{% endif %}| Ok(Page::new(entities.clone(), 2, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::default() })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
         let page = result.unwrap();
@@ -68,13 +75,13 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page{% if refs %}, _{% endif %}| Ok(Page::new(vec![], 0, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::default() })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
         let page = result.unwrap();
@@ -87,16 +94,41 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page{% if refs %}, _{% endif %}| page.limit() == 5 && page.offset() == 10)
+            .returning(|page{% if refs %}, _{% endif %}| Ok(Page::new(vec![], 0, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::new(Some(5), Some(10)) })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::new(Some(5), Some(10)){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
         assert_eq!(result.unwrap().offset, 10);
     }
-}
+{% if refs %}
+    #[tokio::test]
+    async fn should_pass_the_filter_to_the_repository() {
+        let filter = {{ pascal }}Filter {
+{% for r in refs %}            {{ r.name }}: Some({{ r.ref_target }}Id::generate()),
+{% endfor %}        };
+        let mut mock_repo = Mock{{ pascal }}Repository::new();
+        mock_repo
+            .expect_find_all()
+            .withf(move |_, f| *f == filter)
+            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+        let use_case = List{{ plural_pascal }}UseCaseImpl {
+            repository: Arc::new(mock_repo),
+        };
+
+        let result = use_case
+            .execute(List{{ plural_pascal }}Params {
+{% if actor %}                actor: PrincipalMother::random(),
+{% endif %}                page: PageRequest::default(),
+{% for r in refs %}                {{ r.name }}: filter.{{ r.name }},
+{% endfor %}            })
+            .await;
+
+        assert!(result.is_ok());
+    }
+{% endif %}}

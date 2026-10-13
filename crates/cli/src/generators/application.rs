@@ -77,6 +77,10 @@ fn use_case_context(
     ctx.insert("fields", &field_ctxs);
     ctx.insert("vo_imports", &vo_imports);
     ctx.insert("test_imports", &tests);
+    // Every reference's id: the list's filter test names the optional ones too.
+    let mut reference_imports = vec![];
+    crate::generators::domain::push_reference_imports(&mut reference_imports, &eff, "crate");
+    ctx.insert("reference_imports", &reference_imports);
     ctx
 }
 

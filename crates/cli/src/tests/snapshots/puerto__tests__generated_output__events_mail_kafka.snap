@@ -133,7 +133,9 @@ place, and an invalid value is an error code (`product.invalid_name`, `422`) eve
 An entity refers to another by its id, never by holding it: a use case that needs the customer asks
 the customer's repository. With a database the column is a foreign key, and a write naming a
 customer that does not exist answers `422` `order.validation_error.customer_id_not_found`.
-Deleting a customer (a soft delete) leaves its orders pointing at it.
+Deleting a customer (a soft delete) leaves its orders pointing at it. The list filters by each
+reference: `GET /orders?customerId=…` (`ListOrdersParams { customer_id }`, `OrderFilter` in the
+repository port).
 
 ### Generated vs yours
 

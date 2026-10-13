@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use async_trait::async_trait;
+{% set refs = fields | filter(attribute="is_ref", value=true) %}use async_trait::async_trait;
 use business::domain::{{ snake }}::{
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
-    repository::{{ pascal }}RepositoryTrait,
+    repository::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
 };
 use puerto_core::{Page, PageRequest, RepositoryError};
 
@@ -35,10 +35,14 @@ impl InMemory{{ pascal }}Repository {
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<{{ pascal }}>, RepositoryError> {
+    async fn find_all(&self, page: PageRequest{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Page<{{ pascal }}>, RepositoryError> {
         tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
         let rows = self.read();
-        let mut live: Vec<&{{ pascal }}> = rows.values().filter(|row| !row.deleted).collect();
+        let mut live: Vec<&{{ pascal }}> = rows
+            .values()
+            .filter(|row| !row.deleted)
+{% for r in refs %}            .filter(|row| filter.{{ r.name }}.is_none_or(|id| row.{{ r.name }} == {% if r.field_type is starting_with("Option<") %}Some(id){% else %}id{% endif %}))
+{% endfor %}            .collect();
         live.sort_by(|a, b| {
             b.created_at
                 .cmp(&a.created_at)
@@ -117,7 +121,7 @@ mod tests {
         repo.save(&entity).await.unwrap();
 
         // Assert
-        let page = repo.find_all(PageRequest::default()).await.unwrap();
+        let page = repo.find_all(PageRequest::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.items[0].updated_at, entity.updated_at);
     }
@@ -133,7 +137,7 @@ mod tests {
 
         // Act
         let found = repo.find_by_id(entity.id).await.unwrap();
-        let page = repo.find_all(PageRequest::default()).await.unwrap();
+        let page = repo.find_all(PageRequest::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
 
         // Assert
         assert!(found.is_none());
@@ -149,7 +153,7 @@ mod tests {
         }
 
         // Act
-        let page = repo.find_all(PageRequest::new(Some(2), Some(2))).await.unwrap();
+        let page = repo.find_all(PageRequest::new(Some(2), Some(2)){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
 
         // Assert
         assert_eq!(page.items.len(), 1);
@@ -171,5 +175,31 @@ mod tests {
 
         // Assert
         assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+    }
+{% endfor %}{% for r in refs %}
+    #[tokio::test]
+    async fn should_list_only_the_{{ plural }}_of_the_requested_{{ r.name }}() {
+        // Arrange: one {{ snake }} with this {{ r.name }}, one without.
+        let repo = InMemory{{ pascal }}Repository::new();
+        let {{ r.name }} = {{ r.ref_target }}Id::generate();
+        let mut wanted = new_{{ snake }}();
+        wanted.{{ r.name }} = {% if r.field_type is starting_with("Option<") %}Some({{ r.name }}){% else %}{{ r.name }}{% endif %};
+        repo.save(&wanted).await.unwrap();
+        repo.save(&new_{{ snake }}()).await.unwrap();
+
+        // Act
+        let page = repo
+            .find_all(
+                PageRequest::default(),
+                {{ pascal }}Filter {
+{% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some({{ r.name }}){% else %}None{% endif %},
+{% endfor %}                },
+            )
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.iter().map(|row| row.id).collect::<Vec<_>>(), vec![wanted.id]);
+        assert_eq!(page.total, 1);
     }
 {% endfor %}}

@@ -316,10 +316,19 @@ pub fn write_domain_files(
     if let Some(first) = eff.iter().find(|f| is_reference(f)) {
         errors_ctx.insert("first_reference", &first.name);
     }
-    let ctx = entity_ctx(pascal, snake);
+    // The repository port and the list's Params filter by each reference (18.4).
+    let mut ctx = entity_ctx(pascal, snake);
+    let field_ctxs: Vec<FieldCtx> = eff
+        .iter()
+        .map(|f| field_ctx(f, pascal, shared_vos))
+        .collect();
+    let mut reference_imports = vec![];
+    push_reference_imports(&mut reference_imports, &eff, "crate");
+    ctx.insert("fields", &field_ctxs);
+    ctx.insert("reference_imports", &reference_imports);
     let config = crate::puerto_toml::read(base).ok();
     let events = config.as_ref().is_some_and(|c| c.project.has_events());
-    let mut repository_ctx = entity_ctx(pascal, snake);
+    let mut repository_ctx = ctx.clone();
     repository_ctx.insert("events", &events);
 
     write(

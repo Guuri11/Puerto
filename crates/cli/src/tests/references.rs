@@ -717,6 +717,31 @@ fn postgres_references_project_answers_422_on_the_field_of_a_missing_reference()
         "{body}"
     );
 
+    // The list filters by customer (18.4): another customer's order is left out, page and total.
+    let (status, body) = http(
+        port,
+        "POST",
+        "/api/customers",
+        r#"{"name":"Grace","email":"grace@example.com"}"#,
+    )
+    .unwrap();
+    assert_eq!(status, 201, "{body}");
+    let other: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let other = other["id"].as_str().unwrap().to_string();
+    let (status, body) = http(port, "POST", "/api/orders", &order(&other, "null")).unwrap();
+    assert_eq!(status, 201, "{body}");
+    let (status, body) = http(
+        port,
+        "GET",
+        &format!("/api/orders?customerId={customer}"),
+        "",
+    )
+    .unwrap();
+    assert_eq!(status, 200, "{body}");
+    let page: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(page["total"], 1, "{body}");
+    assert_eq!(page["items"][0]["customerId"], customer.as_str(), "{body}");
+
     drop(api);
     cleanup(&project.dir);
 }
@@ -739,6 +764,147 @@ fn should_test_that_create_reports_a_missing_reference_on_its_field() {
             );
             assert!(create.contains(&format!("RepositoryError::MissingReference(\"{field}\")")));
             assert!(create.contains(&format!("\"order.validation_error.{field}_not_found\"")));
+        }
+
+        cleanup(&dir);
+    }
+}
+
+// ── 18.4: list by reference ─────────────────────────────────────────────────
+
+#[test]
+fn should_filter_the_list_by_each_reference_in_the_domain() {
+    let (dir, output) = order_project("references_filter_domain", false, false);
+
+    let repository = read(&output, "business/src/domain/order/repository.rs");
+    assert!(
+        repository.contains("use crate::domain::customer::model::CustomerId;"),
+        "{repository}"
+    );
+    assert!(
+        repository.contains(
+            "pub struct OrderFilter {\n    pub customer_id: Option<CustomerId>,\n    pub reviewer_id: Option<CustomerId>,\n}"
+        ),
+        "{repository}"
+    );
+    assert_eq!(
+        repository
+            .matches("async fn find_all(&self, page: PageRequest, filter: OrderFilter)")
+            .count(),
+        2,
+        "the port and its mock: {repository}"
+    );
+    let params = read(
+        &output,
+        "business/src/domain/order/use_cases/list_orders.rs",
+    );
+    assert!(
+        params.contains("pub customer_id: Option<CustomerId>,"),
+        "{params}"
+    );
+    assert!(
+        params.contains("pub reviewer_id: Option<CustomerId>,"),
+        "{params}"
+    );
+
+    // An entity without references keeps today's port.
+    let customer = read(&output, "business/src/domain/customer/repository.rs");
+    assert!(!customer.contains("Filter"), "{customer}");
+    assert!(
+        customer.contains("async fn find_all(&self, page: PageRequest)"),
+        "{customer}"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn should_pass_the_filter_from_the_use_case_to_the_repository() {
+    let (dir, output) = order_project("references_filter_application", false, false);
+
+    let list = read(&output, "business/src/application/order/list_orders.rs");
+    assert!(
+        list.contains(
+            "OrderFilter {\n                    customer_id: params.customer_id,\n                    reviewer_id: params.reviewer_id,\n                }"
+        ),
+        "{list}"
+    );
+    assert!(
+        list.contains("async fn should_pass_the_filter_to_the_repository()"),
+        "{list}"
+    );
+
+    let repo = read(&output, "infrastructure/src/order/repository.rs");
+    assert!(
+        repo.contains(".is_none_or(|id| row.customer_id == id)"),
+        "{repo}"
+    );
+    assert!(
+        repo.contains(".is_none_or(|id| row.reviewer_id == Some(id))"),
+        "{repo}"
+    );
+    assert!(
+        repo.contains("async fn should_list_only_the_orders_of_the_requested_customer_id()"),
+        "{repo}"
+    );
+
+    cleanup(&dir);
+}
+
+#[test]
+fn should_take_each_reference_filter_as_a_camel_case_query_parameter() {
+    let (dir, output) = order_project("references_filter_api", false, false);
+
+    let routes = read(&output, "presentation/src/api/order/routes.rs");
+    assert!(
+        routes.contains("#[oai(name = \"customerId\")] customer_id: Query<Option<Uuid>>"),
+        "{routes}"
+    );
+    assert!(
+        routes.contains("customer_id: customer_id.0.map(CustomerId::from_uuid),"),
+        "{routes}"
+    );
+    assert!(
+        routes.contains("async fn should_pass_the_reviewer_id_filter_to_the_use_case()"),
+        "{routes}"
+    );
+    assert!(routes.contains("?reviewerId={reviewer_id}"), "{routes}");
+
+    cleanup(&dir);
+}
+
+#[test]
+fn should_filter_the_page_and_its_total_in_postgres() {
+    for (name, events) in [
+        ("references_filter_pg", false),
+        ("references_filter_pg_events", true),
+    ] {
+        let (dir, output) = order_project(name, true, events);
+
+        let repo = read(&output, "infrastructure/src/order/repository.rs");
+        assert!(
+            repo.contains(
+                "FROM orders WHERE deleted = false AND ($3::uuid IS NULL OR customer_id = $3) AND ($4::uuid IS NULL OR reviewer_id = $4)"
+            ),
+            "events = {events}: {repo}"
+        );
+        assert!(
+            repo.contains(
+                "FROM orders WHERE deleted = false AND ($1::uuid IS NULL OR customer_id = $1) AND ($2::uuid IS NULL OR reviewer_id = $2)"
+            ),
+            "the COUNT, events = {events}: {repo}"
+        );
+        assert!(
+            repo.contains("filter.customer_id.map(|id| id.value())"),
+            "{repo}"
+        );
+        for field in ["customer_id", "reviewer_id"] {
+            assert!(
+                repo.contains(&format!(
+                    "async fn should_list_only_the_orders_of_the_requested_{field}(pool: PgPool)"
+                )),
+                "events = {events}: {repo}"
+            );
         }
 
         cleanup(&dir);

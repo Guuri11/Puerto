@@ -3,9 +3,9 @@ use sqlx::PgPool;
 {% if has_map %}use sqlx::types::Json;
 use std::collections::HashMap;
 {% endif %}
-use business::domain::{{ snake }}::{
+{% set refs = fields | filter(attribute="is_ref", value=true) %}use business::domain::{{ snake }}::{
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
-    repository::{{ pascal }}RepositoryTrait,
+    repository::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
 };
 use puerto_core::{Page, PageRequest, RepositoryError};
 
@@ -34,15 +34,18 @@ fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, RepositoryError> {
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<{{ pascal }}>, RepositoryError> {
+    async fn find_all(&self, page: PageRequest{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Page<{{ pascal }}>, RepositoryError> {
         tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
-        let rows = sqlx::query_as!(
+{% if refs %}        // One static query whatever the filter: an unset id is NULL and matches every row.
+{% for r in refs %}        let {{ r.name }} = filter.{{ r.name }}.map(|id| id.value());
+{% endfor %}{% endif %}        let rows = sqlx::query_as!(
             {{ pascal }}Db,
             "SELECT {{ select_cols }}
-             FROM {{ plural }} WHERE deleted = false
+             FROM {{ plural }} WHERE {{ page_where }}
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
             i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.offset()){% for r in refs %},
+            {{ r.name }}{% endfor %}
         )
         .fetch_all(&self.pool)
         .await
@@ -51,7 +54,8 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
             map_sqlx_error(&e)
         })?;
         let total = sqlx::query_scalar!(
-            r#"SELECT COUNT(*) AS "total!" FROM {{ plural }} WHERE deleted = false"#
+            r#"SELECT COUNT(*) AS "total!" FROM {{ plural }} WHERE {{ count_where }}"#{% for r in refs %},
+            {{ r.name }}{% endfor %}
         )
         .fetch_one(&self.pool)
         .await
@@ -202,7 +206,7 @@ pub(crate) mod integration_tests {
         {% if events %}store(&pool, &deleted).await;{% else %}test_repo(pool.clone()).save(&deleted).await.unwrap();{% endif %}
 
         // Act
-        let page = test_repo(pool).find_all(PageRequest::default()).await.unwrap();
+        let page = test_repo(pool).find_all(PageRequest::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
 
         // Assert
         assert_eq!(page.items.len(), 1);
@@ -218,7 +222,7 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PageRequest::new(Some(2), Some(2)){% if refs %}, {{ pascal }}Filter::default(){% endif %})
             .await
             .unwrap();
 
@@ -256,4 +260,30 @@ pub(crate) mod integration_tests {
         // Assert
         assert_eq!(result.unwrap_err(), RepositoryError::MissingReference("{{ r.field }}"));
     }
-{% endfor %}{% endif %}}
+{% endfor %}{% endif %}{% for r in refs %}
+
+    #[sqlx::test(migrations = "./migrations")]
+    async fn should_list_only_the_{{ plural }}_of_the_requested_{{ r.name }}(pool: PgPool) {
+        // Arrange: one {{ snake }} with this {{ r.name }}, one without.
+        let target = crate::{{ r.ref_target_snake }}::repository::integration_tests::seed(&pool).await;
+        let mut wanted = build({% if seeds_references %}&pool).await{% else %}){% endif %};
+        wanted.{{ r.name }} = {% if r.field_type is starting_with("Option<") %}Some(target.id){% else %}target.id{% endif %};
+        {% if events %}store(&pool, &wanted).await;{% else %}test_repo(pool.clone()).save(&wanted).await.unwrap();{% endif %}
+        seed(&pool).await;
+
+        // Act
+        let page = test_repo(pool)
+            .find_all(
+                PageRequest::default(),
+                {{ pascal }}Filter {
+{% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some(target.id){% else %}None{% endif %},
+{% endfor %}                },
+            )
+            .await
+            .unwrap();
+
+        // Assert
+        assert_eq!(page.items.iter().map(|row| row.id).collect::<Vec<_>>(), vec![wanted.id]);
+        assert_eq!(page.total, 1);
+    }
+{% endfor %}}

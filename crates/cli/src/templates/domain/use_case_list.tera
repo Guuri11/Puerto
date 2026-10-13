@@ -3,14 +3,17 @@ use async_trait::async_trait;
 {% endif %}use puerto_core::{Page, PageRequest};
 
 use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
-
+{% for import in reference_imports %}use {{ import }};
+{% endfor %}
 #[derive(Debug, Clone)]
 pub struct List{{ plural_pascal }}Params {
 {% if actor %}    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
     /// it here and answers `Forbidden`.
     pub actor: Principal,
 {% endif %}    pub page: PageRequest,
-}
+{% for r in fields | filter(attribute="is_ref", value=true) %}    /// Only the {{ plural }} whose `{{ r.name }}` is this one, when set.
+    pub {{ r.name }}: Option<{{ r.ref_target }}Id>,
+{% endfor %}}
 
 #[async_trait]
 pub trait List{{ plural_pascal }}UseCaseTrait: Send + Sync {

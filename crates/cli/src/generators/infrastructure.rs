@@ -64,6 +64,21 @@ fn sql_params_list(n: usize) -> String {
     format!("$1, $2, $3, $4, $5{custom}")
 }
 
+/// The `WHERE` of the list's page (`first` = 3, after `LIMIT` and `OFFSET`) or of its `COUNT`
+/// (`first` = 1): live rows, then one `($n::uuid IS NULL OR field = $n)` per reference (18.4).
+fn sql_list_where(eff: &[Field], first: usize) -> String {
+    let filters: String = eff
+        .iter()
+        .filter(|f| is_reference(f))
+        .enumerate()
+        .map(|(i, f)| {
+            let n = first + i;
+            format!(" AND (${n}::uuid IS NULL OR {} = ${n})", f.name)
+        })
+        .collect();
+    format!("deleted = false{filters}")
+}
+
 fn sql_conflict_set(eff: &[Field]) -> String {
     let custom: String = eff
         .iter()
@@ -181,6 +196,8 @@ fn pg_crud_ctx(
     ctx.insert("has_map", &eff.iter().any(|f| f.field_type == MAP_TYPE));
     ctx.insert("all_params", &sql_params_list(5 + eff.len()));
     ctx.insert("all_updates", &sql_conflict_set(&eff));
+    ctx.insert("page_where", &sql_list_where(&eff, 3));
+    ctx.insert("count_where", &sql_list_where(&eff, 1));
     ctx
 }
 
@@ -332,14 +349,11 @@ pub fn write_repository_files(
             &base.join(format!("infrastructure/src/{snake}/repository.rs")),
             &render(
                 "infrastructure/repository_inmemory_crud.tera",
-                // A required reference is seeded `CustomerId::generate()`: nothing checks it.
+                // A reference is seeded, and filtered by, `CustomerId::generate()`: nothing
+                // checks it.
                 &seed_ctx_with(pascal, snake, fields, shared_vos, &{
-                    let required: Vec<Field> = effective_fields(fields)
-                        .into_iter()
-                        .filter(|f| !f.field_type.starts_with("Option<"))
-                        .collect();
                     let mut imports = vec![];
-                    push_reference_imports(&mut imports, &required, "business");
+                    push_reference_imports(&mut imports, &effective_fields(fields), "business");
                     imports
                 }),
             )?,

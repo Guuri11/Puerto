@@ -306,6 +306,8 @@ pub fn field_rust_type(field: &Field) -> String {
 #[derive(Debug, serde::Serialize)]
 pub struct FieldCtx {
     pub name: String,
+    /// The name on the wire (`customerId`): DTOs say it with `rename_all`, a query parameter by name.
+    pub camel: String,
     /// `unique = true`: a partial unique index in `--db` projects.
     pub unique: bool,
     /// The type in domain structs: the VO name, `Option<Vo>`, `Vec<Vo>`, or the primitive.
@@ -370,6 +372,7 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         .to_string();
     let ref_target = field.references.clone().unwrap_or_default();
     FieldCtx {
+        camel: crate::generators::naming::snake_to_camel(&field.name),
         params_literal: if is_reference(field) {
             props_literal(field)
         } else {
