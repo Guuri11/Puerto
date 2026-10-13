@@ -20,7 +20,12 @@
 //!
 //! A worker that sends mail (ADR-0020) keeps what it sent in [`mail::PgSentMails`], over
 //! [`SENT_MAILS_MIGRATION`].
+//!
+//! A project with local accounts (ADR-0021 § 2) keeps their passwords and sessions in
+//! [`auth::PgCredentials`] and [`auth::PgSessions`], over [`USERS_MIGRATION`] and
+//! [`AUTH_MIGRATION`].
 
+pub mod auth;
 pub mod events;
 pub mod mail;
 pub mod uow;
@@ -38,6 +43,15 @@ pub const OUTBOX_MIGRATION: &str = include_str!("../migrations/outbox.sql");
 /// The sent-mail log (`migrations/sent_mails.sql`). Puerto's CLI ships a byte-for-byte copy of it
 /// as a project migration.
 pub const SENT_MAILS_MIGRATION: &str = include_str!("../migrations/sent_mails.sql");
+
+/// The users every auth project has (`migrations/users.sql`): [`auth::PgSessions`] reads it, so its
+/// schema is part of this crate's contract. Puerto's CLI ships a byte-for-byte copy of it as a
+/// project migration.
+pub const USERS_MIGRATION: &str = include_str!("../migrations/users.sql");
+
+/// The credentials and sessions of local accounts (`migrations/auth.sql`), after
+/// [`USERS_MIGRATION`]. Puerto's CLI ships a byte-for-byte copy of it as a project migration.
+pub const AUTH_MIGRATION: &str = include_str!("../migrations/auth.sql");
 
 /// Why the database could not be used at startup — read by the person starting the process, so
 /// it says where and why, never the password.

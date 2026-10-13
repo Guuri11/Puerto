@@ -3,7 +3,7 @@ name = "puerto-sqlx"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Puerto runtime — the Postgres adapter every Puerto project with a database shares: the pool, migrations at startup, the readiness ping, the driver-error mapping, the unit of work, outbox and event delivery store, and the sent-mail log."
+description = "Puerto runtime — the Postgres adapter every Puerto project with a database shares: the pool, migrations at startup, the readiness ping, the driver-error mapping, the unit of work, outbox and event delivery store, the sent-mail log, and the sessions and credentials of local accounts."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -21,6 +21,11 @@ serde_json = "1"
 tokio = { version = "1", features = ["sync"] }
 tracing = "0.1"
 uuid = { version = "1", features = ["v7"] }
+# Local accounts (ADR-0021 § 2): session tokens and their hashes, `AUTH_SESSION_TTL` from `.env`.
+base64 = "0.22"
+dotenvy = "0.15"
+getrandom = "0.3"
+sha2 = "0.10"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

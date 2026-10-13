@@ -579,3 +579,15 @@ fn sent_mails_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with()
     assert_eq!(template, runtime);
     assert!(runtime_lib.contains(r#"include_str!("../migrations/sent_mails.sql")"#));
 }
+
+// Phase 16.6 (ADR-0021): `puerto-sqlx`'s `PgSessions` joins the `users` table `puerto new --auth`
+// writes, so the two must be one schema (`USERS_MIGRATION` embeds that file).
+#[test]
+fn users_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
+    let template = include_str!("../templates/auth/users.sql");
+    let runtime = include_str!("../../../sqlx/migrations/users.sql");
+    let runtime_lib = include_str!("../../../sqlx/src/lib.rs");
+
+    assert_eq!(template, runtime);
+    assert!(runtime_lib.contains(r#"include_str!("../migrations/users.sql")"#));
+}
