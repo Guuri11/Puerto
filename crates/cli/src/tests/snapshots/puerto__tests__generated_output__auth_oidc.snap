@@ -246,7 +246,7 @@ test/infrastructure: ## Run infrastructure layer tests (requires DB)
 
 lint: ## Clippy with -D warnings
 	@echo "${CYAN}Linting code...${NC}"
-	$(CARGO) clippy --workspace -- -D warnings
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	@if [ -d web ]; then $(MAKE) web/lint; fi
 
 format: ## Check code formatting

@@ -2877,7 +2877,7 @@ sqlx/prepare`.
 `create_<snake>_table` migration, with its first body; `generate repository` after a scaffold
 writes none; a first scaffold still writes one (existing tests).
 
-### 17.1 — `make lint` lints the tests too
+### 17.1 — `make lint` lints the tests too ✅
 
 **Problem.** The generated Makefile runs `cargo clippy --workspace -- -D warnings`: test code is
 never linted in the project, though the compile matrix lints it with `--all-targets`.

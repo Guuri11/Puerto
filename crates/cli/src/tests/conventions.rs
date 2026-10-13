@@ -501,3 +501,22 @@ fn presentation_tests_get_business_test_utils_and_the_poem_test_client() {
 
     cleanup(&dir);
 }
+
+#[test]
+fn generated_make_lint_lints_the_tests_too() {
+    // 17.1: `clippy --workspace` alone skips `#[cfg(test)]` code — the compile matrix lints it
+    // with `--all-targets`, the project's own `make lint` did not.
+    let dir = temp_dir("make_lint_all_targets");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("make-lint-all-targets", &dir).unwrap();
+
+    let makefile = fs::read_to_string(output.join("Makefile")).unwrap();
+    let lint = makefile
+        .lines()
+        .skip_while(|l| !l.starts_with("lint:"))
+        .find(|l| l.contains("clippy"))
+        .unwrap();
+    assert!(lint.contains("--all-targets"), "{lint}");
+    cleanup(&dir);
+}
