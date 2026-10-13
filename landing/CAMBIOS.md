@@ -2,6 +2,14 @@
 
 Log de modificaciones. Lo más reciente arriba.
 
+## 2026-10-13 — Lanzamiento
+
+- Desplegada en producción (`1904402`): squirrel 83/100 (B) frente a 58 (F) del baseline.
+- Marca del README y de `assets/brand/` rehecha con la identidad nueva (`pnpm brand:repo`).
+- El dominio se queda en `puerto-rs.vercel.app` (decisión de Sergio).
+- Corregidos dos textos pegados a un enlace o un `<code>` («written by», «built by»): Astro se
+  come el salto de línea entre texto y elemento, así que el espacio va explícito con `{' '}`.
+
 ## 2026-10-13 — Web nueva (carril A, primera versión)
 
 Sustituye entera a la landing de abril (Astro 6, dos páginas). Lo que queda en el historial de

@@ -3,18 +3,16 @@
 **Esta es la lista.** Si algo está pendiente y no está aquí, no existe.
 
 **Última revisión:** 2026-10-13
-**Estado:** construida y en verde (216 E2E, `astro check` limpio). **Sin desplegar**: sustituye a
-la landing de abril en `puerto-rs.vercel.app` en cuanto se haga commit y push.
+**Estado:** **en producción** desde el 2026-10-13 (`1904402`), en `puerto-rs.vercel.app`. 216 E2E
+en verde, `astro check` limpio. Auditoría de producción: 83/100 (B), frente a 58 (F) del baseline.
 
 ---
 
 ## 🔴 Bloquea el lanzamiento
 
-- [ ] **Commit y despliegue.** Nada de esto está commiteado todavía. Al desplegar, confirmar en
-      Vercel que el proyecto tiene *Root Directory* = `landing` y que «Include files outside the
-      root directory» está activo: el build lee `../Cargo.toml`, `../docs/adr` y `../CHANGELOG.md`.
-- [ ] **Auditar producción** tras el deploy: `squirrel audit https://puerto-rs.vercel.app
-      --coverage surface` y comparar con `docs/auditoria-inicial.md`.
+Nada. Desplegado por la integración de Git de Vercel (push a `main`), y el build lee bien `..`
+(versión, ADRs y changelog salen correctos en producción). Auditoría en
+`docs/auditoria-lanzamiento.md`.
 
 ## 🟡 Decide Sergio
 

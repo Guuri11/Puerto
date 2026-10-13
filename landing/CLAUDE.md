@@ -56,7 +56,7 @@ otra versión.
 
 ## Lo que la auditoría marca y se acepta
 
-Medido en local el 2026-10-13: **79/100** frente al 58 del baseline.
+Producción, 2026-10-13: **83/100 (B)** frente al 58 del baseline (`docs/auditoria-lanzamiento.md`).
 - `token-weight` y «Agents 50»: el HTML de cada página de Starlight lleva la barra lateral
   entera. Es de Starlight; `llms.txt` es la vía para agentes.
 - `placeholder-content` (`[[entity]]`): es sintaxis TOML dentro de un bloque de código.
