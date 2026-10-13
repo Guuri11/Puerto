@@ -30,3 +30,4 @@ ADR; supersede it with a new one and link both ways.
 | [0019](0019-generated-code-is-formatted-by-cargo-fmt.md) | Generated code is formatted by `cargo fmt` | Accepted |
 | [0020](0020-mail-port-per-mail-sent-from-the-worker.md) | Mail: a port per mail, templates in infrastructure, sent from the worker | Accepted |
 | [0021](0021-auth-one-authenticator-port-oidc-or-local.md) | Auth: one `Authenticator` port, two adapters (OIDC, local sessions) | Accepted |
+| [0022](0022-references-are-typed-ids-checked-by-foreign-keys.md) | References between entities are typed ids, checked by foreign keys | Accepted |

@@ -2912,3 +2912,124 @@ and `domain/user/` where they exist.
 
 **Behaviour.** A structural test walks `puerto generate`'s subcommands (clap) and fails when the
 template's root `AGENTS.md` does not name one, and another checks the field-syntax forms.
+
+---
+
+## Phase 18 — References between entities (ADR-0022)
+
+**Status:** spec. Decision: [ADR-0022](docs/adr/0022-references-are-typed-ids-checked-by-foreign-keys.md).
+An entity refers to another by holding its typed id; in `--db` projects a foreign key checks that
+the target exists, and a write that names a missing one answers 422 on the field. One commit per
+piece, in this order: 18.1 is a runtime change the generated code of 18.3 calls.
+
+### puerto.toml additions
+
+```toml
+[[entity.fields]]
+name = "customer_id"
+type = "Uuid"                 # "Option<Uuid>" for ref:opt:
+references = "Customer"       # a declared CRUD [[entity]], not this one
+```
+
+CLI: `customer_id:ref:Customer`, `reviewer_id:ref:opt:Customer`; `!` (unique, one-to-one) is
+allowed on `ref:`, not on `ref:opt:`.
+
+### 18.0 — ADR-0022 + this spec ✅
+
+### 18.1 — `puerto-core` + `puerto-sqlx`: a missing reference is its own failure
+
+- `RepositoryError::MissingReference(&'static str)` — the field the store could not resolve
+  (`#[error("repository.missing_reference.{0}")]`); the enum stays `Copy` and `#[non_exhaustive]`.
+- `puerto_sqlx::ForeignKey { constraint: &'static str, field: &'static str }` and
+  `map_sqlx_error_with(err, &[ForeignKey]) -> RepositoryError`: `23505` → `Duplicate`, `23503` on a
+  listed constraint → `MissingReference(field)`, anything else (an unlisted constraint included)
+  → `Unavailable`. `map_sqlx_error(err)` is `map_sqlx_error_with(err, &[])`.
+
+Test scenarios: the new code string; `23503` on a listed constraint → its field; `23503` on an
+unlisted one → `Unavailable`; `23505` still `Duplicate`; a non-database error `Unavailable`. Pg
+(`make test/db`): inserting a row whose foreign key names no row → `MissingReference`.
+
+### 18.2 — The manifest: `ref:` fields
+
+- `parse_field_arg`: `name:ref:Target` → `type = "Uuid"`, `references = "Target"`;
+  `name:ref:opt:Target` → `"Option<Uuid>"`; a trailing `!` → `unique` (refused on `ref:opt:`).
+  `Target` must be PascalCase.
+- `Field.references: Option<String>` (`skip_serializing_if = "Option::is_none"`).
+- `puerto validate` and `scaffold` refuse: a `references` that names no declared `[[entity]]`, the
+  entity itself (self references are later), a non-CRUD target (the Greeting demo), `User` / `Me`
+  / `Auth` in auth projects (ownership is a later spec), a type other than `Uuid` /
+  `Option<Uuid>`, and `references` together with `value_object`.
+- `scaffold` (and `generate domain`) additionally refuse when the target has no code on disk —
+  in `--db` projects its `create_<snake>_table` migration must already exist, so the foreign key
+  resolves when migrations run in order — naming the command that scaffolds it.
+
+Test scenarios: each parse form, `!` on both; each refusal, by `validate` and by `scaffold`; a
+valid `ref:` round-trips through `puerto.toml`.
+
+### 18.3 — Generated backend
+
+For `Order` with `customer_id:ref:Customer` (and the `opt` form where it differs):
+
+- **Domain.** `model.rs` imports `crate::domain::customer::model::CustomerId`; Props / entity hold
+  `customer_id: CustomerId` (`Option<CustomerId>`). No domain validation: existence is the store's.
+  The Object Mother stores `Option<CustomerId>`, `with_customer_id(CustomerId)`, defaults to
+  `CustomerId::generate()` (`None` for `opt`).
+- **Errors.** `errors.rs` of an entity with references maps
+  `RepositoryError::MissingReference(field) => Self::ValidationError(format!("{field}_not_found"))`,
+  with its test (`order.validation_error.customer_id_not_found`). Entities without references are
+  generated as today.
+- **Application.** Create / update params hold `CustomerId` and pass it through; tests use
+  `CustomerId::generate()`. A use case test: the repository (or unit of work) failing with
+  `MissingReference("customer_id")` returns that validation error.
+- **Infrastructure.** `OrderDb.customer_id: Uuid` (`Option<Uuid>`), `CustomerId::from_uuid` in
+  `TryFrom`, `.value()` in `From`. The Pg repository — and in `events` projects the unit of work,
+  which is where writes happen — declares
+  `const REFERENCES: &[ForeignKey] = &[ForeignKey { constraint: "orders_customer_id_fkey", field: "customer_id" }];`
+  and converts with `map_sqlx_error_with(&err, REFERENCES)`. In memory: no check.
+- **Migration.** `customer_id UUID NOT NULL CONSTRAINT orders_customer_id_fkey REFERENCES
+  customers (id)` (nullable for `opt`) and `CREATE INDEX orders_customer_id_idx ON orders
+  (customer_id);` (the unique index replaces it when the field is `unique`).
+- **Pg tests.** `seed` first seeds each target through the target's own repository (or unit of
+  work), transitively for the target's own references, and uses its id. One more test per
+  reference: saving with `CustomerId::generate()` → `RepositoryError::MissingReference("customer_id")`.
+- **Presentation.** Request and response DTOs hold `customer_id: Uuid` (`customerId`, a
+  `string(uuid)`); routes wrap it with `CustomerId::from_uuid`, `from_domain` reads `.value()`. A
+  route test: a create whose use case fails with the missing-reference validation error → 422.
+- **Events.** The snapshot holds `customer_id: Uuid` — a public contract a consumer decodes.
+
+Test scenarios: structural tests for each bullet; a compile-matrix scenario `references` (in
+memory: `Customer`, then `Order` with `ref:`, `ref:opt:` and a second `ref:` to the same target)
+and `references_db` (the same with `--db --events db`, `clippy -D warnings` + tests);
+`make test/db` runs the Pg tests above and an API e2e: creating an order for an unknown customer
+answers 422 `order.validation_error.customer_id_not_found`. Snapshots re-recorded.
+
+### 18.4 — List by reference
+
+- `ListOrdersParams { page, customer_id: Option<CustomerId> }` — one optional filter per
+  reference; `find_all(page, filter: OrderFilter)` with `OrderFilter { customer_id:
+  Option<CustomerId> }` — only for entities with references, the others keep today's port.
+- Pg: `WHERE deleted = false AND ($3::uuid IS NULL OR customer_id = $3)` on both the page and the
+  `COUNT(*)` — one static query, the index serves it.
+- `GET /orders?customerId=&limit=&offset=` (`Query<Option<Uuid>>`).
+
+Test scenarios: route — the query reaches the use case as the filter; application — the filter
+reaches the repository; Pg — a filtered page holds only that customer's orders and their total.
+
+### 18.5 — The frontend
+
+- The form's input for a reference is a `<select>` filled from the target's repository (`list` of
+  the first `MAX_PAGE_LIMIT` items), labelled by the target's first required `String` field, else
+  its id; `opt` adds an empty option. `dependencies.ts` hands the form container the target's
+  repository.
+- The detail view shows the reference as a link to `/customers/:id`.
+- `messages.ts` maps `order.validation_error.customer_id_not_found` to the `customerId` field.
+
+Test scenarios: the form lists the targets and submits the chosen id; the missing-reference code
+shows under the field; the detail links to the target. `make test/full` runs the web scenario.
+
+### Out of scope (Phase 18)
+
+Self references (`parent_id:ref:opt:Category` — the table must exist before its own foreign key),
+many-to-many (`vec:ref:`, a join table), expanding a reference in a response, an owner filled from
+the caller's `Principal` (`ref:User`), refusing or cascading the soft delete of a referenced row,
+an existence check in memory.

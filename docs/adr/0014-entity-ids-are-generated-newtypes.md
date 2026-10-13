@@ -30,6 +30,7 @@ closes that gap with a `macro_rules! newtype_id` (backlog T-24).
   layers.
 - An entity with a `Uuid` *field* (`owner_id: Uuid`) still sees a bare `Uuid` for it: references
   to other entities are fields chosen by the user, and typing them is the user's decision (there
-  is no relation syntax in `puerto.toml`).
+  is no relation syntax in `puerto.toml`). **Amended by [ADR-0022](0022-references-are-typed-ids-checked-by-foreign-keys.md):**
+  a `ref:` field holds the target's newtype.
 - A `sqlx::Type` / poem `Type` impl for the newtype would remove the edge conversions; it is not
   generated because it would couple the domain crate to sqlx and poem.
