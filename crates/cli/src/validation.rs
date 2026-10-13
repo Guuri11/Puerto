@@ -427,7 +427,125 @@ pub fn validate_field(field: &Field) -> Result<(), String> {
     if let Some(variants) = &field.enum_variants {
         validate_enum_variants(variants)?;
     }
+    if field.references.is_some() {
+        validate_reference_shape(field)?;
+    }
     Ok(())
+}
+
+/// A reference field on its own (ADR-0022): a PascalCase target, the id's type, not also a value
+/// object, and `unique` (one-to-one) only when it is required.
+fn validate_reference_shape(field: &Field) -> Result<(), String> {
+    let name = &field.name;
+    let target = field.references.as_deref().unwrap_or_default();
+    if !is_pascal_case(target) {
+        return Err(format!(
+            "field '{name}' references '{target}': an entity name must be PascalCase"
+        ));
+    }
+    if !matches!(field.field_type.as_str(), "Uuid" | "Option<Uuid>") {
+        return Err(format!(
+            "field '{name}' references {target} but its type is '{}': a reference holds an id, \
+             Uuid or Option<Uuid>",
+            field.field_type
+        ));
+    }
+    if field.value_object.is_some() {
+        return Err(format!(
+            "field '{name}' references {target} and also names a value_object: a reference's \
+             type is {target}'s id"
+        ));
+    }
+    if field.unique && field.field_type.starts_with("Option<") {
+        return Err(format!(
+            "field '{name}' is an optional reference and cannot be marked unique"
+        ));
+    }
+    Ok(())
+}
+
+/// The references of entity `pascal`, against the manifest (ADR-0022): each target is another
+/// declared CRUD entity — not the entity itself (self references are a later spec), not the
+/// auth projects' `User` (ownership is a later spec).
+pub fn validate_references(
+    pascal: &str,
+    fields: &[Field],
+    config: &crate::puerto_toml::PuertoConfig,
+) -> Vec<String> {
+    use crate::generators::naming::{is_crud_entity, pascal_to_snake};
+
+    let mut errors = vec![];
+    for field in fields {
+        let Some(target) = field.references.as_deref() else {
+            continue;
+        };
+        let name = &field.name;
+        if target == pascal {
+            errors.push(format!(
+                "field '{name}' references {target} itself: references to the same entity are \
+                 not generated yet"
+            ));
+            continue;
+        }
+        if config.project.has_auth() && validate_auth_entity_name(target).is_err() {
+            errors.push(format!(
+                "field '{name}' references {target}: references to the auth entities are not \
+                 generated yet"
+            ));
+            continue;
+        }
+        match config.entity.iter().find(|e| e.name == target) {
+            None => errors.push(format!(
+                "field '{name}' references {target}, which is not declared in puerto.toml — \
+                 `puerto generate scaffold {target}` first"
+            )),
+            Some(entity) if !is_crud_entity(&pascal_to_snake(target), &entity.use_cases) => errors
+                .push(format!(
+                    "field '{name}' references {target}, which is not a CRUD entity: only an \
+                     entity with its five scaffolded use cases has an id type and a table"
+                )),
+            Some(_) => {}
+        }
+    }
+    errors
+}
+
+/// [`validate_references`], then each target's code on disk: its model (the id type) and, in a
+/// `--db` project, its `create_<snake>_table` migration — written earlier, so the foreign key
+/// resolves when migrations run in order. Checked by the commands that write an entity.
+pub fn validate_references_before_writing(
+    pascal: &str,
+    fields: &[Field],
+    config: &crate::puerto_toml::PuertoConfig,
+    base: &std::path::Path,
+) -> Result<(), String> {
+    use crate::generators::naming::pascal_to_snake;
+
+    let mut errors = validate_references(pascal, fields, config);
+    if errors.is_empty() {
+        for target in fields.iter().filter_map(|f| f.references.as_deref()) {
+            let snake = pascal_to_snake(target);
+            let model = base.join(format!("business/src/domain/{snake}/model.rs"));
+            let suffix = format!("_create_{snake}_table.sql");
+            let migrated = !config.project.db
+                || std::fs::read_dir(base.join("infrastructure/migrations"))
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .any(|e| e.file_name().to_string_lossy().ends_with(&suffix));
+            if !model.exists() || !migrated {
+                errors.push(format!(
+                    "{pascal} references {target}, which has no code yet — run \
+                     `puerto generate scaffold {target}` first"
+                ));
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n  "))
+    }
 }
 
 /// The transports `[project] events` can name (ADR-0018 § 4).

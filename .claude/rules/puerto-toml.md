@@ -51,6 +51,13 @@ type = "Option<String>"  # nullable field
 [[entity.fields]]
 name = "tags"
 type = "Vec<String>"     # array field
+
+[[entity.fields]]
+name = "customer_id"
+type = "Uuid"            # "Option<Uuid>" for an optional reference
+references = "Customer"  # ADR-0022: another declared CRUD entity, never this one (nor User/Me/Auth
+                         # in auth projects), not with value_object; CLI customer_id:ref:Customer,
+                         # reviewer_id:ref:opt:Customer. scaffold refuses it until the target has code
 ```
 
 - One `[[entity]]` block per DDD entity
@@ -240,7 +247,7 @@ presentation/src/api/product/error_mapper.rs
 | `puerto generate migration <name>`              | Creates a migration file (`--db` projects only) — does not touch puerto.toml. The version is unique even within one second |
 | `puerto generate consumer <name> --on <type>[,…]` | `events` projects (`db` or `kafka`): appends `[[consumer]]`, writes `worker/src/consumers/<name>.rs` (never overwritten), adds `pub mod` to `consumers.rs` (sorted), regenerates `worker/src/generated/registry.rs`. Refuses an existing name, an undeclared event type, a non-snake_case name or one whose type the worker already uses (`loops`, `product_event`) |
 | `puerto generate mail <name> [-- field:Type …]` | Any project: appends `[[mail]]`, writes the domain port, the template mailer and the three templates (never overwritten), adds `pub mod` to both `lib.rs`. The first mail adds `puerto-mail`, Mailpit, `SMTP_URL` / `MAIL_FROM`, `make mail/ui`. Fields: primitives and `opt:` only, not `to` (always there), none → `name:String`. Refuses an existing name, a non-snake_case name or keyword, a VO, `!`, `vec:`/`map`. `--on <type>[,…] --to <field>` (events projects): writes `[[mail]] on` and `worker/src/consumers/mail_<name>.rs`, regenerates `registry.rs`, adds the `sent_mails` migration once; `--to` must be a `String` field of every event's snapshot, fields named after `--` must be in every snapshot with the same type (none → the snapshot's printable fields but `--to`) |
-| `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk; `events` is `db`/`kafka` and needs `db = true`; custom events follow `generate event`'s rules; consumers are snake_case, unique, name declared events and have their file on disk; mails are snake_case, unique, have their files on disk, and `on` (events projects only) names declared events; `auth` is `oidc`/`local` (`local` needs `db`); `public`/`roles` only in auth projects, naming the entity's use cases, not both for one; `User`, `Me`, `Auth` are reserved entity names in auth projects; drift: a `public` handler takes no `BearerAuth`, every other one does, and every role has its `#[require_role("<role>")]` |
+| `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk; `events` is `db`/`kafka` and needs `db = true`; custom events follow `generate event`'s rules; consumers are snake_case, unique, name declared events and have their file on disk; mails are snake_case, unique, have their files on disk, and `on` (events projects only) names declared events; `auth` is `oidc`/`local` (`local` needs `db`); `public`/`roles` only in auth projects, naming the entity's use cases, not both for one; `User`, `Me`, `Auth` are reserved entity names in auth projects; a `references` names another declared CRUD entity and is a `Uuid` / `Option<Uuid>`; drift: a `public` handler takes no `BearerAuth`, every other one does, and every role has its `#[require_role("<role>")]` |
 
 `db` is a **project-level** setting (`[project] db`), chosen once by `puerto new --db`. There is
 no `--db` flag on `generate scaffold`: it reads the project setting from puerto.toml.

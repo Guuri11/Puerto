@@ -2949,7 +2949,7 @@ Test scenarios: the new code string; `23503` on a listed constraint → its fiel
 unlisted one → `Unavailable`; `23505` still `Duplicate`; a non-database error `Unavailable`. Pg
 (`make test/db`): inserting a row whose foreign key names no row → `MissingReference`.
 
-### 18.2 — The manifest: `ref:` fields
+### 18.2 — The manifest: `ref:` fields ✅
 
 - `parse_field_arg`: `name:ref:Target` → `type = "Uuid"`, `references = "Target"`;
   `name:ref:opt:Target` → `"Option<Uuid>"`; a trailing `!` → `unique` (refused on `ref:opt:`).

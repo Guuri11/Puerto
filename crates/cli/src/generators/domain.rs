@@ -420,6 +420,7 @@ pub fn run_generate_domain(
     if !vo_conflicts.is_empty() {
         return Err(vo_conflicts.join("\n  ").into());
     }
+    crate::validation::validate_references_before_writing(&pascal, &fields, &config, base)?;
 
     write_domain_files(&pascal, &snake, base, &fields, &shared_vos)?;
     write_mother(&pascal, &snake, base, &fields, &shared_vos)?;

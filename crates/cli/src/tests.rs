@@ -55,6 +55,7 @@ mod migrations;
 mod new_project;
 mod paged_lists;
 mod patchers;
+mod references;
 mod repository_errors;
 mod runtime_crates;
 mod scaffolding;

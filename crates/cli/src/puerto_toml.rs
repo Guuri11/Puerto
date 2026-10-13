@@ -118,6 +118,10 @@ pub struct Field {
     pub value_object_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enum_variants: Option<Vec<String>>,
+    /// A reference (ADR-0022): the CRUD entity whose id this `Uuid` / `Option<Uuid>` holds. The
+    /// domain holds that entity's id type; a `--db` project's column is a foreign key to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub references: Option<String>,
 }
 
 /// Parse a CLI field argument into a `Field`.
@@ -132,6 +136,8 @@ pub struct Field {
 /// name:VoName:opt:Type               Option<VO> field
 /// name:VoName:vec:Type               Vec<VO> field
 /// name:VoName:enum:V1/V2/V3          Enum VO (variants separated by /)
+/// name:ref:Entity                    Reference to another entity: its id (ADR-0022)
+/// name:ref:opt:Entity                Optional reference
 /// ```
 ///
 /// Append `!` to the whole argument to mark the field as `unique = true`.
@@ -162,6 +168,11 @@ pub fn parse_field_arg(s: &str) -> Result<Field, String> {
 }
 
 fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Result<Field, String> {
+    match parts[1..] {
+        ["ref", target] => return Ok(reference(name, target, "Uuid", unique)),
+        ["ref", "opt", target] => return Ok(reference(name, target, "Option<Uuid>", unique)),
+        _ => {}
+    }
     match parts.len() {
         1 => unreachable!("handled above"),
         2 => {
@@ -260,6 +271,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
                         value_object: Some(vo_name.to_string()),
                         value_object_kind: Some("enum".to_string()),
                         enum_variants: Some(variants),
+                        ..Default::default()
                     })
                 }
                 _ => Err(format!(
@@ -272,6 +284,16 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
             "invalid field argument '{}'. Too many colon-separated parts (expected 2–4)",
             s
         )),
+    }
+}
+
+fn reference(name: String, target: &str, field_type: &str, unique: bool) -> Field {
+    Field {
+        name,
+        field_type: field_type.to_string(),
+        unique,
+        references: Some(target.to_string()),
+        ..Default::default()
     }
 }
 

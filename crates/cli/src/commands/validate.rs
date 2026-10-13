@@ -222,6 +222,15 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        for field in entity.fields.iter().filter(|f| f.references.is_some()) {
+            if let Err(e) = crate::validation::validate_field(field) {
+                errors.push(format!("entity '{}': {e}", entity.name));
+            }
+        }
+        for e in crate::validation::validate_references(&entity.name, &entity.fields, &config) {
+            errors.push(format!("entity '{}': {e}", entity.name));
+        }
+
         // One `value_objects.rs` is written per entity — two fields cannot define the same VO
         // with different inner types.
         for e in crate::validation::validate_vo_coherence(&entity.fields, &config.value_object) {

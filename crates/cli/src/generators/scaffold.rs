@@ -353,6 +353,7 @@ pub fn run_scaffold_with_access(
     if !vo_conflicts.is_empty() {
         return Err(vo_conflicts.join("\n  ").into());
     }
+    crate::validation::validate_references_before_writing(&pascal, &fields, &config, base)?;
     guard_entity_overwrite(
         base,
         &pascal_to_snake(&pascal),

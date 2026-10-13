@@ -879,6 +879,7 @@ mod tests {
                 value_object: None,
                 value_object_kind: None,
                 enum_variants: None,
+                references: None,
             },
             Field {
                 name: "price".into(),
@@ -887,6 +888,7 @@ mod tests {
                 value_object: None,
                 value_object_kind: None,
                 enum_variants: None,
+                references: None,
             },
         ];
         assert!(validate_fields(&fields).is_ok());
@@ -903,6 +905,7 @@ mod tests {
                 value_object: None,
                 value_object_kind: None,
                 enum_variants: None,
+                references: None,
             },
             Field {
                 name: "bad".into(),
@@ -911,6 +914,7 @@ mod tests {
                 value_object: None,
                 value_object_kind: None,
                 enum_variants: None,
+                references: None,
             },
         ];
         let err = validate_fields(&fields).unwrap_err();
