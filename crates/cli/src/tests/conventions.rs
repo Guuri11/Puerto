@@ -520,3 +520,19 @@ fn generated_make_lint_lints_the_tests_too() {
     assert!(lint.contains("--all-targets"), "{lint}");
     cleanup(&dir);
 }
+
+#[test]
+fn business_agent_rules_describe_what_a_use_case_file_holds() {
+    // 17.2: it said "exactly Params + Trait", but every use case file ships its mock, and an
+    // events project writes through a unit of work the tree did not show.
+    let agents = include_str!("../../template/business/AGENTS.md");
+    assert!(!agents.contains("exactly `Params struct` + `Trait`"));
+    for must in [
+        "mocks::Mock<Action>UseCase",
+        "unit_of_work.rs",
+        "events.rs",
+        "RecordingUnitOfWorkFactory",
+    ] {
+        assert!(agents.contains(must), "business/AGENTS.md misses '{must}'");
+    }
+}

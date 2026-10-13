@@ -2886,7 +2886,7 @@ never linted in the project, though the compile matrix lints it with `--all-targ
 
 **Test scenarios.** The generated Makefile's `lint` target has `--all-targets`.
 
-### 17.2 — `business/AGENTS.md` says what the files hold
+### 17.2 — `business/AGENTS.md` says what the files hold ✅
 
 **Behaviour.** A use case file is `Params` + the trait + `mocks::Mock{Uc}UseCase` (not "exactly
 Params + Trait"); the tree shows `events.rs` / `unit_of_work.rs` (`events` projects), `domain/mail/`
