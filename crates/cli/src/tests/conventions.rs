@@ -536,3 +536,56 @@ fn business_agent_rules_describe_what_a_use_case_file_holds() {
         assert!(agents.contains(must), "business/AGENTS.md misses '{must}'");
     }
 }
+
+#[test]
+fn root_agent_rules_say_how_to_work_with_puerto() {
+    // 17.3: the rules said what the project is, not how to work with the generator — an agent did
+    // not know what `generate use-case` leaves to fill in, which files a generator rewrites, or how
+    // an entity's fields change once its table exists.
+    let agents = include_str!("../../template/AGENTS.md");
+    for must in [
+        "## Working with Puerto",
+        // what `generate use-case` leaves
+        "todo!()",
+        "#[ignore = \"write this test\"]",
+        // generated vs yours
+        "Rewritten on every run",
+        "Written once",
+        "presentation/src/app.rs",
+        // changing an entity's fields
+        "## Changing an entity's fields",
+        "puerto generate migration",
+        // the checklist, per project kind
+        "puerto validate",
+        "make docker-compose/up",
+        "make sqlx/prepare",
+        "make web/sync",
+    ] {
+        assert!(agents.contains(must), "root AGENTS.md misses '{must}'");
+    }
+}
+
+#[test]
+fn root_agent_rules_document_the_field_syntax() {
+    // 17.3: the syntax lived only in `--help`, so an agent wrote plain Strings where a value
+    // object or an enum was one argument away.
+    let agents = include_str!("../../template/AGENTS.md");
+    for form in [
+        "title:String",
+        "price:i64!",
+        "summary:opt:String",
+        "tags:vec:String",
+        "published_at:DateTime",
+        "meta:map",
+        "name:Name:String",
+        "middle_name:MiddleName:opt:String",
+        "label:Label:vec:String",
+        "status:Status:enum:Draft/Published",
+        "email:Email",
+    ] {
+        assert!(
+            agents.contains(form),
+            "root AGENTS.md misses the form '{form}'"
+        );
+    }
+}

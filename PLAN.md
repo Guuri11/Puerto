@@ -2892,7 +2892,7 @@ never linted in the project, though the compile matrix lints it with `--all-targ
 Params + Trait"); the tree shows `events.rs` / `unit_of_work.rs` (`events` projects), `domain/mail/`
 and `domain/user/` where they exist.
 
-### 17.3 — The root `AGENTS.md` says how to work with Puerto
+### 17.3 — The root `AGENTS.md` says how to work with Puerto ✅
 
 **Behaviour.** The root file gains, before *Conventions*:
 
