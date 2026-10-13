@@ -211,7 +211,7 @@ puerto new --name <name> --no-db --destination /tmp/projects  # Control output d
 puerto new --no-web                        # Skip the web frontend (web/ is included by default)
 puerto new --db --events db                # Domain events (ADR-0018): units of work + outbox (db | kafka)
 puerto new --auth oidc                     # Auth (ADR-0021): an OIDC provider's tokens (Auth0, Keycloak); Keycloak in compose
-puerto new --db --no-web --auth local      # Auth: accounts and sessions in this database; /auth/register|login|logout
+puerto new --db --auth local               # Auth: accounts and sessions in this database; /auth/register|login|logout, /login + /register screens
 
 puerto generate scaffold <Name>                                          # Add a new DDD entity — all layers at once (infers db from puerto.toml)
 puerto generate scaffold <Name> --force                                  # Re-generate an existing entity, overwriting hand-written changes
@@ -329,7 +329,7 @@ make format/fix    # cargo fmt --all
   `actor: Principal`, their responses a 503 `Unavailable`; `{Entity}Error::Forbidden` (403) with
   its mapper test; route tests sign in through a `MockAuthenticator` (`caller` holds every role,
   `nobody` none) and add a 401 per protected route and a 403 per role-protected one
-- `--auth local` (16.6; needs `--db`, and `--no-web` until 16.7): the same `User` (a local one is
+- `--auth local` (16.6; needs `--db`): the same `User` (a local one is
   issuer `local`, subject its lowercased email) in `PgUserRepository`, no provisioning and no
   Keycloak; `register_user` / `login` / `logout` (`business/src/{domain,application}/user/`, over
   `puerto-core`'s `PasswordHasher`, `CredentialStore`, `SessionStore`) and `POST /auth/{register,
@@ -337,6 +337,13 @@ make format/fix    # cargo fmt --all
   `bootstrap.rs` builds `Argon2Hasher`, `PgCredentials` and `PgSessions` — the authenticator. The
   `users` then `auth` migrations, `AUTH_SESSION_TTL=30d` in `.env`, `make auth/grant EMAIL= ROLE=`,
   its own root `AGENTS.md` Auth section
+- `--auth local` with `web/` (16.7): the same shared files as OIDC (`session.ts`, the bearer
+  middleware, `auth.tsx`, the user menu, `renderScreen`), plus `domain/auth/{accounts,messages}.ts`
+  (the `Accounts` port, the API's codes as form messages), `infrastructure/auth/local-auth-gateway.ts`
+  (the token in `localStorage`; `login(returnTo)` drops it and goes to `/login?next=`) and the
+  `/login` and `/register` pages. `dependencies.ts` builds one `localAuthGateway()` as both `auth`
+  and `accounts`; `routes.tsx` has `/login` and `/register` instead of `/auth/callback`. No
+  `oidc-client-ts`, no `web/.env`
 - `--auth oidc` with `web/` (16.5): written once — `domain/auth/session.ts` (`AuthGateway`,
   `CurrentUser`), `infrastructure/auth/{oidc-auth-gateway,bearer-middleware}.ts`
   (`oidc-client-ts`, pinned, in memory; dependency-cruiser keeps it there),

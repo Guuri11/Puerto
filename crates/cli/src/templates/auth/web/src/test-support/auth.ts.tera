@@ -1,4 +1,5 @@
-import type { AuthGateway, CurrentUser } from "../domain/auth/session";
+{% if local %}import type { Accounts } from "../domain/auth/accounts";
+{% endif %}import type { AuthGateway, CurrentUser } from "../domain/auth/session";
 import { ROLES } from "../presentation/core/generated/roles";
 
 /** Signed-in users for tests; pass `overrides` for what a test is about. */
@@ -28,3 +29,17 @@ export function fakeAuthGateway({ user = null }: { user?: CurrentUser | null } =
   };
   return { ...gateway, logins };
 }
+{%- if local %}
+
+/** `Accounts` that take every registration and sign-in. `signIns` records each sign-in. */
+export function fakeAccounts() {
+  const signIns: { email: string; password: string }[] = [];
+  const accounts: Accounts = {
+    register: async ({ email, name }) => CurrentUserMother.random({ email, name }),
+    signIn: async (email, password) => {
+      signIns.push({ email, password });
+    },
+  };
+  return { ...accounts, signIns };
+}
+{%- endif %}

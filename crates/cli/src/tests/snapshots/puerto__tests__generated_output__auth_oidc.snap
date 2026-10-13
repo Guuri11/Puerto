@@ -6912,6 +6912,8 @@ export interface Auth {
   /** Signs in, then comes back to the current page. */
   login(): Promise<void>;
   logout(): Promise<void>;
+  /** Asks the gateway again who is signed in: after a sign-in that did not leave the app. */
+  refresh(): Promise<void>;
   /** Finishes a sign-in (`/auth/callback`): answers the page to go back to. */
   completeLogin(): Promise<string>;
 }
@@ -6939,10 +6941,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const here = search === "" ? location : `${location}?${search}`;
   const login = useCallback(() => auth.login(here), [auth, here]);
+  const refresh = useCallback(async () => {
+    setState({ status: "ready", user: await auth.currentUser() });
+  }, [auth]);
   const completeLogin = useCallback(async () => {
     const back = await auth.completeLogin();
-    setState({ status: "ready", user: await auth.currentUser() });
+    await refresh();
     return back;
+  }, [auth, refresh]);
+  const logout = useCallback(async () => {
+    await auth.logout();
+    setState({ status: "ready", user: null });
   }, [auth]);
   const user = state.status === "ready" ? state.user : null;
   const value = useMemo<Auth>(
@@ -6950,10 +6959,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       can: (role) => user?.roles.includes(role) ?? false,
       login,
-      logout: () => auth.logout(),
+      logout,
+      refresh,
       completeLogin,
     }),
-    [user, login, auth, completeLogin],
+    [user, login, logout, refresh, completeLogin],
   );
 
   if (state.status === "loading") return <span className="loading loading-spinner" />;

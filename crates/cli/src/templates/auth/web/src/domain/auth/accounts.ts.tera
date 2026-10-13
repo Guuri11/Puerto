@@ -1,0 +1,18 @@
+import type { CurrentUser } from "./session";
+
+/** What the sign-up form sends. */
+export interface Registration {
+  email: string;
+  password: string;
+  name: string | null;
+}
+
+/**
+ * The accounts this API keeps itself: signing up and signing in with a password. A refusal rejects
+ * with an `AuthError` carrying the API's code (`user.duplicate`, `auth.invalid_credentials`).
+ */
+export interface Accounts {
+  register(registration: Registration): Promise<CurrentUser>;
+  /** Opens a session: from then on `AuthGateway.currentUser()` answers this account. */
+  signIn(email: string, password: string): Promise<void>;
+}

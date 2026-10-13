@@ -117,7 +117,8 @@ never reads provider-specific claims. `User` becomes a reserved entity name in a
   provider's answer on `/auth/callback`; a no-op for local).
 - `infrastructure/auth/oidc-auth-gateway.ts` — `oidc-client-ts`, Authorization Code + PKCE, works
   with Auth0 (plus the `audience` parameter) and Keycloak; `local-auth-gateway.ts` — the
-  `/auth/*` endpoints.
+  `/auth/*` endpoints, which also implements the local-only port `Accounts { register, signIn }`
+  (`domain/auth/accounts.ts`) the `/login` and `/register` pages use.
 - `infrastructure/auth/bearer-middleware.ts`: an openapi-fetch middleware, attached to the client
   by the composition root, adds `Authorization: Bearer …`; a 401 starts `login()`.
 - `presentation/core/auth.tsx`: `AuthProvider` + `useAuth()` → `{ user, can(role), login, logout

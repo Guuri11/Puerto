@@ -128,8 +128,8 @@ pub fn new_project(
             "oidc",
             "oidc (Auth0, Keycloak, any OpenID Connect provider)",
         )];
-        // Until its frontend ships, local accounts come without one (`PLAN.md` § 16.7).
-        if resolved_db && no_web {
+        // Local accounts live in the database.
+        if resolved_db {
             modes.push(("local", "local (accounts and sessions in this database)"));
         }
         let labels: Vec<&str> = std::iter::once("none")
@@ -168,7 +168,7 @@ pub fn new_project(
     };
 
     if let Some(mode) = &resolved_auth {
-        crate::generators::auth::check_new_project(mode, resolved_db, !resolved_no_web)?;
+        crate::generators::auth::check_new_project(mode, resolved_db)?;
     }
 
     eprintln!("Constructing project skeleton...");

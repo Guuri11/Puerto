@@ -1,0 +1,98 @@
+import { useState } from "react";
+import { Link, useLocation, useSearch } from "wouter";
+import { toAccountProblem } from "../../domain/auth/messages";
+import { useAuth } from "../core/auth";
+import { useDependencies } from "../core/dependencies";
+import { textOrNull } from "../shared/forms";
+import { ErrorAlert, errorCode } from "../shared/ui/error-alert";
+import { FieldError } from "../shared/ui/field-error";
+import { nextPath } from "./login";
+
+/** Creates an account, signs in with it, and goes back where sign-in was asked for. */
+export function RegisterPage() {
+  const { accounts } = useDependencies();
+  const { refresh } = useAuth();
+  const [, navigate] = useLocation();
+  const search = useSearch();
+  const [values, setValues] = useState({ email: "", password: "", name: "" });
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toAccountProblem(errorCode(failure));
+
+  const submit = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      await accounts.register({
+        email: values.email,
+        password: values.password,
+        name: textOrNull(values.name),
+      });
+      await accounts.signIn(values.email, values.password);
+      await refresh();
+      navigate(nextPath(search), { replace: true });
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="mx-auto max-w-sm space-y-4">
+      <h1 className="text-2xl font-bold">Create an account</h1>
+      {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+      <form
+        className="space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <label className="fieldset">
+          <span className="fieldset-legend">Email</span>
+          <input
+            className="input w-full"
+            type="email"
+            autoComplete="email"
+            aria-invalid={problem?.field === "email"}
+            required
+            value={values.email}
+            onChange={(event) => setValues({ ...values, email: event.target.value })}
+          />
+        </label>
+        <FieldError problem={problem} field="email" />
+        <label className="fieldset">
+          <span className="fieldset-legend">Password</span>
+          <input
+            className="input w-full"
+            type="password"
+            autoComplete="new-password"
+            aria-invalid={problem?.field === "password"}
+            required
+            minLength={12}
+            value={values.password}
+            onChange={(event) => setValues({ ...values, password: event.target.value })}
+          />
+        </label>
+        <FieldError problem={problem} field="password" />
+        <label className="fieldset">
+          <span className="fieldset-legend">Name</span>
+          <input
+            className="input w-full"
+            type="text"
+            autoComplete="name"
+            value={values.name}
+            onChange={(event) => setValues({ ...values, name: event.target.value })}
+          />
+        </label>
+        <FieldError problem={problem} field="name" />
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          Create account
+        </button>
+      </form>
+      <Link href={`/login${search === "" ? "" : `?${search}`}`} className="link">
+        I have an account
+      </Link>
+    </section>
+  );
+}

@@ -27,18 +27,12 @@ pub fn check_mode(mode: &str) -> Result<(), String> {
     crate::validation::validate_auth_mode(mode)
 }
 
-/// Whether `puerto new --auth <mode>` can write a project with this database and frontend choice —
-/// asked before anything is written. Local accounts live in Postgres, and their frontend arrives
-/// in `PLAN.md` § 16.7.
-pub fn check_new_project(mode: &str, db: bool, web: bool) -> Result<(), String> {
+/// Whether `puerto new --auth <mode>` can write a project with this database choice — asked
+/// before anything is written. Local accounts live in Postgres.
+pub fn check_new_project(mode: &str, db: bool) -> Result<(), String> {
     check_mode(mode)?;
     if mode == "local" && !db {
         return Err("--auth local keeps accounts in the database: add --db".into());
-    }
-    if mode == "local" && web {
-        return Err(
-            "--auth local has no web frontend yet: add --no-web (or use --auth oidc)".into(),
-        );
     }
     Ok(())
 }
@@ -496,25 +490,41 @@ fn add_makefile_targets(
     Ok(())
 }
 
-/// The frontend's auth files, written once under `web/` (their templates mirror the paths). The
-/// last three replace the template's own: the app runs inside `AuthProvider`, the layout shows the
-/// user, and `renderScreen` signs a caller in.
-const WEB_FILES: [&str; 15] = [
+/// The frontend's auth files of both modes, written once under `web/` (their templates mirror the
+/// paths). The last three replace the template's own: the app runs inside `AuthProvider`, the
+/// layout shows the user, and `renderScreen` signs a caller in.
+const WEB_FILES: [&str; 11] = [
     "src/domain/auth/session.ts",
-    "src/infrastructure/auth/oidc-auth-gateway.ts",
-    "src/infrastructure/auth/oidc-auth-gateway.test.ts",
     "src/infrastructure/auth/bearer-middleware.ts",
     "src/infrastructure/auth/bearer-middleware.test.ts",
     "src/presentation/core/auth.tsx",
     "src/presentation/core/auth.test.tsx",
-    "src/presentation/pages/auth-callback.tsx",
-    "src/presentation/pages/auth-callback.test.tsx",
     "src/presentation/shared/ui/user-menu.tsx",
     "src/presentation/shared/ui/user-menu.test.tsx",
     "src/test-support/auth.ts",
     "src/main.tsx",
     "src/presentation/shared/ui/layout.tsx",
     "src/test-support/render.tsx",
+];
+
+/// An OIDC project's: the provider's client and the page it sends the user back to.
+const OIDC_WEB_FILES: [&str; 4] = [
+    "src/infrastructure/auth/oidc-auth-gateway.ts",
+    "src/infrastructure/auth/oidc-auth-gateway.test.ts",
+    "src/presentation/pages/auth-callback.tsx",
+    "src/presentation/pages/auth-callback.test.tsx",
+];
+
+/// A local project's: the `Accounts` port, the gateway over `/auth/*`, the sign-in and sign-up pages.
+const LOCAL_WEB_FILES: [&str; 8] = [
+    "src/domain/auth/accounts.ts",
+    "src/domain/auth/messages.ts",
+    "src/infrastructure/auth/local-auth-gateway.ts",
+    "src/infrastructure/auth/local-auth-gateway.test.ts",
+    "src/presentation/pages/login.tsx",
+    "src/presentation/pages/login.test.tsx",
+    "src/presentation/pages/register.tsx",
+    "src/presentation/pages/register.test.tsx",
 ];
 
 /// The dependency-cruiser rule that keeps the provider's client behind `AuthGateway`.
@@ -553,14 +563,23 @@ fn web_env(project: &str) -> String {
     )
 }
 
-/// The frontend half (`PLAN.md` § 16.5): sign in with the provider, send the token, guard screens.
-fn write_web(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// The frontend half (`PLAN.md` § 16.5, § 16.7): sign in — with the provider, or with a password
+/// — send the token, guard screens.
+fn write_web(base: &Path, project: &str, local: bool) -> Result<(), Box<dyn std::error::Error>> {
     let web = base.join("web");
-    for file in WEB_FILES {
+    let mode_files: &[&str] = if local {
+        &LOCAL_WEB_FILES
+    } else {
+        &OIDC_WEB_FILES
+    };
+    for file in WEB_FILES.iter().chain(mode_files) {
         write_file(
             &web.join(file),
-            &render_static(&format!("auth/web/{file}.tera"))?,
+            &render_for(&format!("auth/web/{file}.tera"), local)?,
         )?;
+    }
+    if local {
+        return Ok(());
     }
 
     let path = web.join("package.json");
@@ -663,6 +682,26 @@ pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth in `web/`
 
 "#;
 
+/// What follows [`AGENTS_AUTH_LOCAL_SECTION`] in a project with `web/`.
+pub const AGENTS_AUTH_LOCAL_WEB_SECTION: &str = r#"### Auth in `web/`
+
+- `useAuth()` (`presentation/core/auth.tsx`) gives `{ user, can(role), login, logout }`; `user` is
+  `GET /me`. Generated screens hide what `can` denies, but the API decides: its `403` reaches the
+  alert as `auth.forbidden`.
+- `core/generated/routes.tsx` wraps every non-public screen in `<RequireAuth>`, which sends whoever
+  is not signed in to `/login?next=…`, as a `401` from any call does. Wrap your own routes in
+  `routes.tsx` the same way.
+- `/login` and `/register` (`presentation/pages/`) sign in through `Accounts`
+  (`domain/auth/accounts.ts`); `domain/auth/messages.ts` turns the API's codes into what the forms
+  say, under the field they are about. These files are yours.
+- The session token is in `localStorage` (`infrastructure/auth/local-auth-gateway.ts`): a reload
+  stays signed in; Sign out revokes it on the API.
+- Screen tests sign in a caller holding every role (`renderScreen`); pass `{ user }` for another one
+  (`CurrentUserMother`), `{ auth: fakeAuthGateway(…) }` or `{ accounts: fakeAccounts() }` to see
+  what a screen asked.
+
+"#;
+
 fn add_agents_section(
     base: &Path,
     web: bool,
@@ -675,7 +714,9 @@ fn add_agents_section(
     if agents.contains("## Auth (`[project] auth`)") {
         return Ok(());
     }
-    let section = if local {
+    let section = if local && web {
+        format!("{AGENTS_AUTH_LOCAL_SECTION}{AGENTS_AUTH_LOCAL_WEB_SECTION}")
+    } else if local {
         AGENTS_AUTH_LOCAL_SECTION.to_string()
     } else if web {
         format!("{AGENTS_AUTH_SECTION}{AGENTS_AUTH_WEB_SECTION}")
@@ -722,9 +763,8 @@ pub fn apply_auth_to_new_project(
         add_env(base, &project)?;
     }
     add_makefile_targets(base, &project, local)?;
-    // A local project has no frontend yet (`check_new_project`).
-    if config.project.web && !local {
-        write_web(base, &project)?;
+    if config.project.web {
+        write_web(base, &project, local)?;
     }
     add_agents_section(base, config.project.web, local)?;
 
@@ -737,21 +777,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_write_local_accounts_only_with_a_database_and_no_frontend_yet() {
-        assert!(check_new_project("oidc", false, true).is_ok());
-        assert!(check_new_project("local", true, false).is_ok());
+    fn should_write_local_accounts_only_with_a_database() {
+        assert!(check_new_project("oidc", false).is_ok());
+        assert!(check_new_project("local", true).is_ok());
         assert!(
-            check_new_project("local", false, false)
+            check_new_project("local", false)
                 .unwrap_err()
                 .contains("--db")
         );
         assert!(
-            check_new_project("local", true, true)
-                .unwrap_err()
-                .contains("--no-web")
-        );
-        assert!(
-            check_new_project("auth0", true, false)
+            check_new_project("auth0", true)
                 .unwrap_err()
                 .contains("unknown auth mode")
         );

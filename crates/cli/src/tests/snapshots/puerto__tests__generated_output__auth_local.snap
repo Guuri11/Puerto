@@ -85,6 +85,19 @@ puerto validate                                               # check puerto.tom
 - `puerto generate scaffold` refuses to overwrite an entity that already has files; `--force`
   discards hand-written changes in them.
 
+## Frontend (`web/`)
+
+A React + daisyUI app on Bun that talks to the API under `/api`. It follows the same Dependency
+Rule as the crates (`domain` ← `application` ← `infrastructure` ← `presentation`), checked by
+`make web/lint`. Its rules — layers, generated files, where use cases go — are in `web/AGENTS.md`.
+
+The OpenAPI spec is the contract between the two halves: `docs/api/openapi.json`, exported by a
+test in `bootstrap.rs`. **After a scaffold and after touching a route or a DTO, run
+`make web/sync`** (it re-exports the spec, regenerates the frontend's wire types and formats
+`web/`) and commit both. Until then `make test` fails — that failure is the drift check.
+`puerto generate scaffold` writes a CRUD entity's screens too; `puerto generate web <Name>` writes
+them alone.
+
 ## Auth (`[project] auth`)
 
 The API keeps its own accounts (ADR-0021 of Puerto): `POST /auth/register` creates one,
@@ -110,6 +123,23 @@ the token as `Authorization: Bearer <token>`; the database keeps only its SHA-25
 - `GET /me` answers the caller as the API resolved them.
 - A rule that depends on data ("only the owner edits") belongs in the use case, not in an
   attribute.
+
+### Auth in `web/`
+
+- `useAuth()` (`presentation/core/auth.tsx`) gives `{ user, can(role), login, logout }`; `user` is
+  `GET /me`. Generated screens hide what `can` denies, but the API decides: its `403` reaches the
+  alert as `auth.forbidden`.
+- `core/generated/routes.tsx` wraps every non-public screen in `<RequireAuth>`, which sends whoever
+  is not signed in to `/login?next=…`, as a `401` from any call does. Wrap your own routes in
+  `routes.tsx` the same way.
+- `/login` and `/register` (`presentation/pages/`) sign in through `Accounts`
+  (`domain/auth/accounts.ts`); `domain/auth/messages.ts` turns the API's codes into what the forms
+  say, under the field they are about. These files are yours.
+- The session token is in `localStorage` (`infrastructure/auth/local-auth-gateway.ts`): a reload
+  stays signed in; Sign out revokes it on the API.
+- Screen tests sign in a caller holding every role (`renderScreen`); pass `{ user }` for another one
+  (`CurrentUserMother`), `{ auth: fakeAuthGateway(…) }` or `{ accounts: fakeAccounts() }` to see
+  what a screen asked.
 
 ## Conventions
 
@@ -7148,10 +7178,75 @@ fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
     OpenApiService::new(api, env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use business::domain::order::use_cases::create_order::mocks::MockCreateOrderUseCase;
+    use business::domain::order::use_cases::delete_order::mocks::MockDeleteOrderUseCase;
+    use business::domain::order::use_cases::get_order::mocks::MockGetOrderUseCase;
+    use business::domain::order::use_cases::list_orders::mocks::MockListOrdersUseCase;
+    use business::domain::order::use_cases::update_order::mocks::MockUpdateOrderUseCase;
+    use business::domain::product::use_cases::create_product::mocks::MockCreateProductUseCase;
+    use business::domain::product::use_cases::delete_product::mocks::MockDeleteProductUseCase;
+    use business::domain::product::use_cases::get_product::mocks::MockGetProductUseCase;
+    use business::domain::product::use_cases::list_products::mocks::MockListProductsUseCase;
+    use business::domain::product::use_cases::publish_product::mocks::MockPublishProductUseCase;
+    use business::domain::product::use_cases::update_product::mocks::MockUpdateProductUseCase;
+    use business::domain::user::use_cases::login::mocks::MockLoginUseCase;
+    use business::domain::user::use_cases::logout::mocks::MockLogoutUseCase;
+    use business::domain::user::use_cases::register_user::mocks::MockRegisterUserUseCase;
+
+    /// The API contract the frontend's types are generated from (`make web/sync`).
+    const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
+
+    /// Built from mocked use cases: no server, no database. A missing file is written; a different
+    /// one fails — run `make web/sync` (it sets `UPDATE_OPENAPI=1`) and commit the diff.
+    #[test]
+    fn openapi_spec_matches_docs_api_openapi_json() {
+        let product_api = ProductApi {
+            create_product: Arc::new(MockCreateProductUseCase::new()),
+            get_product: Arc::new(MockGetProductUseCase::new()),
+            list_products: Arc::new(MockListProductsUseCase::new()),
+            update_product: Arc::new(MockUpdateProductUseCase::new()),
+            delete_product: Arc::new(MockDeleteProductUseCase::new()),
+            publish_product: Arc::new(MockPublishProductUseCase::new()),
+        };
+        let order_api = OrderApi {
+            create_order: Arc::new(MockCreateOrderUseCase::new()),
+            get_order: Arc::new(MockGetOrderUseCase::new()),
+            list_orders: Arc::new(MockListOrdersUseCase::new()),
+            update_order: Arc::new(MockUpdateOrderUseCase::new()),
+            delete_order: Arc::new(MockDeleteOrderUseCase::new()),
+        };
+        let me_api = MeApi;
+        let auth_api = AuthApi {
+            register_user: Arc::new(MockRegisterUserUseCase::new()),
+            login: Arc::new(MockLoginUseCase::new()),
+            logout: Arc::new(MockLogoutUseCase::new()),
+        };
+        let spec = openapi_service((product_api, order_api, me_api, auth_api)).spec();
+
+        let path = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
+            let dir = path.parent().expect("docs/api/openapi.json has a parent");
+            std::fs::create_dir_all(dir).expect("create docs/api");
+            std::fs::write(path, &spec).expect("write docs/api/openapi.json");
+            return;
+        }
+        let committed = std::fs::read_to_string(path).expect("read docs/api/openapi.json");
+        assert!(
+            committed == spec,
+            "docs/api/openapi.json is not the API this code serves: run `make web/sync`"
+        );
+    }
+}
+
 === puerto.toml ===
 [project]
 name = "snapshot"
 db = true
+web = true
 auth = "local"
 
 [[entity]]
@@ -7216,113 +7311,2999 @@ db = true
 name = "total"
 type = "i64"
 
-=== web/.dependency-cruiser.cjs ===
-(deleted)
+=== web/src/domain/auth/accounts.ts ===
+import type { CurrentUser } from "./session";
 
-=== web/.gitignore ===
-(deleted)
+/** What the sign-up form sends. */
+export interface Registration {
+  email: string;
+  password: string;
+  name: string | null;
+}
 
-=== web/AGENTS.md ===
-(deleted)
+/**
+ * The accounts this API keeps itself: signing up and signing in with a password. A refusal rejects
+ * with an `AuthError` carrying the API's code (`user.duplicate`, `auth.invalid_credentials`).
+ */
+export interface Accounts {
+  register(registration: Registration): Promise<CurrentUser>;
+  /** Opens a session: from then on `AuthGateway.currentUser()` answers this account. */
+  signIn(email: string, password: string): Promise<void>;
+}
 
-=== web/biome.json ===
-(deleted)
+=== web/src/domain/auth/messages.ts ===
+/** What a sign-in or sign-up form shows for an API error: under the input it is about, or in the alert. */
+export interface AccountProblem {
+  field: "email" | "password" | "name" | null;
+  text: string;
+}
 
-=== web/bunfig.toml ===
-(deleted)
+/**
+ * The messages for the codes of `/auth/*` (the backend's `UserError`). English: this file is the
+ * place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "user.validation_error.email_invalid": "This is not an email address",
+  "user.validation_error.password_too_short": "Use at least 12 characters",
+  "user.duplicate": "An account with this email already exists",
+  "auth.invalid_credentials": "Wrong email or password",
+  "user.repository_error": "The account could not be saved, try again later",
+  "user.unknown": "Something went wrong",
+};
 
-=== web/index.html ===
-(deleted)
+/** The input each field's code is about. */
+const FIELDS: Record<string, AccountProblem["field"]> = {
+  "user.validation_error.email_invalid": "email",
+  "user.validation_error.password_too_short": "password",
+  "user.duplicate": "email",
+};
 
-=== web/package.json ===
-(deleted)
+export function toAccountProblem(code: string): AccountProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
 
-=== web/src/application/README.md ===
-(deleted)
+=== web/src/domain/auth/session.ts ===
+/** The signed-in user as the API resolved them (`GET /me`): never the provider's own claims. */
+export interface CurrentUser {
+  id: string;
+  email: string | null;
+  name: string | null;
+  /** What the API checks with `#[require_role]`. */
+  roles: string[];
+}
 
-=== web/src/domain/shared/page.ts ===
-(deleted)
+/**
+ * Who is signed in, and how to sign in and out. The adapter talks to the provider (OIDC) or to
+ * the API (local); screens reach it through `useAuth()`.
+ */
+export interface AuthGateway {
+  /** The signed-in user, or `null` when nobody is. */
+  currentUser(): Promise<CurrentUser | null>;
+  /** The bearer token for the API, or `null` when nobody is signed in. */
+  accessToken(): Promise<string | null>;
+  /** Signs in, then comes back to `returnTo` (a path of this app). */
+  login(returnTo: string): Promise<void>;
+  /** Finishes a sign-in on `/auth/callback`; answers the path `login` was given. */
+  completeLogin(): Promise<string>;
+  logout(): Promise<void>;
+}
 
-=== web/src/index.css ===
-(deleted)
+/** A sign-in the provider or the API refused, or a `GET /me` that failed. */
+export class AuthError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "AuthError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/order/errors.ts ===
+/**
+ * A request about an order that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `order.not_found`, `order.validation_error.<field>_empty`.
+ */
+export class OrderError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "OrderError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/order/messages.ts ===
+import type { OrderDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface OrderProblem {
+  field: keyof OrderDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "order.duplicate": "An order with these values already exists",
+  "order.not_found": "This order no longer exists",
+  "order.repository_error": "The order could not be saved, try again later",
+  "order.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof OrderDraft> = {};
+
+export function toProblem(code: string): OrderProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/domain/order/model.ts ===
+export interface Order {
+  id: string;
+  total: number;
+}
+
+/** What a create or an update sends: an order without its id. */
+export type OrderDraft = Omit<Order, "id">;
+
+=== web/src/domain/order/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
+import type { Order, OrderDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `OrderError` the API answered. */
+export interface OrderRepository {
+  list(page: PageRequest): Promise<Page<Order>>;
+  get(id: string): Promise<Order>;
+  create(draft: OrderDraft): Promise<Order>;
+  update(id: string, draft: OrderDraft): Promise<Order>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/domain/product/errors.ts ===
+/**
+ * A request about a product that the API refused. `code` is the API's `ErrorResponse.name`:
+ * `product.not_found`, `product.validation_error.<field>_empty`.
+ */
+export class ProductError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "ProductError";
+    this.code = code;
+  }
+}
+
+=== web/src/domain/product/messages.ts ===
+import type { ProductDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ProductProblem {
+  field: keyof ProductDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "product.invalid_name": "Name is not valid",
+  "product.validation_error.sku_empty": "Sku is required",
+  "product.invalid_status": "Status is not valid",
+  "product.duplicate": "A product with these values already exists",
+  "product.not_found": "This product no longer exists",
+  "product.repository_error": "The product could not be saved, try again later",
+  "product.unknown": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof ProductDraft> = {
+  "product.invalid_name": "name",
+  "product.validation_error.sku_empty": "sku",
+  "product.invalid_status": "status",
+};
+
+export function toProblem(code: string): ProductProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/domain/product/model.ts ===
+import { ProductError } from "./errors";
+
+export interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  status: Status;
+}
+
+/** What a create or an update sends: a product without its id. */
+export type ProductDraft = Omit<Product, "id">;
+
+export const statusValues = ["Draft", "Live"] as const;
+
+export type Status = (typeof statusValues)[number];
+
+/** Narrows the API's `string` to a `Status`, rejecting with `product.invalid_status`. */
+export function parseStatus(value: string): Status {
+  const found = statusValues.find((candidate) => candidate === value);
+  if (found === undefined) throw new ProductError("product.invalid_status");
+  return found;
+}
+
+=== web/src/domain/product/repository.ts ===
+import type { Page, PageRequest } from "../shared/page";
+import type { Product, ProductDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `ProductError` the API answered. */
+export interface ProductRepository {
+  list(page: PageRequest): Promise<Page<Product>>;
+  get(id: string): Promise<Product>;
+  create(draft: ProductDraft): Promise<Product>;
+  update(id: string, draft: ProductDraft): Promise<Product>;
+  remove(id: string): Promise<void>;
+}
+
+=== web/src/infrastructure/auth/bearer-middleware.test.ts ===
+import { describe, expect, test } from "bun:test";
+import createClient from "openapi-fetch";
+import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
+import { bearerMiddleware } from "./bearer-middleware";
+
+/** One endpoint is enough: the middleware does not look at the path. */
+interface paths {
+  "/me": { get: { responses: { 200: { content: { "application/json": unknown } } } } };
+}
+
+/** A client whose every request is answered with `status`, signed by `auth`. */
+function answering(status: number, auth: ReturnType<typeof fakeAuthGateway>) {
+  const requests: Request[] = [];
+  const api = createClient<paths>({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return Response.json({}, { status });
+    },
+  });
+  api.use(bearerMiddleware(auth));
+  return { api, requests };
+}
+
+describe("bearerMiddleware", () => {
+  test("should send the user's token when someone is signed in", async () => {
+    // Arrange
+    const user = CurrentUserMother.random();
+    const { api, requests } = answering(200, fakeAuthGateway({ user }));
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(requests[0]?.headers.get("Authorization")).toBe(`Bearer token-of-${user.id}`);
+  });
+
+  test("should send no token when nobody is signed in", async () => {
+    // Arrange
+    const { api, requests } = answering(200, fakeAuthGateway());
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(requests[0]?.headers.has("Authorization")).toBe(false);
+  });
+
+  test("should sign in again when the API answers 401", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
+    const { api } = answering(401, auth);
+
+    // Act
+    await api.GET("/me");
+
+    // Assert
+    expect(auth.logins).toHaveLength(1);
+  });
+});
+
+=== web/src/infrastructure/auth/bearer-middleware.ts ===
+import type { Middleware } from "openapi-fetch";
+import type { AuthGateway } from "../../domain/auth/session";
+
+/**
+ * Signs every API call with the user's token; a `401` means the session is gone, so it signs in
+ * again and comes back to the page it was on.
+ */
+export function bearerMiddleware(auth: AuthGateway): Middleware {
+  return {
+    async onRequest({ request }) {
+      const token = await auth.accessToken();
+      if (token !== null) request.headers.set("Authorization", `Bearer ${token}`);
+      return request;
+    },
+    async onResponse({ response }) {
+      if (response.status === 401) {
+        void auth.login(window.location.pathname + window.location.search);
+      }
+      return response;
+    },
+  };
+}
+
+=== web/src/infrastructure/auth/local-auth-gateway.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { AuthError } from "../../domain/auth/session";
+import { localAuthGateway, TOKEN_KEY } from "./local-auth-gateway";
+
+/** A `Storage` of its own per test. */
+function memoryStorage(seed: Record<string, string> = {}): Storage {
+  const items = new Map(Object.entries(seed));
+  return {
+    get length() {
+      return items.size;
+    },
+    clear: () => items.clear(),
+    getItem: (key) => items.get(key) ?? null,
+    key: (index) => [...items.keys()][index] ?? null,
+    removeItem: (key) => {
+      items.delete(key);
+    },
+    setItem: (key, value) => {
+      items.set(key, value);
+    },
+  };
+}
+
+/** An API answering each path with its `[status, body]`; `requests` records what it was asked. */
+function api(answers: Record<string, [number, unknown]>) {
+  const requests: { url: string; init: RequestInit }[] = [];
+  const fetch = async (url: string, init: RequestInit) => {
+    requests.push({ url, init });
+    const [status, body] = answers[url] ?? [404, null];
+    return body === null ? new Response(null, { status }) : Response.json(body, { status });
+  };
+  return { fetch, requests };
+}
+
+const ADA = { id: crypto.randomUUID(), email: "ada@example.com", name: "Ada", roles: ["admin"] };
+
+describe("localAuthGateway", () => {
+  test("should store the token and load the user when signing in", async () => {
+    // Arrange
+    const storage = memoryStorage();
+    const { fetch, requests } = api({
+      "/api/auth/login": [200, { token: "opaque", expiresAt: "2030-01-01T00:00:00Z" }],
+      "/api/me": [200, ADA],
+    });
+    const gateway = localAuthGateway({ storage, fetch });
+
+    // Act
+    await gateway.signIn("ada@example.com", "correct horse battery");
+    const user = await gateway.currentUser();
+
+    // Assert
+    expect(storage.getItem(TOKEN_KEY)).toBe("opaque");
+    expect(await gateway.accessToken()).toBe("opaque");
+    expect(user).toEqual(ADA);
+    expect(requests[1]?.init.headers).toEqual({ Authorization: "Bearer opaque" });
+  });
+
+  test("should reject with the API's code when the password is wrong", async () => {
+    // Arrange
+    const code = "auth.invalid_credentials";
+    const storage = memoryStorage();
+    const { fetch } = api({ "/api/auth/login": [401, { name: code, message: code }] });
+
+    // Act
+    const result = localAuthGateway({ storage, fetch }).signIn("ada@example.com", "wrong!");
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(AuthError);
+    await expect(result).rejects.toMatchObject({ code });
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  test("should forget a session the API no longer accepts", async () => {
+    // Arrange
+    const storage = memoryStorage({ [TOKEN_KEY]: "expired" });
+    const { fetch } = api({ "/api/me": [401, { name: "auth.unauthenticated" }] });
+
+    // Act
+    const user = await localAuthGateway({ storage, fetch }).currentUser();
+
+    // Assert
+    expect(user).toBeNull();
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  test("should drop the session and go to the sign-in page, then back, when a call is refused", async () => {
+    // Arrange: what the bearer middleware does on a 401.
+    const storage = memoryStorage({ [TOKEN_KEY]: "revoked" });
+    const visited: string[] = [];
+    const gateway = localAuthGateway({
+      storage,
+      fetch: api({}).fetch,
+      goTo: (url) => visited.push(url),
+    });
+
+    // Act
+    await gateway.login("/orders?page=2");
+
+    // Assert
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+    expect(visited).toEqual(["/login?next=%2Forders%3Fpage%3D2"]);
+  });
+
+  test("should revoke the session, then forget it, when signing out", async () => {
+    // Arrange
+    const storage = memoryStorage({ [TOKEN_KEY]: "opaque" });
+    const { fetch, requests } = api({ "/api/auth/logout": [204, null] });
+
+    // Act
+    await localAuthGateway({ storage, fetch }).logout();
+
+    // Assert
+    expect(requests[0]?.url).toBe("/api/auth/logout");
+    expect(requests[0]?.init.headers).toEqual({ Authorization: "Bearer opaque" });
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  test("should sign out here even when the API cannot be reached", async () => {
+    // Arrange
+    const storage = memoryStorage({ [TOKEN_KEY]: "opaque" });
+    const fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+
+    // Act
+    await localAuthGateway({ storage, fetch }).logout();
+
+    // Assert
+    expect(storage.getItem(TOKEN_KEY)).toBeNull();
+  });
+
+  test("should send the registration and answer the new account", async () => {
+    // Arrange
+    const { fetch, requests } = api({ "/api/auth/register": [201, { ...ADA, roles: [] }] });
+    const registration = {
+      email: "ada@example.com",
+      password: "correct horse battery",
+      name: "Ada",
+    };
+
+    // Act
+    const user = await localAuthGateway({ storage: memoryStorage(), fetch }).register(registration);
+
+    // Assert
+    expect(JSON.parse(String(requests[0]?.init.body))).toEqual(registration);
+    expect(user.email).toBe("ada@example.com");
+  });
+});
+
+=== web/src/infrastructure/auth/local-auth-gateway.ts ===
+import type { Accounts, Registration } from "../../domain/auth/accounts";
+import { AuthError, type AuthGateway, type CurrentUser } from "../../domain/auth/session";
+
+/**
+ * Where the session token is kept: in `localStorage`, so a reload stays signed in — there is no
+ * provider session to fall back on. A token that leaks is revoked server-side (`POST /auth/logout`).
+ */
+export const TOKEN_KEY = "auth.token";
+
+export interface LocalAuthOptions {
+  storage?: Storage;
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
+  /** Leaves for another page of the app: the sign-in page, on `login`. */
+  goTo?: (url: string) => void;
+}
+
+interface MeBody {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  roles: string[];
+}
+
+function toCurrentUser(me: MeBody): CurrentUser {
+  return { id: me.id, email: me.email ?? null, name: me.name ?? null, roles: me.roles };
+}
+
+/** `ErrorResponse.name` of a failed call, or `http.<status>` for a body that is not one. */
+async function errorCode(response: Response): Promise<string> {
+  const body: unknown = await response.json().catch(() => null);
+  if (typeof body === "object" && body !== null && "name" in body) {
+    const { name } = body;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+const JSON_BODY = { "Content-Type": "application/json" };
+
+/** `AuthGateway` and `Accounts` over the API's own `/auth/*` (`--auth local`). */
+export function localAuthGateway({
+  storage = window.localStorage,
+  fetch: send = (url, init) => fetch(url, init),
+  goTo = (url) => window.location.assign(url),
+}: LocalAuthOptions = {}): AuthGateway & Accounts {
+  const token = () => storage.getItem(TOKEN_KEY);
+  const bearer = (value: string) => ({ Authorization: `Bearer ${value}` });
+
+  return {
+    accessToken: async () => token(),
+
+    async currentUser() {
+      const current = token();
+      if (current === null) return null;
+      const response = await send("/api/me", { headers: bearer(current) });
+      // An expired or revoked session: signed out, not an error.
+      if (response.status === 401) {
+        storage.removeItem(TOKEN_KEY);
+        return null;
+      }
+      if (!response.ok) throw new AuthError(await errorCode(response));
+      return toCurrentUser((await response.json()) as MeBody);
+    },
+
+    /** The session is gone or never was: drop what is left of it and ask for a password. */
+    async login(returnTo) {
+      storage.removeItem(TOKEN_KEY);
+      goTo(`/login?next=${encodeURIComponent(returnTo)}`);
+    },
+
+    completeLogin: async () => "/",
+
+    async logout() {
+      const current = token();
+      if (current !== null) {
+        // Signed out here whatever the API says: a session it could not revoke expires.
+        await send("/api/auth/logout", { method: "POST", headers: bearer(current) }).catch(
+          () => undefined,
+        );
+      }
+      storage.removeItem(TOKEN_KEY);
+    },
+
+    async register(registration: Registration) {
+      const response = await send("/api/auth/register", {
+        method: "POST",
+        headers: JSON_BODY,
+        body: JSON.stringify(registration),
+      });
+      if (!response.ok) throw new AuthError(await errorCode(response));
+      return toCurrentUser((await response.json()) as MeBody);
+    },
+
+    async signIn(email, password) {
+      const response = await send("/api/auth/login", {
+        method: "POST",
+        headers: JSON_BODY,
+        body: JSON.stringify({ email, password }),
+      });
+      if (!response.ok) throw new AuthError(await errorCode(response));
+      const session = (await response.json()) as { token: string };
+      storage.setItem(TOKEN_KEY, session.token);
+    },
+  };
+}
+
+=== web/src/infrastructure/http/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
+}
+
+/**
+ * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ */
+export function apiErrorCode(error: unknown, response: Response): string {
+  if (typeof error === "object" && error !== null && "name" in error) {
+    const { name } = error;
+    if (typeof name === "string") return name;
+  }
+  return `http.${response.status}`;
+}
+
+=== web/src/infrastructure/order/order-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { OrderError } from "../../domain/order/errors";
+import { OrderMother } from "../../test-support/order";
+import { createApiClient } from "../http/client";
+import { orderRepositoryHttp } from "./order-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: orderRepositoryHttp(api), requests };
+}
+
+describe("orderRepositoryHttp", () => {
+  test("should ask for the page and return its orders", async () => {
+    // Arrange
+    const order = OrderMother.random();
+    const page = { items: [order], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
+
+    // Act
+    const listed = await repository.list({ limit: 20, offset: 20 });
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/orders?limit=20&offset=20");
+    expect(listed).toEqual(page);
+  });
+
+  test("should send the draft when creating an order", async () => {
+    // Arrange
+    const draft = OrderMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the order does not exist", async () => {
+    // Arrange
+    const code = "order.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(OrderError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the order", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/orders/42");
+  });
+});
+
+=== web/src/infrastructure/order/order-repository-http.ts ===
+import { OrderError } from "../../domain/order/errors";
+import type { Order, OrderDraft } from "../../domain/order/model";
+import type { OrderRepository } from "../../domain/order/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type OrderDto = components["schemas"]["OrderDto"];
+type OrderRequest = components["schemas"]["CreateOrderRequest"];
+
+function toOrder(dto: OrderDto): Order {
+  return {
+    id: dto.id,
+    total: dto.total,
+  };
+}
+
+function toRequest(draft: OrderDraft): OrderRequest {
+  return {
+    total: draft.total,
+  };
+}
+
+/** `OrderRepository` over the REST API (`/orders`). */
+export function orderRepositoryHttp(api: ApiClient): OrderRepository {
+  return {
+    async list(page) {
+      const { data, error, response } = await api.GET("/orders", {
+        params: { query: page },
+      });
+      if (data === undefined) throw new OrderError(apiErrorCode(error, response));
+      return { ...data, items: data.items.map(toOrder) };
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/orders/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new OrderError(apiErrorCode(error, response));
+      return toOrder(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/orders", { body: toRequest(draft) });
+      if (data === undefined) throw new OrderError(apiErrorCode(error, response));
+      return toOrder(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/orders/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new OrderError(apiErrorCode(error, response));
+      return toOrder(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/orders/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new OrderError(apiErrorCode(error, response));
+    },
+  };
+}
+
+=== web/src/infrastructure/product/product-repository-http.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { ProductError } from "../../domain/product/errors";
+import { ProductMother } from "../../test-support/product";
+import { createApiClient } from "../http/client";
+import { productRepositoryHttp } from "./product-repository-http";
+
+/** A repository whose every request is answered with `status` and `body`. */
+function answering(status: number, body?: unknown) {
+  const requests: Request[] = [];
+  const api = createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      requests.push(request);
+      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
+    },
+  });
+  return { repository: productRepositoryHttp(api), requests };
+}
+
+describe("productRepositoryHttp", () => {
+  test("should ask for the page and return its products", async () => {
+    // Arrange
+    const product = ProductMother.random();
+    const page = { items: [product], total: 21, limit: 20, offset: 20 };
+    const { repository, requests } = answering(200, page);
+
+    // Act
+    const listed = await repository.list({ limit: 20, offset: 20 });
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/products?limit=20&offset=20");
+    expect(listed).toEqual(page);
+  });
+
+  test("should send the draft when creating a product", async () => {
+    // Arrange
+    const draft = ProductMother.draft();
+    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
+
+    // Act
+    const created = await repository.create(draft);
+
+    // Assert
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual(draft);
+    expect(created).toMatchObject(draft);
+  });
+
+  test("should reject with the API's error code when the product does not exist", async () => {
+    // Arrange
+    const code = "product.not_found";
+    const { repository } = answering(404, { name: code, message: code });
+
+    // Act
+    const result = repository.get(crypto.randomUUID());
+
+    // Assert
+    await expect(result).rejects.toBeInstanceOf(ProductError);
+    await expect(result).rejects.toMatchObject({ code });
+  });
+
+  test("should resolve when the API deletes the product", async () => {
+    // Arrange
+    const { repository, requests } = answering(204);
+
+    // Act
+    await repository.remove("42");
+
+    // Assert
+    expect(requests[0]?.url).toBe("http://localhost/api/products/42");
+  });
+});
+
+=== web/src/infrastructure/product/product-repository-http.ts ===
+import { ProductError } from "../../domain/product/errors";
+import { type Product, type ProductDraft, parseStatus } from "../../domain/product/model";
+import type { ProductRepository } from "../../domain/product/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type ProductDto = components["schemas"]["ProductDto"];
+type ProductRequest = components["schemas"]["CreateProductRequest"];
+
+function toProduct(dto: ProductDto): Product {
+  return {
+    id: dto.id,
+    name: dto.name,
+    sku: dto.sku,
+    price: dto.price,
+    status: parseStatus(dto.status),
+  };
+}
+
+function toRequest(draft: ProductDraft): ProductRequest {
+  return {
+    name: draft.name,
+    sku: draft.sku,
+    price: draft.price,
+    status: draft.status,
+  };
+}
+
+/** `ProductRepository` over the REST API (`/products`). */
+export function productRepositoryHttp(api: ApiClient): ProductRepository {
+  return {
+    async list(page) {
+      const { data, error, response } = await api.GET("/products", {
+        params: { query: page },
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return { ...data, items: data.items.map(toProduct) };
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/products/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/products", { body: toRequest(draft) });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/products/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new ProductError(apiErrorCode(error, response));
+      return toProduct(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/products/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new ProductError(apiErrorCode(error, response));
+    },
+  };
+}
 
 === web/src/main.tsx ===
-(deleted)
+import "./index.css";
 
-=== web/src/presentation/core/dependencies.tsx ===
-(deleted)
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { AuthProvider } from "./presentation/core/auth";
+import { DependenciesProvider } from "./presentation/core/dependencies";
+import { createDependencies } from "./presentation/core/generated/dependencies";
+import { AppRoutes, navEntries } from "./presentation/core/generated/routes";
+import { Layout } from "./presentation/shared/ui/layout";
+
+const root = document.getElementById("root");
+if (root === null) {
+  throw new Error("index.html has no #root element");
+}
+
+createRoot(root).render(
+  <StrictMode>
+    <DependenciesProvider value={createDependencies()}>
+      <AuthProvider>
+        <Layout title={document.title} nav={navEntries}>
+          <AppRoutes />
+        </Layout>
+      </AuthProvider>
+    </DependenciesProvider>
+  </StrictMode>,
+);
+
+=== web/src/presentation/core/auth.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen, waitFor } from "@testing-library/react";
+import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
+import { renderScreen } from "../../test-support/render";
+import { RequireAuth, useAuth } from "./auth";
+
+function Secret() {
+  const { can } = useAuth();
+  return <p>{can("admin") ? "admin area" : "member area"}</p>;
+}
+
+describe("RequireAuth", () => {
+  test("should start a sign-in that comes back here when nobody is signed in", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: null });
+
+    // Act
+    renderScreen(
+      <RequireAuth>
+        <Secret />
+      </RequireAuth>,
+      { auth },
+      "/orders?page=2",
+    );
+
+    // Assert
+    await waitFor(() => expect(auth.logins).toEqual(["/orders?page=2"]));
+    expect(screen.queryByText("member area")).toBeNull();
+  });
+
+  test("should show the page to a signed-in user without signing in again", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
+
+    // Act
+    renderScreen(
+      <RequireAuth>
+        <Secret />
+      </RequireAuth>,
+      { auth },
+    );
+
+    // Assert
+    expect(await screen.findByText("member area")).toBeTruthy();
+    expect(auth.logins).toEqual([]);
+  });
+});
+
+describe("useAuth", () => {
+  test("should allow a role only when the user holds it", async () => {
+    // Arrange
+    const user = CurrentUserMother.random({ roles: ["admin"] });
+
+    // Act
+    renderScreen(<Secret />, {}, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("admin area")).toBeTruthy();
+  });
+});
+
+describe("AuthProvider", () => {
+  test("should show the error code when the API does not accept the session", async () => {
+    // Arrange
+    const auth = {
+      ...fakeAuthGateway(),
+      currentUser: () => Promise.reject(new Error("auth.unauthenticated")),
+    };
+
+    // Act
+    renderScreen(<Secret />, { auth });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.unauthenticated");
+  });
+});
+
+=== web/src/presentation/core/auth.tsx ===
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useLocation, useSearch } from "wouter";
+import type { CurrentUser } from "../../domain/auth/session";
+import { ErrorAlert } from "../shared/ui/error-alert";
+import { useDependencies } from "./dependencies";
+
+export interface Auth {
+  /** The signed-in user, `null` when nobody is. */
+  user: CurrentUser | null;
+  /** Whether the user holds `role`. Screens hide what the API would refuse; the API still decides. */
+  can(role: string): boolean;
+  /** Signs in, then comes back to the current page. */
+  login(): Promise<void>;
+  logout(): Promise<void>;
+  /** Asks the gateway again who is signed in: after a sign-in that did not leave the app. */
+  refresh(): Promise<void>;
+  /** Finishes a sign-in (`/auth/callback`): answers the page to go back to. */
+  completeLogin(): Promise<string>;
+}
+
+type State =
+  | { status: "loading" }
+  | { status: "ready"; user: CurrentUser | null }
+  | { status: "error"; error: unknown };
+
+const AuthContext = createContext<Auth | null>(null);
+
+/** Asks the gateway who is signed in once, before rendering the app: no screen flickers. */
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const { auth } = useDependencies();
+  const [location] = useLocation();
+  const search = useSearch();
+  const [state, setState] = useState<State>({ status: "loading" });
+
+  useEffect(() => {
+    auth.currentUser().then(
+      (user) => setState({ status: "ready", user }),
+      (error: unknown) => setState({ status: "error", error }),
+    );
+  }, [auth]);
+
+  const here = search === "" ? location : `${location}?${search}`;
+  const login = useCallback(() => auth.login(here), [auth, here]);
+  const refresh = useCallback(async () => {
+    setState({ status: "ready", user: await auth.currentUser() });
+  }, [auth]);
+  const completeLogin = useCallback(async () => {
+    const back = await auth.completeLogin();
+    await refresh();
+    return back;
+  }, [auth, refresh]);
+  const logout = useCallback(async () => {
+    await auth.logout();
+    setState({ status: "ready", user: null });
+  }, [auth]);
+  const user = state.status === "ready" ? state.user : null;
+  const value = useMemo<Auth>(
+    () => ({
+      user,
+      can: (role) => user?.roles.includes(role) ?? false,
+      login,
+      logout,
+      refresh,
+      completeLogin,
+    }),
+    [user, login, logout, refresh, completeLogin],
+  );
+
+  if (state.status === "loading") return <span className="loading loading-spinner" />;
+  if (state.status === "error") return <ErrorAlert error={state.error} />;
+  return <AuthContext value={value}>{children}</AuthContext>;
+}
+
+export function useAuth(): Auth {
+  const auth = useContext(AuthContext);
+  if (auth === null) {
+    throw new Error("useAuth() called outside <AuthProvider>");
+  }
+  return auth;
+}
+
+/** Renders `children` for a signed-in user; anyone else is sent to sign in, and back here. */
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, login } = useAuth();
+  const started = useRef(false);
+
+  useEffect(() => {
+    // Once: StrictMode runs effects twice.
+    if (user !== null || started.current) return;
+    started.current = true;
+    void login();
+  }, [user, login]);
+
+  return user === null ? <span className="loading loading-spinner" /> : children;
+}
 
 === web/src/presentation/core/generated/dependencies.ts ===
-(deleted)
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+//
+// The composition root: the only module that imports `infrastructure/`. Screens reach the
+// adapters through `useDependencies()`, so a test hands them a fake instead.
+
+import type { Accounts } from "../../../domain/auth/accounts";
+import type { AuthGateway } from "../../../domain/auth/session";
+import type { OrderRepository } from "../../../domain/order/repository";
+import type { ProductRepository } from "../../../domain/product/repository";
+import { bearerMiddleware } from "../../../infrastructure/auth/bearer-middleware";
+import { localAuthGateway } from "../../../infrastructure/auth/local-auth-gateway";
+import { createApiClient } from "../../../infrastructure/http/client";
+import { orderRepositoryHttp } from "../../../infrastructure/order/order-repository-http";
+import { productRepositoryHttp } from "../../../infrastructure/product/product-repository-http";
+
+export interface Dependencies {
+  accounts: Accounts;
+  auth: AuthGateway;
+  orderRepository: OrderRepository;
+  productRepository: ProductRepository;
+}
+
+export function createDependencies(): Dependencies {
+  const auth = localAuthGateway();
+  const api = createApiClient();
+  api.use(bearerMiddleware(auth));
+  return {
+    accounts: auth,
+    auth,
+    orderRepository: orderRepositoryHttp(api),
+    productRepository: productRepositoryHttp(api),
+  };
+}
+
+=== web/src/presentation/core/generated/roles.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+
+/**
+ * Every role a generated screen checks (`roles` in puerto.toml). The screen tests' caller holds
+ * them all (`CurrentUserMother.caller()`).
+ */
+export const ROLES: string[] = ["admin", "owner"];
 
 === web/src/presentation/core/generated/routes.tsx ===
-(deleted)
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
 
-=== web/src/presentation/core/hooks/use-async.test.ts ===
-(deleted)
+import { Route, Switch } from "wouter";
+import { OrderDetailContainer } from "../../features/order/containers/order-detail-container";
+import { OrderFormContainer } from "../../features/order/containers/order-form-container";
+import { OrderListContainer } from "../../features/order/containers/order-list-container";
+import { ProductDetailContainer } from "../../features/product/containers/product-detail-container";
+import { ProductFormContainer } from "../../features/product/containers/product-form-container";
+import { ProductListContainer } from "../../features/product/containers/product-list-container";
+import { HomePage } from "../../pages/home";
+import { LoginPage } from "../../pages/login";
+import { NotFoundPage } from "../../pages/not-found";
+import { RegisterPage } from "../../pages/register";
+import type { NavEntry } from "../../shared/ui/layout";
+import { RequireAuth } from "../auth";
+import { customRoutes } from "../routes";
 
-=== web/src/presentation/core/hooks/use-async.ts ===
-(deleted)
+export const navEntries: NavEntry[] = [
+  { label: "Orders", href: "/orders" },
+  { label: "Products", href: "/products" },
+];
 
-=== web/src/presentation/core/routes.tsx ===
-(deleted)
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/login">
+        <LoginPage />
+      </Route>
+      <Route path="/register">
+        <RegisterPage />
+      </Route>
+      {customRoutes}
+      <Route path="/orders">
+        <RequireAuth>
+          <OrderListContainer />
+        </RequireAuth>
+      </Route>
+      <Route path="/orders/new">
+        <RequireAuth>
+          <OrderFormContainer />
+        </RequireAuth>
+      </Route>
+      <Route path="/orders/:id/edit">
+        {(params) => (
+          <RequireAuth>
+            <OrderFormContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+      <Route path="/orders/:id">
+        {(params) => (
+          <RequireAuth>
+            <OrderDetailContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+      <Route path="/products">
+        <ProductListContainer />
+      </Route>
+      <Route path="/products/new">
+        <RequireAuth>
+          <ProductFormContainer />
+        </RequireAuth>
+      </Route>
+      <Route path="/products/:id/edit">
+        {(params) => (
+          <RequireAuth>
+            <ProductFormContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+      <Route path="/products/:id">{(params) => <ProductDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
 
-=== web/src/presentation/pages/home.test.tsx ===
-(deleted)
+=== web/src/presentation/features/order/containers/order-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { OrderError } from "../../../../domain/order/errors";
+import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
+import { renderScreen } from "../../../../test-support/render";
+import { OrderDetailContainer } from "./order-detail-container";
 
-=== web/src/presentation/pages/home.tsx ===
-(deleted)
+describe("OrderDetailContainer", () => {
+  test("should show the order when it exists", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const orderRepository = fakeOrderRepository([seeded]);
 
-=== web/src/presentation/pages/not-found.tsx ===
-(deleted)
+    // Act
+    renderScreen(<OrderDetailContainer id={seeded.id} />, { orderRepository });
 
-=== web/src/presentation/shared/forms.test.ts ===
-(deleted)
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
 
-=== web/src/presentation/shared/forms.ts ===
-(deleted)
+  test("should show the not-found code when the order does not exist", async () => {
+    // Arrange
+    const orderRepository = fakeOrderRepository();
 
-=== web/src/presentation/shared/ui/confirm-dialog.test.tsx ===
-(deleted)
+    // Act
+    renderScreen(<OrderDetailContainer id={crypto.randomUUID()} />, { orderRepository });
 
-=== web/src/presentation/shared/ui/confirm-dialog.tsx ===
-(deleted)
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("order.not_found");
+  });
 
-=== web/src/presentation/shared/ui/empty-state.tsx ===
-(deleted)
+  test("should delete the order only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const fake = fakeOrderRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<OrderDetailContainer id={seeded.id} />, {
+      orderRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
 
-=== web/src/presentation/shared/ui/error-alert.test.tsx ===
-(deleted)
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
-=== web/src/presentation/shared/ui/error-alert.tsx ===
-(deleted)
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/orders"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
 
-=== web/src/presentation/shared/ui/field-error.test.tsx ===
-(deleted)
+  test("should show auth.forbidden when the API refuses the deletion", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const orderRepository = {
+      ...fakeOrderRepository([seeded]),
+      remove: () => Promise.reject(new OrderError("auth.forbidden")),
+    };
+    renderScreen(<OrderDetailContainer id={seeded.id} />, { orderRepository });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
 
-=== web/src/presentation/shared/ui/field-error.tsx ===
-(deleted)
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.forbidden");
+  });
+});
+
+=== web/src/presentation/features/order/containers/order-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { OrderDetailView } from "../views/order-detail-view";
+
+export function OrderDetailContainer({ id }: { id: string }) {
+  const { orderRepository } = useDependencies();
+  const order = useAsync(() => orderRepository.get(id), [orderRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await orderRepository.remove(id);
+      navigate("/orders");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Order</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {order.status === "loading" && <span className="loading loading-spinner" />}
+      {order.status === "error" && <ErrorAlert error={order.error} />}
+      {order.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <OrderDetailView order={order.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/orders/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/orders" className="link">
+        Back to orders
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this order?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/order/containers/order-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { OrderError } from "../../../../domain/order/errors";
+import type { OrderDraft } from "../../../../domain/order/model";
+import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
+import { renderScreen } from "../../../../test-support/render";
+import { OrderFormContainer } from "./order-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: OrderDraft) {
+  await screen.findByText("Save");
+  type("Total", String(draft.total));
+}
+
+describe("OrderFormContainer", () => {
+  test("should create the order from what was typed and show it", async () => {
+    // Arrange
+    const draft = OrderMother.draft();
+    const orderRepository = fakeOrderRepository();
+    const { history } = renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/orders/"));
+    const {
+      items: [created],
+    } = await orderRepository.list({ limit: 1, offset: 0 });
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/orders/${created?.id}`);
+  });
+
+  test("should save the edited order when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = OrderMother.random();
+    const orderRepository = fakeOrderRepository([seeded]);
+    const { history } = renderScreen(<OrderFormContainer id={seeded.id} />, {
+      orderRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/orders/${seeded.id}`));
+    expect(await orderRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the code itself when the API answers one the form does not know", async () => {
+    // Arrange
+    const code = "order.validation_error.invalid";
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      create: () => Promise.reject(new OrderError(code)),
+    };
+    renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(OrderMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+
+  test("should say a order with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      create: () => Promise.reject(new OrderError("order.duplicate")),
+    };
+    renderScreen(<OrderFormContainer />, { orderRepository });
+    await fillIn(OrderMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "An order with these values already exists",
+    );
+  });
+});
+
+=== web/src/presentation/features/order/containers/order-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/order/messages";
+import type { Order } from "../../../../domain/order/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
+import { OrderFormView, toOrderDraft, toOrderForm } from "../views/order-form-view";
+
+/** Creates an order, or edits the one with `id`. */
+export function OrderFormContainer({ id }: { id?: string }) {
+  const { orderRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : orderRepository.get(id)),
+    [orderRepository, id],
+  );
+  const title = id === undefined ? "New order" : "Edit order";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <OrderForm existing={existing.data} />}
+      <Link href={id === undefined ? "/orders" : `/orders/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function OrderForm({ existing }: { existing: Order | null }) {
+  const { orderRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toOrderForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toOrderDraft(values);
+      const saved =
+        existing === null
+          ? await orderRepository.create(draft)
+          : await orderRepository.update(existing.id, draft);
+      navigate(`/orders/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <OrderFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/order/containers/order-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen } from "@testing-library/react";
+import { OrderError } from "../../../../domain/order/errors";
+import { fakeOrderRepository, OrderMother } from "../../../../test-support/order";
+import { renderScreen } from "../../../../test-support/render";
+import { OrderListContainer } from "./order-list-container";
+
+describe("OrderListContainer", () => {
+  test("should show a row per order when there are some", async () => {
+    // Arrange
+    const seed = [OrderMother.random(), OrderMother.random()];
+    const orderRepository = fakeOrderRepository(seed);
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => OrderMother.random());
+    const orderRepository = fakeOrderRepository(seed);
+    renderScreen(<OrderListContainer />, { orderRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
+  });
+
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => OrderMother.random());
+    const orderRepository = fakeOrderRepository(seed);
+    const path = "/orders?page=2";
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
+  test("should say so when there is no order", async () => {
+    // Arrange
+    const orderRepository = fakeOrderRepository();
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository });
+
+    // Assert
+    expect(await screen.findByText("No orders yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the orders cannot be listed", async () => {
+    // Arrange
+    const orderRepository = {
+      ...fakeOrderRepository(),
+      list: () => Promise.reject(new OrderError("order.repository_error")),
+    };
+
+    // Act
+    renderScreen(<OrderListContainer />, { orderRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("order.repository_error");
+  });
+});
+
+=== web/src/presentation/features/order/containers/order-list-container.tsx ===
+import { Link, useLocation, useSearch } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { OrderListView } from "../views/order-list-view";
+
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
+export function OrderListContainer() {
+  const { orderRepository } = useDependencies();
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const orders = useAsync(
+    () => orderRepository.list({ limit: PAGE_SIZE, offset }),
+    [orderRepository, offset],
+  );
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Orders</h1>
+        <Link href="/orders/new" className="btn btn-primary">
+          New order
+        </Link>
+      </div>
+      {orders.status === "loading" && <span className="loading loading-spinner" />}
+      {orders.status === "error" && <ErrorAlert error={orders.error} />}
+      {orders.status === "ok" &&
+        (orders.data.total === 0 ? (
+          <EmptyState message="No orders yet." />
+        ) : (
+          <>
+            <OrderListView orders={orders.data.items} />
+            <Pagination {...orders.data} onOffsetChange={goTo} />
+          </>
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/order/views/order-detail-view.tsx ===
+import type { Order } from "../../../../domain/order/model";
+
+export function OrderDetailView({ order }: { order: Order }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Total</dt>
+      <dd>{order.total}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/order/views/order-form-view.tsx ===
+import type { OrderProblem } from "../../../../domain/order/messages";
+import type { Order, OrderDraft } from "../../../../domain/order/model";
+import { FieldError } from "../../../shared/ui/field-error";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface OrderFormValues {
+  total: string;
+}
+
+/** The inputs for `order`, empty when there is none yet. */
+export function toOrderForm(order: Order | null): OrderFormValues {
+  if (order === null) {
+    return {
+      total: "",
+    };
+  }
+  return {
+    total: String(order.total),
+  };
+}
+
+export function toOrderDraft(values: OrderFormValues): OrderDraft {
+  return {
+    total: Number(values.total),
+  };
+}
+
+export function OrderFormView({
+  values,
+  saving,
+  problem,
+  onChange,
+  onSubmit,
+}: {
+  values: OrderFormValues;
+  saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: OrderProblem | null;
+  onChange: (values: OrderFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Total</span>
+        <input
+          className="input w-full"
+          type="number"
+          aria-invalid={problem?.field === "total"}
+          required
+          value={values.total}
+          onChange={(event) => onChange({ ...values, total: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="total" />
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/order/views/order-list-view.tsx ===
+import { Link } from "wouter";
+import type { Order } from "../../../../domain/order/model";
+
+export function OrderListView({ orders }: { orders: Order[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Total</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((order) => (
+            <tr key={order.id}>
+              <td>{order.total}</td>
+              <td className="text-right">
+                <Link href={`/orders/${order.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-detail-container.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import { CurrentUserMother } from "../../../../test-support/auth";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductDetailContainer } from "./product-detail-container";
+
+describe("ProductDetailContainer", () => {
+  test("should show the product when it exists", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+
+    // Act
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the product does not exist", async () => {
+    // Arrange
+    const productRepository = fakeProductRepository();
+
+    // Act
+    renderScreen(<ProductDetailContainer id={crypto.randomUUID()} />, { productRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("product.not_found");
+  });
+
+  test("should delete the product only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const fake = fakeProductRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<ProductDetailContainer id={seeded.id} />, {
+      productRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/products"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+
+  test("should not offer Delete to a user without its role", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+    const user = CurrentUserMother.random();
+
+    // Act
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository }, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("Name", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("Delete", { selector: ".card-actions *" })).toBeNull();
+  });
+
+  test("should show auth.forbidden when the API refuses the deletion", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = {
+      ...fakeProductRepository([seeded]),
+      remove: () => Promise.reject(new ProductError("auth.forbidden")),
+    };
+    renderScreen(<ProductDetailContainer id={seeded.id} />, { productRepository });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.forbidden");
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-detail-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "../../../core/auth";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductDetailView } from "../views/product-detail-view";
+
+export function ProductDetailContainer({ id }: { id: string }) {
+  const { productRepository } = useDependencies();
+  const { can } = useAuth();
+  const product = useAsync(() => productRepository.get(id), [productRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await productRepository.remove(id);
+      navigate("/products");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Product</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {product.status === "loading" && <span className="loading loading-spinner" />}
+      {product.status === "error" && <ErrorAlert error={product.error} />}
+      {product.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <ProductDetailView product={product.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/products/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              {can("admin") && can("owner") && (
+                <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/products" className="link">
+        Back to products
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this product?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-form-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import type { ProductDraft } from "../../../../domain/product/model";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductFormContainer } from "./product-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: ProductDraft) {
+  await screen.findByText("Save");
+  type("Name", draft.name);
+  type("Sku", draft.sku);
+  type("Price", String(draft.price));
+  type("Status", draft.status);
+}
+
+describe("ProductFormContainer", () => {
+  test("should create the product from what was typed and show it", async () => {
+    // Arrange
+    const draft = ProductMother.draft();
+    const productRepository = fakeProductRepository();
+    const { history } = renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/products/"));
+    const {
+      items: [created],
+    } = await productRepository.list({ limit: 1, offset: 0 });
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/products/${created?.id}`);
+  });
+
+  test("should save the edited product when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = ProductMother.random();
+    const productRepository = fakeProductRepository([seeded]);
+    const { history } = renderScreen(<ProductFormContainer id={seeded.id} />, {
+      productRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/products/${seeded.id}`));
+    expect(await productRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the code itself when the API answers one the form does not know", async () => {
+    // Arrange
+    const code = "product.validation_error.invalid";
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError(code)),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+
+  test("should say a product with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError("product.duplicate")),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A product with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      create: () => Promise.reject(new ProductError("product.invalid_name")),
+    };
+    renderScreen(<ProductFormContainer />, { productRepository });
+    await fillIn(ProductMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Name is not valid")).toBeTruthy();
+    const input = screen.getByLabelText("Name");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-form-container.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/product/messages";
+import type { Product } from "../../../../domain/product/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
+import { ProductFormView, toProductDraft, toProductForm } from "../views/product-form-view";
+
+/** Creates a product, or edits the one with `id`. */
+export function ProductFormContainer({ id }: { id?: string }) {
+  const { productRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : productRepository.get(id)),
+    [productRepository, id],
+  );
+  const title = id === undefined ? "New product" : "Edit product";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <ProductForm existing={existing.data} />}
+      <Link href={id === undefined ? "/products" : `/products/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function ProductForm({ existing }: { existing: Product | null }) {
+  const { productRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toProductForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toProductDraft(values);
+      const saved =
+        existing === null
+          ? await productRepository.create(draft)
+          : await productRepository.update(existing.id, draft);
+      navigate(`/products/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <ProductFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/presentation/features/product/containers/product-list-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen } from "@testing-library/react";
+import { ProductError } from "../../../../domain/product/errors";
+import { CurrentUserMother } from "../../../../test-support/auth";
+import { fakeProductRepository, ProductMother } from "../../../../test-support/product";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductListContainer } from "./product-list-container";
+
+describe("ProductListContainer", () => {
+  test("should show a row per product when there are some", async () => {
+    // Arrange
+    const seed = [ProductMother.random(), ProductMother.random()];
+    const productRepository = fakeProductRepository(seed);
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ProductMother.random());
+    const productRepository = fakeProductRepository(seed);
+    renderScreen(<ProductListContainer />, { productRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
+  });
+
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ProductMother.random());
+    const productRepository = fakeProductRepository(seed);
+    const path = "/products?page=2";
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
+  test("should say so when there is no product", async () => {
+    // Arrange
+    const productRepository = fakeProductRepository();
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect(await screen.findByText("No products yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the products cannot be listed", async () => {
+    // Arrange
+    const productRepository = {
+      ...fakeProductRepository(),
+      list: () => Promise.reject(new ProductError("product.repository_error")),
+    };
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("product.repository_error");
+  });
+
+  test("should not offer New to a user without its role", async () => {
+    // Arrange
+    const productRepository = fakeProductRepository([ProductMother.random()]);
+    const user = CurrentUserMother.random();
+
+    // Act
+    renderScreen(<ProductListContainer />, { productRepository }, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("View")).toBeTruthy();
+    expect(screen.queryByText("New product")).toBeNull();
+  });
+});
+
+=== web/src/presentation/features/product/containers/product-list-container.tsx ===
+import { Link, useLocation, useSearch } from "wouter";
+import { PAGE_SIZE } from "../../../../domain/shared/page";
+import { useAuth } from "../../../core/auth";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { EmptyState } from "../../../shared/ui/empty-state";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { ProductListView } from "../views/product-list-view";
+
+/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
+export function ProductListContainer() {
+  const { productRepository } = useDependencies();
+  const { can } = useAuth();
+  const [location, navigate] = useLocation();
+  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
+  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const products = useAsync(
+    () => productRepository.list({ limit: PAGE_SIZE, offset }),
+    [productRepository, offset],
+  );
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Products</h1>
+        {can("admin") && (
+          <Link href="/products/new" className="btn btn-primary">
+            New product
+          </Link>
+        )}
+      </div>
+      {products.status === "loading" && <span className="loading loading-spinner" />}
+      {products.status === "error" && <ErrorAlert error={products.error} />}
+      {products.status === "ok" &&
+        (products.data.total === 0 ? (
+          <EmptyState message="No products yet." />
+        ) : (
+          <>
+            <ProductListView products={products.data.items} />
+            <Pagination {...products.data} onOffsetChange={goTo} />
+          </>
+        ))}
+    </section>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-detail-view.tsx ===
+import type { Product } from "../../../../domain/product/model";
+
+export function ProductDetailView({ product }: { product: Product }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Name</dt>
+      <dd>{product.name}</dd>
+      <dt className="font-semibold">Sku</dt>
+      <dd>{product.sku}</dd>
+      <dt className="font-semibold">Price</dt>
+      <dd>{product.price}</dd>
+      <dt className="font-semibold">Status</dt>
+      <dd>{product.status}</dd>
+    </dl>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-form-view.tsx ===
+import type { ProductProblem } from "../../../../domain/product/messages";
+import { type Product, type ProductDraft, parseStatus } from "../../../../domain/product/model";
+import { FieldError } from "../../../shared/ui/field-error";
+
+/** What the inputs hold: the text of every input, `checked` for a checkbox. */
+export interface ProductFormValues {
+  name: string;
+  sku: string;
+  price: string;
+  status: string;
+}
+
+/** The inputs for `product`, empty when there is none yet. */
+export function toProductForm(product: Product | null): ProductFormValues {
+  if (product === null) {
+    return {
+      name: "",
+      sku: "",
+      price: "",
+      status: "",
+    };
+  }
+  return {
+    name: product.name,
+    sku: product.sku,
+    price: String(product.price),
+    status: product.status,
+  };
+}
+
+export function toProductDraft(values: ProductFormValues): ProductDraft {
+  return {
+    name: values.name,
+    sku: values.sku,
+    price: Number(values.price),
+    status: parseStatus(values.status),
+  };
+}
+
+export function ProductFormView({
+  values,
+  saving,
+  problem,
+  onChange,
+  onSubmit,
+}: {
+  values: ProductFormValues;
+  saving: boolean;
+  /** What the API said about the last submit: shown under its input. */
+  problem: ProductProblem | null;
+  onChange: (values: ProductFormValues) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Name</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problem?.field === "name"}
+          required
+          value={values.name}
+          onChange={(event) => onChange({ ...values, name: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="name" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Sku</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problem?.field === "sku"}
+          required
+          value={values.sku}
+          onChange={(event) => onChange({ ...values, sku: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="sku" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Price</span>
+        <input
+          className="input w-full"
+          type="number"
+          aria-invalid={problem?.field === "price"}
+          required
+          value={values.price}
+          onChange={(event) => onChange({ ...values, price: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="price" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Status</span>
+        <select
+          className="select w-full"
+          aria-invalid={problem?.field === "status"}
+          required
+          value={values.status}
+          onChange={(event) => onChange({ ...values, status: event.target.value })}
+        >
+          <option value="">Choose…</option>
+          <option value="Draft">Draft</option>
+          <option value="Live">Live</option>
+        </select>
+      </label>
+      <FieldError problem={problem} field="status" />
+      <button type="submit" className="btn btn-primary" disabled={saving}>
+        Save
+      </button>
+    </form>
+  );
+}
+
+=== web/src/presentation/features/product/views/product-list-view.tsx ===
+import { Link } from "wouter";
+import type { Product } from "../../../../domain/product/model";
+
+export function ProductListView({ products }: { products: Product[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Sku</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((product) => (
+            <tr key={product.id}>
+              <td>{product.name}</td>
+              <td>{product.sku}</td>
+              <td>{product.price}</td>
+              <td>{product.status}</td>
+              <td className="text-right">
+                <Link href={`/products/${product.id}`} className="link">
+                  View
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/presentation/pages/login.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { AuthError } from "../../domain/auth/session";
+import { fakeAccounts } from "../../test-support/auth";
+import { renderScreen } from "../../test-support/render";
+import { LoginPage, nextPath } from "./login";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+describe("LoginPage", () => {
+  test("should sign in and go back to the page that asked for it", async () => {
+    // Arrange
+    const accounts = fakeAccounts();
+    const { history } = renderScreen(
+      <LoginPage />,
+      { accounts },
+      "/login?next=%2Forders%3Fpage%3D2",
+      { user: null },
+    );
+    await screen.findByText("Create an account");
+    type("Email", "ada@example.com");
+    type("Password", "correct horse battery");
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/orders?page=2"));
+    expect(accounts.signIns).toEqual([
+      { email: "ada@example.com", password: "correct horse battery" },
+    ]);
+  });
+
+  test("should say so when the email or the password is wrong", async () => {
+    // Arrange
+    const accounts = {
+      ...fakeAccounts(),
+      signIn: () => Promise.reject(new AuthError("auth.invalid_credentials")),
+    };
+    renderScreen(<LoginPage />, { accounts }, "/login", { user: null });
+    await screen.findByText("Create an account");
+    type("Email", "ada@example.com");
+    type("Password", "wrong password!");
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("Wrong email or password");
+  });
+});
+
+describe("nextPath", () => {
+  test("should go back only to a page of this app", () => {
+    expect(nextPath("next=%2Forders")).toBe("/orders");
+    expect(nextPath("")).toBe("/");
+    expect(nextPath("next=%2F%2Fevil.example")).toBe("/");
+    expect(nextPath("next=https%3A%2F%2Fevil.example")).toBe("/");
+  });
+});
+
+=== web/src/presentation/pages/login.tsx ===
+import { useState } from "react";
+import { Link, useLocation, useSearch } from "wouter";
+import { toAccountProblem } from "../../domain/auth/messages";
+import { useAuth } from "../core/auth";
+import { useDependencies } from "../core/dependencies";
+import { ErrorAlert, errorCode } from "../shared/ui/error-alert";
+import { FieldError } from "../shared/ui/field-error";
+
+/**
+ * The page to go back to after signing in: `?next=`, when it is a path of this app — never another
+ * site (`//evil.example`).
+ */
+export function nextPath(search: string): string {
+  const next = new URLSearchParams(search).get("next");
+  return next?.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
+/** Where `RequireAuth` and a `401` send whoever is not signed in. */
+export function LoginPage() {
+  const { accounts } = useDependencies();
+  const { refresh } = useAuth();
+  const [, navigate] = useLocation();
+  const search = useSearch();
+  const [values, setValues] = useState({ email: "", password: "" });
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toAccountProblem(errorCode(failure));
+
+  const submit = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      await accounts.signIn(values.email, values.password);
+      await refresh();
+      navigate(nextPath(search), { replace: true });
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="mx-auto max-w-sm space-y-4">
+      <h1 className="text-2xl font-bold">Sign in</h1>
+      {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+      <form
+        className="space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <label className="fieldset">
+          <span className="fieldset-legend">Email</span>
+          <input
+            className="input w-full"
+            type="email"
+            autoComplete="email"
+            aria-invalid={problem?.field === "email"}
+            required
+            value={values.email}
+            onChange={(event) => setValues({ ...values, email: event.target.value })}
+          />
+        </label>
+        <FieldError problem={problem} field="email" />
+        <label className="fieldset">
+          <span className="fieldset-legend">Password</span>
+          <input
+            className="input w-full"
+            type="password"
+            autoComplete="current-password"
+            aria-invalid={problem?.field === "password"}
+            required
+            value={values.password}
+            onChange={(event) => setValues({ ...values, password: event.target.value })}
+          />
+        </label>
+        <FieldError problem={problem} field="password" />
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          Sign in
+        </button>
+      </form>
+      <Link href={`/register${search === "" ? "" : `?${search}`}`} className="link">
+        Create an account
+      </Link>
+    </section>
+  );
+}
+
+=== web/src/presentation/pages/register.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { AuthError } from "../../domain/auth/session";
+import { fakeAccounts } from "../../test-support/auth";
+import { renderScreen } from "../../test-support/render";
+import { RegisterPage } from "./register";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+async function fillIn() {
+  await screen.findByText("I have an account");
+  type("Email", "ada@example.com");
+  type("Password", "correct horse battery");
+}
+
+describe("RegisterPage", () => {
+  test("should sign the new account in and go back to the page that asked", async () => {
+    // Arrange
+    const accounts = fakeAccounts();
+    const { history } = renderScreen(<RegisterPage />, { accounts }, "/register?next=%2Forders", {
+      user: null,
+    });
+    await fillIn();
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/orders"));
+    expect(accounts.signIns).toHaveLength(1);
+  });
+
+  test("should show a taken email next to its field", async () => {
+    // Arrange
+    const accounts = {
+      ...fakeAccounts(),
+      register: () => Promise.reject(new AuthError("user.duplicate")),
+    };
+    renderScreen(<RegisterPage />, { accounts }, "/register", { user: null });
+    await fillIn();
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // Assert
+    expect(await screen.findByText("An account with this email already exists")).toBeTruthy();
+    expect(screen.getByLabelText("Email").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("should show a short password next to its field", async () => {
+    // Arrange
+    const accounts = {
+      ...fakeAccounts(),
+      register: () => Promise.reject(new AuthError("user.validation_error.password_too_short")),
+    };
+    renderScreen(<RegisterPage />, { accounts }, "/register", { user: null });
+    await fillIn();
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // Assert
+    expect(await screen.findByText("Use at least 12 characters")).toBeTruthy();
+    expect(screen.getByLabelText("Password").getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+=== web/src/presentation/pages/register.tsx ===
+import { useState } from "react";
+import { Link, useLocation, useSearch } from "wouter";
+import { toAccountProblem } from "../../domain/auth/messages";
+import { useAuth } from "../core/auth";
+import { useDependencies } from "../core/dependencies";
+import { textOrNull } from "../shared/forms";
+import { ErrorAlert, errorCode } from "../shared/ui/error-alert";
+import { FieldError } from "../shared/ui/field-error";
+import { nextPath } from "./login";
+
+/** Creates an account, signs in with it, and goes back where sign-in was asked for. */
+export function RegisterPage() {
+  const { accounts } = useDependencies();
+  const { refresh } = useAuth();
+  const [, navigate] = useLocation();
+  const search = useSearch();
+  const [values, setValues] = useState({ email: "", password: "", name: "" });
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toAccountProblem(errorCode(failure));
+
+  const submit = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      await accounts.register({
+        email: values.email,
+        password: values.password,
+        name: textOrNull(values.name),
+      });
+      await accounts.signIn(values.email, values.password);
+      await refresh();
+      navigate(nextPath(search), { replace: true });
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="mx-auto max-w-sm space-y-4">
+      <h1 className="text-2xl font-bold">Create an account</h1>
+      {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+      <form
+        className="space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <label className="fieldset">
+          <span className="fieldset-legend">Email</span>
+          <input
+            className="input w-full"
+            type="email"
+            autoComplete="email"
+            aria-invalid={problem?.field === "email"}
+            required
+            value={values.email}
+            onChange={(event) => setValues({ ...values, email: event.target.value })}
+          />
+        </label>
+        <FieldError problem={problem} field="email" />
+        <label className="fieldset">
+          <span className="fieldset-legend">Password</span>
+          <input
+            className="input w-full"
+            type="password"
+            autoComplete="new-password"
+            aria-invalid={problem?.field === "password"}
+            required
+            minLength={12}
+            value={values.password}
+            onChange={(event) => setValues({ ...values, password: event.target.value })}
+          />
+        </label>
+        <FieldError problem={problem} field="password" />
+        <label className="fieldset">
+          <span className="fieldset-legend">Name</span>
+          <input
+            className="input w-full"
+            type="text"
+            autoComplete="name"
+            value={values.name}
+            onChange={(event) => setValues({ ...values, name: event.target.value })}
+          />
+        </label>
+        <FieldError problem={problem} field="name" />
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          Create account
+        </button>
+      </form>
+      <Link href={`/login${search === "" ? "" : `?${search}`}`} className="link">
+        I have an account
+      </Link>
+    </section>
+  );
+}
 
 === web/src/presentation/shared/ui/layout.tsx ===
-(deleted)
+import type { ReactNode } from "react";
+import { Link } from "wouter";
+import { UserMenu } from "./user-menu";
 
-=== web/src/presentation/shared/ui/pagination.test.tsx ===
-(deleted)
+export interface NavEntry {
+  label: string;
+  href: string;
+}
 
-=== web/src/presentation/shared/ui/pagination.tsx ===
-(deleted)
+export function Layout({
+  title,
+  nav,
+  children,
+}: {
+  title: string;
+  nav: NavEntry[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-h-screen bg-base-200">
+      <header className="navbar bg-base-100 shadow-sm">
+        <Link href="/" className="btn btn-ghost text-xl">
+          {title}
+        </Link>
+        <nav>
+          <ul className="menu menu-horizontal">
+            {nav.map((entry) => (
+              <li key={entry.href}>
+                <Link href={entry.href}>{entry.label}</Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="ml-auto">
+          <UserMenu />
+        </div>
+      </header>
+      <main className="container mx-auto max-w-5xl p-4">{children}</main>
+    </div>
+  );
+}
 
-=== web/src/test-support/happy-dom.ts ===
-(deleted)
+=== web/src/presentation/shared/ui/user-menu.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { CurrentUserMother, fakeAuthGateway } from "../../../test-support/auth";
+import { renderScreen } from "../../../test-support/render";
+import { UserMenu } from "./user-menu";
+
+describe("UserMenu", () => {
+  test("should show who is signed in", async () => {
+    // Arrange
+    const user = CurrentUserMother.random({ name: "Ada Lovelace" });
+
+    // Act
+    renderScreen(<UserMenu />, {}, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+    expect(screen.getByText("Sign out")).toBeTruthy();
+  });
+
+  test("should start a sign-in from the current page when Sign in is pressed", async () => {
+    // Arrange
+    const auth = fakeAuthGateway();
+    renderScreen(<UserMenu />, { auth }, "/products");
+
+    // Act
+    fireEvent.click(await screen.findByText("Sign in"));
+
+    // Assert
+    await waitFor(() => expect(auth.logins).toEqual(["/products"]));
+  });
+});
+
+=== web/src/presentation/shared/ui/user-menu.tsx ===
+import { useAuth } from "../../core/auth";
+
+/** Who is signed in, and the button to sign in or out. */
+export function UserMenu() {
+  const { user, login, logout } = useAuth();
+  if (user === null) {
+    return (
+      <button type="button" className="btn btn-ghost" onClick={() => void login()}>
+        Sign in
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm">{user.name ?? user.email ?? "Signed in"}</span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void logout()}>
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+=== web/src/test-support/auth.ts ===
+import type { Accounts } from "../domain/auth/accounts";
+import type { AuthGateway, CurrentUser } from "../domain/auth/session";
+import { ROLES } from "../presentation/core/generated/roles";
+
+/** Signed-in users for tests; pass `overrides` for what a test is about. */
+export const CurrentUserMother = {
+  random(overrides: Partial<CurrentUser> = {}): CurrentUser {
+    const id = crypto.randomUUID();
+    return { id, email: `ada-${id.slice(0, 8)}@example.com`, name: "Ada", roles: [], ...overrides };
+  },
+
+  /** Holds every role a generated screen checks: what `renderScreen` signs in by default. */
+  caller(): CurrentUser {
+    return CurrentUserMother.random({ roles: [...ROLES] });
+  },
+};
+
+/** An `AuthGateway` with `user` signed in (`null`: nobody). `logins` records each `login` call. */
+export function fakeAuthGateway({ user = null }: { user?: CurrentUser | null } = {}) {
+  const logins: string[] = [];
+  const gateway: AuthGateway = {
+    currentUser: async () => user,
+    accessToken: async () => (user === null ? null : `token-of-${user.id}`),
+    login: async (returnTo) => {
+      logins.push(returnTo);
+    },
+    completeLogin: async () => "/",
+    logout: async () => {},
+  };
+  return { ...gateway, logins };
+}
+
+/** `Accounts` that take every registration and sign-in. `signIns` records each sign-in. */
+export function fakeAccounts() {
+  const signIns: { email: string; password: string }[] = [];
+  const accounts: Accounts = {
+    register: async ({ email, name }) => CurrentUserMother.random({ email, name }),
+    signIn: async (email, password) => {
+      signIns.push({ email, password });
+    },
+  };
+  return { ...accounts, signIns };
+}
+
+=== web/src/test-support/order.ts ===
+import { OrderError } from "../domain/order/errors";
+import type { Order, OrderDraft } from "../domain/order/model";
+import type { OrderRepository } from "../domain/order/repository";
+
+/** Valid orders for tests; pass `overrides` for the fields a test is about. */
+export const OrderMother = {
+  draft(overrides: Partial<OrderDraft> = {}): OrderDraft {
+    return {
+      total: 42,
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Order> = {}): Order {
+    return { id: crypto.randomUUID(), ...OrderMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `OrderRepository`. Override a method to make it fail. */
+export function fakeOrderRepository(seed: Order[] = []): OrderRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new OrderError("order.not_found");
+    return found;
+  };
+  return {
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}
+
+=== web/src/test-support/product.ts ===
+import { ProductError } from "../domain/product/errors";
+import type { Product, ProductDraft } from "../domain/product/model";
+import type { ProductRepository } from "../domain/product/repository";
+
+/** Valid products for tests; pass `overrides` for the fields a test is about. */
+export const ProductMother = {
+  draft(overrides: Partial<ProductDraft> = {}): ProductDraft {
+    return {
+      name: "example",
+      sku: "example",
+      price: 42,
+      status: "Draft",
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Product> = {}): Product {
+    return { id: crypto.randomUUID(), ...ProductMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `ProductRepository`. Override a method to make it fail. */
+export function fakeProductRepository(seed: Product[] = []): ProductRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new ProductError("product.not_found");
+    return found;
+  };
+  return {
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}
 
 === web/src/test-support/render.tsx ===
-(deleted)
+import { render } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { Router } from "wouter";
+import { memoryLocation } from "wouter/memory-location";
+import type { CurrentUser } from "../domain/auth/session";
+import { AuthProvider } from "../presentation/core/auth";
+import { DependenciesProvider } from "../presentation/core/dependencies";
+import type { Dependencies } from "../presentation/core/generated/dependencies";
+import { CurrentUserMother, fakeAuthGateway } from "./auth";
 
-=== web/src/test-support/testing-library.ts ===
-(deleted)
-
-=== web/tsconfig.json ===
-(deleted)
-
-=== web/vite.config.ts ===
-(deleted)
+/**
+ * Renders a screen with the adapters it uses (`dependencies` needs only those) at `path`, signed in
+ * as `user`: by default a caller holding every role, `null` for nobody. `history` records every
+ * location the screen navigates to.
+ */
+export function renderScreen(
+  ui: ReactNode,
+  dependencies: Partial<Dependencies>,
+  path = "/",
+  { user = CurrentUserMother.caller() }: { user?: CurrentUser | null } = {},
+) {
+  const location = memoryLocation({ path, record: true });
+  const result = render(
+    // A screen that reaches for an adapter it was not given fails loudly: it is `undefined`.
+    <DependenciesProvider
+      value={{ auth: fakeAuthGateway({ user }), ...dependencies } as Dependencies}
+    >
+      <Router hook={location.hook}>
+        <AuthProvider>{ui}</AuthProvider>
+      </Router>
+    </DependenciesProvider>,
+  );
+  return { ...result, history: location.history };
+}

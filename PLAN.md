@@ -2501,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`) · 16.5 · 16.6. Next: **16.7**. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`) · 16.5 · 16.6 · 16.7. Next: **16.8**. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
@@ -2761,8 +2761,8 @@ Design, settled when starting it (2026-10-13) — where it differs from the list
   `InvalidCredentials` (`auth.invalid_credentials`, 401) and `Unknown` (a hasher failure, 500).
   `POST /auth/register` answers `201` with the `MeDto` of the new user; `POST /auth/logout` takes
   `BearerAuth` and revokes the presented token (read from the request).
-- **`--auth local` needs `--db`, and `--no-web` until 16.7** (no frontend can sign in yet): both
-  refused before anything is written. The matrix scenario `AUTH_LOCAL` is `no_web` until then.
+- **`--auth local` needs `--db`** (refused before anything is written). Until 16.7 it also needed
+  `--no-web`; 16.7 lifted that, and `AUTH_LOCAL` has its frontend.
 
 Tier 1. New matrix scenario `AUTH_LOCAL` (db, web; `make test/db`).
 - `puerto-auth`, feature `local`: `hash_password` / `verify_password` (argon2id, crate defaults),
@@ -2779,7 +2779,28 @@ Tier 1. New matrix scenario `AUTH_LOCAL` (db, web; `make test/db`).
 - `make auth/grant EMAIL=… ROLE=…` (SQL on the `roles` column). Same `scaffold` / `public` /
   `roles` behaviour as 16.4.
 
-### 16.7 — The frontend, local
+### 16.7 — The frontend, local ✅
+
+Done. Beyond or apart from the spec:
+- Signing in with a password is a port of its own, `Accounts` (`register`, `signIn`;
+  `domain/auth/accounts.ts`), next to `AuthGateway`: an OIDC project has no use for it. One
+  `localAuthGateway()` implements both, and `dependencies.ts` hands it out as `auth` and `accounts`.
+- `login(returnTo)` drops the stored token and goes to `/login?next=<returnTo>` (a page load): the
+  same call is what `RequireAuth`, Sign in and the bearer middleware's 401 make. `/login` and
+  `/register` go back to `next` only when it is a path of this app (`nextPath`, tested).
+- A `GET /me` answered 401 means a session that expired or was revoked: signed out, not an error.
+  `logout()` revokes on the API and forgets the token even when the API cannot be reached.
+- `/register` signs the new account in and goes back to `next`. The API's codes reach the forms
+  through `domain/auth/messages.ts` (email taken or invalid → under Email, password too short →
+  under Password, the rest → the alert). The password input also says `minLength=12`.
+- `AuthProvider` gained `refresh()` (the pages call it after `signIn`) and its `logout` now clears
+  the user — an OIDC project's `auth.tsx` changes with it.
+- Verified by hand with a generated project, its API and Postgres: a protected screen sends to
+  `/login?next=…`; register → signed in → back on that screen; a reload stays signed in; Delete
+  hidden without `admin`, shown after `make auth/grant` and a reload, and deleting works; a taken
+  email (other case) shows under Email; a wrong password shows in the alert; sessions deleted in the
+  database → the next save lands on `/login?next=%2Fproducts%2Fnew`; Sign out.
+
 
 - `LocalAuthGateway` (token in `localStorage`, `GET /me` on start, `login(email, password)`,
   `logout()` calls the API then clears), `/login` and `/register` pages (forms with `FieldError`,

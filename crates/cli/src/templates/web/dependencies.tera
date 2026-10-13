@@ -4,8 +4,15 @@
 // adapters through `useDependencies()`, so a test hands them a fake instead.
 {% if entities or auth %}
 {% if auth -%}
+{% if local -%}
+import type { Accounts } from "../../../domain/auth/accounts";
+{% endif -%}
 import type { AuthGateway } from "../../../domain/auth/session";
+{% if local -%}
+import { localAuthGateway } from "../../../infrastructure/auth/local-auth-gateway";
+{% else -%}
 import { oidcAuthGateway, oidcSettingsFromEnv } from "../../../infrastructure/auth/oidc-auth-gateway";
+{% endif -%}
 {% if entities -%}
 import { bearerMiddleware } from "../../../infrastructure/auth/bearer-middleware";
 {% endif -%}
@@ -18,6 +25,9 @@ import { {{ e.camel }}RepositoryHttp } from "../../../infrastructure/{{ e.kebab 
 import { createApiClient } from "../../../infrastructure/http/client";
 {% endif %}
 export interface Dependencies {
+{%- if local %}
+  accounts: Accounts;
+{%- endif %}
 {%- if auth %}
   auth: AuthGateway;
 {%- endif %}
@@ -28,7 +38,7 @@ export interface Dependencies {
 
 export function createDependencies(): Dependencies {
 {%- if auth %}
-  const auth = oidcAuthGateway(oidcSettingsFromEnv());
+  const auth = {% if local %}localAuthGateway(){% else %}oidcAuthGateway(oidcSettingsFromEnv()){% endif %};
 {%- endif %}
 {%- if entities %}
   const api = createApiClient();
@@ -37,6 +47,9 @@ export function createDependencies(): Dependencies {
 {%- endif %}
 {%- endif %}
   return {
+{%- if local %}
+    accounts: auth,
+{%- endif %}
 {%- if auth %}
     auth,
 {%- endif %}

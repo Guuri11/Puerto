@@ -6,11 +6,17 @@ import { {{ e.pascal }}DetailContainer } from "../../features/{{ e.kebab }}/cont
 import { {{ e.pascal }}FormContainer } from "../../features/{{ e.kebab }}/containers/{{ e.kebab }}-form-container";
 import { {{ e.pascal }}ListContainer } from "../../features/{{ e.kebab }}/containers/{{ e.kebab }}-list-container";
 {% endfor -%}
-{% if auth -%}
+{% if auth and not local -%}
 import { AuthCallbackPage } from "../../pages/auth-callback";
 {% endif -%}
 import { HomePage } from "../../pages/home";
+{% if local -%}
+import { LoginPage } from "../../pages/login";
+{% endif -%}
 import { NotFoundPage } from "../../pages/not-found";
+{% if local -%}
+import { RegisterPage } from "../../pages/register";
+{% endif -%}
 import type { NavEntry } from "../../shared/ui/layout";
 {% if guarded -%}
 import { RequireAuth } from "../auth";
@@ -32,7 +38,14 @@ export function AppRoutes() {
       <Route path="/">
         <HomePage entries={navEntries} />
       </Route>
-{%- if auth %}
+{%- if local %}
+      <Route path="/login">
+        <LoginPage />
+      </Route>
+      <Route path="/register">
+        <RegisterPage />
+      </Route>
+{%- elif auth %}
       <Route path="/auth/callback">
         <AuthCallbackPage />
       </Route>

@@ -606,13 +606,14 @@ pub(super) const AUTH_OIDC_DB: Scenario = Scenario {
     ..AUTH_OIDC
 };
 
-/// `puerto new --db --auth local` (Phase 16.6): accounts and sessions in Postgres — the local use
-/// cases, `/auth/*`, `PgSessions` as the authenticator, the users and auth migrations — and the
-/// same access rules on two scaffolds as [`AUTH_OIDC`]. No frontend until 16.7.
+/// `puerto new --db --auth local` (Phase 16.6, 16.7): accounts and sessions in Postgres — the
+/// local use cases, `/auth/*`, `PgSessions` as the authenticator, the users and auth migrations —
+/// the same access rules on two scaffolds as [`AUTH_OIDC`], and the frontend that signs in with a
+/// password.
 pub(super) const AUTH_LOCAL: Scenario = Scenario {
     name: "auth_local",
     auth: Some("local"),
-    no_web: true,
+    no_web: false,
     ..AUTH_OIDC_DB
 };
 

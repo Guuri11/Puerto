@@ -1,0 +1,69 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { AuthError } from "../../domain/auth/session";
+import { fakeAccounts } from "../../test-support/auth";
+import { renderScreen } from "../../test-support/render";
+import { RegisterPage } from "./register";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+async function fillIn() {
+  await screen.findByText("I have an account");
+  type("Email", "ada@example.com");
+  type("Password", "correct horse battery");
+}
+
+describe("RegisterPage", () => {
+  test("should sign the new account in and go back to the page that asked", async () => {
+    // Arrange
+    const accounts = fakeAccounts();
+    const { history } = renderScreen(<RegisterPage />, { accounts }, "/register?next=%2Forders", {
+      user: null,
+    });
+    await fillIn();
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/orders"));
+    expect(accounts.signIns).toHaveLength(1);
+  });
+
+  test("should show a taken email next to its field", async () => {
+    // Arrange
+    const accounts = {
+      ...fakeAccounts(),
+      register: () => Promise.reject(new AuthError("user.duplicate")),
+    };
+    renderScreen(<RegisterPage />, { accounts }, "/register", { user: null });
+    await fillIn();
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // Assert
+    expect(await screen.findByText("An account with this email already exists")).toBeTruthy();
+    expect(screen.getByLabelText("Email").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("should show a short password next to its field", async () => {
+    // Arrange
+    const accounts = {
+      ...fakeAccounts(),
+      register: () => Promise.reject(new AuthError("user.validation_error.password_too_short")),
+    };
+    renderScreen(<RegisterPage />, { accounts }, "/register", { user: null });
+    await fillIn();
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    // Assert
+    expect(await screen.findByText("Use at least 12 characters")).toBeTruthy();
+    expect(screen.getByLabelText("Password").getAttribute("aria-invalid")).toBe("true");
+  });
+});

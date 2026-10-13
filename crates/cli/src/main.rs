@@ -53,7 +53,7 @@ enum Commands {
         events: Option<String>,
         /// Auth: `oidc` verifies an OpenID Connect provider's tokens (Auth0, Keycloak — Keycloak
         /// runs in docker-compose.yml for development); `local` keeps accounts and sessions in the
-        /// project's database (needs --db, and --no-web for now)
+        /// project's database (needs --db)
         #[arg(long, value_parser = ["oidc", "local"])]
         auth: Option<String>,
         /// Directory where the project will be created (defaults to current directory)

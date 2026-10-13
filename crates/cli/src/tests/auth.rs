@@ -779,17 +779,62 @@ fn new_refuses_local_auth_without_a_database() {
 }
 
 #[test]
-fn new_refuses_local_auth_with_the_web_frontend_until_it_ships() {
-    let err = new_local_project(
+fn new_with_local_auth_and_web_signs_in_with_a_password_not_a_provider() {
+    let (dir, output) = new_local_project(
         "auth_local_web",
         NewOptions {
             db: true,
             ..Default::default()
         },
     )
-    .unwrap_err();
+    .unwrap();
 
-    assert!(err.contains("--no-web"), "{err}");
+    for file in [
+        "web/src/domain/auth/accounts.ts",
+        "web/src/domain/auth/messages.ts",
+        "web/src/infrastructure/auth/local-auth-gateway.ts",
+        "web/src/infrastructure/auth/local-auth-gateway.test.ts",
+        "web/src/presentation/pages/login.tsx",
+        "web/src/presentation/pages/register.tsx",
+        "web/src/presentation/core/auth.tsx",
+        "web/src/infrastructure/auth/bearer-middleware.ts",
+    ] {
+        assert!(output.join(file).exists(), "{file} missing");
+    }
+    // No provider: no OIDC client, callback, settings or dependency.
+    assert!(
+        !output
+            .join("web/src/infrastructure/auth/oidc-auth-gateway.ts")
+            .exists()
+    );
+    assert!(
+        !output
+            .join("web/src/presentation/pages/auth-callback.tsx")
+            .exists()
+    );
+    assert!(!output.join("web/.env").exists());
+    assert!(!read(&output, "web/package.json").contains("oidc-client-ts"));
+    let dependencies = read(
+        &output,
+        "web/src/presentation/core/generated/dependencies.ts",
+    );
+    assert!(
+        dependencies.contains("accounts: Accounts;"),
+        "{dependencies}"
+    );
+    assert!(
+        dependencies.contains("localAuthGateway()"),
+        "{dependencies}"
+    );
+    let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
+    assert!(routes.contains("<Route path=\"/login\">"), "{routes}");
+    assert!(routes.contains("<Route path=\"/register\">"), "{routes}");
+    assert!(!routes.contains("/auth/callback"), "{routes}");
+    assert!(read(&output, "web/src/test-support/auth.ts").contains("export function fakeAccounts"));
+    assert!(
+        read(&output, "AGENTS.md").contains(crate::generators::auth::AGENTS_AUTH_LOCAL_WEB_SECTION)
+    );
+    cleanup(&dir);
 }
 
 #[test]

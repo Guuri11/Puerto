@@ -228,7 +228,7 @@ presentation/src/api/product/error_mapper.rs
 
 | Command                                         | Effect                                                                            |
 | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| `puerto new [--name] [--db\|--no-db] [--events db\|kafka] [--auth oidc\|local] [--no-demo] [--no-web]` | Creates puerto.toml from template with initial Greeting entity; `--events` (needs `--db`) writes `[project] events` and the outbox migration; `--auth` writes `[project] auth` and lists the Greeting's use case in `public` (`local` needs `--db`, and `--no-web` until 16.7) |
+| `puerto new [--name] [--db\|--no-db] [--events db\|kafka] [--auth oidc\|local] [--no-demo] [--no-web]` | Creates puerto.toml from template with initial Greeting entity; `--events` (needs `--db`) writes `[project] events` and the outbox migration; `--auth` writes `[project] auth` and lists the Greeting's use case in `public` (`local` needs `--db`) |
 | `puerto generate scaffold <Name>`               | Upserts the `[[entity]]` block, regenerates bootstrap.rs. Auth projects: `--public <uc>[,…]` and `--role <uc>=<role>[,…]` set `public` / `roles` (checked before writing; a re-scaffold without them keeps the block's) |
 | `puerto generate scaffold <Name> -- name:Type`  | Same, with `[[entity.fields]]` from the trailing arguments                        |
 | `puerto generate domain <Name> -- name:Type`    | Registers the entity **with its fields** so the later layered commands see them   |

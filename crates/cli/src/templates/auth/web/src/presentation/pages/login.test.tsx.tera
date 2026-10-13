@@ -1,0 +1,62 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { AuthError } from "../../domain/auth/session";
+import { fakeAccounts } from "../../test-support/auth";
+import { renderScreen } from "../../test-support/render";
+import { LoginPage, nextPath } from "./login";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+describe("LoginPage", () => {
+  test("should sign in and go back to the page that asked for it", async () => {
+    // Arrange
+    const accounts = fakeAccounts();
+    const { history } = renderScreen(
+      <LoginPage />,
+      { accounts },
+      "/login?next=%2Forders%3Fpage%3D2",
+      { user: null },
+    );
+    await screen.findByText("Create an account");
+    type("Email", "ada@example.com");
+    type("Password", "correct horse battery");
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/orders?page=2"));
+    expect(accounts.signIns).toEqual([
+      { email: "ada@example.com", password: "correct horse battery" },
+    ]);
+  });
+
+  test("should say so when the email or the password is wrong", async () => {
+    // Arrange
+    const accounts = {
+      ...fakeAccounts(),
+      signIn: () => Promise.reject(new AuthError("auth.invalid_credentials")),
+    };
+    renderScreen(<LoginPage />, { accounts }, "/login", { user: null });
+    await screen.findByText("Create an account");
+    type("Email", "ada@example.com");
+    type("Password", "wrong password!");
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("Wrong email or password");
+  });
+});
+
+describe("nextPath", () => {
+  test("should go back only to a page of this app", () => {
+    expect(nextPath("next=%2Forders")).toBe("/orders");
+    expect(nextPath("")).toBe("/");
+    expect(nextPath("next=%2F%2Fevil.example")).toBe("/");
+    expect(nextPath("next=https%3A%2F%2Fevil.example")).toBe("/");
+  });
+});

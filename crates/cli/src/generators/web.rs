@@ -475,6 +475,7 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
     }
     let mut ctx = tera::Context::new();
     ctx.insert("auth", &config.project.has_auth());
+    ctx.insert("local", &(config.project.auth.as_deref() == Some("local")));
     ctx.insert(
         "guarded",
         &sliced
