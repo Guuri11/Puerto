@@ -46,8 +46,11 @@ How the frameworks Puerto is compared with split it:
   `AUTH_ISSUER/.well-known/openid-configuration`, the JWKS fetched and cached (refetched on an
   unknown `kid`), signature + `iss` + `aud` + `exp` checked, roles read from `AUTH_ROLES_CLAIM`.
   Auth0, Keycloak or any other OIDC provider is configuration.
-- `puerto-auth`, feature `local`: password hashing (argon2id) and session tokens. The sessions
-  themselves are `puerto-sqlx`'s `PgSessions`, which is the `Authenticator` of a local project.
+- `puerto-auth`, feature `local`: password hashing (argon2id, `Argon2Hasher`). The sessions —
+  their tokens too — are `puerto-sqlx`'s `PgSessions`, which is the `Authenticator` of a local
+  project; it hashes the presented token on every request, so the token belongs with it. The
+  ports the generated use cases see (`PasswordHasher`, `CredentialStore`, `SessionStore`) are
+  `puerto-core::auth`'s.
 
 A route never knows where its caller came from, and tests use `MockAuthenticator`. A project
 picks one with `puerto new --auth oidc|local`; `[project] auth` records it.

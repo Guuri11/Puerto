@@ -1,0 +1,253 @@
+//! Yours: `puerto new --auth local` writes this file once. Registration is open: close it, or add
+//! your rules (an invitation, a domain allow-list), here.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::auth::{CredentialStore, PasswordHasher};
+
+use crate::domain::user::{
+    errors::UserError,
+    model::{LOCAL_ISSUER, User},
+    repository::UserRepositoryTrait,
+    use_cases::register_user::{RegisterUserParams, RegisterUserUseCaseTrait},
+};
+
+/// Shorter passwords are refused (`user.validation_error.password_too_short`); NIST's minimum is 8,
+/// OWASP's advice for a password alone is longer.
+pub const MIN_PASSWORD_LENGTH: usize = 12;
+
+pub struct RegisterUserUseCaseImpl {
+    pub users: Arc<dyn UserRepositoryTrait>,
+    pub credentials: Arc<dyn CredentialStore>,
+    pub hasher: Arc<dyn PasswordHasher>,
+}
+
+#[async_trait]
+impl RegisterUserUseCaseTrait for RegisterUserUseCaseImpl {
+    async fn execute(&self, params: RegisterUserParams) -> Result<User, UserError> {
+        tracing::info!("register_user: start");
+        if params.password.chars().count() < MIN_PASSWORD_LENGTH {
+            return Err(UserError::ValidationError("password_too_short".into()));
+        }
+        let new_user = User::register(&params.email, params.name)?;
+        let hash = self.hasher.hash(&params.password).await?;
+        // The user and its credentials are two writes. A user the second one never reached has no
+        // password, so nobody can sign in as it: the next registration of that email takes it over.
+        let user = match self
+            .users
+            .find_by_subject(LOCAL_ISSUER, &new_user.subject)
+            .await?
+        {
+            Some(existing) => {
+                if self
+                    .credentials
+                    .password_hash(existing.id.value())
+                    .await?
+                    .is_some()
+                {
+                    tracing::warn!("register_user: the email is taken");
+                    return Err(UserError::Duplicate);
+                }
+                existing
+            }
+            None => {
+                self.users.save(&new_user).await?;
+                new_user
+            }
+        };
+        self.credentials
+            .set_password_hash(user.id.value(), &hash)
+            .await?;
+        tracing::info!(id = %user.id, "register_user: done");
+        Ok(user)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use puerto_core::RepositoryError;
+    use puerto_core::auth::HashError;
+    use puerto_core::auth::mocks::{MockCredentialStore, MockPasswordHasher};
+
+    use super::*;
+    use crate::domain::user::repository::mocks::MockUserRepository;
+
+    const PASSWORD: &str = "correct horse battery";
+
+    fn hasher() -> MockPasswordHasher {
+        let mut hasher = MockPasswordHasher::new();
+        hasher
+            .expect_hash()
+            .returning(|password| Ok(format!("hashed:{password}")));
+        hasher
+    }
+
+    fn use_case(
+        users: MockUserRepository,
+        credentials: MockCredentialStore,
+        hasher: MockPasswordHasher,
+    ) -> RegisterUserUseCaseImpl {
+        RegisterUserUseCaseImpl {
+            users: Arc::new(users),
+            credentials: Arc::new(credentials),
+            hasher: Arc::new(hasher),
+        }
+    }
+
+    fn params(email: &str, password: &str) -> RegisterUserParams {
+        RegisterUserParams {
+            email: email.into(),
+            password: password.into(),
+            name: Some("Ada".into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn should_create_the_account_and_keep_only_the_hash_when_the_email_is_new() {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users
+            .expect_find_by_subject()
+            .withf(|issuer, subject| issuer == LOCAL_ISSUER && subject == "ada@example.com")
+            .returning(|_, _| Ok(None));
+        users.expect_save().times(1).returning(|_| Ok(()));
+        let mut credentials = MockCredentialStore::new();
+        credentials
+            .expect_set_password_hash()
+            .withf(|_, hash| hash == "hashed:correct horse battery")
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        // Act
+        let result = use_case(users, credentials, hasher())
+            .execute(params("Ada@Example.com", PASSWORD))
+            .await;
+
+        // Assert
+        let user = result.expect("registered");
+        assert_eq!(user.subject, "ada@example.com");
+        assert_eq!(user.name.as_deref(), Some("Ada"));
+    }
+
+    #[tokio::test]
+    async fn should_reject_the_account_when_the_password_is_too_short() {
+        // Arrange: no store is touched.
+        let use_case = use_case(
+            MockUserRepository::new(),
+            MockCredentialStore::new(),
+            MockPasswordHasher::new(),
+        );
+
+        // Act
+        let result = use_case.execute(params("ada@example.com", "elevenchars")).await;
+
+        // Assert
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "user.validation_error.password_too_short"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_reject_the_account_when_the_email_is_not_one() {
+        // Act
+        let result = use_case(
+            MockUserRepository::new(),
+            MockCredentialStore::new(),
+            MockPasswordHasher::new(),
+        )
+        .execute(params("ada", PASSWORD))
+        .await;
+
+        // Assert
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "user.validation_error.email_invalid"
+        );
+    }
+
+    #[tokio::test]
+    async fn should_reject_the_account_when_the_email_is_taken() {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users
+            .expect_find_by_subject()
+            .returning(|_, _| Ok(Some(User::register("ada@example.com", None).expect("valid"))));
+        users.expect_save().never();
+        let mut credentials = MockCredentialStore::new();
+        credentials
+            .expect_password_hash()
+            .returning(|_| Ok(Some("hashed:theirs".into())));
+        credentials.expect_set_password_hash().never();
+
+        // Act
+        let result = use_case(users, credentials, hasher())
+            .execute(params("ada@example.com", PASSWORD))
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap_err().to_string(), "user.duplicate");
+    }
+
+    #[tokio::test]
+    async fn should_take_over_an_account_left_without_a_password() {
+        // Arrange
+        let orphan = User::register("ada@example.com", None).expect("valid");
+        let orphan_id = orphan.id;
+        let mut users = MockUserRepository::new();
+        users
+            .expect_find_by_subject()
+            .returning(move |_, _| Ok(Some(orphan.clone())));
+        users.expect_save().never();
+        let mut credentials = MockCredentialStore::new();
+        credentials.expect_password_hash().returning(|_| Ok(None));
+        credentials
+            .expect_set_password_hash()
+            .withf(move |user_id, _| *user_id == orphan_id.value())
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        // Act
+        let result = use_case(users, credentials, hasher())
+            .execute(params("ada@example.com", PASSWORD))
+            .await;
+
+        // Assert
+        assert_eq!(result.expect("registered").id, orphan_id);
+    }
+
+    #[tokio::test]
+    async fn should_write_nothing_when_the_password_cannot_be_hashed() {
+        // Arrange
+        let mut hasher = MockPasswordHasher::new();
+        hasher.expect_hash().returning(|_| Err(HashError));
+        let mut users = MockUserRepository::new();
+        users.expect_save().never();
+
+        // Act
+        let result = use_case(users, MockCredentialStore::new(), hasher)
+            .execute(params("ada@example.com", PASSWORD))
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap_err().to_string(), "user.unknown");
+    }
+
+    #[tokio::test]
+    async fn should_report_a_repository_error_when_the_store_is_down() {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users
+            .expect_find_by_subject()
+            .returning(|_, _| Err(RepositoryError::Unavailable));
+
+        // Act
+        let result = use_case(users, MockCredentialStore::new(), hasher())
+            .execute(params("ada@example.com", PASSWORD))
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap_err().to_string(), "user.repository_error");
+    }
+}

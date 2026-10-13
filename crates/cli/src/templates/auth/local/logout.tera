@@ -1,0 +1,79 @@
+//! Yours: `puerto new --auth local` writes this file once.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_core::auth::SessionStore;
+
+use crate::domain::user::{
+    errors::UserError,
+    use_cases::logout::{LogoutParams, LogoutUseCaseTrait},
+};
+
+pub struct LogoutUseCaseImpl {
+    pub sessions: Arc<dyn SessionStore>,
+}
+
+#[async_trait]
+impl LogoutUseCaseTrait for LogoutUseCaseImpl {
+    async fn execute(&self, params: LogoutParams) -> Result<(), UserError> {
+        tracing::info!("logout: start");
+        self.sessions.revoke(&params.token).await?;
+        tracing::info!("logout: done");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use puerto_core::RepositoryError;
+    use puerto_core::auth::mocks::MockSessionStore;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn should_revoke_the_session_the_caller_signed_in_with() {
+        // Arrange
+        let mut sessions = MockSessionStore::new();
+        sessions
+            .expect_revoke()
+            .withf(|token| token == "opaque")
+            .times(1)
+            .returning(|_| Ok(()));
+        let use_case = LogoutUseCaseImpl {
+            sessions: Arc::new(sessions),
+        };
+
+        // Act
+        let result = use_case
+            .execute(LogoutParams {
+                token: "opaque".into(),
+            })
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn should_report_a_repository_error_when_the_store_is_down() {
+        // Arrange
+        let mut sessions = MockSessionStore::new();
+        sessions
+            .expect_revoke()
+            .returning(|_| Err(RepositoryError::Unavailable));
+        let use_case = LogoutUseCaseImpl {
+            sessions: Arc::new(sessions),
+        };
+
+        // Act
+        let result = use_case
+            .execute(LogoutParams {
+                token: "opaque".into(),
+            })
+            .await;
+
+        // Assert
+        assert_eq!(result.unwrap_err().to_string(), "user.repository_error");
+    }
+}

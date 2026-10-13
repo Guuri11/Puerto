@@ -52,7 +52,8 @@ enum Commands {
         #[arg(long, value_parser = ["db", "kafka"], conflicts_with = "no_db")]
         events: Option<String>,
         /// Auth: `oidc` verifies an OpenID Connect provider's tokens (Auth0, Keycloak — Keycloak
-        /// runs in docker-compose.yml for development); `local` is not available yet
+        /// runs in docker-compose.yml for development); `local` keeps accounts and sessions in the
+        /// project's database (needs --db, and --no-web for now)
         #[arg(long, value_parser = ["oidc", "local"])]
         auth: Option<String>,
         /// Directory where the project will be created (defaults to current directory)

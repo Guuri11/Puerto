@@ -1,0 +1,299 @@
+//! Yours: `puerto new --auth local` writes this file once.
+
+use std::sync::Arc;
+
+use business::domain::user::model::User;
+use business::domain::user::use_cases::{
+    login::{LoginParams, LoginUseCaseTrait},
+    logout::{LogoutParams, LogoutUseCaseTrait},
+    register_user::{RegisterUserParams, RegisterUserUseCaseTrait},
+};
+use poem::Request;
+use poem_openapi::{OpenApi, payload::Json};
+use puerto_web::auth::{BearerAuth, bearer_token};
+
+use crate::api::auth::dto::{LoginRequest, RegisterRequest, SessionDto};
+use crate::api::auth::responses::{LoginResponse, LogoutResponse, RegisterResponse};
+use crate::api::error::IntoErrorResponse;
+use crate::api::me::dto::MeDto;
+use crate::api::tags::ApiTags;
+
+/// `/auth/*`: the accounts this API keeps itself (ADR-0021 § 2 of Puerto). A session token goes
+/// back as `Authorization: Bearer <token>`; `GET /me` says who it belongs to.
+pub struct AuthApi {
+    pub register_user: Arc<dyn RegisterUserUseCaseTrait>,
+    pub login: Arc<dyn LoginUseCaseTrait>,
+    pub logout: Arc<dyn LogoutUseCaseTrait>,
+}
+
+fn me(user: &User) -> MeDto {
+    MeDto {
+        id: user.id.value(),
+        email: user.email.clone(),
+        name: user.name.clone(),
+        roles: user.roles.clone(),
+    }
+}
+
+#[OpenApi]
+impl AuthApi {
+    /// Creates an account: an email no other account has, a password of at least 12 characters
+    #[oai(path = "/auth/register", method = "post", tag = "ApiTags::Auth")]
+    async fn register(&self, body: Json<RegisterRequest>) -> RegisterResponse {
+        let Json(body) = body;
+        let params = RegisterUserParams {
+            email: body.email,
+            password: body.password,
+            name: body.name,
+        };
+        match self.register_user.execute(params).await {
+            Ok(user) => RegisterResponse::Created(Json(me(&user))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                RegisterResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Opens a session. An unknown email and a wrong password get the same 401
+    #[oai(path = "/auth/login", method = "post", tag = "ApiTags::Auth")]
+    async fn login(&self, body: Json<LoginRequest>) -> LoginResponse {
+        let Json(body) = body;
+        let params = LoginParams {
+            email: body.email,
+            password: body.password,
+        };
+        match self.login.execute(params).await {
+            Ok(session) => LoginResponse::Ok(Json(SessionDto::from_session(session))),
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                LoginResponse::from_status(status, error)
+            }
+        }
+    }
+
+    /// Revokes the session this request is signed with
+    #[oai(path = "/auth/logout", method = "post", tag = "ApiTags::Auth")]
+    async fn logout(&self, _auth: BearerAuth, request: &Request) -> LogoutResponse {
+        // `BearerAuth` accepted the token, so the request has one.
+        let token = bearer_token(request).unwrap_or_default().to_string();
+        match self.logout.execute(LogoutParams { token }).await {
+            Ok(()) => LogoutResponse::NoContent,
+            Err(err) => {
+                let (status, error) = err.into_error_response();
+                LogoutResponse::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use business::domain::user::errors::UserError;
+    use business::domain::user::use_cases::{
+        login::mocks::MockLoginUseCase, logout::mocks::MockLogoutUseCase,
+        register_user::mocks::MockRegisterUserUseCase,
+    };
+    use chrono::Utc;
+    use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
+    use std::collections::BTreeMap;
+
+    use poem_openapi::OpenApiService;
+    use puerto_core::auth::mocks::MockAuthenticator;
+    use puerto_core::auth::{AuthError, Authenticator, Principal, Session};
+    use uuid::Uuid;
+
+    use super::*;
+
+    /// One use case programmed, the others never called; the token `ada` is a live session.
+    fn client(
+        register_user: MockRegisterUserUseCase,
+        login: MockLoginUseCase,
+        logout: MockLogoutUseCase,
+    ) -> TestClient<impl poem::Endpoint> {
+        let mut authenticator = MockAuthenticator::new();
+        authenticator
+            .expect_authenticate()
+            .returning(|token| match token {
+                "ada" => Ok(Principal::new(Uuid::new_v4(), "ada@example.com")),
+                _ => Err(AuthError::Invalid),
+            });
+        let authenticator: Arc<dyn Authenticator> = Arc::new(authenticator);
+        let api = AuthApi {
+            register_user: Arc::new(register_user),
+            login: Arc::new(login),
+            logout: Arc::new(logout),
+        };
+        TestClient::new(
+            Route::new()
+                .nest("/", OpenApiService::new(api, "test", "1.0"))
+                .data(authenticator),
+        )
+    }
+
+    /// The body of a registration or a login: as a map, because the DTOs' `to_json` leaves the
+    /// `write_only` password out.
+    fn credentials(password: &str) -> BTreeMap<&'static str, String> {
+        BTreeMap::from([
+            ("email", "ada@example.com".to_string()),
+            ("password", password.to_string()),
+        ])
+    }
+
+    async fn assert_code(response: poem::test::TestResponse, code: &str) {
+        response
+            .json()
+            .await
+            .value()
+            .object()
+            .get("name")
+            .assert_string(code);
+    }
+
+    #[tokio::test]
+    async fn should_answer_201_with_the_account_when_registered() {
+        // Arrange
+        let mut register_user = MockRegisterUserUseCase::new();
+        register_user
+            .expect_execute()
+            .returning(|params| Ok(User::register(&params.email, params.name).expect("valid")));
+        let client = client(register_user, MockLoginUseCase::new(), MockLogoutUseCase::new());
+
+        // Act
+        let response = client
+            .post("/auth/register")
+            .body_json(&credentials("correct horse battery"))
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CREATED);
+        let json = response.json().await;
+        let account = json.value().object();
+        account.get("email").assert_string("ada@example.com");
+        assert!(account.get_opt("password").is_none());
+    }
+
+    #[tokio::test]
+    async fn should_answer_409_when_the_email_is_taken() {
+        // Arrange
+        let mut register_user = MockRegisterUserUseCase::new();
+        register_user
+            .expect_execute()
+            .returning(|_| Err(UserError::Duplicate));
+        let client = client(register_user, MockLoginUseCase::new(), MockLogoutUseCase::new());
+
+        // Act
+        let response = client
+            .post("/auth/register")
+            .body_json(&credentials("correct horse battery"))
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::CONFLICT);
+        assert_code(response, "user.duplicate").await;
+    }
+
+    #[tokio::test]
+    async fn should_answer_422_when_the_password_is_too_short() {
+        // Arrange
+        let mut register_user = MockRegisterUserUseCase::new();
+        register_user
+            .expect_execute()
+            .returning(|_| Err(UserError::ValidationError("password_too_short".into())));
+        let client = client(register_user, MockLoginUseCase::new(), MockLogoutUseCase::new());
+
+        // Act
+        let response = client
+            .post("/auth/register")
+            .body_json(&credentials("short"))
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        assert_code(response, "user.validation_error.password_too_short").await;
+    }
+
+    #[tokio::test]
+    async fn should_answer_the_session_when_the_password_matches() {
+        // Arrange
+        let mut login = MockLoginUseCase::new();
+        login
+            .expect_execute()
+            .returning(|_| Ok(Session::new("opaque", Utc::now())));
+        let client = client(MockRegisterUserUseCase::new(), login, MockLogoutUseCase::new());
+
+        // Act
+        let response = client
+            .post("/auth/login")
+            .body_json(&credentials("correct horse battery"))
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status_is_ok();
+        let json = response.json().await;
+        let session = json.value().object();
+        session.get("token").assert_string("opaque");
+        assert!(!session.get("expiresAt").string().is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_answer_401_invalid_credentials_when_the_login_is_refused() {
+        // Arrange
+        let mut login = MockLoginUseCase::new();
+        login
+            .expect_execute()
+            .returning(|_| Err(UserError::InvalidCredentials));
+        let client = client(MockRegisterUserUseCase::new(), login, MockLogoutUseCase::new());
+
+        // Act
+        let response = client
+            .post("/auth/login")
+            .body_json(&credentials("wrong password!"))
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+        assert_code(response, "auth.invalid_credentials").await;
+    }
+
+    #[tokio::test]
+    async fn should_revoke_the_token_the_request_is_signed_with() {
+        // Arrange
+        let mut logout = MockLogoutUseCase::new();
+        logout
+            .expect_execute()
+            .withf(|params| params.token == "ada")
+            .times(1)
+            .returning(|_| Ok(()));
+        let client = client(MockRegisterUserUseCase::new(), MockLoginUseCase::new(), logout);
+
+        // Act
+        let response = client
+            .post("/auth/logout")
+            .header("Authorization", "Bearer ada")
+            .send()
+            .await;
+
+        // Assert
+        response.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn should_answer_401_to_a_logout_without_a_session() {
+        // Arrange
+        let mut logout = MockLogoutUseCase::new();
+        logout.expect_execute().never();
+        let client = client(MockRegisterUserUseCase::new(), MockLoginUseCase::new(), logout);
+
+        // Act
+        let response = client.post("/auth/logout").send().await;
+
+        // Assert
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    }
+}

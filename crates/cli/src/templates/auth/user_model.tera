@@ -4,6 +4,13 @@
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+{%- if local %}
+
+use super::errors::UserError;
+
+/// The issuer of the accounts this API keeps itself (`POST /auth/register`).
+pub const LOCAL_ISSUER: &str = "local";
+{%- endif %}
 
 /// The id of every `User`: a `Uuid` that cannot be passed where another entity's id is expected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -68,13 +75,45 @@ impl User {
         }
     }
 
-    /// Reconstructs from persistence — no validation. ONLY infrastructure uses this.
+{% if local %}    /// A new local account (`register_user`). Its subject is the email as [`User::local_subject`]
+    /// spells it, so `UNIQUE (issuer, subject)` makes the email unique.
+    pub fn register(email: &str, name: Option<String>) -> Result<Self, UserError> {
+        let email = Self::local_subject(email);
+        if !is_email(&email) {
+            return Err(UserError::ValidationError("email_invalid".into()));
+        }
+        let name = name
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty());
+        Ok(Self::provision(LOCAL_ISSUER, email.clone(), Some(email), name))
+    }
+
+    /// How a local account's email is compared: trimmed and lowercased.
+    pub fn local_subject(email: &str) -> String {
+        email.trim().to_lowercase()
+    }
+
+{% endif %}    /// Reconstructs from persistence — no validation. ONLY infrastructure uses this.
     pub fn from_repository(data: User) -> Self {
         data
     }
 }
 
-#[cfg(test)]
+{% if local %}/// One `@` between a non-empty name and a dotted domain, no spaces. Whether the address exists is
+/// for a confirmation mail to find out, not for this check.
+fn is_email(email: &str) -> bool {
+    let Some((name, domain)) = email.split_once('@') else {
+        return false;
+    };
+    !name.is_empty()
+        && !domain.contains('@')
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !email.chars().any(char::is_whitespace)
+}
+
+{% endif %}#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -106,4 +145,33 @@ mod tests {
         // Assert
         assert_ne!(ada.id, bob.id);
     }
+{%- if local %}
+
+    #[test]
+    fn should_register_a_local_account_under_its_lowercased_email() {
+        // Act
+        let user = User::register("  Ada@Example.COM ", Some(" Ada ".into())).expect("valid");
+
+        // Assert
+        assert_eq!(user.issuer, LOCAL_ISSUER);
+        assert_eq!(user.subject, "ada@example.com");
+        assert_eq!(user.email.as_deref(), Some("ada@example.com"));
+        assert_eq!(user.name.as_deref(), Some("Ada"));
+        assert!(user.roles.is_empty());
+    }
+
+    #[test]
+    fn should_keep_no_name_when_it_is_blank() {
+        let user = User::register("ada@example.com", Some("  ".into())).expect("valid");
+        assert_eq!(user.name, None);
+    }
+
+    #[test]
+    fn should_reject_an_account_when_the_email_is_not_one() {
+        for email in ["", "ada", "ada@", "@example.com", "ada@example", "a da@example.com", "a@b@c.com", "ada@.com"] {
+            let err = User::register(email, None).expect_err(email);
+            assert_eq!(err.to_string(), "user.validation_error.email_invalid", "{email}");
+        }
+    }
+{%- endif %}
 }

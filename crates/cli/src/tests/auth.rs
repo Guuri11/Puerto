@@ -248,32 +248,6 @@ fn new_without_auth_writes_none_of_it() {
     cleanup(&dir);
 }
 
-#[test]
-fn new_refuses_local_auth_until_it_ships() {
-    let dir = temp_dir("auth_local");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-
-    let result = new_project(
-        Some("auth-local".into()),
-        NewOptions {
-            db: true,
-            auth: Some("local".into()),
-            ..Default::default()
-        },
-        Some(dir.clone()),
-    );
-
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("not available yet")
-    );
-    assert!(!dir.join("auth-local").exists(), "nothing is written");
-    cleanup(&dir);
-}
-
 // ── Phase 16.4: `scaffold` in an auth project ────────────────────────────────
 
 fn access(public: &[&str], roles: &[&str]) -> scaffold::ScaffoldAccess {
@@ -666,5 +640,171 @@ fn scaffold_in_an_auth_web_project_without_roles_checks_none() {
         &format!("{containers}/product-detail-container.test.tsx"),
     );
     assert!(detail_test.contains("auth.forbidden"), "{detail_test}");
+    cleanup(&dir);
+}
+
+// ── Phase 16.6: `puerto new --auth local` ────────────────────────────────────
+
+fn new_local_project(name: &str, options: NewOptions) -> Result<(PathBuf, PathBuf), String> {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    new_project(
+        Some(name.replace('_', "-")),
+        NewOptions {
+            auth: Some("local".into()),
+            ..options
+        },
+        Some(dir.clone()),
+    )
+    .map(|output| (dir.clone(), output))
+    .map_err(|e| {
+        assert!(
+            !dir.join(name.replace('_', "-")).exists(),
+            "nothing is written when refused"
+        );
+        cleanup(&dir);
+        e.to_string()
+    })
+}
+
+fn local_project(name: &str) -> (PathBuf, PathBuf) {
+    new_local_project(
+        name,
+        NewOptions {
+            db: true,
+            no_web: true,
+            ..Default::default()
+        },
+    )
+    .unwrap()
+}
+
+/// The file name and content of the migration whose name ends with `suffix`.
+fn migration_ending(output: &Path, suffix: &str) -> (String, String) {
+    let dir = output.join("infrastructure/migrations");
+    let name = fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .find(|m| m.ends_with(suffix))
+        .unwrap_or_else(|| panic!("no *{suffix} in {}", dir.display()));
+    let content = read(output, &format!("infrastructure/migrations/{name}"));
+    (name, content)
+}
+
+#[test]
+fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
+    let (dir, output) = local_project("auth_local_files");
+
+    let config = puerto_toml::read(&output).unwrap();
+    assert_eq!(config.project.auth.as_deref(), Some("local"));
+    for file in [
+        "business/src/domain/user/use_cases/register_user.rs",
+        "business/src/domain/user/use_cases/login.rs",
+        "business/src/domain/user/use_cases/logout.rs",
+        "business/src/application/user/register_user.rs",
+        "business/src/application/user/login.rs",
+        "business/src/application/user/logout.rs",
+        "presentation/src/api/auth.rs",
+        "presentation/src/api/auth/dto.rs",
+        "presentation/src/api/auth/routes.rs",
+        "presentation/src/api/auth/responses.rs",
+        "presentation/src/api/auth/error_mapper.rs",
+        "presentation/src/api/me/routes.rs",
+    ] {
+        assert!(output.join(file).exists(), "{file} missing");
+    }
+    // No provider to provision from, and none to run.
+    assert!(
+        !output
+            .join("infrastructure/src/user/provisioning.rs")
+            .exists()
+    );
+    assert!(!output.join("infrastructure/keycloak").exists());
+    assert!(!read(&output, "docker-compose.yml").contains("keycloak"));
+    // The tables `puerto-sqlx` is tested against, users first: credentials and sessions
+    // reference them.
+    let (users, users_sql) = migration_ending(&output, "_create_users_table.sql");
+    let (auth, auth_sql) = migration_ending(&output, "_create_auth_tables.sql");
+    assert!(users_sql.ends_with(include_str!("../../../sqlx/migrations/users.sql")));
+    assert!(auth_sql.ends_with(include_str!("../../../sqlx/migrations/auth.sql")));
+    assert!(users < auth, "{users} runs before {auth}");
+    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    for wired in [
+        "PgSessions::new",
+        "PgCredentials::new",
+        "Argon2Hasher",
+        "auth_api",
+        ".data(authenticator)",
+    ] {
+        assert!(bootstrap.contains(wired), "{wired}: {bootstrap}");
+    }
+    assert!(!bootstrap.contains("Oidc"), "{bootstrap}");
+    assert!(read(&output, "presentation/Cargo.toml").contains("features = [\"local\"]"));
+    assert!(validate::run_validate(&output).is_ok());
+    cleanup(&dir);
+}
+
+#[test]
+fn new_with_local_auth_grants_roles_from_make_and_reads_the_session_lifetime() {
+    let (dir, output) = local_project("auth_local_env");
+
+    let env = read(&output, ".env.example");
+    assert!(env.contains("AUTH_SESSION_TTL=30d"), "{env}");
+    assert!(!env.contains("AUTH_ISSUER"), "{env}");
+    let makefile = read(&output, "Makefile");
+    assert!(makefile.contains("auth/grant:"), "{makefile}");
+    assert!(makefile.contains("array_append(roles"), "{makefile}");
+    assert!(!makefile.contains("auth/ui:"), "{makefile}");
+    let agents = read(&output, "AGENTS.md");
+    assert!(agents.contains("## Auth (`[project] auth`)"), "{agents}");
+    assert!(agents.contains("make auth/grant"), "{agents}");
+    assert!(!agents.contains("Keycloak"), "{agents}");
+    cleanup(&dir);
+}
+
+#[test]
+fn new_refuses_local_auth_without_a_database() {
+    let err = new_local_project(
+        "auth_local_no_db",
+        NewOptions {
+            no_db: true,
+            no_web: true,
+            ..Default::default()
+        },
+    )
+    .unwrap_err();
+
+    assert!(err.contains("--db"), "{err}");
+}
+
+#[test]
+fn new_refuses_local_auth_with_the_web_frontend_until_it_ships() {
+    let err = new_local_project(
+        "auth_local_web",
+        NewOptions {
+            db: true,
+            ..Default::default()
+        },
+    )
+    .unwrap_err();
+
+    assert!(err.contains("--no-web"), "{err}");
+}
+
+#[test]
+fn scaffold_in_a_local_auth_project_protects_routes_as_in_an_oidc_one() {
+    let (dir, output) = local_project("auth_local_scaffold");
+
+    scaffold_product(
+        &output,
+        &access(&["list_products"], &["delete_product=admin"]),
+    )
+    .unwrap();
+
+    let routes = read(&output, "presentation/src/api/product/routes.rs");
+    assert_eq!(routes.matches("auth: BearerAuth").count(), 4, "{routes}");
+    assert_eq!(routes.matches("#[require_role(\"admin\")]").count(), 1);
+    assert!(validate::run_validate(&output).is_ok());
     cleanup(&dir);
 }

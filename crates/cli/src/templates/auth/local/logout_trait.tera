@@ -1,0 +1,32 @@
+//! Yours: `puerto new --auth local` writes this file once.
+
+use async_trait::async_trait;
+
+use crate::domain::user::errors::UserError;
+
+/// `token`: the session the caller signed this request with.
+pub struct LogoutParams {
+    pub token: String,
+}
+
+/// Revokes a session: its token is refused from then on.
+#[async_trait]
+pub trait LogoutUseCaseTrait: Send + Sync {
+    async fn execute(&self, params: LogoutParams) -> Result<(), UserError>;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod mocks {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub LogoutUseCase {}
+
+        #[async_trait]
+        impl LogoutUseCaseTrait for LogoutUseCase {
+            async fn execute(&self, params: LogoutParams) -> Result<(), UserError>;
+        }
+    }
+}

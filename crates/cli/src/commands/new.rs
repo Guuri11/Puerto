@@ -63,7 +63,7 @@ pub struct NewOptions {
     pub no_web: bool,
     /// `--events <transport>`: `db` or `kafka`.
     pub events: Option<String>,
-    /// `--auth <mode>`: `oidc` (ADR-0021).
+    /// `--auth <mode>`: `oidc` or `local` (ADR-0021).
     pub auth: Option<String>,
 }
 
@@ -124,16 +124,23 @@ pub fn new_project(
     let resolved_auth = if auth.is_some() {
         auth
     } else if dialoguer::console::user_attended() {
-        let modes = [
-            "none",
+        let mut modes = vec![(
+            "oidc",
             "oidc (Auth0, Keycloak, any OpenID Connect provider)",
-        ];
+        )];
+        // Until its frontend ships, local accounts come without one (`PLAN.md` § 16.7).
+        if resolved_db && no_web {
+            modes.push(("local", "local (accounts and sessions in this database)"));
+        }
+        let labels: Vec<&str> = std::iter::once("none")
+            .chain(modes.iter().map(|(_, label)| *label))
+            .collect();
         let choice = dialoguer::Select::new()
             .with_prompt("Auth?")
-            .items(&modes)
+            .items(&labels)
             .default(0)
             .interact()?;
-        (choice > 0).then(|| "oidc".to_string())
+        (choice > 0).then(|| modes[choice - 1].0.to_string())
     } else {
         None
     };
@@ -159,6 +166,10 @@ pub fn new_project(
     } else {
         false
     };
+
+    if let Some(mode) = &resolved_auth {
+        crate::generators::auth::check_new_project(mode, resolved_db, !resolved_no_web)?;
+    }
 
     eprintln!("Constructing project skeleton...");
 

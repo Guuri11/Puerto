@@ -18,15 +18,27 @@ use infrastructure::{{ entity.snake }}::unit_of_work::Pg{{ entity.pascal }}UnitO
 use infrastructure::{{ entity.snake }}::repository::{% if entity.db %}Pg{% else %}InMemory{% endif %}{{ entity.pascal }}Repository;
 {% endfor %}
 {% endif -%}
-{% if auth -%}
+{% if local -%}
+use business::application::user::login::LoginUseCaseImpl;
+use business::application::user::logout::LogoutUseCaseImpl;
+use business::application::user::register_user::RegisterUserUseCaseImpl;
+use business::domain::user::repository::UserRepositoryTrait;
+use infrastructure::db::auth::{PgCredentials, PgSessions};
+use infrastructure::user::repository::PgUserRepository;
+use poem::EndpointExt;
+{% elif auth -%}
 use infrastructure::user::provisioning::ProvisioningAuthenticator;
 use infrastructure::user::repository::{% if user_db %}Pg{% else %}InMemory{% endif %}UserRepository;
 use poem::EndpointExt;
 {% endif -%}
 use poem::Endpoint;
 use poem_openapi::OpenApiService;
-{% if auth %}use puerto_core::auth::Authenticator;
+{% if local %}use puerto_core::auth::{Authenticator, CredentialStore, PasswordHasher};
+{% elif auth %}use puerto_core::auth::Authenticator;
 {% endif %}
+{% if local -%}
+use crate::api::auth::routes::AuthApi;
+{% endif -%}
 {% if auth -%}
 use crate::api::me::routes::MeApi;
 {% endif -%}
@@ -45,7 +57,32 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
         .await
         .map_err(|e| e.to_string())?;
 {% endif %}
-{%- if auth %}
+{%- if local %}
+    // Accounts in this database (ADR-0021 § 2): their sessions are what every `BearerAuth` asks.
+    let users: Arc<dyn UserRepositoryTrait> = Arc::new(PgUserRepository::new(pool.clone()));
+    let credentials: Arc<dyn CredentialStore> = Arc::new(PgCredentials::new(pool.clone()));
+    let hasher: Arc<dyn PasswordHasher> = Arc::new(puerto_auth::local::Argon2Hasher::new());
+    let sessions = Arc::new(PgSessions::new(
+        pool.clone(),
+        infrastructure::db::auth::session_ttl_from_env()?,
+    ));
+    let authenticator: Arc<dyn Authenticator> = sessions.clone();
+    let auth_api = AuthApi {
+        register_user: Arc::new(RegisterUserUseCaseImpl {
+            users: Arc::clone(&users),
+            credentials: Arc::clone(&credentials),
+            hasher: Arc::clone(&hasher),
+        }),
+        login: Arc::new(LoginUseCaseImpl {
+            users,
+            credentials,
+            hasher,
+            sessions: sessions.clone(),
+        }),
+        logout: Arc::new(LogoutUseCaseImpl { sessions }),
+    };
+    let me_api = MeApi;
+{% elif auth %}
     // The provider's tokens, and a `User` row for every caller (ADR-0021 § 3).
     let auth_config = puerto_auth::OidcConfig::from_env().map_err(|e| e.to_string())?;
     let issuer = auth_config.issuer.clone();
@@ -111,6 +148,11 @@ mod tests {
     use business::domain::{{ entity.snake }}::use_cases::{{ uc.action }}::mocks::Mock{{ uc.uc_pascal }}UseCase;
 {%- endfor %}
 {%- endfor %}
+{%- if local %}
+    use business::domain::user::use_cases::login::mocks::MockLoginUseCase;
+    use business::domain::user::use_cases::logout::mocks::MockLogoutUseCase;
+    use business::domain::user::use_cases::register_user::mocks::MockRegisterUserUseCase;
+{%- endif %}
 
     /// The API contract the frontend's types are generated from (`make web/sync`).
     const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/api/openapi.json");
@@ -124,6 +166,13 @@ mod tests {
 {%- endfor %}
 {%- if auth %}
         let me_api = MeApi;
+{%- endif %}
+{%- if local %}
+        let auth_api = AuthApi {
+            register_user: Arc::new(MockRegisterUserUseCase::new()),
+            login: Arc::new(MockLoginUseCase::new()),
+            logout: Arc::new(MockLogoutUseCase::new()),
+        };
 {%- endif %}
         let spec = openapi_service({{ apis }}).spec();
 

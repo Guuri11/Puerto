@@ -70,19 +70,24 @@ fn build_context(
     ctx.insert("web", &project.web);
     ctx.insert("auth", &auth);
     ctx.insert("user_db", &user_db);
-    ctx.insert("apis", &api_expression(entities, auth));
+    let local = project.auth.as_deref() == Some("local");
+    ctx.insert("local", &local);
+    ctx.insert("apis", &api_expression(entities, auth, local));
     ctx
 }
 
 /// What `OpenApiService` serves: `()` with no API, the one `{snake}_api`, or a tuple of them —
-/// `me_api` last in an auth project.
-fn api_expression(entities: &[crate::puerto_toml::Entity], auth: bool) -> String {
+/// `me_api` last in an auth project, then `auth_api` in a local one.
+fn api_expression(entities: &[crate::puerto_toml::Entity], auth: bool, local: bool) -> String {
     let mut apis: Vec<String> = entities
         .iter()
         .map(|e| format!("{}_api", pascal_to_snake(&e.name)))
         .collect();
     if auth {
         apis.push("me_api".into());
+    }
+    if local {
+        apis.push("auth_api".into());
     }
     match apis.as_slice() {
         [single] => single.clone(),
@@ -114,14 +119,17 @@ pub fn generate_bootstrap_for(
     render("bootstrap/bootstrap.tera", &ctx)
 }
 
-/// `auth`: `GET /me` is tagged `Me`.
+/// An auth project: `GET /me` is tagged `Me`; a local one's `/auth/*`, `Auth`.
 pub fn generate_tags_content(
     entities: &[crate::puerto_toml::Entity],
-    auth: bool,
+    project: &crate::puerto_toml::Project,
 ) -> Result<String, RenderError> {
     let mut tags: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
-    if auth {
+    if project.has_auth() {
         tags.push("Me");
+    }
+    if project.auth.as_deref() == Some("local") {
+        tags.push("Auth");
     }
     let mut ctx = tera::Context::new();
     ctx.insert("tags_entities", &tags);
@@ -201,7 +209,7 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
     }
     fs::write(
         tags_path,
-        generate_tags_content(&config.entity, config.project.has_auth())?,
+        generate_tags_content(&config.entity, &config.project)?,
     )?;
 
     crate::generators::events::regenerate_events(base, &config)?;

@@ -22,15 +22,23 @@ pub const AUDIENCE: &str = "api";
 /// The OpenID Connect client of the frontend, pinned like every `web/package.json` dependency.
 pub const OIDC_CLIENT_TS_VERSION: &str = "3.5.0";
 
-/// The modes `puerto new --auth` writes today. `local` is accepted by the schema and arrives with
-/// its own adapter (`PLAN.md` § 16.6).
+/// A mode `puerto new --auth` knows.
 pub fn check_mode(mode: &str) -> Result<(), String> {
-    crate::validation::validate_auth_mode(mode)?;
-    if mode != "oidc" {
-        return Err(format!(
-            "--auth {mode} is not available yet — use --auth oidc (Auth0, Keycloak or any OpenID \
-             Connect provider)"
-        ));
+    crate::validation::validate_auth_mode(mode)
+}
+
+/// Whether `puerto new --auth <mode>` can write a project with this database and frontend choice —
+/// asked before anything is written. Local accounts live in Postgres, and their frontend arrives
+/// in `PLAN.md` § 16.7.
+pub fn check_new_project(mode: &str, db: bool, web: bool) -> Result<(), String> {
+    check_mode(mode)?;
+    if mode == "local" && !db {
+        return Err("--auth local keeps accounts in the database: add --db".into());
+    }
+    if mode == "local" && web {
+        return Err(
+            "--auth local has no web frontend yet: add --no-web (or use --auth oidc)".into(),
+        );
     }
     Ok(())
 }
@@ -100,17 +108,24 @@ fn render_static(template: &str) -> Result<String, Box<dyn std::error::Error>> {
     Ok(render(template, &tera::Context::new())?)
 }
 
+/// A template that differs between the modes: `local` adds what registering and signing in need.
+fn render_for(template: &str, local: bool) -> Result<String, Box<dyn std::error::Error>> {
+    let mut ctx = tera::Context::new();
+    ctx.insert("local", &local);
+    Ok(render(template, &ctx)?)
+}
+
 /// The `User` entity: model, errors and repository port. Declared in `business/src/lib.rs` — it is
 /// not an `[[entity]]`, so no scaffold or `bootstrap.rs` entity block ever touches it.
-fn write_user_domain(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn write_user_domain(base: &Path, local: bool) -> Result<(), Box<dyn std::error::Error>> {
     let dir = base.join("business/src/domain/user");
     write_file(
         &dir.join("model.rs"),
-        &render_static("auth/user_model.tera")?,
+        &render_for("auth/user_model.tera", local)?,
     )?;
     write_file(
         &dir.join("errors.rs"),
-        &render_static("auth/user_errors.tera")?,
+        &render_for("auth/user_errors.tera", local)?,
     )?;
     write_file(
         &dir.join("repository.rs"),
@@ -131,9 +146,13 @@ fn write_user_domain(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// The user repository (in memory, or Postgres with its migration) and the provisioning
+/// The user repository (in memory, or Postgres with its migration) and, for OIDC, the provisioning
 /// authenticator.
-fn write_user_infrastructure(base: &Path, db: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn write_user_infrastructure(
+    base: &Path,
+    db: bool,
+    local: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let dir = base.join("infrastructure/src/user");
     let repository = if db {
         "auth/user_repository_pg.tera"
@@ -141,10 +160,12 @@ fn write_user_infrastructure(base: &Path, db: bool) -> Result<(), Box<dyn std::e
         "auth/user_repository_inmemory.tera"
     };
     write_file(&dir.join("repository.rs"), &render_static(repository)?)?;
-    write_file(
-        &dir.join("provisioning.rs"),
-        &render_static("auth/provisioning.tera")?,
-    )?;
+    if !local {
+        write_file(
+            &dir.join("provisioning.rs"),
+            &render_static("auth/provisioning.tera")?,
+        )?;
+    }
     if db {
         crate::generators::migration::run_migration(
             "create_users_table",
@@ -158,7 +179,11 @@ fn write_user_infrastructure(base: &Path, db: bool) -> Result<(), Box<dyn std::e
         if !src.is_empty() && !src.ends_with('\n') {
             src.push('\n');
         }
-        src.push_str("pub mod user {\n    pub mod provisioning;\n    pub mod repository;\n}\n");
+        src.push_str(if local {
+            "pub mod user {\n    pub mod repository;\n}\n"
+        } else {
+            "pub mod user {\n    pub mod provisioning;\n    pub mod repository;\n}\n"
+        });
         fs::write(&lib, src)?;
     }
     Ok(())
@@ -176,6 +201,70 @@ fn write_me_api(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     patch_api_rs(base, "me")
 }
 
+/// The local use cases, in the order a `lib.rs` declares them.
+const LOCAL_USE_CASES: [&str; 3] = ["login", "logout", "register_user"];
+
+/// Local accounts (`PLAN.md` § 16.6): `register_user`, `login`, `logout` and `POST /auth/*`, the
+/// credentials and sessions migration after `users`'.
+fn write_local_accounts(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let business = base.join("business/src");
+    for uc in LOCAL_USE_CASES {
+        write_file(
+            &business.join(format!("domain/user/use_cases/{uc}.rs")),
+            &render_static(&format!("auth/local/{uc}_trait.tera"))?,
+        )?;
+        write_file(
+            &business.join(format!("application/user/{uc}.rs")),
+            &render_static(&format!("auth/local/{uc}.tera"))?,
+        )?;
+    }
+    let lib = business.join("lib.rs");
+    let src = fs::read_to_string(&lib)?;
+    if !src.contains("pub mod register_user;") {
+        let decls: String = LOCAL_USE_CASES
+            .iter()
+            .map(|uc| format!("            pub mod {uc};\n"))
+            .collect();
+        let src = insert_before_block_end(
+            &src,
+            "user",
+            &format!("        pub mod use_cases {{\n{decls}        }}\n"),
+        )?;
+        let decls: String = LOCAL_USE_CASES
+            .iter()
+            .map(|uc| format!("        pub mod {uc};\n"))
+            .collect();
+        let src = insert_before_block_end(
+            &src,
+            "application",
+            &format!("\n    pub mod user {{\n{decls}    }}\n"),
+        )?;
+        fs::write(&lib, src)?;
+    }
+
+    let api = base.join("presentation/src/api");
+    for (file, template) in [
+        ("auth.rs", "auth_api"),
+        ("auth/dto.rs", "auth_dto"),
+        ("auth/error_mapper.rs", "auth_error_mapper"),
+        ("auth/responses.rs", "auth_responses"),
+        ("auth/routes.rs", "auth_routes"),
+    ] {
+        write_file(
+            &api.join(file),
+            &render_static(&format!("auth/local/{template}.tera"))?,
+        )?;
+    }
+    patch_api_rs(base, "auth")?;
+
+    crate::generators::migration::run_migration(
+        "create_auth_tables",
+        base,
+        Some(&render_static("auth/local/auth.sql")?),
+    )?;
+    Ok(())
+}
+
 /// Inserts `line` after the first line of `manifest` that is exactly `after`.
 fn insert_after_line(manifest: &str, after: &str, line: &str) -> Option<String> {
     let at = manifest.find(&format!("{after}\n"))? + after.len() + 1;
@@ -183,7 +272,7 @@ fn insert_after_line(manifest: &str, after: &str, line: &str) -> Option<String> 
 }
 
 /// `puerto-auth` for `bootstrap.rs`, and the mocks the generated tests use.
-fn add_dependencies(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::Error>> {
     add_workspace_dependency(base, "puerto-auth")?;
     let core = "puerto-core = { workspace = true }";
     let core_mocks = "puerto-core = { workspace = true, features = [\"test-utils\"] }";
@@ -194,7 +283,11 @@ fn add_dependencies(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let src = insert_after_line(
             &src,
             core,
-            "# The OIDC adapter `bootstrap.rs` builds (ADR-0021).\npuerto-auth = { workspace = true, features = [\"oidc\"] }",
+            if local {
+                "# The password hasher `bootstrap.rs` builds (ADR-0021).\npuerto-auth = { workspace = true, features = [\"local\"] }"
+            } else {
+                "# The OIDC adapter `bootstrap.rs` builds (ADR-0021).\npuerto-auth = { workspace = true, features = [\"oidc\"] }"
+            },
         )
         .and_then(|src| {
             insert_after_line(
@@ -225,6 +318,21 @@ fn add_dependencies(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         )
         .ok_or_else(|| format!("{}: no [dev-dependencies]", path.display()))?;
         fs::write(&path, src)?;
+    }
+
+    // The local use cases' tests drive the ports' mocks.
+    if local {
+        let path = base.join("business/Cargo.toml");
+        let src = fs::read_to_string(&path)?;
+        if !src.contains(core_mocks) {
+            let src = insert_after_line(
+                &src,
+                "[dev-dependencies]",
+                &format!("# The auth ports' mocks (`MockPasswordHasher`, …).\n{core_mocks}"),
+            )
+            .ok_or_else(|| format!("{}: no [dev-dependencies]", path.display()))?;
+            fs::write(&path, src)?;
+        }
     }
     Ok(())
 }
@@ -294,6 +402,25 @@ fn add_env(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+/// `AUTH_SESSION_TTL`, read by `puerto_sqlx::auth::session_ttl_from_env`.
+fn add_local_env(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let vars = "\n# Auth — accounts in this database (ADR-0021). How long a session lasts: 30d, 12h, 90m.\n\
+                AUTH_SESSION_TTL=30d\n";
+    for file in [".env", ".env.example"] {
+        let path = base.join(file);
+        let mut content = fs::read_to_string(&path).unwrap_or_default();
+        if content.contains("AUTH_SESSION_TTL") {
+            continue;
+        }
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(vars);
+        fs::write(&path, content)?;
+    }
+    Ok(())
+}
+
 /// The compose targets a project without a database lacks (a `--db` one has them already).
 const COMPOSE_MAKEFILE_TARGETS: &str = r#"
 .PHONY: docker-compose/up docker-compose/down
@@ -325,13 +452,33 @@ auth/ui: docker-compose/up ## The Keycloak console: users, roles, sessions
     )
 }
 
-fn add_makefile_targets(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// `make auth/grant`: a role is a row's `roles` entry in a local project, applied from the next
+/// request (no cache in between).
+fn local_makefile_targets(project: &str) -> String {
+    let db_name = project.replace('-', "_");
+    format!(
+        r#"
+.PHONY: auth/grant
+
+auth/grant: docker-compose/up ## Give an account a role: make auth/grant EMAIL=ada@example.com ROLE=admin
+	@test -n "$(EMAIL)" -a -n "$(ROLE)" || {{ echo "${{RED}}usage: make auth/grant EMAIL=… ROLE=…${{NC}}"; exit 1; }}
+	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d {db_name} -v ON_ERROR_STOP=1 -c \
+		"UPDATE users SET roles = array_append(roles, '$(ROLE)'), updated_at = now() WHERE issuer = 'local' AND subject = lower(trim('$(EMAIL)')) AND NOT '$(ROLE)' = ANY(roles)"
+"#
+    )
+}
+
+fn add_makefile_targets(
+    base: &Path,
+    project: &str,
+    local: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("Makefile");
     if !path.exists() {
         return Ok(());
     }
     let mut src = fs::read_to_string(&path)?;
-    if src.contains("auth/ui:") {
+    if src.contains("auth/ui:") || src.contains("auth/grant:") {
         return Ok(());
     }
     if !src.ends_with('\n') {
@@ -340,7 +487,11 @@ fn add_makefile_targets(base: &Path, project: &str) -> Result<(), Box<dyn std::e
     if !src.contains("docker-compose/up:") {
         src.push_str(COMPOSE_MAKEFILE_TARGETS);
     }
-    src.push_str(&auth_makefile_targets(project));
+    src.push_str(&if local {
+        local_makefile_targets(project)
+    } else {
+        auth_makefile_targets(project)
+    });
     fs::write(&path, src)?;
     Ok(())
 }
@@ -467,6 +618,35 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 
 "#;
 
+/// The root `AGENTS.md` section of a project that keeps its own accounts (`--auth local`).
+pub const AGENTS_AUTH_LOCAL_SECTION: &str = r#"## Auth (`[project] auth`)
+
+The API keeps its own accounts (ADR-0021 of Puerto): `POST /auth/register` creates one,
+`POST /auth/login` answers an opaque session token, `POST /auth/logout` revokes it. A client sends
+the token as `Authorization: Bearer <token>`; the database keeps only its SHA-256.
+
+- A handler that takes `auth: BearerAuth` is protected: no, an unknown or an expired session is
+  answered `401 auth.unauthenticated` before it runs. `#[require_role("admin")]` on it adds the
+  `403 auth.forbidden` check. Both come from `puerto_web`.
+- `puerto generate scaffold <Name>` protects every CRUD route. `--public list_products,get_product`
+  leaves routes open; `--role delete_product=admin` adds `#[require_role]` (two roles on one route:
+  the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
+  `puerto validate` checks `routes.rs` still says the same — change both together.
+- A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
+  build one with `PrincipalMother`. `generate use-case` adds it too.
+- **Roles are the `users.roles` column**: `make auth/grant EMAIL=… ROLE=…`. They apply from the
+  next request.
+- Passwords are argon2id hashes in `credentials`; `User` carries no secret. A login with an unknown
+  email and one with a wrong password get the same `401 auth.invalid_credentials`, in the same time.
+  Sessions last `AUTH_SESSION_TTL` (`.env`); expired rows are refused, pruning them is yours.
+- `register_user`, `login`, `logout` (`business/src/{domain,application}/user/`) and
+  `presentation/src/api/auth/` are yours. Registration is open: close it, or add rules, there.
+- `GET /me` answers the caller as the API resolved them.
+- A rule that depends on data ("only the owner edits") belongs in the use case, not in an
+  attribute.
+
+"#;
+
 /// What follows [`AGENTS_AUTH_SECTION`] in a project with `web/`.
 pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth in `web/`
 
@@ -483,15 +663,21 @@ pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth in `web/`
 
 "#;
 
-fn add_agents_section(base: &Path, web: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn add_agents_section(
+    base: &Path,
+    web: bool,
+    local: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join("AGENTS.md");
     let Ok(agents) = fs::read_to_string(&path) else {
         return Ok(());
     };
-    if agents.contains(AGENTS_AUTH_SECTION) {
+    if agents.contains("## Auth (`[project] auth`)") {
         return Ok(());
     }
-    let section = if web {
+    let section = if local {
+        AGENTS_AUTH_LOCAL_SECTION.to_string()
+    } else if web {
         format!("{AGENTS_AUTH_SECTION}{AGENTS_AUTH_WEB_SECTION}")
     } else {
         AGENTS_AUTH_SECTION.to_string()
@@ -505,8 +691,8 @@ fn add_agents_section(base: &Path, web: bool) -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
-/// Turns a fresh project into an auth one (`puerto new --auth oidc`). The Greeting demo stays
-/// open: it is listed `public`.
+/// Turns a fresh project into an auth one (`puerto new --auth oidc|local`). The Greeting demo
+/// stays open: it is listed `public`.
 pub fn apply_auth_to_new_project(
     base: &Path,
     mode: &str,
@@ -522,17 +708,25 @@ pub fn apply_auth_to_new_project(
     crate::puerto_toml::write(base, &config)?;
     let project = config.project.name.clone();
 
-    write_user_domain(base)?;
-    write_user_infrastructure(base, config.project.db)?;
+    let local = mode == "local";
+
+    write_user_domain(base, local)?;
+    write_user_infrastructure(base, config.project.db, local)?;
     write_me_api(base)?;
-    add_dependencies(base)?;
-    write_keycloak(base, &project)?;
-    add_env(base, &project)?;
-    add_makefile_targets(base, &project)?;
-    if config.project.web {
+    add_dependencies(base, local)?;
+    if local {
+        write_local_accounts(base)?;
+        add_local_env(base)?;
+    } else {
+        write_keycloak(base, &project)?;
+        add_env(base, &project)?;
+    }
+    add_makefile_targets(base, &project, local)?;
+    // A local project has no frontend yet (`check_new_project`).
+    if config.project.web && !local {
         write_web(base, &project)?;
     }
-    add_agents_section(base, config.project.web)?;
+    add_agents_section(base, config.project.web, local)?;
 
     crate::generators::bootstrap::regenerate_bootstrap(base)?;
     Ok(())
@@ -543,15 +737,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_write_only_oidc_today() {
-        assert!(check_mode("oidc").is_ok());
+    fn should_write_local_accounts_only_with_a_database_and_no_frontend_yet() {
+        assert!(check_new_project("oidc", false, true).is_ok());
+        assert!(check_new_project("local", true, false).is_ok());
         assert!(
-            check_mode("local")
+            check_new_project("local", false, false)
                 .unwrap_err()
-                .contains("not available yet")
+                .contains("--db")
         );
         assert!(
-            check_mode("auth0")
+            check_new_project("local", true, true)
+                .unwrap_err()
+                .contains("--no-web")
+        );
+        assert!(
+            check_new_project("auth0", true, false)
                 .unwrap_err()
                 .contains("unknown auth mode")
         );

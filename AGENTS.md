@@ -32,7 +32,11 @@ crates/
                       PgDeadLetters}` and `migrations/outbox.sql` (the CLI's
                       `templates/infrastructure/outbox.sql` must match it byte for byte — tested);
                       for mail (ADR-0020) `mail::PgSentMails` and `migrations/sent_mails.sql` (same
-                      byte-for-byte rule with `templates/infrastructure/sent_mails.sql`)
+                      byte-for-byte rule with `templates/infrastructure/sent_mails.sql`); for local
+                      accounts (ADR-0021) `auth::{PgSessions, PgCredentials}`, the session token
+                      (256 bits, the row keeps its SHA-256), `session_ttl_from_env` and
+                      `migrations/{users,auth}.sql` (byte for byte with `templates/auth/users.sql`
+                      and `templates/auth/local/auth.sql`)
   events/           — `puerto-events`, the worker runtime (`--events` projects, ADR-0018): `Relay`
                       (outbox → `EventPublisher`), `Consumer` (subscription → `EventHandler`, `decide`,
                       dead letter before retiring), `Worker` + `Loops` (health on `WORKER_PORT`,
@@ -207,6 +211,7 @@ puerto new --name <name> --no-db --destination /tmp/projects  # Control output d
 puerto new --no-web                        # Skip the web frontend (web/ is included by default)
 puerto new --db --events db                # Domain events (ADR-0018): units of work + outbox (db | kafka)
 puerto new --auth oidc                     # Auth (ADR-0021): an OIDC provider's tokens (Auth0, Keycloak); Keycloak in compose
+puerto new --db --no-web --auth local      # Auth: accounts and sessions in this database; /auth/register|login|logout
 
 puerto generate scaffold <Name>                                          # Add a new DDD entity — all layers at once (infers db from puerto.toml)
 puerto generate scaffold <Name> --force                                  # Re-generate an existing entity, overwriting hand-written changes
@@ -318,12 +323,20 @@ make format/fix    # cargo fmt --all
   routes `.data(Arc<dyn Authenticator>)`. Keycloak 26.8 in `docker-compose.yml` with
   `infrastructure/keycloak/realm.json` (client `web`, audience mapper `api`, user
   `admin@<project>.localhost`), `AUTH_*` in `.env`, `make auth/ui`, a root `AGENTS.md` section.
-  The Greeting demo is `public`. `--auth local` is refused until 16.6. `scaffold` in an auth
+  The Greeting demo is `public`. `scaffold` in an auth
   project: every CRUD handler takes `auth: BearerAuth` except `--public` ones, `--role` adds
   `#[require_role]` (both recorded in `[[entity]] public` / `roles`); protected params carry
   `actor: Principal`, their responses a 503 `Unavailable`; `{Entity}Error::Forbidden` (403) with
   its mapper test; route tests sign in through a `MockAuthenticator` (`caller` holds every role,
   `nobody` none) and add a 401 per protected route and a 403 per role-protected one
+- `--auth local` (16.6; needs `--db`, and `--no-web` until 16.7): the same `User` (a local one is
+  issuer `local`, subject its lowercased email) in `PgUserRepository`, no provisioning and no
+  Keycloak; `register_user` / `login` / `logout` (`business/src/{domain,application}/user/`, over
+  `puerto-core`'s `PasswordHasher`, `CredentialStore`, `SessionStore`) and `POST /auth/{register,
+  login,logout}` (`presentation/src/api/auth/`, `UserError` → 422/401/409/500, route tests).
+  `bootstrap.rs` builds `Argon2Hasher`, `PgCredentials` and `PgSessions` — the authenticator. The
+  `users` then `auth` migrations, `AUTH_SESSION_TTL=30d` in `.env`, `make auth/grant EMAIL= ROLE=`,
+  its own root `AGENTS.md` Auth section
 - `--auth oidc` with `web/` (16.5): written once — `domain/auth/session.ts` (`AuthGateway`,
   `CurrentUser`), `infrastructure/auth/{oidc-auth-gateway,bearer-middleware}.ts`
   (`oidc-client-ts`, pinned, in memory; dependency-cruiser keeps it there),

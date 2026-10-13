@@ -591,3 +591,15 @@ fn users_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
     assert_eq!(template, runtime);
     assert!(runtime_lib.contains(r#"include_str!("../migrations/users.sql")"#));
 }
+
+// Phase 16.6 (ADR-0021): the credentials and sessions `puerto new --auth local` writes are the
+// tables `puerto-sqlx`'s own tests run against (`AUTH_MIGRATION` embeds that file).
+#[test]
+fn auth_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
+    let template = include_str!("../templates/auth/local/auth.sql");
+    let runtime = include_str!("../../../sqlx/migrations/auth.sql");
+    let runtime_lib = include_str!("../../../sqlx/src/lib.rs");
+
+    assert_eq!(template, runtime);
+    assert!(runtime_lib.contains(r#"include_str!("../migrations/auth.sql")"#));
+}

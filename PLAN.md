@@ -2501,7 +2501,7 @@ message, an unknown code shows the code.
 
 ## Phase 16 — Auth: one `Authenticator` port, OIDC (Auth0, Keycloak) or local sessions
 
-**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`) · 16.5. Next: **16.6**. Decision:
+**Status:** in progress — 16.0 (`dca85c8`) · 16.1 (`cad3877`) · 16.2 (`20e7ed9`) · 16.3 (`4c149da`) · 16.4 (`47a5611`, `b1f8267`, `322a997`) · 16.5 · 16.6. Next: **16.7**. Decision:
 [ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md). One commit per piece, in
 this order. A project without `--auth` is generated exactly as today: no existing snapshot changes.
 
@@ -2721,7 +2721,19 @@ Tier 1 (web template + slices).
   protected route without a user starts login; a user without the role sees no Delete button; a
   403 shows `auth.forbidden` in the alert; the middleware sets the header.
 
-### 16.6 — `puerto new --auth local` (backend)
+### 16.6 — `puerto new --auth local` (backend) ✅
+
+Done in three commits: the ports and argon2id (1/3), `puerto-sqlx::auth` (2/3), the generator
+(3/3). Beyond the design below:
+- `puerto_web::auth::bearer_token(&Request)`: the logout handler reads the token it revokes with it.
+- The request DTOs carrying a password derive no `Debug` and mark it `write_only`.
+- Matrix: `AUTH_LOCAL` (`AUTH_OIDC_DB`'s entities and access rules, no demo, no web) under
+  `make test/db`.
+- Verified by hand against a generated project and its Postgres: register (422 short password,
+  201, 409 again), login (the same 401 `auth.invalid_credentials` for a wrong password and an
+  unknown email, in the same time), `/me`, a public list without a token, 401 on a protected create
+  without one, 403 on a role-guarded delete, `make auth/grant` taking effect on the next request,
+  logout and then 401. `credentials` holds `$argon2id$` hashes only.
 
 Design, settled when starting it (2026-10-13) — where it differs from the list below, this wins:
 - **Ports in `puerto-core::auth`** (as mail's are in `puerto_core::mail`), with mocks behind

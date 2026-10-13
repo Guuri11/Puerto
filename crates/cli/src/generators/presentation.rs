@@ -223,10 +223,7 @@ pub fn run_generate_presentation(
     // The routes tag their endpoints `ApiTags::{pascal}`.
     write_file(
         &base.join("presentation/src/api/tags.rs"),
-        &crate::generators::bootstrap::generate_tags_content(
-            &config.entity,
-            config.project.has_auth(),
-        )?,
+        &crate::generators::bootstrap::generate_tags_content(&config.entity, &config.project)?,
     )?;
     let next = if missing.iter().any(|p| p.starts_with("business")) {
         "application"

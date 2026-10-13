@@ -606,6 +606,16 @@ pub(super) const AUTH_OIDC_DB: Scenario = Scenario {
     ..AUTH_OIDC
 };
 
+/// `puerto new --db --auth local` (Phase 16.6): accounts and sessions in Postgres — the local use
+/// cases, `/auth/*`, `PgSessions` as the authenticator, the users and auth migrations — and the
+/// same access rules on two scaffolds as [`AUTH_OIDC`]. No frontend until 16.7.
+pub(super) const AUTH_LOCAL: Scenario = Scenario {
+    name: "auth_local",
+    auth: Some("local"),
+    no_web: true,
+    ..AUTH_OIDC_DB
+};
+
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
 /// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
 /// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto new`
@@ -1040,6 +1050,12 @@ fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests(
 #[ignore = "slow: needs Postgres — run via `make test/db`"]
 fn postgres_oidc_auth_project_compiles_lints_and_passes_integration_tests() {
     assert_postgres_scenario_is_clean(&AUTH_OIDC_DB, "puerto_matrix_auth_oidc");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_local_auth_project_compiles_lints_and_passes_integration_tests() {
+    assert_postgres_scenario_is_clean(&AUTH_LOCAL, "puerto_matrix_auth_local");
 }
 
 #[test]

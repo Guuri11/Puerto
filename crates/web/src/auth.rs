@@ -119,6 +119,14 @@ pub fn forbidden() -> (StatusCode, Json<ErrorResponse>) {
     )
 }
 
+/// The bearer token of `req` as sent — what a local project's `POST /auth/logout` revokes. The
+/// scheme is matched case-insensitively, as `BearerAuth` matches it.
+pub fn bearer_token(req: &poem::Request) -> Option<&str> {
+    let (scheme, token) = req.header("Authorization")?.split_once(' ')?;
+    let token = token.trim();
+    (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
+}
+
 /// A `poem::Error` whose response is `body` as JSON — what the client reads, unlike the plain-text
 /// body poem gives an extractor's error.
 fn error(status: StatusCode, body: ErrorResponse) -> poem::Error {
@@ -130,6 +138,28 @@ fn error(status: StatusCode, body: ErrorResponse) -> poem::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn request(authorization: Option<&str>) -> poem::Request {
+        let builder = poem::Request::builder();
+        match authorization {
+            Some(value) => builder.header("Authorization", value).finish(),
+            None => builder.finish(),
+        }
+    }
+
+    #[test]
+    fn should_read_the_bearer_token_whatever_the_scheme_case() {
+        assert_eq!(bearer_token(&request(Some("Bearer abc"))), Some("abc"));
+        assert_eq!(bearer_token(&request(Some("bearer  abc "))), Some("abc"));
+    }
+
+    #[test]
+    fn should_read_no_token_when_there_is_no_bearer_one() {
+        assert_eq!(bearer_token(&request(None)), None);
+        assert_eq!(bearer_token(&request(Some("Basic abc"))), None);
+        assert_eq!(bearer_token(&request(Some("Bearer "))), None);
+        assert_eq!(bearer_token(&request(Some("Bearer"))), None);
+    }
 
     #[test]
     fn should_answer_401_unauthenticated_when_the_token_is_invalid() {

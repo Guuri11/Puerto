@@ -1,4 +1,7 @@
 use puerto_core::RepositoryError;
+{%- if local %}
+use puerto_core::auth::HashError;
+{%- endif %}
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -9,6 +12,17 @@ pub enum UserError {
     Duplicate,
     #[error("user.repository_error")]
     RepositoryError,
+{%- if local %}
+    /// `email_invalid`, `password_too_short`.
+    #[error("user.validation_error.{0}")]
+    ValidationError(String),
+    /// An unknown email or a wrong password: the caller is not told which.
+    #[error("auth.invalid_credentials")]
+    InvalidCredentials,
+    /// The password could not be hashed.
+    #[error("user.unknown")]
+    Unknown,
+{%- endif %}
 }
 
 impl From<RepositoryError> for UserError {
@@ -23,7 +37,13 @@ impl From<RepositoryError> for UserError {
     }
 }
 
-#[cfg(test)]
+{% if local %}impl From<HashError> for UserError {
+    fn from(_: HashError) -> Self {
+        Self::Unknown
+    }
+}
+
+{% endif %}#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -38,4 +58,16 @@ mod tests {
         let err = UserError::from(RepositoryError::Unavailable);
         assert_eq!(err.to_string(), "user.repository_error");
     }
+{%- if local %}
+
+    #[test]
+    fn should_say_invalid_credentials_whichever_part_was_wrong() {
+        assert_eq!(UserError::InvalidCredentials.to_string(), "auth.invalid_credentials");
+    }
+
+    #[test]
+    fn should_convert_a_failed_hash_into_the_user_unknown() {
+        assert_eq!(UserError::from(HashError).to_string(), "user.unknown");
+    }
+{%- endif %}
 }
