@@ -589,3 +589,24 @@ fn root_agent_rules_document_the_field_syntax() {
         );
     }
 }
+
+#[test]
+fn root_agent_rules_name_every_generate_subcommand() {
+    // 17.4: `generate mail` was named only after the first mail, `generate web` and the layered
+    // generators only in other files — a command an agent is not told about is code it writes by
+    // hand. A new subcommand fails here until the root AGENTS.md names it.
+    use clap::CommandFactory;
+    let agents = include_str!("../../template/AGENTS.md");
+    let cli = crate::Cli::command();
+    let generate = cli.find_subcommand("generate").unwrap();
+    for sub in generate.get_subcommands().map(|c| c.get_name()) {
+        let named = format!("puerto generate {sub}");
+        assert!(
+            agents.contains(&named),
+            "root AGENTS.md never names `{named}`"
+        );
+    }
+    for top in ["puerto validate", "puerto list"] {
+        assert!(agents.contains(top), "root AGENTS.md never names `{top}`");
+    }
+}

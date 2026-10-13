@@ -74,7 +74,7 @@ everything below in more detail.
 | Command | What it writes |
 |---|---|
 | `puerto generate scaffold <Name> [-- fields…]` | every layer of a CRUD entity (create, get, list, update, delete) + its table migration with `db` |
-| `puerto generate domain <Name> [-- fields…]` | the domain layer only, and the entity in `puerto.toml` — then `application`, `repository`, `presentation`, one layer at a time |
+| `puerto generate domain <Name> [-- fields…]` | the domain layer only, and the entity in `puerto.toml`; then `puerto generate application <Name>`, `puerto generate repository <Name>`, `puerto generate presentation <Name>` — one layer at a time, each checking the one before |
 | `puerto generate use-case <Entity> <action>` | one more use case: its trait + mock, its impl to fill in (see below), a field on `<Entity>Api` |
 | `puerto generate value-object <Name> <type>` | a shared value object (`[[value_object]]`), reusable by every entity |
 | `puerto generate migration <name>` | an empty SQL migration (`db` projects) |
