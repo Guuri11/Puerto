@@ -51,6 +51,16 @@ value_object = "Status"
 value_object_kind = "enum"
 enum_variants = ["Draft", "Published"]
 
+[[entity]]
+name = "Order"
+use_cases = ["create_order", "get_order", "list_orders", "update_order", "delete_order"]
+db = true
+
+[[entity.fields]]
+name = "product_id"
+type = "Uuid"
+references = "Product"
+
 [[value_object]]
 name = "Email"
 type = "String"
@@ -95,6 +105,7 @@ on = ["customer_created"]
 | `value_object` | string | The value object wrapping it, local or shared |
 | `value_object_kind` | `"enum"` | An enum value object; `type` is then `String` |
 | `enum_variants` | string[] | Its PascalCase variants |
+| `references` | string | Another CRUD entity whose id this field holds; `type` is then `Uuid` or `Option<Uuid>`. A foreign key in `db` projects. See [References](/docs/reference/field-types/#references) |
 
 ## `[[value_object]]`
 
@@ -118,5 +129,6 @@ Written by `generate mail`: `name`, and `on` when the worker sends it on events.
 - Types: every field type is one Puerto generates, and every shared value object exists.
 - Consistency: `events` and `auth = "local"` need `db`; every declared entity, consumer and mail
   has its files; in web projects, every CRUD entity has its screens; in auth projects, each
-  route's `BearerAuth` and `#[require_role]` match `public` and `roles`.
+  route's `BearerAuth` and `#[require_role]` match `public` and `roles`; every `references`
+  names another declared CRUD entity and is a `Uuid` or `Option<Uuid>`.
 - The runtime: a warning for each `puerto-*` crate on another minor than the CLI.

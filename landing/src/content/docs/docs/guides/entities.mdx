@@ -98,6 +98,23 @@ a row, and `.value()` unwraps it at the edges. A `CustomerId` cannot be passed w
 keep a `Uuid`, so the OpenAPI contract stays `string(uuid)`
 ([ADR-0014](/docs/decisions/adr/0014-entity-ids-are-generated-newtypes/)).
 
+## Referring to another entity
+
+An entity that belongs to another holds its id:
+
+```bash
+puerto generate scaffold Customer -- name:String email:String!
+puerto generate scaffold Order -- customer_id:ref:Customer reviewer_id:ref:opt:Customer total:i64
+```
+
+`Order.customer_id` is a `CustomerId`, not a `Customer`: there is no navigation and no lazy
+loading, and a use case that needs the customer asks its repository. In a `--db` project the
+column has a foreign key, so an order for a customer that does not exist is rejected by Postgres
+and answered `422` with `order.validation_error.customer_id_not_found`. `GET /orders?customerId=`
+lists one customer's orders, and the web form picks the customer from a `<select>`
+([ADR-0022](/docs/decisions/adr/0022-references-are-typed-ids-checked-by-foreign-keys/)). The
+target has to be scaffolded first. See [References](/docs/reference/field-types/#references).
+
 ## After the scaffold, the files are yours
 
 Everything except the regenerated files is written once and then belongs to you. Change the

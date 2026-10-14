@@ -16,7 +16,7 @@ one place in the generator, `generators/types.rs`
 | `count:i64` | `i64` | `BIGINT NOT NULL` | `number` | number input |
 | `ratio:f64` | `f64` | `DOUBLE PRECISION NOT NULL` | `number` | number input, `step=any` |
 | `active:bool` | `bool` | `BOOLEAN NOT NULL` | `boolean` | checkbox |
-| `ref:Uuid` | `Uuid` | `UUID NOT NULL` | `string` | text input, `required` |
+| `external_id:Uuid` | `Uuid` | `UUID NOT NULL` | `string` | text input, `required` |
 | `due:DateTime` | `DateTime<Utc>` | `TIMESTAMPTZ NOT NULL` | `string` (ISO 8601) | `datetime-local` |
 | `meta:map` | `HashMap<String, String>` | `JSONB NOT NULL` | `Record<string, string>` | textarea, `key=value` per line |
 
@@ -54,6 +54,30 @@ nothing can pass a raw string where an `Email` goes. See [Value objects](/docs/g
 
 The last row uses a **shared** value object, declared once with
 `puerto generate value-object Email String` and reused by any entity.
+
+## References
+
+A field can hold another entity's id
+([ADR-0022](/docs/decisions/adr/0022-references-are-typed-ids-checked-by-foreign-keys/)): an
+`Order` that belongs to a `Customer` keeps the customer's id, never the customer.
+
+| CLI | Rust (domain) | Postgres | On the wire | Form control |
+|---|---|---|---|---|
+| `customer_id:ref:Customer` | `CustomerId` | `UUID NOT NULL REFERENCES customers (id)` | `string` (uuid) | `<select>` of customers |
+| `reviewer_id:ref:opt:Customer` | `Option<CustomerId>` | `UUID REFERENCES customers (id)` | `string \| null` | `<select>` with an empty option |
+
+- The target must be a CRUD entity already scaffolded, and not the entity itself. `!` (one-to-one)
+  is allowed on `ref:`, not on `ref:opt:`.
+- The domain holds the target's id type, so a `ProductId` cannot go where a `CustomerId` is
+  expected. Rows and DTOs hold a `Uuid`.
+- In `--db` projects the foreign key checks that the target exists: a write naming a missing one
+  is `422` with `{entity}.validation_error.customer_id_not_found`, shown under the field. The
+  use case does not look the customer up first. In-memory projects check nothing.
+- The list filters by each reference: `GET /orders?customerId=…`.
+- Deletes are soft, so an order keeps pointing at its deleted customer: refusing or cascading
+  the delete is the project's decision.
+
+Not yet: a reference to the entity itself, many-to-many (`vec:ref:`), and `ref:User`.
 
 ## Unique
 

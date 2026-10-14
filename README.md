@@ -154,6 +154,20 @@ puerto generate scaffold User -- email:Email   # type inferred from the shared V
 
 Each VO generates a domain struct with private inner value, `new()` returning `Result`, and `value()` / `as_str()` accessors. Enum VOs implement `FromStr` (`"Active".parse::<Status>()`) and `as_str()`. Infrastructure and presentation layers use primitives; VOs are constructed and extracted at the boundary automatically.
 
+### References
+
+An entity that belongs to another holds its id — never the aggregate
+([ADR-0022](docs/adr/0022-references-are-typed-ids-checked-by-foreign-keys.md)):
+
+```bash
+puerto generate scaffold Customer -- name:String
+puerto generate scaffold Order -- customer_id:ref:Customer reviewer_id:ref:opt:Customer
+```
+
+`Order.customer_id` is a `CustomerId`, so ids of two entities cannot be swapped. With `--db` the
+column has a foreign key: an order for a missing customer is a `422` on `customer_id`. The list
+filters by it (`GET /orders?customerId=`), and the web form picks the customer from a `<select>`.
+
 ### Domain events
 
 A project with a database can record an event with every write — saved with the entity in one
