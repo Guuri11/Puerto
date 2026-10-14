@@ -1,5 +1,5 @@
 {
-  "version": "0.19.1",
+  "version": "0.20.0",
   "entities": [
     {
       "id": "product",
@@ -39,7 +39,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 106,
+      "total": 108,
       "added": 37,
       "changed": 8
     },
@@ -52,7 +52,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 107,
+      "total": 109,
       "added": 38,
       "changed": 8
     },
@@ -65,7 +65,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 107,
+      "total": 109,
       "added": 38,
       "changed": 8
     },
@@ -117,7 +117,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 132,
+      "total": 134,
       "added": 37,
       "changed": 9
     },
@@ -130,7 +130,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 133,
+      "total": 135,
       "added": 38,
       "changed": 9
     },
@@ -143,7 +143,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 133,
+      "total": 135,
       "added": 38,
       "changed": 9
     },
@@ -195,7 +195,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 111,
+      "total": 113,
       "added": 39,
       "changed": 8
     },
@@ -208,7 +208,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 112,
+      "total": 114,
       "added": 40,
       "changed": 8
     },
@@ -221,7 +221,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 112,
+      "total": 114,
       "added": 40,
       "changed": 8
     },
@@ -273,7 +273,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 137,
+      "total": 139,
       "added": 39,
       "changed": 9
     },
@@ -286,7 +286,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 138,
+      "total": 140,
       "added": 40,
       "changed": 9
     },
@@ -299,7 +299,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 138,
+      "total": 140,
       "added": 40,
       "changed": 9
     },
@@ -351,7 +351,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 149,
+      "total": 151,
       "added": 39,
       "changed": 9
     },
@@ -364,7 +364,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 150,
+      "total": 152,
       "added": 40,
       "changed": 9
     },
@@ -377,7 +377,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 150,
+      "total": 152,
       "added": 40,
       "changed": 9
     },
@@ -429,7 +429,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 121,
+      "total": 123,
       "added": 42,
       "changed": 8
     },
@@ -442,7 +442,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 122,
+      "total": 124,
       "added": 43,
       "changed": 8
     },
@@ -455,7 +455,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 122,
+      "total": 124,
       "added": 43,
       "changed": 8
     },
@@ -507,7 +507,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 147,
+      "total": 149,
       "added": 42,
       "changed": 9
     },
@@ -520,7 +520,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 148,
+      "total": 150,
       "added": 43,
       "changed": 9
     },
@@ -533,7 +533,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 148,
+      "total": 150,
       "added": 43,
       "changed": 9
     },
@@ -585,7 +585,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 159,
+      "total": 161,
       "added": 42,
       "changed": 9
     },
@@ -598,7 +598,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 160,
+      "total": 162,
       "added": 43,
       "changed": 9
     },
@@ -611,7 +611,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 160,
+      "total": 162,
       "added": 43,
       "changed": 9
     },
@@ -663,7 +663,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 121,
+      "total": 123,
       "added": 42,
       "changed": 9
     },
@@ -676,7 +676,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 122,
+      "total": 124,
       "added": 43,
       "changed": 9
     },
@@ -689,7 +689,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 122,
+      "total": 124,
       "added": 43,
       "changed": 9
     },
@@ -741,7 +741,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 147,
+      "total": 149,
       "added": 42,
       "changed": 10
     },
@@ -754,7 +754,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 148,
+      "total": 150,
       "added": 43,
       "changed": 10
     },
@@ -767,7 +767,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 148,
+      "total": 150,
       "added": 43,
       "changed": 10
     },
@@ -819,7 +819,7 @@
         "web": true
       },
       "entity": "product",
-      "total": 159,
+      "total": 161,
       "added": 42,
       "changed": 10
     },
@@ -832,7 +832,7 @@
         "web": true
       },
       "entity": "order",
-      "total": 160,
+      "total": 162,
       "added": 43,
       "changed": 10
     },
@@ -845,7 +845,7 @@
         "web": true
       },
       "entity": "customer",
-      "total": 160,
+      "total": 162,
       "added": 43,
       "changed": 10
     },

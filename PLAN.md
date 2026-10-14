@@ -2917,7 +2917,7 @@ template's root `AGENTS.md` does not name one, and another checks the field-synt
 
 ## Phase 18 — References between entities (ADR-0022)
 
-**Status:** spec. Decision: [ADR-0022](docs/adr/0022-references-are-typed-ids-checked-by-foreign-keys.md).
+**Status:** done (v0.20.0) — 18.0 (`e50649c`) · 18.1 (`2cb748b`) · 18.2 (`838b259`) · 18.3 (`b174d02`) · 18.4 (`af97ace`) · 18.5 (`bfb0bdb`). Decision: [ADR-0022](docs/adr/0022-references-are-typed-ids-checked-by-foreign-keys.md).
 An entity refers to another by holding its typed id; in `--db` projects a foreign key checks that
 the target exists, and a write that names a missing one answers 422 on the field. One commit per
 piece, in this order: 18.1 is a runtime change the generated code of 18.3 calls.

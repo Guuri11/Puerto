@@ -1,5 +1,5 @@
 {
-  "version": "0.19.1",
+  "version": "0.20.0",
   "file": "business/src/application/product/publish_product.rs",
   "code": "async fn execute(&self, params: PublishProductParams) -> Result<Product, ProductError> {\n    tracing::info!(id = %params.id, \"publish_product: start\");\n    let mut product = self\n        .repository\n        .find_by_id(params.id)\n        .await?\n        .ok_or(ProductError::NotFound)?;\n    product.updated_at = chrono::Utc::now();\n    self.repository.save(&product).await?;\n    Ok(product)\n}",
   "error": "error[E0599]: no method named `save` found for struct `Arc<(dyn ProductRepositoryTrait + 'static)>` in the current scope\n  --> business/src/application/product/publish_product.rs:30:25\n   |\n30 |         self.repository.save(&product).await?;\n   |                         ^^^^ method not found in `Arc<(dyn ProductRepositoryTrait + 'static)>`\n   |\n   = help: items from traits can only be used if the trait is implemented and in scope\nnote: `ProductUnitOfWork` defines an item `save`, perhaps you need to implement it\n  --> business/src/domain/product/unit_of_work.rs:10:1\n   |\n10 | pub trait ProductUnitOfWork: Send {\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nFor more information about this error, try `rustc --explain E0599`.\nerror: could not compile `business` (lib) due to 1 previous error"

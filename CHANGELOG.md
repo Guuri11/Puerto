@@ -1,3 +1,46 @@
+## [0.20.0] - 2026-10-14
+
+References between entities (PLAN Phase 18,
+[ADR-0022](docs/adr/0022-references-are-typed-ids-checked-by-foreign-keys.md)): an entity holds
+another's typed id, and in `--db` projects a foreign key checks that the target exists. A project
+without references is generated as in 0.19, but for its `AGENTS.md` and its Pg test modules.
+
+### 🚀 Features
+
+- **`customer_id:ref:Customer`** and **`reviewer_id:ref:opt:Customer`** (`[[entity.fields]]
+  references = "Customer"`): the domain, Params, repository port, Object Mother and tests hold the
+  target's `CustomerId`, so ids of two entities cannot be swapped; rows, DTOs and the events
+  snapshot hold a `Uuid`. `!` (one-to-one) is allowed on `ref:`, not on `ref:opt:`. `scaffold`
+  refuses a target that is not a CRUD entity with code on disk, the entity itself, and `ref:User`
+- **`--db`**: `CONSTRAINT orders_customer_id_fkey REFERENCES customers (id)` plus an index. A
+  write naming a missing target is `422` `order.validation_error.customer_id_not_found` — Postgres
+  checks it, the use case does not look the target up. Soft deletes leave references pointing at
+  the deleted row. Pg integration tests seed the targets first, through the target's own
+  `integration_tests::seed`
+- **The list filters by each reference**: `GET /orders?customerId=&limit=&offset=` →
+  `ListOrdersParams { customer_id }` → `find_all(page, OrderFilter)` (one static query,
+  `$3::uuid IS NULL OR customer_id = $3`)
+- **The frontend**: the form's `<select>` lists the target's first 100 items (labelled by its
+  first required `String` field, else its id), the detail links to the target, and
+  `customer_id_not_found` shows under the select
+- `puerto validate` checks that a `references` names another declared CRUD entity and is a `Uuid`
+  or `Option<Uuid>`
+- Runtime: `puerto_core::RepositoryError::MissingReference(field)`;
+  `puerto_sqlx::map_sqlx_error_with(err, &[ForeignKey])` maps SQLSTATE `23503` through the
+  entity's constraint names (an unknown one stays `Unavailable`)
+
+### 📚 Documentation
+
+- The generated root `AGENTS.md` documents the `ref:` syntax and how references behave
+- The website documents references (field types, `puerto.toml`, entities and web guides)
+
+### Migration Guide
+
+Nothing to migrate: bump the runtime crates to `0.20`. To refer to another entity from an
+existing one, replace its `customer_id:Uuid` field with `customer_id:ref:Customer` and re-scaffold
+with `--force`; the existing table needs an `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` written
+with `puerto generate migration`, since a re-scaffold keeps the existing create migration.
+
 ## [0.19.1] - 2026-10-13
 
 The agent instructions every project ships, checked against what Puerto writes (PLAN Phase 17).
