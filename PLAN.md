@@ -3047,3 +3047,121 @@ Self references (`parent_id:ref:opt:Category` — the table must exist before it
 many-to-many (`vec:ref:`, a join table), expanding a reference in a response, an owner filled from
 the caller's `Principal` (`ref:User`), refusing or cascading the soft delete of a referenced row,
 an existence check in memory.
+
+---
+
+## Fase 19 — Un crate por contexto y capa, y lo generado en castellano (ADR-0023, ADR-0024)
+
+**Estado:** especificada. Decisiones: [ADR-0023](docs/adr/0023-crates-por-contexto-y-capa.md)
+(propuesta hasta el piloto), [ADR-0024](docs/adr/0024-lo-generado-en-castellano.md) y
+[`docs/glosario.md`](docs/glosario.md).
+Todo sale en una sola versión incompatible, la 0.21. Entre medias no se publica nada, porque los
+estados intermedios mezclan los dos idiomas. Va un commit por pieza y en este orden: cada pieza
+deja `make test`, `make test/full` y `make lint` en verde. Lo marcado **pendiente** en el glosario
+se decide con Sergio al empezar la pieza que lo usa.
+
+### 19.0 — ADR-0023, ADR-0024, glosario y esta especificación
+
+### 19.1 — Piloto medido en canasta
+
+En una rama de `~/dev/canasta` (`--db --events db --auth local`, 6 entidades, referencias, un
+consumidor y un correo): los crates de la ADR-0023. Los nombres de dentro de cada crate se quedan
+como están, y `bootstrap.rs` sigue construyéndolo todo, sin `cableado`: el piloto mide dónde están
+las fronteras, no cómo se llaman (en `ant_backend`, sacar el cableado a su crate no cambió los
+tiempos de `api`). Cada medida es la mediana de 3 ejecuciones tras una de calentamiento, después de un
+`touch`, con la misma máquina y la misma sesión para el antes y el después:
+
+- un caso de uso → `cargo test -p aplicacion_<c> --no-run` (antes, `-p business`);
+- un `modelo.rs` → los tests de su dominio y su aplicación;
+- un repositorio de Postgres → sus tests de integración;
+- un caso de uso → `cargo check -p api`;
+- desde cero: `cargo test --workspace --no-run` y `make test`;
+- el pico de RAM de cada una.
+
+También se comprueba que `cargo test -p 'dominio_*' -p 'aplicacion_*'` acepta globs con la
+toolchain fijada. Las cifras se añaden a la ADR-0023, que pasa a aceptada o se vuelve a discutir
+con ellas.
+
+### 19.2 — El migrador compartido en los tests de Postgres (antes de mover nada)
+
+Los 18 `#[sqlx::test(migrations = "./migrations")]` de las plantillas pasan a
+`#[sqlx::test(migrator = "crate::db::MIGRATOR")]`: el `MIGRATOR` ya existe en `db.rs`. Así cada
+test deja de llevar su propia copia de las migraciones. Tests: estructurales sobre las plantillas;
+`make test/db` en verde.
+
+### 19.3 — Las rutas de lo generado, en un solo módulo (refactor sin cambio de salida)
+
+Un módulo de layout en `crates/cli/src/generators/` dice dónde va cada cosa: carpetas, nombres de
+crate, ficheros fijos. Los 102 literales (`"business/src/…"`) pasan a llamarlo. **Los snapshots no
+cambian:** es la prueba de que el refactor no toca la salida. Así, 19.6 y 19.7 cambian rutas y
+nombres en un solo sitio. Tier 2.
+
+### 19.4 — El runtime en castellano
+
+`puerto-core` → `puerto-nucleo`, `puerto-events` → `puerto-eventos`, `puerto-mail` →
+`puerto-correo`, y la API pública de todos según el glosario (antes se cierran sus pendientes). Las
+migraciones del runtime y sus copias en las plantillas cambian juntas y siguen coincidiendo byte a
+byte. Las plantillas solo cambian las llamadas, en el mismo commit. `release.yml`, el orden de
+publicación y `release.md` cambian a los nombres nuevos. Tests: los de cada crate;
+`make test/db`, `test/kafka`, `test/mail` y `test/auth` en verde.
+
+### 19.5 — `puerto.toml` y la CLI en castellano
+
+- El esquema del glosario (`[proyecto]`, `[[entidad]]`, `[[entidad.campos]]`…) y los comandos y
+  flags (`puerto nuevo`, `generar …`, `validar`, `--forzar`…). La sintaxis de los campos no cambia.
+  Sin compatibilidad con el esquema antiguo: no hay proyectos que mantener.
+
+Tests: cada clave de ida y vuelta por `puerto.toml`; cada comando y cada flag nuevos.
+
+### 19.6 — La estructura por contexto (ADR-0023)
+
+Con los nombres de estructura del glosario y los identificadores todavía en inglés. En piezas:
+
+- **19.6a — La plantilla y `nuevo`:** `nucleo`, `migraciones/` + `migrador` (con `build.rs`),
+  `contextos/saludo/…` (el demo, aún `Greeting` por dentro), `presentacion/{cableado,api}` (`api`
+  con `lib.rs`), `members` por glob, los crates internos en `[workspace.dependencies]`, y el
+  `Makefile` (`test/dominio` = `-p 'dominio_*'`… y un objetivo para limpiar las cachés
+  incrementales).
+- **19.6b — `scaffold` y los generadores de capa:** los cuatro crates de un contexto con su
+  `Cargo.toml` y su `lib.rs` plano; el caso de uso entero en aplicación, con su doble; madres y
+  dobles en `pruebas`; `cableado` y `bootstrap.rs` regenerados; `rest_<c>/errores.rs` con la
+  función libre; `#[sqlx::test(migrator = "migrador::MIGRADOR")]`. `generar caso-de-uso` escribe un
+  solo fichero y añade su `pub mod`. Se borra el parcheador del árbol de módulos de
+  `business/src/lib.rs`.
+- **19.6c — Referencias:** `dominio_<c>` depende de `dominio_<objetivo>`; `scaffold` y `validar`
+  rechazan una referencia que cierra un ciclo, nombrándolo.
+- **19.6d — Eventos y worker:** `eventos.rs` y `unit_of_work.rs` en el dominio de cada contexto;
+  `worker/generado/registro.rs` sobre `cableado`.
+- **19.6e — Correo y auth:** los contextos `correo` y `usuario`.
+- **19.6f — `validar`, la deriva entre manifiesto y disco, `snippets` y el `AGENTS.md` generado**
+  (estructura).
+
+Escenarios de test: los estructurales de hoy, con las rutas nuevas; uno por regla de dependencia (el
+`Cargo.toml` de cada crate solo nombra lo que la ADR-0023 § 3 permite); el ciclo de referencias
+rechazado; el compile matrix entero (`make test/full`, `test/db`, `test/auth`); snapshots
+regrabados, y su diff leído entero (Tier 1).
+
+### 19.7 — El vocabulario generado en castellano (ADR-0024)
+
+Tipos, funciones, campos de sistema, errores y sus códigos, eventos, verbos CRUD, rutas,
+paginación, `RespuestaError { codigo, mensaje }`, tests (`deberia_…_cuando_…`, `// Preparar`…),
+logs, comentarios de las plantillas, el demo `Saludo`, `Usuario` y el `AGENTS.md`/`CLAUDE.md`
+generados, según el glosario. `naming::pluralize` en castellano, con su tabla de excepciones y un
+test por regla. Por capas, un commit cada una: dominio, aplicación, infraestructura (con el SQL),
+rest, eventos y worker, correo, auth.
+
+Escenarios de test: los de hoy, traducidos; la pluralización (vocal, `z`, consonante, `y`, excepciones
+e invariables); el compile matrix entero; snapshots regrabados y leídos (Tier 1);
+`make test/mutation` sobre `naming.rs`.
+
+### 19.8 — Las reglas de Puerto y el changelog
+
+`AGENTS.md` y `.claude/rules/` de Puerto, sobre la estructura y los nombres nuevos y en
+castellano. `CHANGELOG.md` con `### Breaking`, sin guía de migración: no hay proyectos que migrar
+(la excepción a `release.md`, decidida el 2026-11-14).
+
+### Fuera de alcance (Fase 19)
+
+El frontend (`web/`: estructura y vocabulario en castellano, en su propia fase); agrupar varias
+entidades en un contexto; los dobles escritos a mano en vez de `mockall`; traducir el código
+fuente de Puerto; la web, el README y los mensajes de la CLI (pasada aparte, ADR-0024).
