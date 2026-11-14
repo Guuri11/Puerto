@@ -17,58 +17,60 @@ use puerto_web::{Error, health};
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use crate::WorkerConfig;
-use crate::consumer::Consumer;
-use crate::driver::{Heartbeat, Pass, drive};
+use crate::ConfigWorker;
+use crate::conductor::{Latido, Pasada, conducir};
+use crate::consumidor::Consumidor;
 use crate::relay::Relay;
 
 /// What the worker runs, built by the project's `generated/registry.rs`: the relay and one
-/// consumer per `[[consumer]]`, each set up from the [`WorkerConfig`].
-pub struct Loops {
-    config: WorkerConfig,
-    loops: Vec<(Box<dyn Pass>, Duration)>,
+/// consumer per `[[consumidor]]`, each set up from the [`ConfigWorker`].
+pub struct Bucles {
+    config: ConfigWorker,
+    loops: Vec<(Box<dyn Pasada>, Duration)>,
 }
 
-impl Loops {
-    pub fn new(config: &WorkerConfig) -> Self {
+impl Bucles {
+    pub fn new(config: &ConfigWorker) -> Self {
         Self {
             config: config.clone(),
             loops: Vec::new(),
         }
     }
 
-    /// The relay from `outbox` to `publisher`, on `RELAY_BATCH_SIZE` / `RELAY_POLL_INTERVAL_MS`.
-    pub fn relay<O, P>(mut self, outbox: O, publisher: P) -> Self
+    /// The relay from `outbox` to `publicador`, on `RELAY_BATCH_SIZE` / `RELAY_POLL_INTERVAL_MS`.
+    pub fn relay<O, P>(mut self, outbox: O, publicador: P) -> Self
     where
         O: Outbox + 'static,
         P: PublicadorEventos + 'static,
     {
-        let relay = Relay::new(outbox, publisher).with_batch_size(self.config.relay_batch_size);
+        let relay = Relay::new(outbox, publicador).con_tamano_lote(self.config.tamano_lote_relay);
         self.loops
-            .push((Box::new(relay), self.config.relay_poll_interval));
+            .push((Box::new(relay), self.config.intervalo_sondeo_relay));
         self
     }
 
     /// One consumer, on `MAX_DELIVERIES` / `RETRY_MAX_DELAY_MS` / `CONSUMER_POLL_INTERVAL_MS`.
-    pub fn consumer<S>(
+    pub fn consumidor<S>(
         mut self,
-        subscription: S,
+        suscripcion: S,
         handler: impl ManejadorEvento + 'static,
         dead_letters: Arc<dyn DestinoDescartados>,
     ) -> Self
     where
         S: SuscripcionEventos + 'static,
     {
-        let consumer = Consumer::new(subscription, handler, dead_letters)
-            .with_max_deliveries(self.config.max_deliveries)
-            .with_max_retry_delay(self.config.max_retry_delay);
-        self.loops
-            .push((Box::new(consumer), self.config.consumer_poll_interval));
+        let consumidor = Consumidor::new(suscripcion, handler, dead_letters)
+            .con_entregas_maximas(self.config.max_deliveries)
+            .con_espera_maxima_reintento(self.config.espera_maxima_reintento);
+        self.loops.push((
+            Box::new(consumidor),
+            self.config.intervalo_sondeo_consumidor,
+        ));
         self
     }
 
-    /// The loops' names, in the order they were added: `relay`, `consumer <name>`, …
-    pub fn names(&self) -> Vec<String> {
+    /// The loops' names, in the order they were added: `relay`, `consumidor <name>`, …
+    pub fn nombres(&self) -> Vec<String> {
         self.loops.iter().map(|(work, _)| work.name()).collect()
     }
 }
@@ -78,39 +80,39 @@ impl Loops {
 /// ```ignore
 /// #[tokio::main]
 /// async fn main() -> Result<(), puerto_events::Error> {
-///     let config = puerto_events::WorkerConfig::from_env()?;
+///     let config = puerto_events::ConfigWorker::from_env()?;
 ///     puerto_events::Worker::new(config).try_run(generated::registry::build_worker).await
 /// }
 /// ```
 pub struct Worker {
-    config: WorkerConfig,
+    config: ConfigWorker,
 }
 
 impl Worker {
-    pub fn new(config: WorkerConfig) -> Self {
+    pub fn new(config: ConfigWorker) -> Self {
         Self { config }
     }
 
     /// Sets up tracing (`RUST_LOG`), builds the loops with `build` and runs them, serving
     /// `/health` and `/health/ready` on `WORKER_PORT`, until Ctrl-C or SIGTERM. The loops then
     /// finish the pass they are in, for at most `SHUTDOWN_DEADLINE`. For a `build` that cannot
-    /// fail; see [`Worker::try_run`].
-    pub async fn run<F, Fut>(self, build: F) -> Result<(), Error>
+    /// fail; see [`Worker::intentar_ejecutar`].
+    pub async fn ejecutar<F, Fut>(self, build: F) -> Result<(), Error>
     where
-        F: FnOnce(WorkerConfig) -> Fut,
-        Fut: Future<Output = Loops>,
+        F: FnOnce(ConfigWorker) -> Fut,
+        Fut: Future<Output = Bucles>,
     {
-        self.try_run(|config| async move { Ok::<_, Infallible>(build(config).await) })
+        self.intentar_ejecutar(|config| async move { Ok::<_, Infallible>(build(config).await) })
             .await
     }
 
-    /// [`Worker::run`] with a `build` that can fail — the project's
+    /// [`Worker::ejecutar`] with a `build` that can fail — the project's
     /// `generated::registry::build_worker`, which connects to the database (and the broker). Its
     /// error is logged and returned as [`Error::Startup`]: `main` prints it and exits 1.
-    pub async fn try_run<F, Fut, X>(self, build: F) -> Result<(), Error>
+    pub async fn intentar_ejecutar<F, Fut, X>(self, build: F) -> Result<(), Error>
     where
-        F: FnOnce(WorkerConfig) -> Fut,
-        Fut: Future<Output = Result<Loops, X>>,
+        F: FnOnce(ConfigWorker) -> Fut,
+        Fut: Future<Output = Result<Bucles, X>>,
         X: Display,
     {
         iniciar_tracing();
@@ -124,7 +126,7 @@ impl Worker {
 
     async fn run_until(
         self,
-        loops: Loops,
+        loops: Bucles,
         signal: impl Future<Output = ()> + Send + 'static,
     ) -> Result<(), Error> {
         let (stop, shutdown) = watch::channel(false);
@@ -132,9 +134,9 @@ impl Worker {
         let mut heartbeats = Vec::new();
         let mut tasks = Vec::new();
         for (work, interval) in loops.loops {
-            let heartbeat = Arc::new(Heartbeat::new(work.name(), interval));
+            let heartbeat = Arc::new(Latido::new(work.name(), interval));
             heartbeats.push(Arc::clone(&heartbeat));
-            tasks.push(tokio::spawn(drive(
+            tasks.push(tokio::spawn(conducir(
                 work,
                 interval,
                 heartbeat,
@@ -171,8 +173,8 @@ impl Worker {
     }
 }
 
-/// Ready while every loop has finished a good pass recently (`Heartbeat::is_fresh`).
-fn readiness(heartbeats: Vec<Arc<Heartbeat>>) -> health::SondaDisponibilidad {
+/// Ready while every loop has finished a good pass recently (`Latido::esta_fresco`).
+fn readiness(heartbeats: Vec<Arc<Latido>>) -> health::SondaDisponibilidad {
     let heartbeats = Arc::new(heartbeats);
     health::sondear(move || {
         let heartbeats = Arc::clone(&heartbeats);
@@ -181,10 +183,10 @@ fn readiness(heartbeats: Vec<Arc<Heartbeat>>) -> health::SondaDisponibilidad {
 }
 
 /// The loops that have not finished a good pass recently, each one logged.
-fn stale(heartbeats: &[Arc<Heartbeat>], now: Instant) -> Vec<&str> {
+fn stale(heartbeats: &[Arc<Latido>], now: Instant) -> Vec<&str> {
     heartbeats
         .iter()
-        .filter(|beat| !beat.is_fresh(now))
+        .filter(|beat| !beat.esta_fresco(now))
         .map(|beat| beat.name())
         .inspect(|name| tracing::warn!(name, "worker: not ready"))
         .collect()
@@ -193,16 +195,16 @@ fn stale(heartbeats: &[Arc<Heartbeat>], now: Instant) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{FakeOutbox, FakePublisher, FakeSink, FakeSubscription, Scripted};
+    use crate::pruebas::{DestinoFalso, Guion, OutboxFalso, PublicadorFalso, SuscripcionFalsa};
 
     #[tokio::test]
     async fn should_stop_with_the_build_error_when_the_loops_cannot_be_built() {
         // Arrange
-        let worker = Worker::new(WorkerConfig::default());
+        let worker = Worker::new(ConfigWorker::default());
 
         // Act
         let result = worker
-            .try_run(|_| async { Err::<Loops, _>("the database is down") })
+            .intentar_ejecutar(|_| async { Err::<Bucles, _>("the database is down") })
             .await;
 
         // Assert: `main` prints the error with `Debug` and exits 1.
@@ -214,37 +216,37 @@ mod tests {
     #[test]
     fn should_build_the_relay_and_each_consumer_when_registered() {
         // Arrange
-        let config = WorkerConfig::default();
+        let config = ConfigWorker::default();
 
         // Act
-        let loops = Loops::new(&config)
-            .relay(FakeOutbox::default(), FakePublisher::default())
-            .consumer(
-                FakeSubscription::default(),
-                Scripted::Ack,
-                Arc::new(FakeSink::default()),
+        let loops = Bucles::new(&config)
+            .relay(OutboxFalso::default(), PublicadorFalso::default())
+            .consumidor(
+                SuscripcionFalsa::default(),
+                Guion::Ack,
+                Arc::new(DestinoFalso::default()),
             );
 
         // Assert
-        assert_eq!(loops.names(), ["relay", "consumer notify_new_product"]);
+        assert_eq!(loops.nombres(), ["relay", "consumer notify_new_product"]);
     }
 
     #[test]
     fn should_run_each_loop_at_its_configured_interval() {
         // Arrange
-        let config = WorkerConfig {
-            relay_poll_interval: Duration::from_millis(50),
-            consumer_poll_interval: Duration::from_millis(75),
-            ..WorkerConfig::default()
+        let config = ConfigWorker {
+            intervalo_sondeo_relay: Duration::from_millis(50),
+            intervalo_sondeo_consumidor: Duration::from_millis(75),
+            ..ConfigWorker::default()
         };
 
         // Act
-        let loops = Loops::new(&config)
-            .relay(FakeOutbox::default(), FakePublisher::default())
-            .consumer(
-                FakeSubscription::default(),
-                Scripted::Ack,
-                Arc::new(FakeSink::default()),
+        let loops = Bucles::new(&config)
+            .relay(OutboxFalso::default(), PublicadorFalso::default())
+            .consumidor(
+                SuscripcionFalsa::default(),
+                Guion::Ack,
+                Arc::new(DestinoFalso::default()),
             );
 
         // Assert
@@ -259,17 +261,14 @@ mod tests {
     fn should_name_the_stale_loops_until_every_loop_is_fresh() {
         // Arrange
         let now = Instant::now();
-        let relay = Arc::new(Heartbeat::new("relay".into(), Duration::from_millis(500)));
-        let consumer = Arc::new(Heartbeat::new(
-            "consumer".into(),
-            Duration::from_millis(500),
-        ));
-        let heartbeats = vec![Arc::clone(&relay), Arc::clone(&consumer)];
+        let relay = Arc::new(Latido::new("relay".into(), Duration::from_millis(500)));
+        let consumidor = Arc::new(Latido::new("consumer".into(), Duration::from_millis(500)));
+        let heartbeats = vec![Arc::clone(&relay), Arc::clone(&consumidor)];
         relay.beat_at(now);
 
         // Act
         let one_fresh = stale(&heartbeats, now);
-        consumer.beat_at(now);
+        consumidor.beat_at(now);
         let both_fresh = stale(&heartbeats, now);
 
         // Assert
@@ -280,10 +279,10 @@ mod tests {
     #[tokio::test]
     async fn should_drain_the_loops_and_return_when_the_shutdown_signal_arrives() {
         // Arrange
-        let outbox = FakeOutbox::with(&[crate::test_support::envelope("product_created")]);
-        let publisher = FakePublisher::accepting(usize::MAX);
-        let config = WorkerConfig::default().with_port(0);
-        let loops = Loops::new(&config).relay(outbox.clone(), publisher.clone());
+        let outbox = OutboxFalso::with(&[crate::pruebas::envelope("product_created")]);
+        let publicador = PublicadorFalso::aceptando(usize::MAX);
+        let config = ConfigWorker::default().con_puerto(0);
+        let loops = Bucles::new(&config).relay(outbox.clone(), publicador.clone());
         let signal = async { tokio::time::sleep(Duration::from_millis(200)).await };
 
         // Act
@@ -295,7 +294,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Ok(Ok(()))), "{result:?}");
-        assert!(outbox.unpublished().is_empty());
+        assert!(outbox.sin_publicar().is_empty());
     }
 
     #[tokio::test]
@@ -303,8 +302,8 @@ mod tests {
         // Arrange
         let taken = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
         let port = taken.local_addr().unwrap().port();
-        let config = WorkerConfig::default().with_port(port);
-        let loops = Loops::new(&config).relay(FakeOutbox::default(), FakePublisher::default());
+        let config = ConfigWorker::default().con_puerto(port);
+        let loops = Bucles::new(&config).relay(OutboxFalso::default(), PublicadorFalso::default());
 
         // Act
         let result = tokio::time::timeout(

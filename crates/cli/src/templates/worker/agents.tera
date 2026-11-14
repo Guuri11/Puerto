@@ -9,7 +9,7 @@ business logic lives here — a consumer decodes the event and calls a use case.
 
 ```
 worker/src/
-├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).try_run(…)` (never changes)
+├── main.rs                  # `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(…)` (never changes)
 ├── generated.rs             # `pub mod registry;`
 ├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
 ├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
@@ -45,7 +45,7 @@ worker/src/
 {% endif -%}
 ## Health and shutdown
 
-Served by the Puerto runtime, `puerto-events`, on `WORKER_PORT` (8081).
+Served by the Puerto runtime, `puerto-eventos`, on `WORKER_PORT` (8081).
 
 - `GET /health` — liveness: the process answers.
 - `GET /health/ready` — readiness: `503` until the relay and every consumer have finished a pass

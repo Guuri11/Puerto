@@ -14,7 +14,7 @@ use crate::consumers::{{ m.0 }}::{{ m.1 }};
 /// The relay and one consumer per `[[consumer]]`, on the `kafka` transport: the relay publishes
 /// each event to its aggregate's topic, `<KAFKA_TOPIC_PREFIX>.<aggregate>`, and each consumer is a
 /// consumer group on the topics of its events. Dead letters stay in Postgres.
-pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
+pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {
     let database_url = std::env::var("DATABASE_URL")
         .map_err(|_| "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string())?;
     let pool = infrastructure::db::crear_pool_postgres(&database_url)
@@ -23,14 +23,14 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
     infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)
         .await
         .map_err(|e| e.to_string())?;
-    let kafka = KafkaConfig::from_env("{{ project }}").map_err(|e| e.to_string())?;
+    let kafka = ConfigKafka::from_env("{{ project }}").map_err(|e| e.to_string())?;
 {%- if aggregates %}
     kafka
         .ensure_topics(&[{% for a in aggregates %}"{{ a }}"{% if not loop.last %}, {% endif %}{% endfor %}])
         .await
         .map_err(|e| format!("cannot create the Kafka topics: {e} — is the broker up? `make docker-compose/up`"))?;
 {%- endif %}
-    let publisher = KafkaPublisher::new(&kafka).map_err(|e| format!("cannot create the Kafka producer: {e}"))?;
+    let publisher = PublicadorKafka::new(&kafka).map_err(|e| format!("cannot create the Kafka producer: {e}"))?;
 {%- if mails %}
     // The mails sent on events (ADR-0020): one SMTP client and one sent log for all of them.
     let mailer = Arc::new(
@@ -41,11 +41,11 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
 {%- endif %}
 {% if consumers %}    let dead_letters = Arc::new(DescartadosPostgres::new(pool.clone()));
 
-    Ok(Loops::new(&config)
+    Ok(Bucles::new(&config)
         .relay(OutboxPostgres::new(pool), publisher)
 {%- for c in consumers %}
-        .consumer(
-            KafkaSubscription::new(
+        .consumidor(
+            SuscripcionKafka::new(
                 &kafka,
                 "{{ c.name }}",
                 &[{% for a in c.aggregates %}"{{ a }}"{% if not loop.last %}, {% endif %}{% endfor %}],
@@ -58,6 +58,6 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
         )
 {%- endfor %})
 {%- else %}
-    Ok(Loops::new(&config).relay(OutboxPostgres::new(pool), publisher))
+    Ok(Bucles::new(&config).relay(OutboxPostgres::new(pool), publisher))
 {%- endif %}
 }

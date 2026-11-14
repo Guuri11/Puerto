@@ -16,71 +16,71 @@ use std::time::Duration;
 use puerto_nucleo::eventos::entrega::ENTREGAS_MAXIMAS_POR_DEFECTO;
 use puerto_web::ErrorConfig;
 
-use crate::relay::DEFAULT_RELAY_BATCH_SIZE;
+use crate::relay::TAMANO_LOTE_RELAY_POR_DEFECTO;
 
 /// The port the worker's health probes listen on when `WORKER_PORT` is unset — the API's is 8080.
-pub const DEFAULT_WORKER_PORT: u16 = 8081;
+pub const PUERTO_WORKER_POR_DEFECTO: u16 = 8081;
 /// The default pause of the relay and of each consumer, in milliseconds.
-pub const DEFAULT_POLL_INTERVAL_MS: u64 = 500;
+pub const INTERVALO_SONDEO_MS_POR_DEFECTO: u64 = 500;
 
-/// Built by [`WorkerConfig::from_env`], or from [`WorkerConfig::default`] (tests).
+/// Built by [`ConfigWorker::from_env`], or from [`ConfigWorker::default`] (tests).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct WorkerConfig {
+pub struct ConfigWorker {
     pub port: u16,
-    pub relay_batch_size: u32,
-    pub relay_poll_interval: Duration,
-    pub consumer_poll_interval: Duration,
+    pub tamano_lote_relay: u32,
+    pub intervalo_sondeo_relay: Duration,
+    pub intervalo_sondeo_consumidor: Duration,
     pub max_deliveries: u32,
-    pub max_retry_delay: Option<Duration>,
+    pub espera_maxima_reintento: Option<Duration>,
 }
 
-impl Default for WorkerConfig {
+impl Default for ConfigWorker {
     fn default() -> Self {
         Self {
-            port: DEFAULT_WORKER_PORT,
-            relay_batch_size: DEFAULT_RELAY_BATCH_SIZE,
-            relay_poll_interval: Duration::from_millis(DEFAULT_POLL_INTERVAL_MS),
-            consumer_poll_interval: Duration::from_millis(DEFAULT_POLL_INTERVAL_MS),
+            port: PUERTO_WORKER_POR_DEFECTO,
+            tamano_lote_relay: TAMANO_LOTE_RELAY_POR_DEFECTO,
+            intervalo_sondeo_relay: Duration::from_millis(INTERVALO_SONDEO_MS_POR_DEFECTO),
+            intervalo_sondeo_consumidor: Duration::from_millis(INTERVALO_SONDEO_MS_POR_DEFECTO),
             max_deliveries: ENTREGAS_MAXIMAS_POR_DEFECTO,
-            max_retry_delay: None,
+            espera_maxima_reintento: None,
         }
     }
 }
 
-impl WorkerConfig {
+impl ConfigWorker {
     /// Loads `.env` when there is one, then reads the process environment.
     pub fn from_env() -> Result<Self, ErrorConfig> {
         puerto_web::config::cargar_dotenv();
-        Self::from_vars(|key| std::env::var(key).ok())
+        Self::from_variables(|key| std::env::var(key).ok())
     }
 
     /// Reads the configuration from any variable source; an empty value counts as unset.
-    pub fn from_vars(var: impl Fn(&str) -> Option<String>) -> Result<Self, ErrorConfig> {
+    pub fn from_variables(var: impl Fn(&str) -> Option<String>) -> Result<Self, ErrorConfig> {
         let var = |key: &str| var(key).filter(|value| !value.trim().is_empty());
         let mut config = Self::default();
         if let Some(value) = var("WORKER_PORT") {
             config.port = parse(value, "WORKER_PORT", "a port number (0-65535)")?;
         }
         if let Some(value) = var("RELAY_BATCH_SIZE") {
-            config.relay_batch_size = positive(value, "RELAY_BATCH_SIZE")?;
+            config.tamano_lote_relay = positive(value, "RELAY_BATCH_SIZE")?;
         }
         if let Some(value) = var("RELAY_POLL_INTERVAL_MS") {
-            config.relay_poll_interval = millis(value, "RELAY_POLL_INTERVAL_MS")?;
+            config.intervalo_sondeo_relay = millis(value, "RELAY_POLL_INTERVAL_MS")?;
         }
         if let Some(value) = var("CONSUMER_POLL_INTERVAL_MS") {
-            config.consumer_poll_interval = millis(value, "CONSUMER_POLL_INTERVAL_MS")?;
+            config.intervalo_sondeo_consumidor = millis(value, "CONSUMER_POLL_INTERVAL_MS")?;
         }
         if let Some(value) = var("MAX_DELIVERIES") {
             config.max_deliveries = positive(value, "MAX_DELIVERIES")?;
         }
         if let Some(value) = var("RETRY_MAX_DELAY_MS") {
-            config.max_retry_delay = Some(millis(value, "RETRY_MAX_DELAY_MS")?);
+            config.espera_maxima_reintento = Some(millis(value, "RETRY_MAX_DELAY_MS")?);
         }
         Ok(config)
     }
 
-    pub fn with_port(mut self, port: u16) -> Self {
+    pub fn con_puerto(mut self, port: u16) -> Self {
         self.port = port;
         self
     }
@@ -129,18 +129,18 @@ mod tests {
     #[test]
     fn should_use_the_defaults_when_nothing_is_set() {
         // Act
-        let config = WorkerConfig::from_vars(vars(&[]));
+        let config = ConfigWorker::from_variables(vars(&[]));
 
         // Assert
         assert_eq!(
             config,
-            Ok(WorkerConfig {
+            Ok(ConfigWorker {
                 port: 8081,
-                relay_batch_size: 100,
-                relay_poll_interval: Duration::from_millis(500),
-                consumer_poll_interval: Duration::from_millis(500),
+                tamano_lote_relay: 100,
+                intervalo_sondeo_relay: Duration::from_millis(500),
+                intervalo_sondeo_consumidor: Duration::from_millis(500),
                 max_deliveries: 5,
-                max_retry_delay: None,
+                espera_maxima_reintento: None,
             })
         );
     }
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn should_read_every_variable_when_set() {
         // Act
-        let config = WorkerConfig::from_vars(vars(&[
+        let config = ConfigWorker::from_variables(vars(&[
             ("WORKER_PORT", "9090"),
             ("RELAY_BATCH_SIZE", "10"),
             ("RELAY_POLL_INTERVAL_MS", "50"),
@@ -160,13 +160,13 @@ mod tests {
         // Assert
         assert_eq!(
             config,
-            Ok(WorkerConfig {
+            Ok(ConfigWorker {
                 port: 9090,
-                relay_batch_size: 10,
-                relay_poll_interval: Duration::from_millis(50),
-                consumer_poll_interval: Duration::from_millis(75),
+                tamano_lote_relay: 10,
+                intervalo_sondeo_relay: Duration::from_millis(50),
+                intervalo_sondeo_consumidor: Duration::from_millis(75),
                 max_deliveries: 3,
-                max_retry_delay: Some(Duration::ZERO),
+                espera_maxima_reintento: Some(Duration::ZERO),
             })
         );
     }
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn should_reject_the_port_when_it_is_not_a_number() {
         // Act
-        let result = WorkerConfig::from_vars(vars(&[("WORKER_PORT", "abc")]));
+        let result = ConfigWorker::from_variables(vars(&[("WORKER_PORT", "abc")]));
 
         // Assert
         assert_eq!(
@@ -191,7 +191,7 @@ mod tests {
     fn should_reject_a_count_when_it_is_zero() {
         for key in ["RELAY_BATCH_SIZE", "MAX_DELIVERIES"] {
             // Act
-            let result = WorkerConfig::from_vars(vars(&[(key, "0")]));
+            let result = ConfigWorker::from_variables(vars(&[(key, "0")]));
 
             // Assert
             assert!(
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn should_reject_an_interval_when_it_is_negative() {
         // Act
-        let result = WorkerConfig::from_vars(vars(&[("RELAY_POLL_INTERVAL_MS", "-1")]));
+        let result = ConfigWorker::from_variables(vars(&[("RELAY_POLL_INTERVAL_MS", "-1")]));
 
         // Assert
         assert!(matches!(
@@ -219,15 +219,16 @@ mod tests {
 
     #[test]
     fn should_override_the_port_when_built_by_hand() {
-        assert_eq!(WorkerConfig::default().with_port(9191).port, 9191);
+        assert_eq!(ConfigWorker::default().con_puerto(9191).port, 9191);
     }
 
     #[test]
     fn should_treat_an_empty_value_as_unset() {
         // Act
-        let config = WorkerConfig::from_vars(vars(&[("WORKER_PORT", " "), ("MAX_DELIVERIES", "")]));
+        let config =
+            ConfigWorker::from_variables(vars(&[("WORKER_PORT", " "), ("MAX_DELIVERIES", "")]));
 
         // Assert
-        assert_eq!(config, Ok(WorkerConfig::default()));
+        assert_eq!(config, Ok(ConfigWorker::default()));
     }
 }

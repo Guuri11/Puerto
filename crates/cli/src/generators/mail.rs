@@ -580,7 +580,7 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join(layout::WORKER_MANIFEST);
     let mut src = fs::read_to_string(&path)?;
     if !src.contains("puerto-mail") {
-        let events = "puerto-events = { workspace = true }\n";
+        let events = "puerto-eventos = { workspace = true }\n";
         if !src.contains(events) {
             return Err(format!("{}: no `{}`", path.display(), events.trim_end()).into());
         }

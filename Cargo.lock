@@ -3087,7 +3087,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "puerto-events"
+name = "puerto-eventos"
 version = "0.20.0"
 dependencies = [
  "async-trait",

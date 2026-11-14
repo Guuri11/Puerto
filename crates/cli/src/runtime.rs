@@ -9,7 +9,7 @@ pub const RUNTIME_CRATES: &[&str] = &[
     "puerto-nucleo",
     "puerto-web",
     "puerto-sqlx",
-    "puerto-events",
+    "puerto-eventos",
     "puerto-kafka",
     "puerto-mail",
     "puerto-auth",

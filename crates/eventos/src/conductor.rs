@@ -11,11 +11,11 @@ use tokio::time::Instant;
 
 /// How long a pass may take on top of the loop's interval before the loop counts as stuck: a
 /// consumer's batch runs its handlers one after another.
-pub const STALL_GRACE: Duration = Duration::from_secs(30);
+pub const GRACIA_ATASCO: Duration = Duration::from_secs(30);
 
 /// What one pass left behind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Progress {
+pub enum Progreso {
     /// A full batch: run the next pass at once.
     More,
     /// Nothing more for now: wait the poll interval.
@@ -24,20 +24,20 @@ pub enum Progress {
 
 /// One unit of work a loop repeats: a relay batch or a consumer batch.
 #[async_trait]
-pub trait Pass: Send {
+pub trait Pasada: Send {
     fn name(&self) -> String;
-    async fn pass(&mut self) -> Result<Progress, ErrorTransporte>;
+    async fn pass(&mut self) -> Result<Progreso, ErrorTransporte>;
 }
 
 /// When a loop last finished a pass that did not fail. Readiness reads it.
 #[derive(Debug)]
-pub struct Heartbeat {
+pub struct Latido {
     name: String,
     interval: Duration,
     last: Mutex<Option<Instant>>,
 }
 
-impl Heartbeat {
+impl Latido {
     pub fn new(name: String, interval: Duration) -> Self {
         Self {
             name,
@@ -54,32 +54,34 @@ impl Heartbeat {
         *self.last.lock().unwrap_or_else(|p| p.into_inner()) = Some(at);
     }
 
-    /// Whether the loop finished a good pass within its interval plus [`STALL_GRACE`]. A loop
+    /// Whether the loop finished a good pass within its interval plus [`GRACIA_ATASCO`]. A loop
     /// that has not finished one yet, or whose passes keep failing (the database is down), is
     /// not fresh.
-    pub fn is_fresh(&self, now: Instant) -> bool {
+    pub fn esta_fresco(&self, now: Instant) -> bool {
         let last = *self.last.lock().unwrap_or_else(|p| p.into_inner());
-        last.is_some_and(|last| now.saturating_duration_since(last) <= self.interval + STALL_GRACE)
+        last.is_some_and(|last| {
+            now.saturating_duration_since(last) <= self.interval + GRACIA_ATASCO
+        })
     }
 }
 
 /// Runs `work` until `shutdown` turns `true`. A pass in flight when it does is finished first —
 /// a claim is never cut in half.
-pub async fn drive(
-    mut work: Box<dyn Pass>,
+pub async fn conducir(
+    mut work: Box<dyn Pasada>,
     interval: Duration,
-    heartbeat: Arc<Heartbeat>,
+    heartbeat: Arc<Latido>,
     mut shutdown: watch::Receiver<bool>,
 ) {
     let name = work.name();
     tracing::info!(name, "worker: loop started");
     while !*shutdown.borrow() {
         let wait = match work.pass().await {
-            Ok(Progress::More) => {
+            Ok(Progreso::More) => {
                 heartbeat.beat_at(Instant::now());
                 continue;
             }
-            Ok(Progress::Idle) => {
+            Ok(Progreso::Idle) => {
                 heartbeat.beat_at(Instant::now());
                 interval
             }
@@ -103,27 +105,27 @@ mod tests {
 
     /// Answers the scripted results in turn, then `Idle`, counting its passes.
     struct Script {
-        results: Vec<Result<Progress, ErrorTransporte>>,
+        results: Vec<Result<Progreso, ErrorTransporte>>,
         passes: Arc<AtomicUsize>,
     }
 
     #[async_trait]
-    impl Pass for Script {
+    impl Pasada for Script {
         fn name(&self) -> String {
             "script".into()
         }
-        async fn pass(&mut self) -> Result<Progress, ErrorTransporte> {
+        async fn pass(&mut self) -> Result<Progreso, ErrorTransporte> {
             self.passes.fetch_add(1, Ordering::SeqCst);
             if self.results.is_empty() {
-                Ok(Progress::Idle)
+                Ok(Progreso::Idle)
             } else {
                 self.results.remove(0)
             }
         }
     }
 
-    fn heartbeat() -> Arc<Heartbeat> {
-        Arc::new(Heartbeat::new("script".into(), Duration::from_millis(500)))
+    fn heartbeat() -> Arc<Latido> {
+        Arc::new(Latido::new("script".into(), Duration::from_millis(500)))
     }
 
     #[tokio::test(start_paused = true)]
@@ -131,11 +133,11 @@ mod tests {
         // Arrange
         let passes = Arc::new(AtomicUsize::new(0));
         let script = Script {
-            results: vec![Ok(Progress::More), Ok(Progress::More)],
+            results: vec![Ok(Progreso::More), Ok(Progreso::More)],
             passes: Arc::clone(&passes),
         };
         let (stop, shutdown) = watch::channel(false);
-        let task = tokio::spawn(drive(
+        let task = tokio::spawn(conducir(
             Box::new(script),
             Duration::from_secs(10),
             heartbeat(),
@@ -160,7 +162,7 @@ mod tests {
             passes: Arc::clone(&passes),
         };
         let (stop, shutdown) = watch::channel(false);
-        let task = tokio::spawn(drive(
+        let task = tokio::spawn(conducir(
             Box::new(script),
             Duration::from_secs(3600),
             heartbeat(),
@@ -186,7 +188,7 @@ mod tests {
             passes: Arc::new(AtomicUsize::new(0)),
         };
         let (stop, shutdown) = watch::channel(false);
-        let task = tokio::spawn(drive(
+        let task = tokio::spawn(conducir(
             Box::new(script),
             Duration::from_secs(10),
             Arc::clone(&beat),
@@ -195,9 +197,9 @@ mod tests {
 
         // Act
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let after_failure = beat.is_fresh(Instant::now());
+        let after_failure = beat.esta_fresco(Instant::now());
         tokio::time::sleep(Duration::from_secs(10)).await;
-        let after_success = beat.is_fresh(Instant::now());
+        let after_success = beat.esta_fresco(Instant::now());
 
         // Assert
         assert!(!after_failure);
@@ -208,7 +210,7 @@ mod tests {
 
     #[test]
     fn should_not_be_fresh_before_the_first_pass() {
-        assert!(!heartbeat().is_fresh(Instant::now()));
+        assert!(!heartbeat().esta_fresco(Instant::now()));
     }
 
     #[test]
@@ -217,8 +219,8 @@ mod tests {
         let at = Instant::now();
         beat.beat_at(at);
 
-        let limit = Duration::from_millis(500) + STALL_GRACE;
-        assert!(beat.is_fresh(at + limit));
-        assert!(!beat.is_fresh(at + limit + Duration::from_millis(1)));
+        let limit = Duration::from_millis(500) + GRACIA_ATASCO;
+        assert!(beat.esta_fresco(at + limit));
+        assert!(!beat.esta_fresco(at + limit + Duration::from_millis(1)));
     }
 }

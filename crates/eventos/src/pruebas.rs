@@ -49,24 +49,24 @@ pub fn envelope(event_type: &'static str) -> SobreEvento {
 #[derive(Default)]
 struct OutboxState {
     rows: Vec<(SobreEvento, bool)>,
-    marked: Vec<Uuid>,
-    mark_calls: usize,
-    not_leading: bool,
+    marcados: Vec<Uuid>,
+    llamadas_marcar: usize,
+    sin_liderar: bool,
     unreadable: bool,
 }
 
 #[derive(Clone, Default)]
-pub struct FakeOutbox(Arc<Mutex<OutboxState>>);
+pub struct OutboxFalso(Arc<Mutex<OutboxState>>);
 
-impl FakeOutbox {
+impl OutboxFalso {
     pub fn with(events: &[SobreEvento]) -> Self {
         let outbox = Self::default();
         lock(&outbox.0).rows = events.iter().cloned().map(|e| (e, false)).collect();
         outbox
     }
 
-    pub fn not_leading(self) -> Self {
-        lock(&self.0).not_leading = true;
+    pub fn sin_liderar(self) -> Self {
+        lock(&self.0).sin_liderar = true;
         self
     }
 
@@ -75,28 +75,28 @@ impl FakeOutbox {
         self
     }
 
-    pub fn marked(&self) -> Vec<Uuid> {
-        lock(&self.0).marked.clone()
+    pub fn marcados(&self) -> Vec<Uuid> {
+        lock(&self.0).marcados.clone()
     }
 
-    pub fn mark_calls(&self) -> usize {
-        lock(&self.0).mark_calls
+    pub fn llamadas_marcar(&self) -> usize {
+        lock(&self.0).llamadas_marcar
     }
 
-    pub fn unpublished(&self) -> Vec<Uuid> {
+    pub fn sin_publicar(&self) -> Vec<Uuid> {
         lock(&self.0)
             .rows
             .iter()
-            .filter(|(_, published)| !published)
+            .filter(|(_, publicados)| !publicados)
             .map(|(e, _)| e.id)
             .collect()
     }
 }
 
 #[async_trait]
-impl Outbox for FakeOutbox {
+impl Outbox for OutboxFalso {
     async fn intentar_liderar(&self) -> Result<bool, ErrorTransporte> {
-        Ok(!lock(&self.0).not_leading)
+        Ok(!lock(&self.0).sin_liderar)
     }
 
     async fn buscar_sin_publicar(&self, limit: u32) -> Result<Vec<SobreEvento>, ErrorTransporte> {
@@ -107,7 +107,7 @@ impl Outbox for FakeOutbox {
         Ok(state
             .rows
             .iter()
-            .filter(|(_, published)| !published)
+            .filter(|(_, publicados)| !publicados)
             .take(limit as usize)
             .map(|(e, _)| e.clone())
             .collect())
@@ -115,10 +115,10 @@ impl Outbox for FakeOutbox {
 
     async fn marcar_publicados(&self, ids: &[Uuid]) -> Result<(), ErrorTransporte> {
         let mut state = lock(&self.0);
-        state.mark_calls += 1;
-        state.marked.extend_from_slice(ids);
-        for (event, published) in state.rows.iter_mut() {
-            *published |= ids.contains(&event.id);
+        state.llamadas_marcar += 1;
+        state.marcados.extend_from_slice(ids);
+        for (event, publicados) in state.rows.iter_mut() {
+            *publicados |= ids.contains(&event.id);
         }
         Ok(())
     }
@@ -126,28 +126,28 @@ impl Outbox for FakeOutbox {
 
 /// Accepts a number of events, then fails each one.
 #[derive(Clone, Default)]
-pub struct FakePublisher(Arc<Mutex<(usize, Vec<Uuid>)>>);
+pub struct PublicadorFalso(Arc<Mutex<(usize, Vec<Uuid>)>>);
 
-impl FakePublisher {
-    pub fn accepting(capacity: usize) -> Self {
-        let publisher = Self::default();
-        publisher.accept(capacity);
-        publisher
+impl PublicadorFalso {
+    pub fn aceptando(capacity: usize) -> Self {
+        let publicador = Self::default();
+        publicador.aceptar(capacity);
+        publicador
     }
 
     /// Accepts `capacity` more events from now on.
-    pub fn accept(&self, capacity: usize) {
+    pub fn aceptar(&self, capacity: usize) {
         let mut state = lock(&self.0);
         state.0 = state.1.len().saturating_add(capacity);
     }
 
-    pub fn published(&self) -> Vec<Uuid> {
+    pub fn publicados(&self) -> Vec<Uuid> {
         lock(&self.0).1.clone()
     }
 }
 
 #[async_trait]
-impl PublicadorEventos for FakePublisher {
+impl PublicadorEventos for PublicadorFalso {
     async fn publicar(&self, event: &SobreEvento) -> Result<(), ErrorTransporte> {
         let mut state = lock(&self.0);
         if state.1.len() >= state.0 {
@@ -161,56 +161,56 @@ impl PublicadorEventos for FakePublisher {
 #[derive(Default)]
 struct SubscriptionState {
     due: Vec<Reservado>,
-    settled: Vec<(Uuid, Entrega)>,
-    settle_calls: usize,
-    failing_settle: bool,
-    watched: Option<FakeSink>,
+    resueltos: Vec<(Uuid, Entrega)>,
+    llamadas_resolver: usize,
+    fallando_al_resolver: bool,
+    watched: Option<DestinoFalso>,
     dead_letters_at_settle: Vec<usize>,
     max_batch: Option<u32>,
 }
 
 #[derive(Clone, Default)]
-pub struct FakeSubscription(Arc<Mutex<SubscriptionState>>);
+pub struct SuscripcionFalsa(Arc<Mutex<SubscriptionState>>);
 
-impl FakeSubscription {
+impl SuscripcionFalsa {
     pub fn with(due: Vec<Reservado>) -> Self {
-        let subscription = Self::default();
-        lock(&subscription.0).due = due;
-        subscription
+        let suscripcion = Self::default();
+        lock(&suscripcion.0).due = due;
+        suscripcion
     }
 
     /// Hands out one claim per batch, as a transport that has to keep an order does.
-    pub fn one_at_a_time(self) -> Self {
+    pub fn de_uno_en_uno(self) -> Self {
         lock(&self.0).max_batch = Some(1);
         self
     }
 
-    pub fn failing_settle(self) -> Self {
-        lock(&self.0).failing_settle = true;
+    pub fn fallando_al_resolver(self) -> Self {
+        lock(&self.0).fallando_al_resolver = true;
         self
     }
 
     /// Notes how many dead letters `sink` held each time a claim was settled.
-    pub fn watching(self, sink: &FakeSink) -> Self {
+    pub fn observando(self, sink: &DestinoFalso) -> Self {
         lock(&self.0).watched = Some(sink.clone());
         self
     }
 
-    pub fn settled(&self) -> Vec<(Uuid, Entrega)> {
-        lock(&self.0).settled.clone()
+    pub fn resueltos(&self) -> Vec<(Uuid, Entrega)> {
+        lock(&self.0).resueltos.clone()
     }
 
-    pub fn settle_calls(&self) -> usize {
-        lock(&self.0).settle_calls
+    pub fn llamadas_resolver(&self) -> usize {
+        lock(&self.0).llamadas_resolver
     }
 
-    pub fn dead_letters_seen_at_settle(&self) -> Vec<usize> {
+    pub fn descartados_vistos_al_resolver(&self) -> Vec<usize> {
         lock(&self.0).dead_letters_at_settle.clone()
     }
 }
 
 #[async_trait]
-impl SuscripcionEventos for FakeSubscription {
+impl SuscripcionEventos for SuscripcionFalsa {
     fn consumidor(&self) -> &str {
         "notify_new_product"
     }
@@ -231,51 +231,51 @@ impl SuscripcionEventos for FakeSubscription {
         delivery: &Entrega,
     ) -> Result<(), ErrorTransporte> {
         let mut state = lock(&self.0);
-        state.settle_calls += 1;
-        if state.failing_settle {
+        state.llamadas_resolver += 1;
+        if state.fallando_al_resolver {
             return Err(ErrorTransporte::NoDisponible);
         }
         if let Some(sink) = &state.watched {
-            let seen = sink.records().len();
+            let seen = sink.registros().len();
             state.dead_letters_at_settle.push(seen);
         }
-        state.settled.push((claimed.sobre.id, delivery.clone()));
+        state.resueltos.push((claimed.sobre.id, delivery.clone()));
         Ok(())
     }
 }
 
 #[derive(Clone, Default)]
-pub struct FakeSink {
-    records: Arc<Mutex<Vec<RegistroDescartado>>>,
-    failing: bool,
+pub struct DestinoFalso {
+    registros: Arc<Mutex<Vec<RegistroDescartado>>>,
+    fallando: bool,
 }
 
-impl FakeSink {
-    pub fn failing() -> Self {
+impl DestinoFalso {
+    pub fn fallando() -> Self {
         Self {
-            failing: true,
+            fallando: true,
             ..Self::default()
         }
     }
 
-    pub fn records(&self) -> Vec<RegistroDescartado> {
-        lock(&self.records).clone()
+    pub fn registros(&self) -> Vec<RegistroDescartado> {
+        lock(&self.registros).clone()
     }
 }
 
 #[async_trait]
-impl DestinoDescartados for FakeSink {
+impl DestinoDescartados for DestinoFalso {
     async fn registrar(&self, record: &RegistroDescartado) -> Result<(), ErrorTransporte> {
-        if self.failing {
+        if self.fallando {
             return Err(ErrorTransporte::NoDisponible);
         }
-        lock(&self.records).push(record.clone());
+        lock(&self.registros).push(record.clone());
         Ok(())
     }
 }
 
 /// A handler that answers what it was told to.
-pub enum Scripted {
+pub enum Guion {
     Ack,
     Retry,
     /// Reads the payload as a number, which it never is: dead-letters it as invalid.
@@ -285,7 +285,7 @@ pub enum Scripted {
 }
 
 #[async_trait]
-impl ManejadorEvento for Scripted {
+impl ManejadorEvento for Guion {
     async fn manejar(&self, event: &SobreEvento) -> ResultadoManejo {
         match self {
             Self::Ack => ResultadoManejo::Ack,

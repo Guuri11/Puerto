@@ -16,61 +16,61 @@ use rdkafka::error::KafkaError;
 use rdkafka::types::RDKafkaErrorCode;
 
 /// The brokers when `KAFKA_BROKERS` is unset: the Redpanda of the project's `compose.yaml`.
-pub const DEFAULT_BROKERS: &str = "localhost:9092";
+pub const BROKERS_POR_DEFECTO: &str = "localhost:9092";
 
 /// How long creating the topics at startup may take.
 const ADMIN_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct KafkaConfig {
+pub struct ConfigKafka {
     pub brokers: String,
-    pub topic_prefix: String,
+    pub prefijo_topic: String,
 }
 
-impl KafkaConfig {
+impl ConfigKafka {
     /// Loads `.env` when there is one, then reads the process environment. `default_prefix` is
     /// the project name, which the generated registry passes.
     pub fn from_env(default_prefix: &str) -> Result<Self, ErrorConfig> {
         puerto_web::config::cargar_dotenv();
-        Self::from_vars(default_prefix, |key| std::env::var(key).ok())
+        Self::from_variables(default_prefix, |key| std::env::var(key).ok())
     }
 
     /// Reads the configuration from any variable source; an empty value counts as unset.
-    pub fn from_vars(
+    pub fn from_variables(
         default_prefix: &str,
         var: impl Fn(&str) -> Option<String>,
     ) -> Result<Self, ErrorConfig> {
         let var = |key: &str| var(key).filter(|value| !value.trim().is_empty());
         let brokers = var("KAFKA_BROKERS").map_or_else(
-            || DEFAULT_BROKERS.to_string(),
+            || BROKERS_POR_DEFECTO.to_string(),
             |value| value.trim().to_string(),
         );
-        let topic_prefix = match var("KAFKA_TOPIC_PREFIX") {
+        let prefijo_topic = match var("KAFKA_TOPIC_PREFIX") {
             Some(value) => value.trim().to_string(),
             None => default_prefix.to_string(),
         };
-        if !is_topic_name(&topic_prefix) {
+        if !is_topic_name(&prefijo_topic) {
             return Err(ErrorConfig::Invalido {
                 clave: "KAFKA_TOPIC_PREFIX",
-                valor: topic_prefix,
+                valor: prefijo_topic,
                 esperado: "letters, digits, '.', '_' or '-'",
             });
         }
         Ok(Self {
             brokers,
-            topic_prefix,
+            prefijo_topic,
         })
     }
 
     /// The topic an aggregate's events are published to: `shop.product`.
     pub fn topic(&self, aggregate_type: &str) -> String {
-        format!("{}.{aggregate_type}", self.topic_prefix)
+        format!("{}.{aggregate_type}", self.prefijo_topic)
     }
 
     /// A consumer's group: `shop.notify_new_product`. Two projects on one cluster never share one.
-    pub fn group(&self, consumer: &str) -> String {
-        format!("{}.{consumer}", self.topic_prefix)
+    pub fn grupo(&self, consumer: &str) -> String {
+        format!("{}.{consumer}", self.prefijo_topic)
     }
 
     pub(crate) fn client(&self) -> ClientConfig {
@@ -83,8 +83,8 @@ impl KafkaConfig {
     /// partitions and replication. Run once at startup, before the relay publishes.
     pub async fn ensure_topics(&self, aggregate_types: &[&str]) -> Result<(), KafkaError> {
         let admin: AdminClient<DefaultClientContext> = self.client().create()?;
-        let names: Vec<String> = aggregate_types.iter().map(|a| self.topic(a)).collect();
-        let topics: Vec<NewTopic<'_>> = names
+        let nombres: Vec<String> = aggregate_types.iter().map(|a| self.topic(a)).collect();
+        let topics: Vec<NewTopic<'_>> = nombres
             .iter()
             .map(|name| NewTopic::new(name, -1, TopicReplication::Fixed(-1)))
             .collect();
@@ -115,19 +115,19 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn config(vars: &[(&str, &str)]) -> Result<KafkaConfig, ErrorConfig> {
+    fn config(vars: &[(&str, &str)]) -> Result<ConfigKafka, ErrorConfig> {
         let vars: HashMap<String, String> = vars
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        KafkaConfig::from_vars("shop", |key| vars.get(key).cloned())
+        ConfigKafka::from_variables("shop", |key| vars.get(key).cloned())
     }
 
     #[test]
     fn should_use_the_local_broker_and_the_project_name_when_nothing_is_set() {
         let config = config(&[]).unwrap();
         assert_eq!(
-            (config.brokers.as_str(), config.topic_prefix.as_str()),
+            (config.brokers.as_str(), config.prefijo_topic.as_str()),
             ("localhost:9092", "shop")
         );
     }
@@ -140,7 +140,7 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(
-            (config.brokers.as_str(), config.topic_prefix.as_str()),
+            (config.brokers.as_str(), config.prefijo_topic.as_str()),
             ("kafka-1:9092,kafka-2:9092", "shop-staging")
         );
     }
@@ -172,7 +172,7 @@ mod tests {
         let config = config(&[]).unwrap();
         assert_eq!(config.topic("order_item"), "shop.order_item");
         assert_eq!(
-            config.group("notify_new_product"),
+            config.grupo("notify_new_product"),
             "shop.notify_new_product"
         );
     }

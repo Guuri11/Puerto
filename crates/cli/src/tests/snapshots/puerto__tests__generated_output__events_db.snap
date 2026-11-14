@@ -266,7 +266,7 @@ resolver = "3"
 puerto-nucleo = "0.20"
 puerto-web = "0.20"
 puerto-sqlx = "0.20"
-puerto-events = "0.20"
+puerto-eventos = "0.20"
 
 === Makefile ===
 .PHONY: help setup run \
@@ -5018,7 +5018,7 @@ business logic lives here — a consumer decodes the event and calls a use case.
 
 ```
 worker/src/
-├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).try_run(…)` (never changes)
+├── main.rs                  # `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(…)` (never changes)
 ├── generated.rs             # `pub mod registry;`
 ├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
 ├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
@@ -5042,7 +5042,7 @@ worker/src/
 
 ## Health and shutdown
 
-Served by the Puerto runtime, `puerto-events`, on `WORKER_PORT` (8081).
+Served by the Puerto runtime, `puerto-eventos`, on `WORKER_PORT` (8081).
 
 - `GET /health` — liveness: the process answers.
 - `GET /health/ready` — readiness: `503` until the relay and every consumer have finished a pass
@@ -5066,7 +5066,7 @@ business = { path = "../business" }
 infrastructure = { path = "../infrastructure" }
 puerto-nucleo = { workspace = true }
 # The relay, the consume loops, health probes and graceful shutdown (`main.rs`, `generated/registry.rs`).
-puerto-events = { workspace = true }
+puerto-eventos = { workspace = true }
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
@@ -5205,13 +5205,13 @@ use business::domain::product::events::{PRODUCT_CREATED, PRODUCT_PUBLISHED};
 use infrastructure::db::eventos::{
     DescartadosPostgres, EntregasPostgres, OutboxPostgres, SuscripcionPostgres,
 };
-use puerto_events::{Loops, WorkerConfig};
+use puerto_eventos::{Bucles, ConfigWorker};
 
 use crate::consumers::notify_new_product::NotifyNewProduct;
 
 /// The relay and one consumer per `[[consumer]]`, on the `db` transport: the relay hands each
 /// event to `entregas_eventos`, one row per consumer subscribed to its type.
-pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
+pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {
         "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string()
     })?;
@@ -5226,9 +5226,9 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
         .enrutar("notify_new_product", &[PRODUCT_CREATED, PRODUCT_PUBLISHED]);
     let dead_letters = Arc::new(DescartadosPostgres::new(pool.clone()));
 
-    Ok(Loops::new(&config)
+    Ok(Bucles::new(&config)
         .relay(OutboxPostgres::new(pool.clone()), deliveries)
-        .consumer(
+        .consumidor(
             SuscripcionPostgres::new(pool.clone(), "notify_new_product"),
             NotifyNewProduct,
             dead_letters,
@@ -5241,12 +5241,12 @@ mod generated;
 
 /// The second process of this project (ADR-0018 of Puerto): it relays the outbox the API writes
 /// and runs the consumers. The loops, health probes and graceful shutdown come from the Puerto
-/// runtime, `puerto-events`; the wiring is in `generated/registry.rs`, the consumers in
+/// runtime, `puerto-eventos`; the wiring is in `generated/registry.rs`, the consumers in
 /// `consumers/`.
 #[tokio::main]
-async fn main() -> Result<(), puerto_events::Error> {
-    let config = puerto_events::WorkerConfig::from_env()?;
-    puerto_events::Worker::new(config)
-        .try_run(generated::registry::build_worker)
+async fn main() -> Result<(), puerto_eventos::Error> {
+    let config = puerto_eventos::ConfigWorker::from_env()?;
+    puerto_eventos::Worker::new(config)
+        .intentar_ejecutar(generated::registry::build_worker)
         .await
 }

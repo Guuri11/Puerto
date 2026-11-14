@@ -26,15 +26,15 @@ const RESERVED_CONSUMER_TYPES: &[&str] = &[
     "SobreEvento",
     "ManejadorEvento",
     "ResultadoManejo",
-    "KafkaConfig",
-    "KafkaPublisher",
-    "KafkaSubscription",
-    "Loops",
+    "ConfigKafka",
+    "PublicadorKafka",
+    "SuscripcionKafka",
+    "Bucles",
     "DescartadosPostgres",
     "EntregasPostgres",
     "OutboxPostgres",
     "SuscripcionPostgres",
-    "WorkerConfig",
+    "ConfigWorker",
 ];
 
 /// An event type some entity declares, and where its constant lives.
@@ -226,12 +226,12 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         imports.push("infrastructure::db::correo::CorreosEnviadosPostgres".into());
         imports.extend(template_mailers);
     }
-    imports.push("puerto_events::{Loops, WorkerConfig}".into());
+    imports.push("puerto_eventos::{Bucles, ConfigWorker}".into());
     if kafka {
         let types = if consumers.is_empty() {
-            "{KafkaConfig, KafkaPublisher}"
+            "{ConfigKafka, PublicadorKafka}"
         } else {
-            "{KafkaConfig, KafkaPublisher, KafkaSubscription}"
+            "{ConfigKafka, PublicadorKafka, SuscripcionKafka}"
         };
         imports.push(format!("puerto_kafka::{types}"));
     }
@@ -377,7 +377,7 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
             ),
         )?;
     }
-    crate::generators::project::add_workspace_dependency(base, "puerto-events")?;
+    crate::generators::project::add_workspace_dependency(base, "puerto-eventos")?;
     if kafka {
         crate::generators::project::add_workspace_dependency(base, "puerto-kafka")?;
     }

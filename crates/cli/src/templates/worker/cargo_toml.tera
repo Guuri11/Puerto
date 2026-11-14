@@ -8,7 +8,7 @@ business = { path = "../business" }
 infrastructure = { path = "../infrastructure" }
 puerto-nucleo = { workspace = true }
 # The relay, the consume loops, health probes and graceful shutdown (`main.rs`, `generated/registry.rs`).
-puerto-events = { workspace = true }
+puerto-eventos = { workspace = true }
 {%- if kafka %}
 # The Kafka transport: the publisher and the subscriptions `generated/registry.rs` wires.
 puerto-kafka = { workspace = true }

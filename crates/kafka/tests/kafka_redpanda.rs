@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use puerto_kafka::{KafkaConfig, KafkaPublisher, KafkaSubscription};
+use puerto_kafka::{ConfigKafka, PublicadorKafka, SuscripcionKafka};
 use puerto_nucleo::eventos::entrega::Entrega;
 use puerto_nucleo::eventos::transporte::{
     DestinoDescartados, ErrorTransporte, PublicadorEventos, RegistroDescartado, Reservado,
@@ -56,7 +56,7 @@ fn event(event_type: &'static str, id: Uuid, name: &'static str) -> SobreEvento 
 struct Sink(Arc<Mutex<Vec<RegistroDescartado>>>);
 
 impl Sink {
-    fn records(&self) -> Vec<RegistroDescartado> {
+    fn registros(&self) -> Vec<RegistroDescartado> {
         self.0.lock().unwrap().clone()
     }
 }
@@ -70,10 +70,10 @@ impl DestinoDescartados for Sink {
 }
 
 /// A config of its own, with the `product` topic created.
-async fn kafka() -> Option<KafkaConfig> {
+async fn kafka() -> Option<ConfigKafka> {
     let brokers = std::env::var("PUERTO_TEST_KAFKA_BROKERS").ok()?;
     let prefix = format!("t{}", Uuid::now_v7().simple());
-    let config = KafkaConfig::from_vars("unused", |key| match key {
+    let config = ConfigKafka::from_variables("unused", |key| match key {
         "KAFKA_BROKERS" => Some(brokers.clone()),
         "KAFKA_TOPIC_PREFIX" => Some(prefix.clone()),
         _ => None,
@@ -83,8 +83,8 @@ async fn kafka() -> Option<KafkaConfig> {
     Some(config)
 }
 
-fn subscribe(config: &KafkaConfig, sink: &Sink) -> KafkaSubscription {
-    KafkaSubscription::new(
+fn subscribe(config: &ConfigKafka, sink: &Sink) -> SuscripcionKafka {
+    SuscripcionKafka::new(
         config,
         "notify_new_product",
         &["product"],
@@ -95,10 +95,10 @@ fn subscribe(config: &KafkaConfig, sink: &Sink) -> KafkaSubscription {
 }
 
 /// The next claim, waiting for the group to be joined; `None` when nothing came within `wait`.
-async fn next(subscription: &mut KafkaSubscription, wait: Duration) -> Option<Reservado> {
+async fn next(suscripcion: &mut SuscripcionKafka, wait: Duration) -> Option<Reservado> {
     let deadline = tokio::time::Instant::now() + wait;
     while tokio::time::Instant::now() < deadline {
-        let mut batch = subscription.siguiente_lote(10).await.unwrap();
+        let mut batch = suscripcion.siguiente_lote(10).await.unwrap();
         assert!(batch.len() <= 1, "one record per batch");
         if let Some(claimed) = batch.pop() {
             return Some(claimed);
@@ -116,21 +116,21 @@ async fn kafka_subscriber_receives_the_published_envelopes_of_its_types_in_order
     let id = Uuid::now_v7();
     let created = event("product_created", id, "Desk lamp");
     let updated = event("product_updated", id, "Desk lamp");
-    let published = event("product_published", id, "Desk lamp");
-    let publisher = KafkaPublisher::new(&config).unwrap();
-    for event in [&created, &updated, &published] {
-        publisher.publicar(event).await.unwrap();
+    let publicados = event("product_published", id, "Desk lamp");
+    let publicador = PublicadorKafka::new(&config).unwrap();
+    for event in [&created, &updated, &publicados] {
+        publicador.publicar(event).await.unwrap();
     }
-    let mut subscription = subscribe(&config, &Sink::default());
+    let mut suscripcion = subscribe(&config, &Sink::default());
 
-    let first = next(&mut subscription, WAIT).await.unwrap();
-    subscription.resolver(&first, &Entrega::Ack).await.unwrap();
-    let second = next(&mut subscription, WAIT).await.unwrap();
-    subscription.resolver(&second, &Entrega::Ack).await.unwrap();
+    let first = next(&mut suscripcion, WAIT).await.unwrap();
+    suscripcion.resolver(&first, &Entrega::Ack).await.unwrap();
+    let second = next(&mut suscripcion, WAIT).await.unwrap();
+    suscripcion.resolver(&second, &Entrega::Ack).await.unwrap();
 
     assert_eq!(first, Reservado::new(created, 1));
-    assert_eq!(second, Reservado::new(published, 1));
-    assert_eq!(next(&mut subscription, Duration::from_secs(2)).await, None);
+    assert_eq!(second, Reservado::new(publicados, 1));
+    assert_eq!(next(&mut suscripcion, Duration::from_secs(2)).await, None);
 }
 
 #[tokio::test]
@@ -141,26 +141,26 @@ async fn kafka_retry_holds_back_the_next_record_and_hands_itself_out_as_the_next
     };
     let id = Uuid::now_v7();
     let created = event("product_created", id, "Desk lamp");
-    let published = event("product_published", id, "Desk lamp");
-    let publisher = KafkaPublisher::new(&config).unwrap();
-    publisher.publicar(&created).await.unwrap();
-    publisher.publicar(&published).await.unwrap();
-    let mut subscription = subscribe(&config, &Sink::default());
+    let publicados = event("product_published", id, "Desk lamp");
+    let publicador = PublicadorKafka::new(&config).unwrap();
+    publicador.publicar(&created).await.unwrap();
+    publicador.publicar(&publicados).await.unwrap();
+    let mut suscripcion = subscribe(&config, &Sink::default());
 
-    let first = next(&mut subscription, WAIT).await.unwrap();
+    let first = next(&mut suscripcion, WAIT).await.unwrap();
     let retry = Entrega::Reintentar {
         espera: Duration::from_secs(1),
     };
-    subscription.resolver(&first, &retry).await.unwrap();
-    let while_waiting = subscription.siguiente_lote(10).await.unwrap();
+    suscripcion.resolver(&first, &retry).await.unwrap();
+    let while_waiting = suscripcion.siguiente_lote(10).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
-    let again = next(&mut subscription, WAIT).await.unwrap();
-    subscription.resolver(&again, &Entrega::Ack).await.unwrap();
-    let then = next(&mut subscription, WAIT).await.unwrap();
+    let again = next(&mut suscripcion, WAIT).await.unwrap();
+    suscripcion.resolver(&again, &Entrega::Ack).await.unwrap();
+    let then = next(&mut suscripcion, WAIT).await.unwrap();
 
     assert_eq!(while_waiting, vec![]);
     assert_eq!(again, Reservado::new(created, 2));
-    assert_eq!(then, Reservado::new(published, 1));
+    assert_eq!(then, Reservado::new(publicados, 1));
 }
 
 #[tokio::test]
@@ -180,25 +180,25 @@ async fn kafka_poisoned_record_is_dead_lettered_and_the_next_one_is_still_consum
     .await
     .unwrap();
     let created = event("product_created", Uuid::now_v7(), "Desk lamp");
-    KafkaPublisher::new(&config)
+    PublicadorKafka::new(&config)
         .unwrap()
         .publicar(&created)
         .await
         .unwrap();
     let sink = Sink::default();
-    let mut subscription = subscribe(&config, &sink);
+    let mut suscripcion = subscribe(&config, &sink);
 
-    let claimed = next(&mut subscription, WAIT).await.unwrap();
+    let claimed = next(&mut suscripcion, WAIT).await.unwrap();
 
     assert_eq!(claimed, Reservado::new(created, 1));
-    let records = sink.records();
-    assert_eq!(records.len(), 1);
+    let registros = sink.registros();
+    assert_eq!(registros.len(), 1);
     assert_eq!(
         (
-            records[0].id_evento,
-            records[0].consumidor.as_str(),
-            records[0].motivo.as_str(),
-            records[0].payload.as_str()
+            registros[0].id_evento,
+            registros[0].consumidor.as_str(),
+            registros[0].motivo.as_str(),
+            registros[0].payload.as_str()
         ),
         (
             None,
@@ -217,19 +217,19 @@ async fn kafka_restarted_subscription_does_not_redeliver_what_was_committed() {
     };
     let id = Uuid::now_v7();
     let created = event("product_created", id, "Desk lamp");
-    let published = event("product_published", id, "Desk lamp");
-    let publisher = KafkaPublisher::new(&config).unwrap();
-    publisher.publicar(&created).await.unwrap();
-    publisher.publicar(&published).await.unwrap();
-    let mut subscription = subscribe(&config, &Sink::default());
-    let first = next(&mut subscription, WAIT).await.unwrap();
-    subscription.resolver(&first, &Entrega::Ack).await.unwrap();
-    let unsettled = next(&mut subscription, WAIT).await.unwrap();
-    drop(subscription);
+    let publicados = event("product_published", id, "Desk lamp");
+    let publicador = PublicadorKafka::new(&config).unwrap();
+    publicador.publicar(&created).await.unwrap();
+    publicador.publicar(&publicados).await.unwrap();
+    let mut suscripcion = subscribe(&config, &Sink::default());
+    let first = next(&mut suscripcion, WAIT).await.unwrap();
+    suscripcion.resolver(&first, &Entrega::Ack).await.unwrap();
+    let unsettled = next(&mut suscripcion, WAIT).await.unwrap();
+    drop(suscripcion);
 
     let mut restarted = subscribe(&config, &Sink::default());
     let after_restart = next(&mut restarted, WAIT).await.unwrap();
 
-    assert_eq!(unsettled, Reservado::new(published.clone(), 1));
-    assert_eq!(after_restart, Reservado::new(published, 1));
+    assert_eq!(unsettled, Reservado::new(publicados.clone(), 1));
+    assert_eq!(after_restart, Reservado::new(publicados, 1));
 }

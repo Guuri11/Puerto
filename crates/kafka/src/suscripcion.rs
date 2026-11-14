@@ -16,7 +16,7 @@ use rdkafka::{Offset, TopicPartitionList};
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use crate::KafkaConfig;
+use crate::ConfigKafka;
 use crate::wire;
 
 /// How long one batch waits for a record before it answers that nothing is due.
@@ -123,7 +123,7 @@ struct Poisoned {
 ///   attempt; nothing is read meanwhile. A restart starts its attempts over.
 /// - A record of another event type is skipped (committed); one that is not an envelope is
 ///   dead-lettered as `payload_invalid` and skipped.
-pub struct KafkaSubscription {
+pub struct SuscripcionKafka {
     name: String,
     consumer: Arc<StreamConsumer>,
     event_types: Vec<String>,
@@ -132,11 +132,11 @@ pub struct KafkaSubscription {
     poisoned: Option<Poisoned>,
 }
 
-impl KafkaSubscription {
+impl SuscripcionKafka {
     /// Joins the consumer's group and subscribes to the topics of `aggregate_types` (create them
-    /// first: [`KafkaConfig::ensure_topics`]). A new group starts from the earliest record.
+    /// first: [`ConfigKafka::ensure_topics`]). A new group starts from the earliest record.
     pub fn new(
-        config: &KafkaConfig,
+        config: &ConfigKafka,
         consumer: &str,
         aggregate_types: &[&str],
         event_types: &[&str],
@@ -144,7 +144,7 @@ impl KafkaSubscription {
     ) -> Result<Self, KafkaError> {
         let client: StreamConsumer = config
             .client()
-            .set("group.id", config.group(consumer))
+            .set("group.id", config.grupo(consumer))
             .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "earliest")
             .set("max.poll.interval.ms", MAX_POLL_INTERVAL_MS)
@@ -213,7 +213,7 @@ impl KafkaSubscription {
 }
 
 #[async_trait]
-impl SuscripcionEventos for KafkaSubscription {
+impl SuscripcionEventos for SuscripcionKafka {
     fn consumidor(&self) -> &str {
         &self.name
     }
@@ -366,12 +366,12 @@ mod tests {
         };
 
         // Act
-        let settled = ledger.settle(&claimed, &retry, now);
+        let resueltos = ledger.settle(&claimed, &retry, now);
         let before = ledger.retry_batch(now + Duration::from_millis(4999));
         let at = ledger.retry_batch(now + Duration::from_secs(5));
 
         // Assert
-        assert_eq!(settled, Ok(None));
+        assert_eq!(resueltos, Ok(None));
         assert_eq!(before, Some(vec![]));
         assert_eq!(at, Some(vec![Reservado::new(claimed.sobre.clone(), 2)]));
         assert_eq!(ledger.retry_batch(now + Duration::from_secs(6)), None);

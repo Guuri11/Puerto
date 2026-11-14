@@ -53,7 +53,7 @@ fn new_with_db_events_writes_the_worker_and_adds_it_to_the_workspace() {
         root.contains("members = [\"business\", \"infrastructure\", \"presentation\", \"worker\"]"),
         "{root}"
     );
-    assert!(root.contains("puerto-events = \""), "{root}");
+    assert!(root.contains("puerto-eventos = \""), "{root}");
     for path in [
         "worker/Cargo.toml",
         "worker/AGENTS.md",
@@ -65,10 +65,10 @@ fn new_with_db_events_writes_the_worker_and_adds_it_to_the_workspace() {
         assert!(output.join(path).exists(), "{path} missing");
     }
     let manifest = read(&output, "worker/Cargo.toml");
-    assert!(manifest.contains("puerto-events = { workspace = true }"));
+    assert!(manifest.contains("puerto-eventos = { workspace = true }"));
     let main = read(&output, "worker/src/main.rs");
-    assert!(main.contains("puerto_events::Worker::new(config)"));
-    assert!(main.contains(".try_run(generated::registry::build_worker)"));
+    assert!(main.contains("puerto_eventos::Worker::new(config)"));
+    assert!(main.contains(".intentar_ejecutar(generated::registry::build_worker)"));
     cleanup(&dir);
 }
 
@@ -81,7 +81,7 @@ fn new_with_db_events_relays_to_nobody_until_a_consumer_is_added() {
     assert!(registry.starts_with("// AUTO-GENERATED"), "{registry}");
     assert!(
         registry.contains(
-            "Loops::new(&config).relay(OutboxPostgres::new(pool.clone()), EntregasPostgres::new(pool))"
+            "Bucles::new(&config).relay(OutboxPostgres::new(pool.clone()), EntregasPostgres::new(pool))"
         ),
         "{registry}"
     );
@@ -132,7 +132,7 @@ fn new_with_kafka_events_writes_the_worker_on_the_kafka_transport() {
         root.contains("members = [\"business\", \"infrastructure\", \"presentation\", \"worker\"]"),
         "{root}"
     );
-    assert!(root.contains("puerto-events = \""), "{root}");
+    assert!(root.contains("puerto-eventos = \""), "{root}");
     assert!(root.contains("puerto-kafka = \""), "{root}");
     let manifest = read(&output, "worker/Cargo.toml");
     assert!(
@@ -142,7 +142,7 @@ fn new_with_kafka_events_writes_the_worker_on_the_kafka_transport() {
     let registry = read(&output, "worker/src/generated/registry.rs");
     assert!(registry.starts_with("// AUTO-GENERATED"), "{registry}");
     assert!(
-        registry.contains("KafkaConfig::from_env(\"worker_kafka\")"),
+        registry.contains("ConfigKafka::from_env(\"worker_kafka\")"),
         "{registry}"
     );
     assert!(
@@ -220,7 +220,7 @@ fn new_without_events_writes_no_worker() {
     scaffold::apply_db_to_new_project(&output).unwrap();
 
     assert!(!output.join("worker").exists());
-    assert!(!read(&output, "Cargo.toml").contains("puerto-events"));
+    assert!(!read(&output, "Cargo.toml").contains("puerto-eventos"));
     assert!(!read(&output, "Makefile").contains("events/dead-letters"));
     cleanup(&dir);
 }
@@ -370,7 +370,7 @@ fn generate_consumer_refuses_names_that_would_not_compile() {
     for (name, expected) in [
         ("NotifyNewProduct", "snake_case"),
         ("match", "keyword"),
-        ("loops", "already uses"),
+        ("bucles", "already uses"),
         ("product_event", "already uses"),
         ("product_snapshot", "already uses"),
     ] {
@@ -425,7 +425,7 @@ fn generate_consumer_on_kafka_subscribes_to_the_topics_of_its_events() {
         "{registry}"
     );
     assert!(
-        registry.contains("KafkaSubscription::new(\n                &kafka,\n                \"notify_new_product\",\n                &[\"product\"],\n                &[PRODUCT_CREATED, PRODUCT_PUBLISHED],"),
+        registry.contains("SuscripcionKafka::new(\n                &kafka,\n                \"notify_new_product\",\n                &[\"product\"],\n                &[PRODUCT_CREATED, PRODUCT_PUBLISHED],"),
         "{registry}"
     );
     assert!(

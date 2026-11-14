@@ -7,25 +7,25 @@
 //! transport) and its consumers.
 //!
 //! ```ignore
-//! pub async fn build_worker(config: WorkerConfig) -> Loops {
+//! pub async fn build_worker(config: ConfigWorker) -> Loops {
 //!     Loops::new(&config)
 //!         .relay(PgOutbox::new(pool.clone()), deliveries)
 //!         .consumer(PgSubscription::new(pool.clone(), "notify_new_product"), NotifyNewProduct, dead_letters)
 //! }
 //! ```
 
+pub mod conductor;
 pub mod config;
-pub mod consumer;
-pub mod driver;
+pub mod consumidor;
 pub mod relay;
 pub mod worker;
 
 #[cfg(test)]
-mod test_support;
+mod pruebas;
 
-pub use config::WorkerConfig;
-pub use consumer::Consumer;
-pub use driver::Progress;
+pub use conductor::Progreso;
+pub use config::ConfigWorker;
+pub use consumidor::Consumidor;
 pub use puerto_web::{Error, ErrorConfig};
 pub use relay::Relay;
-pub use worker::{Loops, Worker};
+pub use worker::{Bucles, Worker};

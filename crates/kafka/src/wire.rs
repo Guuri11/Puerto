@@ -7,12 +7,12 @@ use chrono::{DateTime, Utc};
 use puerto_nucleo::eventos::{PartesSobre, SobreEvento};
 use uuid::Uuid;
 
-pub(crate) const EVENT_ID: &str = "event_id";
-pub(crate) const EVENT_TYPE: &str = "event_type";
-pub(crate) const AGGREGATE_TYPE: &str = "aggregate_type";
-pub(crate) const AGGREGATE_ID: &str = "aggregate_id";
-pub(crate) const SCHEMA_VERSION: &str = "schema_version";
-pub(crate) const OCCURRED_AT: &str = "occurred_at";
+pub(crate) const EVENT_ID: &str = "id_evento";
+pub(crate) const EVENT_TYPE: &str = "tipo_evento";
+pub(crate) const AGGREGATE_TYPE: &str = "tipo_agregado";
+pub(crate) const AGGREGATE_ID: &str = "id_agregado";
+pub(crate) const SCHEMA_VERSION: &str = "version_esquema";
+pub(crate) const OCCURRED_AT: &str = "ocurrido_en";
 
 /// A record's headers as read: a header may have no value.
 pub(crate) type RawHeaders = Vec<(String, Option<Vec<u8>>)>;

@@ -13,23 +13,23 @@
 //!   records behind it wait (a partition stalls), they are never handled ahead of it.
 //!
 //! ```ignore
-//! let kafka = KafkaConfig::from_env("shop")?;
+//! let kafka = ConfigKafka::from_env("shop")?;
 //! kafka.ensure_topics(&["product"]).await?;
 //! Loops::new(&config)
-//!     .relay(PgOutbox::new(pool.clone()), KafkaPublisher::new(&kafka)?)
+//!     .relay(PgOutbox::new(pool.clone()), PublicadorKafka::new(&kafka)?)
 //!     .consumer(
-//!         KafkaSubscription::new(&kafka, "notify_new_product", &["product"], &[PRODUCT_CREATED], dead_letters.clone())?,
+//!         SuscripcionKafka::new(&kafka, "notify_new_product", &["product"], &[PRODUCT_CREATED], dead_letters.clone())?,
 //!         NotifyNewProduct,
 //!         dead_letters,
 //!     )
 //! ```
 
 pub mod config;
-pub mod publisher;
-pub mod subscription;
+pub mod publicador;
+pub mod suscripcion;
 mod wire;
 
-pub use config::KafkaConfig;
-pub use publisher::KafkaPublisher;
+pub use config::ConfigKafka;
+pub use publicador::PublicadorKafka;
 pub use rdkafka::error::KafkaError;
-pub use subscription::KafkaSubscription;
+pub use suscripcion::SuscripcionKafka;

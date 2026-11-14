@@ -9,7 +9,7 @@ use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 
-use crate::KafkaConfig;
+use crate::ConfigKafka;
 use crate::wire;
 
 /// How long a publish waits for the broker to confirm the record before it counts as failed;
@@ -21,13 +21,13 @@ const QUEUE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Publishes each event to its aggregate's topic, keyed by the aggregate id, and answers `Ok`
 /// only once every in-sync replica has it (`acks=all`). The producer is idempotent: a retry of
 /// librdkafka's own never writes a record twice nor out of order.
-pub struct KafkaPublisher {
-    config: KafkaConfig,
+pub struct PublicadorKafka {
+    config: ConfigKafka,
     producer: FutureProducer,
 }
 
-impl KafkaPublisher {
-    pub fn new(config: &KafkaConfig) -> Result<Self, KafkaError> {
+impl PublicadorKafka {
+    pub fn new(config: &ConfigKafka) -> Result<Self, KafkaError> {
         let producer = config
             .client()
             .set("acks", "all")
@@ -42,7 +42,7 @@ impl KafkaPublisher {
 }
 
 #[async_trait]
-impl PublicadorEventos for KafkaPublisher {
+impl PublicadorEventos for PublicadorKafka {
     async fn publicar(&self, event: &SobreEvento) -> Result<(), ErrorTransporte> {
         let topic = self.config.topic(&event.tipo_agregado);
         let key = event.id_agregado.to_string();

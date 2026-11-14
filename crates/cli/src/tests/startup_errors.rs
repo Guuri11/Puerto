@@ -71,14 +71,14 @@ fn worker_reports_what_it_cannot_reach_instead_of_panicking() {
 
         let main = read(&output, "worker/src/main.rs");
         assert!(
-            main.contains(".try_run(generated::registry::build_worker)"),
+            main.contains(".intentar_ejecutar(generated::registry::build_worker)"),
             "{transport}"
         );
         let registry = read(&output, "worker/src/generated/registry.rs");
         let code = non_test_code(&registry);
         assert!(
             code.contains(
-                "pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {"
+                "pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {"
             ),
             "{transport}: {code}"
         );

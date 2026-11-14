@@ -304,7 +304,7 @@ resolver = "3"
 puerto-nucleo = "0.20"
 puerto-web = "0.20"
 puerto-sqlx = "0.20"
-puerto-events = "0.20"
+puerto-eventos = "0.20"
 puerto-kafka = "0.20"
 puerto-mail = "0.20"
 
@@ -5652,7 +5652,7 @@ business logic lives here — a consumer decodes the event and calls a use case.
 
 ```
 worker/src/
-├── main.rs                  # `WorkerConfig::from_env()` + `Worker::new(config).try_run(…)` (never changes)
+├── main.rs                  # `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(…)` (never changes)
 ├── generated.rs             # `pub mod registry;`
 ├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
 ├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
@@ -5686,7 +5686,7 @@ worker/src/
 
 ## Health and shutdown
 
-Served by the Puerto runtime, `puerto-events`, on `WORKER_PORT` (8081).
+Served by the Puerto runtime, `puerto-eventos`, on `WORKER_PORT` (8081).
 
 - `GET /health` — liveness: the process answers.
 - `GET /health/ready` — readiness: `503` until the relay and every consumer have finished a pass
@@ -5711,7 +5711,7 @@ business = { path = "../business" }
 infrastructure = { path = "../infrastructure" }
 puerto-nucleo = { workspace = true }
 # The relay, the consume loops, health probes and graceful shutdown (`main.rs`, `generated/registry.rs`).
-puerto-events = { workspace = true }
+puerto-eventos = { workspace = true }
 # Mail (ADR-0020): the SMTP client and `send_once`, for the mails sent on events.
 puerto-mail = { workspace = true }
 # The Kafka transport: the publisher and the subscriptions `generated/registry.rs` wires.
@@ -6238,8 +6238,8 @@ use infrastructure::db::correo::CorreosEnviadosPostgres;
 use infrastructure::db::eventos::{DescartadosPostgres, OutboxPostgres};
 use infrastructure::mail::price_alert::TemplatePriceAlertMailer;
 use infrastructure::mail::product_live::TemplateProductLiveMailer;
-use puerto_events::{Loops, WorkerConfig};
-use puerto_kafka::{KafkaConfig, KafkaPublisher, KafkaSubscription};
+use puerto_eventos::{Bucles, ConfigWorker};
+use puerto_kafka::{ConfigKafka, PublicadorKafka, SuscripcionKafka};
 use puerto_mail::{MailConfig, SmtpMailer};
 
 use crate::consumers::mail_price_alert::SendPriceAlertMail;
@@ -6249,7 +6249,7 @@ use crate::consumers::notify_new_product::NotifyNewProduct;
 /// The relay and one consumer per `[[consumer]]`, on the `kafka` transport: the relay publishes
 /// each event to its aggregate's topic, `<KAFKA_TOPIC_PREFIX>.<aggregate>`, and each consumer is a
 /// consumer group on the topics of its events. Dead letters stay in Postgres.
-pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
+pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {
         "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string()
     })?;
@@ -6259,11 +6259,11 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
     infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)
         .await
         .map_err(|e| e.to_string())?;
-    let kafka = KafkaConfig::from_env("snapshot").map_err(|e| e.to_string())?;
+    let kafka = ConfigKafka::from_env("snapshot").map_err(|e| e.to_string())?;
     kafka.ensure_topics(&["product"]).await.map_err(|e| {
         format!("cannot create the Kafka topics: {e} — is the broker up? `make docker-compose/up`")
     })?;
-    let publisher = KafkaPublisher::new(&kafka)
+    let publisher = PublicadorKafka::new(&kafka)
         .map_err(|e| format!("cannot create the Kafka producer: {e}"))?;
     // The mails sent on events (ADR-0020): one SMTP client and one sent log for all of them.
     let mailer = Arc::new(
@@ -6273,10 +6273,10 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
     let sent_mails = Arc::new(CorreosEnviadosPostgres::new(pool.clone()));
     let dead_letters = Arc::new(DescartadosPostgres::new(pool.clone()));
 
-    Ok(Loops::new(&config)
+    Ok(Bucles::new(&config)
         .relay(OutboxPostgres::new(pool), publisher)
-        .consumer(
-            KafkaSubscription::new(
+        .consumidor(
+            SuscripcionKafka::new(
                 &kafka,
                 "notify_new_product",
                 &["product"],
@@ -6287,8 +6287,8 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
             NotifyNewProduct,
             dead_letters.clone(),
         )
-        .consumer(
-            KafkaSubscription::new(
+        .consumidor(
+            SuscripcionKafka::new(
                 &kafka,
                 "mail_product_live",
                 &["product"],
@@ -6302,8 +6302,8 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
             },
             dead_letters.clone(),
         )
-        .consumer(
-            KafkaSubscription::new(
+        .consumidor(
+            SuscripcionKafka::new(
                 &kafka,
                 "mail_price_alert",
                 &["product"],
@@ -6325,12 +6325,12 @@ mod generated;
 
 /// The second process of this project (ADR-0018 of Puerto): it relays the outbox the API writes
 /// and runs the consumers. The loops, health probes and graceful shutdown come from the Puerto
-/// runtime, `puerto-events`; the wiring is in `generated/registry.rs`, the consumers in
+/// runtime, `puerto-eventos`; the wiring is in `generated/registry.rs`, the consumers in
 /// `consumers/`.
 #[tokio::main]
-async fn main() -> Result<(), puerto_events::Error> {
-    let config = puerto_events::WorkerConfig::from_env()?;
-    puerto_events::Worker::new(config)
-        .try_run(generated::registry::build_worker)
+async fn main() -> Result<(), puerto_eventos::Error> {
+    let config = puerto_eventos::ConfigWorker::from_env()?;
+    puerto_eventos::Worker::new(config)
+        .intentar_ejecutar(generated::registry::build_worker)
         .await
 }

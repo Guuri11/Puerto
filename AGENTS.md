@@ -38,13 +38,13 @@ crates/
                       (256 bits, the row keeps its SHA-256), `session_ttl_from_env` and
                       `migrations/{users,auth}.sql` (byte for byte with `templates/auth/users.sql`
                       and `templates/auth/local/auth.sql`)
-  events/           — `puerto-events`, the worker runtime (`--events` projects, ADR-0018): `Relay`
+  eventos/          — `puerto-eventos`, the worker runtime (`--events` projects, ADR-0018): `Relay`
                       (outbox → `EventPublisher`), `Consumer` (subscription → `EventHandler`, `decide`,
-                      dead letter before retiring), `Worker` + `Loops` (health on `WORKER_PORT`,
-                      SIGTERM drain), `WorkerConfig::from_env`
-  kafka/            — `puerto-kafka`, the Kafka transport (`--events kafka`, ADR-0018): `KafkaConfig`
-                      (`KAFKA_BROKERS`, `KAFKA_TOPIC_PREFIX`, `ensure_topics`), `KafkaPublisher`,
-                      `KafkaSubscription` (one record per batch, in-process retry, commit after
+                      dead letter before retiring), `Worker` + `Bucles` (health on `WORKER_PORT`,
+                      SIGTERM drain), `ConfigWorker::from_env`
+  kafka/            — `puerto-kafka`, the Kafka transport (`--events kafka`, ADR-0018): `ConfigKafka`
+                      (`KAFKA_BROKERS`, `KAFKA_TOPIC_PREFIX`, `ensure_topics`), `PublicadorKafka`,
+                      `SuscripcionKafka` (one record per batch, in-process retry, commit after
                       the outcome). `make test/kafka` runs it against Redpanda. Building it needs
                       `cmake` and the libcurl headers (librdkafka 2.12 includes `curl/curl.h`
                       even without curl support)
@@ -313,11 +313,11 @@ make format/fix    # cargo fmt --all
   `unit_of_work.rs`, a read-only repository port, writes through `Pg{Entity}UnitOfWorkFactory`,
   and a root `AGENTS.md` section saying `events.rs` is never hand-edited
 - `--events` also writes the `worker/` member (ADR-0018 § 5): `main.rs` is
-  `WorkerConfig::from_env()` + `Worker::new(config).try_run(build_worker)` (`puerto-events`),
+  `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(build_worker)` (`puerto-eventos`),
   `generated/registry.rs` (AUTO-GENERATED from `[[consumer]]`), `consumers/<name>.rs` (the
   user's), `make worker`, `make events/dead-letters`, `WORKER_PORT`. On `db` the registry relays
   `PgOutbox` → `PgDeliveries`, one `PgSubscription` per consumer. On `kafka` it relays to
-  `KafkaPublisher` (topics created at startup), one `KafkaSubscription` per consumer
+  `PublicadorKafka` (topics created at startup), one `SuscripcionKafka` per consumer
   (`puerto-kafka`); the outbox migration has no `event_deliveries`, `docker-compose.yml` gains
   Redpanda and `.env` `KAFKA_BROKERS`
 - `--auth oidc` (ADR-0021): `[project] auth`, written once: the `User` entity
