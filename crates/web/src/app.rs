@@ -9,12 +9,12 @@ use poem::{
 };
 use poem_openapi::{OpenApi, OpenApiService};
 
-use crate::{Config, Error, health, health::ReadinessProbe};
+use crate::{Config, Error, health, health::SondaDisponibilidad};
 
 /// How long in-flight requests get to finish once a shutdown signal arrives. Keep it below the
 /// orchestrator's kill timeout (`docker stop` waits 10s by default) so requests drain instead of
 /// being cut.
-pub const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(8);
+pub const PLAZO_APAGADO: Duration = Duration::from_secs(8);
 
 const BANNER: &str = r#"
     ***********   ++++++++++++   =============
@@ -60,22 +60,22 @@ impl App {
 
     /// Sets up tracing (`RUST_LOG`), prints the banner, builds the routes with `build` and serves
     /// them on `SERVICE_PORT` until Ctrl-C or SIGTERM, then drains in-flight requests for
-    /// [`SHUTDOWN_DEADLINE`]. For a `build` that cannot fail; see [`App::try_serve`].
-    pub async fn serve<F, Fut, E>(self, build: F) -> Result<(), Error>
+    /// [`PLAZO_APAGADO`]. For a `build` that cannot fail; see [`App::intentar_servir`].
+    pub async fn servir<F, Fut, E>(self, build: F) -> Result<(), Error>
     where
         F: FnOnce(Config) -> Fut,
         Fut: Future<Output = E>,
         E: IntoEndpoint + 'static,
         E::Endpoint: 'static,
     {
-        self.try_serve(|config| async move { Ok::<_, Infallible>(build(config).await) })
+        self.intentar_servir(|config| async move { Ok::<_, Infallible>(build(config).await) })
             .await
     }
 
-    /// [`App::serve`] with a `build` that can fail — the project's
+    /// [`App::servir`] with a `build` that can fail — the project's
     /// `generated::bootstrap::build_app`, which connects to the database. Its error is logged and
-    /// returned as [`Error::Startup`]: `main` prints it and exits 1, nothing is bound.
-    pub async fn try_serve<F, Fut, E, X>(self, build: F) -> Result<(), Error>
+    /// returned as [`Error::Arranque`]: `main` prints it and exits 1, nothing is bound.
+    pub async fn intentar_servir<F, Fut, E, X>(self, build: F) -> Result<(), Error>
     where
         F: FnOnce(Config) -> Fut,
         Fut: Future<Output = Result<E, X>>,
@@ -83,29 +83,29 @@ impl App {
         E: IntoEndpoint + 'static,
         E::Endpoint: 'static,
     {
-        init_tracing();
+        iniciar_tracing();
 
         if self.config.banner() {
             println!("{BANNER}");
             println!("    puerto v{}\n", env!("CARGO_PKG_VERSION"));
         }
 
-        let port = self.config.port();
+        let puerto = self.config.puerto();
         let built = build(self.config.clone()).await.map_err(|e| {
-            let message = e.to_string();
-            tracing::error!(error = %message, "startup failed");
-            Error::Startup(message)
+            let mensaje = e.to_string();
+            tracing::error!(error = %mensaje, "startup failed");
+            Error::Arranque(mensaje)
         })?;
         let endpoint = wrap(&self.config, built);
-        Server::new(TcpListener::bind(format!("0.0.0.0:{port}")))
-            .run_with_graceful_shutdown(endpoint, shutdown_signal(), Some(SHUTDOWN_DEADLINE))
+        Server::new(TcpListener::bind(format!("0.0.0.0:{puerto}")))
+            .run_with_graceful_shutdown(endpoint, senal_apagado(), Some(PLAZO_APAGADO))
             .await?;
         Ok(())
     }
 }
 
 /// Logs to stdout, filtered by `RUST_LOG`. A subscriber the project installed itself wins.
-pub fn init_tracing() {
+pub fn iniciar_tracing() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
@@ -122,22 +122,22 @@ where
 /// The routes every project serves: its API under `/api`, the Swagger UI at `/`, and the health
 /// probes at `/health` and `/health/ready`. `api` is built by the project, which knows its own name
 /// and version.
-pub fn routes<T: OpenApi + 'static>(
+pub fn rutas<T: OpenApi + 'static>(
     api: OpenApiService<T, ()>,
     config: &Config,
-    ready: ReadinessProbe,
+    ready: SondaDisponibilidad,
 ) -> Route {
-    let api = api.server(format!("http://localhost:{}/api", config.port()));
+    let api = api.server(format!("http://localhost:{}/api", config.puerto()));
     let ui = api.swagger_ui();
-    health::mount(Route::new(), ready)
+    health::montar(Route::new(), ready)
         .nest("/api", api)
         .nest("/", ui)
 }
 
 /// Resolves on Ctrl-C or SIGTERM — what `docker stop` and Kubernetes send. The listener then stops
-/// accepting and in-flight requests get `SHUTDOWN_DEADLINE` to finish. The worker
+/// accepting and in-flight requests get `PLAZO_APAGADO` to finish. The worker
 /// (`puerto-events`) drains its loops on the same signal.
-pub async fn shutdown_signal() {
+pub async fn senal_apagado() {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -166,7 +166,7 @@ mod tests {
     use poem::{handler, http::StatusCode, test::TestClient};
 
     use super::*;
-    use crate::health::{always_ready, probe};
+    use crate::health::{siempre_disponible, sondear};
 
     #[handler]
     fn hello() -> &'static str {
@@ -174,7 +174,7 @@ mod tests {
     }
 
     fn allowing(origin: &str) -> Config {
-        Config::default().with_cors_allowed_origins(vec![origin.to_string()])
+        Config::default().con_origenes_cors_permitidos(vec![origin.to_string()])
     }
 
     #[tokio::test]
@@ -184,12 +184,12 @@ mod tests {
 
         // Act
         let result = app
-            .try_serve(|_| async { Err::<Route, _>("the database is down") })
+            .intentar_servir(|_| async { Err::<Route, _>("the database is down") })
             .await;
 
         // Assert: `main` prints the error with `Debug` and exits 1.
         let error = result.unwrap_err();
-        assert!(matches!(error, Error::Startup(_)), "{error:?}");
+        assert!(matches!(error, Error::Arranque(_)), "{error:?}");
         assert_eq!(format!("{error:?}"), "the database is down");
     }
 
@@ -238,12 +238,12 @@ mod tests {
     #[tokio::test]
     async fn should_serve_the_health_probes_next_to_the_api() {
         // Arrange
-        let routes = routes(
+        let rutas = rutas(
             OpenApiService::new((), "app", "1.0"),
             &Config::default(),
-            probe(|| async { false }),
+            sondear(|| async { false }),
         );
-        let client = TestClient::new(routes);
+        let client = TestClient::new(rutas);
 
         // Act
         let live = client.get("/health").send().await;
@@ -257,10 +257,10 @@ mod tests {
     #[tokio::test]
     async fn should_serve_the_swagger_ui_at_the_root() {
         // Arrange
-        let client = TestClient::new(routes(
+        let client = TestClient::new(rutas(
             OpenApiService::new((), "app", "1.0"),
             &Config::default(),
-            always_ready(),
+            siempre_disponible(),
         ));
 
         // Act

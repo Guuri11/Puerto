@@ -1,19 +1,19 @@
 use business::domain::greeting::errors::GreetingError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
-use puerto_web::ErrorResponse;
+use puerto_web::RespuestaError;
 
 use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for GreetingError {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.
-    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+    fn into_error_response(self) -> (StatusCode, Json<RespuestaError>) {
         let status = match &self {
             GreetingError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             GreetingError::NotFound => StatusCode::NOT_FOUND,
             GreetingError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (status, Json(ErrorResponse::from_code(self.to_string())))
+        (status, Json(RespuestaError::from_codigo(self.to_string())))
     }
 }
 
@@ -29,7 +29,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(body.name, "greeting.validation_error.name_empty");
+        assert_eq!(body.codigo, "greeting.validation_error.name_empty");
     }
 
     #[test]
@@ -39,7 +39,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body.name, "greeting.not_found");
+        assert_eq!(body.codigo, "greeting.not_found");
     }
 
     #[test]
@@ -49,6 +49,6 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(body.name, "greeting.repository_error");
+        assert_eq!(body.codigo, "greeting.repository_error");
     }
 }

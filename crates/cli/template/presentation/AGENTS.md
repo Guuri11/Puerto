@@ -7,13 +7,13 @@ no business logic lives here.
 
 ```
 presentation/src/
-├── main.rs                  # `puerto_web::Config::from_env()` + `App::new(config).try_serve(…)` (never changes)
+├── main.rs                  # `puerto_web::Config::from_env()` + `App::new(config).intentar_servir(…)` (never changes)
 ├── app.rs                   # Yours: `configure(routes)` — extra middleware and routes; no generator touches it
 ├── generated.rs             # `pub mod bootstrap;`
 ├── generated/bootstrap.rs   # AUTO-GENERATED DI wiring + routes — never hand-edit
 ├── api.rs                   # `pub mod error; pub mod tags; pub mod <entity>;` — no `mod.rs`
 └── api/
-    ├── error.rs             # The IntoErrorResponse trait (the body, ErrorResponse, is puerto-web's)
+    ├── error.rs             # The IntoErrorResponse trait (the body, RespuestaError, is puerto-web's)
     ├── <entity>.rs          # `pub mod dto; pub mod error_mapper; pub mod responses; pub mod routes;`
     └── <entity>/
         ├── routes.rs        # #[OpenApi] impl with endpoints
@@ -27,12 +27,12 @@ presentation/src/
 - **API First**: update `routes.rs` + `dto.rs` **before** the implementation.
 - **DTOs never expose domain models** — always map via `EntityDto::from_domain(&entity)`. The JSON
   contract is camelCase (`published_at` → `publishedAt`).
-- **Error contract**: every error body is `ErrorResponse { name, message }` built with
-  `ErrorResponse::from_code(…)`. `name` is the machine-readable code (`product.not_found`) clients
+- **Error contract**: every error body is `RespuestaError { codigo, mensaje }` built with
+  `RespuestaError::from_codigo(…)`. `codigo` is the machine-readable code (`product.not_found`) clients
   branch on. Domain validation (including invalid value objects) → `422`; not found → `404`;
   duplicate → `409`; repository / unknown → `500`. Poem itself answers `400` for a malformed body.
 - **Error mappers are exhaustive** (no `_` arm) and every arm has a test, so a status cannot drift.
-- **Every `ApiResponse` enum** has a `from_status(StatusCode, Json<ErrorResponse>) -> Self` helper.
+- **Every `ApiResponse` enum** has a `from_status(StatusCode, Json<RespuestaError>) -> Self` helper.
 - **DI wiring lives in `generated/bootstrap.rs`**, rewritten from `puerto.toml` by
   `puerto generate bootstrap` — never wire by hand.
 - **`<Entity>Api` holds ports** — `Arc<dyn CreateProductUseCaseTrait>`, never the `…UseCaseImpl`.
@@ -47,7 +47,7 @@ Served by the Puerto runtime, `puerto-web`; `bootstrap.rs` hands it the readines
 - `GET /health/ready` — readiness: `503` until every dependency answers (the database, in a
   `--db` project). Point orchestrator readiness checks here, liveness checks at `/health`.
 - On SIGTERM / Ctrl-C the server stops accepting and drains in-flight requests for up to
-  `puerto_web::app::SHUTDOWN_DEADLINE` (8s).
+  `puerto_web::app::PLAZO_APAGADO` (8s).
 
 ## Configuration
 

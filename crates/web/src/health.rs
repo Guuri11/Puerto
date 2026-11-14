@@ -10,10 +10,11 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use poem::{Route, get, handler, http::StatusCode};
 
 /// Asks the dependencies whether the application can serve traffic: `true` when every one answered.
-pub type ReadinessProbe = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
+pub type SondaDisponibilidad =
+    Arc<dyn Fn() -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
 
-/// A probe from an async check — `probe(move || { let pool = pool.clone(); async move { ping(&pool).await } })`.
-pub fn probe<F, Fut>(check: F) -> ReadinessProbe
+/// A probe from an async check — `sondear(move || { let pool = pool.clone(); async move { ping(&pool).await } })`.
+pub fn sondear<F, Fut>(check: F) -> SondaDisponibilidad
 where
     F: Fn() -> Fut + Send + Sync + 'static,
     Fut: Future<Output = bool> + Send + 'static,
@@ -22,12 +23,12 @@ where
 }
 
 /// The probe of an application with no dependency to ask.
-pub fn always_ready() -> ReadinessProbe {
-    probe(|| async { true })
+pub fn siempre_disponible() -> SondaDisponibilidad {
+    sondear(|| async { true })
 }
 
 /// Adds `GET /health` and `GET /health/ready` to `route`.
-pub fn mount(route: Route, ready: ReadinessProbe) -> Route {
+pub fn montar(route: Route, ready: SondaDisponibilidad) -> Route {
     route.at("/health", get(liveness)).at(
         "/health/ready",
         get(poem::endpoint::make(move |_| {
@@ -61,7 +62,7 @@ mod tests {
     #[tokio::test]
     async fn should_answer_200_on_liveness_when_a_dependency_is_down() {
         // Arrange
-        let client = TestClient::new(mount(Route::new(), probe(|| async { false })));
+        let client = TestClient::new(montar(Route::new(), sondear(|| async { false })));
 
         // Act
         let response = client.get("/health").send().await;
@@ -74,7 +75,7 @@ mod tests {
     #[tokio::test]
     async fn should_answer_200_on_readiness_when_dependencies_are_ready() {
         // Arrange
-        let client = TestClient::new(mount(Route::new(), always_ready()));
+        let client = TestClient::new(montar(Route::new(), siempre_disponible()));
 
         // Act
         let response = client.get("/health/ready").send().await;
@@ -87,7 +88,7 @@ mod tests {
     #[tokio::test]
     async fn should_answer_503_on_readiness_when_a_dependency_is_down() {
         // Arrange
-        let client = TestClient::new(mount(Route::new(), probe(|| async { false })));
+        let client = TestClient::new(montar(Route::new(), sondear(|| async { false })));
 
         // Act
         let response = client.get("/health/ready").send().await;
@@ -102,9 +103,9 @@ mod tests {
         // Arrange
         let up = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let flag = Arc::clone(&up);
-        let client = TestClient::new(mount(
+        let client = TestClient::new(montar(
             Route::new(),
-            probe(move || {
+            sondear(move || {
                 let flag = Arc::clone(&flag);
                 async move { flag.load(std::sync::atomic::Ordering::SeqCst) }
             }),

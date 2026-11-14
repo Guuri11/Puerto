@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn new_project_bootstrap_injects_no_logger() {
     // Logging goes through `tracing` directly; the subscriber is set up once, by
-    // `puerto_web::App::serve` (ADR-0017).
+    // `puerto_web::App::servir` (ADR-0017).
     let dir = temp_dir("logger_bootstrap");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -180,7 +180,7 @@ fn error_mapper_names_the_code_and_maps_validation_to_422() {
 
     let mapper = crate::generators::render::render("presentation/error_mapper.tera", &ctx).unwrap();
 
-    assert!(mapper.contains("ErrorResponse::from_code"), "{mapper}");
+    assert!(mapper.contains("RespuestaError::from_codigo"), "{mapper}");
     assert!(!mapper.contains("\"product_error\""), "{mapper}");
     assert!(
         mapper.contains("ProductError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY")
@@ -214,7 +214,7 @@ fn responses_offer_422_and_no_longer_map_400() {
 
 // ── T-38: health probes + graceful shutdown ───────────────────────────────
 // The probes, the server and the shutdown are `puerto-web`'s (ADR-0017) and tested there; the
-// project hands its readiness check to `puerto_web::routes` (tests/runtime_crates.rs).
+// project hands its readiness check to `puerto_web::rutas` (tests/runtime_crates.rs).
 
 #[test]
 fn readiness_pings_the_database_in_a_db_project() {

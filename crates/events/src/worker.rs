@@ -12,7 +12,7 @@ use puerto_nucleo::eventos::ManejadorEvento;
 use puerto_nucleo::eventos::transporte::{
     DestinoDescartados, Outbox, PublicadorEventos, SuscripcionEventos,
 };
-use puerto_web::app::{SHUTDOWN_DEADLINE, init_tracing, shutdown_signal};
+use puerto_web::app::{PLAZO_APAGADO, iniciar_tracing, senal_apagado};
 use puerto_web::{Error, health};
 use tokio::sync::watch;
 use tokio::time::Instant;
@@ -113,13 +113,13 @@ impl Worker {
         Fut: Future<Output = Result<Loops, X>>,
         X: Display,
     {
-        init_tracing();
+        iniciar_tracing();
         let loops = build(self.config.clone()).await.map_err(|e| {
             let message = e.to_string();
             tracing::error!(error = %message, "startup failed");
-            Error::Startup(message)
+            Error::Arranque(message)
         })?;
-        self.run_until(loops, shutdown_signal()).await
+        self.run_until(loops, senal_apagado()).await
     }
 
     async fn run_until(
@@ -146,18 +146,18 @@ impl Worker {
         let stopping = Arc::clone(&stop);
         let served = Server::new(TcpListener::bind(format!("0.0.0.0:{}", self.config.port)))
             .run_with_graceful_shutdown(
-                health::mount(Route::new(), ready),
+                health::montar(Route::new(), ready),
                 async move {
                     signal.await;
                     let _ = stopping.send(true);
                 },
-                Some(SHUTDOWN_DEADLINE),
+                Some(PLAZO_APAGADO),
             )
             .await;
 
         // Also when the server never started (the port is taken): the loops stop with it.
         let _ = stop.send(true);
-        let drained = tokio::time::timeout(SHUTDOWN_DEADLINE, async {
+        let drained = tokio::time::timeout(PLAZO_APAGADO, async {
             for task in tasks {
                 let _ = task.await;
             }
@@ -172,9 +172,9 @@ impl Worker {
 }
 
 /// Ready while every loop has finished a good pass recently (`Heartbeat::is_fresh`).
-fn readiness(heartbeats: Vec<Arc<Heartbeat>>) -> health::ReadinessProbe {
+fn readiness(heartbeats: Vec<Arc<Heartbeat>>) -> health::SondaDisponibilidad {
     let heartbeats = Arc::new(heartbeats);
-    health::probe(move || {
+    health::sondear(move || {
         let heartbeats = Arc::clone(&heartbeats);
         async move { stale(&heartbeats, Instant::now()).is_empty() }
     })
@@ -207,7 +207,7 @@ mod tests {
 
         // Assert: `main` prints the error with `Debug` and exits 1.
         let error = result.unwrap_err();
-        assert!(matches!(error, Error::Startup(_)), "{error:?}");
+        assert!(matches!(error, Error::Arranque(_)), "{error:?}");
         assert_eq!(format!("{error:?}"), "the database is down");
     }
 
@@ -314,6 +314,6 @@ mod tests {
         .await;
 
         // Assert
-        assert!(matches!(result, Ok(Err(Error::Server(_)))), "{result:?}");
+        assert!(matches!(result, Ok(Err(Error::Servidor(_)))), "{result:?}");
     }
 }

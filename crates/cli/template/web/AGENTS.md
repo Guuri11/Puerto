@@ -11,7 +11,7 @@ presentation → infrastructure → application → domain
 
 | Directory | Holds | Never |
 |---|---|---|
-| `src/domain/<entity>/` | types, the error (`code` = the API's `ErrorResponse.name`), the messages for those codes, the repository port | imports an npm package or another layer |
+| `src/domain/<entity>/` | types, the error (`code` = the API's `RespuestaError.codigo`), the messages for those codes, the repository port | imports an npm package or another layer |
 | `src/application/` | use cases — **only when there is logic** (see its README) | imports an adapter or a screen |
 | `src/infrastructure/` | adapters implementing the domain ports (HTTP) | imports a screen or a use case |
 | `src/presentation/` | pages, containers (state + calls), views (props only), shared UI | imports `infrastructure/` (only `core/generated/dependencies.ts` does) |
@@ -29,7 +29,7 @@ and needs no network.
 
 ```
 src/domain/<entity>/            model.ts · errors.ts · messages.ts · repository.ts (the port)
-src/infrastructure/<entity>/    <entity>-repository-http.ts (+ test): DTO ↔ model, ErrorResponse → error
+src/infrastructure/<entity>/    <entity>-repository-http.ts (+ test): DTO ↔ model, RespuestaError → error
 src/presentation/features/<entity>/
   containers/                   list · detail · form (create + edit): state and repository calls (+ tests)
   views/                        list · detail · form: props only

@@ -16,10 +16,10 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
     let get_greeting = Arc::new(GetGreetingUseCaseImpl { repository: Arc::new(InMemoryGreetingRepository::new()) as Arc<dyn GreetingRepositoryTrait> });
     let greeting_api = GreetingApi { get_greeting };
 
-    let ready = puerto_web::health::always_ready();
+    let ready = puerto_web::health::siempre_disponible();
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    Ok(crate::app::configure(puerto_web::routes(
+    Ok(crate::app::configure(puerto_web::rutas(
         openapi_service(greeting_api),
         &config,
         ready,

@@ -1,6 +1,6 @@
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
-use puerto_web::ErrorResponse;
+use puerto_web::RespuestaError;
 
 use crate::api::auth::dto::SessionDto;
 use crate::api::me::dto::MeDto;
@@ -10,15 +10,15 @@ pub enum RegisterResponse {
     #[oai(status = 201)]
     Created(Json<MeDto>),
     #[oai(status = 422)]
-    UnprocessableEntity(Json<ErrorResponse>),
+    UnprocessableEntity(Json<RespuestaError>),
     #[oai(status = 409)]
-    Conflict(Json<ErrorResponse>),
+    Conflict(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl RegisterResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
             StatusCode::CONFLICT => Self::Conflict(error),
@@ -32,13 +32,13 @@ pub enum LoginResponse {
     #[oai(status = 200)]
     Ok(Json<SessionDto>),
     #[oai(status = 401)]
-    Unauthorized(Json<ErrorResponse>),
+    Unauthorized(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl LoginResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
             _ => Self::InternalError(error),
@@ -51,16 +51,16 @@ pub enum LogoutResponse {
     #[oai(status = 204)]
     NoContent,
     #[oai(status = 401)]
-    Unauthorized(Json<ErrorResponse>),
+    Unauthorized(Json<RespuestaError>),
     /// The session could not be checked: the database is down (`BearerAuth`).
     #[oai(status = 503)]
-    Unavailable(Json<ErrorResponse>),
+    Unavailable(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl LogoutResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
             StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),

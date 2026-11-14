@@ -28,7 +28,7 @@ fn main_lets_a_failed_build_end_the_process_with_its_message() {
         .get_file("presentation/src/main.rs.liquid")
         .and_then(|f| f.contents_utf8())
         .unwrap();
-    assert!(main.contains(".try_serve(generated::bootstrap::build_app)"));
+    assert!(main.contains(".intentar_servir(generated::bootstrap::build_app)"));
 }
 
 #[test]

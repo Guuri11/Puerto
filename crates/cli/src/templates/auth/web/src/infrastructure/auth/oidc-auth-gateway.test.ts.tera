@@ -61,8 +61,8 @@ describe("oidcAuthGateway", () => {
   test("should fail with the API's code when it refuses the token", async () => {
     // Arrange
     const { fake } = client({ access_token: "abc", expired: false });
-    const code = "auth.unauthenticated";
-    const { fetchMe } = me(401, { name: code, message: code });
+    const code = "auth.no_autenticado";
+    const { fetchMe } = me(401, { codigo: code, mensaje: code });
 
     // Act
     const result = oidcAuthGatewayOver(fake, fetchMe).currentUser();

@@ -1,5 +1,5 @@
 /**
- * The machine-readable code of an error: `ErrorResponse.name` from the API
+ * The machine-readable code of an error: `RespuestaError.codigo` from the API
  * (`product.validation_error.name_empty`), carried by the domain errors as `code`.
  */
 export function errorCode(error: unknown): string {

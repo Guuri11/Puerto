@@ -258,14 +258,14 @@ impl Handler<'_> {
     }
 
     fn requires_role(&self, role: &str) -> bool {
-        let attribute = format!("#[require_role(\"{role}\")]");
+        let attribute = format!("#[requiere_rol(\"{role}\")]");
         self.attributes.iter().any(|line| line.trim() == attribute)
     }
 }
 
 /// Auth projects: one line per use case whose handler in `routes.rs` does not match what
 /// `puerto.toml` says of it — a `public` route that takes `BearerAuth`, a protected one that does
-/// not, a role in `roles` with no `#[require_role]`. Textual: a use case whose handler is not
+/// not, a role in `roles` with no `#[requiere_rol]`. Textual: a use case whose handler is not
 /// found (renamed, moved) is not checked.
 pub fn auth_drift(base: &Path, config: &PuertoConfig) -> Vec<String> {
     if !config.project.has_auth() {
@@ -302,7 +302,7 @@ pub fn auth_drift(base: &Path, config: &PuertoConfig) -> Vec<String> {
                 if !handler.requires_role(role) {
                     lines.push(format!(
                         "entity '{}': '{uc}' requires the role '{role}' in puerto.toml, but its \
-                         handler in {path} has no #[require_role(\"{role}\")]",
+                         handler in {path} has no #[requiere_rol(\"{role}\")]",
                         entity.name
                     ));
                 }
@@ -400,7 +400,7 @@ mod tests {
 impl ProductApi {
     /// Create a new Product
     #[oai(path = "/products", method = "post", tag = "ApiTags::Product")]
-    #[require_role("admin")]
+    #[requiere_rol("admin")]
     async fn create(
         &self,
         auth: BearerAuth,
@@ -512,7 +512,7 @@ mod tests {
             "{lines:?}"
         );
         assert!(
-            lines[2].contains("#[require_role(\"editor\")]"),
+            lines[2].contains("#[requiere_rol(\"editor\")]"),
             "{lines:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);

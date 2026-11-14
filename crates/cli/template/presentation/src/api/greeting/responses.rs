@@ -1,6 +1,6 @@
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
-use puerto_web::ErrorResponse;
+use puerto_web::RespuestaError;
 
 use crate::api::greeting::dto::GreetingDto;
 
@@ -9,17 +9,17 @@ pub enum GetGreetingResponse {
     #[oai(status = 200)]
     Ok(Json<GreetingDto>),
     #[oai(status = 422)]
-    UnprocessableEntity(Json<ErrorResponse>),
+    UnprocessableEntity(Json<RespuestaError>),
     #[oai(status = 401)]
-    Unauthorized(Json<ErrorResponse>),
+    Unauthorized(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<ErrorResponse>),
+    Forbidden(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl GetGreetingResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),

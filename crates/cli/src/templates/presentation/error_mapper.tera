@@ -1,13 +1,13 @@
 {% import "presentation/macros.tera" as macros %}use business::domain::{{ snake }}::errors::{{ pascal }}Error;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
-use puerto_web::ErrorResponse;
+use puerto_web::RespuestaError;
 
 use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for {{ pascal }}Error {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.
-    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+    fn into_error_response(self) -> (StatusCode, Json<RespuestaError>) {
         let status = match &self {
             {{ pascal }}Error::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             {{ pascal }}Error::NotFound => StatusCode::NOT_FOUND,
@@ -17,7 +17,7 @@ impl IntoErrorResponse for {{ pascal }}Error {
             {{ pascal }}Error::Forbidden => StatusCode::FORBIDDEN,{% endif %}{% for v in vos %}
             {{ pascal }}Error::Invalid{{ v.vo }} => StatusCode::UNPROCESSABLE_ENTITY,{% endfor %}
         };
-        (status, Json(ErrorResponse::from_code(self.to_string())))
+        (status, Json(RespuestaError::from_codigo(self.to_string())))
     }
 }
 

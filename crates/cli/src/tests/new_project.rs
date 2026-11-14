@@ -111,7 +111,7 @@ fn bootstrap_rs_wires_ddd_layers() {
     assert!(content.contains("InMemoryGreetingRepository"));
     assert!(content.contains("GreetingApi"));
     assert!(content.contains("OpenApiService"));
-    assert!(content.contains("puerto_web::routes("));
+    assert!(content.contains("puerto_web::rutas("));
 
     cleanup(&dir);
 }

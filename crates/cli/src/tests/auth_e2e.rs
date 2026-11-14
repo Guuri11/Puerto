@@ -12,9 +12,9 @@ use super::worker_e2e::{Project, build_scenario_project, free_port, http, http_a
 
 const PRODUCT: &str = r#"{"name":"Desk lamp","sku":"LAMP-1","price":2500,"status":"Draft"}"#;
 
-/// Whether `body` is the error `code` (`ErrorResponse { name, message }`).
+/// Whether `body` is the error `code` (`RespuestaError { codigo, mensaje }`).
 fn is_error(body: &str, code: &str) -> bool {
-    body.contains(&format!("\"name\":\"{code}\""))
+    body.contains(&format!("\"codigo\":\"{code}\""))
 }
 
 fn database_url(project: &Project) -> String {
@@ -172,7 +172,7 @@ fn keycloak_oidc_project_refuses_without_token_or_role_and_provisions_each_calle
     assert_eq!(status, 200, "a public route needs no token");
     let (status, body) = http(port, "GET", "/api/orders", "").unwrap();
     assert_eq!(status, 401, "{body}");
-    assert!(is_error(&body, "auth.unauthenticated"), "{body}");
+    assert!(is_error(&body, "auth.no_autenticado"), "{body}");
     let (status, body) = http_as(port, "GET", "/api/orders", "", Some("not.a.token")).unwrap();
     assert_eq!(status, 401, "{body}");
     assert_eq!(users(&project), 0, "nobody signed in yet");
@@ -197,7 +197,7 @@ fn keycloak_oidc_project_refuses_without_token_or_role_and_provisions_each_calle
     // protected one that asks no role.
     let (status, body) = http_as(port, "POST", "/api/products", PRODUCT, Some(&user)).unwrap();
     assert_eq!(status, 403, "{body}");
-    assert!(is_error(&body, "auth.forbidden"), "{body}");
+    assert!(is_error(&body, "auth.prohibido"), "{body}");
     let (status, _) = http_as(port, "GET", "/api/products", "", Some(&user)).unwrap();
     assert_eq!(status, 200);
     let (status, body) = http_as(port, "GET", "/api/orders", "", Some(&user)).unwrap();
@@ -249,7 +249,7 @@ fn postgres_local_auth_project_registers_signs_in_and_revokes_on_logout() {
     assert_eq!(status, 200);
     let (status, body) = http(port, "GET", "/api/orders", "").unwrap();
     assert_eq!(status, 401, "{body}");
-    assert!(is_error(&body, "auth.unauthenticated"), "{body}");
+    assert!(is_error(&body, "auth.no_autenticado"), "{body}");
 
     // Register, then sign in.
     let account = r#"{"email":"Ada@Example.com","password":"correct horse battery","name":"Ada"}"#;
@@ -274,7 +274,7 @@ fn postgres_local_auth_project_registers_signs_in_and_revokes_on_logout() {
     assert_eq!(status, 200, "{body}");
     let (status, body) = http_as(port, "POST", "/api/products", PRODUCT, Some(&token)).unwrap();
     assert_eq!(status, 403, "{body}");
-    assert!(is_error(&body, "auth.forbidden"), "{body}");
+    assert!(is_error(&body, "auth.prohibido"), "{body}");
     assert_eq!(users(&project), 1);
 
     // Logout revokes the token it was called with.
@@ -282,7 +282,7 @@ fn postgres_local_auth_project_registers_signs_in_and_revokes_on_logout() {
     assert_eq!(status, 204, "{body}");
     let (status, body) = http_as(port, "GET", "/api/me", "", Some(&token)).unwrap();
     assert_eq!(status, 401, "a revoked session: {body}");
-    assert!(is_error(&body, "auth.unauthenticated"), "{body}");
+    assert!(is_error(&body, "auth.no_autenticado"), "{body}");
 
     drop(api);
     cleanup(&project.dir);

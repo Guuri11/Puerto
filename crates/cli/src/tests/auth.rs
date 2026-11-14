@@ -346,7 +346,7 @@ fn scaffold_in_an_auth_project_protects_every_route_but_the_public_ones() {
     let routes = read(&output, "presentation/src/api/product/routes.rs");
     assert_eq!(routes.matches("auth: BearerAuth").count(), 4, "{routes}");
     assert_eq!(routes.matches("actor: auth.0").count(), 4, "{routes}");
-    assert_eq!(routes.matches("#[require_role(\"admin\")]").count(), 1);
+    assert_eq!(routes.matches("#[requiere_rol(\"admin\")]").count(), 1);
     let config = puerto_toml::read(&output).unwrap();
     let product = config.entity.iter().find(|e| e.name == "Product").unwrap();
     assert_eq!(product.public, vec!["list_products"]);
@@ -389,7 +389,7 @@ fn rescaffold_without_flags_keeps_what_the_manifest_says() {
     assert_eq!(product.public, vec!["list_products"]);
     assert!(
         read(&output, "presentation/src/api/product/routes.rs")
-            .contains("#[require_role(\"admin\")]")
+            .contains("#[requiere_rol(\"admin\")]")
     );
     cleanup(&dir);
 }
@@ -665,7 +665,7 @@ fn scaffold_in_an_auth_web_project_hides_the_actions_a_role_guards() {
         "{detail_test}"
     );
     assert!(
-        detail_test.contains("should show auth.forbidden when the API refuses the deletion"),
+        detail_test.contains("should show auth.prohibido when the API refuses the deletion"),
         "{detail_test}"
     );
     let list_test = read(
@@ -695,7 +695,7 @@ fn scaffold_in_an_auth_web_project_without_roles_checks_none() {
         &output,
         &format!("{containers}/product-detail-container.test.tsx"),
     );
-    assert!(detail_test.contains("auth.forbidden"), "{detail_test}");
+    assert!(detail_test.contains("auth.prohibido"), "{detail_test}");
     cleanup(&dir);
 }
 
@@ -905,7 +905,7 @@ fn scaffold_in_a_local_auth_project_protects_routes_as_in_an_oidc_one() {
 
     let routes = read(&output, "presentation/src/api/product/routes.rs");
     assert_eq!(routes.matches("auth: BearerAuth").count(), 4, "{routes}");
-    assert_eq!(routes.matches("#[require_role(\"admin\")]").count(), 1);
+    assert_eq!(routes.matches("#[requiere_rol(\"admin\")]").count(), 1);
     assert!(validate::run_validate(&output).is_ok());
     cleanup(&dir);
 }

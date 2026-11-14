@@ -625,7 +625,7 @@ pub fn validate_auth_entity_name(pascal: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// `[a-z][a-z0-9_:-]*` — what `#[require_role]` accepts (`admin`, `billing:read`, `team-lead`).
+/// `[a-z][a-z0-9_:-]*` — what `#[requiere_rol]` accepts (`admin`, `billing:read`, `team-lead`).
 pub fn validate_role_name(role: &str) -> Result<(), String> {
     let mut chars = role.chars();
     let valid = chars.next().is_some_and(|c| c.is_ascii_lowercase())

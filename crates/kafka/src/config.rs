@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use puerto_web::ConfigError;
+use puerto_web::ErrorConfig;
 use rdkafka::ClientConfig;
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::client::DefaultClientContext;
@@ -31,8 +31,8 @@ pub struct KafkaConfig {
 impl KafkaConfig {
     /// Loads `.env` when there is one, then reads the process environment. `default_prefix` is
     /// the project name, which the generated registry passes.
-    pub fn from_env(default_prefix: &str) -> Result<Self, ConfigError> {
-        puerto_web::config::load_dotenv();
+    pub fn from_env(default_prefix: &str) -> Result<Self, ErrorConfig> {
+        puerto_web::config::cargar_dotenv();
         Self::from_vars(default_prefix, |key| std::env::var(key).ok())
     }
 
@@ -40,7 +40,7 @@ impl KafkaConfig {
     pub fn from_vars(
         default_prefix: &str,
         var: impl Fn(&str) -> Option<String>,
-    ) -> Result<Self, ConfigError> {
+    ) -> Result<Self, ErrorConfig> {
         let var = |key: &str| var(key).filter(|value| !value.trim().is_empty());
         let brokers = var("KAFKA_BROKERS").map_or_else(
             || DEFAULT_BROKERS.to_string(),
@@ -51,10 +51,10 @@ impl KafkaConfig {
             None => default_prefix.to_string(),
         };
         if !is_topic_name(&topic_prefix) {
-            return Err(ConfigError::Invalid {
-                key: "KAFKA_TOPIC_PREFIX",
-                value: topic_prefix,
-                expected: "letters, digits, '.', '_' or '-'",
+            return Err(ErrorConfig::Invalido {
+                clave: "KAFKA_TOPIC_PREFIX",
+                valor: topic_prefix,
+                esperado: "letters, digits, '.', '_' or '-'",
             });
         }
         Ok(Self {
@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn config(vars: &[(&str, &str)]) -> Result<KafkaConfig, ConfigError> {
+    fn config(vars: &[(&str, &str)]) -> Result<KafkaConfig, ErrorConfig> {
         let vars: HashMap<String, String> = vars
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))

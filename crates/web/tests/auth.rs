@@ -1,4 +1,4 @@
-//! `BearerAuth` and `#[require_role]` as a generated project uses them: inside an `#[OpenApi] impl`,
+//! `BearerAuth` and `#[requiere_rol]` as a generated project uses them: inside an `#[OpenApi] impl`,
 //! with the `Authenticator` registered on the routes by `.data(…)`, as `bootstrap.rs` does.
 
 use std::sync::Arc;
@@ -7,7 +7,7 @@ use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
 use poem_openapi::{ApiResponse, OpenApi, OpenApiService, payload::Json};
 use puerto_nucleo::auth::dobles::MockAutenticador;
 use puerto_nucleo::{Autenticador, ErrorAuth, Principal};
-use puerto_web::{ErrorResponse, auth::BearerAuth, require_role};
+use puerto_web::{RespuestaError, auth::BearerAuth, requiere_rol};
 use uuid::Uuid;
 
 #[derive(ApiResponse)]
@@ -15,11 +15,11 @@ enum WhoResponse {
     #[oai(status = 200)]
     Ok(Json<String>),
     #[oai(status = 403)]
-    Forbidden(Json<ErrorResponse>),
+    Forbidden(Json<RespuestaError>),
 }
 
 impl WhoResponse {
-    fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::FORBIDDEN => Self::Forbidden(error),
             _ => unreachable!("only 403 in these tests"),
@@ -37,12 +37,12 @@ impl Api {
     }
 
     #[oai(path = "/admin", method = "get")]
-    #[require_role("admin")]
+    #[requiere_rol("admin")]
     async fn admin(&self, auth: BearerAuth) -> WhoResponse {
         WhoResponse::Ok(Json(auth.0.sujeto))
     }
 
-    #[require_role("admin")]
+    #[requiere_rol("admin")]
     #[oai(path = "/admin-first", method = "get")]
     async fn admin_first(&self, auth: BearerAuth) -> WhoResponse {
         WhoResponse::Ok(Json(auth.0.sujeto))
@@ -79,8 +79,8 @@ fn client() -> TestClient<impl poem::Endpoint> {
 async fn assert_error(response: poem::test::TestResponse, status: StatusCode, code: &str) {
     response.assert_status(status);
     let body = response.json().await;
-    body.value().object().get("name").assert_string(code);
-    body.value().object().get("message").assert_string(code);
+    body.value().object().get("codigo").assert_string(code);
+    body.value().object().get("mensaje").assert_string(code);
 }
 
 #[tokio::test]
@@ -103,7 +103,7 @@ async fn should_answer_401_unauthenticated_when_there_is_no_token() {
     let response = client().get("/who").send().await;
 
     // Assert
-    assert_error(response, StatusCode::UNAUTHORIZED, "auth.unauthenticated").await;
+    assert_error(response, StatusCode::UNAUTHORIZED, "auth.no_autenticado").await;
 }
 
 #[tokio::test]
@@ -116,7 +116,7 @@ async fn should_answer_401_unauthenticated_when_the_header_is_not_bearer() {
         .await;
 
     // Assert
-    assert_error(response, StatusCode::UNAUTHORIZED, "auth.unauthenticated").await;
+    assert_error(response, StatusCode::UNAUTHORIZED, "auth.no_autenticado").await;
 }
 
 #[tokio::test]
@@ -130,7 +130,7 @@ async fn should_answer_401_unauthenticated_when_the_authenticator_rejects_the_to
             .await;
 
         // Assert
-        assert_error(response, StatusCode::UNAUTHORIZED, "auth.unauthenticated").await;
+        assert_error(response, StatusCode::UNAUTHORIZED, "auth.no_autenticado").await;
     }
 }
 
@@ -169,10 +169,10 @@ async fn should_answer_500_not_configured_when_no_authenticator_is_registered() 
     let body = response.json().await;
     body.value()
         .object()
-        .get("name")
-        .assert_string("auth.not_configured");
-    let message = body.value().object().get("message").string().to_string();
-    assert!(message.contains("bootstrap.rs"), "{message}");
+        .get("codigo")
+        .assert_string("auth.no_configurado");
+    let mensaje = body.value().object().get("mensaje").string().to_string();
+    assert!(mensaje.contains("bootstrap.rs"), "{mensaje}");
 }
 
 #[tokio::test]
@@ -186,7 +186,7 @@ async fn should_answer_403_forbidden_when_the_caller_lacks_the_role() {
             .await;
 
         // Assert
-        assert_error(response, StatusCode::FORBIDDEN, "auth.forbidden").await;
+        assert_error(response, StatusCode::FORBIDDEN, "auth.prohibido").await;
     }
 }
 
@@ -212,7 +212,7 @@ async fn should_answer_401_before_the_role_check_when_there_is_no_token() {
     let response = client().get("/admin").send().await;
 
     // Assert
-    assert_error(response, StatusCode::UNAUTHORIZED, "auth.unauthenticated").await;
+    assert_error(response, StatusCode::UNAUTHORIZED, "auth.no_autenticado").await;
 }
 
 #[tokio::test]

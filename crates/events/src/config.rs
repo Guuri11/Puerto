@@ -14,7 +14,7 @@
 use std::time::Duration;
 
 use puerto_nucleo::eventos::entrega::ENTREGAS_MAXIMAS_POR_DEFECTO;
-use puerto_web::ConfigError;
+use puerto_web::ErrorConfig;
 
 use crate::relay::DEFAULT_RELAY_BATCH_SIZE;
 
@@ -50,13 +50,13 @@ impl Default for WorkerConfig {
 
 impl WorkerConfig {
     /// Loads `.env` when there is one, then reads the process environment.
-    pub fn from_env() -> Result<Self, ConfigError> {
-        puerto_web::config::load_dotenv();
+    pub fn from_env() -> Result<Self, ErrorConfig> {
+        puerto_web::config::cargar_dotenv();
         Self::from_vars(|key| std::env::var(key).ok())
     }
 
     /// Reads the configuration from any variable source; an empty value counts as unset.
-    pub fn from_vars(var: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
+    pub fn from_vars(var: impl Fn(&str) -> Option<String>) -> Result<Self, ErrorConfig> {
         let var = |key: &str| var(key).filter(|value| !value.trim().is_empty());
         let mut config = Self::default();
         if let Some(value) = var("WORKER_PORT") {
@@ -90,27 +90,27 @@ fn parse<T: std::str::FromStr>(
     value: String,
     key: &'static str,
     expected: &'static str,
-) -> Result<T, ConfigError> {
-    value.trim().parse().map_err(|_| ConfigError::Invalid {
-        key,
-        value,
-        expected,
+) -> Result<T, ErrorConfig> {
+    value.trim().parse().map_err(|_| ErrorConfig::Invalido {
+        clave: key,
+        valor: value,
+        esperado: expected,
     })
 }
 
-fn positive(value: String, key: &'static str) -> Result<u32, ConfigError> {
+fn positive(value: String, key: &'static str) -> Result<u32, ErrorConfig> {
     let expected = "a whole number of at least 1";
     match parse::<u32>(value.clone(), key, expected)? {
-        0 => Err(ConfigError::Invalid {
-            key,
-            value,
-            expected,
+        0 => Err(ErrorConfig::Invalido {
+            clave: key,
+            valor: value,
+            esperado: expected,
         }),
         n => Ok(n),
     }
 }
 
-fn millis(value: String, key: &'static str) -> Result<Duration, ConfigError> {
+fn millis(value: String, key: &'static str) -> Result<Duration, ErrorConfig> {
     parse(value, key, "a number of milliseconds").map(Duration::from_millis)
 }
 
@@ -179,10 +179,10 @@ mod tests {
         // Assert
         assert_eq!(
             result,
-            Err(ConfigError::Invalid {
-                key: "WORKER_PORT",
-                value: "abc".into(),
-                expected: "a port number (0-65535)",
+            Err(ErrorConfig::Invalido {
+                clave: "WORKER_PORT",
+                valor: "abc".into(),
+                esperado: "a port number (0-65535)",
             })
         );
     }
@@ -195,7 +195,7 @@ mod tests {
 
             // Assert
             assert!(
-                matches!(result, Err(ConfigError::Invalid { key: k, .. }) if k == key),
+                matches!(result, Err(ErrorConfig::Invalido { clave: k, .. }) if k == key),
                 "{key}: {result:?}"
             );
         }
@@ -209,9 +209,9 @@ mod tests {
         // Assert
         assert!(matches!(
             result,
-            Err(ConfigError::Invalid {
-                key: "RELAY_POLL_INTERVAL_MS",
-                expected: "a number of milliseconds",
+            Err(ErrorConfig::Invalido {
+                clave: "RELAY_POLL_INTERVAL_MS",
+                esperado: "a number of milliseconds",
                 ..
             })
         ));

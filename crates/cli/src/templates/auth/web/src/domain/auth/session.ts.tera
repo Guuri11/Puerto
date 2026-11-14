@@ -3,7 +3,7 @@ export interface CurrentUser {
   id: string;
   email: string | null;
   name: string | null;
-  /** What the API checks with `#[require_role]`. */
+  /** What the API checks with `#[requiere_rol]`. */
   roles: string[];
 }
 

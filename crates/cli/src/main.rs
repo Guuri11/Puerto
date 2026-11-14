@@ -90,7 +90,7 @@ enum GenerateAction {
         #[arg(long, value_delimiter = ',')]
         public: Vec<String>,
         /// Auth projects: a role a route requires, <use_case>=<role>, comma-separated
-        /// (e.g. create_product=admin,delete_product=admin) — `#[require_role]` on the handler
+        /// (e.g. create_product=admin,delete_product=admin) — `#[requiere_rol]` on the handler
         #[arg(long, value_delimiter = ',')]
         role: Vec<String>,
         /// Fields after -- separator. Primitives: title:String price:i64! desc:opt:String tags:vec:String

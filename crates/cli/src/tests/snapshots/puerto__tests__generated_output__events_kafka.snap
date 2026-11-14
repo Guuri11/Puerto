@@ -60,7 +60,7 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 | Crate | Owns | Imported as |
 |---|---|---|
 | `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
-| `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
+| `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `RespuestaError` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::RespuestaError;` |
 | `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
 `puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
@@ -214,7 +214,7 @@ event in the `outbox` table in one transaction (ADR-0018 of Puerto). The reposit
   `should_<expected_behaviour>_when_<scenario>`, with `// Arrange` / `// Act` / `// Assert`.
 - **Errors are machine-readable codes** (`product.not_found`,
   `product.validation_error.title_empty`), never sentences. The API returns them in
-  `ErrorResponse.name`; domain validation failures are `422`.
+  `RespuestaError.codigo`; domain validation failures are `422`.
 - **Logging:** `tracing::info!` / `warn!` / `error!` directly — no injected logger. A use case logs
   `<use_case>: start` and `<use_case>: done`; never log request payloads (they are user data).
 - **No `unwrap()` / `expect()`** outside tests.
@@ -3086,13 +3086,13 @@ pub struct UpdateProductRequest {
 use business::domain::product::errors::ProductError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
-use puerto_web::ErrorResponse;
+use puerto_web::RespuestaError;
 
 use crate::api::error::IntoErrorResponse;
 
 impl IntoErrorResponse for ProductError {
     /// Exhaustive on purpose: a new error variant does not compile until it has a status.
-    fn into_error_response(self) -> (StatusCode, Json<ErrorResponse>) {
+    fn into_error_response(self) -> (StatusCode, Json<RespuestaError>) {
         let status = match &self {
             ProductError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
             ProductError::NotFound => StatusCode::NOT_FOUND,
@@ -3103,7 +3103,7 @@ impl IntoErrorResponse for ProductError {
             ProductError::InvalidSku => StatusCode::UNPROCESSABLE_ENTITY,
             ProductError::InvalidStatus => StatusCode::UNPROCESSABLE_ENTITY,
         };
-        (status, Json(ErrorResponse::from_code(self.to_string())))
+        (status, Json(RespuestaError::from_codigo(self.to_string())))
     }
 }
 
@@ -3119,7 +3119,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(body.name, "product.validation_error.name_empty");
+        assert_eq!(body.codigo, "product.validation_error.name_empty");
     }
 
     #[test]
@@ -3129,7 +3129,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body.name, "product.not_found");
+        assert_eq!(body.codigo, "product.not_found");
     }
 
     #[test]
@@ -3139,7 +3139,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(body.name, "product.duplicate");
+        assert_eq!(body.codigo, "product.duplicate");
     }
 
     #[test]
@@ -3149,7 +3149,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(body.name, "product.repository_error");
+        assert_eq!(body.codigo, "product.repository_error");
     }
 
     #[test]
@@ -3159,7 +3159,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(body.name, "product.unknown");
+        assert_eq!(body.codigo, "product.unknown");
     }
 
     #[test]
@@ -3169,7 +3169,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(body.name, "product.invalid_name");
+        assert_eq!(body.codigo, "product.invalid_name");
     }
 
     #[test]
@@ -3179,7 +3179,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(body.name, "product.invalid_sku");
+        assert_eq!(body.codigo, "product.invalid_sku");
     }
 
     #[test]
@@ -3189,7 +3189,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(body.name, "product.invalid_status");
+        assert_eq!(body.codigo, "product.invalid_status");
     }
 }
 
@@ -3201,7 +3201,7 @@ mod tests {
 
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
-use puerto_web::ErrorResponse;
+use puerto_web::RespuestaError;
 
 use crate::api::product::dto::{ProductDto, ProductPageDto};
 
@@ -3210,19 +3210,19 @@ pub enum CreateProductResponse {
     #[oai(status = 201)]
     Created(Json<ProductDto>),
     #[oai(status = 422)]
-    UnprocessableEntity(Json<ErrorResponse>),
+    UnprocessableEntity(Json<RespuestaError>),
     #[oai(status = 401)]
-    Unauthorized(Json<ErrorResponse>),
+    Unauthorized(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<ErrorResponse>),
+    Forbidden(Json<RespuestaError>),
     #[oai(status = 409)]
-    Conflict(Json<ErrorResponse>),
+    Conflict(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl CreateProductResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -3238,17 +3238,17 @@ pub enum GetProductResponse {
     #[oai(status = 200)]
     Ok(Json<ProductDto>),
     #[oai(status = 401)]
-    Unauthorized(Json<ErrorResponse>),
+    Unauthorized(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<ErrorResponse>),
+    Forbidden(Json<RespuestaError>),
     #[oai(status = 404)]
-    NotFound(Json<ErrorResponse>),
+    NotFound(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl GetProductResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
             StatusCode::FORBIDDEN => Self::Forbidden(error),
@@ -3263,15 +3263,15 @@ pub enum ListProductsResponse {
     #[oai(status = 200)]
     Ok(Json<ProductPageDto>),
     #[oai(status = 401)]
-    Unauthorized(Json<ErrorResponse>),
+    Unauthorized(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<ErrorResponse>),
+    Forbidden(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl ListProductsResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
             StatusCode::FORBIDDEN => Self::Forbidden(error),
@@ -3285,21 +3285,21 @@ pub enum UpdateProductResponse {
     #[oai(status = 200)]
     Ok(Json<ProductDto>),
     #[oai(status = 422)]
-    UnprocessableEntity(Json<ErrorResponse>),
+    UnprocessableEntity(Json<RespuestaError>),
     #[oai(status = 401)]
-    Unauthorized(Json<ErrorResponse>),
+    Unauthorized(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<ErrorResponse>),
+    Forbidden(Json<RespuestaError>),
     #[oai(status = 404)]
-    NotFound(Json<ErrorResponse>),
+    NotFound(Json<RespuestaError>),
     #[oai(status = 409)]
-    Conflict(Json<ErrorResponse>),
+    Conflict(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl UpdateProductResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
@@ -3316,17 +3316,17 @@ pub enum DeleteProductResponse {
     #[oai(status = 204)]
     NoContent,
     #[oai(status = 401)]
-    Unauthorized(Json<ErrorResponse>),
+    Unauthorized(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<ErrorResponse>),
+    Forbidden(Json<RespuestaError>),
     #[oai(status = 404)]
-    NotFound(Json<ErrorResponse>),
+    NotFound(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<ErrorResponse>),
+    InternalError(Json<RespuestaError>),
 }
 
 impl DeleteProductResponse {
-    pub fn from_status(status: StatusCode, error: Json<ErrorResponse>) -> Self {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
             StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
             StatusCode::FORBIDDEN => Self::Forbidden(error),
@@ -3399,7 +3399,7 @@ impl ProductApi {
             Ok(entity) => CreateProductResponse::Created(Json(ProductDto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "create_product failed");
+                tracing::warn!(code = %error.0.codigo, "create_product failed");
                 CreateProductResponse::from_status(status, error)
             }
         }
@@ -3418,7 +3418,7 @@ impl ProductApi {
             Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "get_product failed");
+                tracing::warn!(code = %error.0.codigo, "get_product failed");
                 GetProductResponse::from_status(status, error)
             }
         }
@@ -3441,7 +3441,7 @@ impl ProductApi {
             Ok(page) => ListProductsResponse::Ok(Json(ProductPageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_products failed");
+                tracing::error!(code = %error.0.codigo, "list_products failed");
                 ListProductsResponse::from_status(status, error)
             }
         }
@@ -3471,7 +3471,7 @@ impl ProductApi {
             Ok(entity) => UpdateProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "update_product failed");
+                tracing::warn!(code = %error.0.codigo, "update_product failed");
                 UpdateProductResponse::from_status(status, error)
             }
         }
@@ -3490,7 +3490,7 @@ impl ProductApi {
             Ok(()) => DeleteProductResponse::NoContent,
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "delete_product failed");
+                tracing::warn!(code = %error.0.codigo, "delete_product failed");
                 DeleteProductResponse::from_status(status, error)
             }
         }
@@ -3858,13 +3858,13 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
         publish_product,
     };
 
-    let ready = puerto_web::health::probe(move || {
+    let ready = puerto_web::health::sondear(move || {
         let pool = pool.clone();
         async move { infrastructure::db::ping(&pool).await }
     });
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    Ok(crate::app::configure(puerto_web::routes(
+    Ok(crate::app::configure(puerto_web::rutas(
         openapi_service((greeting_api, product_api)),
         &config,
         ready,
@@ -3995,7 +3995,7 @@ events = [
 
 === web/src/domain/product/errors.ts ===
 /**
- * A request about a product that the API refused. `code` is the API's `ErrorResponse.name`:
+ * A request about a product that the API refused. `code` is the API's `RespuestaError.codigo`:
  * `product.not_found`, `product.validation_error.<field>_empty`.
  */
 export class ProductError extends Error {
@@ -4096,13 +4096,13 @@ export function createApiClient(options: ClientOptions = {}): ApiClient {
 }
 
 /**
- * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
  * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
  */
 export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "name" in error) {
-    const { name } = error;
-    if (typeof name === "string") return name;
+  if (typeof error === "object" && error !== null && "codigo" in error) {
+    const { codigo } = error;
+    if (typeof codigo === "string") return codigo;
   }
   return `http.${response.status}`;
 }
@@ -4159,7 +4159,7 @@ describe("productRepositoryHttp", () => {
   test("should reject with the API's error code when the product does not exist", async () => {
     // Arrange
     const code = "product.not_found";
-    const { repository } = answering(404, { name: code, message: code });
+    const { repository } = answering(404, { codigo: code, mensaje: code });
 
     // Act
     const result = repository.get(crypto.randomUUID());

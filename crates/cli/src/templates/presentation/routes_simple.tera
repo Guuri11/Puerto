@@ -25,7 +25,7 @@ impl {{ pascal }}Api {
             Ok(entity) => Create{{ pascal }}Response::Created(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "create_{{ snake }} failed");
+                tracing::warn!(code = %error.0.codigo, "create_{{ snake }} failed");
                 Create{{ pascal }}Response::from_status(status, error)
             }
         }

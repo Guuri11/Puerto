@@ -59,7 +59,7 @@ describe("localAuthGateway", () => {
     // Arrange
     const code = "auth.invalid_credentials";
     const storage = memoryStorage();
-    const { fetch } = api({ "/api/auth/login": [401, { name: code, message: code }] });
+    const { fetch } = api({ "/api/auth/login": [401, { codigo: code, mensaje: code }] });
 
     // Act
     const result = localAuthGateway({ storage, fetch }).signIn("ada@example.com", "wrong!");
@@ -73,7 +73,7 @@ describe("localAuthGateway", () => {
   test("should forget a session the API no longer accepts", async () => {
     // Arrange
     const storage = memoryStorage({ [TOKEN_KEY]: "expired" });
-    const { fetch } = api({ "/api/me": [401, { name: "auth.unauthenticated" }] });
+    const { fetch } = api({ "/api/me": [401, { codigo: "auth.no_autenticado" }] });
 
     // Act
     const user = await localAuthGateway({ storage, fetch }).currentUser();

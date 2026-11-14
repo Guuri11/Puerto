@@ -26,6 +26,6 @@ mod test_support;
 pub use config::WorkerConfig;
 pub use consumer::Consumer;
 pub use driver::Progress;
-pub use puerto_web::{ConfigError, Error};
+pub use puerto_web::{Error, ErrorConfig};
 pub use relay::Relay;
 pub use worker::{Loops, Worker};

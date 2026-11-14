@@ -7,6 +7,6 @@
 
         // Assert
         assert_eq!(status, StatusCode::{{ status }});
-        assert_eq!(body.name, "{{ code }}");
+        assert_eq!(body.codigo, "{{ code }}");
     }
 {% endmacro error_case %}

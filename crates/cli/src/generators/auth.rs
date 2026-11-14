@@ -74,7 +74,7 @@ impl Access {
         self.auth && !self.public.iter().any(|p| p == use_case)
     }
 
-    /// The roles its route requires (`#[require_role]`), none when public.
+    /// The roles its route requires (`#[requiere_rol]`), none when public.
     pub fn roles(&self, use_case: &str) -> Vec<String> {
         if !self.is_protected(use_case) {
             return vec![];
@@ -631,10 +631,10 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 (`make docker-compose/up`, `make auth/ui`), Auth0 or any OpenID Connect provider in production.
 
 - A handler that takes `auth: BearerAuth` is protected: no or a bad token is answered
-  `401 auth.unauthenticated` before it runs. `#[require_role("admin")]` on it adds the
-  `403 auth.forbidden` check. Both come from `puerto_web`.
+  `401 auth.no_autenticado` before it runs. `#[requiere_rol("admin")]` on it adds the
+  `403 auth.prohibido` check. Both come from `puerto_web`.
 - `puerto generate scaffold <Name>` protects every CRUD route. `--public list_products,get_product`
-  leaves routes open; `--role delete_product=admin` adds `#[require_role]` (two roles on one route:
+  leaves routes open; `--role delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
   the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
   `puerto validate` checks `routes.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
@@ -660,10 +660,10 @@ The API keeps its own accounts (ADR-0021 of Puerto): `POST /auth/register` creat
 the token as `Authorization: Bearer <token>`; the database keeps only its SHA-256.
 
 - A handler that takes `auth: BearerAuth` is protected: no, an unknown or an expired session is
-  answered `401 auth.unauthenticated` before it runs. `#[require_role("admin")]` on it adds the
-  `403 auth.forbidden` check. Both come from `puerto_web`.
+  answered `401 auth.no_autenticado` before it runs. `#[requiere_rol("admin")]` on it adds the
+  `403 auth.prohibido` check. Both come from `puerto_web`.
 - `puerto generate scaffold <Name>` protects every CRUD route. `--public list_products,get_product`
-  leaves routes open; `--role delete_product=admin` adds `#[require_role]` (two roles on one route:
+  leaves routes open; `--role delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
   the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
   `puerto validate` checks `routes.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
@@ -686,7 +686,7 @@ pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth in `web/`
 
 - `useAuth()` (`presentation/core/auth.tsx`) gives `{ user, can(role), login, logout }`; `user` is
   `GET /me`, never the token. Generated screens hide what `can` denies, but the API decides: its
-  `403` reaches the alert as `auth.forbidden`.
+  `403` reaches the alert as `auth.prohibido`.
 - `core/generated/routes.tsx` wraps every non-public screen in `<RequireAuth>`, which signs in and
   comes back. Wrap your own routes in `routes.tsx` the same way.
 - The token stays in memory and `oidc-client-ts` stays in `infrastructure/auth/`
@@ -702,7 +702,7 @@ pub const AGENTS_AUTH_LOCAL_WEB_SECTION: &str = r#"### Auth in `web/`
 
 - `useAuth()` (`presentation/core/auth.tsx`) gives `{ user, can(role), login, logout }`; `user` is
   `GET /me`. Generated screens hide what `can` denies, but the API decides: its `403` reaches the
-  alert as `auth.forbidden`.
+  alert as `auth.prohibido`.
 - `core/generated/routes.tsx` wraps every non-public screen in `<RequireAuth>`, which sends whoever
   is not signed in to `/login?next=…`, as a `401` from any call does. Wrap your own routes in
   `routes.tsx` the same way.

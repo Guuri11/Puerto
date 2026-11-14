@@ -27,7 +27,7 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 | Crate | Owns | Imported as |
 |---|---|---|
 | `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
-| `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
+| `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `RespuestaError` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::RespuestaError;` |
 | `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
 `puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
@@ -168,7 +168,7 @@ them alone.
   `should_<expected_behaviour>_when_<scenario>`, with `// Arrange` / `// Act` / `// Assert`.
 - **Errors are machine-readable codes** (`product.not_found`,
   `product.validation_error.title_empty`), never sentences. The API returns them in
-  `ErrorResponse.name`; domain validation failures are `422`.
+  `RespuestaError.codigo`; domain validation failures are `422`.
 - **Logging:** `tracing::info!` / `warn!` / `error!` directly — no injected logger. A use case logs
   `<use_case>: start` and `<use_case>: done`; never log request payloads (they are user data).
 - **No `unwrap()` / `expect()`** outside tests.

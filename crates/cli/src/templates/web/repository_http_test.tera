@@ -49,7 +49,7 @@ describe("{{ camel }}RepositoryHttp", () => {
   test("should reject with the API's error code when the {{ words }} does not exist", async () => {
     // Arrange
     const code = "{{ snake }}.not_found";
-    const { repository } = answering(404, { name: code, message: code });
+    const { repository } = answering(404, { codigo: code, mensaje: code });
 
     // Act
     const result = repository.get(crypto.randomUUID());

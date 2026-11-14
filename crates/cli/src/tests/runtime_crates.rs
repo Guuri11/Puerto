@@ -289,7 +289,7 @@ fn new_project_main_hands_the_server_to_puerto_web() {
     assert!(main.contains("puerto_web::Config::from_env()?"), "{main}");
     assert!(main.contains("puerto_web::App::new(config)"), "{main}");
     assert!(
-        main.contains(".try_serve(generated::bootstrap::build_app)"),
+        main.contains(".intentar_servir(generated::bootstrap::build_app)"),
         "{main}"
     );
     assert!(main.contains("mod app;"), "{main}");
@@ -314,16 +314,16 @@ fn new_project_ships_no_copy_of_the_http_shell() {
     // which the orphan rule only allows for a trait of `presentation` itself.
     let error = read(&output, "presentation/src/api/error.rs");
     assert!(error.contains("pub trait IntoErrorResponse"), "{error}");
-    assert!(error.contains("use puerto_web::ErrorResponse;"), "{error}");
-    assert!(!error.contains("struct ErrorResponse"), "{error}");
+    assert!(error.contains("use puerto_web::RespuestaError;"), "{error}");
+    assert!(!error.contains("struct RespuestaError"), "{error}");
     let greeting = format!(
         "{}{}",
         read(&output, "presentation/src/api/greeting/error_mapper.rs"),
         read(&output, "presentation/src/api/greeting/responses.rs")
     );
-    assert!(!greeting.contains("error::ErrorResponse"), "{greeting}");
+    assert!(!greeting.contains("error::RespuestaError"), "{greeting}");
     assert!(greeting.contains("use crate::api::error::IntoErrorResponse;"));
-    assert!(greeting.contains("use puerto_web::ErrorResponse;"));
+    assert!(greeting.contains("use puerto_web::RespuestaError;"));
 
     cleanup(&dir);
 }
@@ -340,10 +340,10 @@ fn bootstrap_builds_the_routes_with_puerto_web_and_hands_them_to_the_app_hook() 
         "{bootstrap}"
     );
     assert!(
-        bootstrap.contains("Ok(crate::app::configure(puerto_web::routes("),
+        bootstrap.contains("Ok(crate::app::configure(puerto_web::rutas("),
         "{bootstrap}"
     );
-    assert!(bootstrap.contains("puerto_web::health::always_ready()"));
+    assert!(bootstrap.contains("puerto_web::health::siempre_disponible()"));
     for gone in ["Cors", "std::env::var(\"SERVICE_PORT\")", "crate::health"] {
         assert!(!bootstrap.contains(gone), "{gone}: {bootstrap}");
     }
@@ -362,7 +362,7 @@ fn db_bootstrap_probes_the_database_through_puerto_web() {
 
     let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
     assert!(
-        bootstrap.contains("puerto_web::health::probe(move ||"),
+        bootstrap.contains("puerto_web::health::sondear(move ||"),
         "{bootstrap}"
     );
     assert!(
@@ -415,16 +415,16 @@ fn scaffold_takes_the_error_body_from_puerto_web() {
         for (path, import) in [
             (
                 "presentation/src/api/product/error_mapper.rs",
-                "use puerto_web::ErrorResponse;",
+                "use puerto_web::RespuestaError;",
             ),
             (
                 "presentation/src/api/product/responses.rs",
-                "use puerto_web::ErrorResponse;",
+                "use puerto_web::RespuestaError;",
             ),
         ] {
             let source = read(&dir, path);
             assert!(source.contains(import), "{name}: {path}\n{source}");
-            assert!(!source.contains("error::ErrorResponse"), "{name}: {path}");
+            assert!(!source.contains("error::RespuestaError"), "{name}: {path}");
         }
 
         cleanup(&dir);
@@ -434,9 +434,9 @@ fn scaffold_takes_the_error_body_from_puerto_web() {
 #[test]
 fn snippets_take_the_error_body_from_puerto_web() {
     let snippets = crate::snippets::SNIPPETS_JSON;
-    assert!(!snippets.contains("error::ErrorResponse"));
-    assert!(!snippets.contains("error::{ErrorResponse"));
-    assert!(snippets.contains("use puerto_web::ErrorResponse;"));
+    assert!(!snippets.contains("error::RespuestaError"));
+    assert!(!snippets.contains("error::{RespuestaError"));
+    assert!(snippets.contains("use puerto_web::RespuestaError;"));
 }
 
 #[test]

@@ -88,12 +88,12 @@ describe("{{ pascal }}DetailContainer", () => {
 {%- endfor %}
 {%- if access.delete_protected %}
 
-  test("should show auth.forbidden when the API refuses the deletion", async () => {
+  test("should show auth.prohibido when the API refuses the deletion", async () => {
     // Arrange
     const seeded = {{ pascal }}Mother.random();
     const {{ camel }}Repository = {
       ...fake{{ pascal }}Repository([seeded]),
-      remove: () => Promise.reject(new {{ pascal }}Error("auth.forbidden")),
+      remove: () => Promise.reject(new {{ pascal }}Error("auth.prohibido")),
     };
     renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
@@ -102,7 +102,7 @@ describe("{{ pascal }}DetailContainer", () => {
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe("auth.forbidden");
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.prohibido");
   });
 {%- endif %}
 });

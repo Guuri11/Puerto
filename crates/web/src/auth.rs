@@ -1,5 +1,5 @@
 //! The HTTP side of auth (ADR-0021 § 4): [`BearerAuth`], the parameter that makes a handler
-//! authenticated, and [`forbidden`], the answer `#[require_role]` gives a caller without the role.
+//! authenticated, and [`prohibido`], the answer `#[requiere_rol]` gives a caller without the role.
 //!
 //! `BearerAuth` asks the [`Authenticator`] the routes carry as data — `bootstrap.rs` registers it:
 //!
@@ -17,16 +17,16 @@ use poem_openapi::{
 };
 use puerto_nucleo::{Autenticador, ErrorAuth, Principal};
 
-use crate::ErrorResponse;
+use crate::RespuestaError;
 
 /// No token, a token that is not `Bearer`, or one the [`Authenticator`] rejected.
-pub const UNAUTHENTICATED: &str = "auth.unauthenticated";
+pub const NO_AUTENTICADO: &str = "auth.no_autenticado";
 /// An authenticated caller without the role the route requires.
-pub const FORBIDDEN: &str = "auth.forbidden";
+pub const PROHIBIDO: &str = "auth.prohibido";
 /// The token could not be checked: the provider or the database is down — not the caller's fault.
-pub const UNAVAILABLE: &str = "auth.no_disponible";
+pub const NO_DISPONIBLE: &str = "auth.no_disponible";
 /// The routes carry no [`Authenticator`]: `bootstrap.rs` did not register one.
-pub const NOT_CONFIGURED: &str = "auth.not_configured";
+pub const NO_CONFIGURADO: &str = "auth.no_configurado";
 
 /// The authenticated caller of a handler that takes it: `auth: BearerAuth`.
 ///
@@ -36,7 +36,7 @@ pub const NOT_CONFIGURED: &str = "auth.not_configured";
 pub struct BearerAuth(pub Principal);
 
 /// What poem-openapi registers in the spec for [`BearerAuth`]. The extraction is `BearerAuth`'s
-/// own: the derive's checker cannot answer a missing header with an [`ErrorResponse`].
+/// own: the derive's checker cannot answer a missing header with an [`RespuestaError`].
 #[derive(SecurityScheme)]
 #[oai(rename = "BearerAuth", ty = "bearer", bearer_format = "opaque or JWT")]
 struct BearerScheme(Bearer);
@@ -65,7 +65,7 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
             .map_err(|_| {
                 error(
                     StatusCode::UNAUTHORIZED,
-                    ErrorResponse::from_code(UNAUTHENTICATED),
+                    RespuestaError::from_codigo(NO_AUTENTICADO),
                 )
             })?
             .0
@@ -74,9 +74,9 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
             tracing::error!("BearerAuth: no Authenticator registered on the routes");
             return Err(error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                ErrorResponse {
-                    name: NOT_CONFIGURED.into(),
-                    message: "no Authenticator is registered on the routes: bootstrap.rs must add \
+                RespuestaError {
+                    codigo: NO_CONFIGURADO.into(),
+                    mensaje: "no Authenticator is registered on the routes: bootstrap.rs must add \
                               `.data(authenticator)` with an `Arc<dyn Authenticator>`"
                         .into(),
                 },
@@ -87,35 +87,35 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
             .await
             .map(Self)
             .map_err(|err| {
-                let (status, body) = rejection(err);
+                let (status, body) = rechazo(err);
                 error(status, body.0)
             })
     }
 }
 
 /// The status and body for a token the [`Authenticator`] did not accept.
-pub fn rejection(err: ErrorAuth) -> (StatusCode, Json<ErrorResponse>) {
+pub fn rechazo(err: ErrorAuth) -> (StatusCode, Json<RespuestaError>) {
     match err {
         ErrorAuth::NoDisponible => {
             tracing::warn!(error = %err, "BearerAuth: the token could not be checked");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse::from_code(UNAVAILABLE)),
+                Json(RespuestaError::from_codigo(NO_DISPONIBLE)),
             )
         }
-        // `Invalid`, `Expired`, and whatever `AuthError` gains: the caller is not authenticated.
+        // `Invalido`, `Expired`, and whatever `AuthError` gains: the caller is not authenticated.
         _ => (
             StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse::from_code(UNAUTHENTICATED)),
+            Json(RespuestaError::from_codigo(NO_AUTENTICADO)),
         ),
     }
 }
 
-/// What `#[require_role]` answers a caller without the role: `403 auth.forbidden`.
-pub fn forbidden() -> (StatusCode, Json<ErrorResponse>) {
+/// What `#[requiere_rol]` answers a caller without the role: `403 auth.prohibido`.
+pub fn prohibido() -> (StatusCode, Json<RespuestaError>) {
     (
         StatusCode::FORBIDDEN,
-        Json(ErrorResponse::from_code(FORBIDDEN)),
+        Json(RespuestaError::from_codigo(PROHIBIDO)),
     )
 }
 
@@ -129,7 +129,7 @@ pub fn bearer_token(req: &poem::Request) -> Option<&str> {
 
 /// A `poem::Error` whose response is `body` as JSON — what the client reads, unlike the plain-text
 /// body poem gives an extractor's error.
-fn error(status: StatusCode, body: ErrorResponse) -> poem::Error {
+fn error(status: StatusCode, body: RespuestaError) -> poem::Error {
     let mut response = Json(body).into_response();
     response.set_status(status);
     poem::Error::from_response(response)
@@ -142,7 +142,7 @@ mod tests {
     fn request(authorization: Option<&str>) -> poem::Request {
         let builder = poem::Request::builder();
         match authorization {
-            Some(value) => builder.header("Authorization", value).finish(),
+            Some(valor) => builder.header("Authorization", valor).finish(),
             None => builder.finish(),
         }
     }
@@ -164,41 +164,41 @@ mod tests {
     #[test]
     fn should_answer_401_unauthenticated_when_the_token_is_invalid() {
         // Act
-        let (status, body) = rejection(ErrorAuth::Invalido);
+        let (status, body) = rechazo(ErrorAuth::Invalido);
 
         // Assert
         assert_eq!(status, StatusCode::UNAUTHORIZED);
-        assert_eq!(body.0.name, "auth.unauthenticated");
+        assert_eq!(body.0.codigo, "auth.no_autenticado");
     }
 
     #[test]
     fn should_answer_401_unauthenticated_when_the_token_expired() {
         // Act
-        let (status, body) = rejection(ErrorAuth::Expirado);
+        let (status, body) = rechazo(ErrorAuth::Expirado);
 
         // Assert
         assert_eq!(status, StatusCode::UNAUTHORIZED);
-        assert_eq!(body.0.name, "auth.unauthenticated");
+        assert_eq!(body.0.codigo, "auth.no_autenticado");
     }
 
     #[test]
     fn should_answer_503_unavailable_when_the_token_cannot_be_checked() {
         // Act
-        let (status, body) = rejection(ErrorAuth::NoDisponible);
+        let (status, body) = rechazo(ErrorAuth::NoDisponible);
 
         // Assert
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(body.0.name, "auth.no_disponible");
+        assert_eq!(body.0.codigo, "auth.no_disponible");
     }
 
     #[test]
     fn should_answer_403_forbidden_when_a_role_is_missing() {
         // Act
-        let (status, body) = forbidden();
+        let (status, body) = prohibido();
 
         // Assert
         assert_eq!(status, StatusCode::FORBIDDEN);
-        assert_eq!(body.0.name, "auth.forbidden");
-        assert_eq!(body.0.message, "auth.forbidden");
+        assert_eq!(body.0.codigo, "auth.prohibido");
+        assert_eq!(body.0.mensaje, "auth.prohibido");
     }
 }

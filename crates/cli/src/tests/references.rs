@@ -692,7 +692,7 @@ fn postgres_references_project_answers_422_on_the_field_of_a_missing_reference()
     let (status, body) = http(port, "POST", "/api/orders", &order(missing, "null")).unwrap();
     assert_eq!(status, 422, "{body}");
     assert!(
-        body.contains("\"name\":\"order.validation_error.customer_id_not_found\""),
+        body.contains("\"codigo\":\"order.validation_error.customer_id_not_found\""),
         "{body}"
     );
 
@@ -713,7 +713,7 @@ fn postgres_references_project_answers_422_on_the_field_of_a_missing_reference()
     let (status, body) = http(port, "POST", "/api/orders", &order(&customer, &reviewer)).unwrap();
     assert_eq!(status, 422, "{body}");
     assert!(
-        body.contains("\"name\":\"order.validation_error.reviewer_id_not_found\""),
+        body.contains("\"codigo\":\"order.validation_error.reviewer_id_not_found\""),
         "{body}"
     );
 

@@ -115,16 +115,16 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
     let {{ entity.snake }}_api = {{ entity.pascal }}Api {% if entity.use_cases %}{ {% for uc in entity.use_cases %}{{ uc.action }}{% if not loop.last %}, {% endif %}{% endfor %} }{% else %}{}{% endif %};
 {% endfor %}
 {%- if has_db %}
-    let ready = puerto_web::health::probe(move || {
+    let ready = puerto_web::health::sondear(move || {
         let pool = pool.clone();
         async move { infrastructure::db::ping(&pool).await }
     });
 {%- else %}
-    let ready = puerto_web::health::always_ready();
+    let ready = puerto_web::health::siempre_disponible();
 {%- endif %}
 
     // `app.rs` is the project's own: middleware and routes added there wrap everything here.
-    Ok(crate::app::configure(puerto_web::routes(
+    Ok(crate::app::configure(puerto_web::rutas(
         openapi_service({{ apis }}),
         &config,
         ready,

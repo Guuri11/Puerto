@@ -64,13 +64,13 @@ describe("AuthProvider", () => {
     // Arrange
     const auth = {
       ...fakeAuthGateway(),
-      currentUser: () => Promise.reject(new Error("auth.unauthenticated")),
+      currentUser: () => Promise.reject(new Error("auth.no_autenticado")),
     };
 
     // Act
     renderScreen(<Secret />, { auth });
 
     // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe("auth.unauthenticated");
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.no_autenticado");
   });
 });

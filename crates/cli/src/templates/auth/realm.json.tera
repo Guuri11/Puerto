@@ -3,7 +3,7 @@
   "enabled": true,
   "roles": {
     "realm": [
-      { "name": "admin", "description": "Passes #[require_role(\"admin\")]" }
+      { "name": "admin", "description": "Passes #[requiere_rol(\"admin\")]" }
     ]
   },
   "clients": [

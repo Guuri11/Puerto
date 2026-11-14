@@ -31,7 +31,7 @@ impl GreetingApi {
             )),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "get_greeting failed");
+                tracing::warn!(code = %error.0.codigo, "get_greeting failed");
                 GetGreetingResponse::from_status(status, error)
             }
         }

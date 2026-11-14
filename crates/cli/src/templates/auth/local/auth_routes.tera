@@ -146,7 +146,7 @@ mod tests {
             .await
             .value()
             .object()
-            .get("name")
+            .get("codigo")
             .assert_string(code);
     }
 

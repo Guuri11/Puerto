@@ -91,7 +91,7 @@ pub struct Entity {
     /// (`--public`); after it, `routes.rs` is the user's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub public: Vec<String>,
-    /// Auth projects: the roles a use case's route requires (`#[require_role]`), by use case —
+    /// Auth projects: the roles a use case's route requires (`#[requiere_rol]`), by use case —
     /// what scaffold wrote (`--role`). Declared before `fields`: written after the
     /// `[[entity.fields]]`, `[entity.roles]` would read as if it belonged to the last field.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

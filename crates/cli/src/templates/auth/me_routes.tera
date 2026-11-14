@@ -7,7 +7,7 @@ use crate::api::me::dto::MeDto;
 use crate::api::tags::ApiTags;
 
 /// `GET /me`: what the frontend asks after sign-in. No or a bad token is answered by `BearerAuth`
-/// before the handler runs (401 `auth.unauthenticated`, 503 `auth.unavailable`).
+/// before the handler runs (401 `auth.no_autenticado`, 503 `auth.no_disponible`).
 pub struct MeApi;
 
 #[OpenApi]
@@ -84,8 +84,8 @@ mod tests {
             .await
             .value()
             .object()
-            .get("name")
-            .assert_string("auth.unauthenticated");
+            .get("codigo")
+            .assert_string("auth.no_autenticado");
     }
 
     #[tokio::test]

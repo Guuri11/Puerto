@@ -16,7 +16,7 @@ use poem_openapi::{
 };
 use puerto_nucleo::PeticionPagina;
 {% if auth %}use puerto_web::auth::BearerAuth;
-{% endif %}{% if any_role %}use puerto_web::require_role;
+{% endif %}{% if any_role %}use puerto_web::requiere_rol;
 {% endif %}use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -42,7 +42,7 @@ pub struct {{ pascal }}Api {
 impl {{ pascal }}Api {
     /// Create a new {{ pascal }}
     #[oai(path = "/{{ plural }}", method = "post", tag = "ApiTags::{{ pascal }}")]
-{% for role in access.create.roles %}    #[require_role("{{ role }}")]
+{% for role in access.create.roles %}    #[requiere_rol("{{ role }}")]
 {% endfor %}    async fn create(&self, {% if access.create.protected %}auth: BearerAuth, {% endif %}body: Json<Create{{ pascal }}Request>) -> Create{{ pascal }}Response {
         match self
             .create_{{ snake }}
@@ -55,7 +55,7 @@ impl {{ pascal }}Api {
             Ok(entity) => Create{{ pascal }}Response::Created(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "create_{{ snake }} failed");
+                tracing::warn!(code = %error.0.codigo, "create_{{ snake }} failed");
                 Create{{ pascal }}Response::from_status(status, error)
             }
         }
@@ -63,7 +63,7 @@ impl {{ pascal }}Api {
 
     /// Get a {{ pascal }} by ID
     #[oai(path = "/{{ plural }}/:id", method = "get", tag = "ApiTags::{{ pascal }}")]
-{% for role in access.get.roles %}    #[require_role("{{ role }}")]
+{% for role in access.get.roles %}    #[requiere_rol("{{ role }}")]
 {% endfor %}    async fn get_by_id(&self, {% if access.get.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> Get{{ pascal }}Response {
         match self
             .get_{{ snake }}
@@ -73,7 +73,7 @@ impl {{ pascal }}Api {
             Ok(entity) => Get{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "get_{{ snake }} failed");
+                tracing::warn!(code = %error.0.codigo, "get_{{ snake }} failed");
                 Get{{ pascal }}Response::from_status(status, error)
             }
         }
@@ -81,7 +81,7 @@ impl {{ pascal }}Api {
 
     /// List {{ plural_pascal }}, one page at a time (`limit` is capped by the domain)
     #[oai(path = "/{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
-{% for role in access.list.roles %}    #[require_role("{{ role }}")]
+{% for role in access.list.roles %}    #[requiere_rol("{{ role }}")]
 {% endfor %}    async fn list(&self, {% if access.list.protected %}auth: BearerAuth, {% endif %}limit: Query<Option<u32>>, offset: Query<Option<u32>>{% for r in refs %}, #[oai(name = "{{ r.camel }}")] {{ r.name }}: Query<Option<Uuid>>{% endfor %}) -> List{{ plural_pascal }}Response {
         match self
             .list_{{ plural }}
@@ -95,7 +95,7 @@ impl {{ pascal }}Api {
             Ok(page) => List{{ plural_pascal }}Response::Ok(Json({{ pascal }}PageDto::from_domain(&page))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::error!(code = %error.0.name, "list_{{ plural }} failed");
+                tracing::error!(code = %error.0.codigo, "list_{{ plural }} failed");
                 List{{ plural_pascal }}Response::from_status(status, error)
             }
         }
@@ -103,7 +103,7 @@ impl {{ pascal }}Api {
 
     /// Update a {{ pascal }}
     #[oai(path = "/{{ plural }}/:id", method = "put", tag = "ApiTags::{{ pascal }}")]
-{% for role in access.update.roles %}    #[require_role("{{ role }}")]
+{% for role in access.update.roles %}    #[requiere_rol("{{ role }}")]
 {% endfor %}    async fn update(&self, {% if access.update.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>, body: Json<Update{{ pascal }}Request>) -> Update{{ pascal }}Response {
         match self
             .update_{{ snake }}
@@ -117,7 +117,7 @@ impl {{ pascal }}Api {
             Ok(entity) => Update{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "update_{{ snake }} failed");
+                tracing::warn!(code = %error.0.codigo, "update_{{ snake }} failed");
                 Update{{ pascal }}Response::from_status(status, error)
             }
         }
@@ -125,7 +125,7 @@ impl {{ pascal }}Api {
 
     /// Delete a {{ pascal }}
     #[oai(path = "/{{ plural }}/:id", method = "delete", tag = "ApiTags::{{ pascal }}")]
-{% for role in access.delete.roles %}    #[require_role("{{ role }}")]
+{% for role in access.delete.roles %}    #[requiere_rol("{{ role }}")]
 {% endfor %}    async fn delete(&self, {% if access.delete.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> Delete{{ pascal }}Response {
         match self
             .delete_{{ snake }}
@@ -135,7 +135,7 @@ impl {{ pascal }}Api {
             Ok(()) => Delete{{ pascal }}Response::NoContent,
             Err(err) => {
                 let (status, error) = err.into_error_response();
-                tracing::warn!(code = %error.0.name, "delete_{{ snake }} failed");
+                tracing::warn!(code = %error.0.codigo, "delete_{{ snake }} failed");
                 Delete{{ pascal }}Response::from_status(status, error)
             }
         }
@@ -293,7 +293,7 @@ mod tests {
             .await
             .value()
             .object()
-            .get("name")
+            .get("codigo")
             .assert_string("{{ snake }}.validation_error.{{ f.name }}_not_found");
     }
 {% endfor %}
@@ -490,8 +490,8 @@ mod tests {
             .await
             .value()
             .object()
-            .get("name")
-            .assert_string("auth.forbidden");
+            .get("codigo")
+            .assert_string("auth.prohibido");
     }
 {% endif %}{% if access.get.protected %}
     #[tokio::test]
@@ -529,8 +529,8 @@ mod tests {
             .await
             .value()
             .object()
-            .get("name")
-            .assert_string("auth.forbidden");
+            .get("codigo")
+            .assert_string("auth.prohibido");
     }
 {% endif %}{% if access.list.protected %}
     #[tokio::test]
@@ -568,8 +568,8 @@ mod tests {
             .await
             .value()
             .object()
-            .get("name")
-            .assert_string("auth.forbidden");
+            .get("codigo")
+            .assert_string("auth.prohibido");
     }
 {% endif %}{% if access.update.protected %}
     #[tokio::test]
@@ -609,8 +609,8 @@ mod tests {
             .await
             .value()
             .object()
-            .get("name")
-            .assert_string("auth.forbidden");
+            .get("codigo")
+            .assert_string("auth.prohibido");
     }
 {% endif %}{% if access.delete.protected %}
     #[tokio::test]
@@ -648,7 +648,7 @@ mod tests {
             .await
             .value()
             .object()
-            .get("name")
-            .assert_string("auth.forbidden");
+            .get("codigo")
+            .assert_string("auth.prohibido");
     }
 {% endif %}}

@@ -10,13 +10,13 @@ export function createApiClient(options: ClientOptions = {}): ApiClient {
 }
 
 /**
- * The machine-readable code of a failed call: the `ErrorResponse.name` the API answered, or
+ * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
  * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
  */
 export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "name" in error) {
-    const { name } = error;
-    if (typeof name === "string") return name;
+  if (typeof error === "object" && error !== null && "codigo" in error) {
+    const { codigo } = error;
+    if (typeof codigo === "string") return codigo;
   }
   return `http.${response.status}`;
 }

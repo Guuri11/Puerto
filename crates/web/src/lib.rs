@@ -12,33 +12,33 @@
 //! }
 //! ```
 //!
-//! and `generated/bootstrap.rs` — the composition root — builds the routes with [`routes`].
+//! and `generated/bootstrap.rs` — the composition root — builds the routes with [`rutas`].
 
 pub mod app;
 pub mod auth;
 pub mod config;
-pub mod error_response;
 pub mod health;
+pub mod respuesta_error;
 
-pub use app::{App, routes};
-pub use config::{Config, ConfigError};
-pub use error_response::{ErrorResponse, IntoErrorResponse};
-pub use health::ReadinessProbe;
-/// `#[require_role("admin")]` on a handler that takes `auth: BearerAuth` — see [`auth`].
-pub use puerto_macros::require_role;
+pub use app::{App, rutas};
+pub use config::{Config, ErrorConfig};
+pub use health::SondaDisponibilidad;
+/// `#[requiere_rol("admin")]` on a handler that takes `auth: BearerAuth` — see [`auth`].
+pub use puerto_macros::requiere_rol;
+pub use respuesta_error::{IntoRespuestaError, RespuestaError};
 
 /// Why the application did not start or stopped serving.
 #[derive(thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
-    Config(#[from] ConfigError),
-    #[error("server: {0}")]
-    Server(#[from] std::io::Error),
-    /// What `build` answered instead of the routes (`App::try_serve`): a database that is down, a
+    Config(#[from] ErrorConfig),
+    #[error("servidor: {0}")]
+    Servidor(#[from] std::io::Error),
+    /// What `build` answered instead of the routes (`App::intentar_servir`): a database that is down, a
     /// variable that is missing. Its message is the whole report.
     #[error("{0}")]
-    Startup(String),
+    Arranque(String),
 }
 
 /// `main` returns this error, and Rust prints what `main` returns with `Debug`: the message is what
@@ -56,7 +56,7 @@ mod tests {
     #[test]
     fn should_print_the_readable_message_when_main_returns_the_error() {
         // Arrange
-        let error = Error::from(Config::from_vars(|_| Some("abc".into())).unwrap_err());
+        let error = Error::from(Config::from_variables(|_| Some("abc".into())).unwrap_err());
 
         // Act
         let printed = format!("{error:?}");

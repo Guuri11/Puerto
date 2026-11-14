@@ -12,22 +12,22 @@
 use poem::middleware::Cors;
 
 /// The port the server listens on when `SERVICE_PORT` is unset.
-pub const DEFAULT_PORT: u16 = 8080;
+pub const PUERTO_POR_DEFECTO: u16 = 8080;
 
 /// A configuration variable that is set to a value the application cannot use.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum ConfigError {
-    #[error("{key}={value:?} is not valid: expected {expected}")]
-    Invalid {
-        key: &'static str,
-        value: String,
-        expected: &'static str,
+pub enum ErrorConfig {
+    #[error("{clave}={valor:?} is not valid: expected {esperado}")]
+    Invalido {
+        clave: &'static str,
+        valor: String,
+        esperado: &'static str,
     },
 }
 
 /// Loads `.env` into the process environment when there is one; a variable already set wins.
-pub fn load_dotenv() {
+pub fn cargar_dotenv() {
     dotenvy::dotenv().ok();
 }
 
@@ -35,16 +35,16 @@ pub fn load_dotenv() {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Config {
-    port: u16,
-    cors_allowed_origins: Vec<String>,
+    puerto: u16,
+    origenes_cors_permitidos: Vec<String>,
     banner: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            port: DEFAULT_PORT,
-            cors_allowed_origins: vec![],
+            puerto: PUERTO_POR_DEFECTO,
+            origenes_cors_permitidos: vec![],
             banner: true,
         }
     }
@@ -52,39 +52,39 @@ impl Default for Config {
 
 impl Config {
     /// Loads `.env` when there is one, then reads the process environment.
-    pub fn from_env() -> Result<Self, ConfigError> {
-        load_dotenv();
-        Self::from_vars(|key| std::env::var(key).ok())
+    pub fn from_env() -> Result<Self, ErrorConfig> {
+        cargar_dotenv();
+        Self::from_variables(|clave| std::env::var(clave).ok())
     }
 
     /// Reads the configuration from any variable source; an empty value counts as unset.
-    pub fn from_vars(var: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
-        let var = |key: &str| var(key).filter(|value| !value.trim().is_empty());
+    pub fn from_variables(var: impl Fn(&str) -> Option<String>) -> Result<Self, ErrorConfig> {
+        let var = |clave: &str| var(clave).filter(|valor| !valor.trim().is_empty());
         let mut config = Self::default();
-        if let Some(value) = var("SERVICE_PORT") {
-            config.port = value.trim().parse().map_err(|_| ConfigError::Invalid {
-                key: "SERVICE_PORT",
-                value,
-                expected: "a port number (0-65535)",
+        if let Some(valor) = var("SERVICE_PORT") {
+            config.puerto = valor.trim().parse().map_err(|_| ErrorConfig::Invalido {
+                clave: "SERVICE_PORT",
+                valor,
+                esperado: "a port number (0-65535)",
             })?;
         }
-        if let Some(value) = var("CORS_ALLOWED_ORIGINS") {
-            config.cors_allowed_origins = value
+        if let Some(valor) = var("CORS_ALLOWED_ORIGINS") {
+            config.origenes_cors_permitidos = valor
                 .split(',')
                 .map(str::trim)
                 .filter(|origin| !origin.is_empty())
                 .map(String::from)
                 .collect();
         }
-        if let Some(value) = var("PUERTO_BANNER") {
-            config.banner = match value.trim() {
+        if let Some(valor) = var("PUERTO_BANNER") {
+            config.banner = match valor.trim() {
                 "true" | "1" => true,
                 "false" | "0" => false,
                 _ => {
-                    return Err(ConfigError::Invalid {
-                        key: "PUERTO_BANNER",
-                        value,
-                        expected: "true or false",
+                    return Err(ErrorConfig::Invalido {
+                        clave: "PUERTO_BANNER",
+                        valor,
+                        esperado: "true or false",
                     });
                 }
             };
@@ -92,27 +92,27 @@ impl Config {
         Ok(config)
     }
 
-    pub fn with_port(mut self, port: u16) -> Self {
-        self.port = port;
+    pub fn con_puerto(mut self, puerto: u16) -> Self {
+        self.puerto = puerto;
         self
     }
 
-    pub fn with_cors_allowed_origins(mut self, origins: Vec<String>) -> Self {
-        self.cors_allowed_origins = origins;
+    pub fn con_origenes_cors_permitidos(mut self, origins: Vec<String>) -> Self {
+        self.origenes_cors_permitidos = origins;
         self
     }
 
-    pub fn with_banner(mut self, banner: bool) -> Self {
+    pub fn con_banner(mut self, banner: bool) -> Self {
         self.banner = banner;
         self
     }
 
-    pub fn port(&self) -> u16 {
-        self.port
+    pub fn puerto(&self) -> u16 {
+        self.puerto
     }
 
-    pub fn cors_allowed_origins(&self) -> &[String] {
-        &self.cors_allowed_origins
+    pub fn origenes_cors_permitidos(&self) -> &[String] {
+        &self.origenes_cors_permitidos
     }
 
     pub fn banner(&self) -> bool {
@@ -121,7 +121,7 @@ impl Config {
 
     /// The CORS middleware: the configured origins, or any origin when none is configured.
     pub fn cors(&self) -> Cors {
-        self.cors_allowed_origins
+        self.origenes_cors_permitidos
             .iter()
             .fold(Cors::new(), |cors, origin| {
                 cors.allow_origin(origin.as_str())
@@ -138,24 +138,29 @@ mod tests {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
-        move |key| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+        move |clave| {
+            pairs
+                .iter()
+                .find(|(k, _)| k == clave)
+                .map(|(_, v)| v.clone())
+        }
     }
 
     #[test]
     fn should_use_the_defaults_when_nothing_is_set() {
         // Act
-        let config = Config::from_vars(vars(&[])).unwrap();
+        let config = Config::from_variables(vars(&[])).unwrap();
 
         // Assert
-        assert_eq!(config.port(), 8080);
-        assert!(config.cors_allowed_origins().is_empty());
+        assert_eq!(config.puerto(), 8080);
+        assert!(config.origenes_cors_permitidos().is_empty());
         assert!(config.banner());
     }
 
     #[test]
     fn should_read_every_variable_when_set() {
         // Act
-        let config = Config::from_vars(vars(&[
+        let config = Config::from_variables(vars(&[
             ("SERVICE_PORT", "3000"),
             (
                 "CORS_ALLOWED_ORIGINS",
@@ -166,9 +171,9 @@ mod tests {
         .unwrap();
 
         // Assert
-        assert_eq!(config.port(), 3000);
+        assert_eq!(config.puerto(), 3000);
         assert_eq!(
-            config.cors_allowed_origins(),
+            config.origenes_cors_permitidos(),
             ["http://localhost:5173", "https://app.example.com"]
         );
         assert!(!config.banner());
@@ -177,15 +182,15 @@ mod tests {
     #[test]
     fn should_reject_the_port_when_it_is_not_a_number() {
         // Act
-        let result = Config::from_vars(vars(&[("SERVICE_PORT", "abc")]));
+        let result = Config::from_variables(vars(&[("SERVICE_PORT", "abc")]));
 
         // Assert
         assert_eq!(
             result.unwrap_err(),
-            ConfigError::Invalid {
-                key: "SERVICE_PORT",
-                value: "abc".into(),
-                expected: "a port number (0-65535)",
+            ErrorConfig::Invalido {
+                clave: "SERVICE_PORT",
+                valor: "abc".into(),
+                esperado: "a port number (0-65535)",
             }
         );
     }
@@ -193,7 +198,7 @@ mod tests {
     #[test]
     fn should_reject_the_port_when_it_is_out_of_range() {
         // Act
-        let result = Config::from_vars(vars(&[("SERVICE_PORT", "70000")]));
+        let result = Config::from_variables(vars(&[("SERVICE_PORT", "70000")]));
 
         // Assert
         assert!(result.is_err());
@@ -202,13 +207,13 @@ mod tests {
     #[test]
     fn should_reject_the_banner_when_it_is_not_a_boolean() {
         // Act
-        let result = Config::from_vars(vars(&[("PUERTO_BANNER", "no")]));
+        let result = Config::from_variables(vars(&[("PUERTO_BANNER", "no")]));
 
         // Assert
         assert!(matches!(
             result,
-            Err(ConfigError::Invalid {
-                key: "PUERTO_BANNER",
+            Err(ErrorConfig::Invalido {
+                clave: "PUERTO_BANNER",
                 ..
             })
         ));
@@ -218,7 +223,7 @@ mod tests {
     fn should_show_the_banner_when_it_is_switched_on() {
         for on in ["true", "1"] {
             // Act
-            let config = Config::from_vars(vars(&[("PUERTO_BANNER", on)])).unwrap();
+            let config = Config::from_variables(vars(&[("PUERTO_BANNER", on)])).unwrap();
 
             // Assert
             assert!(config.banner(), "{on}");
@@ -229,37 +234,37 @@ mod tests {
     fn should_override_the_defaults_when_built_by_hand() {
         // Act
         let config = Config::default()
-            .with_port(3000)
-            .with_banner(false)
-            .with_cors_allowed_origins(vec!["http://localhost:5173".into()]);
+            .con_puerto(3000)
+            .con_banner(false)
+            .con_origenes_cors_permitidos(vec!["http://localhost:5173".into()]);
 
         // Assert
-        assert_eq!(config.port(), 3000);
+        assert_eq!(config.puerto(), 3000);
         assert!(!config.banner());
-        assert_eq!(config.cors_allowed_origins(), ["http://localhost:5173"]);
+        assert_eq!(config.origenes_cors_permitidos(), ["http://localhost:5173"]);
     }
 
     #[test]
     fn should_treat_an_empty_value_as_unset() {
         // Act
         let config =
-            Config::from_vars(vars(&[("SERVICE_PORT", ""), ("PUERTO_BANNER", "")])).unwrap();
+            Config::from_variables(vars(&[("SERVICE_PORT", ""), ("PUERTO_BANNER", "")])).unwrap();
 
         // Assert
-        assert_eq!(config.port(), DEFAULT_PORT);
+        assert_eq!(config.puerto(), PUERTO_POR_DEFECTO);
         assert!(config.banner());
     }
 
     #[test]
     fn should_say_which_variable_is_wrong() {
         // Act
-        let message = Config::from_vars(vars(&[("SERVICE_PORT", "abc")]))
+        let mensaje = Config::from_variables(vars(&[("SERVICE_PORT", "abc")]))
             .unwrap_err()
             .to_string();
 
         // Assert
         assert_eq!(
-            message,
+            mensaje,
             "SERVICE_PORT=\"abc\" is not valid: expected a port number (0-65535)"
         );
     }

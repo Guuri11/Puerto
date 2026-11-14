@@ -1,12 +1,12 @@
 //! The attribute macros of Puerto projects (ADR-0021 § 4). A project reaches them through
-//! `puerto-web` — `puerto_web::require_role` — never by depending on this crate.
+//! `puerto-web` — `puerto_web::requiere_rol` — never by depending on this crate.
 
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{FnArg, ImplItemFn, LitStr, Pat, ReturnType, Type, parse_quote};
 
-/// `#[require_role("admin")]` on a handler that takes `auth: BearerAuth`: a caller without the role
-/// is answered `403 auth.forbidden` before the body runs.
+/// `#[requiere_rol("admin")]` on a handler that takes `auth: BearerAuth`: a caller without the role
+/// is answered `403 auth.prohibido` before the body runs.
 ///
 /// ```ignore
 /// #[oai(path = "/products/:id", method = "delete")]
@@ -17,7 +17,7 @@ use syn::{FnArg, ImplItemFn, LitStr, Pat, ReturnType, Type, parse_quote};
 /// The return type must have `from_status(StatusCode, Json<ErrorResponse>)`, as every generated
 /// response enum does. The 403 is not documented by the macro: the enum's `Forbidden` variant is.
 #[proc_macro_attribute]
-pub fn require_role(
+pub fn requiere_rol(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
@@ -70,7 +70,7 @@ fn role_check(attr: TokenStream, handler: &ImplItemFn) -> syn::Result<TokenStrea
     };
     Ok(quote! {
         if !#auth.0.tiene_rol(#role) {
-            let (status, error) = ::puerto_web::auth::forbidden();
+            let (status, error) = ::puerto_web::auth::prohibido();
             return <#ret>::from_status(status, error);
         }
     })
@@ -142,7 +142,7 @@ mod tests {
         let expected = quote! {
             async fn delete(&self, auth: BearerAuth) -> DeleteResponse {
                 if !auth.0.tiene_rol("admin") {
-                    let (status, error) = ::puerto_web::auth::forbidden();
+                    let (status, error) = ::puerto_web::auth::prohibido();
                     return <DeleteResponse>::from_status(status, error);
                 }
                 {
