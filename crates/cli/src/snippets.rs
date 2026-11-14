@@ -544,7 +544,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use sqlx::PgPool;",
       "",
       "use super::entity::${2:Entity}Db;",
-      "use crate::db::map_sqlx_error;",
+      "use crate::db::mapear_error_sqlx;",
       "",
       "pub struct Pg${2:Entity}Repository {",
       "\tpub pool: PgPool,",
@@ -627,7 +627,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "}",
       "$0"
     ],
-    "description": "PgEntityRepository: find_all, find_by_id, save with SQLx macros, tracing logs, driver errors through db::map_sqlx_error."
+    "description": "PgEntityRepository: find_all, find_by_id, save with SQLx macros, tracing logs, driver errors through db::mapear_error_sqlx."
   },
   "Presentation — api/<entity>.rs module decls": {
     "prefix": "lib-presentation-entity",

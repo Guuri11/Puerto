@@ -381,17 +381,17 @@ pub fn apply_events_to_new_project(
 }
 
 /// The outbox migration of the `kafka` transport: Kafka holds the deliveries, so the `db`
-/// transport's `event_deliveries` table and its index are left out. The template stays the byte
+/// transport's `entregas_eventos` table and its index are left out. The template stays the byte
 /// copy of `puerto-sqlx`'s migration (tested), so this cuts it rather than keeping a second one.
 fn without_event_deliveries(sql: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let start = sql.find("CREATE TABLE event_deliveries");
-    let index = "CREATE INDEX event_deliveries_due";
+    let start = sql.find("CREATE TABLE entregas_eventos");
+    let index = "CREATE INDEX entregas_eventos_vencidas";
     let end = sql
         .find(index)
         .and_then(|at| sql[at..].find(";\n\n").map(|i| at + i + ";\n\n".len()));
     match (start, end) {
         (Some(start), Some(end)) if start < end => Ok(format!("{}{}", &sql[..start], &sql[end..])),
-        _ => Err("the outbox migration has no `event_deliveries` block to leave out".into()),
+        _ => Err("the outbox migration has no `entregas_eventos` block to leave out".into()),
     }
 }
 

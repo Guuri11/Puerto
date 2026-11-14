@@ -12,14 +12,14 @@ use crate::consumers::{{ m.0 }}::{{ m.1 }};
 {% endfor -%}
 {% endif %}
 /// The relay and one consumer per `[[consumer]]`, on the `db` transport: the relay hands each
-/// event to `event_deliveries`, one row per consumer subscribed to its type.
+/// event to `entregas_eventos`, one row per consumer subscribed to its type.
 pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
     let database_url = std::env::var("DATABASE_URL")
         .map_err(|_| "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string())?;
-    let pool = infrastructure::db::create_postgres_pool(&database_url)
+    let pool = infrastructure::db::crear_pool_postgres(&database_url)
         .await
         .map_err(|e| format!("{e} — is the database up? `make docker-compose/up`"))?;
-    infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)
+    infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)
         .await
         .map_err(|e| e.to_string())?;
 {%- if mails %}
@@ -28,25 +28,25 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
         SmtpMailer::new(&MailConfig::from_env().map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?,
     );
-    let sent_mails = Arc::new(PgSentMails::new(pool.clone()));
+    let sent_mails = Arc::new(CorreosEnviadosPostgres::new(pool.clone()));
 {%- endif %}
 {% if consumers %}
-    let deliveries = PgDeliveries::new(pool.clone())
+    let deliveries = EntregasPostgres::new(pool.clone())
 {%- for c in consumers %}
-        .route("{{ c.name }}", &[{{ c.events | join(sep=", ") }}])
+        .enrutar("{{ c.name }}", &[{{ c.events | join(sep=", ") }}])
 {%- endfor %};
-    let dead_letters = Arc::new(PgDeadLetters::new(pool.clone()));
+    let dead_letters = Arc::new(DescartadosPostgres::new(pool.clone()));
 
     Ok(Loops::new(&config)
-        .relay(PgOutbox::new(pool.clone()), deliveries)
+        .relay(OutboxPostgres::new(pool.clone()), deliveries)
 {%- for c in consumers %}
         .consumer(
-            PgSubscription::new(pool.clone(), "{{ c.name }}"),
+            SuscripcionPostgres::new(pool.clone(), "{{ c.name }}"),
             {{ c.handler }},
             {% if loop.last %}dead_letters{% else %}dead_letters.clone(){% endif %},
         )
 {%- endfor %})
 {%- else %}
-    Ok(Loops::new(&config).relay(PgOutbox::new(pool.clone()), PgDeliveries::new(pool)))
+    Ok(Loops::new(&config).relay(OutboxPostgres::new(pool.clone()), EntregasPostgres::new(pool)))
 {%- endif %}
 }

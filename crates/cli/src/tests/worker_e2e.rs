@@ -1,6 +1,6 @@
 // Phase 13.4 end to end (`make test/db`): the generated API and worker as real processes against
 // Postgres — an event written by a POST reaches its consumer, a consumer that always retries ends
-// in `dead_letters`, and an event written while the worker is down is delivered after a restart.
+// in `descartados`, and an event written while the worker is down is delivered after a restart.
 // Phase 13.5 (`make test/kafka`): the same on the `kafka` transport, plus the order of one
 // aggregate's events and a record that is not an event.
 use super::*;

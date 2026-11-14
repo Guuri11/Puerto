@@ -9,10 +9,10 @@ use super::{ENVELOPE_COLUMNS, envelope_from_pg, unavailable};
 
 /// The advisory lock the relay holds: only one worker replica relays, so the outbox order is
 /// kept. The bytes of `"puerto"`.
-pub const RELAY_LOCK_KEY: i64 = 0x7075_6572_746f;
+pub const CLAVE_BLOQUEO_RELAY: i64 = 0x7075_6572_746f;
 
 /// The outbox, as the relay reads it.
-pub struct PgOutbox {
+pub struct OutboxPostgres {
     pool: PgPool,
     lock_key: i64,
     /// The connection holding the advisory lock, once this relay leads. A session lock lives as
@@ -20,24 +20,24 @@ pub struct PgOutbox {
     leader: Mutex<Option<PgConnection>>,
 }
 
-impl PgOutbox {
+impl OutboxPostgres {
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
-            lock_key: RELAY_LOCK_KEY,
+            lock_key: CLAVE_BLOQUEO_RELAY,
             leader: Mutex::new(None),
         }
     }
 
     /// Another lock key: two projects relaying from one database each need their own.
-    pub fn with_lock_key(mut self, key: i64) -> Self {
+    pub fn con_clave_bloqueo(mut self, key: i64) -> Self {
         self.lock_key = key;
         self
     }
 }
 
 #[async_trait]
-impl Outbox for PgOutbox {
+impl Outbox for OutboxPostgres {
     async fn intentar_liderar(&self) -> Result<bool, ErrorTransporte> {
         let mut leader = self.leader.lock().await;
         if let Some(conn) = leader.as_mut() {
@@ -69,7 +69,7 @@ impl Outbox for PgOutbox {
     async fn buscar_sin_publicar(&self, limit: u32) -> Result<Vec<SobreEvento>, ErrorTransporte> {
         let rows = sqlx::query(&format!(
             "SELECT {ENVELOPE_COLUMNS} FROM outbox o \
-             WHERE o.published_at IS NULL ORDER BY o.seq LIMIT $1"
+             WHERE o.publicado_en IS NULL ORDER BY o.secuencia LIMIT $1"
         ))
         .bind(i64::from(limit))
         .fetch_all(&self.pool)
@@ -82,8 +82,8 @@ impl Outbox for PgOutbox {
 
     async fn marcar_publicados(&self, ids: &[Uuid]) -> Result<(), ErrorTransporte> {
         sqlx::query(
-            "UPDATE outbox SET published_at = now() \
-             WHERE id = ANY($1) AND published_at IS NULL",
+            "UPDATE outbox SET publicado_en = now() \
+             WHERE id = ANY($1) AND publicado_en IS NULL",
         )
         .bind(ids)
         .execute(&self.pool)

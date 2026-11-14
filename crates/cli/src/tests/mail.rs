@@ -549,11 +549,11 @@ fn mail_on_an_event_is_a_consumer_of_the_registry() {
         registry.contains("use crate::consumers::mail_welcome::SendWelcomeMail;"),
         "{registry}"
     );
-    assert!(registry.contains(".route(\"mail_welcome\", &[CUSTOMER_CREATED])"));
+    assert!(registry.contains(".enrutar(\"mail_welcome\", &[CUSTOMER_CREATED])"));
     assert!(registry.contains("MailConfig::from_env()"), "{registry}");
     assert!(registry.contains("SmtpMailer::new("), "{registry}");
     assert!(
-        registry.contains("PgSentMails::new(pool.clone())"),
+        registry.contains("CorreosEnviadosPostgres::new(pool.clone())"),
         "{registry}"
     );
     assert!(
@@ -561,7 +561,7 @@ fn mail_on_an_event_is_a_consumer_of_the_registry() {
         "{registry}"
     );
     assert!(
-        registry.contains("PgSubscription::new(pool.clone(), \"mail_welcome\")"),
+        registry.contains("SuscripcionPostgres::new(pool.clone(), \"mail_welcome\")"),
         "{registry}"
     );
     cleanup(&dir);
@@ -645,7 +645,7 @@ fn first_mail_on_an_event_adds_the_sent_log_and_puerto_mail_to_the_worker() {
     let migrations: Vec<String> = fs::read_dir(output.join("infrastructure/migrations"))
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .filter(|m| m.ends_with("_sent_mails.sql"))
+        .filter(|m| m.ends_with("_correos_enviados.sql"))
         .collect();
     assert_eq!(migrations.len(), 1, "{migrations:?}");
     let sql = read(

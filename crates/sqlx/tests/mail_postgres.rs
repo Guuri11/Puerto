@@ -2,8 +2,8 @@
 //! own, with `migrations/sent_mails.sql` applied.
 
 use puerto_nucleo::correo::CorreosEnviados;
-use puerto_sqlx::SENT_MAILS_MIGRATION;
-use puerto_sqlx::mail::PgSentMails;
+use puerto_sqlx::MIGRACION_CORREOS_ENVIADOS;
+use puerto_sqlx::correo::CorreosEnviadosPostgres;
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use uuid::Uuid;
@@ -27,7 +27,7 @@ async fn database() -> Option<PgPool> {
         .connect_with(options.options([("search_path", schema.as_str())]))
         .await
         .unwrap();
-    sqlx::raw_sql(SENT_MAILS_MIGRATION)
+    sqlx::raw_sql(MIGRACION_CORREOS_ENVIADOS)
         .execute(&pool)
         .await
         .unwrap();
@@ -40,7 +40,7 @@ async fn postgres_mail_is_sent_only_once_marked_for_its_event_and_name() {
     let Some(pool) = database().await else {
         return eprintln!("{SKIP}");
     };
-    let log = PgSentMails::new(pool);
+    let log = CorreosEnviadosPostgres::new(pool);
     let event_id = Uuid::now_v7();
 
     assert_eq!(log.fue_enviado(event_id, "welcome").await, Ok(false));
@@ -57,14 +57,14 @@ async fn postgres_marking_a_mail_twice_keeps_one_row() {
     let Some(pool) = database().await else {
         return eprintln!("{SKIP}");
     };
-    let log = PgSentMails::new(pool.clone());
+    let log = CorreosEnviadosPostgres::new(pool.clone());
     let event_id = Uuid::now_v7();
 
     log.marcar_enviado(event_id, "welcome").await.unwrap();
     let second = log.marcar_enviado(event_id, "welcome").await;
 
     assert_eq!(second, Ok(()));
-    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM sent_mails")
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM correos_enviados")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -77,11 +77,11 @@ async fn postgres_sent_log_is_unavailable_when_its_table_is_missing() {
     let Some(pool) = database().await else {
         return eprintln!("{SKIP}");
     };
-    sqlx::raw_sql("DROP TABLE sent_mails")
+    sqlx::raw_sql("DROP TABLE correos_enviados")
         .execute(&pool)
         .await
         .unwrap();
-    let log = PgSentMails::new(pool);
+    let log = CorreosEnviadosPostgres::new(pool);
 
     let read = log.fue_enviado(Uuid::now_v7(), "welcome").await;
     let mark = log.marcar_enviado(Uuid::now_v7(), "welcome").await;

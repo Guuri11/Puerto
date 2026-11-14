@@ -7,7 +7,7 @@ use puerto_nucleo::ErrorRepositorio;
 use sqlx::PgPool;
 
 use super::entity::{{ pascal }}Db;
-use crate::db::map_sqlx_error;
+use crate::db::mapear_error_sqlx;
 
 pub struct Pg{{ pascal }}Repository {
     pub pool: PgPool,
@@ -42,7 +42,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         row.map(to_domain).transpose()
@@ -67,7 +67,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         Ok(())
     }

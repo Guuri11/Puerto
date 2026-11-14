@@ -97,7 +97,7 @@ fn postgres_repositories_map_driver_errors_in_one_place() {
         let dir = scaffold_product(name, true, crud, &[]);
 
         let repository = read(&dir, "infrastructure/src/product/repository.rs");
-        assert!(repository.contains("map_sqlx_error"), "{name}");
+        assert!(repository.contains("mapear_error_sqlx"), "{name}");
         assert!(!repository.contains("23505"), "{name}");
         assert!(
             repository.contains("ErrorRepositorio::DatosInvalidos"),

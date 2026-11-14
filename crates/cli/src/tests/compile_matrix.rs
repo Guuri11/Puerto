@@ -520,7 +520,7 @@ pub(super) const AUTH_OIDC_EVENTS: Scenario = Scenario {
 };
 
 /// `events_db` on the `kafka` transport (Phase 13.5): the worker's registry wires `puerto-kafka`,
-/// the outbox migration has no `event_deliveries`, `docker-compose.yml` runs Redpanda.
+/// the outbox migration has no `entregas_eventos`, `docker-compose.yml` runs Redpanda.
 pub(super) const EVENTS_KAFKA: Scenario = Scenario {
     name: "events_kafka",
     events: Some("kafka"),
@@ -665,7 +665,7 @@ pub(super) const AUTH_OIDC_DB: Scenario = Scenario {
 };
 
 /// `puerto new --db --auth local` (Phase 16.6, 16.7): accounts and sessions in Postgres — the
-/// local use cases, `/auth/*`, `PgSessions` as the authenticator, the users and auth migrations —
+/// local use cases, `/auth/*`, `SesionesPostgres` as the authenticator, the users and auth migrations —
 /// the same access rules on two scaffolds as [`AUTH_OIDC`], and the frontend that signs in with a
 /// password.
 pub(super) const AUTH_LOCAL: Scenario = Scenario {
@@ -1157,7 +1157,7 @@ fn postgres_events_project_compiles_lints_and_passes_integration_tests() {
 #[ignore = "slow: needs Postgres — run via `make test/kafka`"]
 fn kafka_events_project_compiles_lints_and_passes_integration_tests() {
     // Phase 13.5: the worker against `puerto-kafka`, and the outbox migration without
-    // `event_deliveries` under the Pg unit of work's tests. No broker is needed to build and
+    // `entregas_eventos` under the Pg unit of work's tests. No broker is needed to build and
     // test it; `make test/kafka` provides the Postgres it compiles against.
     assert_postgres_scenario_is_clean(&EVENTS_KAFKA, "puerto_matrix_events_kafka");
 }
@@ -1165,7 +1165,7 @@ fn kafka_events_project_compiles_lints_and_passes_integration_tests() {
 #[test]
 #[ignore = "slow: needs Postgres — run via `make test/db`"]
 fn postgres_events_project_with_mails_compiles_lints_and_passes_its_tests() {
-    // Phase 14.4: the mail consumers, their registry wiring and the `sent_mails` migration.
+    // Phase 14.4: the mail consumers, their registry wiring and the `correos_enviados` migration.
     assert_postgres_scenario_is_clean(&EVENTS_MAIL, "puerto_matrix_events_mail");
 }
 

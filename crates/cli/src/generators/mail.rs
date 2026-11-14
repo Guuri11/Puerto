@@ -348,7 +348,7 @@ a provider.
 **Who sends it.** In a project with domain events, `puerto generate mail <name> --on
 <event_type> --to <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
 in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
-per event (`puerto_mail::send_once` keeps a `sent_mails` row — a crash between the send and that
+per event (`puerto_mail::send_once` keeps a `correos_enviados` row — a crash between the send and that
 row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
 "#;
 
@@ -575,7 +575,7 @@ fn render_handler(
     Ok(render("worker/mail_consumer.tera", &ctx)?)
 }
 
-/// What the worker needs once a mail is sent on events: `puerto-mail` and the `sent_mails` table.
+/// What the worker needs once a mail is sent on events: `puerto-mail` and the `correos_enviados` table.
 fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join(layout::WORKER_MANIFEST);
     let mut src = fs::read_to_string(&path)?;
@@ -605,13 +605,15 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
     let migrations = base.join(layout::MIGRATIONS_DIR);
     let has_log = fs::read_dir(&migrations).is_ok_and(|entries| {
-        entries
-            .flatten()
-            .any(|e| e.file_name().to_string_lossy().ends_with("_sent_mails.sql"))
+        entries.flatten().any(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .ends_with("_correos_enviados.sql")
+        })
     });
     if !has_log {
         let sql = render("infrastructure/sent_mails.sql", &tera::Context::new())?;
-        crate::generators::migration::run_migration("sent_mails", base, Some(&sql))?;
+        crate::generators::migration::run_migration("correos_enviados", base, Some(&sql))?;
     }
     Ok(())
 }

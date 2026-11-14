@@ -125,8 +125,8 @@ fn redeliver(database_url: &str, consumer: &str) {
         .block_on(async {
             let pool = sqlx::PgPool::connect(database_url).await.unwrap();
             let handed_back = sqlx::query(
-                "UPDATE event_deliveries SET status = 'pending', next_attempt_at = now() \
-                 WHERE consumer = $1",
+                "UPDATE entregas_eventos SET estado = 'pendiente', siguiente_intento_en = now() \
+                 WHERE consumidor = $1",
             )
             .bind(consumer)
             .execute(&pool)
@@ -202,7 +202,7 @@ fn assert_mails_are_sent_once(
         ["Product live, Desk lamp"]
     );
 
-    // The same event delivered again finds its row in `sent_mails`: no second mail.
+    // The same event delivered again finds its row in `correos_enviados`: no second mail.
     if let Some(redeliver) = redelivery {
         redeliver();
         wait_until("the redelivered event to be skipped", || {

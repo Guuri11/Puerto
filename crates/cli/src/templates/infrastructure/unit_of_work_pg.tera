@@ -7,11 +7,11 @@ use business::domain::{{ snake }}::{
     unit_of_work::{{ "{" }}{{ pascal }}UnitOfWork, {{ pascal }}UnitOfWorkFactory},
 };
 use puerto_nucleo::ErrorRepositorio;
-use puerto_sqlx::uow::PgTransaction;
+use puerto_sqlx::uow::TransaccionPostgres;
 
 use super::entity::{{ pascal }}Db;
-{% if references %}use crate::db::{ForeignKey, map_sqlx_error_with};
-{% else %}use crate::db::map_sqlx_error;
+{% if references %}use crate::db::{ClaveForanea, mapear_error_sqlx_con};
+{% else %}use crate::db::mapear_error_sqlx;
 {% endif %}
 /// Opens a Postgres transaction per write: the {{ snake }} row and its outbox event commit together.
 pub struct Pg{{ pascal }}UnitOfWorkFactory {
@@ -27,13 +27,13 @@ impl Pg{{ pascal }}UnitOfWorkFactory {
 #[async_trait]
 impl {{ pascal }}UnitOfWorkFactory for Pg{{ pascal }}UnitOfWorkFactory {
     async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, ErrorRepositorio> {
-        let tx = PgTransaction::begin(&self.pool).await?;
+        let tx = TransaccionPostgres::begin(&self.pool).await?;
         Ok(Box::new(Pg{{ pascal }}UnitOfWork { tx }))
     }
 }
 
 struct Pg{{ pascal }}UnitOfWork {
-    tx: PgTransaction,
+    tx: TransaccionPostgres,
 }
 
 #[async_trait]
@@ -57,13 +57,13 @@ impl {{ pascal }}UnitOfWork for Pg{{ pascal }}UnitOfWork {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            {% if references %}map_sqlx_error_with(&e, REFERENCES){% else %}map_sqlx_error(&e){% endif %}
+            {% if references %}mapear_error_sqlx_con(&e, REFERENCES){% else %}mapear_error_sqlx(&e){% endif %}
         })?;
         Ok(())
     }
 
     async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), ErrorRepositorio> {
-        self.tx.record(&event).await
+        self.tx.registrar(&event).await
     }
 
     async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
@@ -112,7 +112,7 @@ mod integration_tests {
         let found = Pg{{ pascal }}Repository::new(pool.clone()).find_by_id(entity.id).await.unwrap();
         assert!(found.is_some());
         let (event_type, aggregate_id): (String, uuid::Uuid) =
-            sqlx::query_as("SELECT event_type, aggregate_id FROM outbox")
+            sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
                 .fetch_one(&pool)
                 .await
                 .unwrap();

@@ -12,22 +12,22 @@
 //! pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 //! ```
 //!
-//! and its repositories call `crate::db::map_sqlx_error`.
+//! and its repositories call `crate::db::mapear_error_sqlx`.
 //!
-//! A project with domain events (ADR-0018) also uses [`uow::PgTransaction`] in its generated units
-//! of work, and its worker the outbox, the `db` transport and the dead-letter sink in [`events`].
-//! Their tables are [`OUTBOX_MIGRATION`], which `puerto new --events` writes into the project.
+//! A project with domain events (ADR-0018) also uses [`uow::TransaccionPostgres`] in its generated units
+//! of work, and its worker the outbox, the `db` transport and the dead-letter sink in [`eventos`].
+//! Their tables are [`MIGRACION_OUTBOX`], which `puerto new --eventos` writes into the project.
 //!
-//! A worker that sends mail (ADR-0020) keeps what it sent in [`mail::PgSentMails`], over
-//! [`SENT_MAILS_MIGRATION`].
+//! A worker that sends mail (ADR-0020) keeps what it sent in [`correo::CorreosEnviadosPostgres`], over
+//! [`MIGRACION_CORREOS_ENVIADOS`].
 //!
 //! A project with local accounts (ADR-0021 § 2) keeps their passwords and sessions in
-//! [`auth::PgCredentials`] and [`auth::PgSessions`], over [`USERS_MIGRATION`] and
-//! [`AUTH_MIGRATION`].
+//! [`auth::CredencialesPostgres`] and [`auth::SesionesPostgres`], over [`MIGRACION_USUARIOS`] and
+//! [`MIGRACION_AUTH`].
 
 pub mod auth;
-pub mod events;
-pub mod mail;
+pub mod correo;
+pub mod eventos;
 pub mod uow;
 
 use puerto_nucleo::ErrorRepositorio;
@@ -38,37 +38,37 @@ use std::time::Duration;
 
 /// The outbox, delivery and dead-letter tables (`migrations/outbox.sql`). Puerto's CLI ships a
 /// byte-for-byte copy of it as a project migration.
-pub const OUTBOX_MIGRATION: &str = include_str!("../migrations/outbox.sql");
+pub const MIGRACION_OUTBOX: &str = include_str!("../migrations/outbox.sql");
 
 /// The sent-mail log (`migrations/sent_mails.sql`). Puerto's CLI ships a byte-for-byte copy of it
 /// as a project migration.
-pub const SENT_MAILS_MIGRATION: &str = include_str!("../migrations/sent_mails.sql");
+pub const MIGRACION_CORREOS_ENVIADOS: &str = include_str!("../migrations/sent_mails.sql");
 
-/// The users every auth project has (`migrations/users.sql`): [`auth::PgSessions`] reads it, so its
+/// The users every auth project has (`migrations/users.sql`): [`auth::SesionesPostgres`] reads it, so its
 /// schema is part of this crate's contract. Puerto's CLI ships a byte-for-byte copy of it as a
 /// project migration.
-pub const USERS_MIGRATION: &str = include_str!("../migrations/users.sql");
+pub const MIGRACION_USUARIOS: &str = include_str!("../migrations/users.sql");
 
 /// The credentials and sessions of local accounts (`migrations/auth.sql`), after
-/// [`USERS_MIGRATION`]. Puerto's CLI ships a byte-for-byte copy of it as a project migration.
-pub const AUTH_MIGRATION: &str = include_str!("../migrations/auth.sql");
+/// [`MIGRACION_USUARIOS`]. Puerto's CLI ships a byte-for-byte copy of it as a project migration.
+pub const MIGRACION_AUTH: &str = include_str!("../migrations/auth.sql");
 
 /// Why the database could not be used at startup — read by the person starting the process, so
 /// it says where and why, never the password.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum DatabaseError {
-    /// `target` is the URL's `host[:port]/database`: no user, no password.
-    #[error("cannot connect to the database at {target}: {cause}")]
-    ConnectionError { target: String, cause: String },
-    #[error("cannot apply the database migrations: {cause}")]
-    MigrationError { cause: String },
+pub enum ErrorBaseDatos {
+    /// `destino` is the URL's `host[:port]/database`: no user, no password.
+    #[error("cannot connect to the database at {destino}: {causa}")]
+    ErrorConexion { destino: String, causa: String },
+    #[error("cannot apply the database migrations: {causa}")]
+    ErrorMigracion { causa: String },
 }
 
-pub async fn create_postgres_pool(database_url: &str) -> Result<PgPool, DatabaseError> {
-    let failed = |e: sqlx::Error| DatabaseError::ConnectionError {
-        target: describe_url(database_url),
-        cause: e.to_string(),
+pub async fn crear_pool_postgres(database_url: &str) -> Result<PgPool, ErrorBaseDatos> {
+    let failed = |e: sqlx::Error| ErrorBaseDatos::ErrorConexion {
+        destino: describe_url(database_url),
+        causa: e.to_string(),
     };
     let options: PgConnectOptions = database_url.parse().map_err(failed)?;
     // One connection first, on its own: the pool retries a refused connection until its acquire
@@ -90,12 +90,15 @@ fn describe_url(url: &str) -> String {
 }
 
 /// Applies the project's pending migrations — `migrator` is its `sqlx::migrate!("./migrations")`.
-pub async fn run_migrations(pool: &PgPool, migrator: &Migrator) -> Result<(), DatabaseError> {
+pub async fn ejecutar_migraciones(
+    pool: &PgPool,
+    migrator: &Migrator,
+) -> Result<(), ErrorBaseDatos> {
     migrator
         .run(pool)
         .await
-        .map_err(|e| DatabaseError::MigrationError {
-            cause: e.to_string(),
+        .map_err(|e| ErrorBaseDatos::ErrorMigracion {
+            causa: e.to_string(),
         })
 }
 
@@ -109,23 +112,23 @@ pub async fn ping(pool: &PgPool) -> bool {
 
 /// The one place that knows Postgres error codes: a driver error, as the repository port speaks it.
 /// The caller logs it first, with its own context. An entity with references converts with
-/// [`map_sqlx_error_with`] instead.
-pub fn map_sqlx_error(err: &sqlx::Error) -> ErrorRepositorio {
-    map_sqlx_error_with(err, &[])
+/// [`mapear_error_sqlx_con`] instead.
+pub fn mapear_error_sqlx(err: &sqlx::Error) -> ErrorRepositorio {
+    mapear_error_sqlx_con(err, &[])
 }
 
 /// A foreign key a repository writes through: the constraint's name in the migration and the field
 /// it checks (ADR-0022).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ForeignKey {
-    pub constraint: &'static str,
-    pub field: &'static str,
+pub struct ClaveForanea {
+    pub restriccion: &'static str,
+    pub campo: &'static str,
 }
 
-/// [`map_sqlx_error`], knowing the entity's foreign keys: a violation of one of them is
+/// [`mapear_error_sqlx`], knowing the entity's foreign keys: a violation of one of them is
 /// [`RepositoryError::MissingReference`] with its field. One the list does not name is
 /// `Unavailable` — nothing can tell the caller which input was wrong.
-pub fn map_sqlx_error_with(err: &sqlx::Error, references: &[ForeignKey]) -> ErrorRepositorio {
+pub fn mapear_error_sqlx_con(err: &sqlx::Error, references: &[ClaveForanea]) -> ErrorRepositorio {
     let Some(db_err) = err.as_database_error() else {
         return ErrorRepositorio::NoDisponible;
     };
@@ -135,9 +138,9 @@ pub fn map_sqlx_error_with(err: &sqlx::Error, references: &[ForeignKey]) -> Erro
         // foreign_key_violation: a reference to a row that does not exist.
         Some("23503") => db_err
             .constraint()
-            .and_then(|name| references.iter().find(|fk| fk.constraint == name))
+            .and_then(|name| references.iter().find(|fk| fk.restriccion == name))
             .map_or(ErrorRepositorio::NoDisponible, |fk| {
-                ErrorRepositorio::ReferenciaInexistente(fk.field)
+                ErrorRepositorio::ReferenciaInexistente(fk.campo)
             }),
         _ => ErrorRepositorio::NoDisponible,
     }
@@ -159,7 +162,7 @@ mod tests {
     #[derive(Debug)]
     struct FakeDbError {
         code: &'static str,
-        constraint: Option<&'static str>,
+        restriccion: Option<&'static str>,
     }
 
     impl std::fmt::Display for FakeDbError {
@@ -178,7 +181,7 @@ mod tests {
             Some(self.code.into())
         }
         fn constraint(&self) -> Option<&str> {
-            self.constraint
+            self.restriccion
         }
         fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
             self
@@ -197,32 +200,32 @@ mod tests {
     fn database_error(code: &'static str) -> sqlx::Error {
         sqlx::Error::Database(Box::new(FakeDbError {
             code,
-            constraint: None,
+            restriccion: None,
         }))
     }
 
-    fn constraint_error(code: &'static str, constraint: &'static str) -> sqlx::Error {
+    fn constraint_error(code: &'static str, restriccion: &'static str) -> sqlx::Error {
         sqlx::Error::Database(Box::new(FakeDbError {
             code,
-            constraint: Some(constraint),
+            restriccion: Some(restriccion),
         }))
     }
 
-    const ORDER_REFERENCES: &[ForeignKey] = &[
-        ForeignKey {
-            constraint: "orders_customer_id_fkey",
-            field: "customer_id",
+    const ORDER_REFERENCES: &[ClaveForanea] = &[
+        ClaveForanea {
+            restriccion: "orders_customer_id_fkey",
+            campo: "customer_id",
         },
-        ForeignKey {
-            constraint: "orders_reviewer_id_fkey",
-            field: "reviewer_id",
+        ClaveForanea {
+            restriccion: "orders_reviewer_id_fkey",
+            campo: "reviewer_id",
         },
     ];
 
     #[test]
     fn should_map_a_foreign_key_violation_to_the_missing_field() {
         assert_eq!(
-            map_sqlx_error_with(
+            mapear_error_sqlx_con(
                 &constraint_error("23503", "orders_reviewer_id_fkey"),
                 ORDER_REFERENCES
             ),
@@ -233,7 +236,7 @@ mod tests {
     #[test]
     fn should_map_a_foreign_key_violation_on_an_unlisted_constraint_to_unavailable() {
         assert_eq!(
-            map_sqlx_error_with(
+            mapear_error_sqlx_con(
                 &constraint_error("23503", "orders_warehouse_id_fkey"),
                 ORDER_REFERENCES
             ),
@@ -244,7 +247,7 @@ mod tests {
     #[test]
     fn should_map_a_unique_violation_to_duplicate_whatever_the_references() {
         assert_eq!(
-            map_sqlx_error_with(
+            mapear_error_sqlx_con(
                 &constraint_error("23505", "orders_customer_id_fkey"),
                 ORDER_REFERENCES
             ),
@@ -255,7 +258,7 @@ mod tests {
     #[test]
     fn should_map_a_non_database_error_to_unavailable_whatever_the_references() {
         assert_eq!(
-            map_sqlx_error_with(&sqlx::Error::PoolTimedOut, ORDER_REFERENCES),
+            mapear_error_sqlx_con(&sqlx::Error::PoolTimedOut, ORDER_REFERENCES),
             ErrorRepositorio::NoDisponible
         );
     }
@@ -263,7 +266,7 @@ mod tests {
     #[test]
     fn should_map_a_unique_violation_to_duplicate() {
         assert_eq!(
-            map_sqlx_error(&database_error("23505")),
+            mapear_error_sqlx(&database_error("23505")),
             ErrorRepositorio::Duplicado
         );
     }
@@ -272,7 +275,7 @@ mod tests {
     fn should_map_another_database_error_to_unavailable() {
         // 23503 = foreign_key_violation: a constraint, but not a taken unique value.
         assert_eq!(
-            map_sqlx_error(&database_error("23503")),
+            mapear_error_sqlx(&database_error("23503")),
             ErrorRepositorio::NoDisponible
         );
     }
@@ -280,7 +283,7 @@ mod tests {
     #[test]
     fn should_map_a_non_database_error_to_unavailable() {
         assert_eq!(
-            map_sqlx_error(&sqlx::Error::PoolTimedOut),
+            mapear_error_sqlx(&sqlx::Error::PoolTimedOut),
             ErrorRepositorio::NoDisponible
         );
     }
@@ -292,9 +295,9 @@ mod tests {
 
     #[tokio::test]
     async fn should_reject_a_database_url_that_is_not_one() {
-        let result = create_postgres_pool("not a database url").await;
+        let result = crear_pool_postgres("not a database url").await;
 
-        assert!(matches!(result, Err(DatabaseError::ConnectionError { .. })));
+        assert!(matches!(result, Err(ErrorBaseDatos::ErrorConexion { .. })));
     }
 
     #[tokio::test]
@@ -304,7 +307,7 @@ mod tests {
 
         // Act
         let started = std::time::Instant::now();
-        let message = create_postgres_pool(url).await.unwrap_err().to_string();
+        let message = crear_pool_postgres(url).await.unwrap_err().to_string();
 
         // Assert
         assert!(message.contains("127.0.0.1:1/shop"), "{message}");
@@ -334,7 +337,7 @@ mod tests {
     async fn test_database() -> Option<PgPool> {
         let server = std::env::var("PUERTO_TEST_DATABASE_URL").ok()?;
         Some(
-            create_postgres_pool(&format!("{server}/postgres"))
+            crear_pool_postgres(&format!("{server}/postgres"))
                 .await
                 .unwrap(),
         )
@@ -363,7 +366,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(map_sqlx_error(&err), ErrorRepositorio::Duplicado);
+        assert_eq!(mapear_error_sqlx(&err), ErrorRepositorio::Duplicado);
     }
 
     #[tokio::test]
@@ -392,7 +395,7 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(
-            map_sqlx_error_with(&err, ORDER_REFERENCES),
+            mapear_error_sqlx_con(&err, ORDER_REFERENCES),
             ErrorRepositorio::ReferenciaInexistente("customer_id")
         );
     }

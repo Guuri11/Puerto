@@ -131,7 +131,7 @@ pub fn generate_crud_infra_db_repository(
 }
 
 /// `infrastructure/src/{snake}/unit_of_work.rs`: the upsert the Pg repository has in a project
-/// without events, inside a `puerto_sqlx::uow::PgTransaction`.
+/// without events, inside a `puerto_sqlx::uow::TransaccionPostgres`.
 pub fn generate_pg_unit_of_work(
     pascal: &str,
     snake: &str,

@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use puerto_nucleo::auth::{AlmacenCredenciales, AlmacenSesiones, Autenticador, ErrorAuth};
-use puerto_sqlx::auth::{PgCredentials, PgSessions};
-use puerto_sqlx::{AUTH_MIGRATION, USERS_MIGRATION};
+use puerto_sqlx::auth::{CredencialesPostgres, SesionesPostgres};
+use puerto_sqlx::{MIGRACION_AUTH, MIGRACION_USUARIOS};
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use uuid::Uuid;
@@ -30,7 +30,7 @@ async fn database() -> Option<PgPool> {
         .connect_with(options.options([("search_path", schema.as_str())]))
         .await
         .unwrap();
-    for migration in [USERS_MIGRATION, AUTH_MIGRATION] {
+    for migration in [MIGRACION_USUARIOS, MIGRACION_AUTH] {
         sqlx::raw_sql(migration).execute(&pool).await.unwrap();
     }
     Some(pool)
@@ -59,7 +59,7 @@ async fn postgres_session_authenticates_as_its_user_with_the_roles_column() {
         return eprintln!("{SKIP}");
     };
     let user_id = ada(&pool, &["admin"]).await;
-    let sessions = PgSessions::new(pool, THIRTY_DAYS);
+    let sessions = SesionesPostgres::new(pool, THIRTY_DAYS);
 
     let session = sessions.abrir(user_id).await.unwrap();
     let principal = sessions.autenticar(&session.token).await.unwrap();
@@ -80,7 +80,7 @@ async fn postgres_session_keeps_only_the_hash_of_its_token() {
         return eprintln!("{SKIP}");
     };
     let user_id = ada(&pool, &[]).await;
-    let sessions = PgSessions::new(pool.clone(), THIRTY_DAYS);
+    let sessions = SesionesPostgres::new(pool.clone(), THIRTY_DAYS);
 
     let session = sessions.abrir(user_id).await.unwrap();
 
@@ -99,7 +99,7 @@ async fn postgres_unknown_or_revoked_token_is_invalid() {
         return eprintln!("{SKIP}");
     };
     let user_id = ada(&pool, &[]).await;
-    let sessions = PgSessions::new(pool, THIRTY_DAYS);
+    let sessions = SesionesPostgres::new(pool, THIRTY_DAYS);
     let session = sessions.abrir(user_id).await.unwrap();
     let other = sessions.abrir(user_id).await.unwrap();
 
@@ -125,7 +125,7 @@ async fn postgres_session_past_its_expiry_is_expired() {
         return eprintln!("{SKIP}");
     };
     let user_id = ada(&pool, &[]).await;
-    let sessions = PgSessions::new(pool, Duration::ZERO);
+    let sessions = SesionesPostgres::new(pool, Duration::ZERO);
 
     let session = sessions.abrir(user_id).await.unwrap();
 
@@ -145,7 +145,7 @@ async fn postgres_sessions_are_unavailable_when_their_table_is_missing() {
         .execute(&pool)
         .await
         .unwrap();
-    let sessions = PgSessions::new(pool, THIRTY_DAYS);
+    let sessions = SesionesPostgres::new(pool, THIRTY_DAYS);
 
     assert_eq!(
         sessions.autenticar("any").await,
@@ -160,7 +160,7 @@ async fn postgres_credentials_are_set_replaced_and_read_by_user() {
         return eprintln!("{SKIP}");
     };
     let user_id = ada(&pool, &[]).await;
-    let credentials = PgCredentials::new(pool);
+    let credentials = CredencialesPostgres::new(pool);
 
     assert_eq!(credentials.hash_contrasena(user_id).await, Ok(None));
     credentials

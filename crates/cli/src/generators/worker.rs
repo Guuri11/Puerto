@@ -17,7 +17,7 @@ use crate::generators::render::render;
 use crate::puerto_toml::{Consumer, PuertoConfig};
 
 /// The transport that needs a broker: its registry wires `puerto-kafka`, its outbox migration has
-/// no `event_deliveries` and its `docker-compose.yml` runs Redpanda.
+/// no `entregas_eventos` and its `docker-compose.yml` runs Redpanda.
 pub const KAFKA_TRANSPORT: &str = "kafka";
 
 /// Names the worker's generated code already uses: a consumer named after one would not compile.
@@ -30,10 +30,10 @@ const RESERVED_CONSUMER_TYPES: &[&str] = &[
     "KafkaPublisher",
     "KafkaSubscription",
     "Loops",
-    "PgDeadLetters",
-    "PgDeliveries",
-    "PgOutbox",
-    "PgSubscription",
+    "DescartadosPostgres",
+    "EntregasPostgres",
+    "OutboxPostgres",
+    "SuscripcionPostgres",
     "WorkerConfig",
 ];
 
@@ -207,20 +207,23 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         .collect();
     let kafka = on_kafka(config);
     let adapters: &[&str] = match (kafka, consumers.is_empty()) {
-        (false, true) => &["PgDeliveries", "PgOutbox"],
+        (false, true) => &["EntregasPostgres", "OutboxPostgres"],
         (false, false) => &[
-            "PgDeadLetters",
-            "PgDeliveries",
-            "PgOutbox",
-            "PgSubscription",
+            "DescartadosPostgres",
+            "EntregasPostgres",
+            "OutboxPostgres",
+            "SuscripcionPostgres",
         ],
-        (true, true) => &["PgOutbox"],
-        (true, false) => &["PgDeadLetters", "PgOutbox"],
+        (true, true) => &["OutboxPostgres"],
+        (true, false) => &["DescartadosPostgres", "OutboxPostgres"],
     };
     let adapters: Vec<String> = adapters.iter().map(|a| a.to_string()).collect();
-    imports.push(format!("infrastructure::db::events::{}", braced(&adapters)));
+    imports.push(format!(
+        "infrastructure::db::eventos::{}",
+        braced(&adapters)
+    ));
     if mails {
-        imports.push("infrastructure::db::mail::PgSentMails".into());
+        imports.push("infrastructure::db::correo::CorreosEnviadosPostgres".into());
         imports.extend(template_mailers);
     }
     imports.push("puerto_events::{Loops, WorkerConfig}".into());
@@ -348,7 +351,7 @@ worker: docker-compose/up ## Run the worker: relays the outbox and runs the cons
 
 events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
 	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d {db_name} -c \
-		"SELECT recorded_at, consumer, event_type, attempts, reason, detail FROM dead_letters ORDER BY recorded_at DESC LIMIT 20"
+		"SELECT registrado_en, consumidor, tipo_evento, intentos, motivo, detalle FROM descartados ORDER BY registrado_en DESC LIMIT 20"
 "#
     )
 }

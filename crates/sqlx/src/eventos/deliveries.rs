@@ -15,17 +15,17 @@ use super::{ENVELOPE_COLUMNS, envelope_from_pg, unavailable};
 
 /// How long a claimed delivery stays invisible to other claims. A worker that dies while
 /// handling one leaves it due again after this — at-least-once, never lost.
-pub const DEFAULT_CLAIM_LEASE: Duration = Duration::from_secs(60);
+pub const RESERVA_POR_DEFECTO: Duration = Duration::from_secs(60);
 
 /// The relay's publisher on the `db` transport: fans each event out to the consumers subscribed
 /// to its type and marks it published, in one transaction.
-pub struct PgDeliveries {
+pub struct EntregasPostgres {
     pool: PgPool,
     /// event type → the consumers subscribed to it, in the order they subscribed.
     routes: BTreeMap<String, Vec<String>>,
 }
 
-impl PgDeliveries {
+impl EntregasPostgres {
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,
@@ -34,7 +34,7 @@ impl PgDeliveries {
     }
 
     /// Subscribes `consumer` to `event_types` — one `[[consumer]]` of puerto.toml.
-    pub fn route(mut self, consumer: &str, event_types: &[&str]) -> Self {
+    pub fn enrutar(mut self, consumer: &str, event_types: &[&str]) -> Self {
         for event_type in event_types {
             let consumers = self.routes.entry((*event_type).to_string()).or_default();
             if !consumers.iter().any(|c| c == consumer) {
@@ -45,28 +45,28 @@ impl PgDeliveries {
     }
 
     /// Who receives an event of this type. None is fine: the event is marked published anyway.
-    pub fn consumers_for(&self, event_type: &str) -> &[String] {
+    pub fn consumidores_de(&self, event_type: &str) -> &[String] {
         self.routes.get(event_type).map_or(&[], Vec::as_slice)
     }
 }
 
 #[async_trait]
-impl PublicadorEventos for PgDeliveries {
+impl PublicadorEventos for EntregasPostgres {
     async fn publicar(&self, event: &SobreEvento) -> Result<(), ErrorTransporte> {
         let context = "deliveries: publish";
         let mut tx = self.pool.begin().await.map_err(unavailable(context))?;
         sqlx::query(
-            "INSERT INTO event_deliveries (event_id, consumer) \
-             SELECT $1, consumer FROM unnest($2::text[]) AS consumer \
+            "INSERT INTO entregas_eventos (id_evento, consumidor) \
+             SELECT $1, consumidor FROM unnest($2::text[]) AS consumidor \
              ON CONFLICT DO NOTHING",
         )
         .bind(event.id)
-        .bind(self.consumers_for(&event.tipo_evento))
+        .bind(self.consumidores_de(&event.tipo_evento))
         .execute(&mut *tx)
         .await
         .map_err(unavailable(context))?;
         sqlx::query(
-            "UPDATE outbox SET published_at = now() WHERE id = $1 AND published_at IS NULL",
+            "UPDATE outbox SET publicado_en = now() WHERE id = $1 AND publicado_en IS NULL",
         )
         .bind(event.id)
         .execute(&mut *tx)
@@ -77,30 +77,30 @@ impl PublicadorEventos for PgDeliveries {
 }
 
 /// One consumer's input on the `db` transport.
-pub struct PgSubscription {
+pub struct SuscripcionPostgres {
     pool: PgPool,
     consumer: String,
-    lease: Duration,
+    reserva: Duration,
 }
 
-impl PgSubscription {
+impl SuscripcionPostgres {
     pub fn new(pool: PgPool, consumer: impl Into<String>) -> Self {
         Self {
             pool,
             consumer: consumer.into(),
-            lease: DEFAULT_CLAIM_LEASE,
+            reserva: RESERVA_POR_DEFECTO,
         }
     }
 
     /// How long a claim is kept from other workers; longer than the slowest handler.
-    pub fn with_lease(mut self, lease: Duration) -> Self {
-        self.lease = lease;
+    pub fn con_reserva(mut self, reserva: Duration) -> Self {
+        self.reserva = reserva;
         self
     }
 }
 
 #[async_trait]
-impl SuscripcionEventos for PgSubscription {
+impl SuscripcionEventos for SuscripcionPostgres {
     fn consumidor(&self) -> &str {
         &self.consumer
     }
@@ -112,32 +112,32 @@ impl SuscripcionEventos for PgSubscription {
         let context = "deliveries: next_batch";
         let rows = sqlx::query(&format!(
             "WITH due AS ( \
-                 SELECT d.event_id FROM event_deliveries d \
-                 JOIN outbox o ON o.id = d.event_id \
-                 WHERE d.consumer = $1 AND d.status = 'pending' AND d.next_attempt_at <= now() \
-                 ORDER BY o.seq LIMIT $2 \
+                 SELECT d.id_evento FROM entregas_eventos d \
+                 JOIN outbox o ON o.id = d.id_evento \
+                 WHERE d.consumidor = $1 AND d.estado = 'pendiente' AND d.siguiente_intento_en <= now() \
+                 ORDER BY o.secuencia LIMIT $2 \
                  FOR UPDATE OF d SKIP LOCKED \
              ), claimed AS ( \
-                 UPDATE event_deliveries d \
-                 SET attempts = d.attempts + 1, \
-                     next_attempt_at = now() + make_interval(secs => $3) \
-                 FROM due WHERE d.event_id = due.event_id AND d.consumer = $1 \
-                 RETURNING d.event_id, d.attempts \
+                 UPDATE entregas_eventos d \
+                 SET intentos = d.intentos + 1, \
+                     siguiente_intento_en = now() + make_interval(secs => $3) \
+                 FROM due WHERE d.id_evento = due.id_evento AND d.consumidor = $1 \
+                 RETURNING d.id_evento, d.intentos \
              ) \
-             SELECT {ENVELOPE_COLUMNS}, claimed.attempts FROM claimed \
-             JOIN outbox o ON o.id = claimed.event_id \
-             ORDER BY o.seq"
+             SELECT {ENVELOPE_COLUMNS}, claimed.intentos FROM claimed \
+             JOIN outbox o ON o.id = claimed.id_evento \
+             ORDER BY o.secuencia"
         ))
         .bind(&self.consumer)
         .bind(i64::from(max))
-        .bind(self.lease.as_secs_f64())
+        .bind(self.reserva.as_secs_f64())
         .fetch_all(&self.pool)
         .await
         .map_err(unavailable(context))?;
         rows.iter()
             .map(|row| {
                 let envelope = envelope_from_pg(row, context)?;
-                let attempts: i32 = sqlx::Row::try_get(row, "attempts")
+                let attempts: i32 = sqlx::Row::try_get(row, "intentos")
                     .map_err(|_| ErrorTransporte::DatosInvalidos)?;
                 let attempt =
                     u32::try_from(attempts).map_err(|_| ErrorTransporte::DatosInvalidos)?;
@@ -155,8 +155,8 @@ impl SuscripcionEventos for PgSubscription {
         let result = match delivery {
             Entrega::Ack => {
                 sqlx::query(
-                    "UPDATE event_deliveries SET status = 'done', last_error = NULL \
-                     WHERE event_id = $1 AND consumer = $2",
+                    "UPDATE entregas_eventos SET estado = 'hecho', ultimo_error = NULL \
+                     WHERE id_evento = $1 AND consumidor = $2",
                 )
                 .bind(id)
                 .bind(consumer)
@@ -165,9 +165,9 @@ impl SuscripcionEventos for PgSubscription {
             }
             Entrega::Reintentar { espera } => {
                 sqlx::query(
-                    "UPDATE event_deliveries \
-                     SET next_attempt_at = now() + make_interval(secs => $3) \
-                     WHERE event_id = $1 AND consumer = $2",
+                    "UPDATE entregas_eventos \
+                     SET siguiente_intento_en = now() + make_interval(secs => $3) \
+                     WHERE id_evento = $1 AND consumidor = $2",
                 )
                 .bind(id)
                 .bind(consumer)
@@ -177,8 +177,8 @@ impl SuscripcionEventos for PgSubscription {
             }
             Entrega::Descartar { motivo, detalle } => {
                 sqlx::query(
-                    "UPDATE event_deliveries SET status = 'dead', last_error = $3 \
-                     WHERE event_id = $1 AND consumer = $2",
+                    "UPDATE entregas_eventos SET estado = 'descartado', ultimo_error = $3 \
+                     WHERE id_evento = $1 AND consumidor = $2",
                 )
                 .bind(id)
                 .bind(consumer)
@@ -205,47 +205,47 @@ mod tests {
 
     #[tokio::test]
     async fn should_route_an_event_to_every_consumer_subscribed_to_its_type() {
-        let deliveries = PgDeliveries::new(lazy_pool())
-            .route(
+        let deliveries = EntregasPostgres::new(lazy_pool())
+            .enrutar(
                 "notify_new_product",
                 &["product_created", "product_published"],
             )
-            .route("audit", &["product_created"]);
+            .enrutar("audit", &["product_created"]);
 
         assert_eq!(
-            deliveries.consumers_for("product_created"),
+            deliveries.consumidores_de("product_created"),
             ["notify_new_product", "audit"]
         );
         assert_eq!(
-            deliveries.consumers_for("product_published"),
+            deliveries.consumidores_de("product_published"),
             ["notify_new_product"]
         );
     }
 
     #[tokio::test]
     async fn should_route_to_nobody_when_no_consumer_subscribed() {
-        let deliveries = PgDeliveries::new(lazy_pool()).route("audit", &["product_created"]);
+        let deliveries = EntregasPostgres::new(lazy_pool()).enrutar("audit", &["product_created"]);
 
-        assert!(deliveries.consumers_for("product_deleted").is_empty());
+        assert!(deliveries.consumidores_de("product_deleted").is_empty());
     }
 
     #[tokio::test]
     async fn should_route_once_when_a_consumer_subscribes_twice() {
-        let deliveries = PgDeliveries::new(lazy_pool())
-            .route("audit", &["product_created", "product_created"])
-            .route("audit", &["product_created"]);
+        let deliveries = EntregasPostgres::new(lazy_pool())
+            .enrutar("audit", &["product_created", "product_created"])
+            .enrutar("audit", &["product_created"]);
 
-        assert_eq!(deliveries.consumers_for("product_created"), ["audit"]);
+        assert_eq!(deliveries.consumidores_de("product_created"), ["audit"]);
     }
 
     #[tokio::test]
     async fn should_name_its_consumer_and_default_lease_when_subscribed() {
-        let subscription = PgSubscription::new(lazy_pool(), "audit");
+        let subscription = SuscripcionPostgres::new(lazy_pool(), "audit");
 
         assert_eq!(subscription.consumidor(), "audit");
-        assert_eq!(subscription.lease, DEFAULT_CLAIM_LEASE);
+        assert_eq!(subscription.reserva, RESERVA_POR_DEFECTO);
         assert_eq!(
-            subscription.with_lease(Duration::from_secs(5)).lease,
+            subscription.con_reserva(Duration::from_secs(5)).reserva,
             Duration::from_secs(5)
         );
     }

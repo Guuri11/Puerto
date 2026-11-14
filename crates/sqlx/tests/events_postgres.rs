@@ -9,9 +9,11 @@ use puerto_nucleo::eventos::transporte::{
     DestinoDescartados, Outbox, PublicadorEventos, RegistroDescartado, SuscripcionEventos,
 };
 use puerto_nucleo::{ErrorRepositorio, EventoDominio, SobreEvento};
-use puerto_sqlx::events::{PgDeadLetters, PgDeliveries, PgOutbox, PgSubscription};
-use puerto_sqlx::uow::PgTransaction;
-use puerto_sqlx::{OUTBOX_MIGRATION, map_sqlx_error};
+use puerto_sqlx::eventos::{
+    DescartadosPostgres, EntregasPostgres, OutboxPostgres, SuscripcionPostgres,
+};
+use puerto_sqlx::uow::TransaccionPostgres;
+use puerto_sqlx::{MIGRACION_OUTBOX, mapear_error_sqlx};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -37,7 +39,7 @@ async fn database() -> Option<PgPool> {
         .connect_with(options.options([("search_path", schema.as_str())]))
         .await
         .unwrap();
-    sqlx::raw_sql(OUTBOX_MIGRATION)
+    sqlx::raw_sql(MIGRACION_OUTBOX)
         .execute(&pool)
         .await
         .unwrap();
@@ -73,7 +75,7 @@ impl EventoDominio for ProductCreated {
 
 /// What a generated `Pg{Entity}UnitOfWork` does: the entity's write, then its event.
 async fn save_product(
-    uow: &mut PgTransaction,
+    uow: &mut TransaccionPostgres,
     name: &'static str,
 ) -> Result<Uuid, ErrorRepositorio> {
     let id = Uuid::now_v7();
@@ -82,8 +84,8 @@ async fn save_product(
         .bind(name)
         .execute(uow.tx())
         .await
-        .map_err(|err| map_sqlx_error(&err))?;
-    uow.record(&ProductCreated { id, name }).await?;
+        .map_err(|err| mapear_error_sqlx(&err))?;
+    uow.registrar(&ProductCreated { id, name }).await?;
     Ok(id)
 }
 
@@ -96,15 +98,15 @@ async fn count(pool: &PgPool, sql: &str) -> i64 {
 async fn write_events(pool: &PgPool, names: &[&'static str]) -> Vec<Uuid> {
     let mut ids = Vec::new();
     for name in names {
-        let mut uow = PgTransaction::begin(pool).await.unwrap();
+        let mut uow = TransaccionPostgres::begin(pool).await.unwrap();
         ids.push(save_product(&mut uow, name).await.unwrap());
         uow.commit().await.unwrap();
     }
     ids
 }
 
-async fn publish_all(pool: &PgPool, deliveries: &PgDeliveries) {
-    let outbox = PgOutbox::new(pool.clone());
+async fn publish_all(pool: &PgPool, deliveries: &EntregasPostgres) {
+    let outbox = OutboxPostgres::new(pool.clone());
     for event in outbox.buscar_sin_publicar(1000).await.unwrap() {
         deliveries.publicar(&event).await.unwrap();
     }
@@ -117,20 +119,20 @@ async fn postgres_committed_unit_of_work_writes_the_entity_and_its_outbox_row() 
         return eprintln!("{SKIP}");
     };
 
-    let mut uow = PgTransaction::begin(&pool).await.unwrap();
+    let mut uow = TransaccionPostgres::begin(&pool).await.unwrap();
     let id = save_product(&mut uow, "Desk lamp").await.unwrap();
     uow.commit().await.unwrap();
 
     assert_eq!(count(&pool, "SELECT count(*) FROM products").await, 1);
-    let events = PgOutbox::new(pool.clone())
+    let eventos = OutboxPostgres::new(pool.clone())
         .buscar_sin_publicar(10)
         .await
         .unwrap();
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0].tipo_evento, "product_created");
-    assert_eq!(events[0].tipo_agregado, "product");
-    assert_eq!(events[0].id_agregado, id);
-    assert_eq!(events[0].payload, json!({ "id": id, "name": "Desk lamp" }));
+    assert_eq!(eventos.len(), 1);
+    assert_eq!(eventos[0].tipo_evento, "product_created");
+    assert_eq!(eventos[0].tipo_agregado, "product");
+    assert_eq!(eventos[0].id_agregado, id);
+    assert_eq!(eventos[0].payload, json!({ "id": id, "name": "Desk lamp" }));
 }
 
 #[tokio::test]
@@ -141,7 +143,7 @@ async fn postgres_dropped_unit_of_work_writes_neither_the_entity_nor_its_event()
     };
 
     {
-        let mut uow = PgTransaction::begin(&pool).await.unwrap();
+        let mut uow = TransaccionPostgres::begin(&pool).await.unwrap();
         save_product(&mut uow, "Desk lamp").await.unwrap();
     }
 
@@ -157,7 +159,7 @@ async fn postgres_unit_of_work_rejecting_a_duplicate_records_nothing() {
     };
     write_events(&pool, &["Desk lamp"]).await;
 
-    let mut uow = PgTransaction::begin(&pool).await.unwrap();
+    let mut uow = TransaccionPostgres::begin(&pool).await.unwrap();
     let result = save_product(&mut uow, "Desk lamp").await;
     drop(uow);
 
@@ -177,11 +179,11 @@ async fn postgres_recorded_envelope_keeps_its_headers() {
     })
     .con_cabecera("correlation_id", "req-1");
 
-    let mut uow = PgTransaction::begin(&pool).await.unwrap();
-    uow.record_envelope(&event).await.unwrap();
+    let mut uow = TransaccionPostgres::begin(&pool).await.unwrap();
+    uow.registrar_sobre(&event).await.unwrap();
     uow.commit().await.unwrap();
 
-    let stored = PgOutbox::new(pool.clone())
+    let stored = OutboxPostgres::new(pool.clone())
         .buscar_sin_publicar(10)
         .await
         .unwrap();
@@ -202,9 +204,10 @@ async fn postgres_outbox_returns_unpublished_rows_in_write_order_and_skips_marke
         return eprintln!("{SKIP}");
     };
     let products = write_events(&pool, &["a", "b", "c", "d"]).await;
-    let outbox = PgOutbox::new(pool.clone());
-    let aggregates =
-        |events: Vec<SobreEvento>| -> Vec<Uuid> { events.iter().map(|e| e.id_agregado).collect() };
+    let outbox = OutboxPostgres::new(pool.clone());
+    let aggregates = |eventos: Vec<SobreEvento>| -> Vec<Uuid> {
+        eventos.iter().map(|e| e.id_agregado).collect()
+    };
 
     let first_two = outbox.buscar_sin_publicar(2).await.unwrap();
     let all = outbox.buscar_sin_publicar(10).await.unwrap();
@@ -227,8 +230,8 @@ async fn postgres_relay_lock_has_one_leader_at_a_time() {
     };
     // Advisory locks span the whole server: a key no other test uses.
     let key = i64::from_le_bytes(Uuid::now_v7().as_bytes()[8..].try_into().unwrap());
-    let first = PgOutbox::new(pool.clone()).with_lock_key(key);
-    let second = PgOutbox::new(pool.clone()).with_lock_key(key);
+    let first = OutboxPostgres::new(pool.clone()).con_clave_bloqueo(key);
+    let second = OutboxPostgres::new(pool.clone()).con_clave_bloqueo(key);
 
     assert!(first.intentar_liderar().await.unwrap());
     assert!(first.intentar_liderar().await.unwrap());
@@ -253,15 +256,15 @@ async fn postgres_fan_out_writes_one_delivery_per_consumer_and_marks_the_event_p
         return eprintln!("{SKIP}");
     };
     write_events(&pool, &["Desk lamp"]).await;
-    let deliveries = PgDeliveries::new(pool.clone())
-        .route("notify_new_product", &["product_created"])
-        .route("audit", &["product_created"])
-        .route("billing", &["order_paid"]);
+    let deliveries = EntregasPostgres::new(pool.clone())
+        .enrutar("notify_new_product", &["product_created"])
+        .enrutar("audit", &["product_created"])
+        .enrutar("billing", &["order_paid"]);
 
     publish_all(&pool, &deliveries).await;
 
     let consumers: Vec<String> =
-        sqlx::query_scalar("SELECT consumer FROM event_deliveries ORDER BY consumer")
+        sqlx::query_scalar("SELECT consumidor FROM entregas_eventos ORDER BY consumidor")
             .fetch_all(&pool)
             .await
             .unwrap();
@@ -269,7 +272,7 @@ async fn postgres_fan_out_writes_one_delivery_per_consumer_and_marks_the_event_p
     assert_eq!(
         count(
             &pool,
-            "SELECT count(*) FROM outbox WHERE published_at IS NULL"
+            "SELECT count(*) FROM outbox WHERE publicado_en IS NULL"
         )
         .await,
         0
@@ -284,15 +287,15 @@ async fn postgres_failed_fan_out_leaves_the_event_unpublished_and_no_delivery() 
     };
     write_events(&pool, &["Desk lamp"]).await;
     sqlx::raw_sql(
-        "ALTER TABLE event_deliveries ADD CONSTRAINT no_audit CHECK (consumer <> 'audit')",
+        "ALTER TABLE entregas_eventos ADD CONSTRAINT no_audit CHECK (consumidor <> 'audit')",
     )
     .execute(&pool)
     .await
     .unwrap();
-    let deliveries = PgDeliveries::new(pool.clone())
-        .route("notify_new_product", &["product_created"])
-        .route("audit", &["product_created"]);
-    let event = PgOutbox::new(pool.clone())
+    let deliveries = EntregasPostgres::new(pool.clone())
+        .enrutar("notify_new_product", &["product_created"])
+        .enrutar("audit", &["product_created"]);
+    let event = OutboxPostgres::new(pool.clone())
         .buscar_sin_publicar(1)
         .await
         .unwrap()
@@ -302,13 +305,13 @@ async fn postgres_failed_fan_out_leaves_the_event_unpublished_and_no_delivery() 
 
     assert!(result.is_err());
     assert_eq!(
-        count(&pool, "SELECT count(*) FROM event_deliveries").await,
+        count(&pool, "SELECT count(*) FROM entregas_eventos").await,
         0
     );
     assert_eq!(
         count(
             &pool,
-            "SELECT count(*) FROM outbox WHERE published_at IS NULL"
+            "SELECT count(*) FROM outbox WHERE publicado_en IS NULL"
         )
         .await,
         1
@@ -323,16 +326,16 @@ async fn postgres_event_nobody_subscribed_to_is_still_marked_published() {
     };
     write_events(&pool, &["Desk lamp"]).await;
 
-    publish_all(&pool, &PgDeliveries::new(pool.clone())).await;
+    publish_all(&pool, &EntregasPostgres::new(pool.clone())).await;
 
     assert_eq!(
-        count(&pool, "SELECT count(*) FROM event_deliveries").await,
+        count(&pool, "SELECT count(*) FROM entregas_eventos").await,
         0
     );
     assert_eq!(
         count(
             &pool,
-            "SELECT count(*) FROM outbox WHERE published_at IS NULL"
+            "SELECT count(*) FROM outbox WHERE publicado_en IS NULL"
         )
         .await,
         0
@@ -348,10 +351,10 @@ async fn postgres_claims_come_in_write_order_and_count_as_a_delivery() {
     let ids = write_events(&pool, &["a", "b", "c"]).await;
     publish_all(
         &pool,
-        &PgDeliveries::new(pool.clone()).route("audit", &["product_created"]),
+        &EntregasPostgres::new(pool.clone()).enrutar("audit", &["product_created"]),
     )
     .await;
-    let mut subscription = PgSubscription::new(pool.clone(), "audit");
+    let mut subscription = SuscripcionPostgres::new(pool.clone(), "audit");
 
     let claimed = subscription.siguiente_lote(10).await.unwrap();
     let again = subscription.siguiente_lote(10).await.unwrap();
@@ -371,10 +374,11 @@ async fn postgres_unsettled_claim_is_delivered_again_after_its_lease() {
     write_events(&pool, &["Desk lamp"]).await;
     publish_all(
         &pool,
-        &PgDeliveries::new(pool.clone()).route("audit", &["product_created"]),
+        &EntregasPostgres::new(pool.clone()).enrutar("audit", &["product_created"]),
     )
     .await;
-    let mut subscription = PgSubscription::new(pool.clone(), "audit").with_lease(Duration::ZERO);
+    let mut subscription =
+        SuscripcionPostgres::new(pool.clone(), "audit").con_reserva(Duration::ZERO);
 
     let first = subscription.siguiente_lote(10).await.unwrap();
     let second = subscription.siguiente_lote(10).await.unwrap();
@@ -397,12 +401,12 @@ async fn postgres_concurrent_claims_never_return_the_same_delivery() {
     write_events(&pool, &names).await;
     publish_all(
         &pool,
-        &PgDeliveries::new(pool.clone()).route("audit", &["product_created"]),
+        &EntregasPostgres::new(pool.clone()).enrutar("audit", &["product_created"]),
     )
     .await;
 
     let claim_all = |pool: PgPool| async move {
-        let mut subscription = PgSubscription::new(pool, "audit");
+        let mut subscription = SuscripcionPostgres::new(pool, "audit");
         let mut ids = Vec::new();
         loop {
             let batch = subscription.siguiente_lote(3).await.unwrap();
@@ -433,10 +437,11 @@ async fn postgres_ack_retires_the_delivery() {
     write_events(&pool, &["Desk lamp"]).await;
     publish_all(
         &pool,
-        &PgDeliveries::new(pool.clone()).route("audit", &["product_created"]),
+        &EntregasPostgres::new(pool.clone()).enrutar("audit", &["product_created"]),
     )
     .await;
-    let mut subscription = PgSubscription::new(pool.clone(), "audit").with_lease(Duration::ZERO);
+    let mut subscription =
+        SuscripcionPostgres::new(pool.clone(), "audit").con_reserva(Duration::ZERO);
 
     let claimed = subscription.siguiente_lote(1).await.unwrap().remove(0);
     subscription
@@ -448,7 +453,7 @@ async fn postgres_ack_retires_the_delivery() {
     assert_eq!(
         count(
             &pool,
-            "SELECT count(*) FROM event_deliveries WHERE status = 'done'"
+            "SELECT count(*) FROM entregas_eventos WHERE estado = 'hecho'"
         )
         .await,
         1
@@ -464,10 +469,11 @@ async fn postgres_retry_moves_the_next_attempt_forward_and_counts_the_attempt() 
     write_events(&pool, &["Desk lamp"]).await;
     publish_all(
         &pool,
-        &PgDeliveries::new(pool.clone()).route("audit", &["product_created"]),
+        &EntregasPostgres::new(pool.clone()).enrutar("audit", &["product_created"]),
     )
     .await;
-    let mut subscription = PgSubscription::new(pool.clone(), "audit").with_lease(Duration::ZERO);
+    let mut subscription =
+        SuscripcionPostgres::new(pool.clone(), "audit").con_reserva(Duration::ZERO);
 
     let claimed = subscription.siguiente_lote(1).await.unwrap().remove(0);
     let retry = Entrega::Reintentar {
@@ -477,14 +483,14 @@ async fn postgres_retry_moves_the_next_attempt_forward_and_counts_the_attempt() 
 
     assert!(subscription.siguiente_lote(10).await.unwrap().is_empty());
     let (attempts, status, wait): (i32, String, f64) = sqlx::query_as(
-        "SELECT attempts, status, EXTRACT(EPOCH FROM next_attempt_at - now())::float8 \
-         FROM event_deliveries",
+        "SELECT intentos, estado, EXTRACT(EPOCH FROM siguiente_intento_en - now())::float8 \
+         FROM entregas_eventos",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!(attempts, 1);
-    assert_eq!(status, "pending");
+    assert_eq!(status, "pendiente");
     assert!(wait > 25.0 && wait <= 30.0, "next attempt in {wait} s");
 }
 
@@ -497,22 +503,23 @@ async fn postgres_dead_delivery_keeps_one_dead_letter_when_recorded_twice() {
     write_events(&pool, &["Desk lamp"]).await;
     publish_all(
         &pool,
-        &PgDeliveries::new(pool.clone()).route("audit", &["product_created"]),
+        &EntregasPostgres::new(pool.clone()).enrutar("audit", &["product_created"]),
     )
     .await;
-    let mut subscription = PgSubscription::new(pool.clone(), "audit").with_lease(Duration::ZERO);
-    let sink = PgDeadLetters::new(pool.clone());
+    let mut subscription =
+        SuscripcionPostgres::new(pool.clone(), "audit").con_reserva(Duration::ZERO);
+    let sink = DescartadosPostgres::new(pool.clone());
 
     let claimed = subscription.siguiente_lote(1).await.unwrap().remove(0);
-    let record = RegistroDescartado::para_evento(
+    let registrar = RegistroDescartado::para_evento(
         "audit",
         &claimed.sobre,
         claimed.intento,
         "payload_invalido",
         "missing field `price`",
     );
-    sink.registrar(&record).await.unwrap();
-    sink.registrar(&record).await.unwrap();
+    sink.registrar(&registrar).await.unwrap();
+    sink.registrar(&registrar).await.unwrap();
     let dead = Entrega::Descartar {
         motivo: "payload_invalido",
         detalle: "missing field `price`".into(),
@@ -521,17 +528,19 @@ async fn postgres_dead_delivery_keeps_one_dead_letter_when_recorded_twice() {
 
     assert!(subscription.siguiente_lote(10).await.unwrap().is_empty());
     let (status, last_error): (String, String) =
-        sqlx::query_as("SELECT status, last_error FROM event_deliveries")
+        sqlx::query_as("SELECT estado, ultimo_error FROM entregas_eventos")
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(status, "dead");
-    assert_eq!(last_error, "payload_invalid: missing field `price`");
+    assert_eq!(status, "descartado");
+    assert_eq!(last_error, "payload_invalido: missing field `price`");
     let (event_id, consumer, event_type, attempts, reason): (Uuid, String, String, i32, String) =
-        sqlx::query_as("SELECT event_id, consumer, event_type, attempts, reason FROM dead_letters")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        sqlx::query_as(
+            "SELECT id_evento, consumidor, tipo_evento, intentos, motivo FROM descartados",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(event_id, claimed.sobre.id);
     assert_eq!(consumer, "audit");
     assert_eq!(event_type, "product_created");
@@ -545,12 +554,12 @@ async fn postgres_unreadable_messages_each_keep_a_dead_letter() {
     let Some(pool) = database().await else {
         return eprintln!("{SKIP}");
     };
-    let sink = PgDeadLetters::new(pool.clone());
+    let sink = DescartadosPostgres::new(pool.clone());
 
     for raw in ["not json", "{"] {
-        let record = RegistroDescartado::ilegible("audit", raw, 1, "payload_invalido", "eof");
-        sink.registrar(&record).await.unwrap();
+        let registrar = RegistroDescartado::ilegible("audit", raw, 1, "payload_invalido", "eof");
+        sink.registrar(&registrar).await.unwrap();
     }
 
-    assert_eq!(count(&pool, "SELECT count(*) FROM dead_letters").await, 2);
+    assert_eq!(count(&pool, "SELECT count(*) FROM descartados").await, 2);
 }

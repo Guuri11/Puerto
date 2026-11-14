@@ -49,7 +49,7 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 |---|---|---|
 | `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
 | `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `RespuestaError` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::RespuestaError;` |
-| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
+| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `mapear_error_sqlx` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
 `puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
@@ -4848,7 +4848,7 @@ use business::domain::customer::{
 use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::CustomerDb;
-use crate::db::map_sqlx_error;
+use crate::db::mapear_error_sqlx;
 
 pub struct PgCustomerRepository {
     pub pool: PgPool,
@@ -4889,7 +4889,7 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         let total = sqlx::query_scalar!(
             r#"SELECT COUNT(*) AS "total!" FROM customers WHERE deleted = false"#
@@ -4898,7 +4898,7 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all count failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         let items = rows
@@ -4922,7 +4922,7 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         row.map(to_domain).transpose()
@@ -4954,7 +4954,7 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         Ok(())
     }
@@ -5237,7 +5237,7 @@ use business::domain::product::{
 use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::ProductDb;
-use crate::db::map_sqlx_error;
+use crate::db::mapear_error_sqlx;
 
 pub struct PgProductRepository {
     pub pool: PgPool,
@@ -5278,7 +5278,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         let total = sqlx::query_scalar!(
             r#"SELECT COUNT(*) AS "total!" FROM products WHERE deleted = false"#
@@ -5287,7 +5287,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all count failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         let items = rows
@@ -5311,7 +5311,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         row.map(to_domain).transpose()
@@ -5348,7 +5348,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         Ok(())
     }
@@ -5569,7 +5569,7 @@ use business::domain::ticket::{
 use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::TicketDb;
-use crate::db::map_sqlx_error;
+use crate::db::mapear_error_sqlx;
 
 pub struct PgTicketRepository {
     pub pool: PgPool,
@@ -5610,7 +5610,7 @@ impl TicketRepositoryTrait for PgTicketRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         let total = sqlx::query_scalar!(
             r#"SELECT COUNT(*) AS "total!" FROM tickets WHERE deleted = false"#
@@ -5619,7 +5619,7 @@ impl TicketRepositoryTrait for PgTicketRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all count failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         let items = rows
@@ -5643,7 +5643,7 @@ impl TicketRepositoryTrait for PgTicketRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         row.map(to_domain).transpose()
@@ -5668,7 +5668,7 @@ impl TicketRepositoryTrait for PgTicketRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         Ok(())
     }
@@ -8173,10 +8173,10 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {
         "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string()
     })?;
-    let pool = infrastructure::db::create_postgres_pool(&database_url)
+    let pool = infrastructure::db::crear_pool_postgres(&database_url)
         .await
         .map_err(|e| format!("{e} — is the database up? `make docker-compose/up`"))?;
-    infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)
+    infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)
         .await
         .map_err(|e| e.to_string())?;
 

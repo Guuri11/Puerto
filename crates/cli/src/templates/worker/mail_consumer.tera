@@ -2,7 +2,7 @@
 //! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
-//! Delivery is at-least-once: `send_once` keeps a `sent_mails` row per event, so a redelivered
+//! Delivery is at-least-once: `send_once` keeps a `correos_enviados` row per event, so a redelivered
 //! event does not send the mail again. Keep `MAIL` as it is: renaming it sends every mail again.
 
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use puerto_nucleo::eventos::{SobreEvento, ManejadorEvento, ResultadoManejo, MOTI
 use puerto_nucleo::correo::CorreosEnviados;
 use puerto_mail::send_once;
 
-/// The key of this mail in `sent_mails`.
+/// The key of this mail in `correos_enviados`.
 const MAIL: &str = "{{ name }}";
 
 pub struct Send{{ pascal }}Mail {

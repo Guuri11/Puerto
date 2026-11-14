@@ -9,7 +9,7 @@ use business::domain::user::{
 };
 use puerto_nucleo::ErrorRepositorio;
 
-use crate::db::map_sqlx_error;
+use crate::db::mapear_error_sqlx;
 
 /// Runtime-checked queries (`query_as`, not `query_as!`): `puerto new` writes this file before
 /// there is a database to build the query cache from, and the project builds offline.
@@ -68,7 +68,7 @@ impl UserRepositoryTrait for PgUserRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_subject failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         Ok(row.map(User::from))
     }
@@ -81,7 +81,7 @@ impl UserRepositoryTrait for PgUserRepository {
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "find_by_id failed");
-                map_sqlx_error(&e)
+                mapear_error_sqlx(&e)
             })?;
         Ok(row.map(User::from))
     }
@@ -109,7 +109,7 @@ impl UserRepositoryTrait for PgUserRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         Ok(())
     }

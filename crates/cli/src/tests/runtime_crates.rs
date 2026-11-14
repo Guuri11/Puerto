@@ -515,7 +515,7 @@ fn db_module_keeps_only_the_project_migrations_and_re_exports_puerto_sqlx() {
         "{db}"
     );
     // The pool, the probe and the error mapping are the runtime's — no code of their own here.
-    for gone in ["fn ", "23505", "PgPoolOptions", "DatabaseError"] {
+    for gone in ["fn ", "23505", "PgPoolOptions", "ErrorBaseDatos"] {
         assert!(!db.contains(gone), "{gone}: {db}");
     }
 
@@ -529,12 +529,13 @@ fn db_bootstrap_runs_the_project_migrations_through_puerto_sqlx() {
 
     let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
     assert!(
-        bootstrap
-            .contains("infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)"),
+        bootstrap.contains(
+            "infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)"
+        ),
         "{bootstrap}"
     );
     assert!(
-        bootstrap.contains("infrastructure::db::create_postgres_pool(&database_url)"),
+        bootstrap.contains("infrastructure::db::crear_pool_postgres(&database_url)"),
         "{bootstrap}"
     );
 
@@ -557,7 +558,7 @@ fn compile_matrix_patches_only_the_runtime_crates_a_project_names() {
 }
 
 // Phase 13.2 (ADR-0018): the outbox tables `puerto new --events` writes are the ones
-// `puerto-sqlx`'s own tests run against (`OUTBOX_MIGRATION` embeds that file).
+// `puerto-sqlx`'s own tests run against (`MIGRACION_OUTBOX` embeds that file).
 #[test]
 fn outbox_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
     let template = include_str!("../templates/infrastructure/outbox.sql");
@@ -569,7 +570,7 @@ fn outbox_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
 }
 
 // Phase 14.2 (ADR-0020): the sent-mail log the first `generate mail --on` writes is the table
-// `puerto-sqlx`'s own tests run against (`SENT_MAILS_MIGRATION` embeds that file).
+// `puerto-sqlx`'s own tests run against (`MIGRACION_CORREOS_ENVIADOS` embeds that file).
 #[test]
 fn sent_mails_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
     let template = include_str!("../templates/infrastructure/sent_mails.sql");
@@ -580,8 +581,8 @@ fn sent_mails_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with()
     assert!(runtime_lib.contains(r#"include_str!("../migrations/sent_mails.sql")"#));
 }
 
-// Phase 16.6 (ADR-0021): `puerto-sqlx`'s `PgSessions` joins the `users` table `puerto new --auth`
-// writes, so the two must be one schema (`USERS_MIGRATION` embeds that file).
+// Phase 16.6 (ADR-0021): `puerto-sqlx`'s `SesionesPostgres` joins the `users` table `puerto new --auth`
+// writes, so the two must be one schema (`MIGRACION_USUARIOS` embeds that file).
 #[test]
 fn users_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
     let template = include_str!("../templates/auth/users.sql");
@@ -593,7 +594,7 @@ fn users_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
 }
 
 // Phase 16.6 (ADR-0021): the credentials and sessions `puerto new --auth local` writes are the
-// tables `puerto-sqlx`'s own tests run against (`AUTH_MIGRATION` embeds that file).
+// tables `puerto-sqlx`'s own tests run against (`MIGRACION_AUTH` embeds that file).
 #[test]
 fn auth_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
     let template = include_str!("../templates/auth/local/auth.sql");

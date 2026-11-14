@@ -27,7 +27,7 @@ worker/src/
 - **Answer honestly**: `Ack` when done; `Retry` for a failure that may pass (redelivered with a
   1 s → 300 s backoff, `MAX_DELIVERIES` times); `ResultadoManejo::descartar(motivo, detalle)` for
   one that never will. A payload that does not decode is `MOTIVO_PAYLOAD_INVALIDO`. Nothing is
-  dropped without a row in `dead_letters` (`make events/dead-letters`).
+  dropped without a row in `descartados` (`make events/dead-letters`).
 - **Decode the snapshot, never the domain model**: `event.decodificar::<ProductSnapshot>()`. The
   snapshot is the event's public contract.
 

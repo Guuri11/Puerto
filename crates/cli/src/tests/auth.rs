@@ -130,7 +130,7 @@ fn new_with_auth_and_db_keeps_users_in_postgres() {
     assert!(sql.contains("UNIQUE (issuer, subject)"), "{sql}");
     // No entity uses the database yet: the bootstrap still opens the pool, for the users.
     let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
-    assert!(bootstrap.contains("create_postgres_pool"), "{bootstrap}");
+    assert!(bootstrap.contains("crear_pool_postgres"), "{bootstrap}");
     assert!(
         bootstrap.contains("PgUserRepository::new(pool.clone())"),
         "{bootstrap}"
@@ -787,8 +787,8 @@ fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
     assert!(users < auth, "{users} runs before {auth}");
     let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
     for wired in [
-        "PgSessions::new",
-        "PgCredentials::new",
+        "SesionesPostgres::new",
+        "CredencialesPostgres::new",
         "Argon2Hasher",
         "auth_api",
         ".data(authenticator)",

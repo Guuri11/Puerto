@@ -397,7 +397,7 @@ fn add_env(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-/// `AUTH_SESSION_TTL`, read by `puerto_sqlx::auth::session_ttl_from_env`.
+/// `AUTH_SESSION_TTL`, read by `puerto_sqlx::auth::ttl_sesion_from_env`.
 fn add_local_env(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let vars = "\n# Auth — accounts in this database (ADR-0021). How long a session lasts: 30d, 12h, 90m.\n\
                 AUTH_SESSION_TTL=30d\n";

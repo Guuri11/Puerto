@@ -63,7 +63,7 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 |---|---|---|
 | `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
 | `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `RespuestaError` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::RespuestaError;` |
-| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
+| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `mapear_error_sqlx` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
 `puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
@@ -284,7 +284,7 @@ a provider.
 **Who sends it.** In a project with domain events, `puerto generate mail <name> --on
 <event_type> --to <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
 in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
-per event (`puerto_mail::send_once` keeps a `sent_mails` row — a crash between the send and that
+per event (`puerto_mail::send_once` keeps a `correos_enviados` row — a crash between the send and that
 row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
 
 === Cargo.toml ===
@@ -505,7 +505,7 @@ worker: docker-compose/up ## Run the worker: relays the outbox and runs the cons
 
 events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
 	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d snapshot -c \
-		"SELECT recorded_at, consumer, event_type, attempts, reason, detail FROM dead_letters ORDER BY recorded_at DESC LIMIT 20"
+		"SELECT registrado_en, consumidor, tipo_evento, intentos, motivo, detalle FROM descartados ORDER BY registrado_en DESC LIMIT 20"
 
 .PHONY: mail/ui
 
@@ -2616,6 +2616,21 @@ Status: {{ status }}
 === infrastructure/mail/product_live/subject.txt ===
 Product live, {{ name }}
 
+=== infrastructure/migrations/<version>_correos_enviados.sql ===
+-- Puerto migration: correos_enviados
+-- Run `make sqlx/prepare` after editing this file.
+
+-- Correo (ADR-0020): lo escribe puerto. Una fila por correo que un consumidor del worker envió por
+-- un evento, para que un evento reentregado no lo envíe otra vez. Crece una fila por correo: borrar
+-- las antiguas es cosa tuya.
+
+CREATE TABLE correos_enviados (
+    id_evento  UUID        NOT NULL,
+    correo     TEXT        NOT NULL,
+    enviado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (id_evento, correo)
+);
+
 === infrastructure/migrations/<version>_create_product_table.sql ===
 -- Puerto migration: create_product_table
 -- Run `make sqlx/prepare` after editing this file.
@@ -2641,62 +2656,48 @@ CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;
 -- Puerto migration: outbox
 -- Run `make sqlx/prepare` after editing this file.
 
--- Domain events (ADR-0018): written by puerto. The units of work insert into `outbox` in the same
--- transaction as the entity; the worker relays it and records what it could not deliver.
+-- Eventos de dominio (ADR-0018): lo escribe puerto. Las unidades de trabajo insertan en `outbox`
+-- en la misma transacción que la entidad; el worker lo releva y registra lo que no pudo entregar.
 
 CREATE TABLE outbox (
-    id             UUID        PRIMARY KEY,
-    seq            BIGSERIAL   NOT NULL,          -- relay order
-    aggregate_type TEXT        NOT NULL,
-    aggregate_id   UUID        NOT NULL,
-    event_type     TEXT        NOT NULL,
-    schema_version INT         NOT NULL,
-    payload        JSONB       NOT NULL,
-    headers        JSONB       NOT NULL DEFAULT '{}',
-    occurred_at    TIMESTAMPTZ NOT NULL,
-    published_at   TIMESTAMPTZ
+    id              UUID        PRIMARY KEY,
+    secuencia       BIGSERIAL   NOT NULL,          -- orden del relay
+    tipo_agregado   TEXT        NOT NULL,
+    id_agregado     UUID        NOT NULL,
+    tipo_evento     TEXT        NOT NULL,
+    version_esquema INT         NOT NULL,
+    payload         JSONB       NOT NULL,
+    cabeceras       JSONB       NOT NULL DEFAULT '{}',
+    ocurrido_en     TIMESTAMPTZ NOT NULL,
+    publicado_en    TIMESTAMPTZ
 );
-CREATE INDEX outbox_unpublished ON outbox (seq) WHERE published_at IS NULL;
+CREATE INDEX outbox_sin_publicar ON outbox (secuencia) WHERE publicado_en IS NULL;
 
-CREATE TABLE event_deliveries (                  -- db transport only
-    event_id        UUID        NOT NULL REFERENCES outbox (id),
-    consumer        TEXT        NOT NULL,
-    status          TEXT        NOT NULL DEFAULT 'pending',   -- pending | done | dead
-    attempts        INT         NOT NULL DEFAULT 0,
-    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_error      TEXT,
-    PRIMARY KEY (event_id, consumer)
+CREATE TABLE entregas_eventos (                  -- solo el transporte db
+    id_evento            UUID        NOT NULL REFERENCES outbox (id),
+    consumidor           TEXT        NOT NULL,
+    estado               TEXT        NOT NULL DEFAULT 'pendiente',   -- pendiente | hecho | descartado
+    intentos             INT         NOT NULL DEFAULT 0,
+    siguiente_intento_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ultimo_error         TEXT,
+    PRIMARY KEY (id_evento, consumidor)
 );
-CREATE INDEX event_deliveries_due ON event_deliveries (consumer, next_attempt_at) WHERE status = 'pending';
+CREATE INDEX entregas_eventos_vencidas ON entregas_eventos (consumidor, siguiente_intento_en) WHERE estado = 'pendiente';
 
-CREATE TABLE dead_letters (                      -- every transport
-    id           UUID        PRIMARY KEY,
-    event_id     UUID,
-    consumer     TEXT        NOT NULL,
-    event_type   TEXT,
-    attempts     INT         NOT NULL,
-    reason       TEXT        NOT NULL,
-    detail       TEXT        NOT NULL,
-    payload      TEXT        NOT NULL,           -- trimmed to 4000 chars
-    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE descartados (                       -- todos los transportes
+    id            UUID        PRIMARY KEY,
+    id_evento     UUID,
+    consumidor    TEXT        NOT NULL,
+    tipo_evento   TEXT,
+    intentos      INT         NOT NULL,
+    motivo        TEXT        NOT NULL,
+    detalle       TEXT        NOT NULL,
+    payload       TEXT        NOT NULL,           -- recortado a 4000 caracteres
+    registrado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- One dead letter per event and consumer, so a redelivered failure is not recorded twice. A
--- message that was not an envelope has no event_id: NULLs never conflict.
-CREATE UNIQUE INDEX dead_letters_event_consumer ON dead_letters (event_id, consumer);
-
-=== infrastructure/migrations/<version>_sent_mails.sql ===
--- Puerto migration: sent_mails
--- Run `make sqlx/prepare` after editing this file.
-
--- Mail (ADR-0020): written by puerto. One row per mail a worker consumer sent for an event, so a
--- redelivered event does not send it again. Growing by one row per mail: pruning old rows is yours.
-
-CREATE TABLE sent_mails (
-    event_id UUID        NOT NULL,
-    mail     TEXT        NOT NULL,
-    sent_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (event_id, mail)
-);
+-- Un descartado por evento y consumidor, para que un fallo que se reentrega no se registre dos
+-- veces. Un mensaje que no era un sobre no tiene id_evento: los NULL nunca chocan.
+CREATE UNIQUE INDEX descartados_evento_consumidor ON descartados (id_evento, consumidor);
 
 === infrastructure/src/db.rs ===
 //! The database adapter — pool, migrations at startup, readiness ping, driver-error mapping — is
@@ -3150,7 +3151,7 @@ use business::domain::product::{
 use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::ProductDb;
-use crate::db::map_sqlx_error;
+use crate::db::mapear_error_sqlx;
 
 pub struct PgProductRepository {
     pub pool: PgPool,
@@ -3191,7 +3192,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         let total = sqlx::query_scalar!(
             r#"SELECT COUNT(*) AS "total!" FROM products WHERE deleted = false"#
@@ -3200,7 +3201,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_all count failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         let items = rows
@@ -3224,7 +3225,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "find_by_id failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
 
         row.map(to_domain).transpose()
@@ -3366,10 +3367,10 @@ use business::domain::product::{
     unit_of_work::{ProductUnitOfWork, ProductUnitOfWorkFactory},
 };
 use puerto_nucleo::ErrorRepositorio;
-use puerto_sqlx::uow::PgTransaction;
+use puerto_sqlx::uow::TransaccionPostgres;
 
 use super::entity::ProductDb;
-use crate::db::map_sqlx_error;
+use crate::db::mapear_error_sqlx;
 
 /// Opens a Postgres transaction per write: the product row and its outbox event commit together.
 pub struct PgProductUnitOfWorkFactory {
@@ -3385,13 +3386,13 @@ impl PgProductUnitOfWorkFactory {
 #[async_trait]
 impl ProductUnitOfWorkFactory for PgProductUnitOfWorkFactory {
     async fn begin(&self) -> Result<Box<dyn ProductUnitOfWork>, ErrorRepositorio> {
-        let tx = PgTransaction::begin(&self.pool).await?;
+        let tx = TransaccionPostgres::begin(&self.pool).await?;
         Ok(Box::new(PgProductUnitOfWork { tx }))
     }
 }
 
 struct PgProductUnitOfWork {
-    tx: PgTransaction,
+    tx: TransaccionPostgres,
 }
 
 #[async_trait]
@@ -3421,13 +3422,13 @@ impl ProductUnitOfWork for PgProductUnitOfWork {
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "save failed");
-            map_sqlx_error(&e)
+            mapear_error_sqlx(&e)
         })?;
         Ok(())
     }
 
     async fn record(&mut self, event: ProductEvent) -> Result<(), ErrorRepositorio> {
-        self.tx.record(&event).await
+        self.tx.registrar(&event).await
     }
 
     async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
@@ -3491,7 +3492,7 @@ mod integration_tests {
             .unwrap();
         assert!(found.is_some());
         let (event_type, aggregate_id): (String, uuid::Uuid) =
-            sqlx::query_as("SELECT event_type, aggregate_id FROM outbox")
+            sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
@@ -4387,10 +4388,10 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {
         "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string()
     })?;
-    let pool = infrastructure::db::create_postgres_pool(&database_url)
+    let pool = infrastructure::db::crear_pool_postgres(&database_url)
         .await
         .map_err(|e| format!("{e} — is the database up? `make docker-compose/up`"))?;
-    infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)
+    infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -5647,7 +5648,7 @@ worker/src/
 - **Answer honestly**: `Ack` when done; `Retry` for a failure that may pass (redelivered with a
   1 s → 300 s backoff, `MAX_DELIVERIES` times); `ResultadoManejo::descartar(motivo, detalle)` for
   one that never will. A payload that does not decode is `MOTIVO_PAYLOAD_INVALIDO`. Nothing is
-  dropped without a row in `dead_letters` (`make events/dead-letters`).
+  dropped without a row in `descartados` (`make events/dead-letters`).
 - **Decode the snapshot, never the domain model**: `event.decodificar::<ProductSnapshot>()`. The
   snapshot is the event's public contract.
 
@@ -5701,7 +5702,7 @@ pub mod notify_new_product;
 //! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
-//! Delivery is at-least-once: `send_once` keeps a `sent_mails` row per event, so a redelivered
+//! Delivery is at-least-once: `send_once` keeps a `correos_enviados` row per event, so a redelivered
 //! event does not send the mail again. Keep `MAIL` as it is: renaming it sends every mail again.
 
 use std::sync::Arc;
@@ -5715,7 +5716,7 @@ use puerto_nucleo::eventos::{
     MOTIVO_PAYLOAD_INVALIDO, ManejadorEvento, ResultadoManejo, SobreEvento,
 };
 
-/// The key of this mail in `sent_mails`.
+/// The key of this mail in `correos_enviados`.
 const MAIL: &str = "price_alert";
 
 pub struct SendPriceAlertMail {
@@ -5884,7 +5885,7 @@ mod tests {
 //! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
-//! Delivery is at-least-once: `send_once` keeps a `sent_mails` row per event, so a redelivered
+//! Delivery is at-least-once: `send_once` keeps a `correos_enviados` row per event, so a redelivered
 //! event does not send the mail again. Keep `MAIL` as it is: renaming it sends every mail again.
 
 use std::sync::Arc;
@@ -5898,7 +5899,7 @@ use puerto_nucleo::eventos::{
     MOTIVO_PAYLOAD_INVALIDO, ManejadorEvento, ResultadoManejo, SobreEvento,
 };
 
-/// The key of this mail in `sent_mails`.
+/// The key of this mail in `correos_enviados`.
 const MAIL: &str = "product_live";
 
 pub struct SendProductLiveMail {
@@ -6198,8 +6199,10 @@ pub mod registry;
 use std::sync::Arc;
 
 use business::domain::product::events::{PRODUCT_CREATED, PRODUCT_PUBLISHED};
-use infrastructure::db::events::{PgDeadLetters, PgDeliveries, PgOutbox, PgSubscription};
-use infrastructure::db::mail::PgSentMails;
+use infrastructure::db::correo::CorreosEnviadosPostgres;
+use infrastructure::db::eventos::{
+    DescartadosPostgres, EntregasPostgres, OutboxPostgres, SuscripcionPostgres,
+};
 use infrastructure::mail::price_alert::TemplatePriceAlertMailer;
 use infrastructure::mail::product_live::TemplateProductLiveMailer;
 use puerto_events::{Loops, WorkerConfig};
@@ -6210,15 +6213,15 @@ use crate::consumers::mail_product_live::SendProductLiveMail;
 use crate::consumers::notify_new_product::NotifyNewProduct;
 
 /// The relay and one consumer per `[[consumer]]`, on the `db` transport: the relay hands each
-/// event to `event_deliveries`, one row per consumer subscribed to its type.
+/// event to `entregas_eventos`, one row per consumer subscribed to its type.
 pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {
         "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string()
     })?;
-    let pool = infrastructure::db::create_postgres_pool(&database_url)
+    let pool = infrastructure::db::crear_pool_postgres(&database_url)
         .await
         .map_err(|e| format!("{e} — is the database up? `make docker-compose/up`"))?;
-    infrastructure::db::run_migrations(&pool, &infrastructure::db::MIGRATOR)
+    infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)
         .await
         .map_err(|e| e.to_string())?;
     // The mails sent on events (ADR-0020): one SMTP client and one sent log for all of them.
@@ -6226,23 +6229,23 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
         SmtpMailer::new(&MailConfig::from_env().map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?,
     );
-    let sent_mails = Arc::new(PgSentMails::new(pool.clone()));
+    let sent_mails = Arc::new(CorreosEnviadosPostgres::new(pool.clone()));
 
-    let deliveries = PgDeliveries::new(pool.clone())
-        .route("notify_new_product", &[PRODUCT_CREATED, PRODUCT_PUBLISHED])
-        .route("mail_product_live", &[PRODUCT_CREATED, PRODUCT_PUBLISHED])
-        .route("mail_price_alert", &[PRODUCT_PUBLISHED]);
-    let dead_letters = Arc::new(PgDeadLetters::new(pool.clone()));
+    let deliveries = EntregasPostgres::new(pool.clone())
+        .enrutar("notify_new_product", &[PRODUCT_CREATED, PRODUCT_PUBLISHED])
+        .enrutar("mail_product_live", &[PRODUCT_CREATED, PRODUCT_PUBLISHED])
+        .enrutar("mail_price_alert", &[PRODUCT_PUBLISHED]);
+    let dead_letters = Arc::new(DescartadosPostgres::new(pool.clone()));
 
     Ok(Loops::new(&config)
-        .relay(PgOutbox::new(pool.clone()), deliveries)
+        .relay(OutboxPostgres::new(pool.clone()), deliveries)
         .consumer(
-            PgSubscription::new(pool.clone(), "notify_new_product"),
+            SuscripcionPostgres::new(pool.clone(), "notify_new_product"),
             NotifyNewProduct,
             dead_letters.clone(),
         )
         .consumer(
-            PgSubscription::new(pool.clone(), "mail_product_live"),
+            SuscripcionPostgres::new(pool.clone(), "mail_product_live"),
             SendProductLiveMail {
                 mailer: Arc::new(TemplateProductLiveMailer::new(mailer.clone())),
                 sent_mails: sent_mails.clone(),
@@ -6250,7 +6253,7 @@ pub async fn build_worker(config: WorkerConfig) -> Result<Loops, String> {
             dead_letters.clone(),
         )
         .consumer(
-            PgSubscription::new(pool.clone(), "mail_price_alert"),
+            SuscripcionPostgres::new(pool.clone(), "mail_price_alert"),
             SendPriceAlertMail {
                 mailer: Arc::new(TemplatePriceAlertMailer::new(mailer.clone())),
                 sent_mails: sent_mails.clone(),

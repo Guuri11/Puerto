@@ -81,7 +81,7 @@ fn new_with_db_events_relays_to_nobody_until_a_consumer_is_added() {
     assert!(registry.starts_with("// AUTO-GENERATED"), "{registry}");
     assert!(
         registry.contains(
-            "Loops::new(&config).relay(PgOutbox::new(pool.clone()), PgDeliveries::new(pool))"
+            "Loops::new(&config).relay(OutboxPostgres::new(pool.clone()), EntregasPostgres::new(pool))"
         ),
         "{registry}"
     );
@@ -100,7 +100,7 @@ fn new_with_db_events_adds_the_worker_targets_and_port() {
     );
     assert!(makefile.contains("$(CARGO) run -p worker"), "{makefile}");
     assert!(makefile.contains("\nevents/dead-letters: "), "{makefile}");
-    assert!(makefile.contains("FROM dead_letters"), "{makefile}");
+    assert!(makefile.contains("FROM descartados"), "{makefile}");
     for env in [".env", ".env.example"] {
         assert!(read(&output, env).contains("WORKER_PORT=8081"), "{env}");
     }
@@ -146,10 +146,10 @@ fn new_with_kafka_events_writes_the_worker_on_the_kafka_transport() {
         "{registry}"
     );
     assert!(
-        registry.contains(".relay(PgOutbox::new(pool), publisher)"),
+        registry.contains(".relay(OutboxPostgres::new(pool), publisher)"),
         "{registry}"
     );
-    assert!(!registry.contains("PgDeliveries"), "{registry}");
+    assert!(!registry.contains("EntregasPostgres"), "{registry}");
     assert!(!registry.contains(".consumer("), "{registry}");
     let worker_agents = read(&output, "worker/AGENTS.md");
     assert!(
@@ -175,12 +175,12 @@ fn new_with_kafka_events_writes_no_event_deliveries_in_the_outbox_migration() {
     let sql = read(&output, &format!("infrastructure/migrations/{outbox}"));
 
     assert!(sql.contains("CREATE TABLE outbox ("), "{sql}");
-    assert!(sql.contains("CREATE TABLE dead_letters ("), "{sql}");
+    assert!(sql.contains("CREATE TABLE descartados ("), "{sql}");
     assert!(
-        sql.contains("CREATE UNIQUE INDEX dead_letters_event_consumer"),
+        sql.contains("CREATE UNIQUE INDEX descartados_evento_consumidor"),
         "{sql}"
     );
-    assert!(!sql.contains("event_deliveries"), "{sql}");
+    assert!(!sql.contains("entregas_eventos"), "{sql}");
     cleanup(&dir);
 }
 
@@ -265,9 +265,10 @@ fn generate_consumer_writes_the_stub_the_toml_entry_and_the_registry_line() {
     assert!(read(&output, "worker/src/consumers.rs").contains("pub mod notify_new_product;\n"));
     let registry = read(&output, "worker/src/generated/registry.rs");
     assert!(
-        registry.contains(".route(\"notify_new_product\", &[PRODUCT_CREATED, PRODUCT_PUBLISHED])")
+        registry
+            .contains(".enrutar(\"notify_new_product\", &[PRODUCT_CREATED, PRODUCT_PUBLISHED])")
     );
-    assert!(registry.contains("PgSubscription::new(pool.clone(), \"notify_new_product\")"));
+    assert!(registry.contains("SuscripcionPostgres::new(pool.clone(), \"notify_new_product\")"));
     assert!(registry.contains("use crate::consumers::notify_new_product::NotifyNewProduct;"));
     cleanup(&dir);
 }
@@ -296,9 +297,9 @@ fn generate_consumer_keeps_the_modules_sorted_and_shares_the_dead_letter_sink() 
     );
     // Routed in declaration order.
     let notify = registry
-        .find(".route(\"notify_new_product\"")
+        .find(".enrutar(\"notify_new_product\"")
         .unwrap_or(usize::MAX);
-    let audit = registry.find(".route(\"audit\"").unwrap_or(0);
+    let audit = registry.find(".enrutar(\"audit\"").unwrap_or(0);
     assert!(notify < audit, "{registry}");
     cleanup(&dir);
 }
@@ -428,11 +429,11 @@ fn generate_consumer_on_kafka_subscribes_to_the_topics_of_its_events() {
         "{registry}"
     );
     assert!(
-        registry.contains("PgDeadLetters::new(pool.clone())"),
+        registry.contains("DescartadosPostgres::new(pool.clone())"),
         "{registry}"
     );
     assert!(registry.contains("use crate::consumers::notify_new_product::NotifyNewProduct;"));
-    assert!(!registry.contains("PgSubscription"), "{registry}");
+    assert!(!registry.contains("SuscripcionPostgres"), "{registry}");
     cleanup(&dir);
 }
 
@@ -461,7 +462,7 @@ fn generate_bootstrap_regenerates_the_registry() {
 
     let registry = read(&output, "worker/src/generated/registry.rs");
     assert!(
-        registry.contains(".route(\"audit\", &[PRODUCT_CREATED])"),
+        registry.contains(".enrutar(\"audit\", &[PRODUCT_CREATED])"),
         "{registry}"
     );
     cleanup(&dir);

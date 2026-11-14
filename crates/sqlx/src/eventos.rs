@@ -1,14 +1,14 @@
 //! The Postgres side of domain events (ADR-0018 § 4): the outbox the relay reads, the `db`
 //! transport (`event_deliveries`) and the dead-letter sink every transport writes to. The tables
-//! are `migrations/outbox.sql`, which `puerto new --events` writes into the project.
+//! are `migrations/outbox.sql`, which `puerto new --eventos` writes into the project.
 
 mod dead_letters;
 mod deliveries;
 mod outbox;
 
-pub use dead_letters::PgDeadLetters;
-pub use deliveries::{DEFAULT_CLAIM_LEASE, PgDeliveries, PgSubscription};
-pub use outbox::{PgOutbox, RELAY_LOCK_KEY};
+pub use dead_letters::DescartadosPostgres;
+pub use deliveries::{EntregasPostgres, RESERVA_POR_DEFECTO, SuscripcionPostgres};
+pub use outbox::{CLAVE_BLOQUEO_RELAY, OutboxPostgres};
 
 use std::collections::BTreeMap;
 
@@ -21,8 +21,8 @@ use sqlx::postgres::PgRow;
 use uuid::Uuid;
 
 /// The outbox columns every query that hands out an envelope selects, prefixed by `o.`.
-const ENVELOPE_COLUMNS: &str = "o.id, o.seq, o.aggregate_type, o.aggregate_id, o.event_type, \
-                                o.schema_version, o.payload, o.headers, o.occurred_at";
+const ENVELOPE_COLUMNS: &str = "o.id, o.secuencia, o.tipo_agregado, o.id_agregado, o.tipo_evento, \
+                                o.version_esquema, o.payload, o.cabeceras, o.ocurrido_en";
 
 /// An outbox row as Postgres stores it, before it is checked to be an envelope.
 #[derive(Debug, Clone, PartialEq)]
@@ -42,14 +42,14 @@ impl OutboxRow {
     fn from_pg(row: &PgRow) -> Result<Self, sqlx::Error> {
         Ok(Self {
             id: row.try_get("id")?,
-            seq: row.try_get("seq")?,
-            aggregate_type: row.try_get("aggregate_type")?,
-            aggregate_id: row.try_get("aggregate_id")?,
-            event_type: row.try_get("event_type")?,
-            schema_version: row.try_get("schema_version")?,
+            seq: row.try_get("secuencia")?,
+            aggregate_type: row.try_get("tipo_agregado")?,
+            aggregate_id: row.try_get("id_agregado")?,
+            event_type: row.try_get("tipo_evento")?,
+            schema_version: row.try_get("version_esquema")?,
             payload: row.try_get("payload")?,
-            headers: row.try_get("headers")?,
-            occurred_at: row.try_get("occurred_at")?,
+            headers: row.try_get("cabeceras")?,
+            occurred_at: row.try_get("ocurrido_en")?,
         })
     }
 }

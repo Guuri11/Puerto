@@ -158,7 +158,7 @@ fn scaffold_in_an_events_project_writes_events_and_units_of_work() {
     let pg_uow = read(&output, "infrastructure/src/product/unit_of_work.rs");
     assert!(pg_uow.contains("pub struct PgProductUnitOfWorkFactory"));
     assert!(pg_uow.contains("ON CONFLICT (id) DO UPDATE"));
-    assert!(pg_uow.contains("use puerto_sqlx::uow::PgTransaction;"));
+    assert!(pg_uow.contains("use puerto_sqlx::uow::TransaccionPostgres;"));
 
     let lib = read(&output, "business/src/lib.rs");
     assert!(lib.contains("pub mod events;"));

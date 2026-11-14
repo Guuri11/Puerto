@@ -587,16 +587,16 @@ fn should_map_the_foreign_keys_where_the_rows_are_written() {
 
     let repo = read(&output, "infrastructure/src/order/repository.rs");
     assert!(
-        repo.contains("const REFERENCES: &[ForeignKey] = &["),
+        repo.contains("const REFERENCES: &[ClaveForanea] = &["),
         "{repo}"
     );
     assert!(
-        repo.contains("constraint: \"orders_customer_id_fkey\","),
+        repo.contains("restriccion: \"orders_customer_id_fkey\","),
         "{repo}"
     );
-    assert!(repo.contains("field: \"reviewer_id\","), "{repo}");
+    assert!(repo.contains("campo: \"reviewer_id\","), "{repo}");
     assert!(
-        repo.contains("map_sqlx_error_with(&e, REFERENCES)"),
+        repo.contains("mapear_error_sqlx_con(&e, REFERENCES)"),
         "{repo}"
     );
     // The rows it seeds first get their customer through Customer's own seed.
@@ -638,10 +638,13 @@ fn should_map_the_foreign_keys_in_the_unit_of_work_of_an_events_project() {
 
     let uow = read(&output, "infrastructure/src/order/unit_of_work.rs");
     assert!(
-        uow.contains("const REFERENCES: &[ForeignKey] = &["),
+        uow.contains("const REFERENCES: &[ClaveForanea] = &["),
         "{uow}"
     );
-    assert!(uow.contains("map_sqlx_error_with(&e, REFERENCES)"), "{uow}");
+    assert!(
+        uow.contains("mapear_error_sqlx_con(&e, REFERENCES)"),
+        "{uow}"
+    );
     assert!(
         uow.contains("async fn should_reject_a_missing_customer_id(pool: PgPool)"),
         "{uow}"

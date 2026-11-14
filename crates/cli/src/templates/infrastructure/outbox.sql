@@ -1,42 +1,42 @@
--- Domain events (ADR-0018): written by puerto. The units of work insert into `outbox` in the same
--- transaction as the entity; the worker relays it and records what it could not deliver.
+-- Eventos de dominio (ADR-0018): lo escribe puerto. Las unidades de trabajo insertan en `outbox`
+-- en la misma transacción que la entidad; el worker lo releva y registra lo que no pudo entregar.
 
 CREATE TABLE outbox (
-    id             UUID        PRIMARY KEY,
-    seq            BIGSERIAL   NOT NULL,          -- relay order
-    aggregate_type TEXT        NOT NULL,
-    aggregate_id   UUID        NOT NULL,
-    event_type     TEXT        NOT NULL,
-    schema_version INT         NOT NULL,
-    payload        JSONB       NOT NULL,
-    headers        JSONB       NOT NULL DEFAULT '{}',
-    occurred_at    TIMESTAMPTZ NOT NULL,
-    published_at   TIMESTAMPTZ
+    id              UUID        PRIMARY KEY,
+    secuencia       BIGSERIAL   NOT NULL,          -- orden del relay
+    tipo_agregado   TEXT        NOT NULL,
+    id_agregado     UUID        NOT NULL,
+    tipo_evento     TEXT        NOT NULL,
+    version_esquema INT         NOT NULL,
+    payload         JSONB       NOT NULL,
+    cabeceras       JSONB       NOT NULL DEFAULT '{}',
+    ocurrido_en     TIMESTAMPTZ NOT NULL,
+    publicado_en    TIMESTAMPTZ
 );
-CREATE INDEX outbox_unpublished ON outbox (seq) WHERE published_at IS NULL;
+CREATE INDEX outbox_sin_publicar ON outbox (secuencia) WHERE publicado_en IS NULL;
 
-CREATE TABLE event_deliveries (                  -- db transport only
-    event_id        UUID        NOT NULL REFERENCES outbox (id),
-    consumer        TEXT        NOT NULL,
-    status          TEXT        NOT NULL DEFAULT 'pending',   -- pending | done | dead
-    attempts        INT         NOT NULL DEFAULT 0,
-    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_error      TEXT,
-    PRIMARY KEY (event_id, consumer)
+CREATE TABLE entregas_eventos (                  -- solo el transporte db
+    id_evento            UUID        NOT NULL REFERENCES outbox (id),
+    consumidor           TEXT        NOT NULL,
+    estado               TEXT        NOT NULL DEFAULT 'pendiente',   -- pendiente | hecho | descartado
+    intentos             INT         NOT NULL DEFAULT 0,
+    siguiente_intento_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ultimo_error         TEXT,
+    PRIMARY KEY (id_evento, consumidor)
 );
-CREATE INDEX event_deliveries_due ON event_deliveries (consumer, next_attempt_at) WHERE status = 'pending';
+CREATE INDEX entregas_eventos_vencidas ON entregas_eventos (consumidor, siguiente_intento_en) WHERE estado = 'pendiente';
 
-CREATE TABLE dead_letters (                      -- every transport
-    id           UUID        PRIMARY KEY,
-    event_id     UUID,
-    consumer     TEXT        NOT NULL,
-    event_type   TEXT,
-    attempts     INT         NOT NULL,
-    reason       TEXT        NOT NULL,
-    detail       TEXT        NOT NULL,
-    payload      TEXT        NOT NULL,           -- trimmed to 4000 chars
-    recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE descartados (                       -- todos los transportes
+    id            UUID        PRIMARY KEY,
+    id_evento     UUID,
+    consumidor    TEXT        NOT NULL,
+    tipo_evento   TEXT,
+    intentos      INT         NOT NULL,
+    motivo        TEXT        NOT NULL,
+    detalle       TEXT        NOT NULL,
+    payload       TEXT        NOT NULL,           -- recortado a 4000 caracteres
+    registrado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- One dead letter per event and consumer, so a redelivered failure is not recorded twice. A
--- message that was not an envelope has no event_id: NULLs never conflict.
-CREATE UNIQUE INDEX dead_letters_event_consumer ON dead_letters (event_id, consumer);
+-- Un descartado por evento y consumidor, para que un fallo que se reentrega no se registre dos
+-- veces. Un mensaje que no era un sobre no tiene id_evento: los NULL nunca chocan.
+CREATE UNIQUE INDEX descartados_evento_consumidor ON descartados (id_evento, consumidor);
