@@ -1,4 +1,4 @@
-//! `OidcAuthenticator` against a fake provider: a local HTTP server publishing a discovery document
+//! `AutenticadorOidc` against a fake provider: a local HTTP server publishing a discovery document
 //! and a JWKS built from the keys in `fixtures/` (test-only keys), with tokens signed in the test.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -11,7 +11,7 @@ use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use poem::listener::{Acceptor, Listener, TcpListener};
 use poem::{IntoResponse, Route, Server, http::StatusCode, web::Json};
 use puerto_auth::{
-    Autenticador, ErrorAuth, OidcAuthenticator, OidcConfig, OidcError, Principal, RolesClaim,
+    Autenticador, AutenticadorOidc, ClaimRoles, ConfigOidc, ErrorAuth, ErrorOidc, Principal,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -76,7 +76,7 @@ impl Provider {
         Self::start_calling_itself(keys, |base| base.to_string()).await
     }
 
-    /// A provider whose discovery document names `issuer(base)` as its issuer.
+    /// A provider whose discovery document names `emisor(base)` as its issuer.
     async fn start_calling_itself(keys: Value, issuer: impl Fn(&str) -> String) -> Self {
         let acceptor = TcpListener::bind("127.0.0.1:0")
             .into_acceptor()
@@ -123,12 +123,12 @@ impl Provider {
         }
     }
 
-    fn config(&self) -> OidcConfig {
-        OidcConfig::new(&self.issuer, AUDIENCE)
+    fn config(&self) -> ConfigOidc {
+        ConfigOidc::new(&self.issuer, AUDIENCE)
     }
 
-    async fn authenticator(&self) -> OidcAuthenticator {
-        OidcAuthenticator::discover(self.config())
+    async fn authenticator(&self) -> AutenticadorOidc {
+        AutenticadorOidc::descubrir(self.config())
             .await
             .expect("the fake provider is discovered")
     }
@@ -168,7 +168,7 @@ fn sign(key: &Key, claims: &Value) -> String {
     sign_as(key, key.kid, claims)
 }
 
-/// A token signed by `key` whose header names `kid`.
+/// A token signed by `clave` whose header names `kid`.
 fn sign_as(key: &Key, kid: &str, claims: &Value) -> String {
     let mut header = Header::new(key.algorithm);
     header.kid = Some(kid.into());
@@ -480,8 +480,8 @@ async fn should_read_an_auth0_namespaced_roles_claim_when_configured() {
     let provider = Provider::start(jwks(&[&RSA])).await;
     let config = provider
         .config()
-        .with_roles_claim(RolesClaim::new("https://shop.example.com/roles"));
-    let authenticator = OidcAuthenticator::discover(config)
+        .con_claim_roles(ClaimRoles::new("https://shop.example.com/roles"));
+    let authenticator = AutenticadorOidc::descubrir(config)
         .await
         .expect("discovered");
     let claims = with(
@@ -501,7 +501,7 @@ async fn should_read_an_auth0_namespaced_roles_claim_when_configured() {
 async fn should_accept_an_issuer_with_a_trailing_slash_when_the_provider_publishes_one() {
     // Arrange — Auth0's issuer is `https://<tenant>.auth0.com/`
     let provider = Provider::start_calling_itself(jwks(&[&RSA]), |base| format!("{base}/")).await;
-    let authenticator = OidcAuthenticator::discover(provider.config())
+    let authenticator = AutenticadorOidc::descubrir(provider.config())
         .await
         .expect("discovered");
     let claims = with(
@@ -526,7 +526,7 @@ async fn should_not_start_when_the_provider_is_unreachable() {
         .port();
 
     // Act
-    let result = OidcAuthenticator::discover(OidcConfig::new(
+    let result = AutenticadorOidc::descubrir(ConfigOidc::new(
         format!("http://127.0.0.1:{port}"),
         AUDIENCE,
     ))
@@ -534,7 +534,7 @@ async fn should_not_start_when_the_provider_is_unreachable() {
 
     // Assert
     match result {
-        Err(OidcError::Unreachable { url, .. }) => assert_eq!(
+        Err(ErrorOidc::Unreachable { url, .. }) => assert_eq!(
             url,
             format!("http://127.0.0.1:{port}/.well-known/openid-configuration")
         ),
@@ -549,11 +549,11 @@ async fn should_not_start_when_the_provider_names_another_issuer() {
         Provider::start_calling_itself(jwks(&[&RSA]), |_| "https://other.example.com".into()).await;
 
     // Act
-    let result = OidcAuthenticator::discover(provider.config()).await;
+    let result = AutenticadorOidc::descubrir(provider.config()).await;
 
     // Assert
     assert!(
-        matches!(result, Err(OidcError::IssuerMismatch { ref discovered, .. }) if discovered == "https://other.example.com"),
+        matches!(result, Err(ErrorOidc::IssuerMismatch { ref discovered, .. }) if discovered == "https://other.example.com"),
         "{:?}",
         result.err()
     );
@@ -563,14 +563,14 @@ async fn should_not_start_when_the_provider_names_another_issuer() {
 async fn should_not_start_when_the_issuer_url_is_not_a_provider() {
     // Arrange
     let provider = Provider::start(jwks(&[&RSA])).await;
-    let config = OidcConfig::new(format!("{}/realms/missing", provider.issuer), AUDIENCE);
+    let config = ConfigOidc::new(format!("{}/realms/missing", provider.issuer), AUDIENCE);
 
     // Act
-    let result = OidcAuthenticator::discover(config).await;
+    let result = AutenticadorOidc::descubrir(config).await;
 
     // Assert
     assert!(
-        matches!(result, Err(OidcError::Invalid { .. })),
+        matches!(result, Err(ErrorOidc::Invalido { .. })),
         "{:?}",
         result.err()
     );
@@ -590,11 +590,11 @@ async fn should_not_start_when_the_provider_publishes_no_usable_key() {
     let provider = Provider::start(keys).await;
 
     // Act
-    let result = OidcAuthenticator::discover(provider.config()).await;
+    let result = AutenticadorOidc::descubrir(provider.config()).await;
 
     // Assert
     assert!(
-        matches!(result, Err(OidcError::NoSigningKey { .. })),
+        matches!(result, Err(ErrorOidc::NoSigningKey { .. })),
         "{:?}",
         result.err()
     );

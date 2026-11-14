@@ -65,7 +65,7 @@ fn generate_mail_writes_the_port_its_template_implementation_and_the_templates()
     assert!(domain.contains("pub WelcomeMailer {}"), "{domain}");
     assert!(domain.contains("#[cfg(any(test, feature = \"test-utils\"))]"));
     // The domain names no template engine and no SMTP.
-    assert!(!domain.contains("puerto_mail"), "{domain}");
+    assert!(!domain.contains("puerto_correo"), "{domain}");
     assert!(
         domain.contains("use puerto_nucleo::correo::ErrorCorreo;"),
         "{domain}"
@@ -92,7 +92,7 @@ fn generate_mail_writes_the_port_its_template_implementation_and_the_templates()
         infra.contains("include_str!(\"../../mail/welcome/body.txt\")"),
         "{infra}"
     );
-    assert!(infra.contains("RecordingMailer"), "{infra}");
+    assert!(infra.contains("EnviadorCorreoGrabador"), "{infra}");
 
     let subject = read(&output, "infrastructure/mail/welcome/subject.txt");
     assert!(subject.contains("{{ name }}"), "{subject}");
@@ -190,15 +190,15 @@ fn first_mail_adds_puerto_mail_to_the_workspace_and_infrastructure() {
     welcome(&output);
 
     let root = read(&output, "Cargo.toml");
-    assert!(root.contains("puerto-mail = \""), "{root}");
+    assert!(root.contains("puerto-correo = \""), "{root}");
     let infra = read(&output, "infrastructure/Cargo.toml");
     let (deps, dev) = infra.split_once("[dev-dependencies]").unwrap();
     assert!(
-        deps.contains("puerto-mail = { workspace = true }"),
+        deps.contains("puerto-correo = { workspace = true }"),
         "{infra}"
     );
     assert!(
-        dev.contains("puerto-mail = { workspace = true, features = [\"test-utils\"] }"),
+        dev.contains("puerto-correo = { workspace = true, features = [\"pruebas\"] }"),
         "{infra}"
     );
     cleanup(&dir);
@@ -523,10 +523,10 @@ fn mail_on_an_event_gets_a_consumer_that_sends_it() {
     );
     assert!(handler.contains("CUSTOMER_CREATED => match event.decodificar::<CustomerSnapshot>()"));
     assert!(handler.contains("to: customer.email.clone(),"), "{handler}");
-    assert!(handler.contains("send_once("), "{handler}");
+    assert!(handler.contains("enviar_una_vez("), "{handler}");
     assert!(handler.contains("MOTIVO_PAYLOAD_INVALIDO"), "{handler}");
     assert!(handler.contains("MockWelcomeMailer"), "{handler}");
-    assert!(handler.contains("InMemorySentMails"), "{handler}");
+    assert!(handler.contains("CorreosEnviadosEnMemoria"), "{handler}");
 
     let consumers = read(&output, "worker/src/consumers.rs");
     assert!(consumers.contains("pub mod mail_welcome;"), "{consumers}");
@@ -550,8 +550,8 @@ fn mail_on_an_event_is_a_consumer_of_the_registry() {
         "{registry}"
     );
     assert!(registry.contains(".enrutar(\"mail_welcome\", &[CUSTOMER_CREATED])"));
-    assert!(registry.contains("MailConfig::from_env()"), "{registry}");
-    assert!(registry.contains("SmtpMailer::new("), "{registry}");
+    assert!(registry.contains("ConfigCorreo::from_env()"), "{registry}");
+    assert!(registry.contains("EnviadorCorreoSmtp::new("), "{registry}");
     assert!(
         registry.contains("CorreosEnviadosPostgres::new(pool.clone())"),
         "{registry}"
@@ -577,7 +577,7 @@ fn mail_on_an_event_is_a_kafka_consumer_on_the_kafka_transport() {
     assert!(registry.contains("\"mail_welcome\","), "{registry}");
     assert!(registry.contains("&[\"customer\"]"), "{registry}");
     assert!(registry.contains("SendWelcomeMail {"), "{registry}");
-    assert!(registry.contains("SmtpMailer::new("), "{registry}");
+    assert!(registry.contains("EnviadorCorreoSmtp::new("), "{registry}");
     cleanup(&dir);
 }
 
@@ -657,11 +657,11 @@ fn first_mail_on_an_event_adds_the_sent_log_and_puerto_mail_to_the_worker() {
     let worker = read(&output, "worker/Cargo.toml");
     let (deps, dev) = worker.split_once("[dev-dependencies]").unwrap();
     assert_eq!(
-        deps.matches("puerto-mail = { workspace = true }").count(),
+        deps.matches("puerto-correo = { workspace = true }").count(),
         1
     );
     assert!(
-        dev.contains("puerto-mail = { workspace = true, features = [\"test-utils\"] }"),
+        dev.contains("puerto-correo = { workspace = true, features = [\"pruebas\"] }"),
         "{worker}"
     );
     cleanup(&dir);
@@ -675,7 +675,7 @@ fn mail_without_on_in_an_events_project_has_no_consumer() {
 
     assert!(!output.join("worker/src/consumers/mail_welcome.rs").exists());
     let registry = read(&output, "worker/src/generated/registry.rs");
-    assert!(!registry.contains("SmtpMailer"), "{registry}");
+    assert!(!registry.contains("EnviadorCorreoSmtp"), "{registry}");
     cleanup(&dir);
 }
 

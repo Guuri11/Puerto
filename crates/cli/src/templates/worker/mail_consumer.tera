@@ -2,7 +2,7 @@
 //! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
-//! Delivery is at-least-once: `send_once` keeps a `correos_enviados` row per event, so a redelivered
+//! Delivery is at-least-once: `enviar_una_vez` keeps a `correos_enviados` row per event, so a redelivered
 //! event does not send the mail again. Keep `MAIL` as it is: renaming it sends every mail again.
 
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use {{ import }};
 {%- endfor %}
 use puerto_nucleo::eventos::{SobreEvento, ManejadorEvento, ResultadoManejo, MOTIVO_PAYLOAD_INVALIDO};
 use puerto_nucleo::correo::CorreosEnviados;
-use puerto_mail::send_once;
+use puerto_correo::enviar_una_vez;
 
 /// The key of this mail in `correos_enviados`.
 const MAIL: &str = "{{ name }}";
@@ -46,7 +46,7 @@ impl ManejadorEvento for Send{{ pascal }}Mail {
             tracing::warn!(event_id = %event.id, "mail_{{ name }}: no recipient, not sent");
             return ResultadoManejo::Ack;
         }
-        send_once(self.sent_mails.as_ref(), event.id, MAIL, self.mailer.send(&mail)).await
+        enviar_una_vez(self.sent_mails.as_ref(), event.id, MAIL, self.mailer.send(&mail)).await
     }
 }
 
@@ -58,7 +58,7 @@ mod tests {
     use business::tests::mothers::{{ first.entity_snake }}_mother::{{ first.entity_pascal }}Mother;
     use puerto_nucleo::eventos::MOTIVO_ERROR_PERMANENTE;
     use puerto_nucleo::correo::ErrorCorreo;
-    use puerto_mail::testing::InMemorySentMails;
+    use puerto_correo::pruebas::CorreosEnviadosEnMemoria;
 
     fn {{ first.const_lower }}() -> ({{ first.entity_pascal }}Snapshot, SobreEvento) {
         let snapshot = {{ first.entity_pascal }}Snapshot::from_entity(&{{ first.entity_pascal }}Mother::random());
@@ -79,7 +79,7 @@ mod tests {
     fn handler(mailer: Mock{{ pascal }}Mailer) -> Send{{ pascal }}Mail {
         Send{{ pascal }}Mail {
             mailer: Arc::new(mailer),
-            sent_mails: Arc::new(InMemorySentMails::new()),
+            sent_mails: Arc::new(CorreosEnviadosEnMemoria::new()),
         }
     }
 

@@ -198,7 +198,7 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
   `puerto validate` checks `routes.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
   build one with `PrincipalMother`. `generate use-case` adds it too.
-- **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `users.roles` column is not read.
+- **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `usuarios.roles` column is not read.
 - Calling the API by hand: `curl -H "Authorization: Bearer $(make -s auth/token)" …` —
   `admin@…` holds `admin`, `make -s auth/token EMAIL=user@…` no role. It asks the development
   realm's `dev-cli` client (password grant): never create such a client in a real provider.
@@ -5794,9 +5794,9 @@ use crate::api::product::routes::ProductApi;
 /// The routes, wired. An error is what stopped the startup: `main` prints it and exits 1.
 pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
     // The provider's tokens, and a `User` row for every caller (ADR-0021 § 3).
-    let auth_config = puerto_auth::OidcConfig::from_env().map_err(|e| e.to_string())?;
-    let issuer = auth_config.issuer.clone();
-    let provider = puerto_auth::OidcAuthenticator::discover(auth_config)
+    let auth_config = puerto_auth::ConfigOidc::from_env().map_err(|e| e.to_string())?;
+    let issuer = auth_config.emisor.clone();
+    let provider = puerto_auth::AutenticadorOidc::descubrir(auth_config)
         .await
         .map_err(|e| format!("{e} — is the auth provider up? `make docker-compose/up`"))?;
     let authenticator: Arc<dyn Autenticador> = Arc::new(ProvisioningAuthenticator::new(

@@ -65,7 +65,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          for crate in puerto-nucleo puerto-macros puerto-web puerto-sqlx puerto-eventos puerto-kafka puerto-mail puerto-auth puerto; do
+          for crate in puerto-nucleo puerto-macros puerto-web puerto-sqlx puerto-eventos puerto-kafka puerto-correo puerto-auth puerto; do
             status=$(curl -s -o /dev/null -w '%{http_code}' \
               -A 'puerto-release (github.com/Guuri11/Puerto)' \
               "https://crates.io/api/v1/crates/$crate/$VERSION")

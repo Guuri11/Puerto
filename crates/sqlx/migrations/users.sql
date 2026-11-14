@@ -1,13 +1,13 @@
--- Every authenticated caller (ADR-0021 § 3 of Puerto). `(issuer, subject)` is the provider's
--- name for the person; in an OIDC project `roles` is not read — the token's roles decide.
-CREATE TABLE users (
+-- Cada llamante autenticado (ADR-0021 § 3 de Puerto). `(emisor, sujeto)` es el nombre que el
+-- proveedor da a la persona; en un proyecto OIDC no se leen los `roles`: deciden los del token.
+CREATE TABLE usuarios (
     id UUID PRIMARY KEY,
-    issuer TEXT NOT NULL,
-    subject TEXT NOT NULL,
+    emisor TEXT NOT NULL,
+    sujeto TEXT NOT NULL,
     email TEXT,
-    name TEXT,
+    nombre TEXT,
     roles TEXT[] NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
-    UNIQUE (issuer, subject)
+    creado_en TIMESTAMPTZ NOT NULL,
+    actualizado_en TIMESTAMPTZ NOT NULL,
+    UNIQUE (emisor, sujeto)
 );

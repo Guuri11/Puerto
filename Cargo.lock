@@ -3087,6 +3087,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "puerto-correo"
+version = "0.20.0"
+dependencies = [
+ "async-trait",
+ "dotenvy",
+ "lettre",
+ "minijinja",
+ "puerto-nucleo",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "puerto-eventos"
 version = "0.20.0"
 dependencies = [
@@ -3122,23 +3139,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "puerto-mail"
-version = "0.20.0"
-dependencies = [
- "async-trait",
- "dotenvy",
- "lettre",
- "minijinja",
- "puerto-nucleo",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]

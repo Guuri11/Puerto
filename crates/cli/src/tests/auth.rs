@@ -93,7 +93,7 @@ fn new_with_auth_writes_the_user_the_provisioning_and_me() {
     assert!(read(&output, "presentation/src/api.rs").contains("pub mod me;"));
     let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
     assert!(
-        bootstrap.contains("OidcAuthenticator::discover"),
+        bootstrap.contains("AutenticadorOidc::descubrir"),
         "{bootstrap}"
     );
     assert!(
@@ -127,7 +127,7 @@ fn new_with_auth_and_db_keeps_users_in_postgres() {
         .find(|m| m.ends_with("_create_users_table.sql"))
         .unwrap_or_else(|| panic!("{migrations:?}"));
     let sql = read(&output, &format!("infrastructure/migrations/{users}"));
-    assert!(sql.contains("UNIQUE (issuer, subject)"), "{sql}");
+    assert!(sql.contains("UNIQUE (emisor, sujeto)"), "{sql}");
     // No entity uses the database yet: the bootstrap still opens the pool, for the users.
     let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
     assert!(bootstrap.contains("crear_pool_postgres"), "{bootstrap}");
@@ -789,7 +789,7 @@ fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
     for wired in [
         "SesionesPostgres::new",
         "CredencialesPostgres::new",
-        "Argon2Hasher",
+        "HasherArgon2",
         "auth_api",
         ".data(authenticator)",
     ] {

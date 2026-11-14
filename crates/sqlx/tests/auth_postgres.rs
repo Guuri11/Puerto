@@ -41,7 +41,7 @@ async fn ada(pool: &PgPool, roles: &[&str]) -> Uuid {
     let id = Uuid::now_v7();
     let roles: Vec<String> = roles.iter().map(|r| r.to_string()).collect();
     sqlx::query(
-        "INSERT INTO users (id, issuer, subject, email, name, roles, created_at, updated_at) \
+        "INSERT INTO usuarios (id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en) \
          VALUES ($1, 'local', 'ada@example.com', 'ada@example.com', 'Ada', $2, now(), now())",
     )
     .bind(id)
@@ -84,7 +84,7 @@ async fn postgres_session_keeps_only_the_hash_of_its_token() {
 
     let session = sessions.abrir(user_id).await.unwrap();
 
-    let stored: Vec<u8> = sqlx::query_scalar("SELECT token_hash FROM sessions")
+    let stored: Vec<u8> = sqlx::query_scalar("SELECT hash_token FROM sesiones")
         .fetch_one(&pool)
         .await
         .unwrap();
@@ -141,7 +141,7 @@ async fn postgres_sessions_are_unavailable_when_their_table_is_missing() {
     let Some(pool) = database().await else {
         return eprintln!("{SKIP}");
     };
-    sqlx::raw_sql("DROP TABLE sessions")
+    sqlx::raw_sql("DROP TABLE sesiones")
         .execute(&pool)
         .await
         .unwrap();

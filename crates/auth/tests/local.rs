@@ -1,23 +1,23 @@
 //! The `local` feature (ADR-0021 § 2): argon2id password hashes behind `PasswordHasher`.
 
-use puerto_auth::local::{Argon2Hasher, hash_password, verify_password};
+use puerto_auth::local::{HasherArgon2, hash_contrasena, verificar_contrasena};
 use puerto_nucleo::auth::HasherContrasena;
 
 #[test]
 fn should_accept_the_password_a_hash_was_made_from() {
     // Arrange
-    let hash = hash_password("correct horse battery").expect("hashed");
+    let hash = hash_contrasena("correct horse battery").expect("hashed");
 
     // Act / Assert
-    assert!(verify_password("correct horse battery", &hash));
-    assert!(!verify_password("correct horse battery!", &hash));
+    assert!(verificar_contrasena("correct horse battery", &hash));
+    assert!(!verificar_contrasena("correct horse battery!", &hash));
 }
 
 #[test]
 fn should_store_an_argon2id_hash_with_its_own_salt() {
     // Act
-    let first = hash_password("correct horse battery").expect("hashed");
-    let second = hash_password("correct horse battery").expect("hashed");
+    let first = hash_contrasena("correct horse battery").expect("hashed");
+    let second = hash_contrasena("correct horse battery").expect("hashed");
 
     // Assert
     assert!(first.starts_with("$argon2id$"), "{first}");
@@ -27,14 +27,14 @@ fn should_store_an_argon2id_hash_with_its_own_salt() {
 
 #[test]
 fn should_refuse_any_password_when_the_stored_hash_is_not_one() {
-    assert!(!verify_password("anything", "not a hash"));
-    assert!(!verify_password("", ""));
+    assert!(!verificar_contrasena("anything", "not a hash"));
+    assert!(!verificar_contrasena("", ""));
 }
 
 #[tokio::test]
 async fn should_check_a_password_through_the_port() {
     // Arrange
-    let hasher: &dyn HasherContrasena = &Argon2Hasher::new();
+    let hasher: &dyn HasherContrasena = &HasherArgon2::new();
     let hash = hasher.hash("correct horse battery").await.expect("hashed");
 
     // Act
@@ -51,7 +51,7 @@ async fn should_check_a_password_through_the_port() {
 #[tokio::test]
 async fn should_refuse_without_a_hash_after_doing_the_same_work() {
     // Arrange
-    let hasher = Argon2Hasher::new();
+    let hasher = HasherArgon2::new();
     let hash = hasher.hash("correct horse battery").await.expect("hashed");
     // Warm the fixed hash up: its first use computes it.
     assert!(!hasher.verificar("x", None).await);

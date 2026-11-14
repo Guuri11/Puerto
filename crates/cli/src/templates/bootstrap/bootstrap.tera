@@ -61,7 +61,7 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
     // Accounts in this database (ADR-0021 § 2): their sessions are what every `BearerAuth` asks.
     let users: Arc<dyn UserRepositoryTrait> = Arc::new(PgUserRepository::new(pool.clone()));
     let credentials: Arc<dyn AlmacenCredenciales> = Arc::new(CredencialesPostgres::new(pool.clone()));
-    let hasher: Arc<dyn HasherContrasena> = Arc::new(puerto_auth::local::Argon2Hasher::new());
+    let hasher: Arc<dyn HasherContrasena> = Arc::new(puerto_auth::local::HasherArgon2::new());
     let sessions = Arc::new(SesionesPostgres::new(
         pool.clone(),
         infrastructure::db::auth::ttl_sesion_from_env()?,
@@ -84,9 +84,9 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
     let me_api = MeApi;
 {% elif auth %}
     // The provider's tokens, and a `User` row for every caller (ADR-0021 § 3).
-    let auth_config = puerto_auth::OidcConfig::from_env().map_err(|e| e.to_string())?;
-    let issuer = auth_config.issuer.clone();
-    let provider = puerto_auth::OidcAuthenticator::discover(auth_config)
+    let auth_config = puerto_auth::ConfigOidc::from_env().map_err(|e| e.to_string())?;
+    let issuer = auth_config.emisor.clone();
+    let provider = puerto_auth::AutenticadorOidc::descubrir(auth_config)
         .await
         .map_err(|e| format!("{e} — is the auth provider up? `make docker-compose/up`"))?;
     let authenticator: Arc<dyn Autenticador> = Arc::new(ProvisioningAuthenticator::new(

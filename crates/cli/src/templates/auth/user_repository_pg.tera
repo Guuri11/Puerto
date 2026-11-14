@@ -26,31 +26,31 @@ impl PgUserRepository {
 #[derive(sqlx::FromRow)]
 struct UserRow {
     id: Uuid,
-    issuer: String,
-    subject: String,
+    emisor: String,
+    sujeto: String,
     email: Option<String>,
-    name: Option<String>,
+    nombre: Option<String>,
     roles: Vec<String>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    creado_en: DateTime<Utc>,
+    actualizado_en: DateTime<Utc>,
 }
 
 impl From<UserRow> for User {
     fn from(row: UserRow) -> Self {
         User::from_repository(User {
             id: UserId::from_uuid(row.id),
-            issuer: row.issuer,
-            subject: row.subject,
+            issuer: row.emisor,
+            subject: row.sujeto,
             email: row.email,
-            name: row.name,
+            name: row.nombre,
             roles: row.roles,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
+            created_at: row.creado_en,
+            updated_at: row.actualizado_en,
         })
     }
 }
 
-const COLUMNS: &str = "id, issuer, subject, email, name, roles, created_at, updated_at";
+const COLUMNS: &str = "id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en";
 
 #[async_trait]
 impl UserRepositoryTrait for PgUserRepository {
@@ -60,7 +60,7 @@ impl UserRepositoryTrait for PgUserRepository {
         subject: &str,
     ) -> Result<Option<User>, ErrorRepositorio> {
         let row = sqlx::query_as::<_, UserRow>(&format!(
-            "SELECT {COLUMNS} FROM users WHERE issuer = $1 AND subject = $2"
+            "SELECT {COLUMNS} FROM usuarios WHERE emisor = $1 AND sujeto = $2"
         ))
         .bind(issuer)
         .bind(subject)
@@ -75,7 +75,7 @@ impl UserRepositoryTrait for PgUserRepository {
 
     async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
-        let row = sqlx::query_as::<_, UserRow>(&format!("SELECT {COLUMNS} FROM users WHERE id = $1"))
+        let row = sqlx::query_as::<_, UserRow>(&format!("SELECT {COLUMNS} FROM usuarios WHERE id = $1"))
             .bind(id.value())
             .fetch_optional(&self.pool)
             .await
@@ -89,13 +89,13 @@ impl UserRepositoryTrait for PgUserRepository {
     async fn save(&self, user: &User) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %user.id, "save");
         sqlx::query(
-            "INSERT INTO users (id, issuer, subject, email, name, roles, created_at, updated_at)
+            "INSERT INTO usuarios (id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT (id) DO UPDATE SET
                  email = EXCLUDED.email,
-                 name = EXCLUDED.name,
+                 nombre = EXCLUDED.nombre,
                  roles = EXCLUDED.roles,
-                 updated_at = EXCLUDED.updated_at",
+                 actualizado_en = EXCLUDED.actualizado_en",
         )
         .bind(user.id.value())
         .bind(&user.issuer)
@@ -120,7 +120,7 @@ mod tests {
     use super::*;
 
     fn ada() -> User {
-        User::provision("issuer", "ada", Some("ada@example.com".into()), None)
+        User::provision("emisor", "ada", Some("ada@example.com".into()), None)
     }
 
     #[sqlx::test(migrator = "crate::db::MIGRATOR")]
@@ -132,7 +132,7 @@ mod tests {
 
         // Act
         let by_subject = repository
-            .find_by_subject("issuer", "ada")
+            .find_by_subject("emisor", "ada")
             .await
             .expect("read");
         let by_id = repository.find_by_id(user.id).await.expect("read");

@@ -1,5 +1,5 @@
 [package]
-name = "puerto-mail"
+name = "puerto-correo"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,8 +11,8 @@ keywords = ["ddd", "puerto", "mail", "smtp", "templates"]
 categories = ["email"]
 
 [features]
-# `RecordingMailer` and `InMemorySentMails`, for a project's tests.
-test-utils = []
+# `EnviadorCorreoGrabador` and `CorreosEnviadosEnMemoria`, for a project's tests.
+pruebas = []
 
 [dependencies]
 puerto-nucleo = { workspace = true }

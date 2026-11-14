@@ -215,7 +215,7 @@ from then on (ADR-0020 of Puerto):
   shows) and the port `{Name}Mailer`. Code that sends it depends on the port; tests use
   `mocks::Mock{Name}Mailer`.
 - `infrastructure/src/mail/<name>.rs` — `Template{Name}Mailer`: renders the templates and hands
-  the message to the `puerto_mail::Mailer` (SMTP). Its tests render every template, so a typo in
+  the message to the `puerto_correo::Mailer` (SMTP). Its tests render every template, so a typo in
   one fails `make test`.
 - `infrastructure/mail/<name>/` — `subject.txt`, `body.html`, `body.txt`: minijinja, strict (an
   unknown variable is an error). Wrap an optional field in `{% if x is not none %}`.
@@ -227,7 +227,7 @@ a provider.
 **Who sends it.** In a project with domain events, `puerto generate mail <name> --on
 <event_type> --to <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
 in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
-per event (`puerto_mail::send_once` keeps a `correos_enviados` row — a crash between the send and that
+per event (`puerto_correo::enviar_una_vez` keeps a `correos_enviados` row — a crash between the send and that
 row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
 
 === Cargo.toml ===
@@ -240,7 +240,7 @@ resolver = "3"
 [workspace.dependencies]
 puerto-nucleo = "0.20"
 puerto-web = "0.20"
-puerto-mail = "0.20"
+puerto-correo = "0.20"
 
 === Makefile ===
 .PHONY: help setup run \
@@ -517,7 +517,7 @@ edition = "2024"
 [dependencies]
 business = { path = "../business" }
 puerto-nucleo = { workspace = true }
-puerto-mail = { workspace = true }
+puerto-correo = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
 tracing = "0.1"
@@ -526,7 +526,7 @@ chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
-puerto-mail = { workspace = true, features = ["test-utils"] }
+puerto-correo = { workspace = true, features = ["pruebas"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 
 === infrastructure/mail/receipt/body.html ===
@@ -606,15 +606,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use business::domain::mail::receipt::{ReceiptMail, ReceiptMailer};
 use chrono::{DateTime, Utc};
-use puerto_mail::{EnviadorCorreo, ErrorCorreo, Templates};
+use puerto_correo::{EnviadorCorreo, ErrorCorreo, Plantillas};
 use serde::Serialize;
 use uuid::Uuid;
 
-const TEMPLATES: Templates = Templates::new(
+const TEMPLATES: Plantillas = Plantillas::new(
     include_str!("../../mail/receipt/subject.txt"),
     include_str!("../../mail/receipt/body.html"),
 )
-.with_text(include_str!("../../mail/receipt/body.txt"));
+.con_texto(include_str!("../../mail/receipt/body.txt"));
 
 /// What the templates see: the mail's fields but the recipient, under their own names.
 #[derive(Serialize)]
@@ -647,7 +647,7 @@ impl<'a> Context<'a> {
 }
 
 /// The `receipt` mail, rendered from `infrastructure/mail/receipt/` and sent through `mailer`
-/// (`puerto_mail::SmtpMailer` where it runs).
+/// (`puerto_correo::EnviadorCorreoSmtp` where it runs).
 pub struct TemplateReceiptMailer {
     mailer: Arc<dyn EnviadorCorreo>,
 }
@@ -661,7 +661,7 @@ impl TemplateReceiptMailer {
 #[async_trait]
 impl ReceiptMailer for TemplateReceiptMailer {
     async fn send(&self, mail: &ReceiptMail) -> Result<(), ErrorCorreo> {
-        let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
+        let email = TEMPLATES.renderizar(mail.to.clone(), Context::of(mail))?;
         self.mailer.enviar(&email).await
     }
 }
@@ -669,7 +669,7 @@ impl ReceiptMailer for TemplateReceiptMailer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_mail::testing::RecordingMailer;
+    use puerto_correo::pruebas::EnviadorCorreoGrabador;
 
     fn receipt() -> ReceiptMail {
         ReceiptMail {
@@ -689,7 +689,7 @@ mod tests {
     #[test]
     fn should_render_every_template_when_the_mail_has_its_fields() {
         // Act
-        let email = TEMPLATES.render("ada@example.com", Context::of(&receipt()));
+        let email = TEMPLATES.renderizar("ada@example.com", Context::of(&receipt()));
 
         // Assert
         let email = match email {
@@ -704,7 +704,7 @@ mod tests {
     #[tokio::test]
     async fn should_send_the_rendered_mail_to_its_recipient() {
         // Arrange
-        let recorder = Arc::new(RecordingMailer::new());
+        let recorder = Arc::new(EnviadorCorreoGrabador::new());
         let mailer = TemplateReceiptMailer::new(recorder.clone());
 
         // Act
@@ -712,7 +712,7 @@ mod tests {
 
         // Assert
         assert_eq!(result, Ok(()));
-        let sent = recorder.sent();
+        let sent = recorder.enviados();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].para, "ada@example.com");
     }
@@ -721,8 +721,9 @@ mod tests {
     async fn should_return_the_mailer_error_when_sending_fails() {
         // Arrange
         let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
-        let mailer =
-            TemplateReceiptMailer::new(Arc::new(RecordingMailer::failing_with(rejected.clone())));
+        let mailer = TemplateReceiptMailer::new(Arc::new(EnviadorCorreoGrabador::fallando_con(
+            rejected.clone(),
+        )));
 
         // Act
         let result = mailer.send(&receipt()).await;
@@ -741,14 +742,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use business::domain::mail::welcome::{WelcomeMail, WelcomeMailer};
-use puerto_mail::{EnviadorCorreo, ErrorCorreo, Templates};
+use puerto_correo::{EnviadorCorreo, ErrorCorreo, Plantillas};
 use serde::Serialize;
 
-const TEMPLATES: Templates = Templates::new(
+const TEMPLATES: Plantillas = Plantillas::new(
     include_str!("../../mail/welcome/subject.txt"),
     include_str!("../../mail/welcome/body.html"),
 )
-.with_text(include_str!("../../mail/welcome/body.txt"));
+.con_texto(include_str!("../../mail/welcome/body.txt"));
 
 /// What the templates see: the mail's fields but the recipient, under their own names.
 #[derive(Serialize)]
@@ -769,7 +770,7 @@ impl<'a> Context<'a> {
 }
 
 /// The `welcome` mail, rendered from `infrastructure/mail/welcome/` and sent through `mailer`
-/// (`puerto_mail::SmtpMailer` where it runs).
+/// (`puerto_correo::EnviadorCorreoSmtp` where it runs).
 pub struct TemplateWelcomeMailer {
     mailer: Arc<dyn EnviadorCorreo>,
 }
@@ -783,7 +784,7 @@ impl TemplateWelcomeMailer {
 #[async_trait]
 impl WelcomeMailer for TemplateWelcomeMailer {
     async fn send(&self, mail: &WelcomeMail) -> Result<(), ErrorCorreo> {
-        let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
+        let email = TEMPLATES.renderizar(mail.to.clone(), Context::of(mail))?;
         self.mailer.enviar(&email).await
     }
 }
@@ -791,7 +792,7 @@ impl WelcomeMailer for TemplateWelcomeMailer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_mail::testing::RecordingMailer;
+    use puerto_correo::pruebas::EnviadorCorreoGrabador;
 
     fn welcome() -> WelcomeMail {
         WelcomeMail {
@@ -805,7 +806,7 @@ mod tests {
     #[test]
     fn should_render_every_template_when_the_mail_has_its_fields() {
         // Act
-        let email = TEMPLATES.render("ada@example.com", Context::of(&welcome()));
+        let email = TEMPLATES.renderizar("ada@example.com", Context::of(&welcome()));
 
         // Assert
         let email = match email {
@@ -820,7 +821,7 @@ mod tests {
     #[tokio::test]
     async fn should_send_the_rendered_mail_to_its_recipient() {
         // Arrange
-        let recorder = Arc::new(RecordingMailer::new());
+        let recorder = Arc::new(EnviadorCorreoGrabador::new());
         let mailer = TemplateWelcomeMailer::new(recorder.clone());
 
         // Act
@@ -828,7 +829,7 @@ mod tests {
 
         // Assert
         assert_eq!(result, Ok(()));
-        let sent = recorder.sent();
+        let sent = recorder.enviados();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].para, "ada@example.com");
     }
@@ -837,8 +838,9 @@ mod tests {
     async fn should_return_the_mailer_error_when_sending_fails() {
         // Arrange
         let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
-        let mailer =
-            TemplateWelcomeMailer::new(Arc::new(RecordingMailer::failing_with(rejected.clone())));
+        let mailer = TemplateWelcomeMailer::new(Arc::new(EnviadorCorreoGrabador::fallando_con(
+            rejected.clone(),
+        )));
 
         // Act
         let result = mailer.send(&welcome()).await;

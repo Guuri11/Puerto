@@ -1,9 +1,9 @@
 //! Puerto's auth runtime (ADR-0021): the adapters of `puerto_nucleo::auth::Authenticator`.
 //!
-//! - feature `oidc` — [`oidc::OidcAuthenticator`]: verifies the access tokens of an OpenID Connect
+//! - feature `oidc` — [`oidc::AutenticadorOidc`]: verifies the access tokens of an OpenID Connect
 //!   provider (Auth0, Keycloak, …) and reads the caller's roles from a configurable claim. Which
 //!   provider is configuration, not code.
-//! - feature `local` — [`local::Argon2Hasher`]: the `PasswordHasher` of a project that keeps its own
+//! - feature `local` — [`local::HasherArgon2`]: the `PasswordHasher` of a project that keeps its own
 //!   accounts. Its sessions, and the `Authenticator` that reads them, are `puerto-sqlx`'s.
 //!
 //! A route never sees which one checked its caller: `puerto_web::auth::BearerAuth` asks the
@@ -15,5 +15,5 @@ pub mod local;
 pub mod oidc;
 
 #[cfg(feature = "oidc")]
-pub use oidc::{OidcAuthenticator, OidcConfig, OidcConfigError, OidcError, RolesClaim};
+pub use oidc::{AutenticadorOidc, ClaimRoles, ConfigOidc, ErrorConfigOidc, ErrorOidc};
 pub use puerto_nucleo::auth::{Autenticador, ErrorAuth, Principal};

@@ -1,6 +1,6 @@
 //! `puerto generate mail <name> [-- field:Type …]` (ADR-0020): a mail's port in the domain, its
 //! template implementation in infrastructure and its templates — written once, the user's from
-//! then on. The first mail of a project also brings `puerto-mail`, Mailpit and `SMTP_URL`.
+//! then on. The first mail of a project also brings `puerto-correo`, Mailpit and `SMTP_URL`.
 
 use crate::generators::layout;
 use std::fs;
@@ -214,12 +214,12 @@ fn patch_infra_lib(base: &Path, name: &str) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-/// `puerto-mail` for the template mailers, and its fakes for their tests.
+/// `puerto-correo` for the template mailers, and its fakes for their tests.
 fn add_puerto_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    add_workspace_dependency(base, "puerto-mail")?;
+    add_workspace_dependency(base, "puerto-correo")?;
     let path = base.join(layout::INFRA_MANIFEST);
     let mut src = fs::read_to_string(&path)?;
-    if src.contains("puerto-mail") {
+    if src.contains("puerto-correo") {
         return Ok(());
     }
     let core = "puerto-nucleo = { workspace = true }\n";
@@ -228,10 +228,10 @@ fn add_puerto_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     }
     src = src.replacen(
         core,
-        &format!("{core}puerto-mail = {{ workspace = true }}\n"),
+        &format!("{core}puerto-correo = {{ workspace = true }}\n"),
         1,
     );
-    let dev = "puerto-mail = { workspace = true, features = [\"test-utils\"] }\n";
+    let dev = "puerto-correo = { workspace = true, features = [\"pruebas\"] }\n";
     src = match src.find("[dev-dependencies]\n") {
         Some(at) => {
             let at = at + "[dev-dependencies]\n".len();
@@ -336,7 +336,7 @@ from then on (ADR-0020 of Puerto):
   shows) and the port `{Name}Mailer`. Code that sends it depends on the port; tests use
   `mocks::Mock{Name}Mailer`.
 - `infrastructure/src/mail/<name>.rs` — `Template{Name}Mailer`: renders the templates and hands
-  the message to the `puerto_mail::Mailer` (SMTP). Its tests render every template, so a typo in
+  the message to the `puerto_correo::Mailer` (SMTP). Its tests render every template, so a typo in
   one fails `make test`.
 - `infrastructure/mail/<name>/` — `subject.txt`, `body.html`, `body.txt`: minijinja, strict (an
   unknown variable is an error). Wrap an optional field in `{% if x is not none %}`.
@@ -348,7 +348,7 @@ a provider.
 **Who sends it.** In a project with domain events, `puerto generate mail <name> --on
 <event_type> --to <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
 in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
-per event (`puerto_mail::send_once` keeps a `correos_enviados` row — a crash between the send and that
+per event (`puerto_correo::enviar_una_vez` keeps a `correos_enviados` row — a crash between the send and that
 row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
 "#;
 
@@ -532,7 +532,7 @@ fn trigger_fields(
 }
 
 /// `worker/src/consumers/mail_<name>.rs`: decodes each event's snapshot, builds the mail and
-/// sends it through `send_once` — with its tests.
+/// sends it through `enviar_una_vez` — with its tests.
 fn render_handler(
     name: &str,
     fields: &[MailField],
@@ -575,11 +575,11 @@ fn render_handler(
     Ok(render("worker/mail_consumer.tera", &ctx)?)
 }
 
-/// What the worker needs once a mail is sent on events: `puerto-mail` and the `correos_enviados` table.
+/// What the worker needs once a mail is sent on events: `puerto-correo` and the `correos_enviados` table.
 fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let path = base.join(layout::WORKER_MANIFEST);
     let mut src = fs::read_to_string(&path)?;
-    if !src.contains("puerto-mail") {
+    if !src.contains("puerto-correo") {
         let events = "puerto-eventos = { workspace = true }\n";
         if !src.contains(events) {
             return Err(format!("{}: no `{}`", path.display(), events.trim_end()).into());
@@ -587,12 +587,12 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         src = src.replacen(
             events,
             &format!(
-                "{events}# Mail (ADR-0020): the SMTP client and `send_once`, for the mails sent on \
-                 events.\npuerto-mail = {{ workspace = true }}\n"
+                "{events}# Mail (ADR-0020): the SMTP client and `enviar_una_vez`, for the mails sent on \
+                 events.\npuerto-correo = {{ workspace = true }}\n"
             ),
             1,
         );
-        let dev = "puerto-mail = { workspace = true, features = [\"test-utils\"] }\n";
+        let dev = "puerto-correo = { workspace = true, features = [\"pruebas\"] }\n";
         src = match src.find("[dev-dependencies]\n") {
             Some(at) => {
                 let at = at + "[dev-dependencies]\n".len();

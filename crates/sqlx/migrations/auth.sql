@@ -1,19 +1,20 @@
--- Local accounts (ADR-0021 § 2): written by puerto, after `users`. The password hash lives apart
--- from the user, so `users` carries no secret. A session row keeps the SHA-256 of its token, never
--- the token: a copy of this table opens no session. Both go with their user. Expired sessions are
--- refused, not deleted: pruning them (`DELETE FROM sessions WHERE expires_at < now()`) is yours.
+-- Cuentas locales (ADR-0021 § 2): lo escribe puerto, después de `usuarios`. El hash de la
+-- contraseña vive aparte del usuario, así que `usuarios` no guarda ningún secreto. Una sesión
+-- guarda el SHA-256 de su token, nunca el token: una copia de esta tabla no abre ninguna sesión.
+-- Las dos se van con su usuario. Las sesiones caducadas se rechazan, no se borran: limpiarlas
+-- (`DELETE FROM sesiones WHERE expira_en < now()`) es cosa tuya.
 
-CREATE TABLE credentials (
-    user_id       UUID        PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
-    password_hash TEXT        NOT NULL,
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE credenciales (
+    id_usuario      UUID        PRIMARY KEY REFERENCES usuarios (id) ON DELETE CASCADE,
+    hash_contrasena TEXT        NOT NULL,
+    actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE sessions (
-    token_hash BYTEA       PRIMARY KEY,
-    user_id    UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at TIMESTAMPTZ NOT NULL
+CREATE TABLE sesiones (
+    hash_token BYTEA       PRIMARY KEY,
+    id_usuario UUID        NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
+    creado_en  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expira_en  TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX sessions_user_id_idx ON sessions (user_id);
+CREATE INDEX sesiones_id_usuario_idx ON sesiones (id_usuario);

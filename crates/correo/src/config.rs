@@ -14,13 +14,13 @@ use lettre::message::Mailbox;
 /// A mail variable that is missing or set to a value the mailer cannot use.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum MailConfigError {
-    #[error("{key} is not set — set it in .env (.env.example has one)")]
-    Missing { key: &'static str },
-    #[error("{key} is not valid: expected {expected}")]
-    Invalid {
-        key: &'static str,
-        expected: &'static str,
+pub enum ErrorConfigCorreo {
+    #[error("{clave} is not set — set it in .env (.env.example has one)")]
+    Falta { clave: &'static str },
+    #[error("{clave} is not valid: expected {esperado}")]
+    Invalido {
+        clave: &'static str,
+        esperado: &'static str,
     },
 }
 
@@ -28,58 +28,61 @@ const SMTP_URL_EXPECTED: &str = "smtp://host:port, or smtps://user:password@host
 const MAIL_FROM_EXPECTED: &str =
     "an address, like no-reply@example.com or Shop <no-reply@example.com>";
 
-/// Built by [`MailConfig::from_env`], or [`MailConfig::from_vars`] (tests).
+/// Built by [`ConfigCorreo::from_env`], or [`ConfigCorreo::from_variables`] (tests).
 #[derive(Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct MailConfig {
-    pub smtp_url: String,
-    pub from: String,
+pub struct ConfigCorreo {
+    pub url_smtp: String,
+    pub remitente: String,
 }
 
-impl MailConfig {
+impl ConfigCorreo {
     /// Loads `.env` when there is one, then reads the process environment.
-    pub fn from_env() -> Result<Self, MailConfigError> {
+    pub fn from_env() -> Result<Self, ErrorConfigCorreo> {
         dotenvy::dotenv().ok();
-        Self::from_vars(|key| std::env::var(key).ok())
+        Self::from_variables(|key| std::env::var(key).ok())
     }
 
     /// Reads the configuration from any variable source; an empty value counts as unset.
-    pub fn from_vars(var: impl Fn(&str) -> Option<String>) -> Result<Self, MailConfigError> {
+    pub fn from_variables(var: impl Fn(&str) -> Option<String>) -> Result<Self, ErrorConfigCorreo> {
         let required = |key: &'static str| {
             var(key)
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
-                .ok_or(MailConfigError::Missing { key })
+                .ok_or(ErrorConfigCorreo::Falta { clave: key })
         };
-        let smtp_url = required("SMTP_URL")?;
-        if !(smtp_url.starts_with("smtp://") || smtp_url.starts_with("smtps://")) {
-            return Err(MailConfigError::Invalid {
-                key: "SMTP_URL",
-                expected: SMTP_URL_EXPECTED,
+        let url_smtp = required("SMTP_URL")?;
+        if !(url_smtp.starts_with("smtp://") || url_smtp.starts_with("smtps://")) {
+            return Err(ErrorConfigCorreo::Invalido {
+                clave: "SMTP_URL",
+                esperado: SMTP_URL_EXPECTED,
             });
         }
         let from = required("MAIL_FROM")?;
         from.parse::<Mailbox>()
-            .map_err(|_| MailConfigError::Invalid {
-                key: "MAIL_FROM",
-                expected: MAIL_FROM_EXPECTED,
+            .map_err(|_| ErrorConfigCorreo::Invalido {
+                clave: "MAIL_FROM",
+                esperado: MAIL_FROM_EXPECTED,
             })?;
-        Ok(Self { smtp_url, from })
+        Ok(Self {
+            url_smtp,
+            remitente: from,
+        })
     }
 
-    pub(crate) fn invalid_smtp_url() -> MailConfigError {
-        MailConfigError::Invalid {
-            key: "SMTP_URL",
-            expected: SMTP_URL_EXPECTED,
+    pub(crate) fn invalid_smtp_url() -> ErrorConfigCorreo {
+        ErrorConfigCorreo::Invalido {
+            clave: "SMTP_URL",
+            esperado: SMTP_URL_EXPECTED,
         }
     }
 }
 
-impl fmt::Debug for MailConfig {
+impl fmt::Debug for ConfigCorreo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MailConfig")
-            .field("smtp_url", &redact(&self.smtp_url))
-            .field("from", &self.from)
+            .field("smtp_url", &redact(&self.url_smtp))
+            .field("from", &self.remitente)
             .finish()
     }
 }
@@ -120,14 +123,14 @@ mod tests {
         ]);
 
         // Act
-        let config = MailConfig::from_vars(env);
+        let config = ConfigCorreo::from_variables(env);
 
         // Assert
         assert_eq!(
             config,
-            Ok(MailConfig {
-                smtp_url: "smtp://localhost:1025".into(),
-                from: "Shop <no-reply@shop.localhost>".into(),
+            Ok(ConfigCorreo {
+                url_smtp: "smtp://localhost:1025".into(),
+                remitente: "Shop <no-reply@shop.localhost>".into(),
             })
         );
     }
@@ -138,8 +141,8 @@ mod tests {
             let mut env = env;
             env.push(("MAIL_FROM", "no-reply@shop.localhost"));
             assert_eq!(
-                MailConfig::from_vars(vars(&env)),
-                Err(MailConfigError::Missing { key: "SMTP_URL" })
+                ConfigCorreo::from_variables(vars(&env)),
+                Err(ErrorConfigCorreo::Falta { clave: "SMTP_URL" })
             );
         }
     }
@@ -148,8 +151,8 @@ mod tests {
     fn should_reject_the_config_when_mail_from_is_missing() {
         let env = vars(&[("SMTP_URL", "smtp://localhost:1025")]);
         assert_eq!(
-            MailConfig::from_vars(env),
-            Err(MailConfigError::Missing { key: "MAIL_FROM" })
+            ConfigCorreo::from_variables(env),
+            Err(ErrorConfigCorreo::Falta { clave: "MAIL_FROM" })
         );
     }
 
@@ -160,9 +163,9 @@ mod tests {
             ("MAIL_FROM", "no-reply@shop.localhost"),
         ]);
 
-        let error = MailConfig::from_vars(env).unwrap_err();
+        let error = ConfigCorreo::from_variables(env).unwrap_err();
 
-        assert_eq!(error, MailConfig::invalid_smtp_url());
+        assert_eq!(error, ConfigCorreo::invalid_smtp_url());
         assert!(!error.to_string().contains("secret"), "{error}");
     }
 
@@ -173,9 +176,9 @@ mod tests {
             ("MAIL_FROM", "no-reply"),
         ]);
         assert!(matches!(
-            MailConfig::from_vars(env),
-            Err(MailConfigError::Invalid {
-                key: "MAIL_FROM",
+            ConfigCorreo::from_variables(env),
+            Err(ErrorConfigCorreo::Invalido {
+                clave: "MAIL_FROM",
                 ..
             })
         ));
@@ -183,9 +186,9 @@ mod tests {
 
     #[test]
     fn should_hide_the_password_when_the_config_is_debug_printed() {
-        let config = MailConfig {
-            smtp_url: "smtps://mailer:s3cret@smtp.example.com".into(),
-            from: "no-reply@example.com".into(),
+        let config = ConfigCorreo {
+            url_smtp: "smtps://mailer:s3cret@smtp.example.com".into(),
+            remitente: "no-reply@example.com".into(),
         };
 
         let printed = format!("{config:?}");

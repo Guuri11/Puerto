@@ -48,15 +48,15 @@ crates/
                       the outcome). `make test/kafka` runs it against Redpanda. Building it needs
                       `cmake` and the libcurl headers (librdkafka 2.12 includes `curl/curl.h`
                       even without curl support)
-  mail/             — `puerto-mail`, mail (ADR-0020): `MailConfig` (`SMTP_URL`, `MAIL_FROM`),
-                      `SmtpMailer` (lettre, rustls; 5xx → `Permanent`, the rest → `Transient`),
-                      `Templates` (minijinja, strict, the subject on one line), `send_once` (the
+  correo/           — `puerto-correo`, mail (ADR-0020): `ConfigCorreo` (`SMTP_URL`, `MAIL_FROM`),
+                      `EnviadorCorreoSmtp` (lettre, rustls; 5xx → `Permanent`, the rest → `Transient`),
+                      `Templates` (minijinja, strict, the subject on one line), `enviar_una_vez` (the
                       sent log, then the send, then the mark) and, behind `test-utils`,
-                      `RecordingMailer` / `InMemorySentMails`. The ports (`Email`, `Mailer`,
+                      `EnviadorCorreoGrabador` / `CorreosEnviadosEnMemoria`. The ports (`Email`, `Mailer`,
                       `SentMails`) are `puerto-nucleo`'s. `make test/mail` runs it against Mailpit
-  auth/             — `puerto-auth`, auth adapters (ADR-0021). Feature `oidc`: `OidcConfig`
-                      (`AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_ROLES_CLAIM`), `RolesClaim` (a top-level
-                      name as is, else a dotted path), `OidcAuthenticator::discover` (RS256/ES256
+  auth/             — `puerto-auth`, auth adapters (ADR-0021). Feature `oidc`: `ConfigOidc`
+                      (`AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_ROLES_CLAIM`), `ClaimRoles` (a top-level
+                      name as is, else a dotted path), `AutenticadorOidc::discover` (RS256/ES256
                       only, `iss`/`aud`/`exp`/`nbf` ± 60 s, an unknown `kid` refetches the JWKS at
                       most once a minute; the `Principal`'s `user_id` is nil). Its tests enable the
                       feature through a dev-dependency on itself. `make test/auth` runs it against
@@ -325,7 +325,7 @@ make format/fix    # cargo fmt --all
   `users` migration with `UNIQUE (issuer, subject)`), `infrastructure/src/user/provisioning.rs`
   (`ProvisioningAuthenticator`: the provider, then find-or-create the user, a 60 s cache) and
   `GET /me` (`presentation/src/api/me/`). `bootstrap.rs` discovers the provider
-  (`puerto_auth::OidcAuthenticator`, a startup error with a hint when it is down) and hands the
+  (`puerto_auth::AutenticadorOidc`, a startup error with a hint when it is down) and hands the
   routes `.data(Arc<dyn Authenticator>)`. Keycloak 26.8 in `docker-compose.yml` with
   `infrastructure/keycloak/realm.json` (client `web`, audience mapper `api`, user
   `admin@<project>.localhost`; a dev-only client `dev-cli` with the password grant and a user
@@ -342,7 +342,7 @@ make format/fix    # cargo fmt --all
   Keycloak; `register_user` / `login` / `logout` (`business/src/{domain,application}/user/`, over
   `puerto-nucleo`'s `PasswordHasher`, `CredentialStore`, `SessionStore`) and `POST /auth/{register,
   login,logout}` (`presentation/src/api/auth/`, `UserError` → 422/401/409/500, route tests).
-  `bootstrap.rs` builds `Argon2Hasher`, `PgCredentials` and `PgSessions` — the authenticator. The
+  `bootstrap.rs` builds `HasherArgon2`, `PgCredentials` and `PgSessions` — the authenticator. The
   `users` then `auth` migrations, `AUTH_SESSION_TTL=30d` in `.env`, `make auth/grant EMAIL= ROLE=`,
   its own root `AGENTS.md` Auth section
 - `--auth local` with `web/` (16.7): the same shared files as OIDC (`session.ts`, the bearer
@@ -376,15 +376,15 @@ make format/fix    # cargo fmt --all
   a target with no code yet; no self references, `vec:ref:` or `ref:User` yet
 - `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
   (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`
-  (`Template{Name}Mailer` over `puerto-mail`, with render tests) and
+  (`Template{Name}Mailer` over `puerto-correo`, with render tests) and
   `infrastructure/mail/<name>/{subject.txt,body.html,body.txt}` — written once, the user's. The
-  first mail adds `puerto-mail`, Mailpit to `docker-compose.yml` (created without `--db`),
+  first mail adds `puerto-correo`, Mailpit to `docker-compose.yml` (created without `--db`),
   `SMTP_URL` / `MAIL_FROM`, `make mail/ui` and a root `AGENTS.md` section. An entity cannot be
   named `Mail`: mails own the `mail` modules. With `--on <event_type> --to <field>` (events
   projects) also `worker/src/consumers/mail_<name>.rs` (`Send{Name}Mail`: snapshot → mail →
-  `puerto_mail::send_once`), `[[mail]] on`, the consumer `mail_<name>` in `registry.rs` (one
-  `SmtpMailer` + one `PgSentMails`) and, the first time, the `sent_mails` migration (the CLI's
-  `templates/infrastructure/sent_mails.sql`) and `puerto-mail` in `worker`
+  `puerto_correo::enviar_una_vez`), `[[mail]] on`, the consumer `mail_<name>` in `registry.rs` (one
+  `EnviadorCorreoSmtp` + one `PgSentMails`) and, the first time, the `sent_mails` migration (the CLI's
+  `templates/infrastructure/sent_mails.sql`) and `puerto-correo` in `worker`
 
 ## Detailed Rules
 

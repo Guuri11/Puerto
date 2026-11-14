@@ -7,27 +7,30 @@ use lettre::transport::smtp;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use puerto_nucleo::correo::{Correo, EnviadorCorreo, ErrorCorreo};
 
-use crate::config::{MailConfig, MailConfigError};
+use crate::config::{ConfigCorreo, ErrorConfigCorreo};
 
 /// Sends every [`Email`] from `MAIL_FROM` through the server at `SMTP_URL`.
 #[derive(Clone)]
-pub struct SmtpMailer {
+pub struct EnviadorCorreoSmtp {
     transport: AsyncSmtpTransport<Tokio1Executor>,
     from: Mailbox,
 }
 
-impl SmtpMailer {
+impl EnviadorCorreoSmtp {
     /// Opens no connection: the first send does, so a server that is down shows up as a retry,
     /// not as a worker that will not start. Call it inside the tokio runtime (`build_worker`):
     /// the connection pool lives on it.
-    pub fn new(config: &MailConfig) -> Result<Self, MailConfigError> {
-        let transport = AsyncSmtpTransport::<Tokio1Executor>::from_url(&config.smtp_url)
-            .map_err(|_| MailConfig::invalid_smtp_url())?
+    pub fn new(config: &ConfigCorreo) -> Result<Self, ErrorConfigCorreo> {
+        let transport = AsyncSmtpTransport::<Tokio1Executor>::from_url(&config.url_smtp)
+            .map_err(|_| ConfigCorreo::invalid_smtp_url())?
             .build();
-        let from = config.from.parse().map_err(|_| MailConfigError::Invalid {
-            key: "MAIL_FROM",
-            expected: "an address, like no-reply@example.com",
-        })?;
+        let from = config
+            .remitente
+            .parse()
+            .map_err(|_| ErrorConfigCorreo::Invalido {
+                clave: "MAIL_FROM",
+                esperado: "an address, like no-reply@example.com",
+            })?;
         Ok(Self { transport, from })
     }
 
@@ -54,7 +57,7 @@ impl SmtpMailer {
 }
 
 #[async_trait]
-impl EnviadorCorreo for SmtpMailer {
+impl EnviadorCorreo for EnviadorCorreoSmtp {
     async fn enviar(&self, email: &Correo) -> Result<(), ErrorCorreo> {
         let message = self.message(email)?;
         self.transport
@@ -79,14 +82,14 @@ fn classify(error: smtp::Error) -> ErrorCorreo {
 mod tests {
     use super::*;
 
-    fn mailer(smtp_url: &str) -> SmtpMailer {
-        let config = MailConfig::from_vars(|key| match key {
-            "SMTP_URL" => Some(smtp_url.to_string()),
+    fn mailer(url_smtp: &str) -> EnviadorCorreoSmtp {
+        let config = ConfigCorreo::from_variables(|key| match key {
+            "SMTP_URL" => Some(url_smtp.to_string()),
             "MAIL_FROM" => Some("Shop <no-reply@shop.localhost>".to_string()),
             _ => None,
         })
         .unwrap();
-        SmtpMailer::new(&config).unwrap()
+        EnviadorCorreoSmtp::new(&config).unwrap()
     }
 
     /// A local port nothing listens on: bound, then released.

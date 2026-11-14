@@ -6,17 +6,17 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use business::domain::mail::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
-use puerto_mail::{ErrorCorreo, EnviadorCorreo, Templates};
+use puerto_correo::{ErrorCorreo, EnviadorCorreo, Plantillas};
 use serde::Serialize;
 {%- for import in imports %}
 use {{ import }};
 {%- endfor %}
 
-const TEMPLATES: Templates = Templates::new(
+const TEMPLATES: Plantillas = Plantillas::new(
     include_str!("../../mail/{{ name }}/subject.txt"),
     include_str!("../../mail/{{ name }}/body.html"),
 )
-.with_text(include_str!("../../mail/{{ name }}/body.txt"));
+.con_texto(include_str!("../../mail/{{ name }}/body.txt"));
 
 /// What the templates see: the mail's fields but the recipient, under their own names.
 #[derive(Serialize)]
@@ -37,7 +37,7 @@ impl<'a> Context<'a> {
 }
 
 /// The `{{ name }}` mail, rendered from `infrastructure/mail/{{ name }}/` and sent through `mailer`
-/// (`puerto_mail::SmtpMailer` where it runs).
+/// (`puerto_correo::EnviadorCorreoSmtp` where it runs).
 pub struct Template{{ pascal }}Mailer {
     mailer: Arc<dyn EnviadorCorreo>,
 }
@@ -51,7 +51,7 @@ impl Template{{ pascal }}Mailer {
 #[async_trait]
 impl {{ pascal }}Mailer for Template{{ pascal }}Mailer {
     async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), ErrorCorreo> {
-        let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
+        let email = TEMPLATES.renderizar(mail.to.clone(), Context::of(mail))?;
         self.mailer.enviar(&email).await
     }
 }
@@ -59,7 +59,7 @@ impl {{ pascal }}Mailer for Template{{ pascal }}Mailer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_mail::testing::RecordingMailer;
+    use puerto_correo::pruebas::EnviadorCorreoGrabador;
 
     fn {{ name }}() -> {{ pascal }}Mail {
         {{ pascal }}Mail {
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn should_render_every_template_when_the_mail_has_its_fields() {
         // Act
-        let email = TEMPLATES.render("ada@example.com", Context::of(&{{ name }}()));
+        let email = TEMPLATES.renderizar("ada@example.com", Context::of(&{{ name }}()));
 
         // Assert
         let email = match email {
@@ -88,7 +88,7 @@ mod tests {
     #[tokio::test]
     async fn should_send_the_rendered_mail_to_its_recipient() {
         // Arrange
-        let recorder = Arc::new(RecordingMailer::new());
+        let recorder = Arc::new(EnviadorCorreoGrabador::new());
         let mailer = Template{{ pascal }}Mailer::new(recorder.clone());
 
         // Act
@@ -96,7 +96,7 @@ mod tests {
 
         // Assert
         assert_eq!(result, Ok(()));
-        let sent = recorder.sent();
+        let sent = recorder.enviados();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].para, "ada@example.com");
     }
@@ -106,7 +106,7 @@ mod tests {
         // Arrange
         let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
         let mailer =
-            Template{{ pascal }}Mailer::new(Arc::new(RecordingMailer::failing_with(rejected.clone())));
+            Template{{ pascal }}Mailer::new(Arc::new(EnviadorCorreoGrabador::fallando_con(rejected.clone())));
 
         // Act
         let result = mailer.send(&{{ name }}()).await;

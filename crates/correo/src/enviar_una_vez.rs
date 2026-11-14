@@ -7,7 +7,7 @@ use puerto_nucleo::correo::{CorreosEnviados, ErrorCorreo};
 use puerto_nucleo::eventos::{MOTIVO_ERROR_PERMANENTE, ResultadoManejo};
 use uuid::Uuid;
 
-/// Sends `mail` for the event `event_id` unless `sent` says it already went out, then records it.
+/// Sends `mail` for the event `event_id` unless `enviados` says it already went out, then records it.
 ///
 /// | | Outcome |
 /// |---|---|
@@ -18,7 +18,7 @@ use uuid::Uuid;
 /// | [`MailError::Transient`] | `Retry` |
 ///
 /// `send` is not polled unless the mail is due, so it can be the `send(…)` call itself.
-pub async fn send_once(
+pub async fn enviar_una_vez(
     sent: &dyn CorreosEnviados,
     event_id: Uuid,
     mail: &str,
@@ -63,7 +63,7 @@ mod tests {
     use puerto_nucleo::ErrorRepositorio;
 
     use super::*;
-    use crate::testing::InMemorySentMails;
+    use crate::pruebas::CorreosEnviadosEnMemoria;
 
     const MAIL: &str = "welcome";
 
@@ -79,12 +79,12 @@ mod tests {
     #[tokio::test]
     async fn should_send_and_record_the_mail_when_it_was_not_sent_yet() {
         // Arrange
-        let sent = InMemorySentMails::new();
+        let sent = CorreosEnviadosEnMemoria::new();
         let event_id = Uuid::now_v7();
         let calls = AtomicUsize::new(0);
 
         // Act
-        let outcome = send_once(&sent, event_id, MAIL, counted(&calls, Ok(()))).await;
+        let outcome = enviar_una_vez(&sent, event_id, MAIL, counted(&calls, Ok(()))).await;
 
         // Assert
         assert_eq!(outcome, ResultadoManejo::Ack);
@@ -95,13 +95,13 @@ mod tests {
     #[tokio::test]
     async fn should_not_send_again_when_the_same_event_is_delivered_twice() {
         // Arrange
-        let sent = InMemorySentMails::new();
+        let sent = CorreosEnviadosEnMemoria::new();
         let event_id = Uuid::now_v7();
         let calls = AtomicUsize::new(0);
 
         // Act
-        let first = send_once(&sent, event_id, MAIL, counted(&calls, Ok(()))).await;
-        let second = send_once(&sent, event_id, MAIL, counted(&calls, Ok(()))).await;
+        let first = enviar_una_vez(&sent, event_id, MAIL, counted(&calls, Ok(()))).await;
+        let second = enviar_una_vez(&sent, event_id, MAIL, counted(&calls, Ok(()))).await;
 
         // Assert
         assert_eq!(
@@ -113,12 +113,12 @@ mod tests {
 
     #[tokio::test]
     async fn should_send_each_mail_when_one_event_triggers_two() {
-        let sent = InMemorySentMails::new();
+        let sent = CorreosEnviadosEnMemoria::new();
         let event_id = Uuid::now_v7();
         let calls = AtomicUsize::new(0);
 
-        send_once(&sent, event_id, "welcome", counted(&calls, Ok(()))).await;
-        send_once(&sent, event_id, "receipt", counted(&calls, Ok(()))).await;
+        enviar_una_vez(&sent, event_id, "welcome", counted(&calls, Ok(()))).await;
+        enviar_una_vez(&sent, event_id, "receipt", counted(&calls, Ok(()))).await;
 
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
@@ -126,11 +126,11 @@ mod tests {
     #[tokio::test]
     async fn should_retry_without_sending_when_the_log_cannot_be_read() {
         // Arrange
-        let sent = InMemorySentMails::unavailable();
+        let sent = CorreosEnviadosEnMemoria::no_disponible();
         let calls = AtomicUsize::new(0);
 
         // Act
-        let outcome = send_once(&sent, Uuid::now_v7(), MAIL, counted(&calls, Ok(()))).await;
+        let outcome = enviar_una_vez(&sent, Uuid::now_v7(), MAIL, counted(&calls, Ok(()))).await;
 
         // Assert
         assert_eq!(outcome, ResultadoManejo::Reintentar);
@@ -140,13 +140,13 @@ mod tests {
     #[tokio::test]
     async fn should_retry_and_record_nothing_when_the_send_fails_transiently() {
         // Arrange
-        let sent = InMemorySentMails::new();
+        let sent = CorreosEnviadosEnMemoria::new();
         let event_id = Uuid::now_v7();
         let calls = AtomicUsize::new(0);
         let refused = Err(ErrorCorreo::Transitorio("connection refused".into()));
 
         // Act
-        let outcome = send_once(&sent, event_id, MAIL, counted(&calls, refused)).await;
+        let outcome = enviar_una_vez(&sent, event_id, MAIL, counted(&calls, refused)).await;
 
         // Assert
         assert_eq!(outcome, ResultadoManejo::Reintentar);
@@ -156,13 +156,13 @@ mod tests {
     #[tokio::test]
     async fn should_dead_letter_and_record_nothing_when_the_send_fails_permanently() {
         // Arrange
-        let sent = InMemorySentMails::new();
+        let sent = CorreosEnviadosEnMemoria::new();
         let event_id = Uuid::now_v7();
         let calls = AtomicUsize::new(0);
         let rejected = Err(ErrorCorreo::Permanente("550 no such user".into()));
 
         // Act
-        let outcome = send_once(&sent, event_id, MAIL, counted(&calls, rejected)).await;
+        let outcome = enviar_una_vez(&sent, event_id, MAIL, counted(&calls, rejected)).await;
 
         // Assert
         assert_eq!(
@@ -175,11 +175,11 @@ mod tests {
     #[tokio::test]
     async fn should_ack_when_the_mail_went_out_but_could_not_be_recorded() {
         // Arrange
-        let sent = InMemorySentMails::failing_to_mark(ErrorRepositorio::NoDisponible);
+        let sent = CorreosEnviadosEnMemoria::fallando_al_marcar(ErrorRepositorio::NoDisponible);
         let calls = AtomicUsize::new(0);
 
         // Act
-        let outcome = send_once(&sent, Uuid::now_v7(), MAIL, counted(&calls, Ok(()))).await;
+        let outcome = enviar_una_vez(&sent, Uuid::now_v7(), MAIL, counted(&calls, Ok(()))).await;
 
         // Assert
         assert_eq!(outcome, ResultadoManejo::Ack);

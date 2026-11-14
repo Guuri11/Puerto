@@ -1,7 +1,7 @@
-//! `SmtpMailer` against a real SMTP server: a throwaway Mailpit started by `make test/mail`, which
+//! `EnviadorCorreoSmtp` against a real SMTP server: a throwaway Mailpit started by `make test/mail`, which
 //! accepts only recipients at `@accepted.test` (`MP_SMTP_ALLOWED_RECIPIENTS`).
 
-use puerto_mail::{Correo, EnviadorCorreo, ErrorCorreo, MailConfig, SmtpMailer};
+use puerto_correo::{ConfigCorreo, Correo, EnviadorCorreo, EnviadorCorreoSmtp, ErrorCorreo};
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -17,14 +17,14 @@ fn mailpit() -> Option<(String, String)> {
     ))
 }
 
-fn mailer(smtp_url: &str) -> SmtpMailer {
-    let config = MailConfig::from_vars(|key| match key {
-        "SMTP_URL" => Some(smtp_url.to_string()),
+fn mailer(url_smtp: &str) -> EnviadorCorreoSmtp {
+    let config = ConfigCorreo::from_variables(|key| match key {
+        "SMTP_URL" => Some(url_smtp.to_string()),
         "MAIL_FROM" => Some("Puerto <no-reply@puerto.test>".into()),
         _ => None,
     })
     .unwrap();
-    SmtpMailer::new(&config).unwrap()
+    EnviadorCorreoSmtp::new(&config).unwrap()
 }
 
 /// `GET <PUERTO_TEST_MAILPIT_API>/api/v1/messages`, over HTTP/1.0 so the body is never chunked.
@@ -46,7 +46,7 @@ fn unique_address(domain: &str) -> String {
 #[tokio::test]
 #[ignore = "needs Mailpit: make test/mail"]
 async fn should_deliver_the_mail_when_the_server_accepts_it() {
-    let Some((smtp_url, api)) = mailpit() else {
+    let Some((url_smtp, api)) = mailpit() else {
         return eprintln!("{SKIP}");
     };
     // Arrange
@@ -54,7 +54,7 @@ async fn should_deliver_the_mail_when_the_server_accepts_it() {
     let email = Correo::new(&to, "Welcome, Ada", "<p>Hi Ada</p>").con_texto("Hi Ada");
 
     // Act
-    let result = mailer(&smtp_url).enviar(&email).await;
+    let result = mailer(&url_smtp).enviar(&email).await;
 
     // Assert
     assert_eq!(result, Ok(()));
@@ -72,14 +72,14 @@ async fn should_deliver_the_mail_when_the_server_accepts_it() {
 #[tokio::test]
 #[ignore = "needs Mailpit: make test/mail"]
 async fn should_fail_permanently_when_the_server_rejects_the_recipient() {
-    let Some((smtp_url, _)) = mailpit() else {
+    let Some((url_smtp, _)) = mailpit() else {
         return eprintln!("{SKIP}");
     };
     // Arrange
     let email = Correo::new(unique_address("rejected.test"), "Hi", "<p>Hi</p>");
 
     // Act
-    let result = mailer(&smtp_url).enviar(&email).await;
+    let result = mailer(&url_smtp).enviar(&email).await;
 
     // Assert
     assert!(

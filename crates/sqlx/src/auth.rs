@@ -66,7 +66,7 @@ pub fn parsear_ttl(value: &str) -> Option<Duration> {
 }
 
 /// `sessions`: a [`SessionStore`] for `login` and `logout`, and the [`Authenticator`] of a local
-/// project — the presented token's hash, joined with its user. The roles are the `users.roles`
+/// project — the presented token's hash, joined with its user. The roles are the `usuarios.roles`
 /// column (`make auth/grant`).
 pub struct SesionesPostgres {
     pool: PgPool,
@@ -100,7 +100,7 @@ impl AlmacenSesiones for SesionesPostgres {
             ErrorRepositorio::NoDisponible
         })?;
         let expires_at = Utc::now() + self.ttl;
-        sqlx::query("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)")
+        sqlx::query("INSERT INTO sesiones (hash_token, id_usuario, expira_en) VALUES ($1, $2, $3)")
             .bind(&hash_token(&token)[..])
             .bind(user_id)
             .bind(expires_at)
@@ -114,7 +114,7 @@ impl AlmacenSesiones for SesionesPostgres {
     }
 
     async fn revocar(&self, token: &str) -> Result<(), ErrorRepositorio> {
-        sqlx::query("DELETE FROM sessions WHERE token_hash = $1")
+        sqlx::query("DELETE FROM sesiones WHERE hash_token = $1")
             .bind(&hash_token(token)[..])
             .execute(&self.pool)
             .await
@@ -130,8 +130,8 @@ impl AlmacenSesiones for SesionesPostgres {
 impl Autenticador for SesionesPostgres {
     async fn autenticar(&self, token: &str) -> Result<Principal, ErrorAuth> {
         let row = sqlx::query_as::<_, SessionUser>(
-            "SELECT u.id, u.subject, u.email, u.name, u.roles, s.expires_at \
-             FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1",
+            "SELECT u.id, u.sujeto, u.email, u.nombre, u.roles, s.expira_en \
+             FROM sesiones s JOIN usuarios u ON u.id = s.id_usuario WHERE s.hash_token = $1",
         )
         .bind(&hash_token(token)[..])
         .fetch_optional(&self.pool)
@@ -170,7 +170,7 @@ impl CredencialesPostgres {
 #[async_trait]
 impl AlmacenCredenciales for CredencialesPostgres {
     async fn hash_contrasena(&self, user_id: Uuid) -> Result<Option<String>, ErrorRepositorio> {
-        sqlx::query_scalar("SELECT password_hash FROM credentials WHERE user_id = $1")
+        sqlx::query_scalar("SELECT hash_contrasena FROM credenciales WHERE id_usuario = $1")
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await
@@ -186,9 +186,9 @@ impl AlmacenCredenciales for CredencialesPostgres {
         hash: &str,
     ) -> Result<(), ErrorRepositorio> {
         sqlx::query(
-            "INSERT INTO credentials (user_id, password_hash) VALUES ($1, $2) \
-             ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, \
-             updated_at = now()",
+            "INSERT INTO credenciales (id_usuario, hash_contrasena) VALUES ($1, $2) \
+             ON CONFLICT (id_usuario) DO UPDATE SET hash_contrasena = EXCLUDED.hash_contrasena, \
+             actualizado_en = now()",
         )
         .bind(user_id)
         .bind(hash)

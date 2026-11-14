@@ -278,7 +278,7 @@ from then on (ADR-0020 of Puerto):
   shows) and the port `{Name}Mailer`. Code that sends it depends on the port; tests use
   `mocks::Mock{Name}Mailer`.
 - `infrastructure/src/mail/<name>.rs` — `Template{Name}Mailer`: renders the templates and hands
-  the message to the `puerto_mail::Mailer` (SMTP). Its tests render every template, so a typo in
+  the message to the `puerto_correo::Mailer` (SMTP). Its tests render every template, so a typo in
   one fails `make test`.
 - `infrastructure/mail/<name>/` — `subject.txt`, `body.html`, `body.txt`: minijinja, strict (an
   unknown variable is an error). Wrap an optional field in `{% if x is not none %}`.
@@ -290,7 +290,7 @@ a provider.
 **Who sends it.** In a project with domain events, `puerto generate mail <name> --on
 <event_type> --to <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
 in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
-per event (`puerto_mail::send_once` keeps a `correos_enviados` row — a crash between the send and that
+per event (`puerto_correo::enviar_una_vez` keeps a `correos_enviados` row — a crash between the send and that
 row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
 
 === Cargo.toml ===
@@ -306,7 +306,7 @@ puerto-web = "0.20"
 puerto-sqlx = "0.20"
 puerto-eventos = "0.20"
 puerto-kafka = "0.20"
-puerto-mail = "0.20"
+puerto-correo = "0.20"
 
 === Makefile ===
 .PHONY: help setup run \
@@ -2567,7 +2567,7 @@ edition = "2024"
 [dependencies]
 business = { path = "../business" }
 puerto-nucleo = { workspace = true }
-puerto-mail = { workspace = true }
+puerto-correo = { workspace = true }
 puerto-sqlx = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
@@ -2581,7 +2581,7 @@ version = "0.8"
 features = ["runtime-tokio-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"]
 
 [dev-dependencies]
-puerto-mail = { workspace = true, features = ["test-utils"] }
+puerto-correo = { workspace = true, features = ["pruebas"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 
 === infrastructure/mail/digest/body.html ===
@@ -2754,14 +2754,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use business::domain::mail::digest::{DigestMail, DigestMailer};
-use puerto_mail::{EnviadorCorreo, ErrorCorreo, Templates};
+use puerto_correo::{EnviadorCorreo, ErrorCorreo, Plantillas};
 use serde::Serialize;
 
-const TEMPLATES: Templates = Templates::new(
+const TEMPLATES: Plantillas = Plantillas::new(
     include_str!("../../mail/digest/subject.txt"),
     include_str!("../../mail/digest/body.html"),
 )
-.with_text(include_str!("../../mail/digest/body.txt"));
+.con_texto(include_str!("../../mail/digest/body.txt"));
 
 /// What the templates see: the mail's fields but the recipient, under their own names.
 #[derive(Serialize)]
@@ -2776,7 +2776,7 @@ impl<'a> Context<'a> {
 }
 
 /// The `digest` mail, rendered from `infrastructure/mail/digest/` and sent through `mailer`
-/// (`puerto_mail::SmtpMailer` where it runs).
+/// (`puerto_correo::EnviadorCorreoSmtp` where it runs).
 pub struct TemplateDigestMailer {
     mailer: Arc<dyn EnviadorCorreo>,
 }
@@ -2790,7 +2790,7 @@ impl TemplateDigestMailer {
 #[async_trait]
 impl DigestMailer for TemplateDigestMailer {
     async fn send(&self, mail: &DigestMail) -> Result<(), ErrorCorreo> {
-        let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
+        let email = TEMPLATES.renderizar(mail.to.clone(), Context::of(mail))?;
         self.mailer.enviar(&email).await
     }
 }
@@ -2798,7 +2798,7 @@ impl DigestMailer for TemplateDigestMailer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_mail::testing::RecordingMailer;
+    use puerto_correo::pruebas::EnviadorCorreoGrabador;
 
     fn digest() -> DigestMail {
         DigestMail {
@@ -2810,7 +2810,7 @@ mod tests {
     #[test]
     fn should_render_every_template_when_the_mail_has_its_fields() {
         // Act
-        let email = TEMPLATES.render("ada@example.com", Context::of(&digest()));
+        let email = TEMPLATES.renderizar("ada@example.com", Context::of(&digest()));
 
         // Assert
         let email = match email {
@@ -2825,7 +2825,7 @@ mod tests {
     #[tokio::test]
     async fn should_send_the_rendered_mail_to_its_recipient() {
         // Arrange
-        let recorder = Arc::new(RecordingMailer::new());
+        let recorder = Arc::new(EnviadorCorreoGrabador::new());
         let mailer = TemplateDigestMailer::new(recorder.clone());
 
         // Act
@@ -2833,7 +2833,7 @@ mod tests {
 
         // Assert
         assert_eq!(result, Ok(()));
-        let sent = recorder.sent();
+        let sent = recorder.enviados();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].para, "ada@example.com");
     }
@@ -2842,8 +2842,9 @@ mod tests {
     async fn should_return_the_mailer_error_when_sending_fails() {
         // Arrange
         let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
-        let mailer =
-            TemplateDigestMailer::new(Arc::new(RecordingMailer::failing_with(rejected.clone())));
+        let mailer = TemplateDigestMailer::new(Arc::new(EnviadorCorreoGrabador::fallando_con(
+            rejected.clone(),
+        )));
 
         // Act
         let result = mailer.send(&digest()).await;
@@ -2862,14 +2863,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use business::domain::mail::price_alert::{PriceAlertMail, PriceAlertMailer};
-use puerto_mail::{EnviadorCorreo, ErrorCorreo, Templates};
+use puerto_correo::{EnviadorCorreo, ErrorCorreo, Plantillas};
 use serde::Serialize;
 
-const TEMPLATES: Templates = Templates::new(
+const TEMPLATES: Plantillas = Plantillas::new(
     include_str!("../../mail/price_alert/subject.txt"),
     include_str!("../../mail/price_alert/body.html"),
 )
-.with_text(include_str!("../../mail/price_alert/body.txt"));
+.con_texto(include_str!("../../mail/price_alert/body.txt"));
 
 /// What the templates see: the mail's fields but the recipient, under their own names.
 #[derive(Serialize)]
@@ -2888,7 +2889,7 @@ impl<'a> Context<'a> {
 }
 
 /// The `price_alert` mail, rendered from `infrastructure/mail/price_alert/` and sent through `mailer`
-/// (`puerto_mail::SmtpMailer` where it runs).
+/// (`puerto_correo::EnviadorCorreoSmtp` where it runs).
 pub struct TemplatePriceAlertMailer {
     mailer: Arc<dyn EnviadorCorreo>,
 }
@@ -2902,7 +2903,7 @@ impl TemplatePriceAlertMailer {
 #[async_trait]
 impl PriceAlertMailer for TemplatePriceAlertMailer {
     async fn send(&self, mail: &PriceAlertMail) -> Result<(), ErrorCorreo> {
-        let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
+        let email = TEMPLATES.renderizar(mail.to.clone(), Context::of(mail))?;
         self.mailer.enviar(&email).await
     }
 }
@@ -2910,7 +2911,7 @@ impl PriceAlertMailer for TemplatePriceAlertMailer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_mail::testing::RecordingMailer;
+    use puerto_correo::pruebas::EnviadorCorreoGrabador;
 
     fn price_alert() -> PriceAlertMail {
         PriceAlertMail {
@@ -2923,7 +2924,7 @@ mod tests {
     #[test]
     fn should_render_every_template_when_the_mail_has_its_fields() {
         // Act
-        let email = TEMPLATES.render("ada@example.com", Context::of(&price_alert()));
+        let email = TEMPLATES.renderizar("ada@example.com", Context::of(&price_alert()));
 
         // Assert
         let email = match email {
@@ -2938,7 +2939,7 @@ mod tests {
     #[tokio::test]
     async fn should_send_the_rendered_mail_to_its_recipient() {
         // Arrange
-        let recorder = Arc::new(RecordingMailer::new());
+        let recorder = Arc::new(EnviadorCorreoGrabador::new());
         let mailer = TemplatePriceAlertMailer::new(recorder.clone());
 
         // Act
@@ -2946,7 +2947,7 @@ mod tests {
 
         // Assert
         assert_eq!(result, Ok(()));
-        let sent = recorder.sent();
+        let sent = recorder.enviados();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].para, "ada@example.com");
     }
@@ -2955,7 +2956,7 @@ mod tests {
     async fn should_return_the_mailer_error_when_sending_fails() {
         // Arrange
         let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
-        let mailer = TemplatePriceAlertMailer::new(Arc::new(RecordingMailer::failing_with(
+        let mailer = TemplatePriceAlertMailer::new(Arc::new(EnviadorCorreoGrabador::fallando_con(
             rejected.clone(),
         )));
 
@@ -2977,14 +2978,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use business::domain::mail::product_live::{ProductLiveMail, ProductLiveMailer};
 use chrono::{DateTime, Utc};
-use puerto_mail::{EnviadorCorreo, ErrorCorreo, Templates};
+use puerto_correo::{EnviadorCorreo, ErrorCorreo, Plantillas};
 use serde::Serialize;
 
-const TEMPLATES: Templates = Templates::new(
+const TEMPLATES: Plantillas = Plantillas::new(
     include_str!("../../mail/product_live/subject.txt"),
     include_str!("../../mail/product_live/body.html"),
 )
-.with_text(include_str!("../../mail/product_live/body.txt"));
+.con_texto(include_str!("../../mail/product_live/body.txt"));
 
 /// What the templates see: the mail's fields but the recipient, under their own names.
 #[derive(Serialize)]
@@ -3007,7 +3008,7 @@ impl<'a> Context<'a> {
 }
 
 /// The `product_live` mail, rendered from `infrastructure/mail/product_live/` and sent through `mailer`
-/// (`puerto_mail::SmtpMailer` where it runs).
+/// (`puerto_correo::EnviadorCorreoSmtp` where it runs).
 pub struct TemplateProductLiveMailer {
     mailer: Arc<dyn EnviadorCorreo>,
 }
@@ -3021,7 +3022,7 @@ impl TemplateProductLiveMailer {
 #[async_trait]
 impl ProductLiveMailer for TemplateProductLiveMailer {
     async fn send(&self, mail: &ProductLiveMail) -> Result<(), ErrorCorreo> {
-        let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
+        let email = TEMPLATES.renderizar(mail.to.clone(), Context::of(mail))?;
         self.mailer.enviar(&email).await
     }
 }
@@ -3029,7 +3030,7 @@ impl ProductLiveMailer for TemplateProductLiveMailer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_mail::testing::RecordingMailer;
+    use puerto_correo::pruebas::EnviadorCorreoGrabador;
 
     fn product_live() -> ProductLiveMail {
         ProductLiveMail {
@@ -3044,7 +3045,7 @@ mod tests {
     #[test]
     fn should_render_every_template_when_the_mail_has_its_fields() {
         // Act
-        let email = TEMPLATES.render("ada@example.com", Context::of(&product_live()));
+        let email = TEMPLATES.renderizar("ada@example.com", Context::of(&product_live()));
 
         // Assert
         let email = match email {
@@ -3059,7 +3060,7 @@ mod tests {
     #[tokio::test]
     async fn should_send_the_rendered_mail_to_its_recipient() {
         // Arrange
-        let recorder = Arc::new(RecordingMailer::new());
+        let recorder = Arc::new(EnviadorCorreoGrabador::new());
         let mailer = TemplateProductLiveMailer::new(recorder.clone());
 
         // Act
@@ -3067,7 +3068,7 @@ mod tests {
 
         // Assert
         assert_eq!(result, Ok(()));
-        let sent = recorder.sent();
+        let sent = recorder.enviados();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].para, "ada@example.com");
     }
@@ -3076,9 +3077,9 @@ mod tests {
     async fn should_return_the_mailer_error_when_sending_fails() {
         // Arrange
         let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
-        let mailer = TemplateProductLiveMailer::new(Arc::new(RecordingMailer::failing_with(
-            rejected.clone(),
-        )));
+        let mailer = TemplateProductLiveMailer::new(Arc::new(
+            EnviadorCorreoGrabador::fallando_con(rejected.clone()),
+        ));
 
         // Act
         let result = mailer.send(&product_live()).await;
@@ -5712,8 +5713,8 @@ infrastructure = { path = "../infrastructure" }
 puerto-nucleo = { workspace = true }
 # The relay, the consume loops, health probes and graceful shutdown (`main.rs`, `generated/registry.rs`).
 puerto-eventos = { workspace = true }
-# Mail (ADR-0020): the SMTP client and `send_once`, for the mails sent on events.
-puerto-mail = { workspace = true }
+# Mail (ADR-0020): the SMTP client and `enviar_una_vez`, for the mails sent on events.
+puerto-correo = { workspace = true }
 # The Kafka transport: the publisher and the subscriptions `generated/registry.rs` wires.
 puerto-kafka = { workspace = true }
 async-trait = "0.1"
@@ -5721,7 +5722,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
 
 [dev-dependencies]
-puerto-mail = { workspace = true, features = ["test-utils"] }
+puerto-correo = { workspace = true, features = ["pruebas"] }
 # Consumer tests build envelopes from the Object Mothers, which business exports behind `test-utils`.
 business = { path = "../business", features = ["test-utils"] }
 serde_json = "1"
@@ -5737,7 +5738,7 @@ pub mod notify_new_product;
 //! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
-//! Delivery is at-least-once: `send_once` keeps a `correos_enviados` row per event, so a redelivered
+//! Delivery is at-least-once: `enviar_una_vez` keeps a `correos_enviados` row per event, so a redelivered
 //! event does not send the mail again. Keep `MAIL` as it is: renaming it sends every mail again.
 
 use std::sync::Arc;
@@ -5745,7 +5746,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use business::domain::mail::price_alert::{PriceAlertMail, PriceAlertMailer};
 use business::domain::product::events::{PRODUCT_PUBLISHED, ProductSnapshot};
-use puerto_mail::send_once;
+use puerto_correo::enviar_una_vez;
 use puerto_nucleo::correo::CorreosEnviados;
 use puerto_nucleo::eventos::{
     MOTIVO_PAYLOAD_INVALIDO, ManejadorEvento, ResultadoManejo, SobreEvento,
@@ -5780,7 +5781,7 @@ impl ManejadorEvento for SendPriceAlertMail {
             tracing::warn!(event_id = %event.id, "mail_price_alert: no recipient, not sent");
             return ResultadoManejo::Ack;
         }
-        send_once(
+        enviar_una_vez(
             self.sent_mails.as_ref(),
             event.id,
             MAIL,
@@ -5796,7 +5797,7 @@ mod tests {
     use business::domain::mail::price_alert::mocks::MockPriceAlertMailer;
     use business::domain::product::events::ProductEvent;
     use business::tests::mothers::product_mother::ProductMother;
-    use puerto_mail::testing::InMemorySentMails;
+    use puerto_correo::pruebas::CorreosEnviadosEnMemoria;
     use puerto_nucleo::correo::ErrorCorreo;
     use puerto_nucleo::eventos::MOTIVO_ERROR_PERMANENTE;
 
@@ -5819,7 +5820,7 @@ mod tests {
     fn handler(mailer: MockPriceAlertMailer) -> SendPriceAlertMail {
         SendPriceAlertMail {
             mailer: Arc::new(mailer),
-            sent_mails: Arc::new(InMemorySentMails::new()),
+            sent_mails: Arc::new(CorreosEnviadosEnMemoria::new()),
         }
     }
 
@@ -5920,7 +5921,7 @@ mod tests {
 //! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
-//! Delivery is at-least-once: `send_once` keeps a `correos_enviados` row per event, so a redelivered
+//! Delivery is at-least-once: `enviar_una_vez` keeps a `correos_enviados` row per event, so a redelivered
 //! event does not send the mail again. Keep `MAIL` as it is: renaming it sends every mail again.
 
 use std::sync::Arc;
@@ -5928,7 +5929,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use business::domain::mail::product_live::{ProductLiveMail, ProductLiveMailer};
 use business::domain::product::events::{PRODUCT_CREATED, PRODUCT_PUBLISHED, ProductSnapshot};
-use puerto_mail::send_once;
+use puerto_correo::enviar_una_vez;
 use puerto_nucleo::correo::CorreosEnviados;
 use puerto_nucleo::eventos::{
     MOTIVO_PAYLOAD_INVALIDO, ManejadorEvento, ResultadoManejo, SobreEvento,
@@ -5977,7 +5978,7 @@ impl ManejadorEvento for SendProductLiveMail {
             tracing::warn!(event_id = %event.id, "mail_product_live: no recipient, not sent");
             return ResultadoManejo::Ack;
         }
-        send_once(
+        enviar_una_vez(
             self.sent_mails.as_ref(),
             event.id,
             MAIL,
@@ -5993,7 +5994,7 @@ mod tests {
     use business::domain::mail::product_live::mocks::MockProductLiveMailer;
     use business::domain::product::events::ProductEvent;
     use business::tests::mothers::product_mother::ProductMother;
-    use puerto_mail::testing::InMemorySentMails;
+    use puerto_correo::pruebas::CorreosEnviadosEnMemoria;
     use puerto_nucleo::correo::ErrorCorreo;
     use puerto_nucleo::eventos::MOTIVO_ERROR_PERMANENTE;
 
@@ -6016,7 +6017,7 @@ mod tests {
     fn handler(mailer: MockProductLiveMailer) -> SendProductLiveMail {
         SendProductLiveMail {
             mailer: Arc::new(mailer),
-            sent_mails: Arc::new(InMemorySentMails::new()),
+            sent_mails: Arc::new(CorreosEnviadosEnMemoria::new()),
         }
     }
 
@@ -6238,9 +6239,9 @@ use infrastructure::db::correo::CorreosEnviadosPostgres;
 use infrastructure::db::eventos::{DescartadosPostgres, OutboxPostgres};
 use infrastructure::mail::price_alert::TemplatePriceAlertMailer;
 use infrastructure::mail::product_live::TemplateProductLiveMailer;
+use puerto_correo::{ConfigCorreo, EnviadorCorreoSmtp};
 use puerto_eventos::{Bucles, ConfigWorker};
 use puerto_kafka::{ConfigKafka, PublicadorKafka, SuscripcionKafka};
-use puerto_mail::{MailConfig, SmtpMailer};
 
 use crate::consumers::mail_price_alert::SendPriceAlertMail;
 use crate::consumers::mail_product_live::SendProductLiveMail;
@@ -6267,7 +6268,7 @@ pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {
         .map_err(|e| format!("cannot create the Kafka producer: {e}"))?;
     // The mails sent on events (ADR-0020): one SMTP client and one sent log for all of them.
     let mailer = Arc::new(
-        SmtpMailer::new(&MailConfig::from_env().map_err(|e| e.to_string())?)
+        EnviadorCorreoSmtp::new(&ConfigCorreo::from_env().map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?,
     );
     let sent_mails = Arc::new(CorreosEnviadosPostgres::new(pool.clone()));

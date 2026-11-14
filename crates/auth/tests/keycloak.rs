@@ -1,8 +1,8 @@
-//! `OidcAuthenticator` against a real provider: a throwaway Keycloak started by `make test/auth`,
+//! `AutenticadorOidc` against a real provider: a throwaway Keycloak started by `make test/auth`,
 //! with the realms `puerto` and `other` imported from `fixtures/keycloak/` (a public client `test`
 //! with password grant and an audience mapper adding `api`; the user `ada` with the role `admin`).
 
-use puerto_auth::{Autenticador, ErrorAuth, OidcAuthenticator, OidcConfig};
+use puerto_auth::{Autenticador, AutenticadorOidc, ConfigOidc, ErrorAuth};
 use serde_json::Value;
 
 const SKIP: &str = "PUERTO_TEST_KEYCLOAK_URL not set — skipping (run `make test/auth`)";
@@ -37,8 +37,8 @@ async fn token(keycloak: &str, realm: &str) -> String {
         .to_string()
 }
 
-async fn authenticator(keycloak: &str) -> OidcAuthenticator {
-    OidcAuthenticator::discover(OidcConfig::new(format!("{keycloak}/realms/puerto"), "api"))
+async fn authenticator(keycloak: &str) -> AutenticadorOidc {
+    AutenticadorOidc::descubrir(ConfigOidc::new(format!("{keycloak}/realms/puerto"), "api"))
         .await
         .expect("Keycloak's realm is discovered")
 }

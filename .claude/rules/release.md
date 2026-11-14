@@ -90,7 +90,7 @@ published crate (one `[workspace.package] version` in the root `Cargo.toml` — 
 then `puerto`:
 
 ```
-puerto-nucleo → puerto-macros → puerto-web → puerto-sqlx → puerto-eventos → puerto-kafka → puerto-mail → puerto-auth → puerto
+puerto-nucleo → puerto-macros → puerto-web → puerto-sqlx → puerto-eventos → puerto-kafka → puerto-correo → puerto-auth → puerto
 ```
 
 A crate whose version is already on crates.io is skipped, so publishing by hand first does not
@@ -122,7 +122,7 @@ cargo publish --dry-run -p puerto-web
 cargo publish --dry-run -p puerto-sqlx
 cargo publish --dry-run -p puerto-eventos
 cargo publish --dry-run -p puerto-kafka
-cargo publish --dry-run -p puerto-mail
+cargo publish --dry-run -p puerto-correo
 cargo publish --dry-run -p puerto-auth
 cargo publish --dry-run -p puerto
 
@@ -135,7 +135,7 @@ git tag -a v0.x.y -m "v0.x.y" && git push origin v0.x.y
 #   cargo publish -p puerto-nucleo --locked && cargo publish -p puerto-macros --locked \
 #     && cargo publish -p puerto-web --locked \
 #     && cargo publish -p puerto-sqlx --locked && cargo publish -p puerto-eventos --locked \
-#     && cargo publish -p puerto-kafka --locked && cargo publish -p puerto-mail --locked \
+#     && cargo publish -p puerto-kafka --locked && cargo publish -p puerto-correo --locked \
 #     && cargo publish -p puerto-auth --locked && cargo publish -p puerto --locked
 ```
 

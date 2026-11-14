@@ -1,4 +1,4 @@
-//! [`OidcAuthenticator`]: verifies a provider's access tokens against its published keys.
+//! [`AutenticadorOidc`]: verifies a provider's access tokens against its published keys.
 
 use std::collections::HashMap;
 use std::sync::{Arc, PoisonError, RwLock};
@@ -13,27 +13,27 @@ use puerto_nucleo::auth::{Autenticador, ErrorAuth, Principal};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use super::{OidcConfig, RolesClaim, claims};
+use super::{ClaimRoles, ConfigOidc, claims};
 
 /// How far `exp` and `nbf` may be off: the provider's clock and ours are never exactly in step.
-pub const LEEWAY: Duration = Duration::from_secs(60);
+pub const MARGEN: Duration = Duration::from_secs(60);
 /// A token signed with a key we do not know refetches the keys at most this often: a key rotated
 /// in is picked up, a flood of made-up `kid`s does not turn into a flood of requests to the
 /// provider.
-pub const REFETCH_INTERVAL: Duration = Duration::from_secs(60);
+pub const INTERVALO_RECARGA: Duration = Duration::from_secs(60);
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Why [`OidcAuthenticator::discover`] did not start: the provider is down, or it is not the
+/// Why [`AutenticadorOidc::descubrir`] did not start: the provider is down, or it is not the
 /// provider the configuration names. Its message is the whole report.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum OidcError {
+pub enum ErrorOidc {
     #[error("could not reach the auth provider at {url}: {cause}")]
     Unreachable { url: String, cause: String },
     #[error("{url} is not an OpenID Connect provider's answer: {cause}")]
-    Invalid { url: String, cause: String },
+    Invalido { url: String, cause: String },
     #[error(
         "AUTH_ISSUER is {configured} but the provider calls itself {discovered} — set AUTH_ISSUER to the provider's issuer"
     )]
@@ -49,14 +49,14 @@ pub enum OidcError {
 ///
 /// Accepts a JWT access token signed with RS256 or ES256 by a key in the provider's JWKS (never
 /// `none`, never an HMAC), issued by the configured issuer for the configured audience, within
-/// `exp` / `nbf` give or take [`LEEWAY`]. The [`Principal`] has the token's `sub`, `email`, `name`
-/// and the roles at [`RolesClaim`]; its `user_id` is nil until the project provisions the caller.
-pub struct OidcAuthenticator {
+/// `exp` / `nbf` give or take [`MARGEN`]. The [`Principal`] has the token's `sub`, `email`, `name`
+/// and the roles at [`ClaimRoles`]; its `user_id` is nil until the project provisions the caller.
+pub struct AutenticadorOidc {
     http: reqwest::Client,
     issuer: String,
     audience: String,
     jwks_uri: String,
-    roles_claim: RolesClaim,
+    claim_roles: ClaimRoles,
     keys: RwLock<HashMap<String, Arc<SigningKey>>>,
     /// When the keys were last refetched for an unknown `kid`; held while refetching, so
     /// concurrent requests with the same new key wait for one refetch instead of each making one.
@@ -76,30 +76,30 @@ struct Discovery {
 
 enum FetchError {
     Unreachable(String),
-    Invalid(String),
+    Invalido(String),
 }
 
-impl OidcAuthenticator {
-    /// Reads `<issuer>/.well-known/openid-configuration` and the keys it points to. Fails when
+impl AutenticadorOidc {
+    /// Reads `<emisor>/.well-known/openid-configuration` and the keys it points to. Fails when
     /// either is unreachable, when the provider names another issuer, or when it publishes no key
     /// this authenticator can verify with.
-    pub async fn discover(config: OidcConfig) -> Result<Self, OidcError> {
+    pub async fn descubrir(config: ConfigOidc) -> Result<Self, ErrorOidc> {
         let url = format!(
             "{}/.well-known/openid-configuration",
-            config.issuer.trim_end_matches('/')
+            config.emisor.trim_end_matches('/')
         );
         let http = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(REQUEST_TIMEOUT)
             .build()
-            .map_err(|err| OidcError::Unreachable {
+            .map_err(|err| ErrorOidc::Unreachable {
                 url: url.clone(),
                 cause: err.to_string(),
             })?;
         let discovery: Discovery = get_json(&http, &url).await.map_err(|err| err.at(&url))?;
-        if discovery.issuer.trim_end_matches('/') != config.issuer.trim_end_matches('/') {
-            return Err(OidcError::IssuerMismatch {
-                configured: config.issuer,
+        if discovery.issuer.trim_end_matches('/') != config.emisor.trim_end_matches('/') {
+            return Err(ErrorOidc::IssuerMismatch {
+                configured: config.emisor,
                 discovered: discovery.issuer,
             });
         }
@@ -107,7 +107,7 @@ impl OidcAuthenticator {
             .await
             .map_err(|err| err.at(&discovery.jwks_uri))?;
         if keys.is_empty() {
-            return Err(OidcError::NoSigningKey {
+            return Err(ErrorOidc::NoSigningKey {
                 url: discovery.jwks_uri,
             });
         }
@@ -115,9 +115,9 @@ impl OidcAuthenticator {
         Ok(Self {
             http,
             issuer: discovery.issuer,
-            audience: config.audience,
+            audience: config.audiencia,
             jwks_uri: discovery.jwks_uri,
-            roles_claim: config.roles_claim,
+            claim_roles: config.claim_roles,
             keys: RwLock::new(keys),
             last_refetch: tokio::sync::Mutex::new(None),
         })
@@ -131,7 +131,7 @@ impl OidcAuthenticator {
             .cloned()
     }
 
-    /// The key `kid` names, refetching the JWKS once if it is new (see [`REFETCH_INTERVAL`]).
+    /// The key `kid` names, refetching the JWKS once if it is new (see [`INTERVALO_RECARGA`]).
     async fn key(&self, kid: &str) -> Result<Arc<SigningKey>, ErrorAuth> {
         if let Some(key) = self.cached(kid) {
             return Ok(key);
@@ -141,7 +141,7 @@ impl OidcAuthenticator {
         if let Some(key) = self.cached(kid) {
             return Ok(key);
         }
-        if last_refetch.is_some_and(|at| at.elapsed() < REFETCH_INTERVAL) {
+        if last_refetch.is_some_and(|at| at.elapsed() < INTERVALO_RECARGA) {
             tracing::debug!(kid, "oidc: unknown key, refetched less than a minute ago");
             return Err(ErrorAuth::Invalido);
         }
@@ -163,7 +163,7 @@ impl OidcAuthenticator {
 
     fn validation(&self, algorithm: Algorithm) -> Validation {
         let mut validation = Validation::new(algorithm);
-        validation.leeway = LEEWAY.as_secs();
+        validation.leeway = MARGEN.as_secs();
         validation.validate_nbf = true;
         validation.set_issuer(&[&self.issuer]);
         validation.set_audience(&[&self.audience]);
@@ -173,7 +173,7 @@ impl OidcAuthenticator {
 }
 
 #[async_trait]
-impl Autenticador for OidcAuthenticator {
+impl Autenticador for AutenticadorOidc {
     async fn autenticar(&self, token: &str) -> Result<Principal, ErrorAuth> {
         let header = decode_header(token).map_err(|err| rejected(&err))?;
         // Only what a provider signs with its private key. An HMAC would be verified with the
@@ -194,7 +194,7 @@ impl Autenticador for OidcAuthenticator {
         let claims = decode::<Map<String, Value>>(token, &key.key, &self.validation(header.alg))
             .map_err(|err| rejected(&err))?
             .claims;
-        claims::principal(&claims, &self.roles_claim)
+        claims::principal(&claims, &self.claim_roles)
     }
 }
 
@@ -207,11 +207,11 @@ fn rejected(err: &jsonwebtoken::errors::Error) -> ErrorAuth {
 }
 
 impl FetchError {
-    fn at(self, url: &str) -> OidcError {
+    fn at(self, url: &str) -> ErrorOidc {
         let url = url.to_string();
         match self {
-            Self::Unreachable(cause) => OidcError::Unreachable { url, cause },
-            Self::Invalid(cause) => OidcError::Invalid { url, cause },
+            Self::Unreachable(cause) => ErrorOidc::Unreachable { url, cause },
+            Self::Invalido(cause) => ErrorOidc::Invalido { url, cause },
         }
     }
 }
@@ -230,12 +230,12 @@ async fn get_json<T: serde::de::DeserializeOwned>(
         return Err(FetchError::Unreachable(format!("answered {status}")));
     }
     if !status.is_success() {
-        return Err(FetchError::Invalid(format!("answered {status}")));
+        return Err(FetchError::Invalido(format!("answered {status}")));
     }
     response
         .json()
         .await
-        .map_err(|err| FetchError::Invalid(err.to_string()))
+        .map_err(|err| FetchError::Invalido(err.to_string()))
 }
 
 /// The provider's signing keys this authenticator can verify with, by `kid`.

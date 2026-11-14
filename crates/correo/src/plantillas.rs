@@ -7,29 +7,29 @@ use serde::Serialize;
 /// One mail's three templates. Built as a `const` in the generated code:
 ///
 /// ```
-/// use puerto_mail::Templates;
+/// use puerto_correo::Plantillas;
 ///
-/// const WELCOME: Templates = Templates::new("Welcome, {{ name }}", "<p>Hi {{ name }}</p>")
-///     .with_text("Hi {{ name }}");
+/// const WELCOME: Plantillas = Plantillas::new("Welcome, {{ name }}", "<p>Hi {{ name }}</p>")
+///     .con_texto("Hi {{ name }}");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Templates {
-    pub subject: &'static str,
+pub struct Plantillas {
+    pub asunto: &'static str,
     pub html: &'static str,
-    pub text: Option<&'static str>,
+    pub texto: Option<&'static str>,
 }
 
-impl Templates {
+impl Plantillas {
     pub const fn new(subject: &'static str, html: &'static str) -> Self {
         Self {
-            subject,
+            asunto: subject,
             html,
-            text: None,
+            texto: None,
         }
     }
 
-    pub const fn with_text(mut self, text: &'static str) -> Self {
-        self.text = Some(text);
+    pub const fn con_texto(mut self, text: &'static str) -> Self {
+        self.texto = Some(text);
         self
     }
 
@@ -38,7 +38,7 @@ impl Templates {
     /// Strict: a variable the context does not have is an error, never an empty string. The HTML
     /// body escapes what it interpolates; the subject is folded onto one line. Any failure is a
     /// [`MailError::Permanent`] — rendering the same event again cannot fix a template.
-    pub fn render(
+    pub fn renderizar(
         &self,
         to: impl Into<String>,
         context: impl Serialize,
@@ -51,13 +51,13 @@ impl Templates {
                 .map_err(|e| ErrorCorreo::Permanente(format!("{name}: {e}")))
         };
 
-        let subject = render("subject.txt", self.subject)?
+        let subject = render("subject.txt", self.asunto)?
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
         let html = render("body.html", self.html)?;
         let email = Correo::new(to, subject, html);
-        Ok(match self.text {
+        Ok(match self.texto {
             Some(text) => email.con_texto(render("body.txt", text)?),
             None => email,
         })
@@ -77,13 +77,13 @@ mod tests {
         Welcome { name: "Ada".into() }
     }
 
-    const WELCOME: Templates =
-        Templates::new("Welcome, {{ name }}", "<p>Hi {{ name }}</p>").with_text("Hi {{ name }}");
+    const WELCOME: Plantillas =
+        Plantillas::new("Welcome, {{ name }}", "<p>Hi {{ name }}</p>").con_texto("Hi {{ name }}");
 
     #[test]
     fn should_render_every_part_when_the_context_has_its_variables() {
         // Act
-        let email = WELCOME.render("ada@example.com", ada());
+        let email = WELCOME.renderizar("ada@example.com", ada());
 
         // Assert
         assert_eq!(
@@ -94,9 +94,9 @@ mod tests {
 
     #[test]
     fn should_send_html_only_when_there_is_no_text_template() {
-        let templates = Templates::new("Hi", "<p>{{ name }}</p>");
+        let plantillas = Plantillas::new("Hi", "<p>{{ name }}</p>");
 
-        let email = templates.render("ada@example.com", ada());
+        let email = plantillas.renderizar("ada@example.com", ada());
 
         assert_eq!(email.map(|e| e.texto), Ok(None));
     }
@@ -104,10 +104,10 @@ mod tests {
     #[test]
     fn should_fail_permanently_when_a_template_names_an_unknown_variable() {
         // Arrange
-        let templates = Templates::new("Hi {{ nmae }}", "<p>Hi</p>");
+        let plantillas = Plantillas::new("Hi {{ nmae }}", "<p>Hi</p>");
 
         // Act
-        let result = templates.render("ada@example.com", ada());
+        let result = plantillas.renderizar("ada@example.com", ada());
 
         // Assert
         match result {
@@ -120,9 +120,9 @@ mod tests {
 
     #[test]
     fn should_fail_permanently_when_a_template_does_not_parse() {
-        let templates = Templates::new("Hi", "<p>{% if name %}</p>");
+        let plantillas = Plantillas::new("Hi", "<p>{% if name %}</p>");
 
-        let result = templates.render("ada@example.com", ada());
+        let result = plantillas.renderizar("ada@example.com", ada());
 
         assert!(
             matches!(result, Err(ErrorCorreo::Permanente(_))),
@@ -132,21 +132,21 @@ mod tests {
 
     #[test]
     fn should_fold_the_subject_onto_one_line_when_it_spans_several() {
-        let templates = Templates::new("Welcome,\n  {{ name }}\r\n", "<p></p>");
+        let plantillas = Plantillas::new("Welcome,\n  {{ name }}\r\n", "<p></p>");
 
-        let email = templates.render("ada@example.com", ada());
+        let email = plantillas.renderizar("ada@example.com", ada());
 
         assert_eq!(email.map(|e| e.asunto), Ok("Welcome, Ada".to_string()));
     }
 
     #[test]
     fn should_escape_html_when_a_value_holds_markup() {
-        let templates = Templates::new("{{ name }}", "<p>{{ name }}</p>").with_text("{{ name }}");
+        let plantillas = Plantillas::new("{{ name }}", "<p>{{ name }}</p>").con_texto("{{ name }}");
         let context = Welcome {
             name: "<b>Ada</b>".into(),
         };
 
-        let email = templates.render("ada@example.com", context).unwrap();
+        let email = plantillas.renderizar("ada@example.com", context).unwrap();
 
         assert_eq!(email.html, "<p>&lt;b&gt;Ada&lt;&#x2f;b&gt;</p>");
         assert_eq!(email.asunto, "<b>Ada</b>");

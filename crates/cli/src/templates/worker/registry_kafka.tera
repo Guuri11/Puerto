@@ -34,7 +34,7 @@ pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {
 {%- if mails %}
     // The mails sent on events (ADR-0020): one SMTP client and one sent log for all of them.
     let mailer = Arc::new(
-        SmtpMailer::new(&MailConfig::from_env().map_err(|e| e.to_string())?)
+        EnviadorCorreoSmtp::new(&ConfigCorreo::from_env().map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?,
     );
     let sent_mails = Arc::new(CorreosEnviadosPostgres::new(pool.clone()));

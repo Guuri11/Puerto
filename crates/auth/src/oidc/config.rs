@@ -4,73 +4,75 @@
 //! |---|---|---|
 //! | `AUTH_ISSUER` | required | `http://localhost:8180/realms/shop` (Keycloak), `https://shop.eu.auth0.com/` (Auth0) |
 //! | `AUTH_AUDIENCE` | required | the API's audience: `api` (the realm's audience mapper), Auth0's API identifier |
-//! | `AUTH_ROLES_CLAIM` | `realm_access.roles` | where the roles are — see [`RolesClaim`] |
+//! | `AUTH_ROLES_CLAIM` | `realm_access.roles` | where the roles are — see [`ClaimRoles`] |
 
-use super::RolesClaim;
+use super::ClaimRoles;
 
 /// An auth variable that is missing or set to a value the authenticator cannot use.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum OidcConfigError {
-    #[error("{key} is not set — set it in .env (.env.example has one)")]
-    Missing { key: &'static str },
-    #[error("{key} is not valid: expected {expected}")]
-    Invalid {
-        key: &'static str,
-        expected: &'static str,
+pub enum ErrorConfigOidc {
+    #[error("{clave} is not set — set it in .env (.env.example has one)")]
+    Falta { clave: &'static str },
+    #[error("{clave} is not valid: expected {esperado}")]
+    Invalido {
+        clave: &'static str,
+        esperado: &'static str,
     },
 }
 
-/// Built by [`OidcConfig::from_env`], or [`OidcConfig::from_vars`] (tests).
+/// Built by [`ConfigOidc::from_env`], or [`ConfigOidc::from_variables`] (tests).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct OidcConfig {
-    pub issuer: String,
-    pub audience: String,
-    pub roles_claim: RolesClaim,
+pub struct ConfigOidc {
+    pub emisor: String,
+    pub audiencia: String,
+    pub claim_roles: ClaimRoles,
 }
 
-impl OidcConfig {
+impl ConfigOidc {
     pub fn new(issuer: impl Into<String>, audience: impl Into<String>) -> Self {
         Self {
-            issuer: issuer.into(),
-            audience: audience.into(),
-            roles_claim: RolesClaim::default(),
+            emisor: issuer.into(),
+            audiencia: audience.into(),
+            claim_roles: ClaimRoles::default(),
         }
     }
 
-    pub fn with_roles_claim(mut self, roles_claim: RolesClaim) -> Self {
-        self.roles_claim = roles_claim;
+    pub fn con_claim_roles(mut self, claim_roles: ClaimRoles) -> Self {
+        self.claim_roles = claim_roles;
         self
     }
 
     /// Loads `.env` when there is one, then reads the process environment.
-    pub fn from_env() -> Result<Self, OidcConfigError> {
+    pub fn from_env() -> Result<Self, ErrorConfigOidc> {
         dotenvy::dotenv().ok();
-        Self::from_vars(|key| std::env::var(key).ok())
+        Self::from_variables(|key| std::env::var(key).ok())
     }
 
     /// Reads the configuration from any variable source; an empty value counts as unset.
-    pub fn from_vars(var: impl Fn(&str) -> Option<String>) -> Result<Self, OidcConfigError> {
+    pub fn from_variables(var: impl Fn(&str) -> Option<String>) -> Result<Self, ErrorConfigOidc> {
         let read = |key: &'static str| {
             var(key)
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
         };
-        let issuer = read("AUTH_ISSUER").ok_or(OidcConfigError::Missing { key: "AUTH_ISSUER" })?;
+        let issuer = read("AUTH_ISSUER").ok_or(ErrorConfigOidc::Falta {
+            clave: "AUTH_ISSUER",
+        })?;
         if !(issuer.starts_with("https://") || issuer.starts_with("http://")) {
-            return Err(OidcConfigError::Invalid {
-                key: "AUTH_ISSUER",
-                expected: "the provider's issuer URL, like https://shop.eu.auth0.com/",
+            return Err(ErrorConfigOidc::Invalido {
+                clave: "AUTH_ISSUER",
+                esperado: "the provider's issuer URL, like https://shop.eu.auth0.com/",
             });
         }
-        let audience = read("AUTH_AUDIENCE").ok_or(OidcConfigError::Missing {
-            key: "AUTH_AUDIENCE",
+        let audience = read("AUTH_AUDIENCE").ok_or(ErrorConfigOidc::Falta {
+            clave: "AUTH_AUDIENCE",
         })?;
-        let roles_claim = read("AUTH_ROLES_CLAIM")
-            .map(RolesClaim::new)
+        let claim_roles = read("AUTH_ROLES_CLAIM")
+            .map(ClaimRoles::new)
             .unwrap_or_default();
-        Ok(Self::new(issuer, audience).with_roles_claim(roles_claim))
+        Ok(Self::new(issuer, audience).con_claim_roles(claim_roles))
     }
 }
 
@@ -96,16 +98,16 @@ mod tests {
         ]);
 
         // Act
-        let config = OidcConfig::from_vars(env);
+        let config = ConfigOidc::from_variables(env);
 
         // Assert
         assert_eq!(
             config,
-            Ok(OidcConfig::new("http://localhost:8180/realms/shop", "api"))
+            Ok(ConfigOidc::new("http://localhost:8180/realms/shop", "api"))
         );
         assert_eq!(
-            config.map(|c| c.roles_claim),
-            Ok(RolesClaim::new("realm_access.roles"))
+            config.map(|c| c.claim_roles),
+            Ok(ClaimRoles::new("realm_access.roles"))
         );
     }
 
@@ -119,12 +121,12 @@ mod tests {
         ]);
 
         // Act
-        let config = OidcConfig::from_vars(env);
+        let config = ConfigOidc::from_variables(env);
 
         // Assert
         assert_eq!(
-            config.map(|c| c.roles_claim),
-            Ok(RolesClaim::new("https://shop.example.com/roles"))
+            config.map(|c| c.claim_roles),
+            Ok(ClaimRoles::new("https://shop.example.com/roles"))
         );
     }
 
@@ -143,8 +145,8 @@ mod tests {
         ];
         for (env, key) in cases {
             assert_eq!(
-                OidcConfig::from_vars(vars(env)),
-                Err(OidcConfigError::Missing { key })
+                ConfigOidc::from_variables(vars(env)),
+                Err(ErrorConfigOidc::Falta { clave: key })
             );
         }
     }
@@ -158,13 +160,13 @@ mod tests {
         ]);
 
         // Act
-        let config = OidcConfig::from_vars(env);
+        let config = ConfigOidc::from_variables(env);
 
         // Assert
         assert!(matches!(
             config,
-            Err(OidcConfigError::Invalid {
-                key: "AUTH_ISSUER",
+            Err(ErrorConfigOidc::Invalido {
+                clave: "AUTH_ISSUER",
                 ..
             })
         ));

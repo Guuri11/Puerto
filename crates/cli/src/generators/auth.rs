@@ -469,7 +469,7 @@ fn local_makefile_targets(project: &str) -> String {
 auth/grant: docker-compose/up ## Give an account a role: make auth/grant EMAIL=ada@example.com ROLE=admin
 	@test -n "$(EMAIL)" -a -n "$(ROLE)" || {{ echo "${{RED}}usage: make auth/grant EMAIL=… ROLE=…${{NC}}"; exit 1; }}
 	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d {db_name} -v ON_ERROR_STOP=1 -c \
-		"UPDATE users SET roles = array_append(roles, '$(ROLE)'), updated_at = now() WHERE issuer = 'local' AND subject = lower(trim('$(EMAIL)')) AND NOT '$(ROLE)' = ANY(roles)"
+		"UPDATE usuarios SET roles = array_append(roles, '$(ROLE)'), actualizado_en = now() WHERE emisor = 'local' AND sujeto = lower(trim('$(EMAIL)')) AND NOT '$(ROLE)' = ANY(roles)"
 "#
     )
 }
@@ -639,7 +639,7 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
   `puerto validate` checks `routes.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
   build one with `PrincipalMother`. `generate use-case` adds it too.
-- **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `users.roles` column is not read.
+- **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `usuarios.roles` column is not read.
 - Calling the API by hand: `curl -H "Authorization: Bearer $(make -s auth/token)" …` —
   `admin@…` holds `admin`, `make -s auth/token EMAIL=user@…` no role. It asks the development
   realm's `dev-cli` client (password grant): never create such a client in a real provider.
@@ -668,7 +668,7 @@ the token as `Authorization: Bearer <token>`; the database keeps only its SHA-25
   `puerto validate` checks `routes.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
   build one with `PrincipalMother`. `generate use-case` adds it too.
-- **Roles are the `users.roles` column**: `make auth/grant EMAIL=… ROLE=…`. They apply from the
+- **Roles are the `usuarios.roles` column**: `make auth/grant EMAIL=… ROLE=…`. They apply from the
   next request.
 - Passwords are argon2id hashes in `credentials`; `User` carries no secret. A login with an unknown
   email and one with a wrong password get the same `401 auth.invalid_credentials`, in the same time.

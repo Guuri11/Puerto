@@ -200,7 +200,7 @@ the token as `Authorization: Bearer <token>`; the database keeps only its SHA-25
   `puerto validate` checks `routes.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
   build one with `PrincipalMother`. `generate use-case` adds it too.
-- **Roles are the `users.roles` column**: `make auth/grant EMAIL=… ROLE=…`. They apply from the
+- **Roles are the `usuarios.roles` column**: `make auth/grant EMAIL=… ROLE=…`. They apply from the
   next request.
 - Passwords are argon2id hashes in `credentials`; `User` carries no secret. A login with an unknown
   email and one with a wrong password get the same `401 auth.invalid_credentials`, in the same time.
@@ -495,7 +495,7 @@ generate/migration: ## Create a new SQLx migration — make generate/migration N
 auth/grant: docker-compose/up ## Give an account a role: make auth/grant EMAIL=ada@example.com ROLE=admin
 	@test -n "$(EMAIL)" -a -n "$(ROLE)" || { echo "${RED}usage: make auth/grant EMAIL=… ROLE=…${NC}"; exit 1; }
 	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d snapshot -v ON_ERROR_STOP=1 -c \
-		"UPDATE users SET roles = array_append(roles, '$(ROLE)'), updated_at = now() WHERE issuer = 'local' AND subject = lower(trim('$(EMAIL)')) AND NOT '$(ROLE)' = ANY(roles)"
+		"UPDATE usuarios SET roles = array_append(roles, '$(ROLE)'), actualizado_en = now() WHERE emisor = 'local' AND sujeto = lower(trim('$(EMAIL)')) AND NOT '$(ROLE)' = ANY(roles)"
 
 === business/Cargo.toml ===
 [package]
@@ -3849,25 +3849,26 @@ tokio = { version = "1", features = ["rt", "macros"] }
 -- Puerto migration: create_auth_tables
 -- Run `make sqlx/prepare` after editing this file.
 
--- Local accounts (ADR-0021 § 2): written by puerto, after `users`. The password hash lives apart
--- from the user, so `users` carries no secret. A session row keeps the SHA-256 of its token, never
--- the token: a copy of this table opens no session. Both go with their user. Expired sessions are
--- refused, not deleted: pruning them (`DELETE FROM sessions WHERE expires_at < now()`) is yours.
+-- Cuentas locales (ADR-0021 § 2): lo escribe puerto, después de `usuarios`. El hash de la
+-- contraseña vive aparte del usuario, así que `usuarios` no guarda ningún secreto. Una sesión
+-- guarda el SHA-256 de su token, nunca el token: una copia de esta tabla no abre ninguna sesión.
+-- Las dos se van con su usuario. Las sesiones caducadas se rechazan, no se borran: limpiarlas
+-- (`DELETE FROM sesiones WHERE expira_en < now()`) es cosa tuya.
 
-CREATE TABLE credentials (
-    user_id       UUID        PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
-    password_hash TEXT        NOT NULL,
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE credenciales (
+    id_usuario      UUID        PRIMARY KEY REFERENCES usuarios (id) ON DELETE CASCADE,
+    hash_contrasena TEXT        NOT NULL,
+    actualizado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE sessions (
-    token_hash BYTEA       PRIMARY KEY,
-    user_id    UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at TIMESTAMPTZ NOT NULL
+CREATE TABLE sesiones (
+    hash_token BYTEA       PRIMARY KEY,
+    id_usuario UUID        NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
+    creado_en  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expira_en  TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX sessions_user_id_idx ON sessions (user_id);
+CREATE INDEX sesiones_id_usuario_idx ON sesiones (id_usuario);
 
 === infrastructure/migrations/<version>_create_order_table.sql ===
 -- Puerto migration: create_order_table
@@ -3904,18 +3905,18 @@ CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;
 -- Puerto migration: create_users_table
 -- Run `make sqlx/prepare` after editing this file.
 
--- Every authenticated caller (ADR-0021 § 3 of Puerto). `(issuer, subject)` is the provider's
--- name for the person; in an OIDC project `roles` is not read — the token's roles decide.
-CREATE TABLE users (
+-- Cada llamante autenticado (ADR-0021 § 3 de Puerto). `(emisor, sujeto)` es el nombre que el
+-- proveedor da a la persona; en un proyecto OIDC no se leen los `roles`: deciden los del token.
+CREATE TABLE usuarios (
     id UUID PRIMARY KEY,
-    issuer TEXT NOT NULL,
-    subject TEXT NOT NULL,
+    emisor TEXT NOT NULL,
+    sujeto TEXT NOT NULL,
     email TEXT,
-    name TEXT,
+    nombre TEXT,
     roles TEXT[] NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL,
-    UNIQUE (issuer, subject)
+    creado_en TIMESTAMPTZ NOT NULL,
+    actualizado_en TIMESTAMPTZ NOT NULL,
+    UNIQUE (emisor, sujeto)
 );
 
 === infrastructure/src/db.rs ===
@@ -4558,31 +4559,31 @@ impl PgUserRepository {
 #[derive(sqlx::FromRow)]
 struct UserRow {
     id: Uuid,
-    issuer: String,
-    subject: String,
+    emisor: String,
+    sujeto: String,
     email: Option<String>,
-    name: Option<String>,
+    nombre: Option<String>,
     roles: Vec<String>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
+    creado_en: DateTime<Utc>,
+    actualizado_en: DateTime<Utc>,
 }
 
 impl From<UserRow> for User {
     fn from(row: UserRow) -> Self {
         User::from_repository(User {
             id: UserId::from_uuid(row.id),
-            issuer: row.issuer,
-            subject: row.subject,
+            issuer: row.emisor,
+            subject: row.sujeto,
             email: row.email,
-            name: row.name,
+            name: row.nombre,
             roles: row.roles,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
+            created_at: row.creado_en,
+            updated_at: row.actualizado_en,
         })
     }
 }
 
-const COLUMNS: &str = "id, issuer, subject, email, name, roles, created_at, updated_at";
+const COLUMNS: &str = "id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en";
 
 #[async_trait]
 impl UserRepositoryTrait for PgUserRepository {
@@ -4592,7 +4593,7 @@ impl UserRepositoryTrait for PgUserRepository {
         subject: &str,
     ) -> Result<Option<User>, ErrorRepositorio> {
         let row = sqlx::query_as::<_, UserRow>(&format!(
-            "SELECT {COLUMNS} FROM users WHERE issuer = $1 AND subject = $2"
+            "SELECT {COLUMNS} FROM usuarios WHERE emisor = $1 AND sujeto = $2"
         ))
         .bind(issuer)
         .bind(subject)
@@ -4608,7 +4609,7 @@ impl UserRepositoryTrait for PgUserRepository {
     async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row =
-            sqlx::query_as::<_, UserRow>(&format!("SELECT {COLUMNS} FROM users WHERE id = $1"))
+            sqlx::query_as::<_, UserRow>(&format!("SELECT {COLUMNS} FROM usuarios WHERE id = $1"))
                 .bind(id.value())
                 .fetch_optional(&self.pool)
                 .await
@@ -4622,13 +4623,13 @@ impl UserRepositoryTrait for PgUserRepository {
     async fn save(&self, user: &User) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %user.id, "save");
         sqlx::query(
-            "INSERT INTO users (id, issuer, subject, email, name, roles, created_at, updated_at)
+            "INSERT INTO usuarios (id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT (id) DO UPDATE SET
                  email = EXCLUDED.email,
-                 name = EXCLUDED.name,
+                 nombre = EXCLUDED.nombre,
                  roles = EXCLUDED.roles,
-                 updated_at = EXCLUDED.updated_at",
+                 actualizado_en = EXCLUDED.actualizado_en",
         )
         .bind(user.id.value())
         .bind(&user.issuer)
@@ -4653,7 +4654,7 @@ mod tests {
     use super::*;
 
     fn ada() -> User {
-        User::provision("issuer", "ada", Some("ada@example.com".into()), None)
+        User::provision("emisor", "ada", Some("ada@example.com".into()), None)
     }
 
     #[sqlx::test(migrator = "crate::db::MIGRATOR")]
@@ -4665,7 +4666,7 @@ mod tests {
 
         // Act
         let by_subject = repository
-            .find_by_subject("issuer", "ada")
+            .find_by_subject("emisor", "ada")
             .await
             .expect("read");
         let by_id = repository.find_by_id(user.id).await.expect("read");
@@ -7204,7 +7205,7 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
     let users: Arc<dyn UserRepositoryTrait> = Arc::new(PgUserRepository::new(pool.clone()));
     let credentials: Arc<dyn AlmacenCredenciales> =
         Arc::new(CredencialesPostgres::new(pool.clone()));
-    let hasher: Arc<dyn HasherContrasena> = Arc::new(puerto_auth::local::Argon2Hasher::new());
+    let hasher: Arc<dyn HasherContrasena> = Arc::new(puerto_auth::local::HasherArgon2::new());
     let sessions = Arc::new(SesionesPostgres::new(
         pool.clone(),
         infrastructure::db::auth::ttl_sesion_from_env()?,

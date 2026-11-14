@@ -570,7 +570,7 @@ pub(super) const EVENTS_FRESH: Scenario = Scenario {
 };
 
 /// Two mails in a project without a database (Phase 14.3): every field type a mail can carry, the
-/// `mail` blocks of both `lib.rs` opened by the first and extended by the second, `puerto-mail`
+/// `mail` blocks of both `lib.rs` opened by the first and extended by the second, `puerto-correo`
 /// and its fakes, and each mail's render tests.
 pub(super) const MAIL: Scenario = Scenario {
     name: "mail",
@@ -654,7 +654,7 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
 };
 
 /// [`AUTH_OIDC`] with a database: `PgUserRepository` over runtime-checked queries (no query cache
-/// needed) and the `users` migration; its `#[sqlx::test]`s run under `make test/db`. Without the
+/// needed) and the `usuarios` migration; its `#[sqlx::test]`s run under `make test/db`. Without the
 /// demo: the strip once undid auth's module declarations.
 pub(super) const AUTH_OIDC_DB: Scenario = Scenario {
     name: "auth_oidc_db",

@@ -11,11 +11,11 @@ use uuid::Uuid;
 /// `realm_access.roles`, `resource_access.web.roles`. A claim that is absent, or not an array, is
 /// no role; elements that are not strings are skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RolesClaim(String);
+pub struct ClaimRoles(String);
 
-impl RolesClaim {
+impl ClaimRoles {
     /// Keycloak's realm roles.
-    pub const DEFAULT: &'static str = "realm_access.roles";
+    pub const POR_DEFECTO: &'static str = "realm_access.roles";
 
     pub fn new(claim: impl Into<String>) -> Self {
         Self(claim.into())
@@ -25,7 +25,7 @@ impl RolesClaim {
         &self.0
     }
 
-    pub fn read(&self, claims: &Map<String, Value>) -> Vec<String> {
+    pub fn leer(&self, claims: &Map<String, Value>) -> Vec<String> {
         let value = match claims.get(&self.0) {
             Some(value) => Some(value),
             None => self
@@ -53,9 +53,9 @@ impl RolesClaim {
     }
 }
 
-impl Default for RolesClaim {
+impl Default for ClaimRoles {
     fn default() -> Self {
-        Self::new(Self::DEFAULT)
+        Self::new(Self::POR_DEFECTO)
     }
 }
 
@@ -63,14 +63,14 @@ impl Default for RolesClaim {
 /// fills it with the local user's id.
 pub(crate) fn principal(
     claims: &Map<String, Value>,
-    roles: &RolesClaim,
+    roles: &ClaimRoles,
 ) -> Result<Principal, ErrorAuth> {
     let subject = claims
         .get("sub")
         .and_then(Value::as_str)
         .filter(|sub| !sub.is_empty())
         .ok_or(ErrorAuth::Invalido)?;
-    let mut principal = Principal::new(Uuid::nil(), subject).con_roles(roles.read(claims));
+    let mut principal = Principal::new(Uuid::nil(), subject).con_roles(roles.leer(claims));
     if let Some(email) = claims.get("email").and_then(Value::as_str) {
         principal = principal.con_email(email);
     }
@@ -96,7 +96,7 @@ mod tests {
         let claims = claims(json!({ "realm_access": { "roles": ["admin", "offline_access"] } }));
 
         // Act
-        let roles = RolesClaim::default().read(&claims);
+        let roles = ClaimRoles::default().leer(&claims);
 
         // Assert
         assert_eq!(roles, vec!["admin", "offline_access"]);
@@ -108,7 +108,7 @@ mod tests {
         let claims = claims(json!({ "resource_access": { "web": { "roles": ["editor"] } } }));
 
         // Act
-        let roles = RolesClaim::new("resource_access.web.roles").read(&claims);
+        let roles = ClaimRoles::new("resource_access.web.roles").leer(&claims);
 
         // Assert
         assert_eq!(roles, vec!["editor"]);
@@ -120,7 +120,7 @@ mod tests {
         let claims = claims(json!({ "https://shop.example.com/roles": ["admin"] }));
 
         // Act
-        let roles = RolesClaim::new("https://shop.example.com/roles").read(&claims);
+        let roles = ClaimRoles::new("https://shop.example.com/roles").leer(&claims);
 
         // Assert
         assert_eq!(roles, vec!["admin"]);
@@ -135,7 +135,7 @@ mod tests {
         }));
 
         // Act
-        let roles = RolesClaim::default().read(&claims);
+        let roles = ClaimRoles::default().leer(&claims);
 
         // Assert
         assert_eq!(roles, vec!["top"]);
@@ -150,8 +150,8 @@ mod tests {
             json!({ "realm_access": { "roles": "admin" } }),
         ] {
             assert!(
-                RolesClaim::default()
-                    .read(&claims(value.clone()))
+                ClaimRoles::default()
+                    .leer(&claims(value.clone()))
                     .is_empty(),
                 "{value}"
             );
@@ -164,7 +164,7 @@ mod tests {
         let claims = claims(json!({ "permissions": ["read:products", 7, null, "write:products"] }));
 
         // Act
-        let roles = RolesClaim::new("permissions").read(&claims);
+        let roles = ClaimRoles::new("permissions").leer(&claims);
 
         // Assert
         assert_eq!(roles, vec!["read:products", "write:products"]);
@@ -181,7 +181,7 @@ mod tests {
         }));
 
         // Act
-        let principal = principal(&claims, &RolesClaim::default());
+        let principal = principal(&claims, &ClaimRoles::default());
 
         // Assert
         let expected = Principal::new(Uuid::nil(), "f81d4fae")
@@ -195,7 +195,7 @@ mod tests {
     fn should_reject_the_claims_when_there_is_no_subject() {
         for value in [json!({}), json!({ "sub": "" }), json!({ "sub": 7 })] {
             assert_eq!(
-                principal(&claims(value.clone()), &RolesClaim::default()),
+                principal(&claims(value.clone()), &ClaimRoles::default()),
                 Err(ErrorAuth::Invalido),
                 "{value}"
             );

@@ -236,7 +236,7 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         imports.push(format!("puerto_kafka::{types}"));
     }
     if mails {
-        imports.push("puerto_mail::{MailConfig, SmtpMailer}".into());
+        imports.push("puerto_correo::{ConfigCorreo, EnviadorCorreoSmtp}".into());
     }
 
     let mut modules: Vec<(&str, &str)> = consumers

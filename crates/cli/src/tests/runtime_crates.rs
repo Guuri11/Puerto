@@ -449,7 +449,7 @@ fn every_runtime_crate_is_patched_in_the_compile_matrix() {
             "puerto-sqlx",
             "puerto-eventos",
             "puerto-kafka",
-            "puerto-mail",
+            "puerto-correo",
             "puerto-auth"
         ]
     );
