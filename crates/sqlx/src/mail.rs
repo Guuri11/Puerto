@@ -3,8 +3,8 @@
 //! into the project.
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
-use puerto_core::mail::SentMails;
+use puerto_nucleo::ErrorRepositorio;
+use puerto_nucleo::correo::CorreosEnviados;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -22,8 +22,8 @@ impl PgSentMails {
 }
 
 #[async_trait]
-impl SentMails for PgSentMails {
-    async fn was_sent(&self, event_id: Uuid, mail: &str) -> Result<bool, RepositoryError> {
+impl CorreosEnviados for PgSentMails {
+    async fn fue_enviado(&self, event_id: Uuid, mail: &str) -> Result<bool, ErrorRepositorio> {
         sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM sent_mails WHERE event_id = $1 AND mail = $2)",
         )
@@ -37,7 +37,7 @@ impl SentMails for PgSentMails {
         })
     }
 
-    async fn mark_sent(&self, event_id: Uuid, mail: &str) -> Result<(), RepositoryError> {
+    async fn marcar_enviado(&self, event_id: Uuid, mail: &str) -> Result<(), ErrorRepositorio> {
         sqlx::query(
             "INSERT INTO sent_mails (event_id, mail) VALUES ($1, $2) \
              ON CONFLICT (event_id, mail) DO NOTHING",

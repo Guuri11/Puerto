@@ -33,7 +33,7 @@ mod tests {
     use super::*;
 {% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
 {% endif %}    use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
@@ -66,7 +66,7 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::Duplicate));
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
         let use_case = Create{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -89,7 +89,7 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::MissingReference("{{ r.name }}")));
+            .returning(|_| Err(ErrorRepositorio::ReferenciaInexistente("{{ r.name }}")));
         let use_case = Create{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };

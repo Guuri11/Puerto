@@ -69,7 +69,7 @@ fn role_check(attr: TokenStream, handler: &ImplItemFn) -> syn::Result<TokenStrea
         }
     };
     Ok(quote! {
-        if !#auth.0.has_role(#role) {
+        if !#auth.0.tiene_rol(#role) {
             let (status, error) = ::puerto_web::auth::forbidden();
             return <#ret>::from_status(status, error);
         }
@@ -141,7 +141,7 @@ mod tests {
         // Assert
         let expected = quote! {
             async fn delete(&self, auth: BearerAuth) -> DeleteResponse {
-                if !auth.0.has_role("admin") {
+                if !auth.0.tiene_rol("admin") {
                     let (status, error) = ::puerto_web::auth::forbidden();
                     return <DeleteResponse>::from_status(status, error);
                 }
@@ -164,7 +164,7 @@ mod tests {
         );
 
         // Assert
-        assert!(output.contains("caller . 0 . has_role"), "{output}");
+        assert!(output.contains("caller . 0 . tiene_rol"), "{output}");
         assert!(!output.contains("compile_error"), "{output}");
     }
 
@@ -194,7 +194,7 @@ mod tests {
 
         // Assert
         assert!(output.contains("async fn delete"), "{output}");
-        assert!(!output.contains("has_role"), "{output}");
+        assert!(!output.contains("tiene_rol"), "{output}");
     }
 
     #[test]

@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
 use poem_openapi::{ApiResponse, OpenApi, OpenApiService, payload::Json};
-use puerto_core::auth::mocks::MockAuthenticator;
-use puerto_core::{AuthError, Authenticator, Principal};
+use puerto_nucleo::auth::dobles::MockAutenticador;
+use puerto_nucleo::{Autenticador, ErrorAuth, Principal};
 use puerto_web::{ErrorResponse, auth::BearerAuth, require_role};
 use uuid::Uuid;
 
@@ -33,19 +33,19 @@ struct Api;
 impl Api {
     #[oai(path = "/who", method = "get")]
     async fn who(&self, auth: BearerAuth) -> WhoResponse {
-        WhoResponse::Ok(Json(auth.0.subject))
+        WhoResponse::Ok(Json(auth.0.sujeto))
     }
 
     #[oai(path = "/admin", method = "get")]
     #[require_role("admin")]
     async fn admin(&self, auth: BearerAuth) -> WhoResponse {
-        WhoResponse::Ok(Json(auth.0.subject))
+        WhoResponse::Ok(Json(auth.0.sujeto))
     }
 
     #[require_role("admin")]
     #[oai(path = "/admin-first", method = "get")]
     async fn admin_first(&self, auth: BearerAuth) -> WhoResponse {
-        WhoResponse::Ok(Json(auth.0.subject))
+        WhoResponse::Ok(Json(auth.0.sujeto))
     }
 
     #[oai(path = "/open", method = "get")]
@@ -56,14 +56,14 @@ impl Api {
 
 /// The mock accepts `ada` (an admin) and `bob` (no role), and answers `expired` / `down` with the
 /// matching error; any other token is invalid.
-fn authenticator() -> Arc<dyn Authenticator> {
-    let mut mock = MockAuthenticator::new();
-    mock.expect_authenticate().returning(|token| match token {
-        "ada" => Ok(Principal::new(Uuid::nil(), "ada").with_roles(["admin"])),
+fn authenticator() -> Arc<dyn Autenticador> {
+    let mut mock = MockAutenticador::new();
+    mock.expect_autenticar().returning(|token| match token {
+        "ada" => Ok(Principal::new(Uuid::nil(), "ada").con_roles(["admin"])),
         "bob" => Ok(Principal::new(Uuid::nil(), "bob")),
-        "expired" => Err(AuthError::Expired),
-        "down" => Err(AuthError::Unavailable),
-        _ => Err(AuthError::Invalid),
+        "expired" => Err(ErrorAuth::Expirado),
+        "down" => Err(ErrorAuth::NoDisponible),
+        _ => Err(ErrorAuth::Invalido),
     });
     Arc::new(mock)
 }
@@ -147,7 +147,7 @@ async fn should_answer_503_unavailable_when_the_token_cannot_be_checked() {
     assert_error(
         response,
         StatusCode::SERVICE_UNAVAILABLE,
-        "auth.unavailable",
+        "auth.no_disponible",
     )
     .await;
 }

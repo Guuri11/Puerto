@@ -1,6 +1,6 @@
 use business::domain::{{ snake }}::model::{{ pascal }};
 use poem_openapi::Object;
-{% if is_crud %}use puerto_core::Page;
+{% if is_crud %}use puerto_nucleo::Pagina;
 {% endif %}use uuid::Uuid;{% for import in imports %}
 use {{ import }};{% endfor %}
 
@@ -38,12 +38,12 @@ pub struct {{ pascal }}PageDto {
 }
 
 impl {{ pascal }}PageDto {
-    pub fn from_domain(page: &Page<{{ pascal }}>) -> Self {
+    pub fn from_domain(page: &Pagina<{{ pascal }}>) -> Self {
         Self {
-            items: page.items.iter().map({{ pascal }}Dto::from_domain).collect(),
+            items: page.elementos.iter().map({{ pascal }}Dto::from_domain).collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }

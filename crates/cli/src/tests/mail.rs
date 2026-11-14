@@ -59,7 +59,7 @@ fn generate_mail_writes_the_port_its_template_implementation_and_the_templates()
         "{domain}"
     );
     assert!(
-        domain.contains("async fn send(&self, mail: &WelcomeMail) -> Result<(), MailError>;"),
+        domain.contains("async fn send(&self, mail: &WelcomeMail) -> Result<(), ErrorCorreo>;"),
         "{domain}"
     );
     assert!(domain.contains("pub WelcomeMailer {}"), "{domain}");
@@ -67,7 +67,7 @@ fn generate_mail_writes_the_port_its_template_implementation_and_the_templates()
     // The domain names no template engine and no SMTP.
     assert!(!domain.contains("puerto_mail"), "{domain}");
     assert!(
-        domain.contains("use puerto_core::mail::MailError;"),
+        domain.contains("use puerto_nucleo::correo::ErrorCorreo;"),
         "{domain}"
     );
 
@@ -518,13 +518,13 @@ fn mail_on_an_event_gets_a_consumer_that_sends_it() {
         "{handler}"
     );
     assert!(
-        handler.contains("pub sent_mails: Arc<dyn SentMails>,"),
+        handler.contains("pub sent_mails: Arc<dyn CorreosEnviados>,"),
         "{handler}"
     );
-    assert!(handler.contains("CUSTOMER_CREATED => match event.decode::<CustomerSnapshot>()"));
+    assert!(handler.contains("CUSTOMER_CREATED => match event.decodificar::<CustomerSnapshot>()"));
     assert!(handler.contains("to: customer.email.clone(),"), "{handler}");
     assert!(handler.contains("send_once("), "{handler}");
-    assert!(handler.contains("REASON_PAYLOAD_INVALID"), "{handler}");
+    assert!(handler.contains("MOTIVO_PAYLOAD_INVALIDO"), "{handler}");
     assert!(handler.contains("MockWelcomeMailer"), "{handler}");
     assert!(handler.contains("InMemorySentMails"), "{handler}");
 

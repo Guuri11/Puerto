@@ -1,7 +1,7 @@
 {% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% set refs = fields | filter(attribute="is_ref", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
@@ -16,8 +16,8 @@ pub struct List{{ plural_pascal }}UseCaseImpl {
 
 #[async_trait]
 impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl {
-    async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Page<{{ pascal }}>, {{ pascal }}Error> {
-        tracing::info!(limit = params.page.limit(), offset = params.page.offset(), "list_{{ plural }}: start");
+    async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Pagina<{{ pascal }}>, {{ pascal }}Error> {
+        tracing::info!(limit = params.page.limite(), offset = params.page.desplazamiento(), "list_{{ plural }}: start");
         self.repository
 {% if refs %}            .find_all(
                 params.page,
@@ -36,7 +36,7 @@ impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl 
 mod tests {
     use super::*;
 {% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
-{% endif %}    use puerto_core::PageRequest;
+{% endif %}    use puerto_nucleo::PeticionPagina;
     use crate::domain::{{ snake }}::{
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
@@ -56,17 +56,17 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page{% if refs %}, _{% endif %}| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page{% if refs %}, _{% endif %}| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -75,17 +75,17 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page{% if refs %}, _{% endif %}| Ok(Page::new(vec![], 0, page)));
+            .returning(|page{% if refs %}, _{% endif %}| Ok(Pagina::new(vec![], 0, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -94,17 +94,17 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page{% if refs %}, _{% endif %}| page.limit() == 5 && page.offset() == 10)
-            .returning(|page{% if refs %}, _{% endif %}| Ok(Page::new(vec![], 0, page)));
+            .withf(|page{% if refs %}, _{% endif %}| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page{% if refs %}, _{% endif %}| Ok(Pagina::new(vec![], 0, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PageRequest::new(Some(5), Some(10)){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PeticionPagina::new(Some(5), Some(10)){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 {% if refs %}
     #[tokio::test]
@@ -116,7 +116,7 @@ mod tests {
         mock_repo
             .expect_find_all()
             .withf(move |_, f| *f == filter)
-            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+            .returning(|page, _| Ok(Pagina::new(vec![], 0, page)));
         let use_case = List{{ plural_pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -124,7 +124,7 @@ mod tests {
         let result = use_case
             .execute(List{{ plural_pascal }}Params {
 {% if actor %}                actor: PrincipalMother::random(),
-{% endif %}                page: PageRequest::default(),
+{% endif %}                page: PeticionPagina::default(),
 {% for r in refs %}                {{ r.name }}: filter.{{ r.name }},
 {% endfor %}            })
             .await;

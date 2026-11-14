@@ -43,11 +43,11 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 
 | Crate | Owns | Imported as |
 |---|---|---|
-| `puerto-core` | `RepositoryError` (what every repository port fails with), `PageRequest` / `Page<T>` (paged lists, limit capped at 100) | `use puerto_core::{Page, PageRequest, RepositoryError};` |
+| `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
 | `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
-| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `RepositoryError`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
+| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
-`puerto-core` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
+`puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
 copy their code into the project; upgrade them with the `puerto` CLI (`puerto validate` warns when
 they drift apart). Your own middleware and routes go in `presentation/src/app.rs`, which no
@@ -238,7 +238,7 @@ resolver = "3"
 # The Puerto runtime (ADR-0017 of Puerto): what every Puerto project shares lives in these crates,
 # on the same minor as the `puerto` CLI that generated this project.
 [workspace.dependencies]
-puerto-core = "0.20"
+puerto-nucleo = "0.20"
 puerto-web = "0.20"
 puerto-mail = "0.20"
 
@@ -397,7 +397,7 @@ mail/ui: docker-compose/up ## Where the mails sent in development land (Mailpit)
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use puerto_core::mail::MailError;
+use puerto_nucleo::correo::ErrorCorreo;
 use uuid::Uuid;
 
 /// What the `receipt` mail says: who it goes to and the values its templates show.
@@ -419,7 +419,7 @@ pub struct ReceiptMail {
 /// tests use `mocks::MockReceiptMailer`.
 #[async_trait]
 pub trait ReceiptMailer: Send + Sync {
-    async fn send(&self, mail: &ReceiptMail) -> Result<(), MailError>;
+    async fn send(&self, mail: &ReceiptMail) -> Result<(), ErrorCorreo>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -432,7 +432,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ReceiptMailer for ReceiptMailer {
-            async fn send(&self, mail: &ReceiptMail) -> Result<(), MailError>;
+            async fn send(&self, mail: &ReceiptMail) -> Result<(), ErrorCorreo>;
         }
     }
 }
@@ -443,7 +443,7 @@ pub mod mocks {
 //! Its text is in `infrastructure/mail/welcome/`, rendered by `TemplateWelcomeMailer`.
 
 use async_trait::async_trait;
-use puerto_core::mail::MailError;
+use puerto_nucleo::correo::ErrorCorreo;
 
 /// What the `welcome` mail says: who it goes to and the values its templates show.
 #[derive(Debug, Clone, PartialEq)]
@@ -458,7 +458,7 @@ pub struct WelcomeMail {
 /// tests use `mocks::MockWelcomeMailer`.
 #[async_trait]
 pub trait WelcomeMailer: Send + Sync {
-    async fn send(&self, mail: &WelcomeMail) -> Result<(), MailError>;
+    async fn send(&self, mail: &WelcomeMail) -> Result<(), ErrorCorreo>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -471,7 +471,7 @@ pub mod mocks {
 
         #[async_trait]
         impl WelcomeMailer for WelcomeMailer {
-            async fn send(&self, mail: &WelcomeMail) -> Result<(), MailError>;
+            async fn send(&self, mail: &WelcomeMail) -> Result<(), ErrorCorreo>;
         }
     }
 }
@@ -516,7 +516,7 @@ edition = "2024"
 
 [dependencies]
 business = { path = "../business" }
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 puerto-mail = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
@@ -606,7 +606,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use business::domain::mail::receipt::{ReceiptMail, ReceiptMailer};
 use chrono::{DateTime, Utc};
-use puerto_mail::{MailError, Mailer, Templates};
+use puerto_mail::{EnviadorCorreo, ErrorCorreo, Templates};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -649,20 +649,20 @@ impl<'a> Context<'a> {
 /// The `receipt` mail, rendered from `infrastructure/mail/receipt/` and sent through `mailer`
 /// (`puerto_mail::SmtpMailer` where it runs).
 pub struct TemplateReceiptMailer {
-    mailer: Arc<dyn Mailer>,
+    mailer: Arc<dyn EnviadorCorreo>,
 }
 
 impl TemplateReceiptMailer {
-    pub fn new(mailer: Arc<dyn Mailer>) -> Self {
+    pub fn new(mailer: Arc<dyn EnviadorCorreo>) -> Self {
         Self { mailer }
     }
 }
 
 #[async_trait]
 impl ReceiptMailer for TemplateReceiptMailer {
-    async fn send(&self, mail: &ReceiptMail) -> Result<(), MailError> {
+    async fn send(&self, mail: &ReceiptMail) -> Result<(), ErrorCorreo> {
         let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
-        self.mailer.send(&email).await
+        self.mailer.enviar(&email).await
     }
 }
 
@@ -696,9 +696,9 @@ mod tests {
             Ok(email) => email,
             Err(err) => panic!("infrastructure/mail/receipt/ does not render: {err}"),
         };
-        assert!(!email.subject.is_empty());
+        assert!(!email.asunto.is_empty());
         assert!(!email.html.is_empty());
-        assert!(email.text.is_some());
+        assert!(email.texto.is_some());
     }
 
     #[tokio::test]
@@ -714,13 +714,13 @@ mod tests {
         assert_eq!(result, Ok(()));
         let sent = recorder.sent();
         assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].to, "ada@example.com");
+        assert_eq!(sent[0].para, "ada@example.com");
     }
 
     #[tokio::test]
     async fn should_return_the_mailer_error_when_sending_fails() {
         // Arrange
-        let rejected = MailError::Permanent("550 no such user".to_string());
+        let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
         let mailer =
             TemplateReceiptMailer::new(Arc::new(RecordingMailer::failing_with(rejected.clone())));
 
@@ -741,7 +741,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use business::domain::mail::welcome::{WelcomeMail, WelcomeMailer};
-use puerto_mail::{MailError, Mailer, Templates};
+use puerto_mail::{EnviadorCorreo, ErrorCorreo, Templates};
 use serde::Serialize;
 
 const TEMPLATES: Templates = Templates::new(
@@ -771,20 +771,20 @@ impl<'a> Context<'a> {
 /// The `welcome` mail, rendered from `infrastructure/mail/welcome/` and sent through `mailer`
 /// (`puerto_mail::SmtpMailer` where it runs).
 pub struct TemplateWelcomeMailer {
-    mailer: Arc<dyn Mailer>,
+    mailer: Arc<dyn EnviadorCorreo>,
 }
 
 impl TemplateWelcomeMailer {
-    pub fn new(mailer: Arc<dyn Mailer>) -> Self {
+    pub fn new(mailer: Arc<dyn EnviadorCorreo>) -> Self {
         Self { mailer }
     }
 }
 
 #[async_trait]
 impl WelcomeMailer for TemplateWelcomeMailer {
-    async fn send(&self, mail: &WelcomeMail) -> Result<(), MailError> {
+    async fn send(&self, mail: &WelcomeMail) -> Result<(), ErrorCorreo> {
         let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
-        self.mailer.send(&email).await
+        self.mailer.enviar(&email).await
     }
 }
 
@@ -812,9 +812,9 @@ mod tests {
             Ok(email) => email,
             Err(err) => panic!("infrastructure/mail/welcome/ does not render: {err}"),
         };
-        assert!(!email.subject.is_empty());
+        assert!(!email.asunto.is_empty());
         assert!(!email.html.is_empty());
-        assert!(email.text.is_some());
+        assert!(email.texto.is_some());
     }
 
     #[tokio::test]
@@ -830,13 +830,13 @@ mod tests {
         assert_eq!(result, Ok(()));
         let sent = recorder.sent();
         assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].to, "ada@example.com");
+        assert_eq!(sent[0].para, "ada@example.com");
     }
 
     #[tokio::test]
     async fn should_return_the_mailer_error_when_sending_fails() {
         // Arrange
-        let rejected = MailError::Permanent("550 no such user".to_string());
+        let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
         let mailer =
             TemplateWelcomeMailer::new(Arc::new(RecordingMailer::failing_with(rejected.clone())));
 

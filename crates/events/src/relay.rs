@@ -2,7 +2,7 @@
 //! order it was written (ADR-0018 § 5).
 
 use async_trait::async_trait;
-use puerto_core::events::transport::{EventPublisher, Outbox, TransportError};
+use puerto_nucleo::eventos::transporte::{ErrorTransporte, Outbox, PublicadorEventos};
 
 use crate::driver::{Pass, Progress};
 
@@ -17,7 +17,7 @@ pub struct Relay<O, P> {
     batch_size: u32,
 }
 
-impl<O: Outbox, P: EventPublisher> Relay<O, P> {
+impl<O: Outbox, P: PublicadorEventos> Relay<O, P> {
     pub fn new(outbox: O, publisher: P) -> Self {
         Self {
             outbox,
@@ -33,15 +33,15 @@ impl<O: Outbox, P: EventPublisher> Relay<O, P> {
 
     /// One batch: publishes in outbox order and stops at the first failure, so the next pass
     /// starts from that event again. Only what the publisher confirmed is marked published.
-    pub async fn relay_once(&self) -> Result<Progress, TransportError> {
-        if !self.outbox.try_lead().await? {
+    pub async fn relay_once(&self) -> Result<Progress, ErrorTransporte> {
+        if !self.outbox.intentar_liderar().await? {
             return Ok(Progress::Idle);
         }
-        let events = self.outbox.fetch_unpublished(self.batch_size).await?;
+        let events = self.outbox.buscar_sin_publicar(self.batch_size).await?;
         let mut confirmed = Vec::with_capacity(events.len());
         let mut failure = None;
         for event in &events {
-            match self.publisher.publish(event).await {
+            match self.publisher.publicar(event).await {
                 Ok(()) => confirmed.push(event.id),
                 Err(err) => {
                     tracing::warn!(error = %err, event_id = %event.id, "relay: publish failed");
@@ -51,7 +51,7 @@ impl<O: Outbox, P: EventPublisher> Relay<O, P> {
             }
         }
         if !confirmed.is_empty() {
-            self.outbox.mark_published(&confirmed).await?;
+            self.outbox.marcar_publicados(&confirmed).await?;
             tracing::debug!(count = confirmed.len(), "relay: published");
         }
         match failure {
@@ -64,12 +64,12 @@ impl<O: Outbox, P: EventPublisher> Relay<O, P> {
 }
 
 #[async_trait]
-impl<O: Outbox + 'static, P: EventPublisher + 'static> Pass for Relay<O, P> {
+impl<O: Outbox + 'static, P: PublicadorEventos + 'static> Pass for Relay<O, P> {
     fn name(&self) -> String {
         "relay".to_string()
     }
 
-    async fn pass(&mut self) -> Result<Progress, TransportError> {
+    async fn pass(&mut self) -> Result<Progress, ErrorTransporte> {
         self.relay_once().await
     }
 }
@@ -110,7 +110,7 @@ mod tests {
         let result = relay.relay_once().await;
 
         // Assert
-        assert_eq!(result, Err(TransportError::Unavailable));
+        assert_eq!(result, Err(ErrorTransporte::NoDisponible));
         assert_eq!(publisher.published(), vec![events[0].id]);
         assert_eq!(outbox.marked(), vec![events[0].id]);
         assert_eq!(outbox.unpublished(), vec![events[1].id, events[2].id]);
@@ -195,7 +195,7 @@ mod tests {
         let result = relay.relay_once().await;
 
         // Assert
-        assert_eq!(result, Err(TransportError::Unavailable));
+        assert_eq!(result, Err(ErrorTransporte::NoDisponible));
         assert!(publisher.published().is_empty());
     }
 

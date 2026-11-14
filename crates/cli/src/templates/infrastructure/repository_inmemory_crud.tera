@@ -6,7 +6,7 @@ use business::domain::{{ snake }}::{
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
 /// Keeps the {{ plural }} it is given in process memory: they are lost when the process stops.
 /// Like the Postgres adapter, it hides deleted rows and lists newest first{% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %};
@@ -35,8 +35,8 @@ impl InMemory{{ pascal }}Repository {
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
-    async fn find_all(&self, page: PageRequest{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Page<{{ pascal }}>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
+        tracing::debug!(limit = page.limite(), offset = page.desplazamiento(), "find_all");
         let rows = self.read();
         let mut live: Vec<&{{ pascal }}> = rows
             .values()
@@ -51,19 +51,19 @@ impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
         let total = live.len() as u64;
         let items = live
             .into_iter()
-            .skip(page.offset() as usize)
-            .take(page.limit() as usize)
+            .skip(page.desplazamiento() as usize)
+            .take(page.limite() as usize)
             .cloned()
             .collect();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError> {
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         Ok(self.read().get(&id).filter(|row| !row.deleted).cloned())
     }
 
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let mut rows = self.write();
 {% if uniques %}        // Like the partial unique indexes: only live rows hold their values.
@@ -75,7 +75,7 @@ impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
             });
         if taken {
             tracing::warn!(id = %entity.id, "save rejected: a unique value is taken");
-            return Err(RepositoryError::Duplicate);
+            return Err(ErrorRepositorio::Duplicado);
         }
 {% endif %}        rows.insert(entity.id, entity.clone());
         Ok(())
@@ -121,9 +121,9 @@ mod tests {
         repo.save(&entity).await.unwrap();
 
         // Assert
-        let page = repo.find_all(PageRequest::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
+        let page = repo.find_all(PeticionPagina::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
         assert_eq!(page.total, 1);
-        assert_eq!(page.items[0].updated_at, entity.updated_at);
+        assert_eq!(page.elementos[0].updated_at, entity.updated_at);
     }
 
     #[tokio::test]
@@ -137,7 +137,7 @@ mod tests {
 
         // Act
         let found = repo.find_by_id(entity.id).await.unwrap();
-        let page = repo.find_all(PageRequest::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
+        let page = repo.find_all(PeticionPagina::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
 
         // Assert
         assert!(found.is_none());
@@ -153,12 +153,12 @@ mod tests {
         }
 
         // Act
-        let page = repo.find_all(PageRequest::new(Some(2), Some(2)){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
+        let page = repo.find_all(PeticionPagina::new(Some(2), Some(2)){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 {% for u in uniques %}
     #[tokio::test]
@@ -174,7 +174,7 @@ mod tests {
         let result = repo.save(&second).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
     }
 {% endfor %}{% for r in refs %}
     #[tokio::test]
@@ -190,7 +190,7 @@ mod tests {
         // Act
         let page = repo
             .find_all(
-                PageRequest::default(),
+                PeticionPagina::default(),
                 {{ pascal }}Filter {
 {% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some({{ r.name }}){% else %}None{% endif %},
 {% endfor %}                },
@@ -199,7 +199,7 @@ mod tests {
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.iter().map(|row| row.id).collect::<Vec<_>>(), vec![wanted.id]);
+        assert_eq!(page.elementos.iter().map(|row| row.id).collect::<Vec<_>>(), vec![wanted.id]);
         assert_eq!(page.total, 1);
     }
 {% endfor %}}

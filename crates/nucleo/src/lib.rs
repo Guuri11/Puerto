@@ -6,12 +6,14 @@
 //! No driver, no runtime, no I/O: a project's domain layer depends on it (ADR-0017, ADR-0018).
 
 pub mod auth;
-pub mod events;
-pub mod mail;
-pub mod pagination;
-pub mod repository_error;
+pub mod correo;
+pub mod error_repositorio;
+pub mod eventos;
+pub mod paginacion;
 
-pub use auth::{AuthError, Authenticator, Principal};
-pub use events::{DecodeError, DomainEvent, EventEnvelope, EventHandler, HandlerOutcome};
-pub use pagination::{DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, Page, PageRequest};
-pub use repository_error::RepositoryError;
+pub use auth::{Autenticador, ErrorAuth, Principal};
+pub use error_repositorio::ErrorRepositorio;
+pub use eventos::{
+    ErrorDecodificacion, EventoDominio, ManejadorEvento, ResultadoManejo, SobreEvento,
+};
+pub use paginacion::{LIMITE_PAGINA_MAXIMO, LIMITE_PAGINA_POR_DEFECTO, Pagina, PeticionPagina};

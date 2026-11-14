@@ -32,9 +32,9 @@ fn repository_port_reads_a_page() {
 
     let port = read(&dir, "business/src/domain/product/repository.rs");
     assert!(port.contains(
-        "async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;"
+        "async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio>;"
     ));
-    assert!(port.contains("use puerto_core::{Page, PageRequest, RepositoryError};"));
+    assert!(port.contains("use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};"));
 
     cleanup(&dir);
 }
@@ -47,8 +47,8 @@ fn list_use_case_takes_and_returns_a_page() {
         &dir,
         "business/src/domain/product/use_cases/list_products.rs",
     );
-    assert!(contract.contains("pub page: PageRequest,"));
-    assert!(contract.contains("Result<Page<Product>, ProductError>"));
+    assert!(contract.contains("pub page: PeticionPagina,"));
+    assert!(contract.contains("Result<Pagina<Product>, ProductError>"));
     let implementation = read(&dir, "business/src/application/product/list_products.rs");
     assert!(implementation.contains(".find_all(params.page)"));
     assert!(implementation.contains("fn should_pass_the_requested_page_to_the_repository()"));
@@ -62,12 +62,12 @@ fn postgres_repository_limits_offsets_and_counts() {
 
     let repository = read(&dir, "infrastructure/src/product/repository.rs");
     assert!(repository.contains("ORDER BY created_at DESC, id LIMIT $1 OFFSET $2"));
-    assert!(repository.contains("i64::from(page.limit())"));
-    assert!(repository.contains("i64::from(page.offset())"));
+    assert!(repository.contains("i64::from(page.limite())"));
+    assert!(repository.contains("i64::from(page.desplazamiento())"));
     assert!(
         repository.contains(r#"SELECT COUNT(*) AS "total!" FROM products WHERE deleted = false"#)
     );
-    assert!(repository.contains("Ok(Page::new(items, total, page))"));
+    assert!(repository.contains("Ok(Pagina::new(items, total, page))"));
     assert!(
         repository
             .contains("async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool)")
@@ -81,7 +81,7 @@ fn inmemory_repository_answers_a_page_of_its_rows() {
     let dir = scaffold_crud_product("paged_inmemory", false);
 
     let repository = read(&dir, "infrastructure/src/product/repository.rs");
-    assert!(repository.contains("Ok(Page::new(items, total, page))"));
+    assert!(repository.contains("Ok(Pagina::new(items, total, page))"));
 
     cleanup(&dir);
 }
@@ -92,7 +92,7 @@ fn list_route_reads_limit_and_offset_and_answers_a_page_dto() {
 
     let routes = read(&dir, "presentation/src/api/product/routes.rs");
     assert!(routes.contains("limit: Query<Option<u32>>, offset: Query<Option<u32>>"));
-    assert!(routes.contains("page: PageRequest::new(limit.0, offset.0)"));
+    assert!(routes.contains("page: PeticionPagina::new(limit.0, offset.0)"));
     assert!(routes.contains("ProductPageDto::from_domain(&page)"));
     assert!(routes.contains("fn should_pass_limit_and_offset_to_the_use_case()"));
     assert!(routes.contains(r#".get("/products?limit=5&offset=10")"#));

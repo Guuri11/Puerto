@@ -53,11 +53,11 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 
 | Crate | Owns | Imported as |
 |---|---|---|
-| `puerto-core` | `RepositoryError` (what every repository port fails with), `PageRequest` / `Page<T>` (paged lists, limit capped at 100) | `use puerto_core::{Page, PageRequest, RepositoryError};` |
+| `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
 | `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
-| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `RepositoryError`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
+| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
-`puerto-core` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
+`puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
 copy their code into the project; upgrade them with the `puerto` CLI (`puerto validate` warns when
 they drift apart). Your own middleware and routes go in `presentation/src/app.rs`, which no
@@ -289,7 +289,7 @@ resolver = "3"
 # The Puerto runtime (ADR-0017 of Puerto): what every Puerto project shares lives in these crates,
 # on the same minor as the `puerto` CLI that generated this project.
 [workspace.dependencies]
-puerto-core = "0.20"
+puerto-nucleo = "0.20"
 puerto-web = "0.20"
 puerto-sqlx = "0.20"
 puerto-auth = "0.20"
@@ -504,7 +504,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
 tracing = "0.1"
@@ -516,8 +516,8 @@ mockall = { version = "0.13", optional = true }
 test-utils = ["mockall"]
 
 [dev-dependencies]
-# The auth ports' mocks (`MockPasswordHasher`, …).
-puerto-core = { workspace = true, features = ["test-utils"] }
+# The auth ports' mocks (`MockHasherContrasena`, …).
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 mockall = "0.13"
 
@@ -562,7 +562,7 @@ mod tests {
     use super::*;
     use crate::domain::order::repository::mocks::MockOrderRepository;
     use crate::tests::mothers::principal_mother::PrincipalMother;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_create_order_when_fields_are_valid() {
@@ -591,7 +591,7 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::Duplicate));
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
         let use_case = CreateOrderUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -744,7 +744,7 @@ mod tests {
         repository::mocks::MockOrderRepository,
     };
     use crate::tests::mothers::principal_mother::PrincipalMother;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_return_order_when_id_exists() {
@@ -792,7 +792,7 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetOrderUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -813,7 +813,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::order::{
     errors::OrderError,
@@ -828,10 +828,10 @@ pub struct ListOrdersUseCaseImpl {
 
 #[async_trait]
 impl ListOrdersUseCaseTrait for ListOrdersUseCaseImpl {
-    async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError> {
+    async fn execute(&self, params: ListOrdersParams) -> Result<Pagina<Order>, OrderError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_orders: start"
         );
         self.repository
@@ -850,7 +850,7 @@ mod tests {
         repository::mocks::MockOrderRepository,
     };
     use crate::tests::mothers::principal_mother::PrincipalMother;
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn should_return_the_page_of_orders() {
@@ -861,7 +861,7 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListOrdersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -869,12 +869,12 @@ mod tests {
         let result = use_case
             .execute(ListOrdersParams {
                 actor: PrincipalMother::random(),
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -883,7 +883,7 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListOrdersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -891,12 +891,12 @@ mod tests {
         let result = use_case
             .execute(ListOrdersParams {
                 actor: PrincipalMother::random(),
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -905,8 +905,8 @@ mod tests {
         let mut mock_repo = MockOrderRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListOrdersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -914,11 +914,11 @@ mod tests {
         let result = use_case
             .execute(ListOrdersParams {
                 actor: PrincipalMother::random(),
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 }
 
@@ -1067,7 +1067,7 @@ mod tests {
     use super::*;
     use crate::domain::product::repository::mocks::MockProductRepository;
     use crate::tests::mothers::principal_mother::PrincipalMother;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_create_product_when_fields_are_valid() {
@@ -1100,7 +1100,7 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::Duplicate));
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
         let use_case = CreateProductUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -1340,7 +1340,7 @@ mod tests {
         model::{Product, ProductId, ProductProps},
         repository::mocks::MockProductRepository,
     };
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_return_product_when_id_exists() {
@@ -1389,7 +1389,7 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetProductUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -1409,7 +1409,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::product::{
     errors::ProductError,
@@ -1424,10 +1424,10 @@ pub struct ListProductsUseCaseImpl {
 
 #[async_trait]
 impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
-    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError> {
+    async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_products: start"
         );
         self.repository
@@ -1447,7 +1447,7 @@ mod tests {
         model::{Product, ProductProps},
         repository::mocks::MockProductRepository,
     };
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn should_return_the_page_of_products() {
@@ -1470,19 +1470,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -1491,19 +1491,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -1512,19 +1512,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 }
 
@@ -1782,7 +1782,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::auth::{CredentialStore, PasswordHasher, Session, SessionStore};
+use puerto_nucleo::auth::{AlmacenCredenciales, AlmacenSesiones, HasherContrasena, Sesion};
 
 use crate::domain::user::{
     errors::UserError,
@@ -1793,29 +1793,29 @@ use crate::domain::user::{
 
 pub struct LoginUseCaseImpl {
     pub users: Arc<dyn UserRepositoryTrait>,
-    pub credentials: Arc<dyn CredentialStore>,
-    pub hasher: Arc<dyn PasswordHasher>,
-    pub sessions: Arc<dyn SessionStore>,
+    pub credentials: Arc<dyn AlmacenCredenciales>,
+    pub hasher: Arc<dyn HasherContrasena>,
+    pub sessions: Arc<dyn AlmacenSesiones>,
 }
 
 #[async_trait]
 impl LoginUseCaseTrait for LoginUseCaseImpl {
-    async fn execute(&self, params: LoginParams) -> Result<Session, UserError> {
+    async fn execute(&self, params: LoginParams) -> Result<Sesion, UserError> {
         tracing::info!("login: start");
         let subject = User::local_subject(&params.email);
         let user = self.users.find_by_subject(LOCAL_ISSUER, &subject).await?;
         let hash = match &user {
-            Some(user) => self.credentials.password_hash(user.id.value()).await?,
+            Some(user) => self.credentials.hash_contrasena(user.id.value()).await?,
             None => None,
         };
         // An unknown email is checked too, against a decoy: both refusals take as long, so the
         // answer's timing does not say which emails have an account.
-        let valid = self.hasher.verify(&params.password, hash).await;
+        let valid = self.hasher.verificar(&params.password, hash).await;
         let Some(user) = user.filter(|_| valid) else {
             tracing::warn!("login: refused");
             return Err(UserError::InvalidCredentials);
         };
-        let session = self.sessions.open(user.id.value()).await?;
+        let session = self.sessions.abrir(user.id.value()).await?;
         tracing::info!(id = %user.id, "login: done");
         Ok(session)
     }
@@ -1824,17 +1824,22 @@ impl LoginUseCaseTrait for LoginUseCaseImpl {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use puerto_core::auth::mocks::{MockCredentialStore, MockPasswordHasher, MockSessionStore};
+    use puerto_nucleo::auth::dobles::{
+        MockAlmacenCredenciales, MockAlmacenSesiones, MockHasherContrasena,
+    };
 
     use super::*;
     use crate::domain::user::repository::mocks::MockUserRepository;
 
     /// Accepts `correct horse battery` against the hash `stored`; refuses anything else.
-    fn hasher() -> MockPasswordHasher {
-        let mut hasher = MockPasswordHasher::new();
-        hasher.expect_verify().times(1).returning(|password, hash| {
-            hash.as_deref() == Some("stored") && password == "correct horse battery"
-        });
+    fn hasher() -> MockHasherContrasena {
+        let mut hasher = MockHasherContrasena::new();
+        hasher
+            .expect_verificar()
+            .times(1)
+            .returning(|password, hash| {
+                hash.as_deref() == Some("stored") && password == "correct horse battery"
+            });
         hasher
     }
 
@@ -1849,18 +1854,18 @@ mod tests {
         (users, ada)
     }
 
-    fn credentials() -> MockCredentialStore {
-        let mut credentials = MockCredentialStore::new();
+    fn credentials() -> MockAlmacenCredenciales {
+        let mut credentials = MockAlmacenCredenciales::new();
         credentials
-            .expect_password_hash()
+            .expect_hash_contrasena()
             .returning(|_| Ok(Some("stored".into())));
         credentials
     }
 
     fn use_case(
         users: MockUserRepository,
-        credentials: MockCredentialStore,
-        sessions: MockSessionStore,
+        credentials: MockAlmacenCredenciales,
+        sessions: MockAlmacenSesiones,
     ) -> LoginUseCaseImpl {
         LoginUseCaseImpl {
             users: Arc::new(users),
@@ -1881,11 +1886,11 @@ mod tests {
     async fn should_open_a_session_for_the_account_when_the_password_matches() {
         // Arrange
         let (users, ada) = users_with_ada();
-        let mut sessions = MockSessionStore::new();
+        let mut sessions = MockAlmacenSesiones::new();
         sessions
-            .expect_open()
+            .expect_abrir()
             .withf(move |user_id| *user_id == ada.id.value())
-            .returning(|_| Ok(Session::new("opaque", Utc::now())));
+            .returning(|_| Ok(Sesion::new("opaque", Utc::now())));
 
         // Act
         let result = use_case(users, credentials(), sessions)
@@ -1900,8 +1905,8 @@ mod tests {
     async fn should_refuse_without_a_session_when_the_password_is_wrong() {
         // Arrange
         let (users, _) = users_with_ada();
-        let mut sessions = MockSessionStore::new();
-        sessions.expect_open().never();
+        let mut sessions = MockAlmacenSesiones::new();
+        sessions.expect_abrir().never();
 
         // Act
         let result = use_case(users, credentials(), sessions)
@@ -1917,11 +1922,11 @@ mod tests {
         // Arrange: the hasher is still asked, with no hash.
         let mut users = MockUserRepository::new();
         users.expect_find_by_subject().returning(|_, _| Ok(None));
-        let mut sessions = MockSessionStore::new();
-        sessions.expect_open().never();
+        let mut sessions = MockAlmacenSesiones::new();
+        sessions.expect_abrir().never();
 
         // Act
-        let result = use_case(users, MockCredentialStore::new(), sessions)
+        let result = use_case(users, MockAlmacenCredenciales::new(), sessions)
             .execute(params("nobody@example.com", "correct horse battery"))
             .await;
 
@@ -1936,7 +1941,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::auth::SessionStore;
+use puerto_nucleo::auth::AlmacenSesiones;
 
 use crate::domain::user::{
     errors::UserError,
@@ -1944,14 +1949,14 @@ use crate::domain::user::{
 };
 
 pub struct LogoutUseCaseImpl {
-    pub sessions: Arc<dyn SessionStore>,
+    pub sessions: Arc<dyn AlmacenSesiones>,
 }
 
 #[async_trait]
 impl LogoutUseCaseTrait for LogoutUseCaseImpl {
     async fn execute(&self, params: LogoutParams) -> Result<(), UserError> {
         tracing::info!("logout: start");
-        self.sessions.revoke(&params.token).await?;
+        self.sessions.revocar(&params.token).await?;
         tracing::info!("logout: done");
         Ok(())
     }
@@ -1959,17 +1964,17 @@ impl LogoutUseCaseTrait for LogoutUseCaseImpl {
 
 #[cfg(test)]
 mod tests {
-    use puerto_core::RepositoryError;
-    use puerto_core::auth::mocks::MockSessionStore;
+    use puerto_nucleo::ErrorRepositorio;
+    use puerto_nucleo::auth::dobles::MockAlmacenSesiones;
 
     use super::*;
 
     #[tokio::test]
     async fn should_revoke_the_session_the_caller_signed_in_with() {
         // Arrange
-        let mut sessions = MockSessionStore::new();
+        let mut sessions = MockAlmacenSesiones::new();
         sessions
-            .expect_revoke()
+            .expect_revocar()
             .withf(|token| token == "opaque")
             .times(1)
             .returning(|_| Ok(()));
@@ -1991,10 +1996,10 @@ mod tests {
     #[tokio::test]
     async fn should_report_a_repository_error_when_the_store_is_down() {
         // Arrange
-        let mut sessions = MockSessionStore::new();
+        let mut sessions = MockAlmacenSesiones::new();
         sessions
-            .expect_revoke()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .expect_revocar()
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = LogoutUseCaseImpl {
             sessions: Arc::new(sessions),
         };
@@ -2018,7 +2023,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::auth::{CredentialStore, PasswordHasher};
+use puerto_nucleo::auth::{AlmacenCredenciales, HasherContrasena};
 
 use crate::domain::user::{
     errors::UserError,
@@ -2033,8 +2038,8 @@ pub const MIN_PASSWORD_LENGTH: usize = 12;
 
 pub struct RegisterUserUseCaseImpl {
     pub users: Arc<dyn UserRepositoryTrait>,
-    pub credentials: Arc<dyn CredentialStore>,
-    pub hasher: Arc<dyn PasswordHasher>,
+    pub credentials: Arc<dyn AlmacenCredenciales>,
+    pub hasher: Arc<dyn HasherContrasena>,
 }
 
 #[async_trait]
@@ -2056,7 +2061,7 @@ impl RegisterUserUseCaseTrait for RegisterUserUseCaseImpl {
             Some(existing) => {
                 if self
                     .credentials
-                    .password_hash(existing.id.value())
+                    .hash_contrasena(existing.id.value())
                     .await?
                     .is_some()
                 {
@@ -2071,7 +2076,7 @@ impl RegisterUserUseCaseTrait for RegisterUserUseCaseImpl {
             }
         };
         self.credentials
-            .set_password_hash(user.id.value(), &hash)
+            .guardar_hash_contrasena(user.id.value(), &hash)
             .await?;
         tracing::info!(id = %user.id, "register_user: done");
         Ok(user)
@@ -2080,17 +2085,17 @@ impl RegisterUserUseCaseTrait for RegisterUserUseCaseImpl {
 
 #[cfg(test)]
 mod tests {
-    use puerto_core::RepositoryError;
-    use puerto_core::auth::HashError;
-    use puerto_core::auth::mocks::{MockCredentialStore, MockPasswordHasher};
+    use puerto_nucleo::ErrorRepositorio;
+    use puerto_nucleo::auth::ErrorHash;
+    use puerto_nucleo::auth::dobles::{MockAlmacenCredenciales, MockHasherContrasena};
 
     use super::*;
     use crate::domain::user::repository::mocks::MockUserRepository;
 
     const PASSWORD: &str = "correct horse battery";
 
-    fn hasher() -> MockPasswordHasher {
-        let mut hasher = MockPasswordHasher::new();
+    fn hasher() -> MockHasherContrasena {
+        let mut hasher = MockHasherContrasena::new();
         hasher
             .expect_hash()
             .returning(|password| Ok(format!("hashed:{password}")));
@@ -2099,8 +2104,8 @@ mod tests {
 
     fn use_case(
         users: MockUserRepository,
-        credentials: MockCredentialStore,
-        hasher: MockPasswordHasher,
+        credentials: MockAlmacenCredenciales,
+        hasher: MockHasherContrasena,
     ) -> RegisterUserUseCaseImpl {
         RegisterUserUseCaseImpl {
             users: Arc::new(users),
@@ -2126,9 +2131,9 @@ mod tests {
             .withf(|issuer, subject| issuer == LOCAL_ISSUER && subject == "ada@example.com")
             .returning(|_, _| Ok(None));
         users.expect_save().times(1).returning(|_| Ok(()));
-        let mut credentials = MockCredentialStore::new();
+        let mut credentials = MockAlmacenCredenciales::new();
         credentials
-            .expect_set_password_hash()
+            .expect_guardar_hash_contrasena()
             .withf(|_, hash| hash == "hashed:correct horse battery")
             .times(1)
             .returning(|_, _| Ok(()));
@@ -2149,8 +2154,8 @@ mod tests {
         // Arrange: no store is touched.
         let use_case = use_case(
             MockUserRepository::new(),
-            MockCredentialStore::new(),
-            MockPasswordHasher::new(),
+            MockAlmacenCredenciales::new(),
+            MockHasherContrasena::new(),
         );
 
         // Act
@@ -2170,8 +2175,8 @@ mod tests {
         // Act
         let result = use_case(
             MockUserRepository::new(),
-            MockCredentialStore::new(),
-            MockPasswordHasher::new(),
+            MockAlmacenCredenciales::new(),
+            MockHasherContrasena::new(),
         )
         .execute(params("ada", PASSWORD))
         .await;
@@ -2193,11 +2198,11 @@ mod tests {
             ))
         });
         users.expect_save().never();
-        let mut credentials = MockCredentialStore::new();
+        let mut credentials = MockAlmacenCredenciales::new();
         credentials
-            .expect_password_hash()
+            .expect_hash_contrasena()
             .returning(|_| Ok(Some("hashed:theirs".into())));
-        credentials.expect_set_password_hash().never();
+        credentials.expect_guardar_hash_contrasena().never();
 
         // Act
         let result = use_case(users, credentials, hasher())
@@ -2218,10 +2223,10 @@ mod tests {
             .expect_find_by_subject()
             .returning(move |_, _| Ok(Some(orphan.clone())));
         users.expect_save().never();
-        let mut credentials = MockCredentialStore::new();
-        credentials.expect_password_hash().returning(|_| Ok(None));
+        let mut credentials = MockAlmacenCredenciales::new();
+        credentials.expect_hash_contrasena().returning(|_| Ok(None));
         credentials
-            .expect_set_password_hash()
+            .expect_guardar_hash_contrasena()
             .withf(move |user_id, _| *user_id == orphan_id.value())
             .times(1)
             .returning(|_, _| Ok(()));
@@ -2238,13 +2243,13 @@ mod tests {
     #[tokio::test]
     async fn should_write_nothing_when_the_password_cannot_be_hashed() {
         // Arrange
-        let mut hasher = MockPasswordHasher::new();
-        hasher.expect_hash().returning(|_| Err(HashError));
+        let mut hasher = MockHasherContrasena::new();
+        hasher.expect_hash().returning(|_| Err(ErrorHash));
         let mut users = MockUserRepository::new();
         users.expect_save().never();
 
         // Act
-        let result = use_case(users, MockCredentialStore::new(), hasher)
+        let result = use_case(users, MockAlmacenCredenciales::new(), hasher)
             .execute(params("ada@example.com", PASSWORD))
             .await;
 
@@ -2258,10 +2263,10 @@ mod tests {
         let mut users = MockUserRepository::new();
         users
             .expect_find_by_subject()
-            .returning(|_, _| Err(RepositoryError::Unavailable));
+            .returning(|_, _| Err(ErrorRepositorio::NoDisponible));
 
         // Act
-        let result = use_case(users, MockCredentialStore::new(), hasher())
+        let result = use_case(users, MockAlmacenCredenciales::new(), hasher())
             .execute(params("ada@example.com", PASSWORD))
             .await;
 
@@ -2283,7 +2288,7 @@ mod tests {
 (deleted)
 
 === business/src/domain/order/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -2303,13 +2308,15 @@ pub enum OrderError {
     Forbidden,
 }
 
-impl From<RepositoryError> for OrderError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for OrderError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -2321,19 +2328,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = OrderError::from(RepositoryError::Duplicate);
+        let err = OrderError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "order.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = OrderError::from(RepositoryError::InvalidData);
+        let err = OrderError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "order.repository_error");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = OrderError::from(RepositoryError::Unavailable);
+        let err = OrderError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "order.repository_error");
     }
 }
@@ -2416,15 +2423,15 @@ mod tests {
 
 === business/src/domain/order/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Order, OrderId};
 
 #[async_trait]
 pub trait OrderRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
-    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
-    async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Order>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, ErrorRepositorio>;
+    async fn save(&self, entity: &Order) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2438,16 +2445,16 @@ pub mod mocks {
 
         #[async_trait]
         impl OrderRepositoryTrait for OrderRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError>;
-            async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError>;
-            async fn save(&self, entity: &Order) -> Result<(), RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Order>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, ErrorRepositorio>;
+            async fn save(&self, entity: &Order) -> Result<(), ErrorRepositorio>;
         }
     }
 }
 
 === business/src/domain/order/use_cases/create_order.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 
 use crate::domain::order::{errors::OrderError, model::Order};
 
@@ -2482,7 +2489,7 @@ pub mod mocks {
 
 === business/src/domain/order/use_cases/delete_order.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 
 use crate::domain::order::{errors::OrderError, model::OrderId};
 
@@ -2517,7 +2524,7 @@ pub mod mocks {
 
 === business/src/domain/order/use_cases/get_order.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 
 use crate::domain::order::{
     errors::OrderError,
@@ -2555,8 +2562,8 @@ pub mod mocks {
 
 === business/src/domain/order/use_cases/list_orders.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::auth::Principal;
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::order::{errors::OrderError, model::Order};
 
@@ -2565,12 +2572,12 @@ pub struct ListOrdersParams {
     /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
     /// it here and answers `Forbidden`.
     pub actor: Principal,
-    pub page: PageRequest,
+    pub page: PeticionPagina,
 }
 
 #[async_trait]
 pub trait ListOrdersUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError>;
+    async fn execute(&self, params: ListOrdersParams) -> Result<Pagina<Order>, OrderError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2584,14 +2591,14 @@ pub mod mocks {
 
         #[async_trait]
         impl ListOrdersUseCaseTrait for ListOrdersUseCase {
-            async fn execute(&self, params: ListOrdersParams) -> Result<Page<Order>, OrderError>;
+            async fn execute(&self, params: ListOrdersParams) -> Result<Pagina<Order>, OrderError>;
         }
     }
 }
 
 === business/src/domain/order/use_cases/update_order.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 
 use crate::domain::order::{
     errors::OrderError,
@@ -2629,7 +2636,7 @@ pub mod mocks {
 }
 
 === business/src/domain/product/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -2653,13 +2660,15 @@ pub enum ProductError {
     InvalidStatus,
 }
 
-impl From<RepositoryError> for ProductError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for ProductError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -2671,19 +2680,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = ProductError::from(RepositoryError::Duplicate);
+        let err = ProductError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "product.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = ProductError::from(RepositoryError::InvalidData);
+        let err = ProductError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "product.repository_error");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = ProductError::from(RepositoryError::Unavailable);
+        let err = ProductError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "product.repository_error");
     }
 }
@@ -2825,15 +2834,15 @@ mod tests {
 
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Product, ProductId};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
-    async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio>;
+    async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2847,16 +2856,16 @@ pub mod mocks {
 
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
-            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
-            async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio>;
+            async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio>;
         }
     }
 }
 
 === business/src/domain/product/use_cases/create_product.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 
 use crate::domain::product::{errors::ProductError, model::Product};
 
@@ -2894,7 +2903,7 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/delete_product.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 
 use crate::domain::product::{errors::ProductError, model::ProductId};
 
@@ -2963,18 +2972,18 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::product::{errors::ProductError, model::Product};
 
 #[derive(Debug, Clone)]
 pub struct ListProductsParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
 }
 
 #[async_trait]
 pub trait ListProductsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+    async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2988,14 +2997,14 @@ pub mod mocks {
 
         #[async_trait]
         impl ListProductsUseCaseTrait for ListProductsUseCase {
-            async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+            async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError>;
         }
     }
 }
 
 === business/src/domain/product/use_cases/publish_product.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 
 use crate::domain::product::{errors::ProductError, model::Product};
 
@@ -3030,7 +3039,7 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/update_product.rs ===
 use async_trait::async_trait;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 
 use crate::domain::product::{
     errors::ProductError,
@@ -3120,8 +3129,8 @@ impl Status {
 }
 
 === business/src/domain/user/errors.rs ===
-use puerto_core::RepositoryError;
-use puerto_core::auth::HashError;
+use puerto_nucleo::ErrorRepositorio;
+use puerto_nucleo::auth::ErrorHash;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -3143,20 +3152,22 @@ pub enum UserError {
     Unknown,
 }
 
-impl From<RepositoryError> for UserError {
-    /// `RepositoryError` is `#[non_exhaustive]`: one a later version adds is the store's problem
+impl From<ErrorRepositorio> for UserError {
+    /// `ErrorRepositorio` is `#[non_exhaustive]`: one a later version adds is the store's problem
     /// (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
 }
 
-impl From<HashError> for UserError {
-    fn from(_: HashError) -> Self {
+impl From<ErrorHash> for UserError {
+    fn from(_: ErrorHash) -> Self {
         Self::Unknown
     }
 }
@@ -3167,13 +3178,13 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_user_duplicate() {
-        let err = UserError::from(RepositoryError::Duplicate);
+        let err = UserError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "user.duplicate");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = UserError::from(RepositoryError::Unavailable);
+        let err = UserError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "user.repository_error");
     }
 
@@ -3187,7 +3198,7 @@ mod tests {
 
     #[test]
     fn should_convert_a_failed_hash_into_the_user_unknown() {
-        assert_eq!(UserError::from(HashError).to_string(), "user.unknown");
+        assert_eq!(UserError::from(ErrorHash).to_string(), "user.unknown");
     }
 }
 
@@ -3384,7 +3395,7 @@ mod tests {
 
 === business/src/domain/user/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use super::model::{User, UserId};
 
@@ -3395,10 +3406,10 @@ pub trait UserRepositoryTrait: Send + Sync {
         &self,
         issuer: &str,
         subject: &str,
-    ) -> Result<Option<User>, RepositoryError>;
-    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError>;
+    ) -> Result<Option<User>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio>;
     /// Inserts or updates by id; another user with the same `(issuer, subject)` is `Duplicate`.
-    async fn save(&self, user: &User) -> Result<(), RepositoryError>;
+    async fn save(&self, user: &User) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3416,9 +3427,9 @@ pub mod mocks {
                 &self,
                 issuer: &str,
                 subject: &str,
-            ) -> Result<Option<User>, RepositoryError>;
-            async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError>;
-            async fn save(&self, user: &User) -> Result<(), RepositoryError>;
+            ) -> Result<Option<User>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio>;
+            async fn save(&self, user: &User) -> Result<(), ErrorRepositorio>;
         }
     }
 }
@@ -3427,7 +3438,7 @@ pub mod mocks {
 //! Yours: `puerto new --auth local` writes this file once.
 
 use async_trait::async_trait;
-use puerto_core::auth::Session;
+use puerto_nucleo::auth::Sesion;
 
 use crate::domain::user::errors::UserError;
 
@@ -3439,7 +3450,7 @@ pub struct LoginParams {
 /// Opens a session for the account `email`, when `password` is its password.
 #[async_trait]
 pub trait LoginUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: LoginParams) -> Result<Session, UserError>;
+    async fn execute(&self, params: LoginParams) -> Result<Sesion, UserError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3453,7 +3464,7 @@ pub mod mocks {
 
         #[async_trait]
         impl LoginUseCaseTrait for LoginUseCase {
-            async fn execute(&self, params: LoginParams) -> Result<Session, UserError>;
+            async fn execute(&self, params: LoginParams) -> Result<Sesion, UserError>;
         }
     }
 }
@@ -3657,7 +3668,7 @@ impl Default for OrderMother {
 }
 
 === business/src/tests/mothers/principal_mother.rs ===
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 use uuid::Uuid;
 
 /// Callers for tests (ADR-0021): a signed-in user with a fresh id, with or without roles.
@@ -3682,9 +3693,9 @@ impl PrincipalMother {
     pub fn build(self) -> Principal {
         let user_id = Uuid::new_v4();
         Principal::new(user_id, format!("subject-{user_id}"))
-            .with_email(format!("{}@example.com", user_id.simple()))
-            .with_name("Ada Lovelace")
-            .with_roles(self.roles)
+            .con_email(format!("{}@example.com", user_id.simple()))
+            .con_nombre("Ada Lovelace")
+            .con_roles(self.roles)
     }
 
     /// A signed-in caller with no role.
@@ -3816,7 +3827,7 @@ edition = "2024"
 
 [dependencies]
 business = { path = "../business" }
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 puerto-sqlx = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
@@ -3831,7 +3842,7 @@ features = ["runtime-tokio-rustls", "postgres", "macros", "migrate", "uuid", "ch
 
 [dev-dependencies]
 business = { path = "../business", features = ["test-utils"] }
-puerto-core = { workspace = true, features = ["test-utils"] }
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 
 === infrastructure/migrations/<version>_create_auth_tables.sql ===
@@ -3989,7 +4000,7 @@ use business::domain::order::{
     model::{Order, OrderId},
     repository::OrderRepositoryTrait,
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::OrderDb;
 use crate::db::map_sqlx_error;
@@ -4006,24 +4017,28 @@ impl PgOrderRepository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: OrderDb) -> Result<Order, RepositoryError> {
+fn to_domain(row: OrderDb) -> Result<Order, ErrorRepositorio> {
     Order::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid order");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
 impl OrderRepositoryTrait for PgOrderRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Order>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Order>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         let rows = sqlx::query_as!(
             OrderDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, total
              FROM orders WHERE deleted = false
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento())
         )
         .fetch_all(&self.pool)
         .await
@@ -4046,10 +4061,10 @@ impl OrderRepositoryTrait for PgOrderRepository {
             .collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, RepositoryError> {
+    async fn find_by_id(&self, id: OrderId) -> Result<Option<Order>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             OrderDb,
@@ -4067,7 +4082,7 @@ impl OrderRepositoryTrait for PgOrderRepository {
         row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &Order) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &Order) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = OrderDb::from(entity);
         sqlx::query!(
@@ -4168,12 +4183,12 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default())
+            .find_all(PeticionPagina::default())
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -4186,14 +4201,14 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PeticionPagina::new(Some(2), Some(2)))
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 }
 
@@ -4265,7 +4280,7 @@ use business::domain::product::{
     model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::ProductDb;
 use crate::db::map_sqlx_error;
@@ -4282,24 +4297,28 @@ impl PgProductRepository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: ProductDb) -> Result<Product, RepositoryError> {
+fn to_domain(row: ProductDb) -> Result<Product, ErrorRepositorio> {
     Product::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid product");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
 impl ProductRepositoryTrait for PgProductRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         let rows = sqlx::query_as!(
             ProductDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, name, sku, price, status
              FROM products WHERE deleted = false
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento())
         )
         .fetch_all(&self.pool)
         .await
@@ -4323,10 +4342,10 @@ impl ProductRepositoryTrait for PgProductRepository {
             .collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError> {
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             ProductDb,
@@ -4344,7 +4363,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &Product) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = ProductDb::from(entity);
         sqlx::query!(
@@ -4467,12 +4486,12 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default())
+            .find_all(PeticionPagina::default())
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -4485,14 +4504,14 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PeticionPagina::new(Some(2), Some(2)))
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 
     #[sqlx::test(migrator = "crate::db::MIGRATOR")]
@@ -4506,7 +4525,7 @@ pub(crate) mod integration_tests {
         let result = test_repo(pool).save(&second).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
     }
 }
 
@@ -4520,7 +4539,7 @@ use business::domain::user::{
     model::{User, UserId},
     repository::UserRepositoryTrait,
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::db::map_sqlx_error;
 
@@ -4571,7 +4590,7 @@ impl UserRepositoryTrait for PgUserRepository {
         &self,
         issuer: &str,
         subject: &str,
-    ) -> Result<Option<User>, RepositoryError> {
+    ) -> Result<Option<User>, ErrorRepositorio> {
         let row = sqlx::query_as::<_, UserRow>(&format!(
             "SELECT {COLUMNS} FROM users WHERE issuer = $1 AND subject = $2"
         ))
@@ -4586,7 +4605,7 @@ impl UserRepositoryTrait for PgUserRepository {
         Ok(row.map(User::from))
     }
 
-    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError> {
+    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row =
             sqlx::query_as::<_, UserRow>(&format!("SELECT {COLUMNS} FROM users WHERE id = $1"))
@@ -4600,7 +4619,7 @@ impl UserRepositoryTrait for PgUserRepository {
         Ok(row.map(User::from))
     }
 
-    async fn save(&self, user: &User) -> Result<(), RepositoryError> {
+    async fn save(&self, user: &User) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %user.id, "save");
         sqlx::query(
             "INSERT INTO users (id, issuer, subject, email, name, roles, created_at, updated_at)
@@ -4666,7 +4685,7 @@ mod tests {
         let result = repository.save(&ada()).await;
 
         // Assert
-        assert_eq!(result, Err(RepositoryError::Duplicate));
+        assert_eq!(result, Err(ErrorRepositorio::Duplicado));
     }
 }
 
@@ -4683,7 +4702,7 @@ path = "src/main.rs"
 [dependencies]
 business = { path = "../business" }
 infrastructure = { path = "../infrastructure" }
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 # The password hasher `bootstrap.rs` builds (ADR-0021).
 puerto-auth = { workspace = true, features = ["local"] }
 # The server, health probes, configuration and error body (`main.rs`, `generated/bootstrap.rs`).
@@ -4702,8 +4721,8 @@ chrono = { version = "0.4", features = ["serde"] }
 # Route tests: use case mocks and Object Mothers come from business behind `test-utils`, and
 # `poem::test::TestClient` drives the real OpenApiService.
 business = { path = "../business", features = ["test-utils"] }
-# `MockAuthenticator`, for the routes that take `BearerAuth`.
-puerto-core = { workspace = true, features = ["test-utils"] }
+# `MockAutenticador`, for the routes that take `BearerAuth`.
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
 poem = { version = "3", features = ["test"] }
 
 === presentation/src/api.rs ===
@@ -4727,7 +4746,7 @@ pub mod routes;
 
 use chrono::{DateTime, Utc};
 use poem_openapi::Object;
-use puerto_core::auth::Session;
+use puerto_nucleo::auth::Sesion;
 
 #[derive(Object)]
 #[oai(rename_all = "camelCase")]
@@ -4755,10 +4774,10 @@ pub struct SessionDto {
 }
 
 impl SessionDto {
-    pub fn from_session(session: Session) -> Self {
+    pub fn from_session(session: Sesion) -> Self {
         Self {
             token: session.token,
-            expires_at: session.expires_at,
+            expires_at: session.expira_en,
         }
     }
 }
@@ -5024,8 +5043,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use poem_openapi::OpenApiService;
-    use puerto_core::auth::mocks::MockAuthenticator;
-    use puerto_core::auth::{AuthError, Authenticator, Principal, Session};
+    use puerto_nucleo::auth::dobles::MockAutenticador;
+    use puerto_nucleo::auth::{Autenticador, ErrorAuth, Principal, Sesion};
     use uuid::Uuid;
 
     use super::*;
@@ -5036,14 +5055,14 @@ mod tests {
         login: MockLoginUseCase,
         logout: MockLogoutUseCase,
     ) -> TestClient<impl poem::Endpoint> {
-        let mut authenticator = MockAuthenticator::new();
+        let mut authenticator = MockAutenticador::new();
         authenticator
-            .expect_authenticate()
+            .expect_autenticar()
             .returning(|token| match token {
                 "ada" => Ok(Principal::new(Uuid::new_v4(), "ada@example.com")),
-                _ => Err(AuthError::Invalid),
+                _ => Err(ErrorAuth::Invalido),
             });
-        let authenticator: Arc<dyn Authenticator> = Arc::new(authenticator);
+        let authenticator: Arc<dyn Autenticador> = Arc::new(authenticator);
         let api = AuthApi {
             register_user: Arc::new(register_user),
             login: Arc::new(login),
@@ -5159,7 +5178,7 @@ mod tests {
         let mut login = MockLoginUseCase::new();
         login
             .expect_execute()
-            .returning(|_| Ok(Session::new("opaque", Utc::now())));
+            .returning(|_| Ok(Sesion::new("opaque", Utc::now())));
         let client = client(
             MockRegisterUserUseCase::new(),
             login,
@@ -5272,7 +5291,7 @@ pub mod routes;
 
 === presentation/src/api/me/dto.rs ===
 use poem_openapi::Object;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 use uuid::Uuid;
 
 /// The caller as the API resolved them: the id of their `User` row and the roles the API checks.
@@ -5289,9 +5308,9 @@ pub struct MeDto {
 impl MeDto {
     pub fn from_principal(principal: &Principal) -> Self {
         Self {
-            id: principal.user_id,
+            id: principal.id_usuario,
             email: principal.email.clone(),
-            name: principal.name.clone(),
+            name: principal.nombre.clone(),
             roles: principal.roles.clone(),
         }
     }
@@ -5325,8 +5344,8 @@ mod tests {
 
     use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
     use poem_openapi::OpenApiService;
-    use puerto_core::auth::mocks::MockAuthenticator;
-    use puerto_core::auth::{AuthError, Authenticator, Principal};
+    use puerto_nucleo::auth::dobles::MockAutenticador;
+    use puerto_nucleo::auth::{Autenticador, ErrorAuth, Principal};
     use uuid::Uuid;
 
     use super::*;
@@ -5335,17 +5354,17 @@ mod tests {
 
     /// Accepts the token `ada`, rejects anything else.
     fn client() -> TestClient<impl poem::Endpoint> {
-        let mut authenticator = MockAuthenticator::new();
+        let mut authenticator = MockAutenticador::new();
         authenticator
-            .expect_authenticate()
+            .expect_autenticar()
             .returning(|token| match token {
                 "ada" => Ok(Principal::new(USER_ID, "ada-subject")
-                    .with_email("ada@example.com")
-                    .with_name("Ada Lovelace")
-                    .with_roles(["admin"])),
-                _ => Err(AuthError::Invalid),
+                    .con_email("ada@example.com")
+                    .con_nombre("Ada Lovelace")
+                    .con_roles(["admin"])),
+                _ => Err(ErrorAuth::Invalido),
             });
-        let authenticator: Arc<dyn Authenticator> = Arc::new(authenticator);
+        let authenticator: Arc<dyn Autenticador> = Arc::new(authenticator);
         TestClient::new(
             Route::new()
                 .nest("/", OpenApiService::new(MeApi, "test", "1.0"))
@@ -5411,7 +5430,7 @@ pub mod routes;
 === presentation/src/api/order/dto.rs ===
 use business::domain::order::model::Order;
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -5447,12 +5466,12 @@ pub struct OrderPageDto {
 }
 
 impl OrderPageDto {
-    pub fn from_domain(page: &Page<Order>) -> Self {
+    pub fn from_domain(page: &Pagina<Order>) -> Self {
         Self {
-            items: page.items.iter().map(OrderDto::from_domain).collect(),
+            items: page.elementos.iter().map(OrderDto::from_domain).collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -5731,7 +5750,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use puerto_web::auth::BearerAuth;
 use uuid::Uuid;
 
@@ -5810,7 +5829,7 @@ impl OrderApi {
             .list_orders
             .execute(ListOrdersParams {
                 actor: auth.0,
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
             })
             .await
         {
@@ -5882,9 +5901,9 @@ mod tests {
     use business::tests::mothers::principal_mother::PrincipalMother;
     use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
-    use puerto_core::auth::mocks::MockAuthenticator;
-    use puerto_core::auth::{AuthError, Authenticator};
+    use puerto_nucleo::Pagina;
+    use puerto_nucleo::auth::dobles::MockAutenticador;
+    use puerto_nucleo::auth::{Autenticador, ErrorAuth};
 
     use super::*;
 
@@ -5900,14 +5919,14 @@ mod tests {
     }
 
     /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
-    fn authenticator() -> Arc<dyn Authenticator> {
-        let mut authenticator = MockAuthenticator::new();
+    fn authenticator() -> Arc<dyn Autenticador> {
+        let mut authenticator = MockAutenticador::new();
         authenticator
-            .expect_authenticate()
+            .expect_autenticar()
             .returning(|token| match token {
                 "caller" => Ok(PrincipalMother::random()),
                 "nobody" => Ok(PrincipalMother::random()),
-                _ => Err(AuthError::Invalid),
+                _ => Err(ErrorAuth::Invalido),
             });
         Arc::new(authenticator)
     }
@@ -6032,7 +6051,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(OrderMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(OrderMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/orders").send().await;
@@ -6052,8 +6071,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks.client().get("/orders?limit=5&offset=10").send().await;
@@ -6229,7 +6248,7 @@ pub mod routes;
 === presentation/src/api/product/dto.rs ===
 use business::domain::product::model::Product;
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -6274,12 +6293,12 @@ pub struct ProductPageDto {
 }
 
 impl ProductPageDto {
-    pub fn from_domain(page: &Page<Product>) -> Self {
+    pub fn from_domain(page: &Pagina<Product>) -> Self {
         Self {
-            items: page.items.iter().map(ProductDto::from_domain).collect(),
+            items: page.elementos.iter().map(ProductDto::from_domain).collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -6576,7 +6595,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use puerto_web::auth::BearerAuth;
 use puerto_web::require_role;
 use uuid::Uuid;
@@ -6662,7 +6681,7 @@ impl ProductApi {
         match self
             .list_products
             .execute(ListProductsParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
             })
             .await
         {
@@ -6740,9 +6759,9 @@ mod tests {
     use business::tests::mothers::product_mother::ProductMother;
     use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
-    use puerto_core::auth::mocks::MockAuthenticator;
-    use puerto_core::auth::{AuthError, Authenticator};
+    use puerto_nucleo::Pagina;
+    use puerto_nucleo::auth::dobles::MockAutenticador;
+    use puerto_nucleo::auth::{Autenticador, ErrorAuth};
 
     use super::*;
 
@@ -6760,16 +6779,16 @@ mod tests {
     }
 
     /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
-    fn authenticator() -> Arc<dyn Authenticator> {
-        let mut authenticator = MockAuthenticator::new();
+    fn authenticator() -> Arc<dyn Autenticador> {
+        let mut authenticator = MockAutenticador::new();
         authenticator
-            .expect_authenticate()
+            .expect_autenticar()
             .returning(|token| match token {
                 "caller" => Ok(PrincipalMother::new()
                     .with_roles(["admin", "owner"])
                     .build()),
                 "nobody" => Ok(PrincipalMother::random()),
-                _ => Err(AuthError::Invalid),
+                _ => Err(ErrorAuth::Invalido),
             });
         Arc::new(authenticator)
     }
@@ -6905,7 +6924,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(ProductMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(ProductMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/products").send().await;
@@ -6925,8 +6944,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -7162,7 +7181,7 @@ use infrastructure::user::repository::PgUserRepository;
 use poem::Endpoint;
 use poem::EndpointExt;
 use poem_openapi::OpenApiService;
-use puerto_core::auth::{Authenticator, CredentialStore, PasswordHasher};
+use puerto_nucleo::auth::{AlmacenCredenciales, Autenticador, HasherContrasena};
 
 use crate::api::auth::routes::AuthApi;
 use crate::api::me::routes::MeApi;
@@ -7183,13 +7202,13 @@ pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, Stri
 
     // Accounts in this database (ADR-0021 § 2): their sessions are what every `BearerAuth` asks.
     let users: Arc<dyn UserRepositoryTrait> = Arc::new(PgUserRepository::new(pool.clone()));
-    let credentials: Arc<dyn CredentialStore> = Arc::new(PgCredentials::new(pool.clone()));
-    let hasher: Arc<dyn PasswordHasher> = Arc::new(puerto_auth::local::Argon2Hasher::new());
+    let credentials: Arc<dyn AlmacenCredenciales> = Arc::new(PgCredentials::new(pool.clone()));
+    let hasher: Arc<dyn HasherContrasena> = Arc::new(puerto_auth::local::Argon2Hasher::new());
     let sessions = Arc::new(PgSessions::new(
         pool.clone(),
         infrastructure::db::auth::session_ttl_from_env()?,
     ));
-    let authenticator: Arc<dyn Authenticator> = sessions.clone();
+    let authenticator: Arc<dyn Autenticador> = sessions.clone();
     let auth_api = AuthApi {
         register_user: Arc::new(RegisterUserUseCaseImpl {
             users: Arc::clone(&users),

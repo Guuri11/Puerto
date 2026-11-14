@@ -1,12 +1,12 @@
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use super::model::{{ "{" }}{{ pascal }}, {{ pascal }}Id};
 
 #[async_trait]
 pub trait {{ pascal }}RepositoryTrait: Send + Sync {
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio>;
+    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -20,8 +20,8 @@ pub mod mocks {
 
         #[async_trait]
         impl {{ pascal }}RepositoryTrait for {{ pascal }}Repository {
-            async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
-            async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
+            async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio>;
+            async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
         }
     }
 }

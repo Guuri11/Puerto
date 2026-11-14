@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use puerto_core::events::transport::{DeadLetterRecord, DeadLetterSink, TransportError};
+use puerto_nucleo::eventos::transporte::{DestinoDescartados, ErrorTransporte, RegistroDescartado};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -18,9 +18,9 @@ impl PgDeadLetters {
 }
 
 #[async_trait]
-impl DeadLetterSink for PgDeadLetters {
-    async fn record(&self, record: &DeadLetterRecord) -> Result<(), TransportError> {
-        let attempts = i32::try_from(record.attempts).unwrap_or(i32::MAX);
+impl DestinoDescartados for PgDeadLetters {
+    async fn registrar(&self, record: &RegistroDescartado) -> Result<(), ErrorTransporte> {
+        let attempts = i32::try_from(record.intentos).unwrap_or(i32::MAX);
         sqlx::query(
             "INSERT INTO dead_letters \
              (id, event_id, consumer, event_type, attempts, reason, detail, payload) \
@@ -28,20 +28,20 @@ impl DeadLetterSink for PgDeadLetters {
              ON CONFLICT (event_id, consumer) DO NOTHING",
         )
         .bind(Uuid::now_v7())
-        .bind(record.event_id)
-        .bind(&record.consumer)
-        .bind(&record.event_type)
+        .bind(record.id_evento)
+        .bind(&record.consumidor)
+        .bind(&record.tipo_evento)
         .bind(attempts)
-        .bind(&record.reason)
-        .bind(&record.detail)
+        .bind(&record.motivo)
+        .bind(&record.detalle)
         .bind(&record.payload)
         .execute(&self.pool)
         .await
         .map_err(unavailable("dead_letters: record"))?;
         tracing::warn!(
-            consumer = %record.consumer,
-            event_id = ?record.event_id,
-            reason = %record.reason,
+            consumer = %record.consumidor,
+            event_id = ?record.id_evento,
+            reason = %record.motivo,
             "dead_letters: recorded"
         );
         Ok(())

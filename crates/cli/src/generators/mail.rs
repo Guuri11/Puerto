@@ -222,7 +222,7 @@ fn add_puerto_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if src.contains("puerto-mail") {
         return Ok(());
     }
-    let core = "puerto-core = { workspace = true }\n";
+    let core = "puerto-nucleo = { workspace = true }\n";
     if !src.contains(core) {
         return Err(format!("{}: no `{}`", path.display(), core.trim_end()).into());
     }

@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use puerto_core::events::{EnvelopeParts, EventEnvelope};
+use puerto_nucleo::eventos::{PartesSobre, SobreEvento};
 use uuid::Uuid;
 
 pub(crate) const EVENT_ID: &str = "event_id";
@@ -28,21 +28,21 @@ const ENVELOPE_HEADERS: [&str; 6] = [
 
 /// The record's headers: the envelope's fields, then its own headers. One of those named like a
 /// field is left out — the field wins.
-pub(crate) fn headers_of(event: &EventEnvelope) -> Vec<(String, String)> {
+pub(crate) fn headers_of(event: &SobreEvento) -> Vec<(String, String)> {
     let fields = [
         (EVENT_ID, event.id.to_string()),
-        (EVENT_TYPE, event.event_type.clone()),
-        (AGGREGATE_TYPE, event.aggregate_type.clone()),
-        (AGGREGATE_ID, event.aggregate_id.to_string()),
-        (SCHEMA_VERSION, event.schema_version.to_string()),
-        (OCCURRED_AT, event.occurred_at.to_rfc3339()),
+        (EVENT_TYPE, event.tipo_evento.clone()),
+        (AGGREGATE_TYPE, event.tipo_agregado.clone()),
+        (AGGREGATE_ID, event.id_agregado.to_string()),
+        (SCHEMA_VERSION, event.version_esquema.to_string()),
+        (OCCURRED_AT, event.ocurrido_en.to_rfc3339()),
     ];
     fields
         .into_iter()
         .map(|(key, value)| (key.to_string(), value))
         .chain(
             event
-                .headers
+                .cabeceras
                 .iter()
                 .filter(|(key, _)| !ENVELOPE_HEADERS.contains(&key.as_str()))
                 .map(|(key, value)| (key.clone(), value.clone())),
@@ -54,7 +54,7 @@ pub(crate) fn headers_of(event: &EventEnvelope) -> Vec<(String, String)> {
 pub(crate) fn envelope_from(
     headers: &[(String, Option<Vec<u8>>)],
     payload: Option<&[u8]>,
-) -> Result<EventEnvelope, String> {
+) -> Result<SobreEvento, String> {
     let text = |key: &str| -> Result<String, String> {
         let value = headers
             .iter()
@@ -85,37 +85,37 @@ pub(crate) fn envelope_from(
             .map_err(|_| format!("header `{key}` is not UTF-8"))?;
         extra.insert(key.clone(), value);
     }
-    Ok(EventEnvelope::from_parts(EnvelopeParts {
+    Ok(SobreEvento::from_partes(PartesSobre {
         id,
-        event_type: text(EVENT_TYPE)?,
-        aggregate_type: text(AGGREGATE_TYPE)?,
-        aggregate_id,
-        schema_version,
-        occurred_at,
+        tipo_evento: text(EVENT_TYPE)?,
+        tipo_agregado: text(AGGREGATE_TYPE)?,
+        id_agregado: aggregate_id,
+        version_esquema: schema_version,
+        ocurrido_en: occurred_at,
         payload,
-        headers: extra,
+        cabeceras: extra,
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
     use serde_json::{Value, json};
 
     struct Created(Uuid);
 
-    impl DomainEvent for Created {
-        fn event_type(&self) -> &'static str {
+    impl EventoDominio for Created {
+        fn tipo_evento(&self) -> &'static str {
             "product_created"
         }
-        fn aggregate_type(&self) -> &'static str {
+        fn tipo_agregado(&self) -> &'static str {
             "product"
         }
-        fn aggregate_id(&self) -> Uuid {
+        fn id_agregado(&self) -> Uuid {
             self.0
         }
-        fn schema_version(&self) -> u16 {
+        fn version_esquema(&self) -> u16 {
             3
         }
         fn payload(&self) -> Value {
@@ -123,11 +123,11 @@ mod tests {
         }
     }
 
-    fn envelope() -> EventEnvelope {
-        EventEnvelope::new(&Created(Uuid::now_v7())).with_header("trace_id", "abc")
+    fn envelope() -> SobreEvento {
+        SobreEvento::new(&Created(Uuid::now_v7())).con_cabecera("trace_id", "abc")
     }
 
-    fn as_record(event: &EventEnvelope) -> (RawHeaders, Vec<u8>) {
+    fn as_record(event: &SobreEvento) -> (RawHeaders, Vec<u8>) {
         let headers = headers_of(event)
             .into_iter()
             .map(|(k, v)| (k, Some(v.into_bytes())))
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn should_keep_the_envelope_field_when_a_header_is_named_like_one() {
-        let event = envelope().with_header(EVENT_TYPE, "spoofed");
+        let event = envelope().con_cabecera(EVENT_TYPE, "spoofed");
         let headers = headers_of(&event);
         let event_types: Vec<&str> = headers
             .iter()
@@ -213,6 +213,6 @@ mod tests {
         let (mut headers, payload) = as_record(&envelope());
         headers.push(("tenant".into(), None));
         let event = envelope_from(&headers, Some(&payload)).unwrap();
-        assert_eq!(event.headers.get("tenant").map(String::as_str), Some(""));
+        assert_eq!(event.cabeceras.get("tenant").map(String::as_str), Some(""));
     }
 }

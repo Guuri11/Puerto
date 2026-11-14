@@ -5,12 +5,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use puerto_core::events::delivery::Delivery;
-use puerto_core::events::transport::{
-    Claimed, DeadLetterRecord, DeadLetterSink, EventPublisher, EventSubscription, TransportError,
-};
-use puerto_core::{DomainEvent, EventEnvelope};
 use puerto_kafka::{KafkaConfig, KafkaPublisher, KafkaSubscription};
+use puerto_nucleo::eventos::entrega::Entrega;
+use puerto_nucleo::eventos::transporte::{
+    DestinoDescartados, ErrorTransporte, PublicadorEventos, RegistroDescartado, Reservado,
+    SuscripcionEventos,
+};
+use puerto_nucleo::{EventoDominio, SobreEvento};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -25,17 +26,17 @@ struct Happened {
     name: &'static str,
 }
 
-impl DomainEvent for Happened {
-    fn event_type(&self) -> &'static str {
+impl EventoDominio for Happened {
+    fn tipo_evento(&self) -> &'static str {
         self.event_type
     }
-    fn aggregate_type(&self) -> &'static str {
+    fn tipo_agregado(&self) -> &'static str {
         "product"
     }
-    fn aggregate_id(&self) -> Uuid {
+    fn id_agregado(&self) -> Uuid {
         self.id
     }
-    fn schema_version(&self) -> u16 {
+    fn version_esquema(&self) -> u16 {
         1
     }
     fn payload(&self) -> Value {
@@ -43,8 +44,8 @@ impl DomainEvent for Happened {
     }
 }
 
-fn event(event_type: &'static str, id: Uuid, name: &'static str) -> EventEnvelope {
-    EventEnvelope::new(&Happened {
+fn event(event_type: &'static str, id: Uuid, name: &'static str) -> SobreEvento {
+    SobreEvento::new(&Happened {
         event_type,
         id,
         name,
@@ -52,17 +53,17 @@ fn event(event_type: &'static str, id: Uuid, name: &'static str) -> EventEnvelop
 }
 
 #[derive(Clone, Default)]
-struct Sink(Arc<Mutex<Vec<DeadLetterRecord>>>);
+struct Sink(Arc<Mutex<Vec<RegistroDescartado>>>);
 
 impl Sink {
-    fn records(&self) -> Vec<DeadLetterRecord> {
+    fn records(&self) -> Vec<RegistroDescartado> {
         self.0.lock().unwrap().clone()
     }
 }
 
 #[async_trait]
-impl DeadLetterSink for Sink {
-    async fn record(&self, record: &DeadLetterRecord) -> Result<(), TransportError> {
+impl DestinoDescartados for Sink {
+    async fn registrar(&self, record: &RegistroDescartado) -> Result<(), ErrorTransporte> {
         self.0.lock().unwrap().push(record.clone());
         Ok(())
     }
@@ -94,10 +95,10 @@ fn subscribe(config: &KafkaConfig, sink: &Sink) -> KafkaSubscription {
 }
 
 /// The next claim, waiting for the group to be joined; `None` when nothing came within `wait`.
-async fn next(subscription: &mut KafkaSubscription, wait: Duration) -> Option<Claimed> {
+async fn next(subscription: &mut KafkaSubscription, wait: Duration) -> Option<Reservado> {
     let deadline = tokio::time::Instant::now() + wait;
     while tokio::time::Instant::now() < deadline {
-        let mut batch = subscription.next_batch(10).await.unwrap();
+        let mut batch = subscription.siguiente_lote(10).await.unwrap();
         assert!(batch.len() <= 1, "one record per batch");
         if let Some(claimed) = batch.pop() {
             return Some(claimed);
@@ -118,17 +119,17 @@ async fn kafka_subscriber_receives_the_published_envelopes_of_its_types_in_order
     let published = event("product_published", id, "Desk lamp");
     let publisher = KafkaPublisher::new(&config).unwrap();
     for event in [&created, &updated, &published] {
-        publisher.publish(event).await.unwrap();
+        publisher.publicar(event).await.unwrap();
     }
     let mut subscription = subscribe(&config, &Sink::default());
 
     let first = next(&mut subscription, WAIT).await.unwrap();
-    subscription.settle(&first, &Delivery::Ack).await.unwrap();
+    subscription.resolver(&first, &Entrega::Ack).await.unwrap();
     let second = next(&mut subscription, WAIT).await.unwrap();
-    subscription.settle(&second, &Delivery::Ack).await.unwrap();
+    subscription.resolver(&second, &Entrega::Ack).await.unwrap();
 
-    assert_eq!(first, Claimed::new(created, 1));
-    assert_eq!(second, Claimed::new(published, 1));
+    assert_eq!(first, Reservado::new(created, 1));
+    assert_eq!(second, Reservado::new(published, 1));
     assert_eq!(next(&mut subscription, Duration::from_secs(2)).await, None);
 }
 
@@ -142,24 +143,24 @@ async fn kafka_retry_holds_back_the_next_record_and_hands_itself_out_as_the_next
     let created = event("product_created", id, "Desk lamp");
     let published = event("product_published", id, "Desk lamp");
     let publisher = KafkaPublisher::new(&config).unwrap();
-    publisher.publish(&created).await.unwrap();
-    publisher.publish(&published).await.unwrap();
+    publisher.publicar(&created).await.unwrap();
+    publisher.publicar(&published).await.unwrap();
     let mut subscription = subscribe(&config, &Sink::default());
 
     let first = next(&mut subscription, WAIT).await.unwrap();
-    let retry = Delivery::Retry {
-        delay: Duration::from_secs(1),
+    let retry = Entrega::Reintentar {
+        espera: Duration::from_secs(1),
     };
-    subscription.settle(&first, &retry).await.unwrap();
-    let while_waiting = subscription.next_batch(10).await.unwrap();
+    subscription.resolver(&first, &retry).await.unwrap();
+    let while_waiting = subscription.siguiente_lote(10).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
     let again = next(&mut subscription, WAIT).await.unwrap();
-    subscription.settle(&again, &Delivery::Ack).await.unwrap();
+    subscription.resolver(&again, &Entrega::Ack).await.unwrap();
     let then = next(&mut subscription, WAIT).await.unwrap();
 
     assert_eq!(while_waiting, vec![]);
-    assert_eq!(again, Claimed::new(created, 2));
-    assert_eq!(then, Claimed::new(published, 1));
+    assert_eq!(again, Reservado::new(created, 2));
+    assert_eq!(then, Reservado::new(published, 1));
 }
 
 #[tokio::test]
@@ -181,7 +182,7 @@ async fn kafka_poisoned_record_is_dead_lettered_and_the_next_one_is_still_consum
     let created = event("product_created", Uuid::now_v7(), "Desk lamp");
     KafkaPublisher::new(&config)
         .unwrap()
-        .publish(&created)
+        .publicar(&created)
         .await
         .unwrap();
     let sink = Sink::default();
@@ -189,20 +190,20 @@ async fn kafka_poisoned_record_is_dead_lettered_and_the_next_one_is_still_consum
 
     let claimed = next(&mut subscription, WAIT).await.unwrap();
 
-    assert_eq!(claimed, Claimed::new(created, 1));
+    assert_eq!(claimed, Reservado::new(created, 1));
     let records = sink.records();
     assert_eq!(records.len(), 1);
     assert_eq!(
         (
-            records[0].event_id,
-            records[0].consumer.as_str(),
-            records[0].reason.as_str(),
+            records[0].id_evento,
+            records[0].consumidor.as_str(),
+            records[0].motivo.as_str(),
             records[0].payload.as_str()
         ),
         (
             None,
             "notify_new_product",
-            "payload_invalid",
+            "payload_invalido",
             "not an event"
         )
     );
@@ -218,17 +219,17 @@ async fn kafka_restarted_subscription_does_not_redeliver_what_was_committed() {
     let created = event("product_created", id, "Desk lamp");
     let published = event("product_published", id, "Desk lamp");
     let publisher = KafkaPublisher::new(&config).unwrap();
-    publisher.publish(&created).await.unwrap();
-    publisher.publish(&published).await.unwrap();
+    publisher.publicar(&created).await.unwrap();
+    publisher.publicar(&published).await.unwrap();
     let mut subscription = subscribe(&config, &Sink::default());
     let first = next(&mut subscription, WAIT).await.unwrap();
-    subscription.settle(&first, &Delivery::Ack).await.unwrap();
+    subscription.resolver(&first, &Entrega::Ack).await.unwrap();
     let unsettled = next(&mut subscription, WAIT).await.unwrap();
     drop(subscription);
 
     let mut restarted = subscribe(&config, &Sink::default());
     let after_restart = next(&mut restarted, WAIT).await.unwrap();
 
-    assert_eq!(unsettled, Claimed::new(published.clone(), 1));
-    assert_eq!(after_restart, Claimed::new(published, 1));
+    assert_eq!(unsettled, Reservado::new(published.clone(), 1));
+    assert_eq!(after_restart, Reservado::new(published, 1));
 }

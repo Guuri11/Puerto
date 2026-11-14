@@ -18,7 +18,7 @@ oidc = ["dep:jsonwebtoken", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:t
 local = ["dep:argon2", "dep:tokio", "tokio/rt"]
 
 [dependencies]
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 async-trait = "0.1"
 dotenvy = "0.15"
 thiserror = "2"

@@ -1,6 +1,6 @@
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 {%- if local %}
-use puerto_core::auth::HashError;
+use puerto_nucleo::auth::ErrorHash;
 {%- endif %}
 use thiserror::Error;
 
@@ -25,20 +25,20 @@ pub enum UserError {
 {%- endif %}
 }
 
-impl From<RepositoryError> for UserError {
-    /// `RepositoryError` is `#[non_exhaustive]`: one a later version adds is the store's problem
+impl From<ErrorRepositorio> for UserError {
+    /// `ErrorRepositorio` is `#[non_exhaustive]`: one a later version adds is the store's problem
     /// (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::RepositoryError,
             _ => Self::RepositoryError,
         }
     }
 }
 
-{% if local %}impl From<HashError> for UserError {
-    fn from(_: HashError) -> Self {
+{% if local %}impl From<ErrorHash> for UserError {
+    fn from(_: ErrorHash) -> Self {
         Self::Unknown
     }
 }
@@ -49,13 +49,13 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_user_duplicate() {
-        let err = UserError::from(RepositoryError::Duplicate);
+        let err = UserError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "user.duplicate");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = UserError::from(RepositoryError::Unavailable);
+        let err = UserError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "user.repository_error");
     }
 {%- if local %}
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn should_convert_a_failed_hash_into_the_user_unknown() {
-        assert_eq!(UserError::from(HashError).to_string(), "user.unknown");
+        assert_eq!(UserError::from(ErrorHash).to_string(), "user.unknown");
     }
 {%- endif %}
 }

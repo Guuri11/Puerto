@@ -31,11 +31,11 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 
 | Crate | Owns | Imported as |
 |---|---|---|
-| `puerto-core` | `RepositoryError` (what every repository port fails with), `PageRequest` / `Page<T>` (paged lists, limit capped at 100) | `use puerto_core::{Page, PageRequest, RepositoryError};` |
+| `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
 | `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
-| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `RepositoryError`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
+| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
-`puerto-core` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
+`puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
 copy their code into the project; upgrade them with the `puerto` CLI (`puerto validate` warns when
 they drift apart). Your own middleware and routes go in `presentation/src/app.rs`, which no
@@ -257,7 +257,7 @@ impl CreateArticleUseCaseTrait for CreateArticleUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::article::repository::mocks::MockArticleRepository;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_create_article_when_fields_are_valid() {
@@ -290,7 +290,7 @@ mod tests {
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::Duplicate));
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
         let use_case = CreateArticleUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -474,7 +474,7 @@ mod tests {
         model::{Article, ArticleId, ArticleProps},
         repository::mocks::MockArticleRepository,
     };
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_return_article_when_id_exists() {
@@ -524,7 +524,7 @@ mod tests {
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetArticleUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -544,7 +544,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::article::{
     errors::ArticleError,
@@ -559,10 +559,10 @@ pub struct ListArticlesUseCaseImpl {
 
 #[async_trait]
 impl ListArticlesUseCaseTrait for ListArticlesUseCaseImpl {
-    async fn execute(&self, params: ListArticlesParams) -> Result<Page<Article>, ArticleError> {
+    async fn execute(&self, params: ListArticlesParams) -> Result<Pagina<Article>, ArticleError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_articles: start"
         );
         self.repository
@@ -580,7 +580,7 @@ mod tests {
         model::{Article, ArticleProps},
         repository::mocks::MockArticleRepository,
     };
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn should_return_the_page_of_articles() {
@@ -605,19 +605,19 @@ mod tests {
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListArticlesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListArticlesParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -626,19 +626,19 @@ mod tests {
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListArticlesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListArticlesParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -647,19 +647,19 @@ mod tests {
         let mut mock_repo = MockArticleRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListArticlesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListArticlesParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 }
 
@@ -825,7 +825,7 @@ mod tests {
 }
 
 === business/src/domain/article/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -842,13 +842,15 @@ pub enum ArticleError {
     Unknown,
 }
 
-impl From<RepositoryError> for ArticleError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for ArticleError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -860,19 +862,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = ArticleError::from(RepositoryError::Duplicate);
+        let err = ArticleError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "article.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = ArticleError::from(RepositoryError::InvalidData);
+        let err = ArticleError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "article.repository_error");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = ArticleError::from(RepositoryError::Unavailable);
+        let err = ArticleError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "article.repository_error");
     }
 }
@@ -1004,15 +1006,15 @@ mod tests {
 
 === business/src/domain/article/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Article, ArticleId};
 
 #[async_trait]
 pub trait ArticleRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Article>, RepositoryError>;
-    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError>;
-    async fn save(&self, entity: &Article) -> Result<(), RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Article>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ErrorRepositorio>;
+    async fn save(&self, entity: &Article) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1026,9 +1028,9 @@ pub mod mocks {
 
         #[async_trait]
         impl ArticleRepositoryTrait for ArticleRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Article>, RepositoryError>;
-            async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError>;
-            async fn save(&self, entity: &Article) -> Result<(), RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Article>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ErrorRepositorio>;
+            async fn save(&self, entity: &Article) -> Result<(), ErrorRepositorio>;
         }
     }
 }
@@ -1135,18 +1137,18 @@ pub mod mocks {
 
 === business/src/domain/article/use_cases/list_articles.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::article::{errors::ArticleError, model::Article};
 
 #[derive(Debug, Clone)]
 pub struct ListArticlesParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
 }
 
 #[async_trait]
 pub trait ListArticlesUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListArticlesParams) -> Result<Page<Article>, ArticleError>;
+    async fn execute(&self, params: ListArticlesParams) -> Result<Pagina<Article>, ArticleError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1160,7 +1162,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListArticlesUseCaseTrait for ListArticlesUseCase {
-            async fn execute(&self, params: ListArticlesParams) -> Result<Page<Article>, ArticleError>;
+            async fn execute(&self, params: ListArticlesParams) -> Result<Pagina<Article>, ArticleError>;
         }
     }
 }
@@ -1347,7 +1349,7 @@ use business::domain::article::{
     model::{Article, ArticleId},
     repository::ArticleRepositoryTrait,
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 /// Keeps the articles it is given in process memory: they are lost when the process stops.
 /// Like the Postgres adapter, it hides deleted rows and lists newest first.
@@ -1375,8 +1377,12 @@ impl InMemoryArticleRepository {
 
 #[async_trait]
 impl ArticleRepositoryTrait for InMemoryArticleRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Article>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Article>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         let rows = self.read();
         let mut live: Vec<&Article> = rows.values().filter(|row| !row.deleted).collect();
         live.sort_by(|a, b| {
@@ -1387,19 +1393,19 @@ impl ArticleRepositoryTrait for InMemoryArticleRepository {
         let total = live.len() as u64;
         let items = live
             .into_iter()
-            .skip(page.offset() as usize)
-            .take(page.limit() as usize)
+            .skip(page.desplazamiento() as usize)
+            .take(page.limite() as usize)
             .cloned()
             .collect();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, RepositoryError> {
+    async fn find_by_id(&self, id: ArticleId) -> Result<Option<Article>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         Ok(self.read().get(&id).filter(|row| !row.deleted).cloned())
     }
 
-    async fn save(&self, entity: &Article) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &Article) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let mut rows = self.write();
         rows.insert(entity.id, entity.clone());
@@ -1449,9 +1455,9 @@ mod tests {
         repo.save(&entity).await.unwrap();
 
         // Assert
-        let page = repo.find_all(PageRequest::default()).await.unwrap();
+        let page = repo.find_all(PeticionPagina::default()).await.unwrap();
         assert_eq!(page.total, 1);
-        assert_eq!(page.items[0].updated_at, entity.updated_at);
+        assert_eq!(page.elementos[0].updated_at, entity.updated_at);
     }
 
     #[tokio::test]
@@ -1465,7 +1471,7 @@ mod tests {
 
         // Act
         let found = repo.find_by_id(entity.id).await.unwrap();
-        let page = repo.find_all(PageRequest::default()).await.unwrap();
+        let page = repo.find_all(PeticionPagina::default()).await.unwrap();
 
         // Assert
         assert!(found.is_none());
@@ -1482,14 +1488,14 @@ mod tests {
 
         // Act
         let page = repo
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PeticionPagina::new(Some(2), Some(2)))
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 }
 
@@ -1516,7 +1522,7 @@ pub mod routes;
 === presentation/src/api/article/dto.rs ===
 use business::domain::article::model::Article;
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -1564,12 +1570,12 @@ pub struct ArticlePageDto {
 }
 
 impl ArticlePageDto {
-    pub fn from_domain(page: &Page<Article>) -> Self {
+    pub fn from_domain(page: &Pagina<Article>) -> Self {
         Self {
-            items: page.items.iter().map(ArticleDto::from_domain).collect(),
+            items: page.elementos.iter().map(ArticleDto::from_domain).collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -1821,7 +1827,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use uuid::Uuid;
 
 use crate::api::article::dto::{
@@ -1897,7 +1903,7 @@ impl ArticleApi {
         match self
             .list_articles
             .execute(ListArticlesParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
             })
             .await
         {
@@ -1970,7 +1976,7 @@ mod tests {
     use business::tests::mothers::article_mother::ArticleMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
+    use puerto_nucleo::Pagina;
 
     use super::*;
 
@@ -2103,7 +2109,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(ArticleMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(ArticleMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/articles").send().await;
@@ -2123,8 +2129,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks

@@ -4,9 +4,11 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use puerto_core::EventEnvelope;
-use puerto_core::events::delivery::Delivery;
-use puerto_core::events::transport::{Claimed, EventPublisher, EventSubscription, TransportError};
+use puerto_nucleo::SobreEvento;
+use puerto_nucleo::eventos::entrega::Entrega;
+use puerto_nucleo::eventos::transporte::{
+    ErrorTransporte, PublicadorEventos, Reservado, SuscripcionEventos,
+};
 use sqlx::PgPool;
 
 use super::{ENVELOPE_COLUMNS, envelope_from_pg, unavailable};
@@ -49,8 +51,8 @@ impl PgDeliveries {
 }
 
 #[async_trait]
-impl EventPublisher for PgDeliveries {
-    async fn publish(&self, event: &EventEnvelope) -> Result<(), TransportError> {
+impl PublicadorEventos for PgDeliveries {
+    async fn publicar(&self, event: &SobreEvento) -> Result<(), ErrorTransporte> {
         let context = "deliveries: publish";
         let mut tx = self.pool.begin().await.map_err(unavailable(context))?;
         sqlx::query(
@@ -59,7 +61,7 @@ impl EventPublisher for PgDeliveries {
              ON CONFLICT DO NOTHING",
         )
         .bind(event.id)
-        .bind(self.consumers_for(&event.event_type))
+        .bind(self.consumers_for(&event.tipo_evento))
         .execute(&mut *tx)
         .await
         .map_err(unavailable(context))?;
@@ -98,15 +100,15 @@ impl PgSubscription {
 }
 
 #[async_trait]
-impl EventSubscription for PgSubscription {
-    fn consumer(&self) -> &str {
+impl SuscripcionEventos for PgSubscription {
+    fn consumidor(&self) -> &str {
         &self.consumer
     }
 
     /// Claims the due deliveries, oldest event first. A claim counts as a delivery (`attempts`
     /// goes up now, not when it is settled), so a worker that crashes mid-handle still uses one
     /// of the event's deliveries, and the claim is hidden for the lease.
-    async fn next_batch(&mut self, max: u32) -> Result<Vec<Claimed>, TransportError> {
+    async fn siguiente_lote(&mut self, max: u32) -> Result<Vec<Reservado>, ErrorTransporte> {
         let context = "deliveries: next_batch";
         let rows = sqlx::query(&format!(
             "WITH due AS ( \
@@ -135,22 +137,23 @@ impl EventSubscription for PgSubscription {
         rows.iter()
             .map(|row| {
                 let envelope = envelope_from_pg(row, context)?;
-                let attempts: i32 =
-                    sqlx::Row::try_get(row, "attempts").map_err(|_| TransportError::InvalidData)?;
-                let attempt = u32::try_from(attempts).map_err(|_| TransportError::InvalidData)?;
-                Ok(Claimed::new(envelope, attempt))
+                let attempts: i32 = sqlx::Row::try_get(row, "attempts")
+                    .map_err(|_| ErrorTransporte::DatosInvalidos)?;
+                let attempt =
+                    u32::try_from(attempts).map_err(|_| ErrorTransporte::DatosInvalidos)?;
+                Ok(Reservado::new(envelope, attempt))
             })
             .collect()
     }
 
-    async fn settle(
+    async fn resolver(
         &mut self,
-        claimed: &Claimed,
-        delivery: &Delivery,
-    ) -> Result<(), TransportError> {
-        let (id, consumer) = (claimed.envelope.id, &self.consumer);
+        claimed: &Reservado,
+        delivery: &Entrega,
+    ) -> Result<(), ErrorTransporte> {
+        let (id, consumer) = (claimed.sobre.id, &self.consumer);
         let result = match delivery {
-            Delivery::Ack => {
+            Entrega::Ack => {
                 sqlx::query(
                     "UPDATE event_deliveries SET status = 'done', last_error = NULL \
                      WHERE event_id = $1 AND consumer = $2",
@@ -160,7 +163,7 @@ impl EventSubscription for PgSubscription {
                 .execute(&self.pool)
                 .await
             }
-            Delivery::Retry { delay } => {
+            Entrega::Reintentar { espera } => {
                 sqlx::query(
                     "UPDATE event_deliveries \
                      SET next_attempt_at = now() + make_interval(secs => $3) \
@@ -168,18 +171,18 @@ impl EventSubscription for PgSubscription {
                 )
                 .bind(id)
                 .bind(consumer)
-                .bind(delay.as_secs_f64())
+                .bind(espera.as_secs_f64())
                 .execute(&self.pool)
                 .await
             }
-            Delivery::DeadLetter { reason, detail } => {
+            Entrega::Descartar { motivo, detalle } => {
                 sqlx::query(
                     "UPDATE event_deliveries SET status = 'dead', last_error = $3 \
                      WHERE event_id = $1 AND consumer = $2",
                 )
                 .bind(id)
                 .bind(consumer)
-                .bind(format!("{reason}: {detail}"))
+                .bind(format!("{motivo}: {detalle}"))
                 .execute(&self.pool)
                 .await
             }
@@ -239,7 +242,7 @@ mod tests {
     async fn should_name_its_consumer_and_default_lease_when_subscribed() {
         let subscription = PgSubscription::new(lazy_pool(), "audit");
 
-        assert_eq!(subscription.consumer(), "audit");
+        assert_eq!(subscription.consumidor(), "audit");
         assert_eq!(subscription.lease, DEFAULT_CLAIM_LEASE);
         assert_eq!(
             subscription.with_lease(Duration::from_secs(5)).lease,

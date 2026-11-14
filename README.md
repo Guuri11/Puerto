@@ -235,7 +235,7 @@ puerto/
     ├── cli/                # The puerto binary (cargo-generate wrapper)
     │   ├── src/            # CLI source
     │   └── template/       # The "basic" project template (edit directly here)
-    ├── core/               # puerto-core — runtime: RepositoryError, PageRequest / Page<T>,
+    ├── nucleo/             # puerto-nucleo — runtime: ErrorRepositorio, PeticionPagina / Pagina<T>,
     │                       #   domain events (envelope, delivery policy, transport ports)
     ├── web/                # puerto-web — runtime: server, Config, health probes, ErrorResponse
     ├── sqlx/               # puerto-sqlx — runtime: Postgres pool, migrations, ping, map_sqlx_error,

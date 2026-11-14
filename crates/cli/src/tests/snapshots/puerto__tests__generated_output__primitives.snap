@@ -31,11 +31,11 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 
 | Crate | Owns | Imported as |
 |---|---|---|
-| `puerto-core` | `RepositoryError` (what every repository port fails with), `PageRequest` / `Page<T>` (paged lists, limit capped at 100) | `use puerto_core::{Page, PageRequest, RepositoryError};` |
+| `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
 | `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
-| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `RepositoryError`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
+| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
-`puerto-core` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
+`puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
 copy their code into the project; upgrade them with the `puerto` CLI (`puerto validate` warns when
 they drift apart). Your own middleware and routes go in `presentation/src/app.rs`, which no
@@ -260,7 +260,7 @@ mod tests {
     use super::*;
     use crate::domain::product::repository::mocks::MockProductRepository;
     use chrono::Utc;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -297,7 +297,7 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::Duplicate));
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
         let use_case = CreateProductUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -491,7 +491,7 @@ mod tests {
         repository::mocks::MockProductRepository,
     };
     use chrono::Utc;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -545,7 +545,7 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetProductUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -565,7 +565,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::product::{
     errors::ProductError,
@@ -580,10 +580,10 @@ pub struct ListProductsUseCaseImpl {
 
 #[async_trait]
 impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
-    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError> {
+    async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_products: start"
         );
         self.repository
@@ -602,7 +602,7 @@ mod tests {
         repository::mocks::MockProductRepository,
     };
     use chrono::Utc;
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -633,19 +633,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -654,19 +654,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -675,19 +675,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 }
 
@@ -868,7 +868,7 @@ mod tests {
 }
 
 === business/src/domain/product/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -885,13 +885,15 @@ pub enum ProductError {
     Unknown,
 }
 
-impl From<RepositoryError> for ProductError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for ProductError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -903,19 +905,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = ProductError::from(RepositoryError::Duplicate);
+        let err = ProductError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "product.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = ProductError::from(RepositoryError::InvalidData);
+        let err = ProductError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "product.repository_error");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = ProductError::from(RepositoryError::Unavailable);
+        let err = ProductError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "product.repository_error");
     }
 }
@@ -1060,15 +1062,15 @@ mod tests {
 
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Product, ProductId};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
-    async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio>;
+    async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1082,9 +1084,9 @@ pub mod mocks {
 
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
-            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
-            async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio>;
+            async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio>;
         }
     }
 }
@@ -1196,18 +1198,18 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::product::{errors::ProductError, model::Product};
 
 #[derive(Debug, Clone)]
 pub struct ListProductsParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
 }
 
 #[async_trait]
 pub trait ListProductsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+    async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -1221,7 +1223,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListProductsUseCaseTrait for ListProductsUseCase {
-            async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+            async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError>;
         }
     }
 }
@@ -1442,7 +1444,7 @@ use business::domain::product::{
     model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 /// Keeps the products it is given in process memory: they are lost when the process stops.
 /// Like the Postgres adapter, it hides deleted rows and lists newest first.
@@ -1470,8 +1472,12 @@ impl InMemoryProductRepository {
 
 #[async_trait]
 impl ProductRepositoryTrait for InMemoryProductRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         let rows = self.read();
         let mut live: Vec<&Product> = rows.values().filter(|row| !row.deleted).collect();
         live.sort_by(|a, b| {
@@ -1482,19 +1488,19 @@ impl ProductRepositoryTrait for InMemoryProductRepository {
         let total = live.len() as u64;
         let items = live
             .into_iter()
-            .skip(page.offset() as usize)
-            .take(page.limit() as usize)
+            .skip(page.desplazamiento() as usize)
+            .take(page.limite() as usize)
             .cloned()
             .collect();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError> {
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         Ok(self.read().get(&id).filter(|row| !row.deleted).cloned())
     }
 
-    async fn save(&self, entity: &Product) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let mut rows = self.write();
         rows.insert(entity.id, entity.clone());
@@ -1547,9 +1553,9 @@ mod tests {
         repo.save(&entity).await.unwrap();
 
         // Assert
-        let page = repo.find_all(PageRequest::default()).await.unwrap();
+        let page = repo.find_all(PeticionPagina::default()).await.unwrap();
         assert_eq!(page.total, 1);
-        assert_eq!(page.items[0].updated_at, entity.updated_at);
+        assert_eq!(page.elementos[0].updated_at, entity.updated_at);
     }
 
     #[tokio::test]
@@ -1563,7 +1569,7 @@ mod tests {
 
         // Act
         let found = repo.find_by_id(entity.id).await.unwrap();
-        let page = repo.find_all(PageRequest::default()).await.unwrap();
+        let page = repo.find_all(PeticionPagina::default()).await.unwrap();
 
         // Assert
         assert!(found.is_none());
@@ -1580,14 +1586,14 @@ mod tests {
 
         // Act
         let page = repo
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PeticionPagina::new(Some(2), Some(2)))
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 }
 
@@ -1607,7 +1613,7 @@ pub mod routes;
 use business::domain::product::model::Product;
 use chrono::{DateTime, Utc};
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -1662,12 +1668,12 @@ pub struct ProductPageDto {
 }
 
 impl ProductPageDto {
-    pub fn from_domain(page: &Page<Product>) -> Self {
+    pub fn from_domain(page: &Pagina<Product>) -> Self {
         Self {
-            items: page.items.iter().map(ProductDto::from_domain).collect(),
+            items: page.elementos.iter().map(ProductDto::from_domain).collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -1921,7 +1927,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -1999,7 +2005,7 @@ impl ProductApi {
         match self
             .list_products
             .execute(ListProductsParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
             })
             .await
         {
@@ -2075,7 +2081,7 @@ mod tests {
     use chrono::Utc;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
+    use puerto_nucleo::Pagina;
     use std::collections::HashMap;
 
     use super::*;
@@ -2213,7 +2219,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(ProductMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(ProductMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/products").send().await;
@@ -2233,8 +2239,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks

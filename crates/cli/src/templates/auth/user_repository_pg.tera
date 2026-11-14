@@ -7,7 +7,7 @@ use business::domain::user::{
     model::{User, UserId},
     repository::UserRepositoryTrait,
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::db::map_sqlx_error;
 
@@ -58,7 +58,7 @@ impl UserRepositoryTrait for PgUserRepository {
         &self,
         issuer: &str,
         subject: &str,
-    ) -> Result<Option<User>, RepositoryError> {
+    ) -> Result<Option<User>, ErrorRepositorio> {
         let row = sqlx::query_as::<_, UserRow>(&format!(
             "SELECT {COLUMNS} FROM users WHERE issuer = $1 AND subject = $2"
         ))
@@ -73,7 +73,7 @@ impl UserRepositoryTrait for PgUserRepository {
         Ok(row.map(User::from))
     }
 
-    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError> {
+    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as::<_, UserRow>(&format!("SELECT {COLUMNS} FROM users WHERE id = $1"))
             .bind(id.value())
@@ -86,7 +86,7 @@ impl UserRepositoryTrait for PgUserRepository {
         Ok(row.map(User::from))
     }
 
-    async fn save(&self, user: &User) -> Result<(), RepositoryError> {
+    async fn save(&self, user: &User) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %user.id, "save");
         sqlx::query(
             "INSERT INTO users (id, issuer, subject, email, name, roles, created_at, updated_at)
@@ -152,6 +152,6 @@ mod tests {
         let result = repository.save(&ada()).await;
 
         // Assert
-        assert_eq!(result, Err(RepositoryError::Duplicate));
+        assert_eq!(result, Err(ErrorRepositorio::Duplicado));
     }
 }

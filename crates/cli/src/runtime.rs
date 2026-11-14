@@ -6,7 +6,7 @@ pub const VERSION_MARKER: &str = "PUERTO_RUNTIME_VERSION";
 
 /// Every runtime crate a generated project may depend on.
 pub const RUNTIME_CRATES: &[&str] = &[
-    "puerto-core",
+    "puerto-nucleo",
     "puerto-web",
     "puerto-sqlx",
     "puerto-events",

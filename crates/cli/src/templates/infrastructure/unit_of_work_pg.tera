@@ -6,7 +6,7 @@ use business::domain::{{ snake }}::{
     model::{{ pascal }},
     unit_of_work::{{ "{" }}{{ pascal }}UnitOfWork, {{ pascal }}UnitOfWorkFactory},
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use puerto_sqlx::uow::PgTransaction;
 
 use super::entity::{{ pascal }}Db;
@@ -26,7 +26,7 @@ impl Pg{{ pascal }}UnitOfWorkFactory {
 {% if references %}{% include "infrastructure/references.tera" %}{% endif %}
 #[async_trait]
 impl {{ pascal }}UnitOfWorkFactory for Pg{{ pascal }}UnitOfWorkFactory {
-    async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, RepositoryError> {
+    async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, ErrorRepositorio> {
         let tx = PgTransaction::begin(&self.pool).await?;
         Ok(Box::new(Pg{{ pascal }}UnitOfWork { tx }))
     }
@@ -38,7 +38,7 @@ struct Pg{{ pascal }}UnitOfWork {
 
 #[async_trait]
 impl {{ pascal }}UnitOfWork for Pg{{ pascal }}UnitOfWork {
-    async fn save(&mut self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+    async fn save(&mut self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = {{ pascal }}Db::from(entity);
         sqlx::query!(
@@ -62,11 +62,11 @@ impl {{ pascal }}UnitOfWork for Pg{{ pascal }}UnitOfWork {
         Ok(())
     }
 
-    async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), RepositoryError> {
+    async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), ErrorRepositorio> {
         self.tx.record(&event).await
     }
 
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
         self.tx.commit().await
     }
 }
@@ -89,7 +89,7 @@ mod integration_tests {
     }
 
     /// What a create use case does: save, record, commit.
-    async fn create(pool: &PgPool, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+    async fn create(pool: &PgPool, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
         let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await?;
         uow.save(entity).await?;
         uow.record({{ pascal }}Event::Created({{ pascal }}Snapshot::from_entity(entity))).await?;
@@ -178,7 +178,7 @@ mod integration_tests {
         let result = create(&pool, &second).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
@@ -194,7 +194,7 @@ mod integration_tests {
         let result = create(&pool, &entity).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::MissingReference("{{ r.field }}"));
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::ReferenciaInexistente("{{ r.field }}"));
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 {% endfor %}}

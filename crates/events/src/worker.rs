@@ -8,8 +8,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use poem::{Route, Server, listener::TcpListener};
-use puerto_core::events::EventHandler;
-use puerto_core::events::transport::{DeadLetterSink, EventPublisher, EventSubscription, Outbox};
+use puerto_nucleo::eventos::ManejadorEvento;
+use puerto_nucleo::eventos::transporte::{
+    DestinoDescartados, Outbox, PublicadorEventos, SuscripcionEventos,
+};
 use puerto_web::app::{SHUTDOWN_DEADLINE, init_tracing, shutdown_signal};
 use puerto_web::{Error, health};
 use tokio::sync::watch;
@@ -39,7 +41,7 @@ impl Loops {
     pub fn relay<O, P>(mut self, outbox: O, publisher: P) -> Self
     where
         O: Outbox + 'static,
-        P: EventPublisher + 'static,
+        P: PublicadorEventos + 'static,
     {
         let relay = Relay::new(outbox, publisher).with_batch_size(self.config.relay_batch_size);
         self.loops
@@ -51,11 +53,11 @@ impl Loops {
     pub fn consumer<S>(
         mut self,
         subscription: S,
-        handler: impl EventHandler + 'static,
-        dead_letters: Arc<dyn DeadLetterSink>,
+        handler: impl ManejadorEvento + 'static,
+        dead_letters: Arc<dyn DestinoDescartados>,
     ) -> Self
     where
-        S: EventSubscription + 'static,
+        S: SuscripcionEventos + 'static,
     {
         let consumer = Consumer::new(subscription, handler, dead_letters)
             .with_max_deliveries(self.config.max_deliveries)

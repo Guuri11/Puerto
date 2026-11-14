@@ -25,8 +25,8 @@ mod tests {
 
     use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
     use poem_openapi::OpenApiService;
-    use puerto_core::auth::mocks::MockAuthenticator;
-    use puerto_core::auth::{AuthError, Authenticator, Principal};
+    use puerto_nucleo::auth::dobles::MockAutenticador;
+    use puerto_nucleo::auth::{ErrorAuth, Autenticador, Principal};
     use uuid::Uuid;
 
     use super::*;
@@ -35,17 +35,17 @@ mod tests {
 
     /// Accepts the token `ada`, rejects anything else.
     fn client() -> TestClient<impl poem::Endpoint> {
-        let mut authenticator = MockAuthenticator::new();
+        let mut authenticator = MockAutenticador::new();
         authenticator
-            .expect_authenticate()
+            .expect_autenticar()
             .returning(|token| match token {
                 "ada" => Ok(Principal::new(USER_ID, "ada-subject")
-                    .with_email("ada@example.com")
-                    .with_name("Ada Lovelace")
-                    .with_roles(["admin"])),
-                _ => Err(AuthError::Invalid),
+                    .con_email("ada@example.com")
+                    .con_nombre("Ada Lovelace")
+                    .con_roles(["admin"])),
+                _ => Err(ErrorAuth::Invalido),
             });
-        let authenticator: Arc<dyn Authenticator> = Arc::new(authenticator);
+        let authenticator: Arc<dyn Autenticador> = Arc::new(authenticator);
         TestClient::new(
             Route::new()
                 .nest("/", OpenApiService::new(MeApi, "test", "1.0"))

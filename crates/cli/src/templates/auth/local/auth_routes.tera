@@ -99,8 +99,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use poem_openapi::OpenApiService;
-    use puerto_core::auth::mocks::MockAuthenticator;
-    use puerto_core::auth::{AuthError, Authenticator, Principal, Session};
+    use puerto_nucleo::auth::dobles::MockAutenticador;
+    use puerto_nucleo::auth::{ErrorAuth, Autenticador, Principal, Sesion};
     use uuid::Uuid;
 
     use super::*;
@@ -111,14 +111,14 @@ mod tests {
         login: MockLoginUseCase,
         logout: MockLogoutUseCase,
     ) -> TestClient<impl poem::Endpoint> {
-        let mut authenticator = MockAuthenticator::new();
+        let mut authenticator = MockAutenticador::new();
         authenticator
-            .expect_authenticate()
+            .expect_autenticar()
             .returning(|token| match token {
                 "ada" => Ok(Principal::new(Uuid::new_v4(), "ada@example.com")),
-                _ => Err(AuthError::Invalid),
+                _ => Err(ErrorAuth::Invalido),
             });
-        let authenticator: Arc<dyn Authenticator> = Arc::new(authenticator);
+        let authenticator: Arc<dyn Autenticador> = Arc::new(authenticator);
         let api = AuthApi {
             register_user: Arc::new(register_user),
             login: Arc::new(login),
@@ -222,7 +222,7 @@ mod tests {
         let mut login = MockLoginUseCase::new();
         login
             .expect_execute()
-            .returning(|_| Ok(Session::new("opaque", Utc::now())));
+            .returning(|_| Ok(Sesion::new("opaque", Utc::now())));
         let client = client(MockRegisterUserUseCase::new(), login, MockLogoutUseCase::new());
 
         // Act

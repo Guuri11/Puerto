@@ -1,7 +1,7 @@
 {% import "application/macros.tera" as macros %}use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::{{ snake }}::{
     errors::{{ pascal }}Error,
@@ -20,7 +20,7 @@ pub struct Delete{{ pascal }}UseCaseImpl {
 impl Delete{{ pascal }}UseCaseTrait for Delete{{ pascal }}UseCaseImpl {
     async fn execute(&self, params: Delete{{ pascal }}Params) -> Result<(), {{ pascal }}Error> {
         tracing::info!(id = %params.id, "delete_{{ snake }}: start");
-        let failed = |e: &RepositoryError| tracing::error!(error = %e, "delete_{{ snake }}: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "delete_{{ snake }}: repository failed");
         let mut entity = self
             .repository
             .find_by_id(params.id)
@@ -52,7 +52,7 @@ mod tests {
         repository::mocks::Mock{{ pascal }}Repository,
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
@@ -83,8 +83,8 @@ mod tests {
         assert!(recorded.committed);
         assert!(recorded.saved.iter().all(|saved| saved.deleted));
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "{{ snake }}_deleted");
-        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "{{ snake }}_deleted");
+        assert_eq!(recorded.events[0].id_agregado(), entity_id.value());
     }
 
     #[tokio::test]

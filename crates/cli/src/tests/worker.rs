@@ -248,12 +248,12 @@ fn generate_consumer_writes_the_stub_the_toml_entry_and_the_registry_line() {
     );
     let stub = read(&output, "worker/src/consumers/notify_new_product.rs");
     assert!(
-        stub.contains("impl EventHandler for NotifyNewProduct"),
+        stub.contains("impl ManejadorEvento for NotifyNewProduct"),
         "{stub}"
     );
-    assert!(stub.contains("PRODUCT_CREATED => match event.decode::<ProductSnapshot>()"));
-    assert!(stub.contains("PRODUCT_PUBLISHED => match event.decode::<ProductSnapshot>()"));
-    assert!(stub.contains("HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail)"));
+    assert!(stub.contains("PRODUCT_CREATED => match event.decodificar::<ProductSnapshot>()"));
+    assert!(stub.contains("PRODUCT_PUBLISHED => match event.decodificar::<ProductSnapshot>()"));
+    assert!(stub.contains("ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle)"));
     assert!(stub.contains("idempotent"), "{stub}");
     for test in [
         "fn should_ack_when_a_product_created_event_is_valid()",

@@ -309,7 +309,7 @@ fn generated_project_has_a_root_entry_point_for_agents() {
         "one commit",
         "business/AGENTS.md",
         // ADR-0017: an agent must know which code is the project's and which is the runtime's.
-        "puerto-core",
+        "puerto-nucleo",
         "puerto-web",
         "puerto-sqlx",
     ] {

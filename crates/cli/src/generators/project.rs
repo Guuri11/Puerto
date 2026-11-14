@@ -151,8 +151,8 @@ fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>>
     // The adapter is the runtime's (ADR-0017); `sqlx` stays for the repositories' queries and the
     // project's `migrate!`.
     src = src.replace(
-        "puerto-core = { workspace = true }\n",
-        "puerto-core = { workspace = true }\npuerto-sqlx = { workspace = true }\n",
+        "puerto-nucleo = { workspace = true }\n",
+        "puerto-nucleo = { workspace = true }\npuerto-sqlx = { workspace = true }\n",
     );
     // Before `[dev-dependencies]`, so the runtime dependencies stay together.
     let sqlx = "[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\", \"json\"]\n\n";
@@ -419,7 +419,7 @@ pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     ignore_not_found(fs::remove_file(base.join(layout::api_module("greeting"))))?;
 
     // Minimal business lib.rs: empty domain and application blocks for the patchers to fill.
-    // `RepositoryError` and the page types come from `puerto-core`; `pub mod shared;` arrives
+    // `ErrorRepositorio` and the page types come from `puerto-nucleo`; `pub mod shared;` arrives
     // with the first shared value object.
     fs::write(
         base.join(layout::BUSINESS_LIB),

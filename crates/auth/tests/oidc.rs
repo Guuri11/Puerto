@@ -11,7 +11,7 @@ use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use poem::listener::{Acceptor, Listener, TcpListener};
 use poem::{IntoResponse, Route, Server, http::StatusCode, web::Json};
 use puerto_auth::{
-    AuthError, Authenticator, OidcAuthenticator, OidcConfig, OidcError, Principal, RolesClaim,
+    Autenticador, ErrorAuth, OidcAuthenticator, OidcConfig, OidcError, Principal, RolesClaim,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -198,14 +198,14 @@ async fn should_describe_the_caller_when_an_rs256_token_is_valid() {
 
     // Act
     let principal = authenticator
-        .authenticate(&sign(&RSA, &provider.claims()))
+        .autenticar(&sign(&RSA, &provider.claims()))
         .await;
 
     // Assert
     let expected = Principal::new(Uuid::nil(), "f81d4fae-7dec")
-        .with_email("ada@example.com")
-        .with_name("Ada Lovelace")
-        .with_roles(["admin", "offline_access"]);
+        .con_email("ada@example.com")
+        .con_nombre("Ada Lovelace")
+        .con_roles(["admin", "offline_access"]);
     assert_eq!(principal, Ok(expected));
 }
 
@@ -217,11 +217,11 @@ async fn should_accept_the_token_when_it_is_signed_with_es256() {
 
     // Act
     let principal = authenticator
-        .authenticate(&sign(&EC, &provider.claims()))
+        .autenticar(&sign(&EC, &provider.claims()))
         .await;
 
     // Assert
-    assert_eq!(principal.map(|p| p.subject), Ok("f81d4fae-7dec".into()));
+    assert_eq!(principal.map(|p| p.sujeto), Ok("f81d4fae-7dec".into()));
 }
 
 #[tokio::test]
@@ -232,10 +232,10 @@ async fn should_reject_the_token_when_it_was_issued_by_another_issuer() {
     let claims = with(provider.claims(), "iss", json!("https://evil.example.com"));
 
     // Act
-    let result = authenticator.authenticate(&sign(&RSA, &claims)).await;
+    let result = authenticator.autenticar(&sign(&RSA, &claims)).await;
 
     // Assert
-    assert_eq!(result, Err(AuthError::Invalid));
+    assert_eq!(result, Err(ErrorAuth::Invalido));
 }
 
 #[tokio::test]
@@ -247,11 +247,11 @@ async fn should_reject_the_token_when_it_is_for_another_audience() {
     for aud in [json!("account"), json!(["account", "billing"])] {
         // Act
         let result = authenticator
-            .authenticate(&sign(&RSA, &with(provider.claims(), "aud", aud.clone())))
+            .autenticar(&sign(&RSA, &with(provider.claims(), "aud", aud.clone())))
             .await;
 
         // Assert
-        assert_eq!(result, Err(AuthError::Invalid), "{aud}");
+        assert_eq!(result, Err(ErrorAuth::Invalido), "{aud}");
     }
 }
 
@@ -263,7 +263,7 @@ async fn should_accept_the_token_when_its_audiences_include_ours() {
     let claims = with(provider.claims(), "aud", json!(["account", AUDIENCE]));
 
     // Act
-    let result = authenticator.authenticate(&sign(&RSA, &claims)).await;
+    let result = authenticator.autenticar(&sign(&RSA, &claims)).await;
 
     // Assert
     assert!(result.is_ok(), "{result:?}");
@@ -277,10 +277,10 @@ async fn should_answer_expired_when_the_token_expired_beyond_the_leeway() {
     let claims = with(provider.claims(), "exp", json!(now() - 120));
 
     // Act
-    let result = authenticator.authenticate(&sign(&RSA, &claims)).await;
+    let result = authenticator.autenticar(&sign(&RSA, &claims)).await;
 
     // Assert
-    assert_eq!(result, Err(AuthError::Expired));
+    assert_eq!(result, Err(ErrorAuth::Expirado));
 }
 
 #[tokio::test]
@@ -291,7 +291,7 @@ async fn should_accept_the_token_when_it_expired_within_the_leeway() {
     let claims = with(provider.claims(), "exp", json!(now() - 30));
 
     // Act
-    let result = authenticator.authenticate(&sign(&RSA, &claims)).await;
+    let result = authenticator.autenticar(&sign(&RSA, &claims)).await;
 
     // Assert
     assert!(result.is_ok(), "{result:?}");
@@ -305,10 +305,10 @@ async fn should_reject_the_token_when_it_is_not_valid_yet() {
     let claims = with(provider.claims(), "nbf", json!(now() + 300));
 
     // Act
-    let result = authenticator.authenticate(&sign(&RSA, &claims)).await;
+    let result = authenticator.autenticar(&sign(&RSA, &claims)).await;
 
     // Assert
-    assert_eq!(result, Err(AuthError::Invalid));
+    assert_eq!(result, Err(ErrorAuth::Invalido));
 }
 
 #[tokio::test]
@@ -320,11 +320,11 @@ async fn should_reject_the_token_when_a_required_claim_is_missing() {
     for claim in ["exp", "iss", "aud", "sub"] {
         // Act
         let result = authenticator
-            .authenticate(&sign(&RSA, &without(provider.claims(), claim)))
+            .autenticar(&sign(&RSA, &without(provider.claims(), claim)))
             .await;
 
         // Assert
-        assert_eq!(result, Err(AuthError::Invalid), "without {claim}");
+        assert_eq!(result, Err(ErrorAuth::Invalido), "without {claim}");
     }
 }
 
@@ -337,10 +337,10 @@ async fn should_reject_the_token_when_its_algorithm_is_none() {
     let token = format!("{}.{}.", b64(&header), b64(&provider.claims()));
 
     // Act
-    let result = authenticator.authenticate(&token).await;
+    let result = authenticator.autenticar(&token).await;
 
     // Assert
-    assert_eq!(result, Err(AuthError::Invalid));
+    assert_eq!(result, Err(ErrorAuth::Invalido));
 }
 
 #[tokio::test]
@@ -359,10 +359,10 @@ async fn should_reject_the_token_when_it_is_an_hmac_keyed_with_the_public_key() 
     .expect("an HMAC token");
 
     // Act
-    let result = authenticator.authenticate(&token).await;
+    let result = authenticator.autenticar(&token).await;
 
     // Assert
-    assert_eq!(result, Err(AuthError::Invalid));
+    assert_eq!(result, Err(ErrorAuth::Invalido));
 }
 
 #[tokio::test]
@@ -374,11 +374,11 @@ async fn should_reject_the_token_when_its_signature_is_not_the_named_key() {
     for (key, kid) in [(&ROTATED, "rsa"), (&RSA, "ec")] {
         // Act
         let result = authenticator
-            .authenticate(&sign_as(key, kid, &provider.claims()))
+            .autenticar(&sign_as(key, kid, &provider.claims()))
             .await;
 
         // Assert
-        assert_eq!(result, Err(AuthError::Invalid), "{} as {kid}", key.kid);
+        assert_eq!(result, Err(ErrorAuth::Invalido), "{} as {kid}", key.kid);
     }
 }
 
@@ -396,10 +396,10 @@ async fn should_reject_the_token_when_it_is_not_a_jwt_or_has_no_kid() {
 
     for token in ["", "opaque-session-token", "a.b.c", no_kid.as_str()] {
         // Act
-        let result = authenticator.authenticate(token).await;
+        let result = authenticator.autenticar(token).await;
 
         // Assert
-        assert_eq!(result, Err(AuthError::Invalid), "{token}");
+        assert_eq!(result, Err(ErrorAuth::Invalido), "{token}");
     }
 }
 
@@ -412,7 +412,7 @@ async fn should_accept_a_rotated_key_when_the_provider_publishes_it_after_startu
 
     // Act
     let result = authenticator
-        .authenticate(&sign(&ROTATED, &provider.claims()))
+        .autenticar(&sign(&ROTATED, &provider.claims()))
         .await;
 
     // Assert
@@ -428,15 +428,15 @@ async fn should_refetch_the_keys_once_a_minute_at_most_when_kids_are_unknown() {
 
     // Act
     let first = authenticator
-        .authenticate(&sign_as(&ROTATED, "unknown-1", &provider.claims()))
+        .autenticar(&sign_as(&ROTATED, "unknown-1", &provider.claims()))
         .await;
     let second = authenticator
-        .authenticate(&sign_as(&ROTATED, "unknown-2", &provider.claims()))
+        .autenticar(&sign_as(&ROTATED, "unknown-2", &provider.claims()))
         .await;
 
     // Assert
-    assert_eq!(first, Err(AuthError::Invalid));
-    assert_eq!(second, Err(AuthError::Invalid));
+    assert_eq!(first, Err(ErrorAuth::Invalido));
+    assert_eq!(second, Err(ErrorAuth::Invalido));
     assert_eq!(provider.fetches(), 2, "startup + one refetch");
 }
 
@@ -446,12 +446,12 @@ async fn should_keep_accepting_known_keys_when_unknown_kids_arrive() {
     let provider = Provider::start(jwks(&[&RSA])).await;
     let authenticator = provider.authenticator().await;
     let _ = authenticator
-        .authenticate(&sign_as(&ROTATED, "unknown", &provider.claims()))
+        .autenticar(&sign_as(&ROTATED, "unknown", &provider.claims()))
         .await;
 
     // Act
     let result = authenticator
-        .authenticate(&sign(&RSA, &provider.claims()))
+        .autenticar(&sign(&RSA, &provider.claims()))
         .await;
 
     // Assert
@@ -467,11 +467,11 @@ async fn should_answer_unavailable_when_the_keys_cannot_be_refetched() {
 
     // Act
     let result = authenticator
-        .authenticate(&sign(&ROTATED, &provider.claims()))
+        .autenticar(&sign(&ROTATED, &provider.claims()))
         .await;
 
     // Assert
-    assert_eq!(result, Err(AuthError::Unavailable));
+    assert_eq!(result, Err(ErrorAuth::NoDisponible));
 }
 
 #[tokio::test]
@@ -491,7 +491,7 @@ async fn should_read_an_auth0_namespaced_roles_claim_when_configured() {
     );
 
     // Act
-    let principal = authenticator.authenticate(&sign(&RSA, &claims)).await;
+    let principal = authenticator.autenticar(&sign(&RSA, &claims)).await;
 
     // Assert
     assert_eq!(principal.map(|p| p.roles), Ok(vec!["editor".to_string()]));
@@ -511,7 +511,7 @@ async fn should_accept_an_issuer_with_a_trailing_slash_when_the_provider_publish
     );
 
     // Act
-    let result = authenticator.authenticate(&sign(&RSA, &claims)).await;
+    let result = authenticator.autenticar(&sign(&RSA, &claims)).await;
 
     // Assert
     assert!(result.is_ok(), "{result:?}");

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
 use super::model::{{ "{" }}{{ pascal }}, {{ pascal }}Id};
 {% for import in reference_imports %}use {{ import }};
@@ -12,10 +12,10 @@ pub struct {{ pascal }}Filter {
 {% endif %}
 #[async_trait]
 pub trait {{ pascal }}RepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Page<{{ pascal }}>, RepositoryError>;
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio>;
 {% if events %}    // No `save`: writes go through `{{ pascal }}UnitOfWorkFactory`, which records their events.
-{% else %}    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
+{% else %}    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
 {% endif %}}
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -29,9 +29,9 @@ pub mod mocks {
 
         #[async_trait]
         impl {{ pascal }}RepositoryTrait for {{ pascal }}Repository {
-            async fn find_all(&self, page: PageRequest{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Page<{{ pascal }}>, RepositoryError>;
-            async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError>;
-{% if not events %}            async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio>;
+{% if not events %}            async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
 {% endif %}        }
     }
 }

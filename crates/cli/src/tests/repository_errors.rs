@@ -1,4 +1,4 @@
-// Phase 11.1 (T-28): repositories speak one error, `RepositoryError`, whatever the entity.
+// Phase 11.1 (T-28): repositories speak one error, `ErrorRepositorio`, whatever the entity.
 use super::*;
 
 fn read(dir: &Path, path: &str) -> String {
@@ -24,9 +24,9 @@ fn greeting_repository_returns_the_repository_error() {
     let output = generate_project("repo-error-greeting", &dir).unwrap();
 
     let port = read(&output, "business/src/domain/greeting/repository.rs");
-    assert!(port.contains("Result<Option<Greeting>, RepositoryError>"));
+    assert!(port.contains("Result<Option<Greeting>, ErrorRepositorio>"));
     let errors = read(&output, "business/src/domain/greeting/errors.rs");
-    assert!(errors.contains("impl From<RepositoryError> for GreetingError"));
+    assert!(errors.contains("impl From<ErrorRepositorio> for GreetingError"));
 
     cleanup(&dir);
 }
@@ -36,11 +36,11 @@ fn crud_repository_port_returns_the_repository_error() {
     let dir = scaffold_product("repo_error_crud_port", false, true, &[]);
 
     let port = read(&dir, "business/src/domain/product/repository.rs");
-    assert!(port.contains("use puerto_core::{Page, PageRequest, RepositoryError};"));
+    assert!(port.contains("use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};"));
     assert!(
-        port.contains("async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;")
+        port.contains("async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio>;")
     );
-    assert!(port.contains("Result<Option<Product>, RepositoryError>"));
+    assert!(port.contains("Result<Option<Product>, ErrorRepositorio>"));
     assert!(!port.contains("ProductError"));
 
     cleanup(&dir);
@@ -51,7 +51,7 @@ fn non_crud_repository_port_returns_the_repository_error() {
     let dir = scaffold_product("repo_error_simple_port", false, false, &[]);
 
     let port = read(&dir, "business/src/domain/product/repository.rs");
-    assert!(port.contains("Result<Option<Product>, RepositoryError>"));
+    assert!(port.contains("Result<Option<Product>, ErrorRepositorio>"));
     assert!(!port.contains("ProductError"));
 
     cleanup(&dir);
@@ -62,12 +62,12 @@ fn entity_error_converts_the_repository_error_and_tests_each_arm() {
     let dir = scaffold_product("repo_error_from", false, true, &[]);
 
     let errors = read(&dir, "business/src/domain/product/errors.rs");
-    assert!(errors.contains("impl From<RepositoryError> for ProductError"));
-    assert!(errors.contains("RepositoryError::Duplicate => Self::Duplicate,"));
+    assert!(errors.contains("impl From<ErrorRepositorio> for ProductError"));
+    assert!(errors.contains("ErrorRepositorio::Duplicado => Self::Duplicate,"));
     assert!(errors.contains(
-        "RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,"
+        "ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::RepositoryError,"
     ));
-    // `RepositoryError` is `#[non_exhaustive]` in puerto-core: a failure a later version adds is
+    // `ErrorRepositorio` is `#[non_exhaustive]` in puerto-nucleo: a failure a later version adds is
     // the store's problem (500) until the project gives it a meaning.
     assert!(errors.contains("_ => Self::RepositoryError,"));
     assert!(errors.contains("fn should_convert_a_duplicate_into_the_entity_duplicate()"));
@@ -82,7 +82,7 @@ fn inmemory_repository_returns_the_repository_error() {
     let dir = scaffold_product("repo_error_inmemory", false, true, &[]);
 
     let repository = read(&dir, "infrastructure/src/product/repository.rs");
-    assert!(repository.contains("RepositoryError"));
+    assert!(repository.contains("ErrorRepositorio"));
     assert!(!repository.contains("ProductError"));
 
     cleanup(&dir);
@@ -100,7 +100,7 @@ fn postgres_repositories_map_driver_errors_in_one_place() {
         assert!(repository.contains("map_sqlx_error"), "{name}");
         assert!(!repository.contains("23505"), "{name}");
         assert!(
-            repository.contains("RepositoryError::InvalidData"),
+            repository.contains("ErrorRepositorio::DatosInvalidos"),
             "{name}"
         );
         assert!(
@@ -120,7 +120,7 @@ fn postgres_test_rejects_a_duplicate_when_a_field_is_unique() {
 
     let repository = read(&dir, "infrastructure/src/product/repository.rs");
     assert!(repository.contains("async fn should_reject_a_duplicate_sku(pool: PgPool)"));
-    assert!(repository.contains("RepositoryError::Duplicate"));
+    assert!(repository.contains("ErrorRepositorio::Duplicado"));
 
     cleanup(&dir);
 }

@@ -15,7 +15,7 @@ use poem_openapi::{
     ApiExtractor, ApiExtractorType, ExtractParamOptions, SecurityScheme, auth::Bearer,
     payload::Json, registry::Registry,
 };
-use puerto_core::{AuthError, Authenticator, Principal};
+use puerto_nucleo::{Autenticador, ErrorAuth, Principal};
 
 use crate::ErrorResponse;
 
@@ -24,7 +24,7 @@ pub const UNAUTHENTICATED: &str = "auth.unauthenticated";
 /// An authenticated caller without the role the route requires.
 pub const FORBIDDEN: &str = "auth.forbidden";
 /// The token could not be checked: the provider or the database is down — not the caller's fault.
-pub const UNAVAILABLE: &str = "auth.unavailable";
+pub const UNAVAILABLE: &str = "auth.no_disponible";
 /// The routes carry no [`Authenticator`]: `bootstrap.rs` did not register one.
 pub const NOT_CONFIGURED: &str = "auth.not_configured";
 
@@ -70,7 +70,7 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
             })?
             .0
             .token;
-        let Some(authenticator) = req.data::<Arc<dyn Authenticator>>() else {
+        let Some(authenticator) = req.data::<Arc<dyn Autenticador>>() else {
             tracing::error!("BearerAuth: no Authenticator registered on the routes");
             return Err(error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -83,7 +83,7 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
             ));
         };
         authenticator
-            .authenticate(&token)
+            .autenticar(&token)
             .await
             .map(Self)
             .map_err(|err| {
@@ -94,9 +94,9 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
 }
 
 /// The status and body for a token the [`Authenticator`] did not accept.
-pub fn rejection(err: AuthError) -> (StatusCode, Json<ErrorResponse>) {
+pub fn rejection(err: ErrorAuth) -> (StatusCode, Json<ErrorResponse>) {
     match err {
-        AuthError::Unavailable => {
+        ErrorAuth::NoDisponible => {
             tracing::warn!(error = %err, "BearerAuth: the token could not be checked");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn should_answer_401_unauthenticated_when_the_token_is_invalid() {
         // Act
-        let (status, body) = rejection(AuthError::Invalid);
+        let (status, body) = rejection(ErrorAuth::Invalido);
 
         // Assert
         assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn should_answer_401_unauthenticated_when_the_token_expired() {
         // Act
-        let (status, body) = rejection(AuthError::Expired);
+        let (status, body) = rejection(ErrorAuth::Expirado);
 
         // Assert
         assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -184,11 +184,11 @@ mod tests {
     #[test]
     fn should_answer_503_unavailable_when_the_token_cannot_be_checked() {
         // Act
-        let (status, body) = rejection(AuthError::Unavailable);
+        let (status, body) = rejection(ErrorAuth::NoDisponible);
 
         // Assert
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(body.0.name, "auth.unavailable");
+        assert_eq!(body.0.name, "auth.no_disponible");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 {% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 {% for import in vo_imports %}use {{ import }};
 {% endfor %}
 use crate::domain::{{ snake }}::{
@@ -20,7 +20,7 @@ pub struct Create{{ pascal }}UseCaseImpl {
 impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
     async fn execute(&self, params: Create{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
         tracing::info!("create_{{ snake }}: start");
-        let failed = |e: &RepositoryError| tracing::error!(error = %e, "create_{{ snake }}: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "create_{{ snake }}: repository failed");
 {% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
 {% endfor %}        let entity = {{ pascal }}::new({{ pascal }}Props {
 {% for f in fields %}            {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
@@ -39,7 +39,7 @@ mod tests {
     use super::*;
 {% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
 {% endif %}    use crate::domain::{{ snake }}::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
@@ -70,14 +70,14 @@ mod tests {
         assert!(recorded.committed);
         assert_eq!(recorded.saved.len(), 1);
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "{{ snake }}_created");
-        assert_eq!(recorded.events[0].aggregate_id(), entity.id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "{{ snake }}_created");
+        assert_eq!(recorded.events[0].id_agregado(), entity.id.value());
     }
 
     #[tokio::test]
     async fn should_not_commit_when_the_store_rejects_a_duplicate() {
         // Arrange
-        let uow_factory = RecordingUnitOfWorkFactory::failing_at(FailAt::Save, RepositoryError::Duplicate);
+        let uow_factory = RecordingUnitOfWorkFactory::failing_at(FailAt::Save, ErrorRepositorio::Duplicado);
         let use_case = Create{{ pascal }}UseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
         };
@@ -102,7 +102,7 @@ mod tests {
         // Arrange: the store found no {{ r.ref_target }} with that id.
         let uow_factory = RecordingUnitOfWorkFactory::failing_at(
             FailAt::Save,
-            RepositoryError::MissingReference("{{ r.name }}"),
+            ErrorRepositorio::ReferenciaInexistente("{{ r.name }}"),
         );
         let use_case = Create{{ pascal }}UseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -127,7 +127,7 @@ mod tests {
     #[tokio::test]
     async fn should_return_repository_error_when_the_commit_fails() {
         // Arrange
-        let uow_factory = RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, RepositoryError::Unavailable);
+        let uow_factory = RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, ErrorRepositorio::NoDisponible);
         let use_case = Create{{ pascal }}UseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
         };

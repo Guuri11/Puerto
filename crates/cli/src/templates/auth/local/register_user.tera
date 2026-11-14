@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::auth::{CredentialStore, PasswordHasher};
+use puerto_nucleo::auth::{AlmacenCredenciales, HasherContrasena};
 
 use crate::domain::user::{
     errors::UserError,
@@ -19,8 +19,8 @@ pub const MIN_PASSWORD_LENGTH: usize = 12;
 
 pub struct RegisterUserUseCaseImpl {
     pub users: Arc<dyn UserRepositoryTrait>,
-    pub credentials: Arc<dyn CredentialStore>,
-    pub hasher: Arc<dyn PasswordHasher>,
+    pub credentials: Arc<dyn AlmacenCredenciales>,
+    pub hasher: Arc<dyn HasherContrasena>,
 }
 
 #[async_trait]
@@ -42,7 +42,7 @@ impl RegisterUserUseCaseTrait for RegisterUserUseCaseImpl {
             Some(existing) => {
                 if self
                     .credentials
-                    .password_hash(existing.id.value())
+                    .hash_contrasena(existing.id.value())
                     .await?
                     .is_some()
                 {
@@ -57,7 +57,7 @@ impl RegisterUserUseCaseTrait for RegisterUserUseCaseImpl {
             }
         };
         self.credentials
-            .set_password_hash(user.id.value(), &hash)
+            .guardar_hash_contrasena(user.id.value(), &hash)
             .await?;
         tracing::info!(id = %user.id, "register_user: done");
         Ok(user)
@@ -66,17 +66,17 @@ impl RegisterUserUseCaseTrait for RegisterUserUseCaseImpl {
 
 #[cfg(test)]
 mod tests {
-    use puerto_core::RepositoryError;
-    use puerto_core::auth::HashError;
-    use puerto_core::auth::mocks::{MockCredentialStore, MockPasswordHasher};
+    use puerto_nucleo::ErrorRepositorio;
+    use puerto_nucleo::auth::ErrorHash;
+    use puerto_nucleo::auth::dobles::{MockAlmacenCredenciales, MockHasherContrasena};
 
     use super::*;
     use crate::domain::user::repository::mocks::MockUserRepository;
 
     const PASSWORD: &str = "correct horse battery";
 
-    fn hasher() -> MockPasswordHasher {
-        let mut hasher = MockPasswordHasher::new();
+    fn hasher() -> MockHasherContrasena {
+        let mut hasher = MockHasherContrasena::new();
         hasher
             .expect_hash()
             .returning(|password| Ok(format!("hashed:{password}")));
@@ -85,8 +85,8 @@ mod tests {
 
     fn use_case(
         users: MockUserRepository,
-        credentials: MockCredentialStore,
-        hasher: MockPasswordHasher,
+        credentials: MockAlmacenCredenciales,
+        hasher: MockHasherContrasena,
     ) -> RegisterUserUseCaseImpl {
         RegisterUserUseCaseImpl {
             users: Arc::new(users),
@@ -112,9 +112,9 @@ mod tests {
             .withf(|issuer, subject| issuer == LOCAL_ISSUER && subject == "ada@example.com")
             .returning(|_, _| Ok(None));
         users.expect_save().times(1).returning(|_| Ok(()));
-        let mut credentials = MockCredentialStore::new();
+        let mut credentials = MockAlmacenCredenciales::new();
         credentials
-            .expect_set_password_hash()
+            .expect_guardar_hash_contrasena()
             .withf(|_, hash| hash == "hashed:correct horse battery")
             .times(1)
             .returning(|_, _| Ok(()));
@@ -135,8 +135,8 @@ mod tests {
         // Arrange: no store is touched.
         let use_case = use_case(
             MockUserRepository::new(),
-            MockCredentialStore::new(),
-            MockPasswordHasher::new(),
+            MockAlmacenCredenciales::new(),
+            MockHasherContrasena::new(),
         );
 
         // Act
@@ -154,8 +154,8 @@ mod tests {
         // Act
         let result = use_case(
             MockUserRepository::new(),
-            MockCredentialStore::new(),
-            MockPasswordHasher::new(),
+            MockAlmacenCredenciales::new(),
+            MockHasherContrasena::new(),
         )
         .execute(params("ada", PASSWORD))
         .await;
@@ -175,11 +175,11 @@ mod tests {
             .expect_find_by_subject()
             .returning(|_, _| Ok(Some(User::register("ada@example.com", None).expect("valid"))));
         users.expect_save().never();
-        let mut credentials = MockCredentialStore::new();
+        let mut credentials = MockAlmacenCredenciales::new();
         credentials
-            .expect_password_hash()
+            .expect_hash_contrasena()
             .returning(|_| Ok(Some("hashed:theirs".into())));
-        credentials.expect_set_password_hash().never();
+        credentials.expect_guardar_hash_contrasena().never();
 
         // Act
         let result = use_case(users, credentials, hasher())
@@ -200,10 +200,10 @@ mod tests {
             .expect_find_by_subject()
             .returning(move |_, _| Ok(Some(orphan.clone())));
         users.expect_save().never();
-        let mut credentials = MockCredentialStore::new();
-        credentials.expect_password_hash().returning(|_| Ok(None));
+        let mut credentials = MockAlmacenCredenciales::new();
+        credentials.expect_hash_contrasena().returning(|_| Ok(None));
         credentials
-            .expect_set_password_hash()
+            .expect_guardar_hash_contrasena()
             .withf(move |user_id, _| *user_id == orphan_id.value())
             .times(1)
             .returning(|_, _| Ok(()));
@@ -220,13 +220,13 @@ mod tests {
     #[tokio::test]
     async fn should_write_nothing_when_the_password_cannot_be_hashed() {
         // Arrange
-        let mut hasher = MockPasswordHasher::new();
-        hasher.expect_hash().returning(|_| Err(HashError));
+        let mut hasher = MockHasherContrasena::new();
+        hasher.expect_hash().returning(|_| Err(ErrorHash));
         let mut users = MockUserRepository::new();
         users.expect_save().never();
 
         // Act
-        let result = use_case(users, MockCredentialStore::new(), hasher)
+        let result = use_case(users, MockAlmacenCredenciales::new(), hasher)
             .execute(params("ada@example.com", PASSWORD))
             .await;
 
@@ -240,10 +240,10 @@ mod tests {
         let mut users = MockUserRepository::new();
         users
             .expect_find_by_subject()
-            .returning(|_, _| Err(RepositoryError::Unavailable));
+            .returning(|_, _| Err(ErrorRepositorio::NoDisponible));
 
         // Act
-        let result = use_case(users, MockCredentialStore::new(), hasher())
+        let result = use_case(users, MockAlmacenCredenciales::new(), hasher())
             .execute(params("ada@example.com", PASSWORD))
             .await;
 

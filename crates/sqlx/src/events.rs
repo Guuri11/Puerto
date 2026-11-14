@@ -13,8 +13,8 @@ pub use outbox::{PgOutbox, RELAY_LOCK_KEY};
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use puerto_core::events::transport::TransportError;
-use puerto_core::events::{EnvelopeParts, EventEnvelope};
+use puerto_nucleo::eventos::transporte::ErrorTransporte;
+use puerto_nucleo::eventos::{PartesSobre, SobreEvento};
 use serde_json::Value;
 use sqlx::Row;
 use sqlx::postgres::PgRow;
@@ -54,45 +54,45 @@ impl OutboxRow {
     }
 }
 
-impl TryFrom<OutboxRow> for EventEnvelope {
-    type Error = TransportError;
+impl TryFrom<OutboxRow> for SobreEvento {
+    type Error = ErrorTransporte;
 
     /// A schema version outside `u16`, or headers that are not a string map, are rows nobody
     /// wrote through a unit of work.
     fn try_from(row: OutboxRow) -> Result<Self, Self::Error> {
         let schema_version =
-            u16::try_from(row.schema_version).map_err(|_| TransportError::InvalidData)?;
+            u16::try_from(row.schema_version).map_err(|_| ErrorTransporte::DatosInvalidos)?;
         let headers: BTreeMap<String, String> =
-            serde_json::from_value(row.headers).map_err(|_| TransportError::InvalidData)?;
-        Ok(EventEnvelope::from_parts(EnvelopeParts {
+            serde_json::from_value(row.headers).map_err(|_| ErrorTransporte::DatosInvalidos)?;
+        Ok(SobreEvento::from_partes(PartesSobre {
             id: row.id,
-            event_type: row.event_type,
-            aggregate_type: row.aggregate_type,
-            aggregate_id: row.aggregate_id,
-            schema_version,
-            occurred_at: row.occurred_at,
+            tipo_evento: row.event_type,
+            tipo_agregado: row.aggregate_type,
+            id_agregado: row.aggregate_id,
+            version_esquema: schema_version,
+            ocurrido_en: row.occurred_at,
             payload: row.payload,
-            headers,
+            cabeceras: headers,
         }))
     }
 }
 
 /// Reads one row as an envelope, logging why it could not.
-fn envelope_from_pg(row: &PgRow, context: &str) -> Result<EventEnvelope, TransportError> {
+fn envelope_from_pg(row: &PgRow, context: &str) -> Result<SobreEvento, ErrorTransporte> {
     let row = OutboxRow::from_pg(row).map_err(|err| {
         tracing::error!(error = %err, "{context}: unreadable outbox row");
-        TransportError::InvalidData
+        ErrorTransporte::DatosInvalidos
     })?;
     let id = row.id;
-    EventEnvelope::try_from(row).inspect_err(|_| {
+    SobreEvento::try_from(row).inspect_err(|_| {
         tracing::error!(%id, "{context}: outbox row is not an envelope");
     })
 }
 
-fn unavailable(context: &str) -> impl FnOnce(sqlx::Error) -> TransportError + '_ {
+fn unavailable(context: &str) -> impl FnOnce(sqlx::Error) -> ErrorTransporte + '_ {
     move |err| {
         tracing::error!(error = %err, "{context}: database failed");
-        TransportError::Unavailable
+        ErrorTransporte::NoDisponible
     }
 }
 
@@ -119,20 +119,20 @@ mod tests {
     fn should_read_every_column_when_the_row_is_an_envelope() {
         let row = row();
 
-        let envelope = EventEnvelope::try_from(row.clone());
+        let envelope = SobreEvento::try_from(row.clone());
 
         let Ok(envelope) = envelope else {
             panic!("rejected a valid row: {envelope:?}");
         };
         assert_eq!(envelope.id, row.id);
-        assert_eq!(envelope.aggregate_type, "product");
-        assert_eq!(envelope.aggregate_id, row.aggregate_id);
-        assert_eq!(envelope.event_type, "product_created");
-        assert_eq!(envelope.schema_version, 1);
+        assert_eq!(envelope.tipo_agregado, "product");
+        assert_eq!(envelope.id_agregado, row.aggregate_id);
+        assert_eq!(envelope.tipo_evento, "product_created");
+        assert_eq!(envelope.version_esquema, 1);
         assert_eq!(envelope.payload, row.payload);
-        assert_eq!(envelope.occurred_at, row.occurred_at);
+        assert_eq!(envelope.ocurrido_en, row.occurred_at);
         assert_eq!(
-            envelope.headers,
+            envelope.cabeceras,
             BTreeMap::from([("correlation_id".to_string(), "req-1".to_string())])
         );
     }
@@ -145,8 +145,8 @@ mod tests {
                 ..row()
             };
             assert_eq!(
-                EventEnvelope::try_from(row),
-                Err(TransportError::InvalidData)
+                SobreEvento::try_from(row),
+                Err(ErrorTransporte::DatosInvalidos)
             );
         }
     }
@@ -158,7 +158,7 @@ mod tests {
             ..row()
         };
         assert_eq!(
-            EventEnvelope::try_from(row).map(|e| e.schema_version),
+            SobreEvento::try_from(row).map(|e| e.version_esquema),
             Ok(u16::MAX)
         );
     }
@@ -170,8 +170,8 @@ mod tests {
             ..row()
         };
         assert_eq!(
-            EventEnvelope::try_from(row),
-            Err(TransportError::InvalidData)
+            SobreEvento::try_from(row),
+            Err(ErrorTransporte::DatosInvalidos)
         );
     }
 }

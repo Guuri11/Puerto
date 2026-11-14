@@ -5,13 +5,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
-use puerto_core::events::delivery::Delivery;
-use puerto_core::events::transport::{
-    Claimed, DeadLetterRecord, DeadLetterSink, EventPublisher, EventSubscription, Outbox,
-    TransportError,
+use puerto_nucleo::eventos::entrega::Entrega;
+use puerto_nucleo::eventos::transporte::{
+    DestinoDescartados, ErrorTransporte, Outbox, PublicadorEventos, RegistroDescartado, Reservado,
+    SuscripcionEventos,
 };
-use puerto_core::events::{
-    DomainEvent, EventEnvelope, EventHandler, HandlerOutcome, REASON_PAYLOAD_INVALID,
+use puerto_nucleo::eventos::{
+    EventoDominio, MOTIVO_PAYLOAD_INVALIDO, ManejadorEvento, ResultadoManejo, SobreEvento,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -24,17 +24,17 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 struct Happened(&'static str, Uuid);
 
-impl DomainEvent for Happened {
-    fn event_type(&self) -> &'static str {
+impl EventoDominio for Happened {
+    fn tipo_evento(&self) -> &'static str {
         self.0
     }
-    fn aggregate_type(&self) -> &'static str {
+    fn tipo_agregado(&self) -> &'static str {
         "product"
     }
-    fn aggregate_id(&self) -> Uuid {
+    fn id_agregado(&self) -> Uuid {
         self.1
     }
-    fn schema_version(&self) -> u16 {
+    fn version_esquema(&self) -> u16 {
         1
     }
     fn payload(&self) -> Value {
@@ -42,13 +42,13 @@ impl DomainEvent for Happened {
     }
 }
 
-pub fn envelope(event_type: &'static str) -> EventEnvelope {
-    EventEnvelope::new(&Happened(event_type, Uuid::now_v7()))
+pub fn envelope(event_type: &'static str) -> SobreEvento {
+    SobreEvento::new(&Happened(event_type, Uuid::now_v7()))
 }
 
 #[derive(Default)]
 struct OutboxState {
-    rows: Vec<(EventEnvelope, bool)>,
+    rows: Vec<(SobreEvento, bool)>,
     marked: Vec<Uuid>,
     mark_calls: usize,
     not_leading: bool,
@@ -59,7 +59,7 @@ struct OutboxState {
 pub struct FakeOutbox(Arc<Mutex<OutboxState>>);
 
 impl FakeOutbox {
-    pub fn with(events: &[EventEnvelope]) -> Self {
+    pub fn with(events: &[SobreEvento]) -> Self {
         let outbox = Self::default();
         lock(&outbox.0).rows = events.iter().cloned().map(|e| (e, false)).collect();
         outbox
@@ -95,14 +95,14 @@ impl FakeOutbox {
 
 #[async_trait]
 impl Outbox for FakeOutbox {
-    async fn try_lead(&self) -> Result<bool, TransportError> {
+    async fn intentar_liderar(&self) -> Result<bool, ErrorTransporte> {
         Ok(!lock(&self.0).not_leading)
     }
 
-    async fn fetch_unpublished(&self, limit: u32) -> Result<Vec<EventEnvelope>, TransportError> {
+    async fn buscar_sin_publicar(&self, limit: u32) -> Result<Vec<SobreEvento>, ErrorTransporte> {
         let state = lock(&self.0);
         if state.unreadable {
-            return Err(TransportError::Unavailable);
+            return Err(ErrorTransporte::NoDisponible);
         }
         Ok(state
             .rows
@@ -113,7 +113,7 @@ impl Outbox for FakeOutbox {
             .collect())
     }
 
-    async fn mark_published(&self, ids: &[Uuid]) -> Result<(), TransportError> {
+    async fn marcar_publicados(&self, ids: &[Uuid]) -> Result<(), ErrorTransporte> {
         let mut state = lock(&self.0);
         state.mark_calls += 1;
         state.marked.extend_from_slice(ids);
@@ -147,11 +147,11 @@ impl FakePublisher {
 }
 
 #[async_trait]
-impl EventPublisher for FakePublisher {
-    async fn publish(&self, event: &EventEnvelope) -> Result<(), TransportError> {
+impl PublicadorEventos for FakePublisher {
+    async fn publicar(&self, event: &SobreEvento) -> Result<(), ErrorTransporte> {
         let mut state = lock(&self.0);
         if state.1.len() >= state.0 {
-            return Err(TransportError::Unavailable);
+            return Err(ErrorTransporte::NoDisponible);
         }
         state.1.push(event.id);
         Ok(())
@@ -160,8 +160,8 @@ impl EventPublisher for FakePublisher {
 
 #[derive(Default)]
 struct SubscriptionState {
-    due: Vec<Claimed>,
-    settled: Vec<(Uuid, Delivery)>,
+    due: Vec<Reservado>,
+    settled: Vec<(Uuid, Entrega)>,
     settle_calls: usize,
     failing_settle: bool,
     watched: Option<FakeSink>,
@@ -173,7 +173,7 @@ struct SubscriptionState {
 pub struct FakeSubscription(Arc<Mutex<SubscriptionState>>);
 
 impl FakeSubscription {
-    pub fn with(due: Vec<Claimed>) -> Self {
+    pub fn with(due: Vec<Reservado>) -> Self {
         let subscription = Self::default();
         lock(&subscription.0).due = due;
         subscription
@@ -196,7 +196,7 @@ impl FakeSubscription {
         self
     }
 
-    pub fn settled(&self) -> Vec<(Uuid, Delivery)> {
+    pub fn settled(&self) -> Vec<(Uuid, Entrega)> {
         lock(&self.0).settled.clone()
     }
 
@@ -210,43 +210,43 @@ impl FakeSubscription {
 }
 
 #[async_trait]
-impl EventSubscription for FakeSubscription {
-    fn consumer(&self) -> &str {
+impl SuscripcionEventos for FakeSubscription {
+    fn consumidor(&self) -> &str {
         "notify_new_product"
     }
 
-    fn max_batch(&self) -> u32 {
+    fn lote_maximo(&self) -> u32 {
         lock(&self.0).max_batch.unwrap_or(u32::MAX)
     }
 
-    async fn next_batch(&mut self, max: u32) -> Result<Vec<Claimed>, TransportError> {
+    async fn siguiente_lote(&mut self, max: u32) -> Result<Vec<Reservado>, ErrorTransporte> {
         let mut state = lock(&self.0);
         let take = state.due.len().min(max as usize);
         Ok(state.due.drain(..take).collect())
     }
 
-    async fn settle(
+    async fn resolver(
         &mut self,
-        claimed: &Claimed,
-        delivery: &Delivery,
-    ) -> Result<(), TransportError> {
+        claimed: &Reservado,
+        delivery: &Entrega,
+    ) -> Result<(), ErrorTransporte> {
         let mut state = lock(&self.0);
         state.settle_calls += 1;
         if state.failing_settle {
-            return Err(TransportError::Unavailable);
+            return Err(ErrorTransporte::NoDisponible);
         }
         if let Some(sink) = &state.watched {
             let seen = sink.records().len();
             state.dead_letters_at_settle.push(seen);
         }
-        state.settled.push((claimed.envelope.id, delivery.clone()));
+        state.settled.push((claimed.sobre.id, delivery.clone()));
         Ok(())
     }
 }
 
 #[derive(Clone, Default)]
 pub struct FakeSink {
-    records: Arc<Mutex<Vec<DeadLetterRecord>>>,
+    records: Arc<Mutex<Vec<RegistroDescartado>>>,
     failing: bool,
 }
 
@@ -258,16 +258,16 @@ impl FakeSink {
         }
     }
 
-    pub fn records(&self) -> Vec<DeadLetterRecord> {
+    pub fn records(&self) -> Vec<RegistroDescartado> {
         lock(&self.records).clone()
     }
 }
 
 #[async_trait]
-impl DeadLetterSink for FakeSink {
-    async fn record(&self, record: &DeadLetterRecord) -> Result<(), TransportError> {
+impl DestinoDescartados for FakeSink {
+    async fn registrar(&self, record: &RegistroDescartado) -> Result<(), ErrorTransporte> {
         if self.failing {
-            return Err(TransportError::Unavailable);
+            return Err(ErrorTransporte::NoDisponible);
         }
         lock(&self.records).push(record.clone());
         Ok(())
@@ -285,20 +285,20 @@ pub enum Scripted {
 }
 
 #[async_trait]
-impl EventHandler for Scripted {
-    async fn handle(&self, event: &EventEnvelope) -> HandlerOutcome {
+impl ManejadorEvento for Scripted {
+    async fn manejar(&self, event: &SobreEvento) -> ResultadoManejo {
         match self {
-            Self::Ack => HandlerOutcome::Ack,
-            Self::Retry => HandlerOutcome::Retry,
-            Self::DecodeAs => match event.decode::<u64>() {
-                Ok(_) => HandlerOutcome::Ack,
-                Err(err) => HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),
+            Self::Ack => ResultadoManejo::Ack,
+            Self::Retry => ResultadoManejo::Reintentar,
+            Self::DecodeAs => match event.decodificar::<u64>() {
+                Ok(_) => ResultadoManejo::Ack,
+                Err(err) => ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle),
             },
             Self::PanicOnce(panicked) => {
                 if !panicked.swap(true, Ordering::SeqCst) {
                     panic!("handler bug");
                 }
-                HandlerOutcome::Ack
+                ResultadoManejo::Ack
             }
         }
     }

@@ -1,7 +1,7 @@
 //! The `local` feature (ADR-0021 § 2): argon2id password hashes behind `PasswordHasher`.
 
 use puerto_auth::local::{Argon2Hasher, hash_password, verify_password};
-use puerto_core::auth::PasswordHasher;
+use puerto_nucleo::auth::HasherContrasena;
 
 #[test]
 fn should_accept_the_password_a_hash_was_made_from() {
@@ -34,14 +34,14 @@ fn should_refuse_any_password_when_the_stored_hash_is_not_one() {
 #[tokio::test]
 async fn should_check_a_password_through_the_port() {
     // Arrange
-    let hasher: &dyn PasswordHasher = &Argon2Hasher::new();
+    let hasher: &dyn HasherContrasena = &Argon2Hasher::new();
     let hash = hasher.hash("correct horse battery").await.expect("hashed");
 
     // Act
     let right = hasher
-        .verify("correct horse battery", Some(hash.clone()))
+        .verificar("correct horse battery", Some(hash.clone()))
         .await;
-    let wrong = hasher.verify("tr0ub4dor&3 guess", Some(hash)).await;
+    let wrong = hasher.verificar("tr0ub4dor&3 guess", Some(hash)).await;
 
     // Assert
     assert!(right);
@@ -54,14 +54,14 @@ async fn should_refuse_without_a_hash_after_doing_the_same_work() {
     let hasher = Argon2Hasher::new();
     let hash = hasher.hash("correct horse battery").await.expect("hashed");
     // Warm the fixed hash up: its first use computes it.
-    assert!(!hasher.verify("x", None).await);
+    assert!(!hasher.verificar("x", None).await);
 
     // Act
     let started = std::time::Instant::now();
-    let unknown = hasher.verify("correct horse battery", None).await;
+    let unknown = hasher.verificar("correct horse battery", None).await;
     let without = started.elapsed();
     let started = std::time::Instant::now();
-    let _ = hasher.verify("wrong password!", Some(hash)).await;
+    let _ = hasher.verificar("wrong password!", Some(hash)).await;
     let with = started.elapsed();
 
     // Assert: an unknown email is refused, and not in a fraction of a real check's time.

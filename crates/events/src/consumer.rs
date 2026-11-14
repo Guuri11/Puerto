@@ -5,11 +5,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use puerto_core::events::delivery::{DEFAULT_MAX_DELIVERIES, Delivery, backoff_for, decide};
-use puerto_core::events::transport::{
-    Claimed, DeadLetterRecord, DeadLetterSink, EventSubscription, TransportError,
+use puerto_nucleo::eventos::entrega::{
+    ENTREGAS_MAXIMAS_POR_DEFECTO, Entrega, decidir, espera_para,
 };
-use puerto_core::events::{EventHandler, HandlerOutcome};
+use puerto_nucleo::eventos::transporte::{
+    DestinoDescartados, ErrorTransporte, RegistroDescartado, Reservado, SuscripcionEventos,
+};
+use puerto_nucleo::eventos::{ManejadorEvento, ResultadoManejo};
 
 use crate::driver::{Pass, Progress};
 
@@ -26,27 +28,27 @@ pub struct Consumer<S> {
 /// Everything but the subscription, which is only `Send`: what a delivery needs while it waits
 /// on the handler and the sink.
 struct Policy {
-    handler: Arc<dyn EventHandler>,
-    dead_letters: Arc<dyn DeadLetterSink>,
+    handler: Arc<dyn ManejadorEvento>,
+    dead_letters: Arc<dyn DestinoDescartados>,
     max_deliveries: u32,
     max_retry_delay: Option<Duration>,
 }
 
-impl<S: EventSubscription> Consumer<S> {
+impl<S: SuscripcionEventos> Consumer<S> {
     pub fn new(
         subscription: S,
-        handler: impl EventHandler + 'static,
-        dead_letters: Arc<dyn DeadLetterSink>,
+        handler: impl ManejadorEvento + 'static,
+        dead_letters: Arc<dyn DestinoDescartados>,
     ) -> Self {
         Self {
             batch_size: DEFAULT_CONSUMER_BATCH_SIZE
-                .min(subscription.max_batch())
+                .min(subscription.lote_maximo())
                 .max(1),
             subscription,
             policy: Policy {
                 handler: Arc::new(handler),
                 dead_letters,
-                max_deliveries: DEFAULT_MAX_DELIVERIES,
+                max_deliveries: ENTREGAS_MAXIMAS_POR_DEFECTO,
                 max_retry_delay: None,
             },
         }
@@ -54,7 +56,7 @@ impl<S: EventSubscription> Consumer<S> {
 
     /// Never more than the subscription hands out per batch (`max_batch`).
     pub fn with_batch_size(mut self, batch_size: u32) -> Self {
-        self.batch_size = batch_size.max(1).min(self.subscription.max_batch());
+        self.batch_size = batch_size.max(1).min(self.subscription.lote_maximo());
         self
     }
 
@@ -73,13 +75,13 @@ impl<S: EventSubscription> Consumer<S> {
 
     /// One batch. A claim left unsettled (the pass failed before it) is delivered again once its
     /// lease runs out: at-least-once, never lost.
-    pub async fn consume_once(&mut self) -> Result<Progress, TransportError> {
-        let batch = self.subscription.next_batch(self.batch_size).await?;
+    pub async fn consume_once(&mut self) -> Result<Progress, ErrorTransporte> {
+        let batch = self.subscription.siguiente_lote(self.batch_size).await?;
         let full = batch.len() as u64 >= u64::from(self.batch_size);
-        let consumer = self.subscription.consumer().to_string();
+        let consumer = self.subscription.consumidor().to_string();
         for claimed in &batch {
             let delivery = self.policy.deliver(&consumer, claimed).await;
-            self.subscription.settle(claimed, &delivery).await?;
+            self.subscription.resolver(claimed, &delivery).await?;
         }
         Ok(if full { Progress::More } else { Progress::Idle })
     }
@@ -88,31 +90,31 @@ impl<S: EventSubscription> Consumer<S> {
 impl Policy {
     /// What to settle `claimed` with. A dead letter is recorded before it is answered; when it
     /// cannot be, the delivery is retried instead, so nothing is retired without one.
-    async fn deliver(&self, consumer: &str, claimed: &Claimed) -> Delivery {
-        let event = &claimed.envelope;
+    async fn deliver(&self, consumer: &str, claimed: &Reservado) -> Entrega {
+        let event = &claimed.sobre;
         let outcome = self.handle(consumer, claimed).await;
-        match decide(outcome, claimed.attempt, self.max_deliveries) {
-            Delivery::Ack => Delivery::Ack,
-            Delivery::Retry { delay } => {
-                tracing::warn!(consumer, event_id = %event.id, attempt = claimed.attempt, "consumer: retry");
-                Delivery::Retry {
-                    delay: self.cap(delay),
+        match decidir(outcome, claimed.intento, self.max_deliveries) {
+            Entrega::Ack => Entrega::Ack,
+            Entrega::Reintentar { espera } => {
+                tracing::warn!(consumer, event_id = %event.id, attempt = claimed.intento, "consumer: retry");
+                Entrega::Reintentar {
+                    espera: self.cap(espera),
                 }
             }
-            Delivery::DeadLetter { reason, detail } => {
-                let record = DeadLetterRecord::for_event(
+            Entrega::Descartar { motivo, detalle } => {
+                let record = RegistroDescartado::para_evento(
                     consumer,
                     event,
-                    claimed.attempt,
-                    reason,
-                    detail.clone(),
+                    claimed.intento,
+                    motivo,
+                    detalle.clone(),
                 );
-                match self.dead_letters.record(&record).await {
-                    Ok(()) => Delivery::DeadLetter { reason, detail },
+                match self.dead_letters.registrar(&record).await {
+                    Ok(()) => Entrega::Descartar { motivo, detalle },
                     Err(err) => {
                         tracing::error!(consumer, event_id = %event.id, error = %err, "consumer: dead letter not recorded, retrying");
-                        Delivery::Retry {
-                            delay: self.cap(backoff_for(claimed.attempt)),
+                        Entrega::Reintentar {
+                            espera: self.cap(espera_para(claimed.intento)),
                         }
                     }
                 }
@@ -122,19 +124,19 @@ impl Policy {
 
     /// The handler's answer. It runs on its own task, so a panic is caught: it is a failure that
     /// may pass (`Retry`), and the loop goes on.
-    async fn handle(&self, consumer: &str, claimed: &Claimed) -> HandlerOutcome {
+    async fn handle(&self, consumer: &str, claimed: &Reservado) -> ResultadoManejo {
         let handler = Arc::clone(&self.handler);
-        let event = claimed.envelope.clone();
-        match tokio::spawn(async move { handler.handle(&event).await }).await {
+        let event = claimed.sobre.clone();
+        match tokio::spawn(async move { handler.manejar(&event).await }).await {
             Ok(outcome) => outcome,
             Err(err) => {
                 tracing::error!(
                     consumer,
-                    event_id = %claimed.envelope.id,
+                    event_id = %claimed.sobre.id,
                     error = %err,
                     "consumer: handler panicked"
                 );
-                HandlerOutcome::Retry
+                ResultadoManejo::Reintentar
             }
         }
     }
@@ -145,12 +147,12 @@ impl Policy {
 }
 
 #[async_trait]
-impl<S: EventSubscription + 'static> Pass for Consumer<S> {
+impl<S: SuscripcionEventos + 'static> Pass for Consumer<S> {
     fn name(&self) -> String {
-        format!("consumer {}", self.subscription.consumer())
+        format!("consumer {}", self.subscription.consumidor())
     }
 
-    async fn pass(&mut self) -> Result<Progress, TransportError> {
+    async fn pass(&mut self) -> Result<Progress, ErrorTransporte> {
         self.consume_once().await
     }
 }
@@ -159,10 +161,10 @@ impl<S: EventSubscription + 'static> Pass for Consumer<S> {
 mod tests {
     use super::*;
     use crate::test_support::{FakeSink, FakeSubscription, Scripted, envelope};
-    use puerto_core::events::{REASON_MAX_DELIVERIES_EXCEEDED, REASON_PAYLOAD_INVALID};
+    use puerto_nucleo::eventos::{MOTIVO_ENTREGAS_MAXIMAS_SUPERADAS, MOTIVO_PAYLOAD_INVALIDO};
 
     fn consumer(
-        due: Vec<Claimed>,
+        due: Vec<Reservado>,
         handler: Scripted,
         sink: &FakeSink,
     ) -> (Consumer<FakeSubscription>, FakeSubscription) {
@@ -174,7 +176,7 @@ mod tests {
     #[tokio::test]
     async fn should_settle_ack_when_the_handler_acks() {
         // Arrange
-        let claimed = Claimed::new(envelope("product_created"), 1);
+        let claimed = Reservado::new(envelope("product_created"), 1);
         let sink = FakeSink::default();
         let (mut consumer, subscription) = consumer(vec![claimed.clone()], Scripted::Ack, &sink);
 
@@ -185,7 +187,7 @@ mod tests {
         assert_eq!(result, Ok(Progress::Idle));
         assert_eq!(
             subscription.settled(),
-            vec![(claimed.envelope.id, Delivery::Ack)]
+            vec![(claimed.sobre.id, Entrega::Ack)]
         );
         assert!(sink.records().is_empty());
     }
@@ -193,7 +195,7 @@ mod tests {
     #[tokio::test]
     async fn should_settle_a_retry_with_the_backoff_when_below_the_cap() {
         // Arrange
-        let claimed = Claimed::new(envelope("product_created"), 2);
+        let claimed = Reservado::new(envelope("product_created"), 2);
         let sink = FakeSink::default();
         let (mut consumer, subscription) = consumer(vec![claimed.clone()], Scripted::Retry, &sink);
 
@@ -204,9 +206,9 @@ mod tests {
         assert_eq!(
             subscription.settled(),
             vec![(
-                claimed.envelope.id,
-                Delivery::Retry {
-                    delay: Duration::from_secs(5)
+                claimed.sobre.id,
+                Entrega::Reintentar {
+                    espera: Duration::from_secs(5)
                 }
             )]
         );
@@ -216,7 +218,7 @@ mod tests {
     #[tokio::test]
     async fn should_dead_letter_when_the_retry_reaches_the_cap() {
         // Arrange
-        let claimed = Claimed::new(envelope("product_created"), 5);
+        let claimed = Reservado::new(envelope("product_created"), 5);
         let sink = FakeSink::default();
         let (mut consumer, subscription) = consumer(vec![claimed.clone()], Scripted::Retry, &sink);
 
@@ -226,14 +228,14 @@ mod tests {
         // Assert
         let records = sink.records();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].event_id, Some(claimed.envelope.id));
-        assert_eq!(records[0].consumer, "notify_new_product");
-        assert_eq!(records[0].attempts, 5);
-        assert_eq!(records[0].reason, REASON_MAX_DELIVERIES_EXCEEDED);
+        assert_eq!(records[0].id_evento, Some(claimed.sobre.id));
+        assert_eq!(records[0].consumidor, "notify_new_product");
+        assert_eq!(records[0].intentos, 5);
+        assert_eq!(records[0].motivo, MOTIVO_ENTREGAS_MAXIMAS_SUPERADAS);
         assert!(matches!(
             subscription.settled()[0].1,
-            Delivery::DeadLetter {
-                reason: REASON_MAX_DELIVERIES_EXCEEDED,
+            Entrega::Descartar {
+                motivo: MOTIVO_ENTREGAS_MAXIMAS_SUPERADAS,
                 ..
             }
         ));
@@ -242,7 +244,7 @@ mod tests {
     #[tokio::test]
     async fn should_record_the_dead_letter_before_settling_when_the_handler_gives_up() {
         // Arrange
-        let claimed = Claimed::new(envelope("product_created"), 1);
+        let claimed = Reservado::new(envelope("product_created"), 1);
         let sink = FakeSink::default();
         let subscription = FakeSubscription::with(vec![claimed.clone()]).watching(&sink);
         let mut consumer = Consumer::new(
@@ -257,7 +259,7 @@ mod tests {
         // Assert — the payload is not a number: the handler dead-letters it as invalid
         let records = sink.records();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].reason, REASON_PAYLOAD_INVALID);
+        assert_eq!(records[0].motivo, MOTIVO_PAYLOAD_INVALIDO);
         assert_eq!(
             subscription.dead_letters_seen_at_settle(),
             vec![1],
@@ -265,8 +267,8 @@ mod tests {
         );
         assert!(matches!(
             subscription.settled()[0].1,
-            Delivery::DeadLetter {
-                reason: REASON_PAYLOAD_INVALID,
+            Entrega::Descartar {
+                motivo: MOTIVO_PAYLOAD_INVALIDO,
                 ..
             }
         ));
@@ -275,7 +277,7 @@ mod tests {
     #[tokio::test]
     async fn should_retry_instead_of_retiring_when_the_dead_letter_cannot_be_recorded() {
         // Arrange
-        let claimed = Claimed::new(envelope("product_created"), 5);
+        let claimed = Reservado::new(envelope("product_created"), 5);
         let sink = FakeSink::failing();
         let (mut consumer, subscription) = consumer(vec![claimed.clone()], Scripted::Retry, &sink);
 
@@ -286,9 +288,9 @@ mod tests {
         assert_eq!(
             subscription.settled(),
             vec![(
-                claimed.envelope.id,
-                Delivery::Retry {
-                    delay: Duration::from_secs(300)
+                claimed.sobre.id,
+                Entrega::Reintentar {
+                    espera: Duration::from_secs(300)
                 }
             )]
         );
@@ -297,8 +299,8 @@ mod tests {
     #[tokio::test]
     async fn should_treat_a_panic_as_a_retry_and_go_on_when_the_handler_panics() {
         // Arrange
-        let first = Claimed::new(envelope("product_created"), 1);
-        let second = Claimed::new(envelope("product_created"), 1);
+        let first = Reservado::new(envelope("product_created"), 1);
+        let second = Reservado::new(envelope("product_created"), 1);
         let sink = FakeSink::default();
         let (mut consumer, subscription) = consumer(
             vec![first.clone(), second.clone()],
@@ -315,12 +317,12 @@ mod tests {
             subscription.settled(),
             vec![
                 (
-                    first.envelope.id,
-                    Delivery::Retry {
-                        delay: Duration::from_secs(1)
+                    first.sobre.id,
+                    Entrega::Reintentar {
+                        espera: Duration::from_secs(1)
                     }
                 ),
-                (second.envelope.id, Delivery::Ack),
+                (second.sobre.id, Entrega::Ack),
             ]
         );
     }
@@ -328,7 +330,7 @@ mod tests {
     #[tokio::test]
     async fn should_cap_the_retry_delay_when_a_maximum_is_configured() {
         // Arrange
-        let claimed = Claimed::new(envelope("product_created"), 4);
+        let claimed = Reservado::new(envelope("product_created"), 4);
         let sink = FakeSink::default();
         let (consumer, subscription) = consumer(vec![claimed.clone()], Scripted::Retry, &sink);
         let mut consumer = consumer.with_max_retry_delay(Some(Duration::from_millis(10)));
@@ -339,8 +341,8 @@ mod tests {
         // Assert
         assert_eq!(
             subscription.settled()[0].1,
-            Delivery::Retry {
-                delay: Duration::from_millis(10)
+            Entrega::Reintentar {
+                espera: Duration::from_millis(10)
             }
         );
     }
@@ -348,7 +350,7 @@ mod tests {
     #[tokio::test]
     async fn should_dead_letter_earlier_when_fewer_deliveries_are_configured() {
         // Arrange
-        let claimed = Claimed::new(envelope("product_created"), 2);
+        let claimed = Reservado::new(envelope("product_created"), 2);
         let sink = FakeSink::default();
         let (consumer, _) = consumer(vec![claimed], Scripted::Retry, &sink);
         let mut consumer = consumer.with_max_deliveries(2);
@@ -364,7 +366,7 @@ mod tests {
     async fn should_ask_for_more_at_once_when_the_batch_was_full() {
         // Arrange
         let due = (0..3)
-            .map(|_| Claimed::new(envelope("product_created"), 1))
+            .map(|_| Reservado::new(envelope("product_created"), 1))
             .collect();
         let sink = FakeSink::default();
         let (consumer, subscription) = consumer(due, Scripted::Ack, &sink);
@@ -383,7 +385,7 @@ mod tests {
     async fn should_ask_for_more_at_once_when_the_subscription_hands_out_one_claim_at_a_time() {
         // Arrange
         let due = (0..3)
-            .map(|_| Claimed::new(envelope("product_created"), 1))
+            .map(|_| Reservado::new(envelope("product_created"), 1))
             .collect();
         let sink = FakeSink::default();
         let subscription = FakeSubscription::with(due).one_at_a_time();
@@ -413,7 +415,7 @@ mod tests {
     async fn should_stop_the_pass_when_a_claim_cannot_be_settled() {
         // Arrange
         let due = (0..2)
-            .map(|_| Claimed::new(envelope("product_created"), 1))
+            .map(|_| Reservado::new(envelope("product_created"), 1))
             .collect();
         let sink = FakeSink::default();
         let subscription = FakeSubscription::with(due).failing_settle();
@@ -424,7 +426,7 @@ mod tests {
         let result = consumer.consume_once().await;
 
         // Assert
-        assert_eq!(result, Err(TransportError::Unavailable));
+        assert_eq!(result, Err(ErrorTransporte::NoDisponible));
         assert_eq!(subscription.settle_calls(), 1);
     }
 

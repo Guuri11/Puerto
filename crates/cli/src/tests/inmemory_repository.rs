@@ -40,8 +40,8 @@ fn inmemory_repository_skips_deleted_rows_and_pages_like_postgres() {
     let repo = read(&dir, "infrastructure/src/product/repository.rs");
     assert!(repo.contains(".filter(|row| !row.deleted)"));
     assert!(repo.contains("b.created_at"));
-    assert!(repo.contains(".skip(page.offset() as usize)"));
-    assert!(repo.contains(".take(page.limit() as usize)"));
+    assert!(repo.contains(".skip(page.desplazamiento() as usize)"));
+    assert!(repo.contains(".take(page.limite() as usize)"));
 
     cleanup(&dir);
 }
@@ -50,14 +50,14 @@ fn inmemory_repository_skips_deleted_rows_and_pages_like_postgres() {
 fn inmemory_repository_checks_only_the_unique_fields() {
     let plain = scaffold_inmemory_product("inmemory_no_unique", &["name:String"]);
     let repo = read(&plain, "infrastructure/src/product/repository.rs");
-    assert!(!repo.contains("RepositoryError::Duplicate"));
+    assert!(!repo.contains("ErrorRepositorio::Duplicado"));
     cleanup(&plain);
 
     let unique = scaffold_inmemory_product("inmemory_unique", &["name:String", "sku:String!"]);
     let repo = read(&unique, "infrastructure/src/product/repository.rs");
     assert!(repo.contains("&& row.sku == entity.sku"));
     assert!(!repo.contains("row.name == entity.name"));
-    assert!(repo.contains("return Err(RepositoryError::Duplicate);"));
+    assert!(repo.contains("return Err(ErrorRepositorio::Duplicado);"));
     assert!(repo.contains("async fn should_reject_a_duplicate_sku()"));
     cleanup(&unique);
 }

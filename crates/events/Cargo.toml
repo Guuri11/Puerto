@@ -11,7 +11,7 @@ keywords = ["ddd", "clean-architecture", "puerto", "events", "outbox"]
 categories = ["asynchronous"]
 
 [dependencies]
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 puerto-web = { workspace = true }
 async-trait = "0.1"
 poem = "3"

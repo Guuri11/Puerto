@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use puerto_core::EventEnvelope;
-use puerto_core::events::transport::{Outbox, TransportError};
+use puerto_nucleo::SobreEvento;
+use puerto_nucleo::eventos::transporte::{ErrorTransporte, Outbox};
 use sqlx::{PgConnection, PgPool};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -38,7 +38,7 @@ impl PgOutbox {
 
 #[async_trait]
 impl Outbox for PgOutbox {
-    async fn try_lead(&self) -> Result<bool, TransportError> {
+    async fn intentar_liderar(&self) -> Result<bool, ErrorTransporte> {
         let mut leader = self.leader.lock().await;
         if let Some(conn) = leader.as_mut() {
             if sqlx::query("SELECT 1").execute(&mut *conn).await.is_ok() {
@@ -66,7 +66,7 @@ impl Outbox for PgOutbox {
         Ok(leads)
     }
 
-    async fn fetch_unpublished(&self, limit: u32) -> Result<Vec<EventEnvelope>, TransportError> {
+    async fn buscar_sin_publicar(&self, limit: u32) -> Result<Vec<SobreEvento>, ErrorTransporte> {
         let rows = sqlx::query(&format!(
             "SELECT {ENVELOPE_COLUMNS} FROM outbox o \
              WHERE o.published_at IS NULL ORDER BY o.seq LIMIT $1"
@@ -80,7 +80,7 @@ impl Outbox for PgOutbox {
             .collect()
     }
 
-    async fn mark_published(&self, ids: &[Uuid]) -> Result<(), TransportError> {
+    async fn marcar_publicados(&self, ids: &[Uuid]) -> Result<(), ErrorTransporte> {
         sqlx::query(
             "UPDATE outbox SET published_at = now() \
              WHERE id = ANY($1) AND published_at IS NULL",

@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use puerto_core::events::transport::TransportError;
+use puerto_nucleo::eventos::transporte::ErrorTransporte;
 use tokio::sync::watch;
 use tokio::time::Instant;
 
@@ -26,7 +26,7 @@ pub enum Progress {
 #[async_trait]
 pub trait Pass: Send {
     fn name(&self) -> String;
-    async fn pass(&mut self) -> Result<Progress, TransportError>;
+    async fn pass(&mut self) -> Result<Progress, ErrorTransporte>;
 }
 
 /// When a loop last finished a pass that did not fail. Readiness reads it.
@@ -103,7 +103,7 @@ mod tests {
 
     /// Answers the scripted results in turn, then `Idle`, counting its passes.
     struct Script {
-        results: Vec<Result<Progress, TransportError>>,
+        results: Vec<Result<Progress, ErrorTransporte>>,
         passes: Arc<AtomicUsize>,
     }
 
@@ -112,7 +112,7 @@ mod tests {
         fn name(&self) -> String {
             "script".into()
         }
-        async fn pass(&mut self) -> Result<Progress, TransportError> {
+        async fn pass(&mut self) -> Result<Progress, ErrorTransporte> {
             self.passes.fetch_add(1, Ordering::SeqCst);
             if self.results.is_empty() {
                 Ok(Progress::Idle)
@@ -182,7 +182,7 @@ mod tests {
         // Arrange
         let beat = heartbeat();
         let script = Script {
-            results: vec![Err(TransportError::Unavailable)],
+            results: vec![Err(ErrorTransporte::NoDisponible)],
             passes: Arc::new(AtomicUsize::new(0)),
         };
         let (stop, shutdown) = watch::channel(false);

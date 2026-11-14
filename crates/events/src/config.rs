@@ -13,7 +13,7 @@
 
 use std::time::Duration;
 
-use puerto_core::events::delivery::DEFAULT_MAX_DELIVERIES;
+use puerto_nucleo::eventos::entrega::ENTREGAS_MAXIMAS_POR_DEFECTO;
 use puerto_web::ConfigError;
 
 use crate::relay::DEFAULT_RELAY_BATCH_SIZE;
@@ -42,7 +42,7 @@ impl Default for WorkerConfig {
             relay_batch_size: DEFAULT_RELAY_BATCH_SIZE,
             relay_poll_interval: Duration::from_millis(DEFAULT_POLL_INTERVAL_MS),
             consumer_poll_interval: Duration::from_millis(DEFAULT_POLL_INTERVAL_MS),
-            max_deliveries: DEFAULT_MAX_DELIVERIES,
+            max_deliveries: ENTREGAS_MAXIMAS_POR_DEFECTO,
             max_retry_delay: None,
         }
     }

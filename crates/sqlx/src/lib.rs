@@ -30,7 +30,7 @@ pub mod events;
 pub mod mail;
 pub mod uow;
 
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use sqlx::migrate::Migrator;
 use sqlx::postgres::{PgConnectOptions, PgConnection, PgPoolOptions};
 use sqlx::{Connection, PgPool};
@@ -110,7 +110,7 @@ pub async fn ping(pool: &PgPool) -> bool {
 /// The one place that knows Postgres error codes: a driver error, as the repository port speaks it.
 /// The caller logs it first, with its own context. An entity with references converts with
 /// [`map_sqlx_error_with`] instead.
-pub fn map_sqlx_error(err: &sqlx::Error) -> RepositoryError {
+pub fn map_sqlx_error(err: &sqlx::Error) -> ErrorRepositorio {
     map_sqlx_error_with(err, &[])
 }
 
@@ -125,21 +125,21 @@ pub struct ForeignKey {
 /// [`map_sqlx_error`], knowing the entity's foreign keys: a violation of one of them is
 /// [`RepositoryError::MissingReference`] with its field. One the list does not name is
 /// `Unavailable` — nothing can tell the caller which input was wrong.
-pub fn map_sqlx_error_with(err: &sqlx::Error, references: &[ForeignKey]) -> RepositoryError {
+pub fn map_sqlx_error_with(err: &sqlx::Error, references: &[ForeignKey]) -> ErrorRepositorio {
     let Some(db_err) = err.as_database_error() else {
-        return RepositoryError::Unavailable;
+        return ErrorRepositorio::NoDisponible;
     };
     match db_err.code().as_deref() {
         // unique_violation: a `unique` column already taken.
-        Some("23505") => RepositoryError::Duplicate,
+        Some("23505") => ErrorRepositorio::Duplicado,
         // foreign_key_violation: a reference to a row that does not exist.
         Some("23503") => db_err
             .constraint()
             .and_then(|name| references.iter().find(|fk| fk.constraint == name))
-            .map_or(RepositoryError::Unavailable, |fk| {
-                RepositoryError::MissingReference(fk.field)
+            .map_or(ErrorRepositorio::NoDisponible, |fk| {
+                ErrorRepositorio::ReferenciaInexistente(fk.field)
             }),
-        _ => RepositoryError::Unavailable,
+        _ => ErrorRepositorio::NoDisponible,
     }
 }
 
@@ -226,7 +226,7 @@ mod tests {
                 &constraint_error("23503", "orders_reviewer_id_fkey"),
                 ORDER_REFERENCES
             ),
-            RepositoryError::MissingReference("reviewer_id")
+            ErrorRepositorio::ReferenciaInexistente("reviewer_id")
         );
     }
 
@@ -237,7 +237,7 @@ mod tests {
                 &constraint_error("23503", "orders_warehouse_id_fkey"),
                 ORDER_REFERENCES
             ),
-            RepositoryError::Unavailable
+            ErrorRepositorio::NoDisponible
         );
     }
 
@@ -248,7 +248,7 @@ mod tests {
                 &constraint_error("23505", "orders_customer_id_fkey"),
                 ORDER_REFERENCES
             ),
-            RepositoryError::Duplicate
+            ErrorRepositorio::Duplicado
         );
     }
 
@@ -256,7 +256,7 @@ mod tests {
     fn should_map_a_non_database_error_to_unavailable_whatever_the_references() {
         assert_eq!(
             map_sqlx_error_with(&sqlx::Error::PoolTimedOut, ORDER_REFERENCES),
-            RepositoryError::Unavailable
+            ErrorRepositorio::NoDisponible
         );
     }
 
@@ -264,7 +264,7 @@ mod tests {
     fn should_map_a_unique_violation_to_duplicate() {
         assert_eq!(
             map_sqlx_error(&database_error("23505")),
-            RepositoryError::Duplicate
+            ErrorRepositorio::Duplicado
         );
     }
 
@@ -273,7 +273,7 @@ mod tests {
         // 23503 = foreign_key_violation: a constraint, but not a taken unique value.
         assert_eq!(
             map_sqlx_error(&database_error("23503")),
-            RepositoryError::Unavailable
+            ErrorRepositorio::NoDisponible
         );
     }
 
@@ -281,7 +281,7 @@ mod tests {
     fn should_map_a_non_database_error_to_unavailable() {
         assert_eq!(
             map_sqlx_error(&sqlx::Error::PoolTimedOut),
-            RepositoryError::Unavailable
+            ErrorRepositorio::NoDisponible
         );
     }
 
@@ -363,7 +363,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert_eq!(map_sqlx_error(&err), RepositoryError::Duplicate);
+        assert_eq!(map_sqlx_error(&err), ErrorRepositorio::Duplicado);
     }
 
     #[tokio::test]
@@ -393,7 +393,7 @@ mod tests {
 
         assert_eq!(
             map_sqlx_error_with(&err, ORDER_REFERENCES),
-            RepositoryError::MissingReference("customer_id")
+            ErrorRepositorio::ReferenciaInexistente("customer_id")
         );
     }
 

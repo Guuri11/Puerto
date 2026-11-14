@@ -4,7 +4,7 @@
 
 use chrono::{DateTime, Utc};
 use poem_openapi::Object;
-use puerto_core::auth::Session;
+use puerto_nucleo::auth::Sesion;
 
 #[derive(Object)]
 #[oai(rename_all = "camelCase")]
@@ -32,10 +32,10 @@ pub struct SessionDto {
 }
 
 impl SessionDto {
-    pub fn from_session(session: Session) -> Self {
+    pub fn from_session(session: Sesion) -> Self {
         Self {
             token: session.token,
-            expires_at: session.expires_at,
+            expires_at: session.expira_en,
         }
     }
 }

@@ -824,7 +824,7 @@ pub(super) fn patch_runtime_crates(output: &Path) {
     let manifest = output.join("Cargo.toml");
     let mut src = fs::read_to_string(&manifest).unwrap();
     let mut patch = String::from("\n[patch.crates-io]\n");
-    // `puerto-core` lives in `crates/core`, `puerto-web` in `crates/web`, … Only the crates the
+    // `puerto-nucleo` lives in `crates/nucleo`, `puerto-web` in `crates/web`, … Only the crates the
     // project names: an unused patch is a cargo warning in every build.
     for name in crate::runtime::RUNTIME_CRATES {
         if !src.contains(&format!("{name} = ")) {

@@ -35,11 +35,11 @@ Adding a use case is one line in `lib.rs` (under both `domain::<entity>::use_cas
 - **Typed ids**: an entity's id is its own type, `ProductId` (`model.rs`): `ProductId::generate()` for
   a new one, `from_uuid` / `.value()` only at the edges (routes, DTOs, rows). Never pass a bare `Uuid`.
 - **Typed fields**: when `entity.fields` is defined in `puerto.toml`, generated structs include custom fields (Props, Params, DTOs, DB rows). When empty, defaults to `name: String`.
-- **Repositories return `RepositoryError`** (`puerto_core::RepositoryError`): `Duplicate`,
-  `InvalidData`, `Unavailable`. Each entity error has `From<RepositoryError>`, so a use case uses `?`;
-  a mock returns `Err(RepositoryError::Unavailable)` to test a failure path. It is
+- **Repositories return `ErrorRepositorio`** (`puerto_nucleo::ErrorRepositorio`): `Duplicado`,
+  `DatosInvalidos`, `NoDisponible`. Each entity error has `From<ErrorRepositorio>`, so a use case uses `?`;
+  a mock returns `Err(ErrorRepositorio::NoDisponible)` to test a failure path. It is
   `#[non_exhaustive]`: the `From` impl keeps a `_` arm for failures a later runtime adds.
-- **Paged lists** take a `puerto_core::PageRequest` and answer a `puerto_core::Page<T>`.
+- **Paged lists** take a `puerto_nucleo::PeticionPagina` and answer a `puerto_nucleo::Pagina<T>`.
 - **Use case file structure**: the `Params` struct, the `UseCaseTrait` and its
   `mocks::Mock<Action>UseCase` (the route tests use it). The `Impl` struct lives in the
   **application layer**.

@@ -1,4 +1,4 @@
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -20,17 +20,17 @@ pub enum {{ pascal }}Error {
     Invalid{{ f.vo_pascal }},
 {% endfor %}}
 
-impl From<RepositoryError> for {{ pascal }}Error {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for {{ pascal }}Error {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
 {% if references %}            // A reference names a row that does not exist: the caller's input, on that field.
-            RepositoryError::MissingReference(field) => {
+            ErrorRepositorio::ReferenciaInexistente(field) => {
                 Self::ValidationError(format!("{field}_not_found"))
             }
-{% endif %}            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+{% endif %}            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::RepositoryError,
             _ => Self::RepositoryError,
         }
     }
@@ -42,25 +42,25 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = {{ pascal }}Error::from(RepositoryError::Duplicate);
+        let err = {{ pascal }}Error::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "{{ snake }}.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = {{ pascal }}Error::from(RepositoryError::InvalidData);
+        let err = {{ pascal }}Error::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "{{ snake }}.repository_error");
     }
 
 {% if references %}    #[test]
     fn should_convert_a_missing_reference_into_a_validation_error_on_its_field() {
-        let err = {{ pascal }}Error::from(RepositoryError::MissingReference("{{ first_reference }}"));
+        let err = {{ pascal }}Error::from(ErrorRepositorio::ReferenciaInexistente("{{ first_reference }}"));
         assert_eq!(err.to_string(), "{{ snake }}.validation_error.{{ first_reference }}_not_found");
     }
 
 {% endif %}    #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = {{ pascal }}Error::from(RepositoryError::Unavailable);
+        let err = {{ pascal }}Error::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "{{ snake }}.repository_error");
     }
 }

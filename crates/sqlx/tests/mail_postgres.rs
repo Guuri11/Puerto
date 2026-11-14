@@ -1,7 +1,7 @@
 //! The sent-mail log against a real server — `make test/db`. Every test runs in a schema of its
 //! own, with `migrations/sent_mails.sql` applied.
 
-use puerto_core::mail::SentMails;
+use puerto_nucleo::correo::CorreosEnviados;
 use puerto_sqlx::SENT_MAILS_MIGRATION;
 use puerto_sqlx::mail::PgSentMails;
 use sqlx::PgPool;
@@ -43,12 +43,12 @@ async fn postgres_mail_is_sent_only_once_marked_for_its_event_and_name() {
     let log = PgSentMails::new(pool);
     let event_id = Uuid::now_v7();
 
-    assert_eq!(log.was_sent(event_id, "welcome").await, Ok(false));
-    log.mark_sent(event_id, "welcome").await.unwrap();
+    assert_eq!(log.fue_enviado(event_id, "welcome").await, Ok(false));
+    log.marcar_enviado(event_id, "welcome").await.unwrap();
 
-    assert_eq!(log.was_sent(event_id, "welcome").await, Ok(true));
-    assert_eq!(log.was_sent(event_id, "receipt").await, Ok(false));
-    assert_eq!(log.was_sent(Uuid::now_v7(), "welcome").await, Ok(false));
+    assert_eq!(log.fue_enviado(event_id, "welcome").await, Ok(true));
+    assert_eq!(log.fue_enviado(event_id, "receipt").await, Ok(false));
+    assert_eq!(log.fue_enviado(Uuid::now_v7(), "welcome").await, Ok(false));
 }
 
 #[tokio::test]
@@ -60,8 +60,8 @@ async fn postgres_marking_a_mail_twice_keeps_one_row() {
     let log = PgSentMails::new(pool.clone());
     let event_id = Uuid::now_v7();
 
-    log.mark_sent(event_id, "welcome").await.unwrap();
-    let second = log.mark_sent(event_id, "welcome").await;
+    log.marcar_enviado(event_id, "welcome").await.unwrap();
+    let second = log.marcar_enviado(event_id, "welcome").await;
 
     assert_eq!(second, Ok(()));
     let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM sent_mails")
@@ -83,9 +83,9 @@ async fn postgres_sent_log_is_unavailable_when_its_table_is_missing() {
         .unwrap();
     let log = PgSentMails::new(pool);
 
-    let read = log.was_sent(Uuid::now_v7(), "welcome").await;
-    let mark = log.mark_sent(Uuid::now_v7(), "welcome").await;
+    let read = log.fue_enviado(Uuid::now_v7(), "welcome").await;
+    let mark = log.marcar_enviado(Uuid::now_v7(), "welcome").await;
 
-    assert_eq!(read, Err(puerto_core::RepositoryError::Unavailable));
-    assert_eq!(mark, Err(puerto_core::RepositoryError::Unavailable));
+    assert_eq!(read, Err(puerto_nucleo::ErrorRepositorio::NoDisponible));
+    assert_eq!(mark, Err(puerto_nucleo::ErrorRepositorio::NoDisponible));
 }

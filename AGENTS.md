@@ -11,7 +11,7 @@ Puerto is a Rust CLI tool that scaffolds full-stack DDD projects. It uses `cargo
 
 ```
 crates/
-  core/             — `puerto-core`, a runtime crate (ADR-0017): `RepositoryError`, `PageRequest`,
+  nucleo/           — `puerto-nucleo`, a runtime crate (ADR-0017): `ErrorRepositorio`, `PeticionPagina`,
                       `Page<T>`; `events` (ADR-0018): `DomainEvent`, `EventEnvelope`, `EventHandler`,
                       the delivery policy and the transport ports; `mail` (ADR-0020): `Email`, `Mailer`,
                       `SentMails`; `auth` (ADR-0021): `Principal`, `Authenticator`, `AuthError`,
@@ -53,7 +53,7 @@ crates/
                       `Templates` (minijinja, strict, the subject on one line), `send_once` (the
                       sent log, then the send, then the mark) and, behind `test-utils`,
                       `RecordingMailer` / `InMemorySentMails`. The ports (`Email`, `Mailer`,
-                      `SentMails`) are `puerto-core`'s. `make test/mail` runs it against Mailpit
+                      `SentMails`) are `puerto-nucleo`'s. `make test/mail` runs it against Mailpit
   auth/             — `puerto-auth`, auth adapters (ADR-0021). Feature `oidc`: `OidcConfig`
                       (`AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_ROLES_CLAIM`), `RolesClaim` (a top-level
                       name as is, else a dotted path), `OidcAuthenticator::discover` (RS256/ES256
@@ -188,7 +188,7 @@ Every generated project is a Cargo workspace. Dependency rule (inward only):
 Presentation → Infrastructure → Application → Domain
 ```
 
-- **Domain** — pure Rust, no external crates beyond std/async-trait/thiserror and `puerto-core`
+- **Domain** — pure Rust, no external crates beyond std/async-trait/thiserror and `puerto-nucleo`
 - **Application** — implements use case traits; imports domain only
 - **Infrastructure** — adapters (DB, HTTP); imports domain + application
 - **Presentation** — poem-openapi REST API; imports all layers
@@ -282,9 +282,9 @@ make format/fix    # cargo fmt --all
 
 ## Generated project contract (what every project gets)
 
-- Runtime crates instead of copies (ADR-0017): `puerto-core = "<cli minor>"` in the root
+- Runtime crates instead of copies (ADR-0017): `puerto-nucleo = "<cli minor>"` in the root
   `[workspace.dependencies]`, `{ workspace = true }` in each member; the domain imports
-  `puerto_core::{RepositoryError, Page, PageRequest}`. `presentation` also depends on `puerto-web`:
+  `puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina}`. `presentation` also depends on `puerto-web`:
   `main.rs` is `Config::from_env()` + `App::new(config).try_serve(build_app)`, `bootstrap.rs` hands its
   API and readiness check to `puerto_web::routes`, then to the user's `app::configure`. A `--db`
   project's `infrastructure` depends on `puerto-sqlx`: `db.rs` is `pub use puerto_sqlx::*;` plus
@@ -340,7 +340,7 @@ make format/fix    # cargo fmt --all
 - `--auth local` (16.6; needs `--db`): the same `User` (a local one is
   issuer `local`, subject its lowercased email) in `PgUserRepository`, no provisioning and no
   Keycloak; `register_user` / `login` / `logout` (`business/src/{domain,application}/user/`, over
-  `puerto-core`'s `PasswordHasher`, `CredentialStore`, `SessionStore`) and `POST /auth/{register,
+  `puerto-nucleo`'s `PasswordHasher`, `CredentialStore`, `SessionStore`) and `POST /auth/{register,
   login,logout}` (`presentation/src/api/auth/`, `UserError` → 422/401/409/500, route tests).
   `bootstrap.rs` builds `Argon2Hasher`, `PgCredentials` and `PgSessions` — the authenticator. The
   `users` then `auth` migrations, `AUTH_SESSION_TTL=30d` in `.env`, `make auth/grant EMAIL= ROLE=`,

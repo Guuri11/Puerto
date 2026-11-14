@@ -34,7 +34,7 @@ mod tests {
         model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
         repository::mocks::Mock{{ pascal }}Repository,
     };
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
@@ -79,7 +79,7 @@ mod tests {
         let mut mock_repo = Mock{{ pascal }}Repository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = Get{{ pascal }}UseCaseImpl {
             repository: Arc::new(mock_repo),
         };

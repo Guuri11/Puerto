@@ -14,7 +14,7 @@ worker/src/
 ├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
 ├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
 └── consumers/
-    └── <consumer>.rs        # Yours: an `EventHandler`, written once by `puerto generate consumer`
+    └── <consumer>.rs        # Yours: a `ManejadorEvento`, written once by `puerto generate consumer`
 ```
 
 ## Critical Rules
@@ -25,10 +25,10 @@ worker/src/
 - **Handlers must be idempotent.** Delivery is at-least-once: the same `event.id` can arrive
   twice. Check whether the work was already done (keyed on `event.id`) before doing it again.
 - **Answer honestly**: `Ack` when done; `Retry` for a failure that may pass (redelivered with a
-  1 s → 300 s backoff, `MAX_DELIVERIES` times); `HandlerOutcome::dead_letter(reason, detail)` for
-  one that never will. A payload that does not decode is `REASON_PAYLOAD_INVALID`. Nothing is
+  1 s → 300 s backoff, `MAX_DELIVERIES` times); `ResultadoManejo::descartar(motivo, detalle)` for
+  one that never will. A payload that does not decode is `MOTIVO_PAYLOAD_INVALIDO`. Nothing is
   dropped without a row in `dead_letters` (`make events/dead-letters`).
-- **Decode the snapshot, never the domain model**: `event.decode::<ProductSnapshot>()`. The
+- **Decode the snapshot, never the domain model**: `event.decodificar::<ProductSnapshot>()`. The
   snapshot is the event's public contract.
 
 {% if kafka -%}

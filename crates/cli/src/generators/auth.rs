@@ -1,5 +1,5 @@
 //! `puerto new --auth oidc` (ADR-0021): the `User` entity every caller becomes, the provisioning
-//! `Authenticator` in front of the provider, `GET /me`, and Keycloak for development. Every file
+//! `Autenticador` in front of the provider, `GET /me`, and Keycloak for development. Every file
 //! here is written once — the project's from then on.
 
 use crate::generators::layout;
@@ -269,8 +269,8 @@ fn insert_after_line(manifest: &str, after: &str, line: &str) -> Option<String> 
 /// `puerto-auth` for `bootstrap.rs`, and the mocks the generated tests use.
 fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::Error>> {
     add_workspace_dependency(base, "puerto-auth")?;
-    let core = "puerto-core = { workspace = true }";
-    let core_mocks = "puerto-core = { workspace = true, features = [\"test-utils\"] }";
+    let core = "puerto-nucleo = { workspace = true }";
+    let core_mocks = "puerto-nucleo = { workspace = true, features = [\"pruebas\"] }";
 
     let path = base.join(layout::PRESENTATION_MANIFEST);
     let src = fs::read_to_string(&path)?;
@@ -288,7 +288,7 @@ fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::
             insert_after_line(
                 &src,
                 "business = { path = \"../business\", features = [\"test-utils\"] }",
-                &format!("# `MockAuthenticator`, for the routes that take `BearerAuth`.\n{core_mocks}"),
+                &format!("# `MockAutenticador`, for the routes that take `BearerAuth`.\n{core_mocks}"),
             )
         })
         .ok_or_else(|| {
@@ -300,7 +300,7 @@ fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::
         fs::write(&path, src)?;
     }
 
-    // `provisioning.rs` tests over `MockUserRepository` and `MockAuthenticator`.
+    // `provisioning.rs` tests over `MockUserRepository` and `MockAutenticador`.
     let path = base.join(layout::INFRA_MANIFEST);
     let src = fs::read_to_string(&path)?;
     if !src.contains(core_mocks) {
@@ -323,7 +323,7 @@ fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::
             let src = insert_after_line(
                 &src,
                 "[dev-dependencies]",
-                &format!("# The auth ports' mocks (`MockPasswordHasher`, …).\n{core_mocks}"),
+                &format!("# The auth ports' mocks (`MockHasherContrasena`, …).\n{core_mocks}"),
             )
             .ok_or_else(|| format!("{}: no [dev-dependencies]", path.display()))?;
             fs::write(&path, src)?;
@@ -809,11 +809,12 @@ mod tests {
 
     #[test]
     fn should_insert_after_the_exact_line_when_the_manifest_has_it() {
-        let manifest = "[dependencies]\npuerto-core = { workspace = true }\npoem = \"3\"\n";
+        let manifest = "[dependencies]\npuerto-nucleo = { workspace = true }\npoem = \"3\"\n";
         assert_eq!(
-            insert_after_line(manifest, "puerto-core = { workspace = true }", "x = 1"),
+            insert_after_line(manifest, "puerto-nucleo = { workspace = true }", "x = 1"),
             Some(
-                "[dependencies]\npuerto-core = { workspace = true }\nx = 1\npoem = \"3\"\n".into()
+                "[dependencies]\npuerto-nucleo = { workspace = true }\nx = 1\npoem = \"3\"\n"
+                    .into()
             )
         );
         assert_eq!(

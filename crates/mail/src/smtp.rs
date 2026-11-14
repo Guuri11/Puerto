@@ -5,7 +5,7 @@ use lettre::message::header::ContentType;
 use lettre::message::{Mailbox, MultiPart};
 use lettre::transport::smtp;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
-use puerto_core::mail::{Email, MailError, Mailer};
+use puerto_nucleo::correo::{Correo, EnviadorCorreo, ErrorCorreo};
 
 use crate::config::{MailConfig, MailConfigError};
 
@@ -31,16 +31,16 @@ impl SmtpMailer {
         Ok(Self { transport, from })
     }
 
-    fn message(&self, email: &Email) -> Result<Message, MailError> {
+    fn message(&self, email: &Correo) -> Result<Message, ErrorCorreo> {
         let to: Mailbox = email
-            .to
+            .para
             .parse()
-            .map_err(|e| MailError::Permanent(format!("recipient {:?}: {e}", email.to)))?;
+            .map_err(|e| ErrorCorreo::Permanente(format!("recipient {:?}: {e}", email.para)))?;
         let builder = Message::builder()
             .from(self.from.clone())
             .to(to)
-            .subject(email.subject.clone());
-        let message = match &email.text {
+            .subject(email.asunto.clone());
+        let message = match &email.texto {
             Some(text) => builder.multipart(MultiPart::alternative_plain_html(
                 text.clone(),
                 email.html.clone(),
@@ -49,13 +49,13 @@ impl SmtpMailer {
                 .header(ContentType::TEXT_HTML)
                 .body(email.html.clone()),
         };
-        message.map_err(|e| MailError::Permanent(format!("message: {e}")))
+        message.map_err(|e| ErrorCorreo::Permanente(format!("message: {e}")))
     }
 }
 
 #[async_trait]
-impl Mailer for SmtpMailer {
-    async fn send(&self, email: &Email) -> Result<(), MailError> {
+impl EnviadorCorreo for SmtpMailer {
+    async fn enviar(&self, email: &Correo) -> Result<(), ErrorCorreo> {
         let message = self.message(email)?;
         self.transport
             .send(message)
@@ -67,11 +67,11 @@ impl Mailer for SmtpMailer {
 }
 
 /// A 5xx answer is final; anything else (4xx, refused, timeout, TLS) may pass on a later try.
-fn classify(error: smtp::Error) -> MailError {
+fn classify(error: smtp::Error) -> ErrorCorreo {
     if error.is_permanent() {
-        MailError::Permanent(error.to_string())
+        ErrorCorreo::Permanente(error.to_string())
     } else {
-        MailError::Transient(error.to_string())
+        ErrorCorreo::Transitorio(error.to_string())
     }
 }
 
@@ -105,11 +105,14 @@ mod tests {
 
         // Act
         let result = mailer
-            .send(&Email::new("not an address", "Hi", "<p>Hi</p>"))
+            .enviar(&Correo::new("not an address", "Hi", "<p>Hi</p>"))
             .await;
 
         // Assert
-        assert!(matches!(result, Err(MailError::Permanent(_))), "{result:?}");
+        assert!(
+            matches!(result, Err(ErrorCorreo::Permanente(_))),
+            "{result:?}"
+        );
     }
 
     #[tokio::test]
@@ -119,17 +122,20 @@ mod tests {
 
         // Act
         let result = mailer
-            .send(&Email::new("ada@example.com", "Hi", "<p>Hi</p>"))
+            .enviar(&Correo::new("ada@example.com", "Hi", "<p>Hi</p>"))
             .await;
 
         // Assert
-        assert!(matches!(result, Err(MailError::Transient(_))), "{result:?}");
+        assert!(
+            matches!(result, Err(ErrorCorreo::Transitorio(_))),
+            "{result:?}"
+        );
     }
 
     #[tokio::test]
     async fn should_build_a_multipart_message_when_the_mail_has_text() {
         let mailer = mailer("smtp://localhost:1025");
-        let email = Email::new("ada@example.com", "Welcome", "<p>Hi</p>").with_text("Hi");
+        let email = Correo::new("ada@example.com", "Welcome", "<p>Hi</p>").con_texto("Hi");
 
         let formatted = String::from_utf8(mailer.message(&email).unwrap().formatted()).unwrap();
 
@@ -147,7 +153,7 @@ mod tests {
         let mailer = mailer("smtp://localhost:1025");
 
         let message = mailer
-            .message(&Email::new("ada@example.com", "Welcome", "<p>Hi</p>"))
+            .message(&Correo::new("ada@example.com", "Welcome", "<p>Hi</p>"))
             .unwrap();
         let formatted = String::from_utf8(message.formatted()).unwrap();
 

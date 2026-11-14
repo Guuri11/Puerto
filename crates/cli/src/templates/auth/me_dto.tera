@@ -1,5 +1,5 @@
 use poem_openapi::Object;
-use puerto_core::auth::Principal;
+use puerto_nucleo::auth::Principal;
 use uuid::Uuid;
 
 /// The caller as the API resolved them: the id of their `User` row and the roles the API checks.
@@ -16,9 +16,9 @@ pub struct MeDto {
 impl MeDto {
     pub fn from_principal(principal: &Principal) -> Self {
         Self {
-            id: principal.user_id,
+            id: principal.id_usuario,
             email: principal.email.clone(),
-            name: principal.name.clone(),
+            name: principal.nombre.clone(),
             roles: principal.roles.clone(),
         }
     }

@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 business = { path = "../business" }
 infrastructure = { path = "../infrastructure" }
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 # The relay, the consume loops, health probes and graceful shutdown (`main.rs`, `generated/registry.rs`).
 puerto-events = { workspace = true }
 {%- if kafka %}

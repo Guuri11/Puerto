@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-{% if actor %}use puerto_core::auth::Principal;
+{% if actor %}use puerto_nucleo::auth::Principal;
 {% endif %}
 use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}Id};
 

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use business::domain::mail::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
-use puerto_mail::{MailError, Mailer, Templates};
+use puerto_mail::{ErrorCorreo, EnviadorCorreo, Templates};
 use serde::Serialize;
 {%- for import in imports %}
 use {{ import }};
@@ -39,20 +39,20 @@ impl<'a> Context<'a> {
 /// The `{{ name }}` mail, rendered from `infrastructure/mail/{{ name }}/` and sent through `mailer`
 /// (`puerto_mail::SmtpMailer` where it runs).
 pub struct Template{{ pascal }}Mailer {
-    mailer: Arc<dyn Mailer>,
+    mailer: Arc<dyn EnviadorCorreo>,
 }
 
 impl Template{{ pascal }}Mailer {
-    pub fn new(mailer: Arc<dyn Mailer>) -> Self {
+    pub fn new(mailer: Arc<dyn EnviadorCorreo>) -> Self {
         Self { mailer }
     }
 }
 
 #[async_trait]
 impl {{ pascal }}Mailer for Template{{ pascal }}Mailer {
-    async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), MailError> {
+    async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), ErrorCorreo> {
         let email = TEMPLATES.render(mail.to.clone(), Context::of(mail))?;
-        self.mailer.send(&email).await
+        self.mailer.enviar(&email).await
     }
 }
 
@@ -80,9 +80,9 @@ mod tests {
             Ok(email) => email,
             Err(err) => panic!("infrastructure/mail/{{ name }}/ does not render: {err}"),
         };
-        assert!(!email.subject.is_empty());
+        assert!(!email.asunto.is_empty());
         assert!(!email.html.is_empty());
-        assert!(email.text.is_some());
+        assert!(email.texto.is_some());
     }
 
     #[tokio::test]
@@ -98,13 +98,13 @@ mod tests {
         assert_eq!(result, Ok(()));
         let sent = recorder.sent();
         assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].to, "ada@example.com");
+        assert_eq!(sent[0].para, "ada@example.com");
     }
 
     #[tokio::test]
     async fn should_return_the_mailer_error_when_sending_fails() {
         // Arrange
-        let rejected = MailError::Permanent("550 no such user".to_string());
+        let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
         let mailer =
             Template{{ pascal }}Mailer::new(Arc::new(RecordingMailer::failing_with(rejected.clone())));
 

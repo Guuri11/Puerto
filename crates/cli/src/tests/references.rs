@@ -448,7 +448,7 @@ fn should_turn_a_missing_reference_into_a_validation_error_on_the_field() {
     let errors = read(&output, "business/src/domain/order/errors.rs");
     assert!(
         errors.contains(
-            "RepositoryError::MissingReference(field) => {\n                Self::ValidationError(format!(\"{field}_not_found\"))"
+            "ErrorRepositorio::ReferenciaInexistente(field) => {\n                Self::ValidationError(format!(\"{field}_not_found\"))"
         ),
         "{errors}"
     );
@@ -615,7 +615,7 @@ fn should_map_the_foreign_keys_where_the_rows_are_written() {
         "{repo}"
     );
     assert!(
-        repo.contains("RepositoryError::MissingReference(\"customer_id\")"),
+        repo.contains("ErrorRepositorio::ReferenciaInexistente(\"customer_id\")"),
         "{repo}"
     );
     let customer = read(&output, "infrastructure/src/customer/repository.rs");
@@ -762,7 +762,9 @@ fn should_test_that_create_reports_a_missing_reference_on_its_field() {
                 )),
                 "events = {events}: {create}"
             );
-            assert!(create.contains(&format!("RepositoryError::MissingReference(\"{field}\")")));
+            assert!(create.contains(&format!(
+                "ErrorRepositorio::ReferenciaInexistente(\"{field}\")"
+            )));
             assert!(create.contains(&format!("\"order.validation_error.{field}_not_found\"")));
         }
 
@@ -789,7 +791,7 @@ fn should_filter_the_list_by_each_reference_in_the_domain() {
     );
     assert_eq!(
         repository
-            .matches("async fn find_all(&self, page: PageRequest, filter: OrderFilter)")
+            .matches("async fn find_all(&self, page: PeticionPagina, filter: OrderFilter)")
             .count(),
         2,
         "the port and its mock: {repository}"
@@ -811,7 +813,7 @@ fn should_filter_the_list_by_each_reference_in_the_domain() {
     let customer = read(&output, "business/src/domain/customer/repository.rs");
     assert!(!customer.contains("Filter"), "{customer}");
     assert!(
-        customer.contains("async fn find_all(&self, page: PageRequest)"),
+        customer.contains("async fn find_all(&self, page: PeticionPagina)"),
         "{customer}"
     );
 

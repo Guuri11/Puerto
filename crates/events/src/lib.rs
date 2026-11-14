@@ -2,7 +2,7 @@
 //! the outbox onto the transport, one consume loop per consumer, the health probes and graceful
 //! shutdown.
 //!
-//! It only sees the transport ports of `puerto_core::events::transport`: the project's
+//! It only sees the transport ports of `puerto_nucleo::events::transport`: the project's
 //! `worker/src/generated/registry.rs` hands it the adapters (`puerto_sqlx::events` for the `db`
 //! transport) and its consumers.
 //!

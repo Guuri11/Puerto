@@ -7,7 +7,7 @@ use std::collections::HashMap;
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
 use super::entity::{{ pascal }}Db;
 {% if references and not events %}use crate::db::{ForeignKey, map_sqlx_error, map_sqlx_error_with};
@@ -25,17 +25,17 @@ impl Pg{{ pascal }}Repository {
 {% if references and not events %}{% include "infrastructure/references.tera" %}{% endif %}
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, RepositoryError> {
+fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, ErrorRepositorio> {
     {{ pascal }}::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid {{ snake }}");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
-    async fn find_all(&self, page: PageRequest{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Page<{{ pascal }}>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
+        tracing::debug!(limit = page.limite(), offset = page.desplazamiento(), "find_all");
 {% if refs %}        // One static query whatever the filter: an unset id is NULL and matches every row.
 {% for r in refs %}        let {{ r.name }} = filter.{{ r.name }}.map(|id| id.value());
 {% endfor %}{% endif %}        let rows = sqlx::query_as!(
@@ -43,8 +43,8 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
             "SELECT {{ select_cols }}
              FROM {{ plural }} WHERE {{ page_where }}
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset()){% for r in refs %},
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento()){% for r in refs %},
             {{ r.name }}{% endfor %}
         )
         .fetch_all(&self.pool)
@@ -67,10 +67,10 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         let items = rows.into_iter().map(to_domain).collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError> {
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             {{ pascal }}Db,
@@ -88,7 +88,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         row.map(to_domain).transpose()
     }
 {% if not events %}
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = {{ pascal }}Db::from(entity);
         sqlx::query!(
@@ -206,10 +206,10 @@ pub(crate) mod integration_tests {
         {% if events %}store(&pool, &deleted).await;{% else %}test_repo(pool.clone()).save(&deleted).await.unwrap();{% endif %}
 
         // Act
-        let page = test_repo(pool).find_all(PageRequest::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
+        let page = test_repo(pool).find_all(PeticionPagina::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -222,14 +222,14 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)){% if refs %}, {{ pascal }}Filter::default(){% endif %})
+            .find_all(PeticionPagina::new(Some(2), Some(2)){% if refs %}, {{ pascal }}Filter::default(){% endif %})
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 {% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques and not events %}{% set u = uniques.0 %}
 
@@ -244,7 +244,7 @@ pub(crate) mod integration_tests {
         let result = test_repo(pool).save(&second).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
     }
 {% endif %}{% if not events %}{% for r in references %}
 
@@ -258,7 +258,7 @@ pub(crate) mod integration_tests {
         let result = test_repo(pool).save(&entity).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::MissingReference("{{ r.field }}"));
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::ReferenciaInexistente("{{ r.field }}"));
     }
 {% endfor %}{% endif %}{% for r in refs %}
 
@@ -274,7 +274,7 @@ pub(crate) mod integration_tests {
         // Act
         let page = test_repo(pool)
             .find_all(
-                PageRequest::default(),
+                PeticionPagina::default(),
                 {{ pascal }}Filter {
 {% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some(target.id){% else %}None{% endif %},
 {% endfor %}                },
@@ -283,7 +283,7 @@ pub(crate) mod integration_tests {
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.iter().map(|row| row.id).collect::<Vec<_>>(), vec![wanted.id]);
+        assert_eq!(page.elementos.iter().map(|row| row.id).collect::<Vec<_>>(), vec![wanted.id]);
         assert_eq!(page.total, 1);
     }
 {% endfor %}}

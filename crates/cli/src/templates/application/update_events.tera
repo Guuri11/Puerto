@@ -1,7 +1,7 @@
 {% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 {% for import in vo_imports %}use {{ import }};
 {% endfor %}
 use crate::domain::{{ snake }}::{
@@ -22,7 +22,7 @@ pub struct Update{{ pascal }}UseCaseImpl {
 impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCaseImpl {
     async fn execute(&self, params: Update{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
         tracing::info!(id = %params.id, "update_{{ snake }}: start");
-        let failed = |e: &RepositoryError| tracing::error!(error = %e, "update_{{ snake }}: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "update_{{ snake }}: repository failed");
         let mut entity = self
             .repository
             .find_by_id(params.id)
@@ -58,7 +58,7 @@ mod tests {
         repository::mocks::Mock{{ pascal }}Repository,
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
@@ -95,8 +95,8 @@ mod tests {
         let recorded = uow_factory.recorded();
         assert!(recorded.committed);
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "{{ snake }}_updated");
-        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "{{ snake }}_updated");
+        assert_eq!(recorded.events[0].id_agregado(), entity_id.value());
     }
 
     #[tokio::test]

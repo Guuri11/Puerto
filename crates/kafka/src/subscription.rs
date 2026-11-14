@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use puerto_core::events::REASON_PAYLOAD_INVALID;
-use puerto_core::events::delivery::Delivery;
-use puerto_core::events::transport::{
-    Claimed, DeadLetterRecord, DeadLetterSink, EventSubscription, TransportError,
+use puerto_nucleo::eventos::MOTIVO_PAYLOAD_INVALIDO;
+use puerto_nucleo::eventos::entrega::Entrega;
+use puerto_nucleo::eventos::transporte::{
+    DestinoDescartados, ErrorTransporte, RegistroDescartado, Reservado, SuscripcionEventos,
 };
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::error::KafkaError;
@@ -46,7 +46,7 @@ impl Position {
 /// A delivery that asked to be retried: handed out again once `due`.
 #[derive(Debug)]
 struct Retry {
-    claimed: Claimed,
+    claimed: Reservado,
     position: Position,
     due: Instant,
 }
@@ -62,11 +62,11 @@ struct Ledger {
 impl Ledger {
     /// `None` when no retry is waiting: read the next record. Otherwise what to hand out now —
     /// the retry once it is due, nothing before (the records behind it wait).
-    fn retry_batch(&mut self, now: Instant) -> Option<Vec<Claimed>> {
+    fn retry_batch(&mut self, now: Instant) -> Option<Vec<Reservado>> {
         let retry = self.retry.take_if(|retry| retry.due <= now);
         match retry {
             Some(retry) => {
-                self.in_flight = Some((retry.claimed.envelope.id, retry.position));
+                self.in_flight = Some((retry.claimed.sobre.id, retry.position));
                 Some(vec![retry.claimed])
             }
             None if self.retry.is_some() => Some(vec![]),
@@ -74,8 +74,8 @@ impl Ledger {
         }
     }
 
-    fn hand_out(&mut self, claimed: &Claimed, position: Position) {
-        self.in_flight = Some((claimed.envelope.id, position));
+    fn hand_out(&mut self, claimed: &Reservado, position: Position) {
+        self.in_flight = Some((claimed.sobre.id, position));
     }
 
     /// The position to commit, or `None` for a retry, which keeps the record (and every one
@@ -83,34 +83,34 @@ impl Ledger {
     /// error.
     fn settle(
         &mut self,
-        claimed: &Claimed,
-        delivery: &Delivery,
+        claimed: &Reservado,
+        delivery: &Entrega,
         now: Instant,
-    ) -> Result<Option<Position>, TransportError> {
+    ) -> Result<Option<Position>, ErrorTransporte> {
         let position = match self.in_flight.take() {
-            Some((id, position)) if id == claimed.envelope.id => position,
+            Some((id, position)) if id == claimed.sobre.id => position,
             other => {
                 self.in_flight = other;
-                return Err(TransportError::InvalidData);
+                return Err(ErrorTransporte::DatosInvalidos);
             }
         };
         Ok(match delivery {
-            Delivery::Retry { delay } => {
+            Entrega::Reintentar { espera } => {
                 self.retry = Some(Retry {
-                    claimed: Claimed::new(claimed.envelope.clone(), claimed.attempt + 1),
+                    claimed: Reservado::new(claimed.sobre.clone(), claimed.intento + 1),
                     position,
-                    due: now + *delay,
+                    due: now + *espera,
                 });
                 None
             }
-            Delivery::Ack | Delivery::DeadLetter { .. } => Some(position),
+            Entrega::Ack | Entrega::Descartar { .. } => Some(position),
         })
     }
 }
 
 /// A record that is not an envelope, whose dead letter is still to be written.
 struct Poisoned {
-    record: DeadLetterRecord,
+    record: RegistroDescartado,
     position: Position,
 }
 
@@ -127,7 +127,7 @@ pub struct KafkaSubscription {
     name: String,
     consumer: Arc<StreamConsumer>,
     event_types: Vec<String>,
-    dead_letters: Arc<dyn DeadLetterSink>,
+    dead_letters: Arc<dyn DestinoDescartados>,
     ledger: Ledger,
     poisoned: Option<Poisoned>,
 }
@@ -140,7 +140,7 @@ impl KafkaSubscription {
         consumer: &str,
         aggregate_types: &[&str],
         event_types: &[&str],
-        dead_letters: Arc<dyn DeadLetterSink>,
+        dead_letters: Arc<dyn DestinoDescartados>,
     ) -> Result<Self, KafkaError> {
         let client: StreamConsumer = config
             .client()
@@ -163,19 +163,19 @@ impl KafkaSubscription {
     }
 
     /// The next record, or `None` when none arrives within [`RECEIVE_WAIT`].
-    async fn receive(&self) -> Result<Option<OwnedMessage>, TransportError> {
+    async fn receive(&self) -> Result<Option<OwnedMessage>, ErrorTransporte> {
         match tokio::time::timeout(RECEIVE_WAIT, self.consumer.recv()).await {
             Err(_) => Ok(None),
             Ok(Ok(message)) => Ok(Some(message.detach())),
             Ok(Err(err)) => {
                 tracing::error!(consumer = self.name, error = %err, "kafka: receive failed");
-                Err(TransportError::Unavailable)
+                Err(ErrorTransporte::NoDisponible)
             }
         }
     }
 
     /// Commits past `position`. librdkafka's commit blocks, so it runs off the async threads.
-    async fn commit(&self, position: Position) -> Result<(), TransportError> {
+    async fn commit(&self, position: Position) -> Result<(), ErrorTransporte> {
         let mut offsets = TopicPartitionList::new();
         let next = Offset::Offset(position.offset + 1);
         let added = offsets.add_partition_offset(&position.topic, position.partition, next);
@@ -196,14 +196,14 @@ impl KafkaSubscription {
                 error = err,
                 "kafka: commit failed"
             );
-            TransportError::Unavailable
+            ErrorTransporte::NoDisponible
         })
     }
 
     /// Records the dead letter of a record that is not an envelope, then skips it. When the sink
     /// fails it is kept, and the next batch tries again before reading on.
-    async fn retire_unreadable(&mut self, poisoned: Poisoned) -> Result<(), TransportError> {
-        if let Err(err) = self.dead_letters.record(&poisoned.record).await {
+    async fn retire_unreadable(&mut self, poisoned: Poisoned) -> Result<(), ErrorTransporte> {
+        if let Err(err) = self.dead_letters.registrar(&poisoned.record).await {
             tracing::error!(consumer = self.name, error = %err, "kafka: dead letter not recorded, keeping the record");
             self.poisoned = Some(poisoned);
             return Err(err);
@@ -213,17 +213,17 @@ impl KafkaSubscription {
 }
 
 #[async_trait]
-impl EventSubscription for KafkaSubscription {
-    fn consumer(&self) -> &str {
+impl SuscripcionEventos for KafkaSubscription {
+    fn consumidor(&self) -> &str {
         &self.name
     }
 
     /// One record per batch: a `Retry` must hold back the records behind it.
-    fn max_batch(&self) -> u32 {
+    fn lote_maximo(&self) -> u32 {
         1
     }
 
-    async fn next_batch(&mut self, max: u32) -> Result<Vec<Claimed>, TransportError> {
+    async fn siguiente_lote(&mut self, max: u32) -> Result<Vec<Reservado>, ErrorTransporte> {
         if max == 0 {
             return Ok(vec![]);
         }
@@ -245,8 +245,8 @@ impl EventSubscription for KafkaSubscription {
                 })
                 .unwrap_or_default();
             match wire::envelope_from(&headers, message.payload()) {
-                Ok(envelope) if self.event_types.contains(&envelope.event_type) => {
-                    let claimed = Claimed::new(envelope, 1);
+                Ok(envelope) if self.event_types.contains(&envelope.tipo_evento) => {
+                    let claimed = Reservado::new(envelope, 1);
                     self.ledger.hand_out(&claimed, position);
                     return Ok(vec![claimed]);
                 }
@@ -260,11 +260,11 @@ impl EventSubscription for KafkaSubscription {
                         "kafka: record is not an event"
                     );
                     let raw = String::from_utf8_lossy(message.payload().unwrap_or_default());
-                    let record = DeadLetterRecord::unreadable(
+                    let record = RegistroDescartado::ilegible(
                         self.name.as_str(),
                         &raw,
                         1,
-                        REASON_PAYLOAD_INVALID,
+                        MOTIVO_PAYLOAD_INVALIDO,
                         detail,
                     );
                     self.retire_unreadable(Poisoned { record, position })
@@ -275,16 +275,16 @@ impl EventSubscription for KafkaSubscription {
         Ok(vec![])
     }
 
-    async fn settle(
+    async fn resolver(
         &mut self,
-        claimed: &Claimed,
-        delivery: &Delivery,
-    ) -> Result<(), TransportError> {
+        claimed: &Reservado,
+        delivery: &Entrega,
+    ) -> Result<(), ErrorTransporte> {
         match self.ledger.settle(claimed, delivery, Instant::now()) {
             Ok(Some(position)) => self.commit(position).await,
             Ok(None) => Ok(()),
             Err(err) => {
-                tracing::error!(consumer = self.name, event_id = %claimed.envelope.id, "kafka: settled a claim that was not handed out");
+                tracing::error!(consumer = self.name, event_id = %claimed.sobre.id, "kafka: settled a claim that was not handed out");
                 Err(err)
             }
         }
@@ -294,22 +294,22 @@ impl EventSubscription for KafkaSubscription {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use puerto_core::events::{DomainEvent, EventEnvelope};
+    use puerto_nucleo::eventos::{EventoDominio, SobreEvento};
     use serde_json::{Value, json};
 
     struct Created(Uuid);
 
-    impl DomainEvent for Created {
-        fn event_type(&self) -> &'static str {
+    impl EventoDominio for Created {
+        fn tipo_evento(&self) -> &'static str {
             "product_created"
         }
-        fn aggregate_type(&self) -> &'static str {
+        fn tipo_agregado(&self) -> &'static str {
             "product"
         }
-        fn aggregate_id(&self) -> Uuid {
+        fn id_agregado(&self) -> Uuid {
             self.0
         }
-        fn schema_version(&self) -> u16 {
+        fn version_esquema(&self) -> u16 {
             1
         }
         fn payload(&self) -> Value {
@@ -317,8 +317,8 @@ mod tests {
         }
     }
 
-    fn claimed() -> Claimed {
-        Claimed::new(EventEnvelope::new(&Created(Uuid::now_v7())), 1)
+    fn claimed() -> Reservado {
+        Reservado::new(SobreEvento::new(&Created(Uuid::now_v7())), 1)
     }
 
     fn position(offset: i64) -> Position {
@@ -329,7 +329,7 @@ mod tests {
         }
     }
 
-    fn handed_out(claimed: &Claimed) -> Ledger {
+    fn handed_out(claimed: &Reservado) -> Ledger {
         let mut ledger = Ledger::default();
         ledger.hand_out(claimed, position(7));
         ledger
@@ -339,10 +339,10 @@ mod tests {
     fn should_commit_the_record_when_it_is_acked_or_dead_lettered() {
         let now = Instant::now();
         for delivery in [
-            Delivery::Ack,
-            Delivery::DeadLetter {
-                reason: REASON_PAYLOAD_INVALID,
-                detail: "bad".into(),
+            Entrega::Ack,
+            Entrega::Descartar {
+                motivo: MOTIVO_PAYLOAD_INVALIDO,
+                detalle: "bad".into(),
             },
         ] {
             let claimed = claimed();
@@ -361,8 +361,8 @@ mod tests {
         let now = Instant::now();
         let claimed = claimed();
         let mut ledger = handed_out(&claimed);
-        let retry = Delivery::Retry {
-            delay: Duration::from_secs(5),
+        let retry = Entrega::Reintentar {
+            espera: Duration::from_secs(5),
         };
 
         // Act
@@ -373,7 +373,7 @@ mod tests {
         // Assert
         assert_eq!(settled, Ok(None));
         assert_eq!(before, Some(vec![]));
-        assert_eq!(at, Some(vec![Claimed::new(claimed.envelope.clone(), 2)]));
+        assert_eq!(at, Some(vec![Reservado::new(claimed.sobre.clone(), 2)]));
         assert_eq!(ledger.retry_batch(now + Duration::from_secs(6)), None);
     }
 
@@ -382,14 +382,14 @@ mod tests {
         let now = Instant::now();
         let claimed = claimed();
         let mut ledger = handed_out(&claimed);
-        let retry = Delivery::Retry {
-            delay: Duration::ZERO,
+        let retry = Entrega::Reintentar {
+            espera: Duration::ZERO,
         };
         let _ = ledger.settle(&claimed, &retry, now);
         let again = ledger.retry_batch(now).unwrap().remove(0);
 
         assert_eq!(
-            ledger.settle(&again, &Delivery::Ack, now),
+            ledger.settle(&again, &Entrega::Ack, now),
             Ok(Some(position(7)))
         );
     }
@@ -401,16 +401,16 @@ mod tests {
         let mut ledger = handed_out(&claimed);
 
         assert_eq!(
-            ledger.settle(&self::claimed(), &Delivery::Ack, now),
-            Err(TransportError::InvalidData)
+            ledger.settle(&self::claimed(), &Entrega::Ack, now),
+            Err(ErrorTransporte::DatosInvalidos)
         );
         assert_eq!(
-            ledger.settle(&claimed, &Delivery::Ack, now),
+            ledger.settle(&claimed, &Entrega::Ack, now),
             Ok(Some(position(7)))
         );
         assert_eq!(
-            ledger.settle(&claimed, &Delivery::Ack, now),
-            Err(TransportError::InvalidData)
+            ledger.settle(&claimed, &Entrega::Ack, now),
+            Err(ErrorTransporte::DatosInvalidos)
         );
     }
 }

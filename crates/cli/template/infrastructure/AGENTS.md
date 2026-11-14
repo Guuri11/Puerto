@@ -22,8 +22,8 @@ infrastructure/
 - **`from_repository()` is the only door** from persistence into the domain — never call
   `Entity::new()` inside a repository.
 - Repositories depend on `business` only. Never import from `presentation`.
-- Logging with `tracing::debug!` / `error!` directly. Repositories return `RepositoryError`
-  (`puerto_core::RepositoryError`): log the driver error with context, then convert
+- Logging with `tracing::debug!` / `error!` directly. Repositories return `ErrorRepositorio`
+  (`puerto_nucleo::ErrorRepositorio`): log the driver error with context, then convert
   it with `db::map_sqlx_error` (`puerto-sqlx`'s: `23505` unique violation → `Duplicate`, the rest → `Unavailable`);
   a row the domain rejects is `InvalidData`. Never leak a driver error upward.
 - An entity with references (`ref:`) writes through `db::map_sqlx_error_with(&e, REFERENCES)`:
@@ -35,7 +35,7 @@ infrastructure/
 
 `InMemory<Entity>Repository` keeps rows in a `RwLock<HashMap<Id, Entity>>`, in process memory:
 they are lost on restart. It behaves like the Postgres adapter — deleted rows hidden, lists newest
-first and paged, a `unique` value held by another live row answers `RepositoryError::Duplicate` —
+first and paged, a `unique` value held by another live row answers `ErrorRepositorio::Duplicado` —
 and its unit tests say so. Replace it with a real adapter when storage is added.
 
 ## Postgres (`puerto new --db`)

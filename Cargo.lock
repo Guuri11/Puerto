@@ -3076,7 +3076,7 @@ dependencies = [
  "jsonwebtoken",
  "poem",
  "puerto-auth",
- "puerto-core",
+ "puerto-nucleo",
  "reqwest",
  "serde",
  "serde_json",
@@ -3087,26 +3087,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "puerto-core"
-version = "0.20.0"
-dependencies = [
- "async-trait",
- "chrono",
- "mockall",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "puerto-events"
 version = "0.20.0"
 dependencies = [
  "async-trait",
  "poem",
- "puerto-core",
+ "puerto-nucleo",
  "puerto-web",
  "serde_json",
  "tokio",
@@ -3120,7 +3106,7 @@ version = "0.20.0"
 dependencies = [
  "async-trait",
  "chrono",
- "puerto-core",
+ "puerto-nucleo",
  "puerto-web",
  "rdkafka",
  "serde_json",
@@ -3146,12 +3132,26 @@ dependencies = [
  "dotenvy",
  "lettre",
  "minijinja",
- "puerto-core",
+ "puerto-nucleo",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "puerto-nucleo"
+version = "0.20.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "mockall",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
  "uuid",
 ]
 
@@ -3164,7 +3164,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "getrandom 0.3.4",
- "puerto-core",
+ "puerto-nucleo",
  "serde_json",
  "sha2",
  "sqlx",
@@ -3181,8 +3181,8 @@ dependencies = [
  "dotenvy",
  "poem",
  "poem-openapi",
- "puerto-core",
  "puerto-macros",
+ "puerto-nucleo",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",

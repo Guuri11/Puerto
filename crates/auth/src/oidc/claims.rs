@@ -1,6 +1,6 @@
 //! From a verified token's claims to a [`Principal`].
 
-use puerto_core::auth::{AuthError, Principal};
+use puerto_nucleo::auth::{ErrorAuth, Principal};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
@@ -64,18 +64,18 @@ impl Default for RolesClaim {
 pub(crate) fn principal(
     claims: &Map<String, Value>,
     roles: &RolesClaim,
-) -> Result<Principal, AuthError> {
+) -> Result<Principal, ErrorAuth> {
     let subject = claims
         .get("sub")
         .and_then(Value::as_str)
         .filter(|sub| !sub.is_empty())
-        .ok_or(AuthError::Invalid)?;
-    let mut principal = Principal::new(Uuid::nil(), subject).with_roles(roles.read(claims));
+        .ok_or(ErrorAuth::Invalido)?;
+    let mut principal = Principal::new(Uuid::nil(), subject).con_roles(roles.read(claims));
     if let Some(email) = claims.get("email").and_then(Value::as_str) {
-        principal = principal.with_email(email);
+        principal = principal.con_email(email);
     }
     if let Some(name) = claims.get("name").and_then(Value::as_str) {
-        principal = principal.with_name(name);
+        principal = principal.con_nombre(name);
     }
     Ok(principal)
 }
@@ -185,9 +185,9 @@ mod tests {
 
         // Assert
         let expected = Principal::new(Uuid::nil(), "f81d4fae")
-            .with_email("ada@example.com")
-            .with_name("Ada Lovelace")
-            .with_roles(["admin"]);
+            .con_email("ada@example.com")
+            .con_nombre("Ada Lovelace")
+            .con_roles(["admin"]);
         assert_eq!(principal, Ok(expected));
     }
 
@@ -196,7 +196,7 @@ mod tests {
         for value in [json!({}), json!({ "sub": "" }), json!({ "sub": 7 })] {
             assert_eq!(
                 principal(&claims(value.clone()), &RolesClaim::default()),
-                Err(AuthError::Invalid),
+                Err(ErrorAuth::Invalido),
                 "{value}"
             );
         }

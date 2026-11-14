@@ -14,7 +14,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 {% if auth %}use puerto_web::auth::BearerAuth;
 {% endif %}{% if any_role %}use puerto_web::require_role;
 {% endif %}use uuid::Uuid;
@@ -87,7 +87,7 @@ impl {{ pascal }}Api {
             .list_{{ plural }}
             .execute(List{{ plural_pascal }}Params {
 {% if access.list.protected %}                actor: auth.0,
-{% endif %}                page: PageRequest::new(limit.0, offset.0),
+{% endif %}                page: PeticionPagina::new(limit.0, offset.0),
 {% for r in refs %}                {{ r.name }}: {{ r.name }}.0.map({{ r.ref_target }}Id::from_uuid),
 {% endfor %}            })
             .await
@@ -153,11 +153,11 @@ mod tests {
     use business::tests::mothers::{{ snake }}_mother::{{ pascal }}Mother;{% if auth %}
     use business::tests::mothers::principal_mother::PrincipalMother;
     use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
-    use puerto_core::auth::mocks::MockAuthenticator;
-    use puerto_core::auth::{AuthError, Authenticator};{% else %}
+    use puerto_nucleo::auth::dobles::MockAutenticador;
+    use puerto_nucleo::auth::{ErrorAuth, Autenticador};{% else %}
     use poem::{Route, http::StatusCode, test::TestClient};{% endif %}
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;{% for import in test_imports %}
+    use puerto_nucleo::Pagina;{% for import in test_imports %}
     use {{ import }};{% endfor %}
 
     use super::*;
@@ -174,14 +174,14 @@ mod tests {
     }
 
 {% if auth %}    /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
-    fn authenticator() -> Arc<dyn Authenticator> {
-        let mut authenticator = MockAuthenticator::new();
-        authenticator.expect_authenticate().returning(|token| match token {
+    fn authenticator() -> Arc<dyn Autenticador> {
+        let mut authenticator = MockAutenticador::new();
+        authenticator.expect_autenticar().returning(|token| match token {
             "caller" => Ok({% if caller_roles %}PrincipalMother::new()
                 .with_roles([{% for role in caller_roles %}"{{ role }}"{% if not loop.last %}, {% endif %}{% endfor %}])
                 .build(){% else %}PrincipalMother::random(){% endif %}),
             "nobody" => Ok(PrincipalMother::random()),
-            _ => Err(AuthError::Invalid),
+            _ => Err(ErrorAuth::Invalido),
         });
         Arc::new(authenticator)
     }
@@ -330,7 +330,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new({{ pascal }}Mother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new({{ pascal }}Mother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/{{ plural }}").send().await;
@@ -350,8 +350,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks.client().get("/{{ plural }}?limit=5&offset=10").send().await;
@@ -369,7 +369,7 @@ mod tests {
             .list
             .expect_execute()
             .withf(move |params| params.{{ r.name }} == Some({{ r.ref_target }}Id::from_uuid({{ r.name }})))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks.client().get(format!("/{{ plural }}?{{ r.camel }}={{ "{" }}{{ r.name }}}")).send().await;

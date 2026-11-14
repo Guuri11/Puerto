@@ -11,7 +11,7 @@ keywords = ["ddd", "puerto", "events", "kafka", "outbox"]
 categories = ["asynchronous"]
 
 [dependencies]
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 puerto-web = { workspace = true }
 async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

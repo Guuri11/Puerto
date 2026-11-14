@@ -3,8 +3,8 @@
 
 use std::future::Future;
 
-use puerto_core::events::{HandlerOutcome, REASON_PERMANENT_ERROR};
-use puerto_core::mail::{MailError, SentMails};
+use puerto_nucleo::correo::{CorreosEnviados, ErrorCorreo};
+use puerto_nucleo::eventos::{MOTIVO_ERROR_PERMANENTE, ResultadoManejo};
 use uuid::Uuid;
 
 /// Sends `mail` for the event `event_id` unless `sent` says it already went out, then records it.
@@ -19,48 +19,48 @@ use uuid::Uuid;
 ///
 /// `send` is not polled unless the mail is due, so it can be the `send(…)` call itself.
 pub async fn send_once(
-    sent: &dyn SentMails,
+    sent: &dyn CorreosEnviados,
     event_id: Uuid,
     mail: &str,
-    send: impl Future<Output = Result<(), MailError>>,
-) -> HandlerOutcome {
-    match sent.was_sent(event_id, mail).await {
+    send: impl Future<Output = Result<(), ErrorCorreo>>,
+) -> ResultadoManejo {
+    match sent.fue_enviado(event_id, mail).await {
         Ok(true) => {
             tracing::info!(%event_id, mail, "mail already sent for this event: skipped");
-            return HandlerOutcome::Ack;
+            return ResultadoManejo::Ack;
         }
         Ok(false) => {}
         Err(error) => {
             tracing::warn!(%event_id, mail, %error, "mail: the sent log cannot be read, retrying");
-            return HandlerOutcome::Retry;
+            return ResultadoManejo::Reintentar;
         }
     }
     match send.await {
         Ok(()) => {}
-        Err(MailError::Permanent(detail)) => {
+        Err(ErrorCorreo::Permanente(detail)) => {
             tracing::error!(%event_id, mail, %detail, "mail: rejected, dead-lettering");
-            return HandlerOutcome::dead_letter(REASON_PERMANENT_ERROR, detail);
+            return ResultadoManejo::descartar(MOTIVO_ERROR_PERMANENTE, detail);
         }
         Err(error) => {
             tracing::warn!(%event_id, mail, %error, "mail: not sent, retrying");
-            return HandlerOutcome::Retry;
+            return ResultadoManejo::Reintentar;
         }
     }
-    if let Err(error) = sent.mark_sent(event_id, mail).await {
+    if let Err(error) = sent.marcar_enviado(event_id, mail).await {
         tracing::error!(
             %event_id, mail, %error,
             "mail: sent but not recorded — a redelivery of this event would send it again"
         );
     }
     tracing::info!(%event_id, mail, "mail: sent");
-    HandlerOutcome::Ack
+    ResultadoManejo::Ack
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     use super::*;
     use crate::testing::InMemorySentMails;
@@ -68,7 +68,10 @@ mod tests {
     const MAIL: &str = "welcome";
 
     /// A send that counts how often it ran and answers `result`.
-    async fn counted(calls: &AtomicUsize, result: Result<(), MailError>) -> Result<(), MailError> {
+    async fn counted(
+        calls: &AtomicUsize,
+        result: Result<(), ErrorCorreo>,
+    ) -> Result<(), ErrorCorreo> {
         calls.fetch_add(1, Ordering::SeqCst);
         result
     }
@@ -84,9 +87,9 @@ mod tests {
         let outcome = send_once(&sent, event_id, MAIL, counted(&calls, Ok(()))).await;
 
         // Assert
-        assert_eq!(outcome, HandlerOutcome::Ack);
+        assert_eq!(outcome, ResultadoManejo::Ack);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        assert_eq!(sent.was_sent(event_id, MAIL).await, Ok(true));
+        assert_eq!(sent.fue_enviado(event_id, MAIL).await, Ok(true));
     }
 
     #[tokio::test]
@@ -101,7 +104,10 @@ mod tests {
         let second = send_once(&sent, event_id, MAIL, counted(&calls, Ok(()))).await;
 
         // Assert
-        assert_eq!((first, second), (HandlerOutcome::Ack, HandlerOutcome::Ack));
+        assert_eq!(
+            (first, second),
+            (ResultadoManejo::Ack, ResultadoManejo::Ack)
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
@@ -127,7 +133,7 @@ mod tests {
         let outcome = send_once(&sent, Uuid::now_v7(), MAIL, counted(&calls, Ok(()))).await;
 
         // Assert
-        assert_eq!(outcome, HandlerOutcome::Retry);
+        assert_eq!(outcome, ResultadoManejo::Reintentar);
         assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
@@ -137,14 +143,14 @@ mod tests {
         let sent = InMemorySentMails::new();
         let event_id = Uuid::now_v7();
         let calls = AtomicUsize::new(0);
-        let refused = Err(MailError::Transient("connection refused".into()));
+        let refused = Err(ErrorCorreo::Transitorio("connection refused".into()));
 
         // Act
         let outcome = send_once(&sent, event_id, MAIL, counted(&calls, refused)).await;
 
         // Assert
-        assert_eq!(outcome, HandlerOutcome::Retry);
-        assert_eq!(sent.was_sent(event_id, MAIL).await, Ok(false));
+        assert_eq!(outcome, ResultadoManejo::Reintentar);
+        assert_eq!(sent.fue_enviado(event_id, MAIL).await, Ok(false));
     }
 
     #[tokio::test]
@@ -153,7 +159,7 @@ mod tests {
         let sent = InMemorySentMails::new();
         let event_id = Uuid::now_v7();
         let calls = AtomicUsize::new(0);
-        let rejected = Err(MailError::Permanent("550 no such user".into()));
+        let rejected = Err(ErrorCorreo::Permanente("550 no such user".into()));
 
         // Act
         let outcome = send_once(&sent, event_id, MAIL, counted(&calls, rejected)).await;
@@ -161,22 +167,22 @@ mod tests {
         // Assert
         assert_eq!(
             outcome,
-            HandlerOutcome::dead_letter(REASON_PERMANENT_ERROR, "550 no such user")
+            ResultadoManejo::descartar(MOTIVO_ERROR_PERMANENTE, "550 no such user")
         );
-        assert_eq!(sent.was_sent(event_id, MAIL).await, Ok(false));
+        assert_eq!(sent.fue_enviado(event_id, MAIL).await, Ok(false));
     }
 
     #[tokio::test]
     async fn should_ack_when_the_mail_went_out_but_could_not_be_recorded() {
         // Arrange
-        let sent = InMemorySentMails::failing_to_mark(RepositoryError::Unavailable);
+        let sent = InMemorySentMails::failing_to_mark(ErrorRepositorio::NoDisponible);
         let calls = AtomicUsize::new(0);
 
         // Act
         let outcome = send_once(&sent, Uuid::now_v7(), MAIL, counted(&calls, Ok(()))).await;
 
         // Assert
-        assert_eq!(outcome, HandlerOutcome::Ack);
+        assert_eq!(outcome, ResultadoManejo::Ack);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }

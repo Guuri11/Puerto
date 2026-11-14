@@ -1,7 +1,7 @@
 //! A mail's templates: `subject.txt`, `body.html` and the optional `body.txt`, embedded by the
 //! generated code with `include_str!` and rendered with minijinja.
 
-use puerto_core::mail::{Email, MailError};
+use puerto_nucleo::correo::{Correo, ErrorCorreo};
 use serde::Serialize;
 
 /// One mail's three templates. Built as a `const` in the generated code:
@@ -42,13 +42,13 @@ impl Templates {
         &self,
         to: impl Into<String>,
         context: impl Serialize,
-    ) -> Result<Email, MailError> {
+    ) -> Result<Correo, ErrorCorreo> {
         let mut env = minijinja::Environment::new();
         env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
         let context = minijinja::Value::from(minijinja::value::Serde(&context));
         let render = |name: &'static str, source: &'static str| {
             env.render_named_str(name, source, &context)
-                .map_err(|e| MailError::Permanent(format!("{name}: {e}")))
+                .map_err(|e| ErrorCorreo::Permanente(format!("{name}: {e}")))
         };
 
         let subject = render("subject.txt", self.subject)?
@@ -56,9 +56,9 @@ impl Templates {
             .collect::<Vec<_>>()
             .join(" ");
         let html = render("body.html", self.html)?;
-        let email = Email::new(to, subject, html);
+        let email = Correo::new(to, subject, html);
         Ok(match self.text {
-            Some(text) => email.with_text(render("body.txt", text)?),
+            Some(text) => email.con_texto(render("body.txt", text)?),
             None => email,
         })
     }
@@ -88,7 +88,7 @@ mod tests {
         // Assert
         assert_eq!(
             email,
-            Ok(Email::new("ada@example.com", "Welcome, Ada", "<p>Hi Ada</p>").with_text("Hi Ada"))
+            Ok(Correo::new("ada@example.com", "Welcome, Ada", "<p>Hi Ada</p>").con_texto("Hi Ada"))
         );
     }
 
@@ -98,7 +98,7 @@ mod tests {
 
         let email = templates.render("ada@example.com", ada());
 
-        assert_eq!(email.map(|e| e.text), Ok(None));
+        assert_eq!(email.map(|e| e.texto), Ok(None));
     }
 
     #[test]
@@ -111,7 +111,7 @@ mod tests {
 
         // Assert
         match result {
-            Err(MailError::Permanent(detail)) => {
+            Err(ErrorCorreo::Permanente(detail)) => {
                 assert!(detail.starts_with("subject.txt"), "{detail}")
             }
             other => panic!("expected a permanent error, got {other:?}"),
@@ -124,7 +124,10 @@ mod tests {
 
         let result = templates.render("ada@example.com", ada());
 
-        assert!(matches!(result, Err(MailError::Permanent(_))), "{result:?}");
+        assert!(
+            matches!(result, Err(ErrorCorreo::Permanente(_))),
+            "{result:?}"
+        );
     }
 
     #[test]
@@ -133,7 +136,7 @@ mod tests {
 
         let email = templates.render("ada@example.com", ada());
 
-        assert_eq!(email.map(|e| e.subject), Ok("Welcome, Ada".to_string()));
+        assert_eq!(email.map(|e| e.asunto), Ok("Welcome, Ada".to_string()));
     }
 
     #[test]
@@ -146,7 +149,7 @@ mod tests {
         let email = templates.render("ada@example.com", context).unwrap();
 
         assert_eq!(email.html, "<p>&lt;b&gt;Ada&lt;&#x2f;b&gt;</p>");
-        assert_eq!(email.subject, "<b>Ada</b>");
-        assert_eq!(email.text.as_deref(), Some("<b>Ada</b>"));
+        assert_eq!(email.asunto, "<b>Ada</b>");
+        assert_eq!(email.texto.as_deref(), Some("<b>Ada</b>"));
     }
 }

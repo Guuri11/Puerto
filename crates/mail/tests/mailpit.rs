@@ -1,7 +1,7 @@
 //! `SmtpMailer` against a real SMTP server: a throwaway Mailpit started by `make test/mail`, which
 //! accepts only recipients at `@accepted.test` (`MP_SMTP_ALLOWED_RECIPIENTS`).
 
-use puerto_mail::{Email, MailConfig, MailError, Mailer, SmtpMailer};
+use puerto_mail::{Correo, EnviadorCorreo, ErrorCorreo, MailConfig, SmtpMailer};
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -51,10 +51,10 @@ async fn should_deliver_the_mail_when_the_server_accepts_it() {
     };
     // Arrange
     let to = unique_address("accepted.test");
-    let email = Email::new(&to, "Welcome, Ada", "<p>Hi Ada</p>").with_text("Hi Ada");
+    let email = Correo::new(&to, "Welcome, Ada", "<p>Hi Ada</p>").con_texto("Hi Ada");
 
     // Act
-    let result = mailer(&smtp_url).send(&email).await;
+    let result = mailer(&smtp_url).enviar(&email).await;
 
     // Assert
     assert_eq!(result, Ok(()));
@@ -76,11 +76,14 @@ async fn should_fail_permanently_when_the_server_rejects_the_recipient() {
         return eprintln!("{SKIP}");
     };
     // Arrange
-    let email = Email::new(unique_address("rejected.test"), "Hi", "<p>Hi</p>");
+    let email = Correo::new(unique_address("rejected.test"), "Hi", "<p>Hi</p>");
 
     // Act
-    let result = mailer(&smtp_url).send(&email).await;
+    let result = mailer(&smtp_url).enviar(&email).await;
 
     // Assert
-    assert!(matches!(result, Err(MailError::Permanent(_))), "{result:?}");
+    assert!(
+        matches!(result, Err(ErrorCorreo::Permanente(_))),
+        "{result:?}"
+    );
 }

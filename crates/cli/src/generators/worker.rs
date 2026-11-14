@@ -23,9 +23,9 @@ pub const KAFKA_TRANSPORT: &str = "kafka";
 /// Names the worker's generated code already uses: a consumer named after one would not compile.
 const RESERVED_CONSUMER_TYPES: &[&str] = &[
     "Arc",
-    "EventEnvelope",
-    "EventHandler",
-    "HandlerOutcome",
+    "SobreEvento",
+    "ManejadorEvento",
+    "ResultadoManejo",
     "KafkaConfig",
     "KafkaPublisher",
     "KafkaSubscription",
@@ -268,7 +268,7 @@ fn braced(names: &[String]) -> String {
     }
 }
 
-/// `worker/src/consumers/<name>.rs`: an `EventHandler` that matches each subscribed event,
+/// `worker/src/consumers/<name>.rs`: a `ManejadorEvento` that matches each subscribed event,
 /// decodes its snapshot (dead-lettering what does not decode), logs and acks — with its tests.
 pub fn generate_consumer(
     name: &str,

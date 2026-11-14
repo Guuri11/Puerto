@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use puerto_core::events::EventEnvelope;
-use puerto_core::events::transport::{EventPublisher, TransportError};
+use puerto_nucleo::eventos::SobreEvento;
+use puerto_nucleo::eventos::transporte::{ErrorTransporte, PublicadorEventos};
 use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
@@ -42,10 +42,10 @@ impl KafkaPublisher {
 }
 
 #[async_trait]
-impl EventPublisher for KafkaPublisher {
-    async fn publish(&self, event: &EventEnvelope) -> Result<(), TransportError> {
-        let topic = self.config.topic(&event.aggregate_type);
-        let key = event.aggregate_id.to_string();
+impl PublicadorEventos for KafkaPublisher {
+    async fn publicar(&self, event: &SobreEvento) -> Result<(), ErrorTransporte> {
+        let topic = self.config.topic(&event.tipo_agregado);
+        let key = event.id_agregado.to_string();
         let payload = event.payload.to_string();
         let headers =
             wire::headers_of(event)
@@ -64,7 +64,7 @@ impl EventPublisher for KafkaPublisher {
             Ok(_) => Ok(()),
             Err((err, _)) => {
                 tracing::error!(topic, event_id = %event.id, error = %err, "kafka: publish failed");
-                Err(TransportError::Unavailable)
+                Err(ErrorTransporte::NoDisponible)
             }
         }
     }

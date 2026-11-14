@@ -53,11 +53,11 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 
 | Crate | Owns | Imported as |
 |---|---|---|
-| `puerto-core` | `RepositoryError` (what every repository port fails with), `PageRequest` / `Page<T>` (paged lists, limit capped at 100) | `use puerto_core::{Page, PageRequest, RepositoryError};` |
+| `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
 | `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
-| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `RepositoryError`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
+| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
-`puerto-core` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
+`puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
 copy their code into the project; upgrade them with the `puerto` CLI (`puerto validate` warns when
 they drift apart). Your own middleware and routes go in `presentation/src/app.rs`, which no
@@ -263,7 +263,7 @@ resolver = "3"
 # The Puerto runtime (ADR-0017 of Puerto): what every Puerto project shares lives in these crates,
 # on the same minor as the `puerto` CLI that generated this project.
 [workspace.dependencies]
-puerto-core = "0.20"
+puerto-nucleo = "0.20"
 puerto-web = "0.20"
 puerto-sqlx = "0.20"
 puerto-events = "0.20"
@@ -481,7 +481,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
 tracing = "0.1"
@@ -502,7 +502,7 @@ mockall = "0.13"
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::delivery::{
     errors::DeliveryError,
@@ -520,8 +520,7 @@ pub struct CreateDeliveryUseCaseImpl {
 impl CreateDeliveryUseCaseTrait for CreateDeliveryUseCaseImpl {
     async fn execute(&self, params: CreateDeliveryParams) -> Result<Delivery, DeliveryError> {
         tracing::info!("create_delivery: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "create_delivery: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "create_delivery: repository failed");
         let entity = Delivery::new(DeliveryProps {
             purchase_id: params.purchase_id,
             carrier: params.carrier,
@@ -545,7 +544,7 @@ mod tests {
     use super::*;
     use crate::domain::delivery::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
     use crate::domain::purchase::model::PurchaseId;
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn should_record_delivery_created_when_fields_are_valid() {
@@ -573,15 +572,15 @@ mod tests {
         assert!(recorded.committed);
         assert_eq!(recorded.saved.len(), 1);
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "delivery_created");
-        assert_eq!(recorded.events[0].aggregate_id(), entity.id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "delivery_created");
+        assert_eq!(recorded.events[0].id_agregado(), entity.id.value());
     }
 
     #[tokio::test]
     async fn should_not_commit_when_the_store_rejects_a_duplicate() {
         // Arrange
         let uow_factory =
-            RecordingUnitOfWorkFactory::failing_at(FailAt::Save, RepositoryError::Duplicate);
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Save, ErrorRepositorio::Duplicado);
         let use_case = CreateDeliveryUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
         };
@@ -607,7 +606,7 @@ mod tests {
         // Arrange: the store found no Purchase with that id.
         let uow_factory = RecordingUnitOfWorkFactory::failing_at(
             FailAt::Save,
-            RepositoryError::MissingReference("purchase_id"),
+            ErrorRepositorio::ReferenciaInexistente("purchase_id"),
         );
         let use_case = CreateDeliveryUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -634,7 +633,7 @@ mod tests {
     async fn should_return_repository_error_when_the_commit_fails() {
         // Arrange
         let uow_factory =
-            RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, RepositoryError::Unavailable);
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, ErrorRepositorio::NoDisponible);
         let use_case = CreateDeliveryUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
         };
@@ -683,7 +682,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::delivery::{
     errors::DeliveryError,
@@ -702,8 +701,7 @@ pub struct DeleteDeliveryUseCaseImpl {
 impl DeleteDeliveryUseCaseTrait for DeleteDeliveryUseCaseImpl {
     async fn execute(&self, params: DeleteDeliveryParams) -> Result<(), DeliveryError> {
         tracing::info!(id = %params.id, "delete_delivery: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "delete_delivery: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "delete_delivery: repository failed");
         let mut entity = self
             .repository
             .find_by_id(params.id)
@@ -739,7 +737,7 @@ mod tests {
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
     use crate::domain::purchase::model::PurchaseId;
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn should_record_delivery_deleted_when_id_exists() {
@@ -771,8 +769,8 @@ mod tests {
         assert!(recorded.committed);
         assert!(recorded.saved.iter().all(|saved| saved.deleted));
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "delivery_deleted");
-        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "delivery_deleted");
+        assert_eq!(recorded.events[0].id_agregado(), entity_id.value());
     }
 
     #[tokio::test]
@@ -841,7 +839,7 @@ mod tests {
         repository::mocks::MockDeliveryRepository,
     };
     use crate::domain::purchase::model::PurchaseId;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_return_delivery_when_id_exists() {
@@ -888,7 +886,7 @@ mod tests {
         let mut mock_repo = MockDeliveryRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetDeliveryUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -908,7 +906,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::delivery::{
     errors::DeliveryError,
@@ -923,10 +921,13 @@ pub struct ListDeliveriesUseCaseImpl {
 
 #[async_trait]
 impl ListDeliveriesUseCaseTrait for ListDeliveriesUseCaseImpl {
-    async fn execute(&self, params: ListDeliveriesParams) -> Result<Page<Delivery>, DeliveryError> {
+    async fn execute(
+        &self,
+        params: ListDeliveriesParams,
+    ) -> Result<Pagina<Delivery>, DeliveryError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_deliveries: start"
         );
         self.repository
@@ -950,7 +951,7 @@ mod tests {
         repository::mocks::MockDeliveryRepository,
     };
     use crate::domain::purchase::model::PurchaseId;
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn should_return_the_page_of_deliveries() {
@@ -969,20 +970,20 @@ mod tests {
         let mut mock_repo = MockDeliveryRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page, _| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page, _| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListDeliveriesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListDeliveriesParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
                 purchase_id: None,
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -991,20 +992,20 @@ mod tests {
         let mut mock_repo = MockDeliveryRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+            .returning(|page, _| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListDeliveriesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListDeliveriesParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
                 purchase_id: None,
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -1013,20 +1014,20 @@ mod tests {
         let mut mock_repo = MockDeliveryRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page, _| page.limit() == 5 && page.offset() == 10)
-            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+            .withf(|page, _| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page, _| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListDeliveriesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListDeliveriesParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
                 purchase_id: None,
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 
     #[tokio::test]
@@ -1038,14 +1039,14 @@ mod tests {
         mock_repo
             .expect_find_all()
             .withf(move |_, f| *f == filter)
-            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+            .returning(|page, _| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListDeliveriesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListDeliveriesParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
                 purchase_id: filter.purchase_id,
             })
             .await;
@@ -1058,7 +1059,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::delivery::{
     errors::DeliveryError,
@@ -1078,8 +1079,7 @@ pub struct UpdateDeliveryUseCaseImpl {
 impl UpdateDeliveryUseCaseTrait for UpdateDeliveryUseCaseImpl {
     async fn execute(&self, params: UpdateDeliveryParams) -> Result<Delivery, DeliveryError> {
         tracing::info!(id = %params.id, "update_delivery: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "update_delivery: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "update_delivery: repository failed");
         let mut entity = self
             .repository
             .find_by_id(params.id)
@@ -1119,7 +1119,7 @@ mod tests {
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
     use crate::domain::purchase::model::PurchaseId;
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     fn repository_holding(entity: Delivery) -> MockDeliveryRepository {
         let mut mock_repo = MockDeliveryRepository::new();
@@ -1158,8 +1158,8 @@ mod tests {
         let recorded = uow_factory.recorded();
         assert!(recorded.committed);
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "delivery_updated");
-        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "delivery_updated");
+        assert_eq!(recorded.events[0].id_agregado(), entity_id.value());
     }
 
     #[tokio::test]
@@ -1228,7 +1228,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::purchase::{
     errors::PurchaseError,
@@ -1246,8 +1246,7 @@ pub struct CreatePurchaseUseCaseImpl {
 impl CreatePurchaseUseCaseTrait for CreatePurchaseUseCaseImpl {
     async fn execute(&self, params: CreatePurchaseParams) -> Result<Purchase, PurchaseError> {
         tracing::info!("create_purchase: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "create_purchase: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "create_purchase: repository failed");
         let entity = Purchase::new(PurchaseProps {
             supplier_id: params.supplier_id,
             approver_id: params.approver_id,
@@ -1272,7 +1271,7 @@ mod tests {
     use super::*;
     use crate::domain::purchase::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
     use crate::domain::supplier::model::SupplierId;
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn should_record_purchase_created_when_fields_are_valid() {
@@ -1300,15 +1299,15 @@ mod tests {
         assert!(recorded.committed);
         assert_eq!(recorded.saved.len(), 1);
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "purchase_created");
-        assert_eq!(recorded.events[0].aggregate_id(), entity.id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "purchase_created");
+        assert_eq!(recorded.events[0].id_agregado(), entity.id.value());
     }
 
     #[tokio::test]
     async fn should_not_commit_when_the_store_rejects_a_duplicate() {
         // Arrange
         let uow_factory =
-            RecordingUnitOfWorkFactory::failing_at(FailAt::Save, RepositoryError::Duplicate);
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Save, ErrorRepositorio::Duplicado);
         let use_case = CreatePurchaseUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
         };
@@ -1335,7 +1334,7 @@ mod tests {
         // Arrange: the store found no Supplier with that id.
         let uow_factory = RecordingUnitOfWorkFactory::failing_at(
             FailAt::Save,
-            RepositoryError::MissingReference("supplier_id"),
+            ErrorRepositorio::ReferenciaInexistente("supplier_id"),
         );
         let use_case = CreatePurchaseUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -1364,7 +1363,7 @@ mod tests {
         // Arrange: the store found no Supplier with that id.
         let uow_factory = RecordingUnitOfWorkFactory::failing_at(
             FailAt::Save,
-            RepositoryError::MissingReference("approver_id"),
+            ErrorRepositorio::ReferenciaInexistente("approver_id"),
         );
         let use_case = CreatePurchaseUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -1392,7 +1391,7 @@ mod tests {
     async fn should_return_repository_error_when_the_commit_fails() {
         // Arrange
         let uow_factory =
-            RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, RepositoryError::Unavailable);
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, ErrorRepositorio::NoDisponible);
         let use_case = CreatePurchaseUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
         };
@@ -1417,7 +1416,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::purchase::{
     errors::PurchaseError,
@@ -1436,8 +1435,7 @@ pub struct DeletePurchaseUseCaseImpl {
 impl DeletePurchaseUseCaseTrait for DeletePurchaseUseCaseImpl {
     async fn execute(&self, params: DeletePurchaseParams) -> Result<(), PurchaseError> {
         tracing::info!(id = %params.id, "delete_purchase: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "delete_purchase: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "delete_purchase: repository failed");
         let mut entity = self
             .repository
             .find_by_id(params.id)
@@ -1473,7 +1471,7 @@ mod tests {
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
     use crate::domain::supplier::model::SupplierId;
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn should_record_purchase_deleted_when_id_exists() {
@@ -1506,8 +1504,8 @@ mod tests {
         assert!(recorded.committed);
         assert!(recorded.saved.iter().all(|saved| saved.deleted));
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "purchase_deleted");
-        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "purchase_deleted");
+        assert_eq!(recorded.events[0].id_agregado(), entity_id.value());
     }
 
     #[tokio::test]
@@ -1576,7 +1574,7 @@ mod tests {
         repository::mocks::MockPurchaseRepository,
     };
     use crate::domain::supplier::model::SupplierId;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_return_purchase_when_id_exists() {
@@ -1623,7 +1621,7 @@ mod tests {
         let mut mock_repo = MockPurchaseRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetPurchaseUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -1643,7 +1641,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::purchase::{
     errors::PurchaseError,
@@ -1658,10 +1656,13 @@ pub struct ListPurchasesUseCaseImpl {
 
 #[async_trait]
 impl ListPurchasesUseCaseTrait for ListPurchasesUseCaseImpl {
-    async fn execute(&self, params: ListPurchasesParams) -> Result<Page<Purchase>, PurchaseError> {
+    async fn execute(
+        &self,
+        params: ListPurchasesParams,
+    ) -> Result<Pagina<Purchase>, PurchaseError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_purchases: start"
         );
         self.repository
@@ -1686,7 +1687,7 @@ mod tests {
         repository::mocks::MockPurchaseRepository,
     };
     use crate::domain::supplier::model::SupplierId;
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn should_return_the_page_of_purchases() {
@@ -1707,21 +1708,21 @@ mod tests {
         let mut mock_repo = MockPurchaseRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page, _| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page, _| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListPurchasesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListPurchasesParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
                 supplier_id: None,
                 approver_id: None,
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -1730,21 +1731,21 @@ mod tests {
         let mut mock_repo = MockPurchaseRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+            .returning(|page, _| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListPurchasesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListPurchasesParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
                 supplier_id: None,
                 approver_id: None,
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -1753,21 +1754,21 @@ mod tests {
         let mut mock_repo = MockPurchaseRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page, _| page.limit() == 5 && page.offset() == 10)
-            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+            .withf(|page, _| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page, _| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListPurchasesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListPurchasesParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
                 supplier_id: None,
                 approver_id: None,
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 
     #[tokio::test]
@@ -1780,14 +1781,14 @@ mod tests {
         mock_repo
             .expect_find_all()
             .withf(move |_, f| *f == filter)
-            .returning(|page, _| Ok(Page::new(vec![], 0, page)));
+            .returning(|page, _| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListPurchasesUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListPurchasesParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
                 supplier_id: filter.supplier_id,
                 approver_id: filter.approver_id,
             })
@@ -1801,7 +1802,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::purchase::{
     errors::PurchaseError,
@@ -1821,8 +1822,7 @@ pub struct UpdatePurchaseUseCaseImpl {
 impl UpdatePurchaseUseCaseTrait for UpdatePurchaseUseCaseImpl {
     async fn execute(&self, params: UpdatePurchaseParams) -> Result<Purchase, PurchaseError> {
         tracing::info!(id = %params.id, "update_purchase: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "update_purchase: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "update_purchase: repository failed");
         let mut entity = self
             .repository
             .find_by_id(params.id)
@@ -1858,7 +1858,7 @@ mod tests {
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
     use crate::domain::supplier::model::SupplierId;
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     fn repository_holding(entity: Purchase) -> MockPurchaseRepository {
         let mut mock_repo = MockPurchaseRepository::new();
@@ -1899,8 +1899,8 @@ mod tests {
         let recorded = uow_factory.recorded();
         assert!(recorded.committed);
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "purchase_updated");
-        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "purchase_updated");
+        assert_eq!(recorded.events[0].id_agregado(), entity_id.value());
     }
 
     #[tokio::test]
@@ -1938,7 +1938,7 @@ use std::sync::Arc;
 
 use crate::domain::supplier::value_objects::Name;
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::supplier::{
     errors::SupplierError,
@@ -1956,8 +1956,7 @@ pub struct CreateSupplierUseCaseImpl {
 impl CreateSupplierUseCaseTrait for CreateSupplierUseCaseImpl {
     async fn execute(&self, params: CreateSupplierParams) -> Result<Supplier, SupplierError> {
         tracing::info!("create_supplier: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "create_supplier: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "create_supplier: repository failed");
         let name = Name::new(params.name)?;
         let entity = Supplier::new(SupplierProps {
             name,
@@ -1981,7 +1980,7 @@ impl CreateSupplierUseCaseTrait for CreateSupplierUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::supplier::unit_of_work::mocks::{FailAt, RecordingUnitOfWorkFactory};
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn should_record_supplier_created_when_fields_are_valid() {
@@ -2009,15 +2008,15 @@ mod tests {
         assert!(recorded.committed);
         assert_eq!(recorded.saved.len(), 1);
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "supplier_created");
-        assert_eq!(recorded.events[0].aggregate_id(), entity.id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "supplier_created");
+        assert_eq!(recorded.events[0].id_agregado(), entity.id.value());
     }
 
     #[tokio::test]
     async fn should_not_commit_when_the_store_rejects_a_duplicate() {
         // Arrange
         let uow_factory =
-            RecordingUnitOfWorkFactory::failing_at(FailAt::Save, RepositoryError::Duplicate);
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Save, ErrorRepositorio::Duplicado);
         let use_case = CreateSupplierUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
         };
@@ -2042,7 +2041,7 @@ mod tests {
     async fn should_return_repository_error_when_the_commit_fails() {
         // Arrange
         let uow_factory =
-            RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, RepositoryError::Unavailable);
+            RecordingUnitOfWorkFactory::failing_at(FailAt::Commit, ErrorRepositorio::NoDisponible);
         let use_case = CreateSupplierUseCaseImpl {
             uow_factory: Arc::new(uow_factory.clone()),
         };
@@ -2113,7 +2112,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::supplier::{
     errors::SupplierError,
@@ -2132,8 +2131,7 @@ pub struct DeleteSupplierUseCaseImpl {
 impl DeleteSupplierUseCaseTrait for DeleteSupplierUseCaseImpl {
     async fn execute(&self, params: DeleteSupplierParams) -> Result<(), SupplierError> {
         tracing::info!(id = %params.id, "delete_supplier: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "delete_supplier: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "delete_supplier: repository failed");
         let mut entity = self
             .repository
             .find_by_id(params.id)
@@ -2169,7 +2167,7 @@ mod tests {
         repository::mocks::MockSupplierRepository,
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn should_record_supplier_deleted_when_id_exists() {
@@ -2201,8 +2199,8 @@ mod tests {
         assert!(recorded.committed);
         assert!(recorded.saved.iter().all(|saved| saved.deleted));
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "supplier_deleted");
-        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "supplier_deleted");
+        assert_eq!(recorded.events[0].id_agregado(), entity_id.value());
     }
 
     #[tokio::test]
@@ -2271,7 +2269,7 @@ mod tests {
         model::{Supplier, SupplierId, SupplierProps},
         repository::mocks::MockSupplierRepository,
     };
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_return_supplier_when_id_exists() {
@@ -2318,7 +2316,7 @@ mod tests {
         let mut mock_repo = MockSupplierRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetSupplierUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -2338,7 +2336,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::supplier::{
     errors::SupplierError,
@@ -2353,10 +2351,13 @@ pub struct ListSuppliersUseCaseImpl {
 
 #[async_trait]
 impl ListSuppliersUseCaseTrait for ListSuppliersUseCaseImpl {
-    async fn execute(&self, params: ListSuppliersParams) -> Result<Page<Supplier>, SupplierError> {
+    async fn execute(
+        &self,
+        params: ListSuppliersParams,
+    ) -> Result<Pagina<Supplier>, SupplierError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_suppliers: start"
         );
         self.repository
@@ -2375,7 +2376,7 @@ mod tests {
         model::{Supplier, SupplierProps},
         repository::mocks::MockSupplierRepository,
     };
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn should_return_the_page_of_suppliers() {
@@ -2394,19 +2395,19 @@ mod tests {
         let mut mock_repo = MockSupplierRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListSuppliersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListSuppliersParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -2415,19 +2416,19 @@ mod tests {
         let mut mock_repo = MockSupplierRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListSuppliersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListSuppliersParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -2436,19 +2437,19 @@ mod tests {
         let mut mock_repo = MockSupplierRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListSuppliersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListSuppliersParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 }
 
@@ -2457,7 +2458,7 @@ use std::sync::Arc;
 
 use crate::domain::supplier::value_objects::Name;
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use crate::domain::supplier::{
     errors::SupplierError,
@@ -2477,8 +2478,7 @@ pub struct UpdateSupplierUseCaseImpl {
 impl UpdateSupplierUseCaseTrait for UpdateSupplierUseCaseImpl {
     async fn execute(&self, params: UpdateSupplierParams) -> Result<Supplier, SupplierError> {
         tracing::info!(id = %params.id, "update_supplier: start");
-        let failed =
-            |e: &RepositoryError| tracing::error!(error = %e, "update_supplier: repository failed");
+        let failed = |e: &ErrorRepositorio| tracing::error!(error = %e, "update_supplier: repository failed");
         let mut entity = self
             .repository
             .find_by_id(params.id)
@@ -2519,7 +2519,7 @@ mod tests {
         repository::mocks::MockSupplierRepository,
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
-    use puerto_core::DomainEvent;
+    use puerto_nucleo::EventoDominio;
 
     fn repository_holding(entity: Supplier) -> MockSupplierRepository {
         let mut mock_repo = MockSupplierRepository::new();
@@ -2558,8 +2558,8 @@ mod tests {
         let recorded = uow_factory.recorded();
         assert!(recorded.committed);
         assert_eq!(recorded.events.len(), 1);
-        assert_eq!(recorded.events[0].event_type(), "supplier_updated");
-        assert_eq!(recorded.events[0].aggregate_id(), entity_id.value());
+        assert_eq!(recorded.events[0].tipo_evento(), "supplier_updated");
+        assert_eq!(recorded.events[0].id_agregado(), entity_id.value());
     }
 
     #[tokio::test]
@@ -2655,7 +2655,7 @@ mod tests {
 }
 
 === business/src/domain/delivery/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -2672,17 +2672,19 @@ pub enum DeliveryError {
     Unknown,
 }
 
-impl From<RepositoryError> for DeliveryError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for DeliveryError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
             // A reference names a row that does not exist: the caller's input, on that field.
-            RepositoryError::MissingReference(field) => {
+            ErrorRepositorio::ReferenciaInexistente(field) => {
                 Self::ValidationError(format!("{field}_not_found"))
             }
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -2694,19 +2696,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = DeliveryError::from(RepositoryError::Duplicate);
+        let err = DeliveryError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "delivery.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = DeliveryError::from(RepositoryError::InvalidData);
+        let err = DeliveryError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "delivery.repository_error");
     }
 
     #[test]
     fn should_convert_a_missing_reference_into_a_validation_error_on_its_field() {
-        let err = DeliveryError::from(RepositoryError::MissingReference("purchase_id"));
+        let err = DeliveryError::from(ErrorRepositorio::ReferenciaInexistente("purchase_id"));
         assert_eq!(
             err.to_string(),
             "delivery.validation_error.purchase_id_not_found"
@@ -2715,7 +2717,7 @@ mod tests {
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = DeliveryError::from(RepositoryError::Unavailable);
+        let err = DeliveryError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "delivery.repository_error");
     }
 }
@@ -2723,7 +2725,7 @@ mod tests {
 === business/src/domain/delivery/events.rs ===
 // AUTO-GENERATED by puerto from puerto.toml — never hand-edit. The snapshot follows the entity's
 // fields; add an event with `puerto generate event Delivery <name>`.
-use puerto_core::DomainEvent;
+use puerto_nucleo::EventoDominio;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -2735,7 +2737,7 @@ pub const DELIVERY_DELETED: &str = "delivery_deleted";
 
 /// What every delivery event carries: the delivery as the API shows it — primitives, value
 /// objects unwrapped. A public contract: consumers decode it with
-/// `envelope.decode::<DeliverySnapshot>()`.
+/// `envelope.decodificar::<DeliverySnapshot>()`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeliverySnapshot {
@@ -2770,8 +2772,8 @@ impl DeliveryEvent {
     }
 }
 
-impl DomainEvent for DeliveryEvent {
-    fn event_type(&self) -> &'static str {
+impl EventoDominio for DeliveryEvent {
+    fn tipo_evento(&self) -> &'static str {
         match self {
             Self::Created(_) => DELIVERY_CREATED,
             Self::Updated(_) => DELIVERY_UPDATED,
@@ -2779,15 +2781,15 @@ impl DomainEvent for DeliveryEvent {
         }
     }
 
-    fn aggregate_type(&self) -> &'static str {
+    fn tipo_agregado(&self) -> &'static str {
         "delivery"
     }
 
-    fn aggregate_id(&self) -> Uuid {
+    fn id_agregado(&self) -> Uuid {
         self.snapshot().id
     }
 
-    fn schema_version(&self) -> u16 {
+    fn version_esquema(&self) -> u16 {
         1
     }
 
@@ -2815,10 +2817,10 @@ mod tests {
 
         for (event, event_type) in events {
             // Act + Assert
-            assert_eq!(event.event_type(), event_type);
-            assert_eq!(event.aggregate_type(), "delivery");
-            assert_eq!(event.aggregate_id(), entity.id.value());
-            assert_eq!(event.schema_version(), 1);
+            assert_eq!(event.tipo_evento(), event_type);
+            assert_eq!(event.tipo_agregado(), "delivery");
+            assert_eq!(event.id_agregado(), entity.id.value());
+            assert_eq!(event.version_esquema(), 1);
             assert_eq!(event.snapshot(), &snapshot);
         }
     }
@@ -2955,7 +2957,7 @@ mod tests {
 
 === business/src/domain/delivery/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Delivery, DeliveryId};
 use crate::domain::purchase::model::PurchaseId;
@@ -2970,10 +2972,10 @@ pub struct DeliveryFilter {
 pub trait DeliveryRepositoryTrait: Send + Sync {
     async fn find_all(
         &self,
-        page: PageRequest,
+        page: PeticionPagina,
         filter: DeliveryFilter,
-    ) -> Result<Page<Delivery>, RepositoryError>;
-    async fn find_by_id(&self, id: DeliveryId) -> Result<Option<Delivery>, RepositoryError>;
+    ) -> Result<Pagina<Delivery>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: DeliveryId) -> Result<Option<Delivery>, ErrorRepositorio>;
     // No `save`: writes go through `DeliveryUnitOfWorkFactory`, which records their events.
 }
 
@@ -2988,15 +2990,15 @@ pub mod mocks {
 
         #[async_trait]
         impl DeliveryRepositoryTrait for DeliveryRepository {
-            async fn find_all(&self, page: PageRequest, filter: DeliveryFilter) -> Result<Page<Delivery>, RepositoryError>;
-            async fn find_by_id(&self, id: DeliveryId) -> Result<Option<Delivery>, RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina, filter: DeliveryFilter) -> Result<Pagina<Delivery>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: DeliveryId) -> Result<Option<Delivery>, ErrorRepositorio>;
         }
     }
 }
 
 === business/src/domain/delivery/unit_of_work.rs ===
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use super::{events::DeliveryEvent, model::Delivery};
 
@@ -3005,16 +3007,16 @@ use super::{events::DeliveryEvent, model::Delivery};
 /// early `?` is the rollback.
 #[async_trait]
 pub trait DeliveryUnitOfWork: Send {
-    async fn save(&mut self, entity: &Delivery) -> Result<(), RepositoryError>;
-    async fn record(&mut self, event: DeliveryEvent) -> Result<(), RepositoryError>;
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError>;
+    async fn save(&mut self, entity: &Delivery) -> Result<(), ErrorRepositorio>;
+    async fn record(&mut self, event: DeliveryEvent) -> Result<(), ErrorRepositorio>;
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio>;
 }
 
 /// Opens a [`DeliveryUnitOfWork`]: what every delivery write goes through. The repository only
 /// reads, so a write that skips the outbox does not compile.
 #[async_trait]
 pub trait DeliveryUnitOfWorkFactory: Send + Sync {
-    async fn begin(&self) -> Result<Box<dyn DeliveryUnitOfWork>, RepositoryError>;
+    async fn begin(&self) -> Result<Box<dyn DeliveryUnitOfWork>, ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3044,7 +3046,7 @@ pub mod mocks {
     #[derive(Clone, Default)]
     pub struct RecordingUnitOfWorkFactory {
         recorded: Arc<Mutex<Recorded>>,
-        failure: Option<(FailAt, RepositoryError)>,
+        failure: Option<(FailAt, ErrorRepositorio)>,
     }
 
     impl RecordingUnitOfWorkFactory {
@@ -3052,7 +3054,7 @@ pub mod mocks {
             Self::default()
         }
 
-        pub fn failing_at(at: FailAt, error: RepositoryError) -> Self {
+        pub fn failing_at(at: FailAt, error: ErrorRepositorio) -> Self {
             Self {
                 failure: Some((at, error)),
                 ..Self::default()
@@ -3063,7 +3065,7 @@ pub mod mocks {
             lock(&self.recorded).clone()
         }
 
-        fn fail_at(&self, at: FailAt) -> Result<(), RepositoryError> {
+        fn fail_at(&self, at: FailAt) -> Result<(), ErrorRepositorio> {
             match self.failure {
                 Some((failing, error)) if failing == at => Err(error),
                 _ => Ok(()),
@@ -3083,18 +3085,18 @@ pub mod mocks {
 
     #[async_trait]
     impl DeliveryUnitOfWork for RecordingUnitOfWork {
-        async fn save(&mut self, entity: &Delivery) -> Result<(), RepositoryError> {
+        async fn save(&mut self, entity: &Delivery) -> Result<(), ErrorRepositorio> {
             self.factory.fail_at(FailAt::Save)?;
             lock(&self.factory.recorded).saved.push(entity.clone());
             Ok(())
         }
 
-        async fn record(&mut self, event: DeliveryEvent) -> Result<(), RepositoryError> {
+        async fn record(&mut self, event: DeliveryEvent) -> Result<(), ErrorRepositorio> {
             lock(&self.factory.recorded).events.push(event);
             Ok(())
         }
 
-        async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
             self.factory.fail_at(FailAt::Commit)?;
             lock(&self.factory.recorded).committed = true;
             Ok(())
@@ -3103,7 +3105,7 @@ pub mod mocks {
 
     #[async_trait]
     impl DeliveryUnitOfWorkFactory for RecordingUnitOfWorkFactory {
-        async fn begin(&self) -> Result<Box<dyn DeliveryUnitOfWork>, RepositoryError> {
+        async fn begin(&self) -> Result<Box<dyn DeliveryUnitOfWork>, ErrorRepositorio> {
             self.fail_at(FailAt::Begin)?;
             Ok(Box::new(RecordingUnitOfWork {
                 factory: self.clone(),
@@ -3212,21 +3214,24 @@ pub mod mocks {
 
 === business/src/domain/delivery/use_cases/list_deliveries.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::delivery::{errors::DeliveryError, model::Delivery};
 use crate::domain::purchase::model::PurchaseId;
 
 #[derive(Debug, Clone)]
 pub struct ListDeliveriesParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
     /// Only the deliveries whose `purchase_id` is this one, when set.
     pub purchase_id: Option<PurchaseId>,
 }
 
 #[async_trait]
 pub trait ListDeliveriesUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListDeliveriesParams) -> Result<Page<Delivery>, DeliveryError>;
+    async fn execute(
+        &self,
+        params: ListDeliveriesParams,
+    ) -> Result<Pagina<Delivery>, DeliveryError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3240,7 +3245,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListDeliveriesUseCaseTrait for ListDeliveriesUseCase {
-            async fn execute(&self, params: ListDeliveriesParams) -> Result<Page<Delivery>, DeliveryError>;
+            async fn execute(&self, params: ListDeliveriesParams) -> Result<Pagina<Delivery>, DeliveryError>;
         }
     }
 }
@@ -3283,7 +3288,7 @@ pub mod mocks {
 }
 
 === business/src/domain/purchase/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -3300,17 +3305,19 @@ pub enum PurchaseError {
     Unknown,
 }
 
-impl From<RepositoryError> for PurchaseError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for PurchaseError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
             // A reference names a row that does not exist: the caller's input, on that field.
-            RepositoryError::MissingReference(field) => {
+            ErrorRepositorio::ReferenciaInexistente(field) => {
                 Self::ValidationError(format!("{field}_not_found"))
             }
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -3322,19 +3329,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = PurchaseError::from(RepositoryError::Duplicate);
+        let err = PurchaseError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "purchase.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = PurchaseError::from(RepositoryError::InvalidData);
+        let err = PurchaseError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "purchase.repository_error");
     }
 
     #[test]
     fn should_convert_a_missing_reference_into_a_validation_error_on_its_field() {
-        let err = PurchaseError::from(RepositoryError::MissingReference("supplier_id"));
+        let err = PurchaseError::from(ErrorRepositorio::ReferenciaInexistente("supplier_id"));
         assert_eq!(
             err.to_string(),
             "purchase.validation_error.supplier_id_not_found"
@@ -3343,7 +3350,7 @@ mod tests {
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = PurchaseError::from(RepositoryError::Unavailable);
+        let err = PurchaseError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "purchase.repository_error");
     }
 }
@@ -3351,7 +3358,7 @@ mod tests {
 === business/src/domain/purchase/events.rs ===
 // AUTO-GENERATED by puerto from puerto.toml — never hand-edit. The snapshot follows the entity's
 // fields; add an event with `puerto generate event Purchase <name>`.
-use puerto_core::DomainEvent;
+use puerto_nucleo::EventoDominio;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -3363,7 +3370,7 @@ pub const PURCHASE_DELETED: &str = "purchase_deleted";
 
 /// What every purchase event carries: the purchase as the API shows it — primitives, value
 /// objects unwrapped. A public contract: consumers decode it with
-/// `envelope.decode::<PurchaseSnapshot>()`.
+/// `envelope.decodificar::<PurchaseSnapshot>()`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PurchaseSnapshot {
@@ -3400,8 +3407,8 @@ impl PurchaseEvent {
     }
 }
 
-impl DomainEvent for PurchaseEvent {
-    fn event_type(&self) -> &'static str {
+impl EventoDominio for PurchaseEvent {
+    fn tipo_evento(&self) -> &'static str {
         match self {
             Self::Created(_) => PURCHASE_CREATED,
             Self::Updated(_) => PURCHASE_UPDATED,
@@ -3409,15 +3416,15 @@ impl DomainEvent for PurchaseEvent {
         }
     }
 
-    fn aggregate_type(&self) -> &'static str {
+    fn tipo_agregado(&self) -> &'static str {
         "purchase"
     }
 
-    fn aggregate_id(&self) -> Uuid {
+    fn id_agregado(&self) -> Uuid {
         self.snapshot().id
     }
 
-    fn schema_version(&self) -> u16 {
+    fn version_esquema(&self) -> u16 {
         1
     }
 
@@ -3445,10 +3452,10 @@ mod tests {
 
         for (event, event_type) in events {
             // Act + Assert
-            assert_eq!(event.event_type(), event_type);
-            assert_eq!(event.aggregate_type(), "purchase");
-            assert_eq!(event.aggregate_id(), entity.id.value());
-            assert_eq!(event.schema_version(), 1);
+            assert_eq!(event.tipo_evento(), event_type);
+            assert_eq!(event.tipo_agregado(), "purchase");
+            assert_eq!(event.id_agregado(), entity.id.value());
+            assert_eq!(event.version_esquema(), 1);
             assert_eq!(event.snapshot(), &snapshot);
         }
     }
@@ -3564,7 +3571,7 @@ mod tests {
 
 === business/src/domain/purchase/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Purchase, PurchaseId};
 use crate::domain::supplier::model::SupplierId;
@@ -3580,10 +3587,10 @@ pub struct PurchaseFilter {
 pub trait PurchaseRepositoryTrait: Send + Sync {
     async fn find_all(
         &self,
-        page: PageRequest,
+        page: PeticionPagina,
         filter: PurchaseFilter,
-    ) -> Result<Page<Purchase>, RepositoryError>;
-    async fn find_by_id(&self, id: PurchaseId) -> Result<Option<Purchase>, RepositoryError>;
+    ) -> Result<Pagina<Purchase>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: PurchaseId) -> Result<Option<Purchase>, ErrorRepositorio>;
     // No `save`: writes go through `PurchaseUnitOfWorkFactory`, which records their events.
 }
 
@@ -3598,15 +3605,15 @@ pub mod mocks {
 
         #[async_trait]
         impl PurchaseRepositoryTrait for PurchaseRepository {
-            async fn find_all(&self, page: PageRequest, filter: PurchaseFilter) -> Result<Page<Purchase>, RepositoryError>;
-            async fn find_by_id(&self, id: PurchaseId) -> Result<Option<Purchase>, RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina, filter: PurchaseFilter) -> Result<Pagina<Purchase>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: PurchaseId) -> Result<Option<Purchase>, ErrorRepositorio>;
         }
     }
 }
 
 === business/src/domain/purchase/unit_of_work.rs ===
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use super::{events::PurchaseEvent, model::Purchase};
 
@@ -3615,16 +3622,16 @@ use super::{events::PurchaseEvent, model::Purchase};
 /// early `?` is the rollback.
 #[async_trait]
 pub trait PurchaseUnitOfWork: Send {
-    async fn save(&mut self, entity: &Purchase) -> Result<(), RepositoryError>;
-    async fn record(&mut self, event: PurchaseEvent) -> Result<(), RepositoryError>;
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError>;
+    async fn save(&mut self, entity: &Purchase) -> Result<(), ErrorRepositorio>;
+    async fn record(&mut self, event: PurchaseEvent) -> Result<(), ErrorRepositorio>;
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio>;
 }
 
 /// Opens a [`PurchaseUnitOfWork`]: what every purchase write goes through. The repository only
 /// reads, so a write that skips the outbox does not compile.
 #[async_trait]
 pub trait PurchaseUnitOfWorkFactory: Send + Sync {
-    async fn begin(&self) -> Result<Box<dyn PurchaseUnitOfWork>, RepositoryError>;
+    async fn begin(&self) -> Result<Box<dyn PurchaseUnitOfWork>, ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3654,7 +3661,7 @@ pub mod mocks {
     #[derive(Clone, Default)]
     pub struct RecordingUnitOfWorkFactory {
         recorded: Arc<Mutex<Recorded>>,
-        failure: Option<(FailAt, RepositoryError)>,
+        failure: Option<(FailAt, ErrorRepositorio)>,
     }
 
     impl RecordingUnitOfWorkFactory {
@@ -3662,7 +3669,7 @@ pub mod mocks {
             Self::default()
         }
 
-        pub fn failing_at(at: FailAt, error: RepositoryError) -> Self {
+        pub fn failing_at(at: FailAt, error: ErrorRepositorio) -> Self {
             Self {
                 failure: Some((at, error)),
                 ..Self::default()
@@ -3673,7 +3680,7 @@ pub mod mocks {
             lock(&self.recorded).clone()
         }
 
-        fn fail_at(&self, at: FailAt) -> Result<(), RepositoryError> {
+        fn fail_at(&self, at: FailAt) -> Result<(), ErrorRepositorio> {
             match self.failure {
                 Some((failing, error)) if failing == at => Err(error),
                 _ => Ok(()),
@@ -3693,18 +3700,18 @@ pub mod mocks {
 
     #[async_trait]
     impl PurchaseUnitOfWork for RecordingUnitOfWork {
-        async fn save(&mut self, entity: &Purchase) -> Result<(), RepositoryError> {
+        async fn save(&mut self, entity: &Purchase) -> Result<(), ErrorRepositorio> {
             self.factory.fail_at(FailAt::Save)?;
             lock(&self.factory.recorded).saved.push(entity.clone());
             Ok(())
         }
 
-        async fn record(&mut self, event: PurchaseEvent) -> Result<(), RepositoryError> {
+        async fn record(&mut self, event: PurchaseEvent) -> Result<(), ErrorRepositorio> {
             lock(&self.factory.recorded).events.push(event);
             Ok(())
         }
 
-        async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
             self.factory.fail_at(FailAt::Commit)?;
             lock(&self.factory.recorded).committed = true;
             Ok(())
@@ -3713,7 +3720,7 @@ pub mod mocks {
 
     #[async_trait]
     impl PurchaseUnitOfWorkFactory for RecordingUnitOfWorkFactory {
-        async fn begin(&self) -> Result<Box<dyn PurchaseUnitOfWork>, RepositoryError> {
+        async fn begin(&self) -> Result<Box<dyn PurchaseUnitOfWork>, ErrorRepositorio> {
             self.fail_at(FailAt::Begin)?;
             Ok(Box::new(RecordingUnitOfWork {
                 factory: self.clone(),
@@ -3823,14 +3830,14 @@ pub mod mocks {
 
 === business/src/domain/purchase/use_cases/list_purchases.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::purchase::{errors::PurchaseError, model::Purchase};
 use crate::domain::supplier::model::SupplierId;
 
 #[derive(Debug, Clone)]
 pub struct ListPurchasesParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
     /// Only the purchases whose `supplier_id` is this one, when set.
     pub supplier_id: Option<SupplierId>,
     /// Only the purchases whose `approver_id` is this one, when set.
@@ -3839,7 +3846,8 @@ pub struct ListPurchasesParams {
 
 #[async_trait]
 pub trait ListPurchasesUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListPurchasesParams) -> Result<Page<Purchase>, PurchaseError>;
+    async fn execute(&self, params: ListPurchasesParams)
+    -> Result<Pagina<Purchase>, PurchaseError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3853,7 +3861,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListPurchasesUseCaseTrait for ListPurchasesUseCase {
-            async fn execute(&self, params: ListPurchasesParams) -> Result<Page<Purchase>, PurchaseError>;
+            async fn execute(&self, params: ListPurchasesParams) -> Result<Pagina<Purchase>, PurchaseError>;
         }
     }
 }
@@ -3897,7 +3905,7 @@ pub mod mocks {
 }
 
 === business/src/domain/supplier/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -3916,13 +3924,15 @@ pub enum SupplierError {
     InvalidName,
 }
 
-impl From<RepositoryError> for SupplierError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for SupplierError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -3934,19 +3944,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = SupplierError::from(RepositoryError::Duplicate);
+        let err = SupplierError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "supplier.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = SupplierError::from(RepositoryError::InvalidData);
+        let err = SupplierError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "supplier.repository_error");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = SupplierError::from(RepositoryError::Unavailable);
+        let err = SupplierError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "supplier.repository_error");
     }
 }
@@ -3954,7 +3964,7 @@ mod tests {
 === business/src/domain/supplier/events.rs ===
 // AUTO-GENERATED by puerto from puerto.toml — never hand-edit. The snapshot follows the entity's
 // fields; add an event with `puerto generate event Supplier <name>`.
-use puerto_core::DomainEvent;
+use puerto_nucleo::EventoDominio;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -3966,7 +3976,7 @@ pub const SUPPLIER_DELETED: &str = "supplier_deleted";
 
 /// What every supplier event carries: the supplier as the API shows it — primitives, value
 /// objects unwrapped. A public contract: consumers decode it with
-/// `envelope.decode::<SupplierSnapshot>()`.
+/// `envelope.decodificar::<SupplierSnapshot>()`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SupplierSnapshot {
@@ -4001,8 +4011,8 @@ impl SupplierEvent {
     }
 }
 
-impl DomainEvent for SupplierEvent {
-    fn event_type(&self) -> &'static str {
+impl EventoDominio for SupplierEvent {
+    fn tipo_evento(&self) -> &'static str {
         match self {
             Self::Created(_) => SUPPLIER_CREATED,
             Self::Updated(_) => SUPPLIER_UPDATED,
@@ -4010,15 +4020,15 @@ impl DomainEvent for SupplierEvent {
         }
     }
 
-    fn aggregate_type(&self) -> &'static str {
+    fn tipo_agregado(&self) -> &'static str {
         "supplier"
     }
 
-    fn aggregate_id(&self) -> Uuid {
+    fn id_agregado(&self) -> Uuid {
         self.snapshot().id
     }
 
-    fn schema_version(&self) -> u16 {
+    fn version_esquema(&self) -> u16 {
         1
     }
 
@@ -4046,10 +4056,10 @@ mod tests {
 
         for (event, event_type) in events {
             // Act + Assert
-            assert_eq!(event.event_type(), event_type);
-            assert_eq!(event.aggregate_type(), "supplier");
-            assert_eq!(event.aggregate_id(), entity.id.value());
-            assert_eq!(event.schema_version(), 1);
+            assert_eq!(event.tipo_evento(), event_type);
+            assert_eq!(event.tipo_agregado(), "supplier");
+            assert_eq!(event.id_agregado(), entity.id.value());
+            assert_eq!(event.version_esquema(), 1);
             assert_eq!(event.snapshot(), &snapshot);
         }
     }
@@ -4193,14 +4203,14 @@ mod tests {
 
 === business/src/domain/supplier/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Supplier, SupplierId};
 
 #[async_trait]
 pub trait SupplierRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Supplier>, RepositoryError>;
-    async fn find_by_id(&self, id: SupplierId) -> Result<Option<Supplier>, RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Supplier>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: SupplierId) -> Result<Option<Supplier>, ErrorRepositorio>;
     // No `save`: writes go through `SupplierUnitOfWorkFactory`, which records their events.
 }
 
@@ -4215,15 +4225,15 @@ pub mod mocks {
 
         #[async_trait]
         impl SupplierRepositoryTrait for SupplierRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Supplier>, RepositoryError>;
-            async fn find_by_id(&self, id: SupplierId) -> Result<Option<Supplier>, RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Supplier>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: SupplierId) -> Result<Option<Supplier>, ErrorRepositorio>;
         }
     }
 }
 
 === business/src/domain/supplier/unit_of_work.rs ===
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use super::{events::SupplierEvent, model::Supplier};
 
@@ -4232,16 +4242,16 @@ use super::{events::SupplierEvent, model::Supplier};
 /// early `?` is the rollback.
 #[async_trait]
 pub trait SupplierUnitOfWork: Send {
-    async fn save(&mut self, entity: &Supplier) -> Result<(), RepositoryError>;
-    async fn record(&mut self, event: SupplierEvent) -> Result<(), RepositoryError>;
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError>;
+    async fn save(&mut self, entity: &Supplier) -> Result<(), ErrorRepositorio>;
+    async fn record(&mut self, event: SupplierEvent) -> Result<(), ErrorRepositorio>;
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio>;
 }
 
 /// Opens a [`SupplierUnitOfWork`]: what every supplier write goes through. The repository only
 /// reads, so a write that skips the outbox does not compile.
 #[async_trait]
 pub trait SupplierUnitOfWorkFactory: Send + Sync {
-    async fn begin(&self) -> Result<Box<dyn SupplierUnitOfWork>, RepositoryError>;
+    async fn begin(&self) -> Result<Box<dyn SupplierUnitOfWork>, ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -4271,7 +4281,7 @@ pub mod mocks {
     #[derive(Clone, Default)]
     pub struct RecordingUnitOfWorkFactory {
         recorded: Arc<Mutex<Recorded>>,
-        failure: Option<(FailAt, RepositoryError)>,
+        failure: Option<(FailAt, ErrorRepositorio)>,
     }
 
     impl RecordingUnitOfWorkFactory {
@@ -4279,7 +4289,7 @@ pub mod mocks {
             Self::default()
         }
 
-        pub fn failing_at(at: FailAt, error: RepositoryError) -> Self {
+        pub fn failing_at(at: FailAt, error: ErrorRepositorio) -> Self {
             Self {
                 failure: Some((at, error)),
                 ..Self::default()
@@ -4290,7 +4300,7 @@ pub mod mocks {
             lock(&self.recorded).clone()
         }
 
-        fn fail_at(&self, at: FailAt) -> Result<(), RepositoryError> {
+        fn fail_at(&self, at: FailAt) -> Result<(), ErrorRepositorio> {
             match self.failure {
                 Some((failing, error)) if failing == at => Err(error),
                 _ => Ok(()),
@@ -4310,18 +4320,18 @@ pub mod mocks {
 
     #[async_trait]
     impl SupplierUnitOfWork for RecordingUnitOfWork {
-        async fn save(&mut self, entity: &Supplier) -> Result<(), RepositoryError> {
+        async fn save(&mut self, entity: &Supplier) -> Result<(), ErrorRepositorio> {
             self.factory.fail_at(FailAt::Save)?;
             lock(&self.factory.recorded).saved.push(entity.clone());
             Ok(())
         }
 
-        async fn record(&mut self, event: SupplierEvent) -> Result<(), RepositoryError> {
+        async fn record(&mut self, event: SupplierEvent) -> Result<(), ErrorRepositorio> {
             lock(&self.factory.recorded).events.push(event);
             Ok(())
         }
 
-        async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
             self.factory.fail_at(FailAt::Commit)?;
             lock(&self.factory.recorded).committed = true;
             Ok(())
@@ -4330,7 +4340,7 @@ pub mod mocks {
 
     #[async_trait]
     impl SupplierUnitOfWorkFactory for RecordingUnitOfWorkFactory {
-        async fn begin(&self) -> Result<Box<dyn SupplierUnitOfWork>, RepositoryError> {
+        async fn begin(&self) -> Result<Box<dyn SupplierUnitOfWork>, ErrorRepositorio> {
             self.fail_at(FailAt::Begin)?;
             Ok(Box::new(RecordingUnitOfWork {
                 factory: self.clone(),
@@ -4438,18 +4448,19 @@ pub mod mocks {
 
 === business/src/domain/supplier/use_cases/list_suppliers.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::supplier::{errors::SupplierError, model::Supplier};
 
 #[derive(Debug, Clone)]
 pub struct ListSuppliersParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
 }
 
 #[async_trait]
 pub trait ListSuppliersUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListSuppliersParams) -> Result<Page<Supplier>, SupplierError>;
+    async fn execute(&self, params: ListSuppliersParams)
+    -> Result<Pagina<Supplier>, SupplierError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -4463,7 +4474,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListSuppliersUseCaseTrait for ListSuppliersUseCase {
-            async fn execute(&self, params: ListSuppliersParams) -> Result<Page<Supplier>, SupplierError>;
+            async fn execute(&self, params: ListSuppliersParams) -> Result<Pagina<Supplier>, SupplierError>;
         }
     }
 }
@@ -4853,7 +4864,7 @@ edition = "2024"
 
 [dependencies]
 business = { path = "../business" }
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 puerto-sqlx = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
@@ -5036,7 +5047,7 @@ use business::domain::delivery::{
     model::{Delivery, DeliveryId},
     repository::{DeliveryFilter, DeliveryRepositoryTrait},
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::DeliveryDb;
 use crate::db::map_sqlx_error;
@@ -5053,10 +5064,10 @@ impl PgDeliveryRepository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: DeliveryDb) -> Result<Delivery, RepositoryError> {
+fn to_domain(row: DeliveryDb) -> Result<Delivery, ErrorRepositorio> {
     Delivery::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid delivery");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
@@ -5064,10 +5075,14 @@ fn to_domain(row: DeliveryDb) -> Result<Delivery, RepositoryError> {
 impl DeliveryRepositoryTrait for PgDeliveryRepository {
     async fn find_all(
         &self,
-        page: PageRequest,
+        page: PeticionPagina,
         filter: DeliveryFilter,
-    ) -> Result<Page<Delivery>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    ) -> Result<Pagina<Delivery>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         // One static query whatever the filter: an unset id is NULL and matches every row.
         let purchase_id = filter.purchase_id.map(|id| id.value());
         let rows = sqlx::query_as!(
@@ -5075,8 +5090,8 @@ impl DeliveryRepositoryTrait for PgDeliveryRepository {
             "SELECT id, created_at, updated_at, deleted, deleted_at, purchase_id, carrier
              FROM deliveries WHERE deleted = false AND ($3::uuid IS NULL OR purchase_id = $3)
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset()),
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento()),
             purchase_id
         )
         .fetch_all(&self.pool)
@@ -5102,10 +5117,10 @@ impl DeliveryRepositoryTrait for PgDeliveryRepository {
             .collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: DeliveryId) -> Result<Option<Delivery>, RepositoryError> {
+    async fn find_by_id(&self, id: DeliveryId) -> Result<Option<Delivery>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             DeliveryDb,
@@ -5207,12 +5222,12 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default(), DeliveryFilter::default())
+            .find_all(PeticionPagina::default(), DeliveryFilter::default())
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -5226,16 +5241,16 @@ pub(crate) mod integration_tests {
         // Act
         let page = test_repo(pool)
             .find_all(
-                PageRequest::new(Some(2), Some(2)),
+                PeticionPagina::new(Some(2), Some(2)),
                 DeliveryFilter::default(),
             )
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 
     #[sqlx::test(migrator = "crate::db::MIGRATOR")]
@@ -5250,7 +5265,7 @@ pub(crate) mod integration_tests {
         // Act
         let page = test_repo(pool)
             .find_all(
-                PageRequest::default(),
+                PeticionPagina::default(),
                 DeliveryFilter {
                     purchase_id: Some(target.id),
                 },
@@ -5260,7 +5275,7 @@ pub(crate) mod integration_tests {
 
         // Assert
         assert_eq!(
-            page.items.iter().map(|row| row.id).collect::<Vec<_>>(),
+            page.elementos.iter().map(|row| row.id).collect::<Vec<_>>(),
             vec![wanted.id]
         );
         assert_eq!(page.total, 1);
@@ -5276,7 +5291,7 @@ use business::domain::delivery::{
     model::Delivery,
     unit_of_work::{DeliveryUnitOfWork, DeliveryUnitOfWorkFactory},
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use puerto_sqlx::uow::PgTransaction;
 
 use super::entity::DeliveryDb;
@@ -5302,7 +5317,7 @@ const REFERENCES: &[ForeignKey] = &[ForeignKey {
 
 #[async_trait]
 impl DeliveryUnitOfWorkFactory for PgDeliveryUnitOfWorkFactory {
-    async fn begin(&self) -> Result<Box<dyn DeliveryUnitOfWork>, RepositoryError> {
+    async fn begin(&self) -> Result<Box<dyn DeliveryUnitOfWork>, ErrorRepositorio> {
         let tx = PgTransaction::begin(&self.pool).await?;
         Ok(Box::new(PgDeliveryUnitOfWork { tx }))
     }
@@ -5314,7 +5329,7 @@ struct PgDeliveryUnitOfWork {
 
 #[async_trait]
 impl DeliveryUnitOfWork for PgDeliveryUnitOfWork {
-    async fn save(&mut self, entity: &Delivery) -> Result<(), RepositoryError> {
+    async fn save(&mut self, entity: &Delivery) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = DeliveryDb::from(entity);
         sqlx::query!(
@@ -5339,11 +5354,11 @@ impl DeliveryUnitOfWork for PgDeliveryUnitOfWork {
         Ok(())
     }
 
-    async fn record(&mut self, event: DeliveryEvent) -> Result<(), RepositoryError> {
+    async fn record(&mut self, event: DeliveryEvent) -> Result<(), ErrorRepositorio> {
         self.tx.record(&event).await
     }
 
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
         self.tx.commit().await
     }
 }
@@ -5369,7 +5384,7 @@ mod integration_tests {
     }
 
     /// What a create use case does: save, record, commit.
-    async fn create(pool: &PgPool, entity: &Delivery) -> Result<(), RepositoryError> {
+    async fn create(pool: &PgPool, entity: &Delivery) -> Result<(), ErrorRepositorio> {
         let mut uow = PgDeliveryUnitOfWorkFactory::new(pool.clone())
             .begin()
             .await?;
@@ -5469,7 +5484,7 @@ mod integration_tests {
         let result = create(&pool, &second).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM deliveries").await, 1);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
@@ -5486,7 +5501,7 @@ mod integration_tests {
         // Assert
         assert_eq!(
             result.unwrap_err(),
-            RepositoryError::MissingReference("purchase_id")
+            ErrorRepositorio::ReferenciaInexistente("purchase_id")
         );
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
@@ -5577,7 +5592,7 @@ use business::domain::purchase::{
     model::{Purchase, PurchaseId},
     repository::{PurchaseFilter, PurchaseRepositoryTrait},
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::PurchaseDb;
 use crate::db::map_sqlx_error;
@@ -5594,10 +5609,10 @@ impl PgPurchaseRepository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: PurchaseDb) -> Result<Purchase, RepositoryError> {
+fn to_domain(row: PurchaseDb) -> Result<Purchase, ErrorRepositorio> {
     Purchase::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid purchase");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
@@ -5605,10 +5620,14 @@ fn to_domain(row: PurchaseDb) -> Result<Purchase, RepositoryError> {
 impl PurchaseRepositoryTrait for PgPurchaseRepository {
     async fn find_all(
         &self,
-        page: PageRequest,
+        page: PeticionPagina,
         filter: PurchaseFilter,
-    ) -> Result<Page<Purchase>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    ) -> Result<Pagina<Purchase>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         // One static query whatever the filter: an unset id is NULL and matches every row.
         let supplier_id = filter.supplier_id.map(|id| id.value());
         let approver_id = filter.approver_id.map(|id| id.value());
@@ -5617,8 +5636,8 @@ impl PurchaseRepositoryTrait for PgPurchaseRepository {
             "SELECT id, created_at, updated_at, deleted, deleted_at, supplier_id, approver_id, total
              FROM purchases WHERE deleted = false AND ($3::uuid IS NULL OR supplier_id = $3) AND ($4::uuid IS NULL OR approver_id = $4)
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset()),
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento()),
             supplier_id,
             approver_id
         )
@@ -5646,10 +5665,10 @@ impl PurchaseRepositoryTrait for PgPurchaseRepository {
             .collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: PurchaseId) -> Result<Option<Purchase>, RepositoryError> {
+    async fn find_by_id(&self, id: PurchaseId) -> Result<Option<Purchase>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             PurchaseDb,
@@ -5753,12 +5772,12 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default(), PurchaseFilter::default())
+            .find_all(PeticionPagina::default(), PurchaseFilter::default())
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -5772,16 +5791,16 @@ pub(crate) mod integration_tests {
         // Act
         let page = test_repo(pool)
             .find_all(
-                PageRequest::new(Some(2), Some(2)),
+                PeticionPagina::new(Some(2), Some(2)),
                 PurchaseFilter::default(),
             )
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 
     #[sqlx::test(migrator = "crate::db::MIGRATOR")]
@@ -5796,7 +5815,7 @@ pub(crate) mod integration_tests {
         // Act
         let page = test_repo(pool)
             .find_all(
-                PageRequest::default(),
+                PeticionPagina::default(),
                 PurchaseFilter {
                     supplier_id: Some(target.id),
                     approver_id: None,
@@ -5807,7 +5826,7 @@ pub(crate) mod integration_tests {
 
         // Assert
         assert_eq!(
-            page.items.iter().map(|row| row.id).collect::<Vec<_>>(),
+            page.elementos.iter().map(|row| row.id).collect::<Vec<_>>(),
             vec![wanted.id]
         );
         assert_eq!(page.total, 1);
@@ -5825,7 +5844,7 @@ pub(crate) mod integration_tests {
         // Act
         let page = test_repo(pool)
             .find_all(
-                PageRequest::default(),
+                PeticionPagina::default(),
                 PurchaseFilter {
                     supplier_id: None,
                     approver_id: Some(target.id),
@@ -5836,7 +5855,7 @@ pub(crate) mod integration_tests {
 
         // Assert
         assert_eq!(
-            page.items.iter().map(|row| row.id).collect::<Vec<_>>(),
+            page.elementos.iter().map(|row| row.id).collect::<Vec<_>>(),
             vec![wanted.id]
         );
         assert_eq!(page.total, 1);
@@ -5852,7 +5871,7 @@ use business::domain::purchase::{
     model::Purchase,
     unit_of_work::{PurchaseUnitOfWork, PurchaseUnitOfWorkFactory},
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use puerto_sqlx::uow::PgTransaction;
 
 use super::entity::PurchaseDb;
@@ -5884,7 +5903,7 @@ const REFERENCES: &[ForeignKey] = &[
 
 #[async_trait]
 impl PurchaseUnitOfWorkFactory for PgPurchaseUnitOfWorkFactory {
-    async fn begin(&self) -> Result<Box<dyn PurchaseUnitOfWork>, RepositoryError> {
+    async fn begin(&self) -> Result<Box<dyn PurchaseUnitOfWork>, ErrorRepositorio> {
         let tx = PgTransaction::begin(&self.pool).await?;
         Ok(Box::new(PgPurchaseUnitOfWork { tx }))
     }
@@ -5896,7 +5915,7 @@ struct PgPurchaseUnitOfWork {
 
 #[async_trait]
 impl PurchaseUnitOfWork for PgPurchaseUnitOfWork {
-    async fn save(&mut self, entity: &Purchase) -> Result<(), RepositoryError> {
+    async fn save(&mut self, entity: &Purchase) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = PurchaseDb::from(entity);
         sqlx::query!(
@@ -5922,11 +5941,11 @@ impl PurchaseUnitOfWork for PgPurchaseUnitOfWork {
         Ok(())
     }
 
-    async fn record(&mut self, event: PurchaseEvent) -> Result<(), RepositoryError> {
+    async fn record(&mut self, event: PurchaseEvent) -> Result<(), ErrorRepositorio> {
         self.tx.record(&event).await
     }
 
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
         self.tx.commit().await
     }
 }
@@ -5953,7 +5972,7 @@ mod integration_tests {
     }
 
     /// What a create use case does: save, record, commit.
-    async fn create(pool: &PgPool, entity: &Purchase) -> Result<(), RepositoryError> {
+    async fn create(pool: &PgPool, entity: &Purchase) -> Result<(), ErrorRepositorio> {
         let mut uow = PgPurchaseUnitOfWorkFactory::new(pool.clone())
             .begin()
             .await?;
@@ -6046,7 +6065,7 @@ mod integration_tests {
         // Assert
         assert_eq!(
             result.unwrap_err(),
-            RepositoryError::MissingReference("supplier_id")
+            ErrorRepositorio::ReferenciaInexistente("supplier_id")
         );
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
@@ -6063,7 +6082,7 @@ mod integration_tests {
         // Assert
         assert_eq!(
             result.unwrap_err(),
-            RepositoryError::MissingReference("approver_id")
+            ErrorRepositorio::ReferenciaInexistente("approver_id")
         );
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
@@ -6130,7 +6149,7 @@ use business::domain::supplier::{
     model::{Supplier, SupplierId},
     repository::SupplierRepositoryTrait,
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::SupplierDb;
 use crate::db::map_sqlx_error;
@@ -6147,24 +6166,28 @@ impl PgSupplierRepository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: SupplierDb) -> Result<Supplier, RepositoryError> {
+fn to_domain(row: SupplierDb) -> Result<Supplier, ErrorRepositorio> {
     Supplier::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid supplier");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
 impl SupplierRepositoryTrait for PgSupplierRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Supplier>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Supplier>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         let rows = sqlx::query_as!(
             SupplierDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, name, email
              FROM suppliers WHERE deleted = false
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento())
         )
         .fetch_all(&self.pool)
         .await
@@ -6188,10 +6211,10 @@ impl SupplierRepositoryTrait for PgSupplierRepository {
             .collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: SupplierId) -> Result<Option<Supplier>, RepositoryError> {
+    async fn find_by_id(&self, id: SupplierId) -> Result<Option<Supplier>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             SupplierDb,
@@ -6294,12 +6317,12 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default())
+            .find_all(PeticionPagina::default())
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -6312,14 +6335,14 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PeticionPagina::new(Some(2), Some(2)))
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 }
 
@@ -6332,7 +6355,7 @@ use business::domain::supplier::{
     model::Supplier,
     unit_of_work::{SupplierUnitOfWork, SupplierUnitOfWorkFactory},
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use puerto_sqlx::uow::PgTransaction;
 
 use super::entity::SupplierDb;
@@ -6351,7 +6374,7 @@ impl PgSupplierUnitOfWorkFactory {
 
 #[async_trait]
 impl SupplierUnitOfWorkFactory for PgSupplierUnitOfWorkFactory {
-    async fn begin(&self) -> Result<Box<dyn SupplierUnitOfWork>, RepositoryError> {
+    async fn begin(&self) -> Result<Box<dyn SupplierUnitOfWork>, ErrorRepositorio> {
         let tx = PgTransaction::begin(&self.pool).await?;
         Ok(Box::new(PgSupplierUnitOfWork { tx }))
     }
@@ -6363,7 +6386,7 @@ struct PgSupplierUnitOfWork {
 
 #[async_trait]
 impl SupplierUnitOfWork for PgSupplierUnitOfWork {
-    async fn save(&mut self, entity: &Supplier) -> Result<(), RepositoryError> {
+    async fn save(&mut self, entity: &Supplier) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = SupplierDb::from(entity);
         sqlx::query!(
@@ -6388,11 +6411,11 @@ impl SupplierUnitOfWork for PgSupplierUnitOfWork {
         Ok(())
     }
 
-    async fn record(&mut self, event: SupplierEvent) -> Result<(), RepositoryError> {
+    async fn record(&mut self, event: SupplierEvent) -> Result<(), ErrorRepositorio> {
         self.tx.record(&event).await
     }
 
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
         self.tx.commit().await
     }
 }
@@ -6417,7 +6440,7 @@ mod integration_tests {
     }
 
     /// What a create use case does: save, record, commit.
-    async fn create(pool: &PgPool, entity: &Supplier) -> Result<(), RepositoryError> {
+    async fn create(pool: &PgPool, entity: &Supplier) -> Result<(), ErrorRepositorio> {
         let mut uow = PgSupplierUnitOfWorkFactory::new(pool.clone())
             .begin()
             .await?;
@@ -6517,7 +6540,7 @@ mod integration_tests {
         let result = create(&pool, &second).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM suppliers").await, 1);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
@@ -6540,7 +6563,7 @@ pub mod routes;
 === presentation/src/api/delivery/dto.rs ===
 use business::domain::delivery::model::Delivery;
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -6579,12 +6602,16 @@ pub struct DeliveryPageDto {
 }
 
 impl DeliveryPageDto {
-    pub fn from_domain(page: &Page<Delivery>) -> Self {
+    pub fn from_domain(page: &Pagina<Delivery>) -> Self {
         Self {
-            items: page.items.iter().map(DeliveryDto::from_domain).collect(),
+            items: page
+                .elementos
+                .iter()
+                .map(DeliveryDto::from_domain)
+                .collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -6834,7 +6861,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use uuid::Uuid;
 
 use crate::api::delivery::dto::{
@@ -6908,7 +6935,7 @@ impl DeliveryApi {
         match self
             .list_deliveries
             .execute(ListDeliveriesParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
                 purchase_id: purchase_id.0.map(PurchaseId::from_uuid),
             })
             .await
@@ -6980,7 +7007,7 @@ mod tests {
     use business::tests::mothers::delivery_mother::DeliveryMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
+    use puerto_nucleo::Pagina;
 
     use super::*;
 
@@ -7136,7 +7163,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(DeliveryMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(DeliveryMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/deliveries").send().await;
@@ -7156,8 +7183,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -7179,7 +7206,7 @@ mod tests {
             .list
             .expect_execute()
             .withf(move |params| params.purchase_id == Some(PurchaseId::from_uuid(purchase_id)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -7289,7 +7316,7 @@ pub mod routes;
 === presentation/src/api/purchase/dto.rs ===
 use business::domain::purchase::model::Purchase;
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -7331,12 +7358,16 @@ pub struct PurchasePageDto {
 }
 
 impl PurchasePageDto {
-    pub fn from_domain(page: &Page<Purchase>) -> Self {
+    pub fn from_domain(page: &Pagina<Purchase>) -> Self {
         Self {
-            items: page.items.iter().map(PurchaseDto::from_domain).collect(),
+            items: page
+                .elementos
+                .iter()
+                .map(PurchaseDto::from_domain)
+                .collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -7587,7 +7618,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -7663,7 +7694,7 @@ impl PurchaseApi {
         match self
             .list_purchases
             .execute(ListPurchasesParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
                 supplier_id: supplier_id.0.map(SupplierId::from_uuid),
                 approver_id: approver_id.0.map(SupplierId::from_uuid),
             })
@@ -7737,7 +7768,7 @@ mod tests {
     use business::tests::mothers::purchase_mother::PurchaseMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
+    use puerto_nucleo::Pagina;
 
     use super::*;
 
@@ -7924,7 +7955,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(PurchaseMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(PurchaseMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/purchases").send().await;
@@ -7944,8 +7975,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -7967,7 +7998,7 @@ mod tests {
             .list
             .expect_execute()
             .withf(move |params| params.supplier_id == Some(SupplierId::from_uuid(supplier_id)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -7989,7 +8020,7 @@ mod tests {
             .list
             .expect_execute()
             .withf(move |params| params.approver_id == Some(SupplierId::from_uuid(approver_id)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -8099,7 +8130,7 @@ pub mod routes;
 === presentation/src/api/supplier/dto.rs ===
 use business::domain::supplier::model::Supplier;
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -8138,12 +8169,16 @@ pub struct SupplierPageDto {
 }
 
 impl SupplierPageDto {
-    pub fn from_domain(page: &Page<Supplier>) -> Self {
+    pub fn from_domain(page: &Pagina<Supplier>) -> Self {
         Self {
-            items: page.items.iter().map(SupplierDto::from_domain).collect(),
+            items: page
+                .elementos
+                .iter()
+                .map(SupplierDto::from_domain)
+                .collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -8403,7 +8438,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -8476,7 +8511,7 @@ impl SupplierApi {
         match self
             .list_suppliers
             .execute(ListSuppliersParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
             })
             .await
         {
@@ -8547,7 +8582,7 @@ mod tests {
     use business::tests::mothers::supplier_mother::SupplierMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
+    use puerto_nucleo::Pagina;
 
     use super::*;
 
@@ -8674,7 +8709,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(SupplierMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(SupplierMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/suppliers").send().await;
@@ -8694,8 +8729,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -11898,7 +11933,7 @@ worker/src/
 ├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
 ├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
 └── consumers/
-    └── <consumer>.rs        # Yours: an `EventHandler`, written once by `puerto generate consumer`
+    └── <consumer>.rs        # Yours: a `ManejadorEvento`, written once by `puerto generate consumer`
 ```
 
 ## Critical Rules
@@ -11909,10 +11944,10 @@ worker/src/
 - **Handlers must be idempotent.** Delivery is at-least-once: the same `event.id` can arrive
   twice. Check whether the work was already done (keyed on `event.id`) before doing it again.
 - **Answer honestly**: `Ack` when done; `Retry` for a failure that may pass (redelivered with a
-  1 s → 300 s backoff, `MAX_DELIVERIES` times); `HandlerOutcome::dead_letter(reason, detail)` for
-  one that never will. A payload that does not decode is `REASON_PAYLOAD_INVALID`. Nothing is
+  1 s → 300 s backoff, `MAX_DELIVERIES` times); `ResultadoManejo::descartar(motivo, detalle)` for
+  one that never will. A payload that does not decode is `MOTIVO_PAYLOAD_INVALIDO`. Nothing is
   dropped without a row in `dead_letters` (`make events/dead-letters`).
-- **Decode the snapshot, never the domain model**: `event.decode::<ProductSnapshot>()`. The
+- **Decode the snapshot, never the domain model**: `event.decodificar::<ProductSnapshot>()`. The
   snapshot is the event's public contract.
 
 ## Health and shutdown
@@ -11939,7 +11974,7 @@ edition = "2024"
 [dependencies]
 business = { path = "../business" }
 infrastructure = { path = "../infrastructure" }
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 # The relay, the consume loops, health probes and graceful shutdown (`main.rs`, `generated/registry.rs`).
 puerto-events = { workspace = true }
 async-trait = "0.1"

@@ -3,7 +3,7 @@ use business::domain::{{ snake }}::{
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{{ pascal }}RepositoryTrait,
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 /// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
 /// Postgres repositories).
@@ -18,12 +18,12 @@ impl InMemory{{ pascal }}Repository {
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError> {
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         Ok(None)
     }
 
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         Ok(())
     }

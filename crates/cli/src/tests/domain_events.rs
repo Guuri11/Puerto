@@ -148,7 +148,7 @@ fn scaffold_in_an_events_project_writes_events_and_units_of_work() {
         assert!(events.contains(&format!("    {variant}(ProductSnapshot),")));
     }
     assert!(events.contains("pub const PRODUCT_CREATED: &str = \"product_created\";"));
-    assert!(events.contains("impl DomainEvent for ProductEvent"));
+    assert!(events.contains("impl EventoDominio for ProductEvent"));
 
     let uow = read(&output, "business/src/domain/product/unit_of_work.rs");
     assert!(uow.contains("pub trait ProductUnitOfWork: Send"));

@@ -2,7 +2,7 @@
 //! with the realms `puerto` and `other` imported from `fixtures/keycloak/` (a public client `test`
 //! with password grant and an audience mapper adding `api`; the user `ada` with the role `admin`).
 
-use puerto_auth::{AuthError, Authenticator, OidcAuthenticator, OidcConfig};
+use puerto_auth::{Autenticador, ErrorAuth, OidcAuthenticator, OidcConfig};
 use serde_json::Value;
 
 const SKIP: &str = "PUERTO_TEST_KEYCLOAK_URL not set — skipping (run `make test/auth`)";
@@ -54,13 +54,13 @@ async fn should_describe_the_caller_when_keycloak_issued_the_token() {
     let token = token(&keycloak, "puerto").await;
 
     // Act
-    let principal = authenticator.authenticate(&token).await.expect("accepted");
+    let principal = authenticator.autenticar(&token).await.expect("accepted");
 
     // Assert
-    assert!(!principal.subject.is_empty());
+    assert!(!principal.sujeto.is_empty());
     assert_eq!(principal.email.as_deref(), Some("ada@puerto.localhost"));
-    assert_eq!(principal.name.as_deref(), Some("Ada Lovelace"));
-    assert!(principal.has_role("admin"), "{:?}", principal.roles);
+    assert_eq!(principal.nombre.as_deref(), Some("Ada Lovelace"));
+    assert!(principal.tiene_rol("admin"), "{:?}", principal.roles);
 }
 
 #[tokio::test]
@@ -74,8 +74,8 @@ async fn should_reject_the_token_when_another_realm_issued_it() {
     let token = token(&keycloak, "other").await;
 
     // Act
-    let result = authenticator.authenticate(&token).await;
+    let result = authenticator.autenticar(&token).await;
 
     // Assert
-    assert_eq!(result.err(), Some(AuthError::Invalid));
+    assert_eq!(result.err(), Some(ErrorAuth::Invalido));
 }

@@ -47,11 +47,11 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 
 | Crate | Owns | Imported as |
 |---|---|---|
-| `puerto-core` | `RepositoryError` (what every repository port fails with), `PageRequest` / `Page<T>` (paged lists, limit capped at 100) | `use puerto_core::{Page, PageRequest, RepositoryError};` |
+| `puerto-nucleo` | `ErrorRepositorio` (what every repository port fails with), `PeticionPagina` / `Pagina<T>` (paged lists, limit capped at 100) | `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
 | `puerto-web` | the server (`App`: tracing, CORS, graceful shutdown), `Config` (read from the environment and `.env`), the `/health` and `/health/ready` probes, `ErrorResponse` | `presentation` only — `main.rs`, `generated/bootstrap.rs`, `use puerto_web::ErrorResponse;` |
-| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `RepositoryError`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
+| `puerto-sqlx` (`--db` projects) | the Postgres pool, migrations at startup, the readiness `ping`, `map_sqlx_error` (driver error → `ErrorRepositorio`) | `infrastructure` only — re-exported by `infrastructure/src/db.rs`, which keeps the project's `MIGRATOR` |
 
-`puerto-core` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
+`puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
 copy their code into the project; upgrade them with the `puerto` CLI (`puerto validate` warns when
 they drift apart). Your own middleware and routes go in `presentation/src/app.rs`, which no
@@ -240,7 +240,7 @@ resolver = "3"
 # The Puerto runtime (ADR-0017 of Puerto): what every Puerto project shares lives in these crates,
 # on the same minor as the `puerto` CLI that generated this project.
 [workspace.dependencies]
-puerto-core = "0.20"
+puerto-nucleo = "0.20"
 puerto-web = "0.20"
 puerto-sqlx = "0.20"
 
@@ -505,7 +505,7 @@ mod tests {
     use super::*;
     use crate::domain::customer::repository::mocks::MockCustomerRepository;
     use chrono::Utc;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_create_customer_when_fields_are_valid() {
@@ -541,7 +541,7 @@ mod tests {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::Duplicate));
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
         let use_case = CreateCustomerUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -826,7 +826,7 @@ mod tests {
     };
     use crate::domain::shared::value_objects::Email;
     use chrono::Utc;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_return_customer_when_id_exists() {
@@ -879,7 +879,7 @@ mod tests {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetCustomerUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -899,7 +899,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::customer::{
     errors::CustomerError,
@@ -914,10 +914,13 @@ pub struct ListCustomersUseCaseImpl {
 
 #[async_trait]
 impl ListCustomersUseCaseTrait for ListCustomersUseCaseImpl {
-    async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError> {
+    async fn execute(
+        &self,
+        params: ListCustomersParams,
+    ) -> Result<Pagina<Customer>, CustomerError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_customers: start"
         );
         self.repository
@@ -942,7 +945,7 @@ mod tests {
     };
     use crate::domain::shared::value_objects::Email;
     use chrono::Utc;
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn should_return_the_page_of_customers() {
@@ -973,19 +976,19 @@ mod tests {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListCustomersParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -994,19 +997,19 @@ mod tests {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListCustomersParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -1015,19 +1018,19 @@ mod tests {
         let mut mock_repo = MockCustomerRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListCustomersUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListCustomersParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 }
 
@@ -1412,7 +1415,7 @@ mod tests {
     use super::*;
     use crate::domain::product::repository::mocks::MockProductRepository;
     use chrono::Utc;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -1455,7 +1458,7 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::Duplicate));
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
         let use_case = CreateProductUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -1702,7 +1705,7 @@ mod tests {
         repository::mocks::MockProductRepository,
     };
     use chrono::Utc;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -1762,7 +1765,7 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetProductUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -1782,7 +1785,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::product::{
     errors::ProductError,
@@ -1797,10 +1800,10 @@ pub struct ListProductsUseCaseImpl {
 
 #[async_trait]
 impl ListProductsUseCaseTrait for ListProductsUseCaseImpl {
-    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError> {
+    async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_products: start"
         );
         self.repository
@@ -1819,7 +1822,7 @@ mod tests {
         repository::mocks::MockProductRepository,
     };
     use chrono::Utc;
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
     use std::collections::HashMap;
     use uuid::Uuid;
 
@@ -1862,19 +1865,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -1883,19 +1886,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -1904,19 +1907,19 @@ mod tests {
         let mut mock_repo = MockProductRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListProductsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListProductsParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 }
 
@@ -2230,7 +2233,7 @@ impl CreateTicketUseCaseTrait for CreateTicketUseCaseImpl {
 mod tests {
     use super::*;
     use crate::domain::ticket::repository::mocks::MockTicketRepository;
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_create_ticket_when_fields_are_valid() {
@@ -2259,7 +2262,7 @@ mod tests {
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
             .expect_save()
-            .returning(|_| Err(RepositoryError::Duplicate));
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
         let use_case = CreateTicketUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -2425,7 +2428,7 @@ mod tests {
         model::{Ticket, TicketId, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use puerto_core::RepositoryError;
+    use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn should_return_ticket_when_id_exists() {
@@ -2467,7 +2470,7 @@ mod tests {
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
             .expect_find_by_id()
-            .returning(|_| Err(RepositoryError::Unavailable));
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
         let use_case = GetTicketUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
@@ -2487,7 +2490,7 @@ mod tests {
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 
 use crate::domain::ticket::{
     errors::TicketError,
@@ -2502,10 +2505,10 @@ pub struct ListTicketsUseCaseImpl {
 
 #[async_trait]
 impl ListTicketsUseCaseTrait for ListTicketsUseCaseImpl {
-    async fn execute(&self, params: ListTicketsParams) -> Result<Page<Ticket>, TicketError> {
+    async fn execute(&self, params: ListTicketsParams) -> Result<Pagina<Ticket>, TicketError> {
         tracing::info!(
-            limit = params.page.limit(),
-            offset = params.page.offset(),
+            limit = params.page.limite(),
+            offset = params.page.desplazamiento(),
             "list_tickets: start"
         );
         self.repository
@@ -2524,7 +2527,7 @@ mod tests {
         model::{Ticket, TicketProps},
         repository::mocks::MockTicketRepository,
     };
-    use puerto_core::PageRequest;
+    use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn should_return_the_page_of_tickets() {
@@ -2535,19 +2538,19 @@ mod tests {
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(move |page| Ok(Page::new(entities.clone(), 2, page)));
+            .returning(move |page| Ok(Pagina::new(entities.clone(), 2, page)));
         let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListTicketsParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert_eq!(page.items.len(), 2);
+        assert_eq!(page.elementos.len(), 2);
         assert_eq!(page.total, 2);
     }
 
@@ -2556,19 +2559,19 @@ mod tests {
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
             .expect_find_all()
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListTicketsParams {
-                page: PageRequest::default(),
+                page: PeticionPagina::default(),
             })
             .await;
 
         let page = result.unwrap();
-        assert!(page.items.is_empty());
+        assert!(page.elementos.is_empty());
         assert_eq!(page.total, 0);
     }
 
@@ -2577,19 +2580,19 @@ mod tests {
         let mut mock_repo = MockTicketRepository::new();
         mock_repo
             .expect_find_all()
-            .withf(|page| page.limit() == 5 && page.offset() == 10)
-            .returning(|page| Ok(Page::new(vec![], 0, page)));
+            .withf(|page| page.limite() == 5 && page.desplazamiento() == 10)
+            .returning(|page| Ok(Pagina::new(vec![], 0, page)));
         let use_case = ListTicketsUseCaseImpl {
             repository: Arc::new(mock_repo),
         };
 
         let result = use_case
             .execute(ListTicketsParams {
-                page: PageRequest::new(Some(5), Some(10)),
+                page: PeticionPagina::new(Some(5), Some(10)),
             })
             .await;
 
-        assert_eq!(result.unwrap().offset, 10);
+        assert_eq!(result.unwrap().desplazamiento, 10);
     }
 }
 
@@ -2694,7 +2697,7 @@ mod tests {
 }
 
 === business/src/domain/customer/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -2727,13 +2730,15 @@ pub enum CustomerError {
     InvalidStatus,
 }
 
-impl From<RepositoryError> for CustomerError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for CustomerError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -2745,19 +2750,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = CustomerError::from(RepositoryError::Duplicate);
+        let err = CustomerError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "customer.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = CustomerError::from(RepositoryError::InvalidData);
+        let err = CustomerError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "customer.repository_error");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = CustomerError::from(RepositoryError::Unavailable);
+        let err = CustomerError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "customer.repository_error");
     }
 }
@@ -2909,15 +2914,15 @@ mod tests {
 
 === business/src/domain/customer/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Customer, CustomerId};
 
 #[async_trait]
 pub trait CustomerRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError>;
-    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
-    async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Customer>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, ErrorRepositorio>;
+    async fn save(&self, entity: &Customer) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -2931,9 +2936,9 @@ pub mod mocks {
 
         #[async_trait]
         impl CustomerRepositoryTrait for CustomerRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError>;
-            async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError>;
-            async fn save(&self, entity: &Customer) -> Result<(), RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Customer>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, ErrorRepositorio>;
+            async fn save(&self, entity: &Customer) -> Result<(), ErrorRepositorio>;
         }
     }
 }
@@ -3044,18 +3049,19 @@ pub mod mocks {
 
 === business/src/domain/customer/use_cases/list_customers.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::customer::{errors::CustomerError, model::Customer};
 
 #[derive(Debug, Clone)]
 pub struct ListCustomersParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
 }
 
 #[async_trait]
 pub trait ListCustomersUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError>;
+    async fn execute(&self, params: ListCustomersParams)
+    -> Result<Pagina<Customer>, CustomerError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3069,7 +3075,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListCustomersUseCaseTrait for ListCustomersUseCase {
-            async fn execute(&self, params: ListCustomersParams) -> Result<Page<Customer>, CustomerError>;
+            async fn execute(&self, params: ListCustomersParams) -> Result<Pagina<Customer>, CustomerError>;
         }
     }
 }
@@ -3251,7 +3257,7 @@ impl Status {
 }
 
 === business/src/domain/product/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -3268,13 +3274,15 @@ pub enum ProductError {
     Unknown,
 }
 
-impl From<RepositoryError> for ProductError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for ProductError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -3286,19 +3294,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = ProductError::from(RepositoryError::Duplicate);
+        let err = ProductError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "product.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = ProductError::from(RepositoryError::InvalidData);
+        let err = ProductError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "product.repository_error");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = ProductError::from(RepositoryError::Unavailable);
+        let err = ProductError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "product.repository_error");
     }
 }
@@ -3526,15 +3534,15 @@ mod tests {
 
 === business/src/domain/product/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Product, ProductId};
 
 #[async_trait]
 pub trait ProductRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
-    async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio>;
+    async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3548,9 +3556,9 @@ pub mod mocks {
 
         #[async_trait]
         impl ProductRepositoryTrait for ProductRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError>;
-            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError>;
-            async fn save(&self, entity: &Product) -> Result<(), RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio>;
+            async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio>;
         }
     }
 }
@@ -3699,18 +3707,18 @@ pub mod mocks {
 
 === business/src/domain/product/use_cases/list_products.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::product::{errors::ProductError, model::Product};
 
 #[derive(Debug, Clone)]
 pub struct ListProductsParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
 }
 
 #[async_trait]
 pub trait ListProductsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+    async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3724,7 +3732,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListProductsUseCaseTrait for ListProductsUseCase {
-            async fn execute(&self, params: ListProductsParams) -> Result<Page<Product>, ProductError>;
+            async fn execute(&self, params: ListProductsParams) -> Result<Pagina<Product>, ProductError>;
         }
     }
 }
@@ -3815,7 +3823,7 @@ impl Email {
 }
 
 === business/src/domain/ticket/errors.rs ===
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -3834,13 +3842,15 @@ pub enum TicketError {
     InvalidState,
 }
 
-impl From<RepositoryError> for TicketError {
-    /// Every failure `puerto-core` names has its arm. `RepositoryError` is `#[non_exhaustive]`: one
+impl From<ErrorRepositorio> for TicketError {
+    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
     /// a later version adds is the store's problem (500) until it gets a meaning here.
-    fn from(err: RepositoryError) -> Self {
+    fn from(err: ErrorRepositorio) -> Self {
         match err {
-            RepositoryError::Duplicate => Self::Duplicate,
-            RepositoryError::InvalidData | RepositoryError::Unavailable => Self::RepositoryError,
+            ErrorRepositorio::Duplicado => Self::Duplicate,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => {
+                Self::RepositoryError
+            }
             _ => Self::RepositoryError,
         }
     }
@@ -3852,19 +3862,19 @@ mod tests {
 
     #[test]
     fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = TicketError::from(RepositoryError::Duplicate);
+        let err = TicketError::from(ErrorRepositorio::Duplicado);
         assert_eq!(err.to_string(), "ticket.duplicate");
     }
 
     #[test]
     fn should_convert_invalid_data_into_a_repository_error() {
-        let err = TicketError::from(RepositoryError::InvalidData);
+        let err = TicketError::from(ErrorRepositorio::DatosInvalidos);
         assert_eq!(err.to_string(), "ticket.repository_error");
     }
 
     #[test]
     fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = TicketError::from(RepositoryError::Unavailable);
+        let err = TicketError::from(ErrorRepositorio::NoDisponible);
         assert_eq!(err.to_string(), "ticket.repository_error");
     }
 }
@@ -3955,15 +3965,15 @@ mod tests {
 
 === business/src/domain/ticket/repository.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::model::{Ticket, TicketId};
 
 #[async_trait]
 pub trait TicketRepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Ticket>, RepositoryError>;
-    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError>;
-    async fn save(&self, entity: &Ticket) -> Result<(), RepositoryError>;
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Ticket>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, ErrorRepositorio>;
+    async fn save(&self, entity: &Ticket) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -3977,9 +3987,9 @@ pub mod mocks {
 
         #[async_trait]
         impl TicketRepositoryTrait for TicketRepository {
-            async fn find_all(&self, page: PageRequest) -> Result<Page<Ticket>, RepositoryError>;
-            async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError>;
-            async fn save(&self, entity: &Ticket) -> Result<(), RepositoryError>;
+            async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Ticket>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, ErrorRepositorio>;
+            async fn save(&self, entity: &Ticket) -> Result<(), ErrorRepositorio>;
         }
     }
 }
@@ -4082,18 +4092,18 @@ pub mod mocks {
 
 === business/src/domain/ticket/use_cases/list_tickets.rs ===
 use async_trait::async_trait;
-use puerto_core::{Page, PageRequest};
+use puerto_nucleo::{Pagina, PeticionPagina};
 
 use crate::domain::ticket::{errors::TicketError, model::Ticket};
 
 #[derive(Debug, Clone)]
 pub struct ListTicketsParams {
-    pub page: PageRequest,
+    pub page: PeticionPagina,
 }
 
 #[async_trait]
 pub trait ListTicketsUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: ListTicketsParams) -> Result<Page<Ticket>, TicketError>;
+    async fn execute(&self, params: ListTicketsParams) -> Result<Pagina<Ticket>, TicketError>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -4107,7 +4117,7 @@ pub mod mocks {
 
         #[async_trait]
         impl ListTicketsUseCaseTrait for ListTicketsUseCase {
-            async fn execute(&self, params: ListTicketsParams) -> Result<Page<Ticket>, TicketError>;
+            async fn execute(&self, params: ListTicketsParams) -> Result<Pagina<Ticket>, TicketError>;
         }
     }
 }
@@ -4661,7 +4671,7 @@ edition = "2024"
 
 [dependencies]
 business = { path = "../business" }
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 puerto-sqlx = { workspace = true }
 async-trait = "0.1"
 thiserror = "2"
@@ -4835,7 +4845,7 @@ use business::domain::customer::{
     model::{Customer, CustomerId},
     repository::CustomerRepositoryTrait,
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::CustomerDb;
 use crate::db::map_sqlx_error;
@@ -4852,24 +4862,28 @@ impl PgCustomerRepository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: CustomerDb) -> Result<Customer, RepositoryError> {
+fn to_domain(row: CustomerDb) -> Result<Customer, ErrorRepositorio> {
     Customer::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid customer");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
 impl CustomerRepositoryTrait for PgCustomerRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Customer>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Customer>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         let rows = sqlx::query_as!(
             CustomerDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, email, name, code, age, joined, middle, labels, status
              FROM customers WHERE deleted = false
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento())
         )
         .fetch_all(&self.pool)
         .await
@@ -4893,10 +4907,10 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
             .collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, RepositoryError> {
+    async fn find_by_id(&self, id: CustomerId) -> Result<Option<Customer>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             CustomerDb,
@@ -4914,7 +4928,7 @@ impl CustomerRepositoryTrait for PgCustomerRepository {
         row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &Customer) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &Customer) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = CustomerDb::from(entity);
         sqlx::query!(
@@ -5054,12 +5068,12 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default())
+            .find_all(PeticionPagina::default())
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -5072,14 +5086,14 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PeticionPagina::new(Some(2), Some(2)))
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 
     #[sqlx::test(migrator = "crate::db::MIGRATOR")]
@@ -5093,7 +5107,7 @@ pub(crate) mod integration_tests {
         let result = test_repo(pool).save(&second).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
     }
 }
 
@@ -5220,7 +5234,7 @@ use business::domain::product::{
     model::{Product, ProductId},
     repository::ProductRepositoryTrait,
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::ProductDb;
 use crate::db::map_sqlx_error;
@@ -5237,24 +5251,28 @@ impl PgProductRepository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: ProductDb) -> Result<Product, RepositoryError> {
+fn to_domain(row: ProductDb) -> Result<Product, ErrorRepositorio> {
     Product::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid product");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
 impl ProductRepositoryTrait for PgProductRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Product>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         let rows = sqlx::query_as!(
             ProductDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, title, sku, price, rating, active, ref_id, published_at, summary, views, expires_at, tags, scores, meta as \"meta: Json<HashMap<String, String>>\"
              FROM products WHERE deleted = false
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento())
         )
         .fetch_all(&self.pool)
         .await
@@ -5278,10 +5296,10 @@ impl ProductRepositoryTrait for PgProductRepository {
             .collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, RepositoryError> {
+    async fn find_by_id(&self, id: ProductId) -> Result<Option<Product>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             ProductDb,
@@ -5299,7 +5317,7 @@ impl ProductRepositoryTrait for PgProductRepository {
         row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &Product) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = ProductDb::from(entity);
         sqlx::query!(
@@ -5447,12 +5465,12 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default())
+            .find_all(PeticionPagina::default())
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -5465,14 +5483,14 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PeticionPagina::new(Some(2), Some(2)))
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 
     #[sqlx::test(migrator = "crate::db::MIGRATOR")]
@@ -5486,7 +5504,7 @@ pub(crate) mod integration_tests {
         let result = test_repo(pool).save(&second).await;
 
         // Assert
-        assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
+        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
     }
 }
 
@@ -5548,7 +5566,7 @@ use business::domain::ticket::{
     model::{Ticket, TicketId},
     repository::TicketRepositoryTrait,
 };
-use puerto_core::{Page, PageRequest, RepositoryError};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use super::entity::TicketDb;
 use crate::db::map_sqlx_error;
@@ -5565,24 +5583,28 @@ impl PgTicketRepository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: TicketDb) -> Result<Ticket, RepositoryError> {
+fn to_domain(row: TicketDb) -> Result<Ticket, ErrorRepositorio> {
     Ticket::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid ticket");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
 impl TicketRepositoryTrait for PgTicketRepository {
-    async fn find_all(&self, page: PageRequest) -> Result<Page<Ticket>, RepositoryError> {
-        tracing::debug!(limit = page.limit(), offset = page.offset(), "find_all");
+    async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Ticket>, ErrorRepositorio> {
+        tracing::debug!(
+            limit = page.limite(),
+            offset = page.desplazamiento(),
+            "find_all"
+        );
         let rows = sqlx::query_as!(
             TicketDb,
             "SELECT id, created_at, updated_at, deleted, deleted_at, state
              FROM tickets WHERE deleted = false
              ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limit()),
-            i64::from(page.offset())
+            i64::from(page.limite()),
+            i64::from(page.desplazamiento())
         )
         .fetch_all(&self.pool)
         .await
@@ -5606,10 +5628,10 @@ impl TicketRepositoryTrait for PgTicketRepository {
             .collect::<Result<Vec<_>, _>>()?;
         // COUNT(*) is never negative.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Page::new(items, total, page))
+        Ok(Pagina::new(items, total, page))
     }
 
-    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, RepositoryError> {
+    async fn find_by_id(&self, id: TicketId) -> Result<Option<Ticket>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             TicketDb,
@@ -5627,7 +5649,7 @@ impl TicketRepositoryTrait for PgTicketRepository {
         row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &Ticket) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &Ticket) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = TicketDb::from(entity);
         sqlx::query!(
@@ -5730,12 +5752,12 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::default())
+            .find_all(PeticionPagina::default())
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 1);
     }
 
@@ -5748,14 +5770,14 @@ pub(crate) mod integration_tests {
 
         // Act
         let page = test_repo(pool)
-            .find_all(PageRequest::new(Some(2), Some(2)))
+            .find_all(PeticionPagina::new(Some(2), Some(2)))
             .await
             .unwrap();
 
         // Assert
-        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.elementos.len(), 1);
         assert_eq!(page.total, 3);
-        assert_eq!((page.limit, page.offset), (2, 2));
+        assert_eq!((page.limite, page.desplazamiento), (2, 2));
     }
 }
 
@@ -5777,7 +5799,7 @@ pub mod routes;
 use business::domain::customer::model::Customer;
 use chrono::{DateTime, Utc};
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -5838,12 +5860,16 @@ pub struct CustomerPageDto {
 }
 
 impl CustomerPageDto {
-    pub fn from_domain(page: &Page<Customer>) -> Self {
+    pub fn from_domain(page: &Pagina<Customer>) -> Self {
         Self {
-            items: page.items.iter().map(CustomerDto::from_domain).collect(),
+            items: page
+                .elementos
+                .iter()
+                .map(CustomerDto::from_domain)
+                .collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -6186,7 +6212,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use uuid::Uuid;
 
 use crate::api::customer::dto::{
@@ -6265,7 +6291,7 @@ impl CustomerApi {
         match self
             .list_customers
             .execute(ListCustomersParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
             })
             .await
         {
@@ -6343,7 +6369,7 @@ mod tests {
     use chrono::Utc;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
+    use puerto_nucleo::Pagina;
 
     use super::*;
 
@@ -6482,7 +6508,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(CustomerMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(CustomerMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/customers").send().await;
@@ -6502,8 +6528,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -6614,7 +6640,7 @@ pub mod routes;
 use business::domain::product::model::Product;
 use chrono::{DateTime, Utc};
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -6687,12 +6713,12 @@ pub struct ProductPageDto {
 }
 
 impl ProductPageDto {
-    pub fn from_domain(page: &Page<Product>) -> Self {
+    pub fn from_domain(page: &Pagina<Product>) -> Self {
         Self {
-            items: page.items.iter().map(ProductDto::from_domain).collect(),
+            items: page.elementos.iter().map(ProductDto::from_domain).collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -6953,7 +6979,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -7040,7 +7066,7 @@ impl ProductApi {
         match self
             .list_products
             .execute(ListProductsParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
             })
             .await
         {
@@ -7122,7 +7148,7 @@ mod tests {
     use chrono::Utc;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
+    use puerto_nucleo::Pagina;
     use std::collections::HashMap;
 
     use super::*;
@@ -7275,7 +7301,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(ProductMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(ProductMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/products").send().await;
@@ -7295,8 +7321,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks
@@ -7418,7 +7444,7 @@ pub mod routes;
 === presentation/src/api/ticket/dto.rs ===
 use business::domain::ticket::model::Ticket;
 use poem_openapi::Object;
-use puerto_core::Page;
+use puerto_nucleo::Pagina;
 use uuid::Uuid;
 
 #[derive(Debug, Object)]
@@ -7454,12 +7480,12 @@ pub struct TicketPageDto {
 }
 
 impl TicketPageDto {
-    pub fn from_domain(page: &Page<Ticket>) -> Self {
+    pub fn from_domain(page: &Pagina<Ticket>) -> Self {
         Self {
-            items: page.items.iter().map(TicketDto::from_domain).collect(),
+            items: page.elementos.iter().map(TicketDto::from_domain).collect(),
             total: page.total,
-            limit: page.limit,
-            offset: page.offset,
+            limit: page.limite,
+            offset: page.desplazamiento,
         }
     }
 }
@@ -7718,7 +7744,7 @@ use poem_openapi::{
     param::{Path, Query},
     payload::Json,
 };
-use puerto_core::PageRequest;
+use puerto_nucleo::PeticionPagina;
 use uuid::Uuid;
 
 use crate::api::error::IntoErrorResponse;
@@ -7788,7 +7814,7 @@ impl TicketApi {
         match self
             .list_tickets
             .execute(ListTicketsParams {
-                page: PageRequest::new(limit.0, offset.0),
+                page: PeticionPagina::new(limit.0, offset.0),
             })
             .await
         {
@@ -7856,7 +7882,7 @@ mod tests {
     use business::tests::mothers::ticket_mother::TicketMother;
     use poem::{Route, http::StatusCode, test::TestClient};
     use poem_openapi::{OpenApiService, types::ToJSON};
-    use puerto_core::Page;
+    use puerto_nucleo::Pagina;
 
     use super::*;
 
@@ -7981,7 +8007,7 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .returning(|params| Ok(Page::new(TicketMother::random_vec(2), 7, params.page)));
+            .returning(|params| Ok(Pagina::new(TicketMother::random_vec(2), 7, params.page)));
 
         // Act
         let response = mocks.client().get("/tickets").send().await;
@@ -8001,8 +8027,8 @@ mod tests {
         mocks
             .list
             .expect_execute()
-            .withf(|params| params.page == PageRequest::new(Some(5), Some(10)))
-            .returning(|params| Ok(Page::new(vec![], 0, params.page)));
+            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
 
         // Act
         let response = mocks

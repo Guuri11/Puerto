@@ -9,7 +9,7 @@ use jsonwebtoken::jwk::{
     AlgorithmParameters, EllipticCurve, Jwk, JwkSet, KeyAlgorithm, PublicKeyUse,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, errors::ErrorKind};
-use puerto_core::auth::{AuthError, Authenticator, Principal};
+use puerto_nucleo::auth::{Autenticador, ErrorAuth, Principal};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -132,7 +132,7 @@ impl OidcAuthenticator {
     }
 
     /// The key `kid` names, refetching the JWKS once if it is new (see [`REFETCH_INTERVAL`]).
-    async fn key(&self, kid: &str) -> Result<Arc<SigningKey>, AuthError> {
+    async fn key(&self, kid: &str) -> Result<Arc<SigningKey>, ErrorAuth> {
         if let Some(key) = self.cached(kid) {
             return Ok(key);
         }
@@ -143,7 +143,7 @@ impl OidcAuthenticator {
         }
         if last_refetch.is_some_and(|at| at.elapsed() < REFETCH_INTERVAL) {
             tracing::debug!(kid, "oidc: unknown key, refetched less than a minute ago");
-            return Err(AuthError::Invalid);
+            return Err(ErrorAuth::Invalido);
         }
         // Counted before the fetch, so a failed one counts too: made-up `kid`s while the provider
         // is down stay one request a minute.
@@ -152,12 +152,12 @@ impl OidcAuthenticator {
             .await
             .map_err(|err| {
                 tracing::warn!(error = %err.at(&self.jwks_uri), "oidc: could not refetch the keys");
-                AuthError::Unavailable
+                ErrorAuth::NoDisponible
             })?;
         *self.keys.write().unwrap_or_else(PoisonError::into_inner) = keys;
         self.cached(kid).ok_or_else(|| {
             tracing::debug!(kid, "oidc: unknown key, not in the refetched keys either");
-            AuthError::Invalid
+            ErrorAuth::Invalido
         })
     }
 
@@ -173,23 +173,23 @@ impl OidcAuthenticator {
 }
 
 #[async_trait]
-impl Authenticator for OidcAuthenticator {
-    async fn authenticate(&self, token: &str) -> Result<Principal, AuthError> {
+impl Autenticador for OidcAuthenticator {
+    async fn autenticar(&self, token: &str) -> Result<Principal, ErrorAuth> {
         let header = decode_header(token).map_err(|err| rejected(&err))?;
         // Only what a provider signs with its private key. An HMAC would be verified with the
         // public key as the secret — which anyone can read from the JWKS.
         if !matches!(header.alg, Algorithm::RS256 | Algorithm::ES256) {
             tracing::debug!(alg = ?header.alg, "oidc: token rejected, algorithm not allowed");
-            return Err(AuthError::Invalid);
+            return Err(ErrorAuth::Invalido);
         }
         let Some(kid) = header.kid else {
             tracing::debug!("oidc: token rejected, no kid");
-            return Err(AuthError::Invalid);
+            return Err(ErrorAuth::Invalido);
         };
         let key = self.key(&kid).await?;
         if key.algorithm != header.alg {
             tracing::debug!(kid, alg = ?header.alg, "oidc: token rejected, not the key's algorithm");
-            return Err(AuthError::Invalid);
+            return Err(ErrorAuth::Invalido);
         }
         let claims = decode::<Map<String, Value>>(token, &key.key, &self.validation(header.alg))
             .map_err(|err| rejected(&err))?
@@ -198,11 +198,11 @@ impl Authenticator for OidcAuthenticator {
     }
 }
 
-fn rejected(err: &jsonwebtoken::errors::Error) -> AuthError {
+fn rejected(err: &jsonwebtoken::errors::Error) -> ErrorAuth {
     tracing::debug!(error = %err, "oidc: token rejected");
     match err.kind() {
-        ErrorKind::ExpiredSignature => AuthError::Expired,
-        _ => AuthError::Invalid,
+        ErrorKind::ExpiredSignature => ErrorAuth::Expirado,
+        _ => ErrorAuth::Invalido,
     }
 }
 

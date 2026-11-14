@@ -1,11 +1,11 @@
-// Phase 12.0 (ADR-0017): what every project shares lives in `puerto-core`, not in its template.
+// Phase 12.0 (ADR-0017): what every project shares lives in `puerto-nucleo`, not in its template.
 use super::*;
 
 fn read(dir: &Path, path: &str) -> String {
     fs::read_to_string(dir.join(path)).unwrap()
 }
 
-/// The `major.minor` of the CLI under test: what a new project asks of `puerto-core`.
+/// The `major.minor` of the CLI under test: what a new project asks of `puerto-nucleo`.
 fn cli_minor() -> String {
     let version = env!("CARGO_PKG_VERSION");
     let mut parts = version.split('.');
@@ -21,20 +21,20 @@ fn new_project(name: &str) -> (PathBuf, PathBuf) {
 }
 
 #[test]
-fn new_project_depends_on_puerto_core_at_the_cli_minor() {
+fn new_project_depends_on_puerto_nucleo_at_the_cli_minor() {
     let (dir, output) = new_project("runtime-deps");
 
     let root = read(&output, "Cargo.toml");
     assert!(root.contains("[workspace.dependencies]"));
     assert!(
-        root.contains(&format!("puerto-core = \"{}\"", cli_minor())),
+        root.contains(&format!("puerto-nucleo = \"{}\"", cli_minor())),
         "{root}"
     );
     assert!(!root.contains(crate::runtime::VERSION_MARKER));
     for member in ["business", "infrastructure", "presentation"] {
         let manifest = read(&output, &format!("{member}/Cargo.toml"));
         assert!(
-            manifest.contains("puerto-core = { workspace = true }"),
+            manifest.contains("puerto-nucleo = { workspace = true }"),
             "{member}"
         );
     }
@@ -73,7 +73,7 @@ fn no_demo_project_declares_no_shared_module() {
 }
 
 #[test]
-fn greeting_takes_the_repository_error_from_puerto_core() {
+fn greeting_takes_the_repository_error_from_puerto_nucleo() {
     let (dir, output) = new_project("runtime-greeting");
 
     for path in [
@@ -83,7 +83,7 @@ fn greeting_takes_the_repository_error_from_puerto_core() {
     ] {
         let source = read(&output, path);
         assert!(
-            source.contains("use puerto_core::RepositoryError;"),
+            source.contains("use puerto_nucleo::ErrorRepositorio;"),
             "{path}"
         );
         assert!(!source.contains("domain::shared"), "{path}");
@@ -93,7 +93,7 @@ fn greeting_takes_the_repository_error_from_puerto_core() {
 }
 
 #[test]
-fn scaffold_imports_the_runtime_types_from_puerto_core() {
+fn scaffold_imports_the_runtime_types_from_puerto_nucleo() {
     for (name, db) in [
         ("runtime_scaffold_mem", false),
         ("runtime_scaffold_pg", true),
@@ -109,31 +109,31 @@ fn scaffold_imports_the_runtime_types_from_puerto_core() {
         for (path, import) in [
             (
                 "business/src/domain/product/errors.rs",
-                "use puerto_core::RepositoryError;",
+                "use puerto_nucleo::ErrorRepositorio;",
             ),
             (
                 "business/src/domain/product/repository.rs",
-                "use puerto_core::{Page, PageRequest, RepositoryError};",
+                "use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};",
             ),
             (
                 "business/src/domain/product/use_cases/list_products.rs",
-                "use puerto_core::{Page, PageRequest};",
+                "use puerto_nucleo::{Pagina, PeticionPagina};",
             ),
             (
                 "business/src/application/product/list_products.rs",
-                "use puerto_core::Page;",
+                "use puerto_nucleo::Pagina;",
             ),
             (
                 "infrastructure/src/product/repository.rs",
-                "use puerto_core::{Page, PageRequest, RepositoryError};",
+                "use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};",
             ),
             (
                 "presentation/src/api/product/routes.rs",
-                "use puerto_core::PageRequest;",
+                "use puerto_nucleo::PeticionPagina;",
             ),
             (
                 "presentation/src/api/product/dto.rs",
-                "use puerto_core::Page;",
+                "use puerto_nucleo::Pagina;",
             ),
         ] {
             let source = read(&dir, path);
@@ -150,7 +150,7 @@ fn scaffold_imports_the_runtime_types_from_puerto_core() {
 }
 
 #[test]
-fn non_crud_scaffold_imports_the_repository_error_from_puerto_core() {
+fn non_crud_scaffold_imports_the_repository_error_from_puerto_nucleo() {
     for (name, db) in [("runtime_simple_mem", false), ("runtime_simple_pg", true)] {
         let dir = temp_dir(name);
         cleanup(&dir);
@@ -166,7 +166,7 @@ fn non_crud_scaffold_imports_the_repository_error_from_puerto_core() {
         ] {
             let source = read(&dir, path);
             assert!(
-                source.contains("use puerto_core::RepositoryError;"),
+                source.contains("use puerto_nucleo::ErrorRepositorio;"),
                 "{name}: {path}"
             );
             assert!(!source.contains("domain::shared"), "{name}: {path}");
@@ -177,7 +177,7 @@ fn non_crud_scaffold_imports_the_repository_error_from_puerto_core() {
 }
 
 #[test]
-fn snippets_import_the_runtime_types_from_puerto_core() {
+fn snippets_import_the_runtime_types_from_puerto_nucleo() {
     let snippets = format!(
         "{}{}",
         crate::snippets::SNIPPETS_JSON,
@@ -185,8 +185,8 @@ fn snippets_import_the_runtime_types_from_puerto_core() {
     );
     assert!(!snippets.contains("shared::pagination"));
     assert!(!snippets.contains("shared::repository_error"));
-    assert!(snippets.contains("use puerto_core::RepositoryError;"));
-    assert!(snippets.contains("use puerto_core::{Page, PageRequest, RepositoryError};"));
+    assert!(snippets.contains("use puerto_nucleo::ErrorRepositorio;"));
+    assert!(snippets.contains("use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};"));
 }
 
 // ── The rendered requirement and the version check ────────────────────────
@@ -201,33 +201,33 @@ fn should_require_the_cli_minor_when_rendering_the_runtime_version() {
 #[test]
 fn should_replace_the_marker_with_the_requirement_when_rendering_the_manifest() {
     let manifest = format!(
-        "[workspace.dependencies]\npuerto-core = \"{}\"\n",
+        "[workspace.dependencies]\npuerto-nucleo = \"{}\"\n",
         crate::runtime::VERSION_MARKER
     );
     assert_eq!(
         crate::runtime::render_manifest(&manifest, "0.14.2"),
-        "[workspace.dependencies]\npuerto-core = \"0.14\"\n"
+        "[workspace.dependencies]\npuerto-nucleo = \"0.14\"\n"
     );
 }
 
 #[test]
 fn should_warn_when_a_runtime_crate_is_on_another_minor() {
-    let manifest = "[workspace.dependencies]\npuerto-core = \"0.13\"\n";
+    let manifest = "[workspace.dependencies]\npuerto-nucleo = \"0.13\"\n";
     assert_eq!(
         crate::runtime::version_warnings(manifest, "0.14.0"),
-        vec!["puerto-core 0.13 but puerto 0.14 — see the CHANGELOG migration guide".to_string()]
+        vec!["puerto-nucleo 0.13 but puerto 0.14 — see the CHANGELOG migration guide".to_string()]
     );
 }
 
 #[test]
 fn should_stay_silent_when_only_the_patch_differs() {
-    let manifest = "[workspace.dependencies]\npuerto-core = \"0.14.1\"\n";
+    let manifest = "[workspace.dependencies]\npuerto-nucleo = \"0.14.1\"\n";
     assert!(crate::runtime::version_warnings(manifest, "0.14.3").is_empty());
 }
 
 #[test]
 fn should_read_the_version_from_a_table_and_from_member_dependencies() {
-    let manifest = "[dependencies]\npuerto-core = { version = \"0.12\" }\n";
+    let manifest = "[dependencies]\npuerto-nucleo = { version = \"0.12\" }\n";
     assert_eq!(
         crate::runtime::version_warnings(manifest, "0.14.0").len(),
         1
@@ -242,7 +242,7 @@ fn should_ignore_a_manifest_without_runtime_crates() {
 
 #[test]
 fn should_ignore_a_workspace_inherited_runtime_dependency() {
-    let manifest = "[dependencies]\npuerto-core = { workspace = true }\n";
+    let manifest = "[dependencies]\npuerto-nucleo = { workspace = true }\n";
     assert!(crate::runtime::version_warnings(manifest, "0.14.0").is_empty());
 }
 
@@ -444,7 +444,7 @@ fn every_runtime_crate_is_patched_in_the_compile_matrix() {
     assert_eq!(
         crate::runtime::RUNTIME_CRATES,
         [
-            "puerto-core",
+            "puerto-nucleo",
             "puerto-web",
             "puerto-sqlx",
             "puerto-events",
@@ -548,7 +548,7 @@ fn compile_matrix_patches_only_the_runtime_crates_a_project_names() {
 
     let root = read(&output, "Cargo.toml");
     let patch = &root[root.find("[patch.crates-io]").unwrap()..];
-    assert!(patch.contains("puerto-core = { path"), "{patch}");
+    assert!(patch.contains("puerto-nucleo = { path"), "{patch}");
     assert!(patch.contains("puerto-web = { path"), "{patch}");
     // An unused `[patch]` entry is a cargo warning in every build of a project without a database.
     assert!(!patch.contains("puerto-sqlx"), "{patch}");

@@ -20,14 +20,14 @@ const WAIT: Duration = Duration::from_secs(60);
 
 /// A consumer that never succeeds: every delivery of it is a `Retry`.
 const ALWAYS_RETRY: &str = r#"use async_trait::async_trait;
-use puerto_core::events::{EventEnvelope, EventHandler, HandlerOutcome};
+use puerto_nucleo::eventos::{SobreEvento, ManejadorEvento, ResultadoManejo};
 
 pub struct AlwaysRetry;
 
 #[async_trait]
-impl EventHandler for AlwaysRetry {
-    async fn handle(&self, _event: &EventEnvelope) -> HandlerOutcome {
-        HandlerOutcome::Retry
+impl ManejadorEvento for AlwaysRetry {
+    async fn handle(&self, _event: &SobreEvento) -> ResultadoManejo {
+        ResultadoManejo::Reintentar
     }
 }
 "#;

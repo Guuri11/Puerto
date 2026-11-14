@@ -6,7 +6,7 @@ use business::domain::user::{
     model::{User, UserId},
     repository::UserRepositoryTrait,
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 /// Keeps the users in process memory: they are lost when the process stops, and provisioned again
 /// on their next request. It stands in until there is a database (`puerto new --db`).
@@ -37,7 +37,7 @@ impl UserRepositoryTrait for InMemoryUserRepository {
         &self,
         issuer: &str,
         subject: &str,
-    ) -> Result<Option<User>, RepositoryError> {
+    ) -> Result<Option<User>, ErrorRepositorio> {
         Ok(self
             .read()
             .values()
@@ -45,17 +45,17 @@ impl UserRepositoryTrait for InMemoryUserRepository {
             .cloned())
     }
 
-    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError> {
+    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio> {
         Ok(self.read().get(&id).cloned())
     }
 
-    async fn save(&self, user: &User) -> Result<(), RepositoryError> {
+    async fn save(&self, user: &User) -> Result<(), ErrorRepositorio> {
         let mut rows = self.write();
         let taken = rows.values().any(|other| {
             other.id != user.id && other.issuer == user.issuer && other.subject == user.subject
         });
         if taken {
-            return Err(RepositoryError::Duplicate);
+            return Err(ErrorRepositorio::Duplicado);
         }
         rows.insert(user.id, user.clone());
         Ok(())
@@ -109,6 +109,6 @@ mod tests {
         let result = repository.save(&ada()).await;
 
         // Assert
-        assert_eq!(result, Err(RepositoryError::Duplicate));
+        assert_eq!(result, Err(ErrorRepositorio::Duplicado));
     }
 }

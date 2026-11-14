@@ -9,16 +9,16 @@ use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, SaltString};
 use argon2::{Argon2, PasswordVerifier};
 use async_trait::async_trait;
-use puerto_core::auth::{HashError, PasswordHasher};
+use puerto_nucleo::auth::{ErrorHash, HasherContrasena};
 
 /// The PHC string of `password`, with a fresh salt.
-pub fn hash_password(password: &str) -> Result<String, HashError> {
+pub fn hash_password(password: &str) -> Result<String, ErrorHash> {
     let salt = SaltString::generate(&mut OsRng);
     argon2::PasswordHasher::hash_password(&Argon2::default(), password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|err| {
             tracing::error!(error = %err, "hash_password failed");
-            HashError
+            ErrorHash
         })
 }
 
@@ -55,18 +55,18 @@ impl Argon2Hasher {
 }
 
 #[async_trait]
-impl PasswordHasher for Argon2Hasher {
-    async fn hash(&self, password: &str) -> Result<String, HashError> {
+impl HasherContrasena for Argon2Hasher {
+    async fn hash(&self, password: &str) -> Result<String, ErrorHash> {
         let password = password.to_string();
         tokio::task::spawn_blocking(move || hash_password(&password))
             .await
             .map_err(|err| {
                 tracing::error!(error = %err, "hash: the blocking task failed");
-                HashError
+                ErrorHash
             })?
     }
 
-    async fn verify(&self, password: &str, hash: Option<String>) -> bool {
+    async fn verificar(&self, password: &str, hash: Option<String>) -> bool {
         let password = password.to_string();
         tokio::task::spawn_blocking(move || match hash {
             Some(hash) => verify_password(&password, &hash),

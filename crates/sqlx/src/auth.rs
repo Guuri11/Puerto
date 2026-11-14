@@ -12,9 +12,9 @@ use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, TimeDelta, Utc};
-use puerto_core::RepositoryError;
-use puerto_core::auth::{
-    AuthError, Authenticator, CredentialStore, Principal, Session, SessionStore,
+use puerto_nucleo::ErrorRepositorio;
+use puerto_nucleo::auth::{
+    AlmacenCredenciales, AlmacenSesiones, Autenticador, ErrorAuth, Principal, Sesion,
 };
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -93,11 +93,11 @@ type SessionUser = (
 );
 
 #[async_trait]
-impl SessionStore for PgSessions {
-    async fn open(&self, user_id: Uuid) -> Result<Session, RepositoryError> {
+impl AlmacenSesiones for PgSessions {
+    async fn abrir(&self, user_id: Uuid) -> Result<Sesion, ErrorRepositorio> {
         let token = generate_token().map_err(|err| {
             tracing::error!(error = %err, "sessions: no randomness for a token");
-            RepositoryError::Unavailable
+            ErrorRepositorio::NoDisponible
         })?;
         let expires_at = Utc::now() + self.ttl;
         sqlx::query("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)")
@@ -110,10 +110,10 @@ impl SessionStore for PgSessions {
                 tracing::error!(error = %err, %user_id, "sessions: open failed");
                 map_sqlx_error(&err)
             })?;
-        Ok(Session::new(token, expires_at))
+        Ok(Sesion::new(token, expires_at))
     }
 
-    async fn revoke(&self, token: &str) -> Result<(), RepositoryError> {
+    async fn revocar(&self, token: &str) -> Result<(), ErrorRepositorio> {
         sqlx::query("DELETE FROM sessions WHERE token_hash = $1")
             .bind(&token_hash(token)[..])
             .execute(&self.pool)
@@ -127,8 +127,8 @@ impl SessionStore for PgSessions {
 }
 
 #[async_trait]
-impl Authenticator for PgSessions {
-    async fn authenticate(&self, token: &str) -> Result<Principal, AuthError> {
+impl Autenticador for PgSessions {
+    async fn autenticar(&self, token: &str) -> Result<Principal, ErrorAuth> {
         let row = sqlx::query_as::<_, SessionUser>(
             "SELECT u.id, u.subject, u.email, u.name, u.roles, s.expires_at \
              FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1",
@@ -138,19 +138,19 @@ impl Authenticator for PgSessions {
         .await
         .map_err(|err| {
             tracing::error!(error = %err, "sessions: lookup failed");
-            AuthError::Unavailable
+            ErrorAuth::NoDisponible
         })?
-        .ok_or(AuthError::Invalid)?;
+        .ok_or(ErrorAuth::Invalido)?;
         let (id, subject, email, name, roles, expires_at) = row;
         if expires_at <= Utc::now() {
-            return Err(AuthError::Expired);
+            return Err(ErrorAuth::Expirado);
         }
-        let mut principal = Principal::new(id, subject).with_roles(roles);
+        let mut principal = Principal::new(id, subject).con_roles(roles);
         if let Some(email) = email {
-            principal = principal.with_email(email);
+            principal = principal.con_email(email);
         }
         if let Some(name) = name {
-            principal = principal.with_name(name);
+            principal = principal.con_nombre(name);
         }
         Ok(principal)
     }
@@ -168,8 +168,8 @@ impl PgCredentials {
 }
 
 #[async_trait]
-impl CredentialStore for PgCredentials {
-    async fn password_hash(&self, user_id: Uuid) -> Result<Option<String>, RepositoryError> {
+impl AlmacenCredenciales for PgCredentials {
+    async fn hash_contrasena(&self, user_id: Uuid) -> Result<Option<String>, ErrorRepositorio> {
         sqlx::query_scalar("SELECT password_hash FROM credentials WHERE user_id = $1")
             .bind(user_id)
             .fetch_optional(&self.pool)
@@ -180,7 +180,11 @@ impl CredentialStore for PgCredentials {
             })
     }
 
-    async fn set_password_hash(&self, user_id: Uuid, hash: &str) -> Result<(), RepositoryError> {
+    async fn guardar_hash_contrasena(
+        &self,
+        user_id: Uuid,
+        hash: &str,
+    ) -> Result<(), ErrorRepositorio> {
         sqlx::query(
             "INSERT INTO credentials (user_id, password_hash) VALUES ($1, $2) \
              ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash, \

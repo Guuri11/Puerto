@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use super::{events::{{ pascal }}Event, model::{{ pascal }}};
 
@@ -8,16 +8,16 @@ use super::{events::{{ pascal }}Event, model::{{ pascal }}};
 /// early `?` is the rollback.
 #[async_trait]
 pub trait {{ pascal }}UnitOfWork: Send {
-    async fn save(&mut self, entity: &{{ pascal }}) -> Result<(), RepositoryError>;
-    async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), RepositoryError>;
-    async fn commit(self: Box<Self>) -> Result<(), RepositoryError>;
+    async fn save(&mut self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
+    async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), ErrorRepositorio>;
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio>;
 }
 
 /// Opens a [`{{ pascal }}UnitOfWork`]: what every {{ snake }} write goes through. The repository only
 /// reads, so a write that skips the outbox does not compile.
 #[async_trait]
 pub trait {{ pascal }}UnitOfWorkFactory: Send + Sync {
-    async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, RepositoryError>;
+    async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -47,7 +47,7 @@ pub mod mocks {
     #[derive(Clone, Default)]
     pub struct RecordingUnitOfWorkFactory {
         recorded: Arc<Mutex<Recorded>>,
-        failure: Option<(FailAt, RepositoryError)>,
+        failure: Option<(FailAt, ErrorRepositorio)>,
     }
 
     impl RecordingUnitOfWorkFactory {
@@ -55,7 +55,7 @@ pub mod mocks {
             Self::default()
         }
 
-        pub fn failing_at(at: FailAt, error: RepositoryError) -> Self {
+        pub fn failing_at(at: FailAt, error: ErrorRepositorio) -> Self {
             Self {
                 failure: Some((at, error)),
                 ..Self::default()
@@ -66,7 +66,7 @@ pub mod mocks {
             lock(&self.recorded).clone()
         }
 
-        fn fail_at(&self, at: FailAt) -> Result<(), RepositoryError> {
+        fn fail_at(&self, at: FailAt) -> Result<(), ErrorRepositorio> {
             match self.failure {
                 Some((failing, error)) if failing == at => Err(error),
                 _ => Ok(()),
@@ -84,18 +84,18 @@ pub mod mocks {
 
     #[async_trait]
     impl {{ pascal }}UnitOfWork for RecordingUnitOfWork {
-        async fn save(&mut self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+        async fn save(&mut self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
             self.factory.fail_at(FailAt::Save)?;
             lock(&self.factory.recorded).saved.push(entity.clone());
             Ok(())
         }
 
-        async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), RepositoryError> {
+        async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), ErrorRepositorio> {
             lock(&self.factory.recorded).events.push(event);
             Ok(())
         }
 
-        async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
             self.factory.fail_at(FailAt::Commit)?;
             lock(&self.factory.recorded).committed = true;
             Ok(())
@@ -104,7 +104,7 @@ pub mod mocks {
 
     #[async_trait]
     impl {{ pascal }}UnitOfWorkFactory for RecordingUnitOfWorkFactory {
-        async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, RepositoryError> {
+        async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, ErrorRepositorio> {
             self.fail_at(FailAt::Begin)?;
             Ok(Box::new(RecordingUnitOfWork {
                 factory: self.clone(),

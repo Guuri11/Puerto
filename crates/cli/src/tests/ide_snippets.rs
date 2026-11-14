@@ -686,7 +686,7 @@ fn compose_publish_from_snippets(output: &Path) {
     let consumer = "worker/src/consumers/notify_new_product.rs";
     let src = fs::read_to_string(output.join(consumer)).unwrap();
     let start = src.find("            PRODUCT_PUBLISHED => ").unwrap();
-    let end_marker = "REASON_PAYLOAD_INVALID, err.detail),\n            },\n";
+    let end_marker = "MOTIVO_PAYLOAD_INVALIDO, err.detail),\n            },\n";
     let end = start + src[start..].find(end_marker).unwrap() + end_marker.len();
     let arm = expand_snippet(
         &s["consumer-arm"],

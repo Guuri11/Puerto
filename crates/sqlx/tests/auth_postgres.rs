@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use puerto_core::auth::{AuthError, Authenticator, CredentialStore, SessionStore};
+use puerto_nucleo::auth::{AlmacenCredenciales, AlmacenSesiones, Autenticador, ErrorAuth};
 use puerto_sqlx::auth::{PgCredentials, PgSessions};
 use puerto_sqlx::{AUTH_MIGRATION, USERS_MIGRATION};
 use sqlx::PgPool;
@@ -61,15 +61,15 @@ async fn postgres_session_authenticates_as_its_user_with_the_roles_column() {
     let user_id = ada(&pool, &["admin"]).await;
     let sessions = PgSessions::new(pool, THIRTY_DAYS);
 
-    let session = sessions.open(user_id).await.unwrap();
-    let principal = sessions.authenticate(&session.token).await.unwrap();
+    let session = sessions.abrir(user_id).await.unwrap();
+    let principal = sessions.autenticar(&session.token).await.unwrap();
 
-    assert_eq!(principal.user_id, user_id);
-    assert_eq!(principal.subject, "ada@example.com");
+    assert_eq!(principal.id_usuario, user_id);
+    assert_eq!(principal.sujeto, "ada@example.com");
     assert_eq!(principal.email.as_deref(), Some("ada@example.com"));
-    assert_eq!(principal.name.as_deref(), Some("Ada"));
+    assert_eq!(principal.nombre.as_deref(), Some("Ada"));
     assert_eq!(principal.roles, vec!["admin"]);
-    let lifetime = session.expires_at - chrono::Utc::now();
+    let lifetime = session.expira_en - chrono::Utc::now();
     assert!(lifetime > chrono::TimeDelta::days(29), "{lifetime}");
 }
 
@@ -82,7 +82,7 @@ async fn postgres_session_keeps_only_the_hash_of_its_token() {
     let user_id = ada(&pool, &[]).await;
     let sessions = PgSessions::new(pool.clone(), THIRTY_DAYS);
 
-    let session = sessions.open(user_id).await.unwrap();
+    let session = sessions.abrir(user_id).await.unwrap();
 
     let stored: Vec<u8> = sqlx::query_scalar("SELECT token_hash FROM sessions")
         .fetch_one(&pool)
@@ -100,22 +100,22 @@ async fn postgres_unknown_or_revoked_token_is_invalid() {
     };
     let user_id = ada(&pool, &[]).await;
     let sessions = PgSessions::new(pool, THIRTY_DAYS);
-    let session = sessions.open(user_id).await.unwrap();
-    let other = sessions.open(user_id).await.unwrap();
+    let session = sessions.abrir(user_id).await.unwrap();
+    let other = sessions.abrir(user_id).await.unwrap();
 
-    sessions.revoke(&session.token).await.unwrap();
+    sessions.revocar(&session.token).await.unwrap();
 
     assert_eq!(
-        sessions.authenticate(&session.token).await,
-        Err(AuthError::Invalid)
+        sessions.autenticar(&session.token).await,
+        Err(ErrorAuth::Invalido)
     );
     assert_eq!(
-        sessions.authenticate("made-up").await,
-        Err(AuthError::Invalid)
+        sessions.autenticar("made-up").await,
+        Err(ErrorAuth::Invalido)
     );
     // Revoking one session leaves the user's others open; revoking twice is fine.
-    assert!(sessions.authenticate(&other.token).await.is_ok());
-    assert_eq!(sessions.revoke(&session.token).await, Ok(()));
+    assert!(sessions.autenticar(&other.token).await.is_ok());
+    assert_eq!(sessions.revocar(&session.token).await, Ok(()));
 }
 
 #[tokio::test]
@@ -127,11 +127,11 @@ async fn postgres_session_past_its_expiry_is_expired() {
     let user_id = ada(&pool, &[]).await;
     let sessions = PgSessions::new(pool, Duration::ZERO);
 
-    let session = sessions.open(user_id).await.unwrap();
+    let session = sessions.abrir(user_id).await.unwrap();
 
     assert_eq!(
-        sessions.authenticate(&session.token).await,
-        Err(AuthError::Expired)
+        sessions.autenticar(&session.token).await,
+        Err(ErrorAuth::Expirado)
     );
 }
 
@@ -148,8 +148,8 @@ async fn postgres_sessions_are_unavailable_when_their_table_is_missing() {
     let sessions = PgSessions::new(pool, THIRTY_DAYS);
 
     assert_eq!(
-        sessions.authenticate("any").await,
-        Err(AuthError::Unavailable)
+        sessions.autenticar("any").await,
+        Err(ErrorAuth::NoDisponible)
     );
 }
 
@@ -162,19 +162,19 @@ async fn postgres_credentials_are_set_replaced_and_read_by_user() {
     let user_id = ada(&pool, &[]).await;
     let credentials = PgCredentials::new(pool);
 
-    assert_eq!(credentials.password_hash(user_id).await, Ok(None));
+    assert_eq!(credentials.hash_contrasena(user_id).await, Ok(None));
     credentials
-        .set_password_hash(user_id, "first")
+        .guardar_hash_contrasena(user_id, "first")
         .await
         .unwrap();
     credentials
-        .set_password_hash(user_id, "second")
+        .guardar_hash_contrasena(user_id, "second")
         .await
         .unwrap();
 
     assert_eq!(
-        credentials.password_hash(user_id).await,
+        credentials.hash_contrasena(user_id).await,
         Ok(Some("second".to_string()))
     );
-    assert_eq!(credentials.password_hash(Uuid::now_v7()).await, Ok(None));
+    assert_eq!(credentials.hash_contrasena(Uuid::now_v7()).await, Ok(None));
 }

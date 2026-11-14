@@ -15,7 +15,7 @@ categories = ["email"]
 test-utils = []
 
 [dependencies]
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 async-trait = "0.1"
 dotenvy = "0.15"
 # rustls, not native-tls: no OpenSSL headers to install. `pool` reuses SMTP connections.

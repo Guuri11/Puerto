@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 
 use super::model::{User, UserId};
 
@@ -10,10 +10,10 @@ pub trait UserRepositoryTrait: Send + Sync {
         &self,
         issuer: &str,
         subject: &str,
-    ) -> Result<Option<User>, RepositoryError>;
-    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError>;
+    ) -> Result<Option<User>, ErrorRepositorio>;
+    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio>;
     /// Inserts or updates by id; another user with the same `(issuer, subject)` is `Duplicate`.
-    async fn save(&self, user: &User) -> Result<(), RepositoryError>;
+    async fn save(&self, user: &User) -> Result<(), ErrorRepositorio>;
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -31,9 +31,9 @@ pub mod mocks {
                 &self,
                 issuer: &str,
                 subject: &str,
-            ) -> Result<Option<User>, RepositoryError>;
-            async fn find_by_id(&self, id: UserId) -> Result<Option<User>, RepositoryError>;
-            async fn save(&self, user: &User) -> Result<(), RepositoryError>;
+            ) -> Result<Option<User>, ErrorRepositorio>;
+            async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio>;
+            async fn save(&self, user: &User) -> Result<(), ErrorRepositorio>;
         }
     }
 }

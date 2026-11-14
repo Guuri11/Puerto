@@ -1,5 +1,5 @@
 [package]
-name = "puerto-core"
+name = "puerto-nucleo"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,8 +11,8 @@ keywords = ["ddd", "clean-architecture", "puerto", "events", "auth"]
 categories = ["rust-patterns"]
 
 [features]
-# `auth::mocks::MockAuthenticator`, for a project's tests.
-test-utils = ["dep:mockall"]
+# `auth::dobles::MockAutenticador`, for a project's tests.
+pruebas = ["dep:mockall"]
 
 [dependencies]
 thiserror = "2"

@@ -11,7 +11,7 @@ keywords = ["ddd", "clean-architecture", "puerto", "sqlx", "postgres"]
 categories = ["database"]
 
 [dependencies]
-puerto-core = { workspace = true }
+puerto-nucleo = { workspace = true }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "uuid", "chrono", "json"] }
 thiserror = "2"
 # Domain events (ADR-0018): the unit of work, the outbox and the db transport.

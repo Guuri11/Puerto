@@ -3,7 +3,7 @@ use business::domain::{{ snake }}::{
     model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
     repository::{{ pascal }}RepositoryTrait,
 };
-use puerto_core::RepositoryError;
+use puerto_nucleo::ErrorRepositorio;
 use sqlx::PgPool;
 
 use super::entity::{{ pascal }}Db;
@@ -21,16 +21,16 @@ impl Pg{{ pascal }}Repository {
 
 /// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
 /// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, RepositoryError> {
+fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, ErrorRepositorio> {
     {{ pascal }}::try_from(row).map_err(|e| {
         tracing::error!(error = %e, "stored row is not a valid {{ snake }}");
-        RepositoryError::InvalidData
+        ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
 impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, RepositoryError> {
+    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
         tracing::debug!(%id, "find_by_id");
         let row = sqlx::query_as!(
             {{ pascal }}Db,
@@ -48,7 +48,7 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         row.map(to_domain).transpose()
     }
 
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), RepositoryError> {
+    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entity.id, "save");
         let db = {{ pascal }}Db::from(entity);
         sqlx::query!(
