@@ -71,7 +71,7 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
             .0
             .token;
         let Some(authenticator) = req.data::<Arc<dyn Autenticador>>() else {
-            tracing::error!("BearerAuth: no Authenticator registered on the routes");
+            tracing::error!("BearerAuth: no hay ningún Autenticador registrado en las rutas");
             return Err(error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 RespuestaError {
@@ -97,7 +97,7 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
 pub fn rechazo(err: ErrorAuth) -> (StatusCode, Json<RespuestaError>) {
     match err {
         ErrorAuth::NoDisponible => {
-            tracing::warn!(error = %err, "BearerAuth: the token could not be checked");
+            tracing::warn!(error = %err, "BearerAuth: no se pudo comprobar el token");
             (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(RespuestaError::from_codigo(NO_DISPONIBLE)),

@@ -64,7 +64,7 @@ mod tests {
         // Assert
         assert_eq!(
             printed,
-            "SERVICE_PORT=\"abc\" is not valid: expected a port number (0-65535)"
+            "SERVICE_PORT=\"abc\" no es válida: se esperaba un número de puerto (0-65535)"
         );
     }
 }

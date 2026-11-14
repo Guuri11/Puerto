@@ -59,9 +59,9 @@ pub const MIGRACION_AUTH: &str = include_str!("../migrations/auth.sql");
 #[non_exhaustive]
 pub enum ErrorBaseDatos {
     /// `destino` is the URL's `host[:port]/database`: no user, no password.
-    #[error("cannot connect to the database at {destino}: {causa}")]
+    #[error("no se puede conectar con la base de datos en {destino}: {causa}")]
     ErrorConexion { destino: String, causa: String },
-    #[error("cannot apply the database migrations: {causa}")]
+    #[error("no se pueden aplicar las migraciones de la base de datos: {causa}")]
     ErrorMigracion { causa: String },
 }
 

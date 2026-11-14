@@ -18,7 +18,7 @@ pub const PUERTO_POR_DEFECTO: u16 = 8080;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum ErrorConfig {
-    #[error("{clave}={valor:?} is not valid: expected {esperado}")]
+    #[error("{clave}={valor:?} no es válida: se esperaba {esperado}")]
     Invalido {
         clave: &'static str,
         valor: String,
@@ -65,7 +65,7 @@ impl Config {
             config.puerto = valor.trim().parse().map_err(|_| ErrorConfig::Invalido {
                 clave: "SERVICE_PORT",
                 valor,
-                esperado: "a port number (0-65535)",
+                esperado: "un número de puerto (0-65535)",
             })?;
         }
         if let Some(valor) = var("CORS_ALLOWED_ORIGINS") {
@@ -84,7 +84,7 @@ impl Config {
                     return Err(ErrorConfig::Invalido {
                         clave: "PUERTO_BANNER",
                         valor,
-                        esperado: "true or false",
+                        esperado: "true o false",
                     });
                 }
             };
@@ -190,7 +190,7 @@ mod tests {
             ErrorConfig::Invalido {
                 clave: "SERVICE_PORT",
                 valor: "abc".into(),
-                esperado: "a port number (0-65535)",
+                esperado: "un número de puerto (0-65535)",
             }
         );
     }
@@ -265,7 +265,7 @@ mod tests {
         // Assert
         assert_eq!(
             mensaje,
-            "SERVICE_PORT=\"abc\" is not valid: expected a port number (0-65535)"
+            "SERVICE_PORT=\"abc\" no es válida: se esperaba un número de puerto (0-65535)"
         );
     }
 }

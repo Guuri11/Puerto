@@ -12,9 +12,9 @@ use super::ClaimRoles;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum ErrorConfigOidc {
-    #[error("{clave} is not set — set it in .env (.env.example has one)")]
+    #[error("{clave} no está definida: defínela en .env (.env.example tiene una)")]
     Falta { clave: &'static str },
-    #[error("{clave} is not valid: expected {esperado}")]
+    #[error("{clave} no es válida: se esperaba {esperado}")]
     Invalido {
         clave: &'static str,
         esperado: &'static str,
@@ -63,7 +63,7 @@ impl ConfigOidc {
         if !(issuer.starts_with("https://") || issuer.starts_with("http://")) {
             return Err(ErrorConfigOidc::Invalido {
                 clave: "AUTH_ISSUER",
-                esperado: "the provider's issuer URL, like https://shop.eu.auth0.com/",
+                esperado: "la URL del emisor del proveedor, como https://shop.eu.auth0.com/",
             });
         }
         let audience = read("AUTH_AUDIENCE").ok_or(ErrorConfigOidc::Falta {

@@ -45,22 +45,22 @@ impl Outbox for OutboxPostgres {
                 return Ok(true);
             }
             // The connection died, and the lock with it: compete for it again.
-            tracing::warn!("outbox: lost the relay lock's connection");
+            tracing::warn!("outbox: se perdió la conexión del bloqueo del relay");
             *leader = None;
         }
         let mut conn = self
             .pool
             .acquire()
             .await
-            .map_err(unavailable("outbox: try_lead"))?
+            .map_err(unavailable("outbox: intentar_liderar"))?
             .detach();
         let leads: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
             .bind(self.lock_key)
             .fetch_one(&mut conn)
             .await
-            .map_err(unavailable("outbox: try_lead"))?;
+            .map_err(unavailable("outbox: intentar_liderar"))?;
         if leads {
-            tracing::info!("outbox: this worker relays");
+            tracing::info!("outbox: este worker hace el relay");
             *leader = Some(conn);
         }
         Ok(leads)
@@ -74,9 +74,9 @@ impl Outbox for OutboxPostgres {
         .bind(i64::from(limit))
         .fetch_all(&self.pool)
         .await
-        .map_err(unavailable("outbox: fetch_unpublished"))?;
+        .map_err(unavailable("outbox: buscar_sin_publicar"))?;
         rows.iter()
-            .map(|row| envelope_from_pg(row, "outbox: fetch_unpublished"))
+            .map(|row| envelope_from_pg(row, "outbox: buscar_sin_publicar"))
             .collect()
     }
 
@@ -88,7 +88,7 @@ impl Outbox for OutboxPostgres {
         .bind(ids)
         .execute(&self.pool)
         .await
-        .map_err(unavailable("outbox: mark_published"))?;
+        .map_err(unavailable("outbox: marcar_publicados"))?;
         Ok(())
     }
 }

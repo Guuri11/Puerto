@@ -93,7 +93,7 @@ impl App {
         let puerto = self.config.puerto();
         let built = build(self.config.clone()).await.map_err(|e| {
             let mensaje = e.to_string();
-            tracing::error!(error = %mensaje, "startup failed");
+            tracing::error!(error = %mensaje, "el arranque falló");
             Error::Arranque(mensaje)
         })?;
         let endpoint = wrap(&self.config, built);
@@ -158,7 +158,7 @@ pub async fn senal_apagado() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
-    tracing::info!("shutdown signal received, draining");
+    tracing::info!("señal de apagado recibida, vaciando");
 }
 
 #[cfg(test)]

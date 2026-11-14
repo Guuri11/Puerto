@@ -99,7 +99,7 @@ impl Policy {
         match decidir(outcome, claimed.intento, self.max_deliveries) {
             Entrega::Ack => Entrega::Ack,
             Entrega::Reintentar { espera } => {
-                tracing::warn!(consumidor, event_id = %event.id, attempt = claimed.intento, "consumer: retry");
+                tracing::warn!(consumidor, event_id = %event.id, attempt = claimed.intento, "consumidor: reintento");
                 Entrega::Reintentar {
                     espera: self.cap(espera),
                 }
@@ -115,7 +115,7 @@ impl Policy {
                 match self.dead_letters.registrar(&record).await {
                     Ok(()) => Entrega::Descartar { motivo, detalle },
                     Err(err) => {
-                        tracing::error!(consumidor, event_id = %event.id, error = %err, "consumer: dead letter not recorded, retrying");
+                        tracing::error!(consumidor, event_id = %event.id, error = %err, "consumidor: el descartado no se registró, se reintenta");
                         Entrega::Reintentar {
                             espera: self.cap(espera_para(claimed.intento)),
                         }
@@ -137,7 +137,7 @@ impl Policy {
                     consumidor,
                     event_id = %claimed.sobre.id,
                     error = %err,
-                    "consumer: handler panicked"
+                    "consumidor: el manejador entró en pánico"
                 );
                 ResultadoManejo::Reintentar
             }
@@ -153,7 +153,7 @@ impl Policy {
 #[async_trait]
 impl<S: SuscripcionEventos + 'static> Pasada for Consumidor<S> {
     fn name(&self) -> String {
-        format!("consumer {}", self.suscripcion.consumidor())
+        format!("consumidor {}", self.suscripcion.consumidor())
     }
 
     async fn pass(&mut self) -> Result<Progreso, ErrorTransporte> {

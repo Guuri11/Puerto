@@ -29,7 +29,7 @@ impl EnviadorCorreoSmtp {
             .parse()
             .map_err(|_| ErrorConfigCorreo::Invalido {
                 clave: "MAIL_FROM",
-                esperado: "an address, like no-reply@example.com",
+                esperado: "una dirección, como no-reply@example.com",
             })?;
         Ok(Self { transport, from })
     }
@@ -38,7 +38,7 @@ impl EnviadorCorreoSmtp {
         let to: Mailbox = email
             .para
             .parse()
-            .map_err(|e| ErrorCorreo::Permanente(format!("recipient {:?}: {e}", email.para)))?;
+            .map_err(|e| ErrorCorreo::Permanente(format!("destinatario {:?}: {e}", email.para)))?;
         let builder = Message::builder()
             .from(self.from.clone())
             .to(to)

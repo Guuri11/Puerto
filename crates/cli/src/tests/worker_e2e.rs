@@ -26,7 +26,7 @@ pub struct AlwaysRetry;
 
 #[async_trait]
 impl ManejadorEvento for AlwaysRetry {
-    async fn handle(&self, _event: &SobreEvento) -> ResultadoManejo {
+    async fn manejar(&self, _event: &SobreEvento) -> ResultadoManejo {
         ResultadoManejo::Reintentar
     }
 }
@@ -273,12 +273,12 @@ fn postgres_events_worker_delivers_dead_letters_and_survives_a_restart() {
     wait_until("always_retry to be dead-lettered", || {
         logged(
             &worker_log,
-            &["dead_letters: recorded", "consumer=always_retry"],
+            &["descartados: registrado", "consumer=always_retry"],
         )
     });
     let retries = log_lines(&worker_log)
         .iter()
-        .filter(|l| l.contains("consumer: retry") && l.contains("always_retry"))
+        .filter(|l| l.contains("consumidor: reintento") && l.contains("always_retry"))
         .count();
     assert_eq!(retries, 4, "deliveries 1–4 retry, the 5th dead-letters");
 
@@ -404,12 +404,12 @@ fn kafka_events_worker_delivers_in_order_dead_letters_and_survives_a_restart() {
     wait_until("always_retry to be dead-lettered", || {
         logged(
             &worker_log,
-            &["dead_letters: recorded", "consumer=always_retry"],
+            &["descartados: registrado", "consumer=always_retry"],
         )
     });
     let retries = log_lines(&worker_log)
         .iter()
-        .filter(|l| l.contains("consumer: retry") && l.contains("always_retry"))
+        .filter(|l| l.contains("consumidor: reintento") && l.contains("always_retry"))
         .count();
     assert_eq!(retries, 4, "deliveries 1–4 retry, the 5th dead-letters");
 
@@ -419,7 +419,7 @@ fn kafka_events_worker_delivers_in_order_dead_letters_and_survives_a_restart() {
         logged(
             &worker_log,
             &[
-                "dead_letters: recorded",
+                "descartados: registrado",
                 "consumer=notify_new_product",
                 "event_id=None",
             ],

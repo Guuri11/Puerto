@@ -17,7 +17,7 @@ pub fn hash_contrasena(password: &str) -> Result<String, ErrorHash> {
     argon2::PasswordHasher::hash_password(&Argon2::default(), password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|err| {
-            tracing::error!(error = %err, "hash_password failed");
+            tracing::error!(error = %err, "hash_contrasena falló");
             ErrorHash
         })
 }
@@ -26,7 +26,7 @@ pub fn hash_contrasena(password: &str) -> Result<String, ErrorHash> {
 /// nothing.
 pub fn verificar_contrasena(password: &str, hash: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(hash) else {
-        tracing::warn!("verify_password: the stored hash is not a PHC string");
+        tracing::warn!("verificar_contrasena: el hash guardado no es una cadena PHC");
         return false;
     };
     Argon2::default()
@@ -61,7 +61,7 @@ impl HasherContrasena for HasherArgon2 {
         tokio::task::spawn_blocking(move || hash_contrasena(&password))
             .await
             .map_err(|err| {
-                tracing::error!(error = %err, "hash: the blocking task failed");
+                tracing::error!(error = %err, "hash: falló la tarea bloqueante");
                 ErrorHash
             })?
     }

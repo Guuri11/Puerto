@@ -118,7 +118,7 @@ impl Worker {
         iniciar_tracing();
         let loops = build(self.config.clone()).await.map_err(|e| {
             let message = e.to_string();
-            tracing::error!(error = %message, "startup failed");
+            tracing::error!(error = %message, "el arranque falló");
             Error::Arranque(message)
         })?;
         self.run_until(loops, senal_apagado()).await
@@ -166,7 +166,7 @@ impl Worker {
         })
         .await;
         if drained.is_err() {
-            tracing::warn!("worker: a loop did not finish its pass before the shutdown deadline");
+            tracing::warn!("worker: un bucle no terminó su pasada antes del plazo de apagado");
         }
         served?;
         Ok(())
@@ -228,7 +228,7 @@ mod tests {
             );
 
         // Assert
-        assert_eq!(loops.nombres(), ["relay", "consumer notify_new_product"]);
+        assert_eq!(loops.nombres(), ["relay", "consumidor notify_new_product"]);
     }
 
     #[test]

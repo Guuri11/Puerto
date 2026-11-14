@@ -32,7 +32,7 @@ impl CorreosEnviados for CorreosEnviadosPostgres {
         .fetch_one(&self.pool)
         .await
         .map_err(|err| {
-            tracing::error!(error = %err, %event_id, correo, "sent_mails: read failed");
+            tracing::error!(error = %err, %event_id, correo, "correos_enviados: falló la lectura");
             mapear_error_sqlx(&err)
         })
     }
@@ -48,7 +48,7 @@ impl CorreosEnviados for CorreosEnviadosPostgres {
         .await
         .map(|_| ())
         .map_err(|err| {
-            tracing::error!(error = %err, %event_id, correo, "sent_mails: mark failed");
+            tracing::error!(error = %err, %event_id, correo, "correos_enviados: falló el marcado");
             mapear_error_sqlx(&err)
         })
     }

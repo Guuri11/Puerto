@@ -60,7 +60,7 @@ impl ConfigWorker {
         let var = |key: &str| var(key).filter(|value| !value.trim().is_empty());
         let mut config = Self::default();
         if let Some(value) = var("WORKER_PORT") {
-            config.port = parse(value, "WORKER_PORT", "a port number (0-65535)")?;
+            config.port = parse(value, "WORKER_PORT", "un número de puerto (0-65535)")?;
         }
         if let Some(value) = var("RELAY_BATCH_SIZE") {
             config.tamano_lote_relay = positive(value, "RELAY_BATCH_SIZE")?;
@@ -99,7 +99,7 @@ fn parse<T: std::str::FromStr>(
 }
 
 fn positive(value: String, key: &'static str) -> Result<u32, ErrorConfig> {
-    let expected = "a whole number of at least 1";
+    let expected = "un número entero de al menos 1";
     match parse::<u32>(value.clone(), key, expected)? {
         0 => Err(ErrorConfig::Invalido {
             clave: key,
@@ -111,7 +111,7 @@ fn positive(value: String, key: &'static str) -> Result<u32, ErrorConfig> {
 }
 
 fn millis(value: String, key: &'static str) -> Result<Duration, ErrorConfig> {
-    parse(value, key, "a number of milliseconds").map(Duration::from_millis)
+    parse(value, key, "un número de milisegundos").map(Duration::from_millis)
 }
 
 #[cfg(test)]
@@ -182,7 +182,7 @@ mod tests {
             Err(ErrorConfig::Invalido {
                 clave: "WORKER_PORT",
                 valor: "abc".into(),
-                esperado: "a port number (0-65535)",
+                esperado: "un número de puerto (0-65535)",
             })
         );
     }
@@ -211,7 +211,7 @@ mod tests {
             result,
             Err(ErrorConfig::Invalido {
                 clave: "RELAY_POLL_INTERVAL_MS",
-                esperado: "a number of milliseconds",
+                esperado: "un número de milisegundos",
                 ..
             })
         ));

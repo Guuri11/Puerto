@@ -33,7 +33,7 @@ pub fn decidir(outcome: ResultadoManejo, intento: u32, entregas_maximas: u32) ->
         ResultadoManejo::Descartar { motivo, detalle } => Entrega::Descartar { motivo, detalle },
         ResultadoManejo::Reintentar if intento >= entregas_maximas => Entrega::Descartar {
             motivo: MOTIVO_ENTREGAS_MAXIMAS_SUPERADAS,
-            detalle: format!("still failing after {intento} deliveries"),
+            detalle: format!("sigue fallando tras {intento} entregas"),
         },
         ResultadoManejo::Reintentar => Entrega::Reintentar {
             espera: espera_para(intento),
@@ -104,7 +104,7 @@ mod tests {
             decidir(ResultadoManejo::Reintentar, 5, ENTREGAS_MAXIMAS_POR_DEFECTO),
             Entrega::Descartar {
                 motivo: "entregas_maximas_superadas",
-                detalle: "still failing after 5 deliveries".into()
+                detalle: "sigue fallando tras 5 entregas".into()
             }
         );
     }

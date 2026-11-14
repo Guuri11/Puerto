@@ -15,18 +15,18 @@ use lettre::message::Mailbox;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum ErrorConfigCorreo {
-    #[error("{clave} is not set — set it in .env (.env.example has one)")]
+    #[error("{clave} no está definida: defínela en .env (.env.example tiene una)")]
     Falta { clave: &'static str },
-    #[error("{clave} is not valid: expected {esperado}")]
+    #[error("{clave} no es válida: se esperaba {esperado}")]
     Invalido {
         clave: &'static str,
         esperado: &'static str,
     },
 }
 
-const SMTP_URL_EXPECTED: &str = "smtp://host:port, or smtps://user:password@host";
+const SMTP_URL_EXPECTED: &str = "smtp://host:puerto, o smtps://usuario:contraseña@host";
 const MAIL_FROM_EXPECTED: &str =
-    "an address, like no-reply@example.com or Shop <no-reply@example.com>";
+    "una dirección, como no-reply@example.com o Tienda <no-reply@example.com>";
 
 /// Built by [`ConfigCorreo::from_env`], or [`ConfigCorreo::from_variables`] (tests).
 #[derive(Clone, PartialEq, Eq)]

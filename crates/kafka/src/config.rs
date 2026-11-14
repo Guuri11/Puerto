@@ -54,7 +54,7 @@ impl ConfigKafka {
             return Err(ErrorConfig::Invalido {
                 clave: "KAFKA_TOPIC_PREFIX",
                 valor: prefijo_topic,
-                esperado: "letters, digits, '.', '_' or '-'",
+                esperado: "letras, dígitos, '.', '_' o '-'",
             });
         }
         Ok(Self {
@@ -93,7 +93,7 @@ impl ConfigKafka {
             match result {
                 Ok(_) | Err((_, RDKafkaErrorCode::TopicAlreadyExists)) => {}
                 Err((topic, code)) => {
-                    tracing::error!(topic, error = %code, "kafka: topic not created");
+                    tracing::error!(topic, error = %code, "kafka: no se creó el topic");
                     return Err(KafkaError::AdminOp(code));
                 }
             }
@@ -156,7 +156,7 @@ mod tests {
         let error = config(&[("KAFKA_TOPIC_PREFIX", "my shop")]).unwrap_err();
         assert_eq!(
             error.to_string(),
-            "KAFKA_TOPIC_PREFIX=\"my shop\" is not valid: expected letters, digits, '.', '_' or '-'"
+            "KAFKA_TOPIC_PREFIX=\"my shop\" no es válida: se esperaba letras, dígitos, '.', '_' o '-'"
         );
     }
 

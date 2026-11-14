@@ -3099,7 +3099,12 @@ crate, ficheros fijos. Los 102 literales (`"business/src/…"`) pasan a llamarlo
 cambian:** es la prueba de que el refactor no toca la salida. Así, 19.6 y 19.7 cambian rutas y
 nombres en un solo sitio. Tier 2.
 
-### 19.4 — El runtime en castellano
+### 19.4 — El runtime en castellano ✅
+
+En seis piezas, un commit cada una: 19.4a `puerto-nucleo`, 19.4b `puerto-web` + la macro
+(`{ codigo, mensaje }`), 19.4c `puerto-sqlx` (tablas de eventos y correos), 19.4d `puerto-eventos` +
+`puerto-kafka`, 19.4e `puerto-correo` + `puerto-auth` (tablas de auth), 19.4f los mensajes del runtime.
+Cada una con `make test/full` en verde; `test/db`, `kafka`, `mail` y `auth`, al final.
 
 `puerto-core` → `puerto-nucleo`, `puerto-events` → `puerto-eventos`, `puerto-mail` →
 `puerto-correo`, y la API pública de todos según el glosario (antes se cierran sus pendientes). Las

@@ -63,7 +63,7 @@ impl PublicadorEventos for PublicadorKafka {
         match self.producer.send(record, QUEUE_TIMEOUT).await {
             Ok(_) => Ok(()),
             Err((err, _)) => {
-                tracing::error!(topic, event_id = %event.id, error = %err, "kafka: publish failed");
+                tracing::error!(topic, event_id = %event.id, error = %err, "kafka: falló la publicación");
                 Err(ErrorTransporte::NoDisponible)
             }
         }

@@ -48,7 +48,7 @@ Lo marcado **pendiente** se decide en su fase, antes de escribir código.
 | `ProductFilter` | `FiltroProducto` |
 | `ProductApi`, `ProductDto`, `ProductPageDto` | `ApiProducto`, `DtoProducto`, `DtoPaginaProducto` |
 | `CreateProductRequest`, `CreateProductResponse` | `PeticionCrearProducto`, `RespuestaCrearProducto` |
-| `WelcomeMail`, `WelcomeMailer`, `TemplateWelcomeMailer`, `SendWelcomeMail` | **pendiente** (con `Mailer` del runtime) |
+| `WelcomeMail`, `WelcomeMailer`, `TemplateWelcomeMailer`, `SendWelcomeMail` | `CorreoBienvenida`, `EnviadorCorreoBienvenida`, `EnviadorCorreoBienvenidaPlantilla`, `EnviarCorreoBienvenida` |
 
 ## Funciones y métodos
 
@@ -110,7 +110,7 @@ excepciones, con tests: `pais` → `paises`; invariables como `analisis`, `crisi
 | `[[entity.fields]] name type unique value_object value_object_kind enum_variants references` | `[[entidad.campos]] nombre tipo unico objeto_valor clase_objeto_valor variantes referencia` |
 | `[[value_object]] name type` | `[[objeto_valor]] nombre tipo` |
 | `[[consumer]] name events` | `[[consumidor]] nombre eventos` |
-| `[[mail]] name on` | `[[correo]] nombre` + **pendiente** (`on`) |
+| `[[mail]] name on` | `[[correo]] nombre tras` |
 | valores `"enum"`, `"db"`, `"kafka"`, `"oidc"`, `"local"` | igual |
 
 ## CLI
@@ -125,7 +125,7 @@ excepciones, con tests: `pais` → `paises`; invariables como `analisis`, `crisi
 | `--no-db`, `--no-web`, `--no-demo` | `--sin-db`, `--sin-web`, `--sin-demo` |
 | `--events`, `--public`, `--role`, `--to` | `--eventos`, `--publico`, `--rol`, `--para` |
 | `--db`, `--auth`, `--ide` | igual |
-| `--on` | **pendiente** (`--tras`) |
+| `--on` | `--tras` |
 | sintaxis de campos `opt:`, `vec:`, `ref:`, `enum:`, `map`, `DateTime`, `!` | igual |
 
 ## Runtime
@@ -179,15 +179,33 @@ La feature `test-utils` pasa a llamarse `pruebas`, y el módulo `mocks`, `dobles
 | macros | `#[require_role]` | `#[requiere_rol]` |
 | todas | variables de entorno (`SMTP_URL`, `WORKER_PORT`, `KAFKA_BROKERS`, `AUTH_ISSUER`…) | igual |
 
+Lo que la Fase 19.4 decidió por el camino, con las mismas reglas:
+
+| Crate | Hoy | Ahora |
+|---|---|---|
+| nucleo | campos y métodos: `event_type`, `aggregate_id`, `occurred_at`, `headers`, `decode`, `handle`, `send`, `authenticate`, `user_id`, `subject` (de `Principal`), `subject`/`to`/`text` (de `Correo`) | `tipo_evento`, `id_agregado`, `ocurrido_en`, `cabeceras`, `decodificar`, `manejar`, `enviar`, `autenticar`, `id_usuario`, `sujeto`, `asunto`/`para`/`texto` |
+| nucleo | `Claimed { envelope, attempt }`, `settle`, `next_batch`, `try_lead`, `fetch_unpublished`, `mark_published` | `Reservado { sobre, intento }`, `resolver`, `siguiente_lote`, `intentar_liderar`, `buscar_sin_publicar`, `marcar_publicados` |
+| sqlx | `DatabaseError::{ConnectionError, MigrationError} { target, cause }` | `ErrorBaseDatos::{ErrorConexion, ErrorMigracion} { destino, causa }` |
+| sqlx | `outbox` (`seq`, `published_at`…), `event_deliveries` (`status` `pending` \| `done` \| `dead`, `next_attempt_at`, `last_error`), `dead_letters` (`reason`, `detail`, `recorded_at`) | `outbox` (`secuencia`, `publicado_en`…), `entregas_eventos` (`estado` `pendiente` \| `hecho` \| `descartado`, `siguiente_intento_en`, `ultimo_error`), `descartados` (`motivo`, `detalle`, `registrado_en`) |
+| sqlx | `users` (`issuer`, `subject`, `name`, `created_at`, `updated_at`), `credentials` (`user_id`, `password_hash`), `sessions` (`token_hash`, `expires_at`) | `usuarios` (`emisor`, `sujeto`, `nombre`, `creado_en`, `actualizado_en`), `credenciales` (`id_usuario`, `hash_contrasena`), `sesiones` (`hash_token`, `expira_en`) |
+| eventos | `Progress`, `Pass`, `Heartbeat`, `drive`, `Scripted`, `Fake*` (`with`, `marked`, `published`…) | `Progreso`, `Pasada`, `Latido`, `conducir`, `Guion`, `*Falso` (`con`, `marcados`, `publicados`…) |
+| kafka | cabeceras de cada registro `event_id`, `event_type`, `aggregate_type`, `aggregate_id`, `schema_version`, `occurred_at` | `id_evento`, `tipo_evento`, `tipo_agregado`, `id_agregado`, `version_esquema`, `ocurrido_en` |
+| correo | `Templates { subject, html, text }`, `render`, `MailConfig { smtp_url, from }`, `failing_with`, `sent` | `Plantillas { asunto, html, texto }`, `renderizar`, `ConfigCorreo { url_smtp, remitente }`, `fallando_con`, `enviados` |
+| auth | `OidcConfig { issuer, audience, roles_claim }`, `RolesClaim::{DEFAULT, read}`, `LEEWAY`, `REFETCH_INTERVAL` | `ConfigOidc { emisor, audiencia, claim_roles }`, `ClaimRoles::{POR_DEFECTO, leer}`, `MARGEN`, `INTERVALO_RECARGA` |
+| todas | los mensajes para personas (errores de arranque y de configuración, logs) | en castellano; los códigos (`auth.no_autenticado`…) siguen siendo códigos |
+
 Los correos generados (`generar correo bienvenida`): `CorreoBienvenida`,
 `EnviadorCorreoBienvenida`, `EnviadorCorreoBienvenidaPlantilla` y el consumidor `EnviarCorreoBienvenida`.
 
+## Auth y Makefile
+
+| Hoy | Ahora |
+|---|---|
+| `GET /me`, `POST /auth/register`, `/auth/login`, `/auth/logout` | `GET /me`, `POST /auth/registro`, `/auth/login`, `/auth/logout` (`me`, `login` y `logout` son jerga) |
+| `make test/domain`, `test/application`, `test/infrastructure` | `make test/dominio`, `test/aplicacion`, `test/infraestructura` |
+| `make generate/*`, `events/dead-letters`, `mail/ui`, `auth/grant` | `make generar/*`, `eventos/descartados`, `correo/ui`, `auth/conceder` |
+| `make test`, `lint`, `format`, `run`, `check`, `audit`, `setup`, `docker-compose/*`, `sqlx/*`, `web/*`, `auth/token`, `auth/ui` | igual (jerga y nombres de herramientas) |
+
 ## Pendiente
 
-Se decide al empezar la fase que lo usa:
-
-- auth: `GET /me` y `/auth/{register,login,logout}` (`login` y `logout` son jerga);
-- `--on` de `generar consumidor` y de `generar correo`, y la clave `on` de `[[correo]]`;
-- el `Makefile` generado: `test`, `lint`, `format`, `run`, `check`, `audit` y `setup` son jerga;
-  `test/domain`, `test/application`, `test/infrastructure`, `generate/*`, `events/*` y `mail/*` se
-  traducen.
+Nada por ahora. Una palabra nueva se pregunta antes de usarla.

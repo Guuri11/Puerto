@@ -37,12 +37,12 @@ impl DestinoDescartados for DescartadosPostgres {
         .bind(&registrar.payload)
         .execute(&self.pool)
         .await
-        .map_err(unavailable("dead_letters: record"))?;
+        .map_err(unavailable("descartados: registrar"))?;
         tracing::warn!(
             consumer = %registrar.consumidor,
             event_id = ?registrar.id_evento,
             reason = %registrar.motivo,
-            "dead_letters: recorded"
+            "descartados: registrado"
         );
         Ok(())
     }

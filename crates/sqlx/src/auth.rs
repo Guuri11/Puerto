@@ -44,7 +44,7 @@ pub fn ttl_sesion_from_env() -> Result<Duration, String> {
     match std::env::var("AUTH_SESSION_TTL") {
         Err(_) => Ok(TTL_SESION_POR_DEFECTO),
         Ok(value) => parsear_ttl(&value).ok_or_else(|| {
-            format!("AUTH_SESSION_TTL={value} is not a duration: use days, hours or minutes (30d, 12h, 90m)")
+            format!("AUTH_SESSION_TTL={value} no es una duración: usa días, horas o minutos (30d, 12h, 90m)")
         }),
     }
 }
@@ -96,7 +96,7 @@ type SessionUser = (
 impl AlmacenSesiones for SesionesPostgres {
     async fn abrir(&self, user_id: Uuid) -> Result<Sesion, ErrorRepositorio> {
         let token = generar_token().map_err(|err| {
-            tracing::error!(error = %err, "sessions: no randomness for a token");
+            tracing::error!(error = %err, "sesiones: no hay aleatoriedad para un token");
             ErrorRepositorio::NoDisponible
         })?;
         let expires_at = Utc::now() + self.ttl;
@@ -107,7 +107,7 @@ impl AlmacenSesiones for SesionesPostgres {
             .execute(&self.pool)
             .await
             .map_err(|err| {
-                tracing::error!(error = %err, %user_id, "sessions: open failed");
+                tracing::error!(error = %err, %user_id, "sesiones: no se pudo abrir");
                 mapear_error_sqlx(&err)
             })?;
         Ok(Sesion::new(token, expires_at))
@@ -120,7 +120,7 @@ impl AlmacenSesiones for SesionesPostgres {
             .await
             .map(|_| ())
             .map_err(|err| {
-                tracing::error!(error = %err, "sessions: revoke failed");
+                tracing::error!(error = %err, "sesiones: no se pudo revocar");
                 mapear_error_sqlx(&err)
             })
     }
@@ -137,7 +137,7 @@ impl Autenticador for SesionesPostgres {
         .fetch_optional(&self.pool)
         .await
         .map_err(|err| {
-            tracing::error!(error = %err, "sessions: lookup failed");
+            tracing::error!(error = %err, "sesiones: falló la búsqueda");
             ErrorAuth::NoDisponible
         })?
         .ok_or(ErrorAuth::Invalido)?;
@@ -175,7 +175,7 @@ impl AlmacenCredenciales for CredencialesPostgres {
             .fetch_optional(&self.pool)
             .await
             .map_err(|err| {
-                tracing::error!(error = %err, %user_id, "credentials: read failed");
+                tracing::error!(error = %err, %user_id, "credenciales: falló la lectura");
                 mapear_error_sqlx(&err)
             })
     }
@@ -196,7 +196,7 @@ impl AlmacenCredenciales for CredencialesPostgres {
         .await
         .map(|_| ())
         .map_err(|err| {
-            tracing::error!(error = %err, %user_id, "credentials: write failed");
+            tracing::error!(error = %err, %user_id, "credenciales: falló la escritura");
             mapear_error_sqlx(&err)
         })
     }

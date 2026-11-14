@@ -60,10 +60,10 @@ pub(crate) fn envelope_from(
             .iter()
             .find(|(k, _)| k == key)
             .and_then(|(_, v)| v.as_deref())
-            .ok_or_else(|| format!("header `{key}` is missing"))?;
-        String::from_utf8(value.to_vec()).map_err(|_| format!("header `{key}` is not UTF-8"))
+            .ok_or_else(|| format!("falta la cabecera `{key}`"))?;
+        String::from_utf8(value.to_vec()).map_err(|_| format!("la cabecera `{key}` no es UTF-8"))
     };
-    let parse_err = |key: &str| format!("header `{key}` is not valid");
+    let parse_err = |key: &str| format!("la cabecera `{key}` no es válida");
     let id = Uuid::parse_str(&text(EVENT_ID)?).map_err(|_| parse_err(EVENT_ID))?;
     let aggregate_id =
         Uuid::parse_str(&text(AGGREGATE_ID)?).map_err(|_| parse_err(AGGREGATE_ID))?;
@@ -73,8 +73,8 @@ pub(crate) fn envelope_from(
     let occurred_at = DateTime::parse_from_rfc3339(&text(OCCURRED_AT)?)
         .map_err(|_| parse_err(OCCURRED_AT))?
         .with_timezone(&Utc);
-    let payload = serde_json::from_slice(payload.ok_or("the payload is missing")?)
-        .map_err(|err| format!("the payload is not JSON: {err}"))?;
+    let payload = serde_json::from_slice(payload.ok_or("falta el payload")?)
+        .map_err(|err| format!("el payload no es JSON: {err}"))?;
     let mut extra = BTreeMap::new();
     for (key, value) in headers {
         if ENVELOPE_HEADERS.contains(&key.as_str()) {
@@ -82,7 +82,7 @@ pub(crate) fn envelope_from(
         }
         let value = value.as_deref().unwrap_or_default();
         let value = String::from_utf8(value.to_vec())
-            .map_err(|_| format!("header `{key}` is not UTF-8"))?;
+            .map_err(|_| format!("la cabecera `{key}` no es UTF-8"))?;
         extra.insert(key.clone(), value);
     }
     Ok(SobreEvento::from_partes(PartesSobre {
@@ -164,7 +164,7 @@ mod tests {
         for key in ENVELOPE_HEADERS {
             assert_eq!(
                 envelope_from(&without(headers.clone(), key), Some(&payload)),
-                Err(format!("header `{key}` is missing"))
+                Err(format!("falta la cabecera `{key}`"))
             );
         }
     }
@@ -177,7 +177,7 @@ mod tests {
             broken.push((key.to_string(), Some(b"70000x".to_vec())));
             assert_eq!(
                 envelope_from(&broken, Some(&payload)),
-                Err(format!("header `{key}` is not valid"))
+                Err(format!("la cabecera `{key}` no es válida"))
             );
         }
     }
@@ -190,7 +190,7 @@ mod tests {
             broken.push((key.to_string(), Some(vec![0xff, 0xfe])));
             assert_eq!(
                 envelope_from(&broken, Some(&payload)),
-                Err(format!("header `{key}` is not UTF-8"))
+                Err(format!("la cabecera `{key}` no es UTF-8"))
             );
         }
     }
@@ -200,11 +200,11 @@ mod tests {
         let (headers, _) = as_record(&envelope());
         assert_eq!(
             envelope_from(&headers, None),
-            Err("the payload is missing".into())
+            Err("falta el payload".into())
         );
         assert!(
             envelope_from(&headers, Some(b"not json"))
-                .is_err_and(|detail| detail.starts_with("the payload is not JSON"))
+                .is_err_and(|detail| detail.starts_with("el payload no es JSON"))
         );
     }
 

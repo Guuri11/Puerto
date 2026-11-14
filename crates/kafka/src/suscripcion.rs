@@ -168,7 +168,7 @@ impl SuscripcionKafka {
             Err(_) => Ok(None),
             Ok(Ok(message)) => Ok(Some(message.detach())),
             Ok(Err(err)) => {
-                tracing::error!(consumer = self.name, error = %err, "kafka: receive failed");
+                tracing::error!(consumer = self.name, error = %err, "kafka: falló la recepción");
                 Err(ErrorTransporte::NoDisponible)
             }
         }
@@ -194,7 +194,7 @@ impl SuscripcionKafka {
                 consumer = self.name,
                 topic = position.topic,
                 error = err,
-                "kafka: commit failed"
+                "kafka: falló el commit"
             );
             ErrorTransporte::NoDisponible
         })
@@ -204,7 +204,7 @@ impl SuscripcionKafka {
     /// fails it is kept, and the next batch tries again before reading on.
     async fn retire_unreadable(&mut self, poisoned: Poisoned) -> Result<(), ErrorTransporte> {
         if let Err(err) = self.dead_letters.registrar(&poisoned.record).await {
-            tracing::error!(consumer = self.name, error = %err, "kafka: dead letter not recorded, keeping the record");
+            tracing::error!(consumer = self.name, error = %err, "kafka: el descartado no se registró, se conserva el registro");
             self.poisoned = Some(poisoned);
             return Err(err);
         }
@@ -257,7 +257,7 @@ impl SuscripcionEventos for SuscripcionKafka {
                         topic = position.topic,
                         offset = position.offset,
                         detail,
-                        "kafka: record is not an event"
+                        "kafka: el registro no es un evento"
                     );
                     let raw = String::from_utf8_lossy(message.payload().unwrap_or_default());
                     let record = RegistroDescartado::ilegible(
@@ -284,7 +284,7 @@ impl SuscripcionEventos for SuscripcionKafka {
             Ok(Some(position)) => self.commit(position).await,
             Ok(None) => Ok(()),
             Err(err) => {
-                tracing::error!(consumer = self.name, event_id = %claimed.sobre.id, "kafka: settled a claim that was not handed out");
+                tracing::error!(consumer = self.name, event_id = %claimed.sobre.id, "kafka: se resolvió una reserva que no se había entregado");
                 Err(err)
             }
         }

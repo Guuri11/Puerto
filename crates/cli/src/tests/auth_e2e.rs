@@ -10,7 +10,7 @@ use std::process::Command;
 use super::compile_matrix::{AUTH_LOCAL, AUTH_OIDC_DB};
 use super::worker_e2e::{Project, build_scenario_project, free_port, http, http_as, wait_until};
 
-const PRODUCT: &str = r#"{"nombre":"Desk lamp","sku":"LAMP-1","price":2500,"status":"Draft"}"#;
+const PRODUCT: &str = r#"{"name":"Desk lamp","sku":"LAMP-1","price":2500,"status":"Draft"}"#;
 
 /// Whether `body` is the error `code` (`RespuestaError { codigo, mensaje }`).
 fn is_error(body: &str, code: &str) -> bool {
@@ -252,8 +252,7 @@ fn postgres_local_auth_project_registers_signs_in_and_revokes_on_logout() {
     assert!(is_error(&body, "auth.no_autenticado"), "{body}");
 
     // Register, then sign in.
-    let account =
-        r#"{"email":"Ada@Example.com","password":"correct horse battery","nombre":"Ada"}"#;
+    let account = r#"{"email":"Ada@Example.com","password":"correct horse battery","name":"Ada"}"#;
     let (status, body) = http(port, "POST", "/api/auth/register", account).unwrap();
     assert_eq!(status, 201, "{body}");
     let (status, body) = http(port, "POST", "/api/auth/register", account).unwrap();

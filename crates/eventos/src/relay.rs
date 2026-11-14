@@ -44,7 +44,7 @@ impl<O: Outbox, P: PublicadorEventos> Relay<O, P> {
             match self.publicador.publicar(event).await {
                 Ok(()) => confirmed.push(event.id),
                 Err(err) => {
-                    tracing::warn!(error = %err, event_id = %event.id, "relay: publish failed");
+                    tracing::warn!(error = %err, event_id = %event.id, "relay: falló la publicación");
                     failure = Some(err);
                     break;
                 }
@@ -52,7 +52,7 @@ impl<O: Outbox, P: PublicadorEventos> Relay<O, P> {
         }
         if !confirmed.is_empty() {
             self.outbox.marcar_publicados(&confirmed).await?;
-            tracing::debug!(count = confirmed.len(), "relay: published");
+            tracing::debug!(count = confirmed.len(), "relay: publicado");
         }
         match failure {
             Some(err) => Err(err),

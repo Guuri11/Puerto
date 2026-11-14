@@ -208,7 +208,7 @@ fn assert_mails_are_sent_once(
         wait_until("the redelivered event to be skipped", || {
             logged(
                 &worker_log,
-                &["mail already sent for this event", "product_live"],
+                &["correo ya enviado para este evento", "product_live"],
             )
         });
         assert_eq!(sent_to(api_port_mailpit, &first).len(), 1);
@@ -219,7 +219,10 @@ fn assert_mails_are_sent_once(
     let delayed = address("delayed");
     create_product(api_port, &delayed);
     wait_until("the mail to be retried", || {
-        logged(&worker_log, &["mail: not sent, retrying", "product_live"])
+        logged(
+            &worker_log,
+            &["correo: no enviado, se reintenta", "product_live"],
+        )
     });
     assert!(sent_to(api_port_mailpit, &delayed).is_empty());
     switch.up();

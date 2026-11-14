@@ -30,9 +30,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum ErrorOidc {
-    #[error("could not reach the auth provider at {url}: {cause}")]
+    #[error("no se pudo contactar con el proveedor de auth en {url}: {cause}")]
     Unreachable { url: String, cause: String },
-    #[error("{url} is not an OpenID Connect provider's answer: {cause}")]
+    #[error("{url} no es la respuesta de un proveedor OpenID Connect: {cause}")]
     Invalido { url: String, cause: String },
     #[error(
         "AUTH_ISSUER is {configured} but the provider calls itself {discovered} — set AUTH_ISSUER to the provider's issuer"
@@ -41,7 +41,7 @@ pub enum ErrorOidc {
         configured: String,
         discovered: String,
     },
-    #[error("{url} publishes no RS256 or ES256 signing key")]
+    #[error("{url} no publica ninguna clave de firma RS256 ni ES256")]
     NoSigningKey { url: String },
 }
 
@@ -111,7 +111,7 @@ impl AutenticadorOidc {
                 url: discovery.jwks_uri,
             });
         }
-        tracing::info!(issuer = %discovery.issuer, keys = keys.len(), "oidc: provider discovered");
+        tracing::info!(issuer = %discovery.issuer, keys = keys.len(), "oidc: proveedor descubierto");
         Ok(Self {
             http,
             issuer: discovery.issuer,
@@ -142,7 +142,10 @@ impl AutenticadorOidc {
             return Ok(key);
         }
         if last_refetch.is_some_and(|at| at.elapsed() < INTERVALO_RECARGA) {
-            tracing::debug!(kid, "oidc: unknown key, refetched less than a minute ago");
+            tracing::debug!(
+                kid,
+                "oidc: clave desconocida, recargadas hace menos de un minuto"
+            );
             return Err(ErrorAuth::Invalido);
         }
         // Counted before the fetch, so a failed one counts too: made-up `kid`s while the provider
@@ -151,12 +154,15 @@ impl AutenticadorOidc {
         let keys = fetch_keys(&self.http, &self.jwks_uri)
             .await
             .map_err(|err| {
-                tracing::warn!(error = %err.at(&self.jwks_uri), "oidc: could not refetch the keys");
+                tracing::warn!(error = %err.at(&self.jwks_uri), "oidc: no se pudieron recargar las claves");
                 ErrorAuth::NoDisponible
             })?;
         *self.keys.write().unwrap_or_else(PoisonError::into_inner) = keys;
         self.cached(kid).ok_or_else(|| {
-            tracing::debug!(kid, "oidc: unknown key, not in the refetched keys either");
+            tracing::debug!(
+                kid,
+                "oidc: clave desconocida, tampoco está en las claves recargadas"
+            );
             ErrorAuth::Invalido
         })
     }
@@ -179,16 +185,16 @@ impl Autenticador for AutenticadorOidc {
         // Only what a provider signs with its private key. An HMAC would be verified with the
         // public key as the secret — which anyone can read from the JWKS.
         if !matches!(header.alg, Algorithm::RS256 | Algorithm::ES256) {
-            tracing::debug!(alg = ?header.alg, "oidc: token rejected, algorithm not allowed");
+            tracing::debug!(alg = ?header.alg, "oidc: token rechazado, algoritmo no permitido");
             return Err(ErrorAuth::Invalido);
         }
         let Some(kid) = header.kid else {
-            tracing::debug!("oidc: token rejected, no kid");
+            tracing::debug!("oidc: token rechazado, sin kid");
             return Err(ErrorAuth::Invalido);
         };
         let key = self.key(&kid).await?;
         if key.algorithm != header.alg {
-            tracing::debug!(kid, alg = ?header.alg, "oidc: token rejected, not the key's algorithm");
+            tracing::debug!(kid, alg = ?header.alg, "oidc: token rechazado, no es el algoritmo de la clave");
             return Err(ErrorAuth::Invalido);
         }
         let claims = decode::<Map<String, Value>>(token, &key.key, &self.validation(header.alg))
@@ -199,7 +205,7 @@ impl Autenticador for AutenticadorOidc {
 }
 
 fn rejected(err: &jsonwebtoken::errors::Error) -> ErrorAuth {
-    tracing::debug!(error = %err, "oidc: token rejected");
+    tracing::debug!(error = %err, "oidc: token rechazado");
     match err.kind() {
         ErrorKind::ExpiredSignature => ErrorAuth::Expirado,
         _ => ErrorAuth::Invalido,
@@ -227,10 +233,10 @@ async fn get_json<T: serde::de::DeserializeOwned>(
         .map_err(|err| FetchError::Unreachable(err.to_string()))?;
     let status = response.status();
     if status.is_server_error() {
-        return Err(FetchError::Unreachable(format!("answered {status}")));
+        return Err(FetchError::Unreachable(format!("respondió {status}")));
     }
     if !status.is_success() {
-        return Err(FetchError::Invalido(format!("answered {status}")));
+        return Err(FetchError::Invalido(format!("respondió {status}")));
     }
     response
         .json()

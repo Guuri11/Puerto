@@ -80,7 +80,7 @@ test/mail: ## Slow test: the SMTP adapter against a throwaway Mailpit (needs Doc
 		-e MP_SMTP_ALLOWED_RECIPIENTS='@accepted\.test$$' axllent/mailpit:v1.31.1 >/dev/null
 	@until curl -sf http://localhost:58025/readyz >/dev/null; do sleep 1; done
 	PUERTO_TEST_SMTP_URL=smtp://localhost:51025 PUERTO_TEST_MAILPIT_API=http://localhost:58025 \
-		$(CARGO) test -p puerto-mail --test mailpit -- --ignored; \
+		$(CARGO) test -p puerto-correo --test mailpit -- --ignored; \
 		status=$$?; docker stop puerto-test-mailpit >/dev/null; exit $$status
 
 test/auth: ## Slow test: the OIDC adapter and a generated OIDC project against a throwaway Keycloak + Postgres (needs Docker + sqlx-cli)

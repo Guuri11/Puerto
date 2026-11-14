@@ -53,7 +53,7 @@ impl EntregasPostgres {
 #[async_trait]
 impl PublicadorEventos for EntregasPostgres {
     async fn publicar(&self, event: &SobreEvento) -> Result<(), ErrorTransporte> {
-        let context = "deliveries: publish";
+        let context = "entregas: publicar";
         let mut tx = self.pool.begin().await.map_err(unavailable(context))?;
         sqlx::query(
             "INSERT INTO entregas_eventos (id_evento, consumidor) \
@@ -109,7 +109,7 @@ impl SuscripcionEventos for SuscripcionPostgres {
     /// goes up now, not when it is settled), so a worker that crashes mid-handle still uses one
     /// of the event's deliveries, and the claim is hidden for the lease.
     async fn siguiente_lote(&mut self, max: u32) -> Result<Vec<Reservado>, ErrorTransporte> {
-        let context = "deliveries: next_batch";
+        let context = "entregas: siguiente_lote";
         let rows = sqlx::query(&format!(
             "WITH due AS ( \
                  SELECT d.id_evento FROM entregas_eventos d \
@@ -187,7 +187,7 @@ impl SuscripcionEventos for SuscripcionPostgres {
                 .await
             }
         };
-        result.map_err(unavailable("deliveries: settle"))?;
+        result.map_err(unavailable("entregas: resolver"))?;
         Ok(())
     }
 }

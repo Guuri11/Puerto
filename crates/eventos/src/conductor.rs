@@ -74,7 +74,7 @@ pub async fn conducir(
     mut shutdown: watch::Receiver<bool>,
 ) {
     let name = work.name();
-    tracing::info!(name, "worker: loop started");
+    tracing::info!(name, "worker: bucle iniciado");
     while !*shutdown.borrow() {
         let wait = match work.pass().await {
             Ok(Progreso::More) => {
@@ -86,7 +86,7 @@ pub async fn conducir(
                 interval
             }
             Err(err) => {
-                tracing::warn!(name, error = %err, "worker: pass failed");
+                tracing::warn!(name, error = %err, "worker: falló la pasada");
                 interval
             }
         };
@@ -95,7 +95,7 @@ pub async fn conducir(
             _ = shutdown.changed() => {}
         }
     }
-    tracing::info!(name, "worker: loop stopped");
+    tracing::info!(name, "worker: bucle detenido");
 }
 
 #[cfg(test)]

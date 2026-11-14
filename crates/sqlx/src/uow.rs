@@ -16,7 +16,7 @@ pub struct TransaccionPostgres {
 impl TransaccionPostgres {
     pub async fn begin(pool: &PgPool) -> Result<Self, ErrorRepositorio> {
         let tx = pool.begin().await.map_err(|err| {
-            tracing::error!(error = %err, "unit_of_work: begin failed");
+            tracing::error!(error = %err, "unit_of_work: falló el begin");
             mapear_error_sqlx(&err)
         })?;
         Ok(Self { tx })
@@ -35,7 +35,7 @@ impl TransaccionPostgres {
     /// Records an envelope built by the caller — one carrying headers (`correlation_id`).
     pub async fn registrar_sobre(&mut self, event: &SobreEvento) -> Result<(), ErrorRepositorio> {
         let headers = serde_json::to_value(&event.cabeceras).map_err(|err| {
-            tracing::error!(error = %err, event_type = %event.tipo_evento, "unit_of_work: headers not serialisable");
+            tracing::error!(error = %err, event_type = %event.tipo_evento, "unit_of_work: las cabeceras no se pueden serializar");
             ErrorRepositorio::DatosInvalidos
         })?;
         sqlx::query(
@@ -54,7 +54,7 @@ impl TransaccionPostgres {
         .execute(&mut *self.tx)
         .await
         .map_err(|err| {
-            tracing::error!(error = %err, event_type = %event.tipo_evento, "unit_of_work: outbox insert failed");
+            tracing::error!(error = %err, event_type = %event.tipo_evento, "unit_of_work: falló la inserción en el outbox");
             mapear_error_sqlx(&err)
         })?;
         Ok(())
@@ -62,7 +62,7 @@ impl TransaccionPostgres {
 
     pub async fn commit(self) -> Result<(), ErrorRepositorio> {
         self.tx.commit().await.map_err(|err| {
-            tracing::error!(error = %err, "unit_of_work: commit failed");
+            tracing::error!(error = %err, "unit_of_work: falló el commit");
             mapear_error_sqlx(&err)
         })
     }

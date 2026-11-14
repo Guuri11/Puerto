@@ -26,33 +26,33 @@ pub async fn enviar_una_vez(
 ) -> ResultadoManejo {
     match sent.fue_enviado(event_id, mail).await {
         Ok(true) => {
-            tracing::info!(%event_id, mail, "mail already sent for this event: skipped");
+            tracing::info!(%event_id, mail, "correo ya enviado para este evento: se omite");
             return ResultadoManejo::Ack;
         }
         Ok(false) => {}
         Err(error) => {
-            tracing::warn!(%event_id, mail, %error, "mail: the sent log cannot be read, retrying");
+            tracing::warn!(%event_id, mail, %error, "correo: no se puede leer el registro de enviados, se reintenta");
             return ResultadoManejo::Reintentar;
         }
     }
     match send.await {
         Ok(()) => {}
         Err(ErrorCorreo::Permanente(detail)) => {
-            tracing::error!(%event_id, mail, %detail, "mail: rejected, dead-lettering");
+            tracing::error!(%event_id, mail, %detail, "correo: rechazado, se descarta");
             return ResultadoManejo::descartar(MOTIVO_ERROR_PERMANENTE, detail);
         }
         Err(error) => {
-            tracing::warn!(%event_id, mail, %error, "mail: not sent, retrying");
+            tracing::warn!(%event_id, mail, %error, "correo: no enviado, se reintenta");
             return ResultadoManejo::Reintentar;
         }
     }
     if let Err(error) = sent.marcar_enviado(event_id, mail).await {
         tracing::error!(
             %event_id, mail, %error,
-            "mail: sent but not recorded — a redelivery of this event would send it again"
+            "correo: enviado pero no registrado; si el evento se reentrega se enviaría otra vez"
         );
     }
-    tracing::info!(%event_id, mail, "mail: sent");
+    tracing::info!(%event_id, mail, "correo: enviado");
     ResultadoManejo::Ack
 }
 

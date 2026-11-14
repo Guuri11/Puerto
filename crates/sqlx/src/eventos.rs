@@ -80,18 +80,18 @@ impl TryFrom<OutboxRow> for SobreEvento {
 /// Reads one row as an envelope, logging why it could not.
 fn envelope_from_pg(row: &PgRow, context: &str) -> Result<SobreEvento, ErrorTransporte> {
     let row = OutboxRow::from_pg(row).map_err(|err| {
-        tracing::error!(error = %err, "{context}: unreadable outbox row");
+        tracing::error!(error = %err, "{context}: fila del outbox ilegible");
         ErrorTransporte::DatosInvalidos
     })?;
     let id = row.id;
     SobreEvento::try_from(row).inspect_err(|_| {
-        tracing::error!(%id, "{context}: outbox row is not an envelope");
+        tracing::error!(%id, "{context}: la fila del outbox no es un sobre");
     })
 }
 
 fn unavailable(context: &str) -> impl FnOnce(sqlx::Error) -> ErrorTransporte + '_ {
     move |err| {
-        tracing::error!(error = %err, "{context}: database failed");
+        tracing::error!(error = %err, "{context}: falló la base de datos");
         ErrorTransporte::NoDisponible
     }
 }
