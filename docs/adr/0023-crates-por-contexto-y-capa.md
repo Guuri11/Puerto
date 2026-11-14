@@ -1,6 +1,6 @@
 # 0023 — Un crate por contexto y capa en los proyectos generados
 
-**Estado:** Propuesta (2026-11-14). Se acepta con las cifras del piloto (`PLAN.md` § Fase 19.1).
+**Estado:** Aceptada (2026-11-14), con las cifras del piloto en canasta (§ Piloto).
 Especificación: `PLAN.md` § Fase 19. Los nombres siguen la ADR-0024 y `docs/glosario.md`.
 Modifica la ADR-0017 (la forma del proyecto generado, no la de los crates del runtime), la
 ADR-0012 (dónde viven los traits de los casos de uso) y la ADR-0022 (las referencias pasan a ser
@@ -94,6 +94,15 @@ En el módulo `pruebas` del crate dueño del tipo, detrás de la feature `prueba
 `[dev-dependencies]` con `features = ["pruebas"]`. Se sigue usando `mockall`: partir en crates ya
 aísla su coste.
 
+**Los helpers de siembra de los tests de Postgres** (`construir`, `sembrar`) siguen la misma regla,
+y van en cadena por las referencias: los de `stat_line` siembran un `player`, que siembra un
+`team`. Van en su propio módulo, `infra_<c>::pruebas::siembra`, público detrás de `pruebas`, y no
+dentro del módulo de los `#[sqlx::test]`. Si ese módulo se compila fuera de `cfg(test)`, deja
+helpers sin usar, y el `make lint` (`-D warnings`) los rechaza. `infra_<c>` declara
+`infra_<objetivo>` como dependencia opcional, activada por su feature
+(`pruebas = ["dominio_<c>/pruebas", "dep:infra_<objetivo>", "infra_<objetivo>/pruebas"]`). Lo
+encontró el piloto.
+
 ### 6. Un solo migrador
 
 `migrador` expone el `MIGRADOR` estático (`sqlx::migrate!("../migraciones")`) y tiene un `build.rs`
@@ -124,7 +133,45 @@ lleva `migrations = "./migrations"`, que copia todas las migraciones dentro de c
 Un crate `rest_<c>` no puede escribir `impl IntoErrorResponse for ErrorProducto`: ni el trait
 (`puerto-web`) ni el tipo (`dominio_producto`) son suyos (la orphan rule). Cada `rest_<c>/errores.rs`
 exporta una función libre, `a_respuesta_error(err) -> (StatusCode, Json<RespuestaError>)`, con un
-test por rama. El contrato de la ADR-0007 no cambia.
+test por rama. El contrato de la ADR-0007 no cambia. En el piloto también valía un trait local en
+cada crate REST: un trait propio sí se puede implementar para un tipo ajeno. Se queda la función
+libre, que no repite la definición del trait en cada crate.
+
+## Piloto (2026-11-14)
+
+canasta (`--db --events db --auth local`; 6 entidades con referencias, un consumidor, un correo;
+23.000 líneas de Rust) pasó de 4 crates a 37 con un script determinista. El script mueve los
+ficheros sin tocar sus `use`: cada crate reexporta sus dependencias en las rutas antiguas, como en
+`ant_backend` (A.1). Las fachadas no cuestan compilación (A.15). Está en la rama
+`piloto/crates-por-contexto` de canasta, junto con los scripts y las medidas. Pasan los mismos 472
+tests.
+
+Cada medida es la mediana de 3 ejecuciones tras una de calentamiento, después de un `touch`, en el
+portátil de desarrollo (16 hilos, 15 GB), con rustc 1.95.0 y `SQLX_OFFLINE=true`:
+
+| Qué toco → qué compilo | Antes (4 crates) | Después (37 crates) |
+|---|---|---|
+| un caso de uso → los tests de su crate | 0,95 s · 0,38 GB (`business`) | **0,27 s · 0,16 GB** |
+| el modelo → los tests de dominio y aplicación | 0,95 s (`business`) | **0,36 s** |
+| un repositorio de Postgres → sus tests | 0,85 s · 0,61 GB (`infrastructure`) | **0,42 s · 0,39 GB** |
+| un caso de uso → `check -p presentation` | 0,95 s | **0,34 s** |
+| un caso de uso → `build -p presentation` | 1,48 s | **0,88 s** |
+| desde cero (solo los crates propios): `test --workspace --no-run` | 10,9 s | 10,1 s |
+| desde cero (solo los crates propios): `check --workspace --all-targets` | 6,1 s | **2,95 s** |
+| ejecutar los tests unitarios (210) | 0,28 s | 0,30 s |
+| ejecutar todos los tests con BD (472), con un Postgres nuevo, alternando dos tandas | 12,7–13,1 s | 7,1–7,3 s |
+
+- **Nada empeora, ni siquiera desde cero.** Con 16 hilos, 37 crates pequeños se compilan en paralelo
+  mejor que 4 grandes.
+- **A este tamaño, el bucle ya era rápido** (~1 s). Lo que se gana de verdad es la frontera, como
+  en `document-api`; el tiempo es un extra que crece con el proyecto.
+- **El tiempo con BD depende del estado de Postgres más que de la estructura:** la primera medida
+  del "antes" dio 7,3 s y no se repitió. Cada test de BD tarda ~0,5 s en serie y ~3 s con 16 en
+  paralelo, por la contención al crear las bases de prueba. Con el servidor recién arrancado en
+  los dos casos, el "después" sale más rápido en todas las tandas.
+- `cargo test -p 'dominio_*' -p 'aplicacion_*'` y `cargo nextest run -p …` aceptan globs, y la
+  caché `.sqlx` de la raíz sigue valiendo.
+- **Hallazgo:** los helpers de siembra de los tests de Postgres van en cadena entre crates (§ 5).
 
 ## Alternativas descartadas
 

@@ -31,5 +31,5 @@ ADR; supersede it with a new one and link both ways.
 | [0020](0020-mail-port-per-mail-sent-from-the-worker.md) | Mail: a port per mail, templates in infrastructure, sent from the worker | Accepted |
 | [0021](0021-auth-one-authenticator-port-oidc-or-local.md) | Auth: one `Authenticator` port, two adapters (OIDC, local sessions) | Accepted |
 | [0022](0022-references-are-typed-ids-checked-by-foreign-keys.md) | References between entities are typed ids, checked by foreign keys | Accepted |
-| [0023](0023-crates-por-contexto-y-capa.md) | Un crate por contexto y capa en los proyectos generados | Propuesta (piloto pendiente) |
+| [0023](0023-crates-por-contexto-y-capa.md) | Un crate por contexto y capa en los proyectos generados | Aceptada |
 | [0024](0024-lo-generado-en-castellano.md) | Lo que genera Puerto, en castellano | Aceptada |

@@ -3052,17 +3052,20 @@ an existence check in memory.
 
 ## Fase 19 — Un crate por contexto y capa, y lo generado en castellano (ADR-0023, ADR-0024)
 
-**Estado:** especificada. Decisiones: [ADR-0023](docs/adr/0023-crates-por-contexto-y-capa.md)
-(propuesta hasta el piloto), [ADR-0024](docs/adr/0024-lo-generado-en-castellano.md) y
+**Estado:** especificada. Decisiones: [ADR-0023](docs/adr/0023-crates-por-contexto-y-capa.md), [ADR-0024](docs/adr/0024-lo-generado-en-castellano.md) y
 [`docs/glosario.md`](docs/glosario.md).
 Todo sale en una sola versión incompatible, la 0.21. Entre medias no se publica nada, porque los
 estados intermedios mezclan los dos idiomas. Va un commit por pieza y en este orden: cada pieza
 deja `make test`, `make test/full` y `make lint` en verde. Lo marcado **pendiente** en el glosario
 se decide con Sergio al empezar la pieza que lo usa.
 
-### 19.0 — ADR-0023, ADR-0024, glosario y esta especificación
+### 19.0 — ADR-0023, ADR-0024, glosario y esta especificación ✅ (`c108a82`)
 
-### 19.1 — Piloto medido en canasta
+### 19.1 — Piloto medido en canasta ✅
+
+Hecho el 2026-11-14: nada empeora y el bucle baja a ~0,3 s. Las cifras y el hallazgo de los
+helpers de siembra, en la ADR-0023 § Piloto y § 5. Está en la rama `piloto/crates-por-contexto` de
+canasta.
 
 En una rama de `~/dev/canasta` (`--db --events db --auth local`, 6 entidades, referencias, un
 consumidor y un correo): los crates de la ADR-0023. Los nombres de dentro de cada crate se quedan
