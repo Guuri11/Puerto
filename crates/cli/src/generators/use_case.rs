@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::path::Path;
 
 use crate::generators::bootstrap::regenerate_bootstrap;
@@ -18,8 +19,8 @@ pub fn run_use_case(
 
     crate::validation::validate_use_case_name(&uc)?;
 
-    let trait_path = base.join(format!("business/src/domain/{snake}/use_cases/{uc}.rs"));
-    let impl_path = base.join(format!("business/src/application/{snake}/{uc}.rs"));
+    let trait_path = base.join(layout::use_case_contract(&snake, &uc));
+    let impl_path = base.join(layout::use_case_impl(&snake, &uc));
 
     // Checked before the first byte is written: re-running this command — or naming one of the
     // scaffolded CRUD use cases — used to replace a working implementation with a `todo!()` stub.

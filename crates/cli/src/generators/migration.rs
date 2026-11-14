@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::{fs, path::Path};
 
 /// Add a new SQLx migration file: `infrastructure/migrations/{version}_{name}.sql`.
@@ -16,7 +17,7 @@ pub fn run_migration(
     base: &Path,
     content: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let migrations_dir = base.join("infrastructure/migrations");
+    let migrations_dir = base.join(layout::MIGRATIONS_DIR);
     fs::create_dir_all(&migrations_dir)?;
 
     // Normalise name: spaces → underscores, lowercase.
@@ -53,7 +54,7 @@ pub fn run_create_table_migration(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let name = format!("create_{snake}_table");
     let suffix = format!("_{name}.sql");
-    let existing = fs::read_dir(base.join("infrastructure/migrations"))
+    let existing = fs::read_dir(base.join(layout::MIGRATIONS_DIR))
         .into_iter()
         .flatten()
         .flatten()

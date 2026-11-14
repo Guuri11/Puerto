@@ -7,6 +7,7 @@
 //! Files Puerto declares auto-generated (`generated/bootstrap.rs`, `api/tags.rs`) are deliberately
 //! **not** guarded: they are regenerated from puerto.toml by design and carry a header saying so.
 
+use crate::generators::layout;
 use std::path::{Path, PathBuf};
 
 use crate::generators::naming::crud_use_case;
@@ -28,42 +29,34 @@ pub enum OverwritePolicy {
 /// `web`: the entity also gets a frontend slice (`web::web_entity_files`).
 pub fn entity_files(snake: &str, db: bool, web: bool) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = vec![
-        format!("business/src/domain/{snake}/model.rs"),
-        format!("business/src/domain/{snake}/errors.rs"),
-        format!("business/src/domain/{snake}/repository.rs"),
-        format!("business/src/domain/{snake}/value_objects.rs"),
-        format!("business/src/domain/{snake}/use_cases/create_{snake}.rs"),
-        format!("business/src/domain/{snake}/use_cases/get_{snake}.rs"),
-        format!(
-            "business/src/domain/{snake}/use_cases/{}.rs",
-            crud_use_case("list", snake)
-        ),
-        format!("business/src/domain/{snake}/use_cases/update_{snake}.rs"),
-        format!("business/src/domain/{snake}/use_cases/delete_{snake}.rs"),
-        format!("business/src/application/{snake}/create_{snake}.rs"),
-        format!("business/src/application/{snake}/get_{snake}.rs"),
-        format!(
-            "business/src/application/{snake}/{}.rs",
-            crud_use_case("list", snake)
-        ),
-        format!("business/src/application/{snake}/update_{snake}.rs"),
-        format!("business/src/application/{snake}/delete_{snake}.rs"),
-        format!("business/src/tests/mothers/{snake}_mother.rs"),
-        format!("infrastructure/src/{snake}/repository.rs"),
-        format!("presentation/src/api/{snake}.rs"),
-        format!("presentation/src/api/{snake}/dto.rs"),
-        format!("presentation/src/api/{snake}/routes.rs"),
-        format!("presentation/src/api/{snake}/responses.rs"),
-        format!("presentation/src/api/{snake}/error_mapper.rs"),
+        layout::domain_file(snake, "model"),
+        layout::domain_file(snake, "errors"),
+        layout::domain_file(snake, "repository"),
+        layout::domain_file(snake, "value_objects"),
+        layout::use_case_contract(snake, &format!("create_{snake}")),
+        layout::use_case_contract(snake, &format!("get_{snake}")),
+        layout::use_case_contract(snake, &crud_use_case("list", snake)),
+        layout::use_case_contract(snake, &format!("update_{snake}")),
+        layout::use_case_contract(snake, &format!("delete_{snake}")),
+        layout::use_case_impl(snake, &format!("create_{snake}")),
+        layout::use_case_impl(snake, &format!("get_{snake}")),
+        layout::use_case_impl(snake, &crud_use_case("list", snake)),
+        layout::use_case_impl(snake, &format!("update_{snake}")),
+        layout::use_case_impl(snake, &format!("delete_{snake}")),
+        layout::mother(snake),
+        layout::infra_file(snake, "repository"),
+        layout::api_module(snake),
+        layout::api_file(snake, "dto"),
+        layout::api_file(snake, "routes"),
+        layout::api_file(snake, "responses"),
+        layout::api_file(snake, "error_mapper"),
     ]
     .into_iter()
     .map(PathBuf::from)
     .collect();
 
     if db {
-        files.push(PathBuf::from(format!(
-            "infrastructure/src/{snake}/entity.rs"
-        )));
+        files.push(PathBuf::from(layout::infra_file(snake, "entity")));
     }
     if web {
         files.extend(crate::generators::web::web_entity_files(snake));

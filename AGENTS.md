@@ -69,7 +69,9 @@ crates/
                       `GET /me`, Keycloak),
                       web (the frontend slice + web/src/presentation/core/generated/*),
                       events (events.rs, the unit of work ports, `generate event`),
-                      worker (the `worker/` crate, registry.rs, `generate consumer`)
+                      worker (the `worker/` crate, registry.rs, `generate consumer`),
+                      layout (where each piece of a generated project lives: every project path is
+                      asked from it, never spelled — Phase 19 moves the structure there)
     src/templates/  — .tera templates the generators render (embedded via include_dir)
     src/patchers/   — lib.rs / api.rs / routes.rs patchers
     src/runtime.rs  — Which runtime crates a project depends on, at which version (rendered from

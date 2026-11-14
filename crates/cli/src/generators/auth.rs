@@ -2,6 +2,7 @@
 //! `Authenticator` in front of the provider, `GET /me`, and Keycloak for development. Every file
 //! here is written once — the project's from then on.
 
+use crate::generators::layout;
 use std::fs;
 use std::path::Path;
 
@@ -112,7 +113,7 @@ fn render_for(template: &str, local: bool) -> Result<String, Box<dyn std::error:
 /// The `User` entity: model, errors and repository port. Declared in `business/src/lib.rs` — it is
 /// not an `[[entity]]`, so no scaffold or `bootstrap.rs` entity block ever touches it.
 fn write_user_domain(base: &Path, local: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join("business/src/domain/user");
+    let dir = base.join(layout::domain_dir("user"));
     write_file(
         &dir.join("model.rs"),
         &render_for("auth/user_model.tera", local)?,
@@ -127,11 +128,11 @@ fn write_user_domain(base: &Path, local: bool) -> Result<(), Box<dyn std::error:
     )?;
     // The callers the scaffolded tests pass as `actor`.
     write_file(
-        &base.join("business/src/tests/mothers/principal_mother.rs"),
+        &base.join(layout::mother("principal")),
         &render_static("auth/principal_mother.tera")?,
     )?;
     crate::patchers::lib_rs::patch_mothers_lib(base, "principal")?;
-    let lib = base.join("business/src/lib.rs");
+    let lib = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&lib)?;
     if !src.contains("pub mod user {") {
         let block = "\n    pub mod user {\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n    }\n";
@@ -147,7 +148,7 @@ fn write_user_infrastructure(
     db: bool,
     local: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join("infrastructure/src/user");
+    let dir = base.join(layout::infra_dir("user"));
     let repository = if db {
         "auth/user_repository_pg.tera"
     } else {
@@ -167,7 +168,7 @@ fn write_user_infrastructure(
             Some(&render_static("auth/users.sql")?),
         )?;
     }
-    let lib = base.join("infrastructure/src/lib.rs");
+    let lib = base.join(layout::INFRA_LIB);
     let mut src = fs::read_to_string(&lib)?;
     if !src.contains("pub mod user {") {
         if !src.is_empty() && !src.ends_with('\n') {
@@ -185,7 +186,7 @@ fn write_user_infrastructure(
 
 /// `GET /me`: `presentation/src/api/me.rs` and its `dto.rs` and `routes.rs`.
 fn write_me_api(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let api = base.join("presentation/src/api");
+    let api = base.join(layout::API_DIR);
     write_file(&api.join("me.rs"), &render_static("auth/me.tera")?)?;
     write_file(&api.join("me/dto.rs"), &render_static("auth/me_dto.tera")?)?;
     write_file(
@@ -201,7 +202,7 @@ const LOCAL_USE_CASES: [&str; 3] = ["login", "logout", "register_user"];
 /// Local accounts (`PLAN.md` § 16.6): `register_user`, `login`, `logout` and `POST /auth/*`, the
 /// credentials and sessions migration after `users`'.
 fn write_local_accounts(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let business = base.join("business/src");
+    let business = base.join(layout::BUSINESS_SRC);
     for uc in LOCAL_USE_CASES {
         write_file(
             &business.join(format!("domain/user/use_cases/{uc}.rs")),
@@ -236,7 +237,7 @@ fn write_local_accounts(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         fs::write(&lib, src)?;
     }
 
-    let api = base.join("presentation/src/api");
+    let api = base.join(layout::API_DIR);
     for (file, template) in [
         ("auth.rs", "auth_api"),
         ("auth/dto.rs", "auth_dto"),
@@ -271,7 +272,7 @@ fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::
     let core = "puerto-core = { workspace = true }";
     let core_mocks = "puerto-core = { workspace = true, features = [\"test-utils\"] }";
 
-    let path = base.join("presentation/Cargo.toml");
+    let path = base.join(layout::PRESENTATION_MANIFEST);
     let src = fs::read_to_string(&path)?;
     if !src.contains("puerto-auth") {
         let src = insert_after_line(
@@ -300,7 +301,7 @@ fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::
     }
 
     // `provisioning.rs` tests over `MockUserRepository` and `MockAuthenticator`.
-    let path = base.join("infrastructure/Cargo.toml");
+    let path = base.join(layout::INFRA_MANIFEST);
     let src = fs::read_to_string(&path)?;
     if !src.contains(core_mocks) {
         let src = insert_after_line(
@@ -316,7 +317,7 @@ fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::
 
     // The local use cases' tests drive the ports' mocks.
     if local {
-        let path = base.join("business/Cargo.toml");
+        let path = base.join(layout::BUSINESS_MANIFEST);
         let src = fs::read_to_string(&path)?;
         if !src.contains(core_mocks) {
             let src = insert_after_line(
@@ -365,7 +366,7 @@ fn write_keycloak(base: &Path, project: &str) -> Result<(), Box<dyn std::error::
     ctx.insert("host", &host(project));
     ctx.insert("password", DEV_PASSWORD);
     write_file(
-        &base.join("infrastructure/keycloak/realm.json"),
+        &base.join(layout::KEYCLOAK_REALM),
         &render("auth/realm.json.tera", &ctx)?,
     )?;
     add_compose_service(base, "keycloak", &keycloak_service(project))

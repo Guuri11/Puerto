@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::path::Path;
 
 use crate::generators::domain::push_reference_imports;
@@ -330,23 +331,23 @@ pub fn write_repository_files(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if db {
         write_file(
-            &base.join(format!("infrastructure/src/{snake}/entity.rs")),
+            &base.join(layout::infra_file(snake, "entity")),
             &generate_infra_entity(pascal, snake, fields, shared_vos)?,
         )?;
         let events = crate::puerto_toml::events_enabled(base);
         write_file(
-            &base.join(format!("infrastructure/src/{snake}/repository.rs")),
+            &base.join(layout::infra_file(snake, "repository")),
             &generate_crud_infra_db_repository(pascal, snake, fields, shared_vos, events)?,
         )?;
         if events {
             write_file(
-                &base.join(format!("infrastructure/src/{snake}/unit_of_work.rs")),
+                &base.join(layout::infra_file(snake, "unit_of_work")),
                 &generate_pg_unit_of_work(pascal, snake, fields, shared_vos)?,
             )?;
         }
     } else {
         write_file(
-            &base.join(format!("infrastructure/src/{snake}/repository.rs")),
+            &base.join(layout::infra_file(snake, "repository")),
             &render(
                 "infrastructure/repository_inmemory_crud.tera",
                 // A reference is seeded, and filtered by, `CustomerId::generate()`: nothing

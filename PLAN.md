@@ -3092,7 +3092,7 @@ Los 18 `#[sqlx::test(migrations = "./migrations")]` de las plantillas pasan a
 test deja de llevar su propia copia de las migraciones. Tests: estructurales sobre las plantillas;
 `make test/db` en verde.
 
-### 19.3 — Las rutas de lo generado, en un solo módulo (refactor sin cambio de salida)
+### 19.3 — Las rutas de lo generado, en un solo módulo (refactor sin cambio de salida) ✅
 
 Un módulo de layout en `crates/cli/src/generators/` dice dónde va cada cosa: carpetas, nombres de
 crate, ficheros fijos. Los 102 literales (`"business/src/…"`) pasan a llamarlo. **Los snapshots no

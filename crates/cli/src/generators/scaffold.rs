@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::path::Path;
 
 use crate::generators::conflict::{OverwritePolicy, guard_entity_overwrite};
@@ -28,52 +29,48 @@ fn write_files(
     db: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
-        &base.join(format!("business/src/domain/{snake}/model.rs")),
+        &base.join(layout::domain_file(snake, "model")),
         &generate_model(pascal, snake, &[], &[])?,
     )?;
     let mut errors_ctx = entity_ctx(pascal, snake);
     errors_ctx.insert("vo_fields", &Vec::<String>::new());
     write_file(
-        &base.join(format!("business/src/domain/{snake}/errors.rs")),
+        &base.join(layout::domain_file(snake, "errors")),
         &render("domain/errors.tera", &errors_ctx)?,
     )?;
     {
         let repo_ctx = entity_ctx(pascal, snake);
         write_file(
-            &base.join(format!("business/src/domain/{snake}/repository.rs")),
+            &base.join(layout::domain_file(snake, "repository")),
             &render("domain/repository_simple.tera", &repo_ctx)?,
         )?;
     }
     write_file(
-        &base.join(format!(
-            "business/src/domain/{snake}/use_cases/create_{snake}.rs"
-        )),
+        &base.join(layout::use_case_contract(snake, &format!("create_{snake}"))),
         &generate_create_use_case_trait(pascal, snake, &[])?,
     )?;
     write_file(
-        &base.join(format!(
-            "business/src/application/{snake}/create_{snake}.rs"
-        )),
+        &base.join(layout::use_case_impl(snake, &format!("create_{snake}"))),
         &generate_create_use_case_impl(pascal, snake, &[], &[])?,
     )?;
     let infra_ctx = entity_ctx(pascal, snake);
     if db {
         write_file(
-            &base.join(format!("infrastructure/src/{snake}/entity.rs")),
+            &base.join(layout::infra_file(snake, "entity")),
             &generate_infra_entity(pascal, snake, &[], &[])?,
         )?;
         write_file(
-            &base.join(format!("infrastructure/src/{snake}/repository.rs")),
+            &base.join(layout::infra_file(snake, "repository")),
             &render("infrastructure/repository_pg_simple.tera", &infra_ctx)?,
         )?;
     } else {
         write_file(
-            &base.join(format!("infrastructure/src/{snake}/repository.rs")),
+            &base.join(layout::infra_file(snake, "repository")),
             &render("infrastructure/repository_inmemory_simple.tera", &infra_ctx)?,
         )?;
     }
     write_file(
-        &base.join(format!("presentation/src/api/{snake}.rs")),
+        &base.join(layout::api_module(snake)),
         "pub mod dto;\npub mod error_mapper;\npub mod responses;\npub mod routes;\n",
     )?;
     {
@@ -81,28 +78,28 @@ fn write_files(
             build_dto_ctx, build_error_mapper_ctx, build_simple_ctx,
         };
         write_file(
-            &base.join(format!("presentation/src/api/{snake}/dto.rs")),
+            &base.join(layout::api_file(snake, "dto")),
             &render(
                 "presentation/dto.tera",
                 &build_dto_ctx(pascal, snake, &[], false),
             )?,
         )?;
         write_file(
-            &base.join(format!("presentation/src/api/{snake}/responses.rs")),
+            &base.join(layout::api_file(snake, "responses")),
             &render(
                 "presentation/responses_simple.tera",
                 &build_simple_ctx(pascal, snake),
             )?,
         )?;
         write_file(
-            &base.join(format!("presentation/src/api/{snake}/error_mapper.rs")),
+            &base.join(layout::api_file(snake, "error_mapper")),
             &render(
                 "presentation/error_mapper.tera",
                 &build_error_mapper_ctx(pascal, snake, &[]),
             )?,
         )?;
         write_file(
-            &base.join(format!("presentation/src/api/{snake}/routes.rs")),
+            &base.join(layout::api_file(snake, "routes")),
             &render(
                 "presentation/routes_simple.tera",
                 &build_simple_ctx(pascal, snake),

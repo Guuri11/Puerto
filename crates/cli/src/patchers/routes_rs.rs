@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::{fs, path::Path};
 
 use crate::generators::naming::to_pascal_case;
@@ -17,7 +18,7 @@ pub fn patch_routes_use_cases(
     snake: &str,
     use_cases: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join(format!("presentation/src/api/{snake}/routes.rs"));
+    let path = base.join(layout::api_file(snake, "routes"));
     if !path.exists() {
         return Ok(());
     }

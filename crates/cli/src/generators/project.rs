@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::{fs, path::Path};
 
 use crate::generators::naming::write_file;
@@ -139,7 +140,7 @@ fn patch_makefile_setup_for_db(base: &Path) -> Result<(), Box<dyn std::error::Er
 }
 
 fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("infrastructure/Cargo.toml");
+    let path = base.join(layout::INFRA_MANIFEST);
     let mut src = fs::read_to_string(&path)?;
     if src.contains("sqlx") {
         return Ok(()); // idempotent
@@ -270,15 +271,15 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
     )?;
 
     // infrastructure/migrations/ directory (empty, sqlx needs it)
-    fs::create_dir_all(base.join("infrastructure/migrations"))?;
+    fs::create_dir_all(base.join(layout::MIGRATIONS_DIR))?;
 
     // infrastructure/src/db.rs
     write_file(
-        &base.join("infrastructure/src/db.rs"),
+        &base.join(layout::DB_RS),
         &render("infrastructure/db.tera", &tera::Context::new())?,
     )?;
     // …declared now, not by the first scaffold: the `--events` worker names `infrastructure::db`.
-    let infra_lib = base.join("infrastructure/src/lib.rs");
+    let infra_lib = base.join(layout::INFRA_LIB);
     let mut lib = fs::read_to_string(&infra_lib)?;
     if !lib.contains("pub mod db;") {
         lib.push_str("pub mod db;\n");
@@ -344,7 +345,7 @@ pub fn apply_events_to_new_project(
     crate::generators::migration::run_migration("outbox", base, Some(&outbox))?;
 
     // `events.rs` derives serde on the snapshots; the domain models stay serde-free.
-    let manifest = base.join("business/Cargo.toml");
+    let manifest = base.join(layout::BUSINESS_MANIFEST);
     let src = fs::read_to_string(&manifest)?;
     if !src.contains("serde_json") {
         let patched = src.replace(
@@ -408,22 +409,20 @@ fn ignore_not_found(result: std::io::Result<()>) -> std::io::Result<()> {
 pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // Remove greeting directories and the sibling declaration file.
     for dir in [
-        "business/src/domain/greeting",
-        "business/src/application/greeting",
-        "infrastructure/src/greeting",
-        "presentation/src/api/greeting",
+        layout::domain_dir("greeting"),
+        layout::application_dir("greeting"),
+        layout::infra_dir("greeting"),
+        layout::api_dir("greeting"),
     ] {
         ignore_not_found(fs::remove_dir_all(base.join(dir)))?;
     }
-    ignore_not_found(fs::remove_file(
-        base.join("presentation/src/api/greeting.rs"),
-    ))?;
+    ignore_not_found(fs::remove_file(base.join(layout::api_module("greeting"))))?;
 
     // Minimal business lib.rs: empty domain and application blocks for the patchers to fill.
     // `RepositoryError` and the page types come from `puerto-core`; `pub mod shared;` arrives
     // with the first shared value object.
     fs::write(
-        base.join("business/src/lib.rs"),
+        base.join(layout::BUSINESS_LIB),
         "pub mod domain {\n}\npub mod application {\n}\n",
     )?;
 
@@ -433,16 +432,13 @@ pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         ""
     };
-    fs::write(base.join("infrastructure/src/lib.rs"), infra_lib)?;
+    fs::write(base.join(layout::INFRA_LIB), infra_lib)?;
 
     // Minimal presentation api.rs. `tags` must survive the demo strip: `regenerate_bootstrap`
     // always writes `api/tags.rs`, and every generated `routes.rs` does
     // `use crate::api::tags::ApiTags;` — dropping the declaration made the first scaffold into a
     // `--no-demo` project fail to compile (E0432).
-    fs::write(
-        base.join("presentation/src/api.rs"),
-        "pub mod error;\npub mod tags;\n",
-    )?;
+    fs::write(base.join(layout::API_RS), "pub mod error;\npub mod tags;\n")?;
 
     // Clear entities in puerto.toml.
     let mut config = crate::puerto_toml::read(base)?;

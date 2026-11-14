@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::path::Path;
 
 use crate::generators::effective_fields;
@@ -221,7 +222,7 @@ pub fn write_application_files(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join(format!("business/src/application/{snake}"));
+    let dir = base.join(layout::application_dir(snake));
     let access = crate::generators::auth::Access::of(base, pascal);
     let events = crate::puerto_toml::events_enabled(base);
     let use_cases = [

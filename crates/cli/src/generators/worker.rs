@@ -2,6 +2,7 @@
 //! writes, `worker/src/generated/registry.rs` (always regenerated from puerto.toml, on the
 //! project's transport) and `puerto generate consumer`.
 
+use crate::generators::layout;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -309,7 +310,7 @@ pub fn regenerate_registry(
     base: &Path,
     config: &PuertoConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join("worker/src/generated");
+    let dir = base.join(layout::WORKER_GENERATED_DIR);
     if !has_worker(config) || !dir.is_dir() {
         return Ok(());
     }
@@ -381,16 +382,16 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
     let mut ctx = tera::Context::new();
     ctx.insert("kafka", &kafka);
     for (path, template) in [
-        ("worker/Cargo.toml", "worker/cargo_toml.tera"),
+        (layout::WORKER_MANIFEST, "worker/cargo_toml.tera"),
         ("worker/AGENTS.md", "worker/agents.tera"),
         ("worker/src/main.rs", "worker/main.tera"),
         ("worker/src/generated.rs", "worker/generated.tera"),
-        ("worker/src/consumers.rs", "worker/consumers.tera"),
+        (layout::CONSUMERS_RS, "worker/consumers.tera"),
     ] {
         write_file(&base.join(path), &render(template, &ctx)?)?;
     }
     write_file(
-        &base.join("worker/src/generated/registry.rs"),
+        &base.join(layout::REGISTRY_RS),
         &generate_registry(&config)?,
     )?;
 
@@ -540,7 +541,7 @@ pub fn run_generate_consumer(
     };
     let subscribed = subscribed(&consumer, &declared_events(&config))?;
 
-    let path = base.join(format!("worker/src/consumers/{name}.rs"));
+    let path = base.join(layout::consumer(name));
     if path.exists() {
         return Err(format!(
             "{} already exists — it is never overwritten. Remove it or pick another name",
@@ -552,7 +553,7 @@ pub fn run_generate_consumer(
 
     crate::puerto_toml::add_consumer(base, consumer)?;
     write_file(&path, &content)?;
-    let modules = base.join("worker/src/consumers.rs");
+    let modules = base.join(layout::CONSUMERS_RS);
     fs::write(&modules, with_module(&fs::read_to_string(&modules)?, name))?;
     regenerate_registry(base, &crate::puerto_toml::read(base)?)?;
 

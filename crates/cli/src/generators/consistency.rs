@@ -8,6 +8,7 @@
 //! The list below is deliberately not "every file scaffold writes" (that is `conflict::entity_files`)
 //! but exactly the files `bootstrap.rs` imports. Those are the ones whose absence does not compile.
 
+use crate::generators::layout;
 use std::path::{Path, PathBuf};
 
 use crate::generators::naming::pascal_to_snake;
@@ -24,15 +25,15 @@ pub struct EntityDrift {
 pub fn bootstrap_required_files(entity: &Entity) -> Vec<PathBuf> {
     let snake = pascal_to_snake(&entity.name);
     let mut files = vec![
-        PathBuf::from(format!("business/src/domain/{snake}/repository.rs")),
-        PathBuf::from(format!("infrastructure/src/{snake}/repository.rs")),
-        PathBuf::from(format!("presentation/src/api/{snake}/routes.rs")),
+        PathBuf::from(layout::domain_file(&snake, "repository")),
+        PathBuf::from(layout::infra_file(&snake, "repository")),
+        PathBuf::from(layout::api_file(&snake, "routes")),
     ];
     files.extend(
         entity
             .use_cases
             .iter()
-            .map(|uc| PathBuf::from(format!("business/src/application/{snake}/{uc}.rs"))),
+            .map(|uc| PathBuf::from(layout::use_case_impl(&snake, uc))),
     );
     files
 }
@@ -43,7 +44,7 @@ pub fn bootstrap_required_files(entity: &Entity) -> Vec<PathBuf> {
 /// every entity as drifted. A project with no `business/src/domain` has nothing to be
 /// inconsistent *with*.
 fn has_generated_tree(base: &Path) -> bool {
-    base.join("business/src/domain").is_dir()
+    base.join(layout::DOMAIN_DIR).is_dir()
 }
 
 /// The files the generated code imports for this entity: `bootstrap.rs`'s, plus — in a web
@@ -82,17 +83,13 @@ pub fn missing_entity_files(base: &Path, config: &PuertoConfig) -> Vec<EntityDri
 /// One line per `[[consumer]]` whose handler is not on disk: the worker's `registry.rs` imports
 /// it. Empty in a project without `worker/`.
 pub fn missing_consumer_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
-    if !base.join("worker/src").is_dir() {
+    if !base.join(layout::WORKER_SRC).is_dir() {
         return vec![];
     }
     config
         .consumer
         .iter()
-        .filter(|c| {
-            !base
-                .join(format!("worker/src/consumers/{}.rs", c.name))
-                .exists()
-        })
+        .filter(|c| !base.join(layout::consumer(&c.name)).exists())
         .map(|c| {
             format!(
                 "consumer '{0}': worker/src/consumers/{0}.rs is missing — remove its [[consumer]] \
@@ -110,14 +107,14 @@ pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
     for mail in &config.mail {
         let name = &mail.name;
         let mut paths = vec![
-            format!("business/src/domain/mail/{name}.rs"),
-            format!("infrastructure/src/mail/{name}.rs"),
-            format!("infrastructure/mail/{name}/subject.txt"),
-            format!("infrastructure/mail/{name}/body.html"),
+            layout::mail_port(name),
+            layout::mail_adapter(name),
+            format!("{}/subject.txt", layout::mail_templates_dir(name)),
+            format!("{}/body.html", layout::mail_templates_dir(name)),
         ];
         // Sent on events: the worker's registry imports its consumer.
         if !mail.on.is_empty() {
-            paths.push(format!("worker/src/consumers/mail_{name}.rs"));
+            paths.push(layout::consumer(&format!("mail_{name}")));
         }
         for path in paths {
             if !base.join(&path).exists() {
@@ -143,7 +140,7 @@ pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
         .map(|e| pascal_to_snake(&e.name))
         .collect();
 
-    let Ok(entries) = std::fs::read_dir(base.join("business/src/domain")) else {
+    let Ok(entries) = std::fs::read_dir(base.join(layout::DOMAIN_DIR)) else {
         return vec![];
     };
 
@@ -168,13 +165,13 @@ pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
 fn suggested_command(entity: &str, missing: &[PathBuf]) -> String {
     let is_missing = |needle: &str| missing.iter().any(|p| p.to_string_lossy().contains(needle));
 
-    if is_missing("business/src/domain") {
+    if is_missing(layout::DOMAIN_DIR) {
         format!("puerto generate scaffold {entity}")
-    } else if is_missing("business/src/application") {
+    } else if is_missing(layout::APPLICATION_DIR) {
         format!("puerto generate application {entity}")
-    } else if is_missing("infrastructure/src") {
+    } else if is_missing(layout::INFRA_SRC) {
         format!("puerto generate repository {entity}")
-    } else if is_missing("presentation/src") {
+    } else if is_missing(layout::PRESENTATION_SRC) {
         format!("puerto generate presentation {entity}")
     } else {
         format!("puerto generate web {entity}")
@@ -276,10 +273,7 @@ pub fn auth_drift(base: &Path, config: &PuertoConfig) -> Vec<String> {
     }
     let mut lines = vec![];
     for entity in &config.entity {
-        let path = format!(
-            "presentation/src/api/{}/routes.rs",
-            pascal_to_snake(&entity.name)
-        );
+        let path = layout::api_file(&pascal_to_snake(&entity.name), "routes");
         let Ok(routes) = std::fs::read_to_string(base.join(&path)) else {
             continue;
         };

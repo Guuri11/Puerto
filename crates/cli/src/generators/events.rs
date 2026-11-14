@@ -1,6 +1,7 @@
 //! Domain events in generated projects (ADR-0018): `events.rs` (always regenerated from
 //! puerto.toml), the unit of work ports, and `puerto generate event`.
 
+use crate::generators::layout;
 use std::path::Path;
 
 use serde::Serialize;
@@ -95,7 +96,7 @@ pub fn regenerate_events(
         .filter(|e| uses_unit_of_work(e, config.project.has_events()))
     {
         let snake = pascal_to_snake(&entity.name);
-        let dir = base.join(format!("business/src/domain/{snake}"));
+        let dir = base.join(layout::domain_dir(&snake));
         // An entity declared but not scaffolded yet: its drift is reported by bootstrap.
         if !dir.is_dir() {
             continue;

@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use serde_json::json;
 use std::path::Path;
 
@@ -150,26 +151,26 @@ pub fn write_presentation_files(
     // `{Entity}Error::Forbidden` exists in every CRUD entity of an auth project.
     error_mapper_ctx.insert("auth", &access.is_auth());
     write_file(
-        &base.join(format!("presentation/src/api/{snake}.rs")),
+        &base.join(layout::api_module(snake)),
         "pub mod dto;\npub mod error_mapper;\npub mod responses;\npub mod routes;\n",
     )?;
     write_file(
-        &base.join(format!("presentation/src/api/{snake}/dto.rs")),
+        &base.join(layout::api_file(snake, "dto")),
         &render(
             "presentation/dto.tera",
             &build_dto_ctx(pascal, snake, fields, true),
         )?,
     )?;
     write_file(
-        &base.join(format!("presentation/src/api/{snake}/responses.rs")),
+        &base.join(layout::api_file(snake, "responses")),
         &render("presentation/responses_crud.tera", &responses_ctx)?,
     )?;
     write_file(
-        &base.join(format!("presentation/src/api/{snake}/error_mapper.rs")),
+        &base.join(layout::api_file(snake, "error_mapper")),
         &render("presentation/error_mapper.tera", &error_mapper_ctx)?,
     )?;
     write_file(
-        &base.join(format!("presentation/src/api/{snake}/routes.rs")),
+        &base.join(layout::api_file(snake, "routes")),
         &render(
             "presentation/routes_crud.tera",
             &build_routes_crud_ctx(pascal, snake, fields, &access),
@@ -225,7 +226,7 @@ pub fn run_generate_presentation(
 
     // The routes tag their endpoints `ApiTags::{pascal}`.
     write_file(
-        &base.join("presentation/src/api/tags.rs"),
+        &base.join(layout::TAGS_RS),
         &crate::generators::bootstrap::generate_tags_content(&config.entity, &config.project)?,
     )?;
     let next = if missing.iter().any(|p| p.starts_with("business")) {

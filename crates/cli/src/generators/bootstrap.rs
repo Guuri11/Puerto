@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::{fs, path::Path};
 
 use serde::Serialize;
@@ -194,7 +195,7 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
         eprintln!("⚠ {line}");
     }
 
-    let bootstrap_path = base.join("presentation/src/generated/bootstrap.rs");
+    let bootstrap_path = base.join(layout::BOOTSTRAP_RS);
     if let Some(parent) = bootstrap_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -203,7 +204,7 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
         generate_bootstrap_for(&config.entity, &config.project)?,
     )?;
 
-    let tags_path = base.join("presentation/src/api/tags.rs");
+    let tags_path = base.join(layout::TAGS_RS);
     if let Some(parent) = tags_path.parent() {
         fs::create_dir_all(parent)?;
     }

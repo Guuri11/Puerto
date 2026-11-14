@@ -1,7 +1,8 @@
+use crate::generators::layout;
 use std::{fs, path::Path};
 
 pub fn patch_api_rs(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("presentation/src/api.rs");
+    let path = base.join(layout::API_RS);
     let mut src = fs::read_to_string(&path)?;
     let original = src.clone();
 

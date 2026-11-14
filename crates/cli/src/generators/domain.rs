@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::{fs, path::Path};
 
 use serde_json::json;
@@ -261,7 +262,7 @@ pub fn write_shared_vo_files(
         return Ok(());
     }
 
-    let shared_dir = base.join("business/src/domain/shared");
+    let shared_dir = base.join(layout::SHARED_DIR);
     fs::create_dir_all(&shared_dir)?;
 
     write_file(
@@ -275,7 +276,7 @@ pub fn write_shared_vo_files(
     )?;
 
     // Declared in `shared.rs` (created here by the first shared VO), never a `shared/mod.rs`.
-    let shared_rs = base.join("business/src/domain/shared.rs");
+    let shared_rs = base.join(layout::SHARED_RS);
     let mut declarations = fs::read_to_string(&shared_rs).unwrap_or_default();
     for module in ["errors", "value_objects"] {
         let line = format!("pub mod {module};");
@@ -299,7 +300,7 @@ pub fn write_domain_files(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join(format!("business/src/domain/{snake}"));
+    let dir = base.join(layout::domain_dir(snake));
     let write = |file: String, content: String| write_file(&dir.join(file), &content);
 
     let eff = effective_fields(fields);
@@ -400,7 +401,7 @@ pub fn write_mother(
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
-        &base.join(format!("business/src/tests/mothers/{snake}_mother.rs")),
+        &base.join(layout::mother(snake)),
         &generate_mother(pascal, snake, fields, shared_vos)?,
     )?;
     Ok(())

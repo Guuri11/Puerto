@@ -1,3 +1,4 @@
+use crate::generators::layout;
 use std::{fs, path::Path};
 
 use crate::generators::naming::crud_use_cases;
@@ -82,7 +83,7 @@ pub fn patch_lib_block(source: &str, path: &[&str], content: &str) -> Result<Str
 }
 
 pub fn patch_business_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
 
     let domain_mod = format!(
@@ -109,7 +110,7 @@ pub fn patch_business_lib_domain_crud(
     base: &Path,
     snake: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
     if src.contains(&format!("pub mod {snake} {{\n        pub mod errors;")) {
         return Ok(());
@@ -133,7 +134,7 @@ pub fn patch_business_lib_application_crud(
     base: &Path,
     snake: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
     let app_block_marker = format!("pub mod {snake} {{\n        pub mod create_{snake};");
     if src.contains(&app_block_marker) {
@@ -160,7 +161,7 @@ pub fn patch_infra_lib(
     db: bool,
     crud: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("infrastructure/src/lib.rs");
+    let path = base.join(layout::INFRA_LIB);
     let mut src = fs::read_to_string(&path)?;
 
     if src.contains(&format!("pub mod {snake} {{")) {
@@ -200,7 +201,7 @@ pub fn patch_business_lib_use_case(
     snake: &str,
     uc: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
 
     // Idempotency: if already registered, skip
@@ -221,7 +222,7 @@ pub fn patch_business_lib_use_case(
 
 /// Adds `pub mod shared;` inside the `domain` block of `business/src/lib.rs`.
 pub fn patch_business_lib_shared(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
     if src.contains("pub mod shared;") {
         return Ok(());
@@ -236,7 +237,7 @@ pub fn patch_business_lib_value_objects(
     base: &Path,
     snake: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
 
     // Check within this entity's block specifically — a previous entity may already
@@ -279,7 +280,7 @@ pub fn unpatch_business_lib_value_objects(
     base: &Path,
     snake: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
     let Some(block) = domain_entity_block(&src, snake) else {
         return Ok(());
@@ -315,9 +316,9 @@ pub fn patch_libs(
     } else {
         patch_business_lib(base, snake)
     }
-    .map_err(in_file("business/src/lib.rs"))?;
-    patch_infra_lib(base, snake, db, crud).map_err(in_file("infrastructure/src/lib.rs"))?;
-    patch_api_rs(base, snake).map_err(in_file("presentation/src/api.rs"))?;
+    .map_err(in_file(layout::BUSINESS_LIB))?;
+    patch_infra_lib(base, snake, db, crud).map_err(in_file(layout::INFRA_LIB))?;
+    patch_api_rs(base, snake).map_err(in_file(layout::API_RS))?;
     Ok(())
 }
 
@@ -325,7 +326,7 @@ pub fn patch_libs(
 /// block when the project has none yet. The block is compiled under `test-utils` too, so the route
 /// tests in `presentation` can build entities with the same mothers.
 pub fn patch_mothers_lib(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
 
     if src.contains(&format!("pub mod {snake}_mother;")) {

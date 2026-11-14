@@ -8,6 +8,7 @@
 //!
 //! Everything here is a pure name predicate. Type-registry checks live in `generators::types`.
 
+use crate::generators::layout;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 /// Fields every generated entity already has. A `[[entity.fields]]` entry with one of these names
@@ -525,10 +526,10 @@ pub fn validate_references_before_writing(
     if errors.is_empty() {
         for target in fields.iter().filter_map(|f| f.references.as_deref()) {
             let snake = pascal_to_snake(target);
-            let model = base.join(format!("business/src/domain/{snake}/model.rs"));
+            let model = base.join(layout::domain_file(&snake, "model"));
             let suffix = format!("_create_{snake}_table.sql");
             let migrated = !config.project.db
-                || std::fs::read_dir(base.join("infrastructure/migrations"))
+                || std::fs::read_dir(base.join(layout::MIGRATIONS_DIR))
                     .into_iter()
                     .flatten()
                     .flatten()

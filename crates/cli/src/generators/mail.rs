@@ -2,6 +2,7 @@
 //! template implementation in infrastructure and its templates — written once, the user's from
 //! then on. The first mail of a project also brings `puerto-mail`, Mailpit and `SMTP_URL`.
 
+use crate::generators::layout;
 use std::fs;
 use std::path::Path;
 
@@ -175,7 +176,7 @@ fn render_files(
 /// `pub mod <name>;` in `domain { mail { … } }` of `business/src/lib.rs`, opening the block on
 /// the first mail.
 fn patch_business_lib(base: &Path, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("business/src/lib.rs");
+    let path = base.join(layout::BUSINESS_LIB);
     let src = fs::read_to_string(&path)?;
     let patched = if src.contains("pub mod mail {") {
         // Right before the block's closing brace (indented by 4): no blank line, so rustfmt
@@ -199,7 +200,7 @@ fn patch_business_lib(base: &Path, name: &str) -> Result<(), Box<dyn std::error:
 /// `pub mod <name>;` in `mail { … }` of `infrastructure/src/lib.rs`, opening the block on the
 /// first mail.
 fn patch_infra_lib(base: &Path, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("infrastructure/src/lib.rs");
+    let path = base.join(layout::INFRA_LIB);
     let mut src = fs::read_to_string(&path)?;
     if src.contains("pub mod mail {") {
         src = insert_before_block_end(&src, "mail", &format!("    pub mod {name};\n"))?;
@@ -216,7 +217,7 @@ fn patch_infra_lib(base: &Path, name: &str) -> Result<(), Box<dyn std::error::Er
 /// `puerto-mail` for the template mailers, and its fakes for their tests.
 fn add_puerto_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     add_workspace_dependency(base, "puerto-mail")?;
-    let path = base.join("infrastructure/Cargo.toml");
+    let path = base.join(layout::INFRA_MANIFEST);
     let mut src = fs::read_to_string(&path)?;
     if src.contains("puerto-mail") {
         return Ok(());
@@ -576,7 +577,7 @@ fn render_handler(
 
 /// What the worker needs once a mail is sent on events: `puerto-mail` and the `sent_mails` table.
 fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("worker/Cargo.toml");
+    let path = base.join(layout::WORKER_MANIFEST);
     let mut src = fs::read_to_string(&path)?;
     if !src.contains("puerto-mail") {
         let events = "puerto-events = { workspace = true }\n";
@@ -602,7 +603,7 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         fs::write(&path, src)?;
     }
 
-    let migrations = base.join("infrastructure/migrations");
+    let migrations = base.join(layout::MIGRATIONS_DIR);
     let has_log = fs::read_dir(&migrations).is_ok_and(|entries| {
         entries
             .flatten()
@@ -647,10 +648,10 @@ pub fn run_generate_mail_on(
         None => mail_fields(field_args)?,
     };
 
-    let domain = base.join(format!("business/src/domain/mail/{name}.rs"));
-    let infra = base.join(format!("infrastructure/src/mail/{name}.rs"));
-    let templates = base.join(format!("infrastructure/mail/{name}"));
-    let handler = base.join(format!("worker/src/consumers/{consumer_name}.rs"));
+    let domain = base.join(layout::mail_port(name));
+    let infra = base.join(layout::mail_adapter(name));
+    let templates = base.join(layout::mail_templates_dir(name));
+    let handler = base.join(layout::consumer(&consumer_name));
     let mut paths = vec![&domain, &infra, &templates];
     if trigger.is_some() {
         paths.push(&handler);
@@ -695,7 +696,7 @@ pub fn run_generate_mail_on(
     if let Some(src) = handler_src {
         set_up_worker_mail(base)?;
         write_file(&handler, &src)?;
-        let modules = base.join("worker/src/consumers.rs");
+        let modules = base.join(layout::CONSUMERS_RS);
         fs::write(
             &modules,
             with_module(&fs::read_to_string(&modules)?, &consumer_name),
