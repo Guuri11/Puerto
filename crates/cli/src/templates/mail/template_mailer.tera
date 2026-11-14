@@ -1,5 +1,5 @@
 //! Renders the `{{ name }}` mail from its templates and hands it to the mailer. Written once by
-//! `puerto generate mail`; it is yours now. The text is in `infrastructure/mail/{{ name }}/`:
+//! `puerto generar correo`; it is yours now. The text is in `infrastructure/mail/{{ name }}/`:
 //! change it there — the tests below render it again, so a typo fails `make test`.
 
 use std::sync::Arc;

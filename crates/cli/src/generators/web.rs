@@ -1,6 +1,6 @@
 //! The frontend slice of an entity (`web/`, Phase 9 — ADR-0013).
 //!
-//! `scaffold` writes it next to the Rust layers in a `[project] web = true` project; `generate web`
+//! `scaffold` writes it next to the Rust layers in a `[proyecto] web = true` project; `generate web`
 //! writes it alone. The two files under `presentation/core/generated/` are regenerated from
 //! puerto.toml with `bootstrap.rs`, never patched.
 
@@ -487,7 +487,7 @@ const ENTITY_TEMPLATES: [&str; 16] = [
 
 /// Writes the entity's frontend slice, and `infrastructure/http/client.ts` when it is missing.
 ///
-/// The client is not in the `puerto new` template: it imports `schema.d.ts`, which exists only
+/// The client is not in the `puerto nuevo` template: it imports `schema.d.ts`, which exists only
 /// after `make web/sync`, and a fresh project's `bun run typecheck` must pass. The first entity
 /// needs a sync anyway.
 pub fn write_web_files(
@@ -646,7 +646,7 @@ pub fn web_slice_refusal(entity: &Entity) -> Option<String> {
     None
 }
 
-/// `puerto generate web <Name>` — the frontend slice alone, plus the `core/generated/*` files.
+/// `puerto generar web <Name>` — the frontend slice alone, plus the `core/generated/*` files.
 pub fn run_generate_web(
     name: &str,
     base: &Path,
@@ -656,12 +656,12 @@ pub fn run_generate_web(
     let pascal = to_pascal_case(name);
     if !config.project.web {
         return Err(
-            "this project has no frontend ([project] web is not true in puerto.toml)".into(),
+            "this project has no frontend ([proyecto] web is not true in puerto.toml)".into(),
         );
     }
     let Some(entity) = config.entity.iter().find(|e| e.name == pascal) else {
         return Err(format!(
-            "{pascal} not found in puerto.toml. Run `puerto generate scaffold {pascal}` first."
+            "{pascal} not found in puerto.toml. Run `puerto generar scaffold {pascal}` first."
         )
         .into());
     };

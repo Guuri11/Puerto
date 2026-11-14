@@ -1,4 +1,4 @@
-//! `puerto new --auth oidc` (ADR-0021): the `User` entity every caller becomes, the provisioning
+//! `puerto nuevo --auth oidc` (ADR-0021): the `User` entity every caller becomes, the provisioning
 //! `Autenticador` in front of the provider, `GET /me`, and Keycloak for development. Every file
 //! here is written once — the project's from then on.
 
@@ -23,12 +23,12 @@ pub const AUDIENCE: &str = "api";
 /// The OpenID Connect client of the frontend, pinned like every `web/package.json` dependency.
 pub const OIDC_CLIENT_TS_VERSION: &str = "3.5.0";
 
-/// A mode `puerto new --auth` knows.
+/// A mode `puerto nuevo --auth` knows.
 pub fn check_mode(mode: &str) -> Result<(), String> {
     crate::validation::validate_auth_mode(mode)
 }
 
-/// Whether `puerto new --auth <mode>` can write a project with this database choice — asked
+/// Whether `puerto nuevo --auth <mode>` can write a project with this database choice — asked
 /// before anything is written. Local accounts live in Postgres.
 pub fn check_new_project(mode: &str, db: bool) -> Result<(), String> {
     check_mode(mode)?;
@@ -111,7 +111,7 @@ fn render_for(template: &str, local: bool) -> Result<String, Box<dyn std::error:
 }
 
 /// The `User` entity: model, errors and repository port. Declared in `business/src/lib.rs` — it is
-/// not an `[[entity]]`, so no scaffold or `bootstrap.rs` entity block ever touches it.
+/// not an `[[entidad]]`, so no scaffold or `bootstrap.rs` entity block ever touches it.
 fn write_user_domain(base: &Path, local: bool) -> Result<(), Box<dyn std::error::Error>> {
     let dir = base.join(layout::domain_dir("user"));
     write_file(
@@ -624,7 +624,7 @@ fn write_web(base: &Path, project: &str, local: bool) -> Result<(), Box<dyn std:
 }
 
 /// The root `AGENTS.md` section an auth project gets (ADR-0010: what it names is tested).
-pub const AGENTS_AUTH_SECTION: &str = r#"## Auth (`[project] auth`)
+pub const AGENTS_AUTH_SECTION: &str = r#"## Auth (`[proyecto] auth`)
 
 The API is an OAuth2 resource server (ADR-0021 of Puerto): it verifies the bearer token of every
 protected request against the provider at `AUTH_ISSUER` — Keycloak in development
@@ -633,10 +633,10 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 - A handler that takes `auth: BearerAuth` is protected: no or a bad token is answered
   `401 auth.no_autenticado` before it runs. `#[requiere_rol("admin")]` on it adds the
   `403 auth.prohibido` check. Both come from `puerto_web`.
-- `puerto generate scaffold <Name>` protects every CRUD route. `--public list_products,get_product`
-  leaves routes open; `--role delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
+- `puerto generar scaffold <Name>` protects every CRUD route. `--publico list_products,get_product`
+  leaves routes open; `--rol delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
   the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
-  `puerto validate` checks `routes.rs` still says the same — change both together.
+  `puerto validar` checks `routes.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
   build one with `PrincipalMother`. `generate use-case` adds it too.
 - **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `usuarios.roles` column is not read.
@@ -653,7 +653,7 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 "#;
 
 /// The root `AGENTS.md` section of a project that keeps its own accounts (`--auth local`).
-pub const AGENTS_AUTH_LOCAL_SECTION: &str = r#"## Auth (`[project] auth`)
+pub const AGENTS_AUTH_LOCAL_SECTION: &str = r#"## Auth (`[proyecto] auth`)
 
 The API keeps its own accounts (ADR-0021 of Puerto): `POST /auth/register` creates one,
 `POST /auth/login` answers an opaque session token, `POST /auth/logout` revokes it. A client sends
@@ -662,10 +662,10 @@ the token as `Authorization: Bearer <token>`; the database keeps only its SHA-25
 - A handler that takes `auth: BearerAuth` is protected: no, an unknown or an expired session is
   answered `401 auth.no_autenticado` before it runs. `#[requiere_rol("admin")]` on it adds the
   `403 auth.prohibido` check. Both come from `puerto_web`.
-- `puerto generate scaffold <Name>` protects every CRUD route. `--public list_products,get_product`
-  leaves routes open; `--role delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
+- `puerto generar scaffold <Name>` protects every CRUD route. `--publico list_products,get_product`
+  leaves routes open; `--rol delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
   the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
-  `puerto validate` checks `routes.rs` still says the same — change both together.
+  `puerto validar` checks `routes.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
   build one with `PrincipalMother`. `generate use-case` adds it too.
 - **Roles are the `usuarios.roles` column**: `make auth/grant EMAIL=… ROLE=…`. They apply from the
@@ -726,7 +726,7 @@ fn add_agents_section(
     let Ok(agents) = fs::read_to_string(&path) else {
         return Ok(());
     };
-    if agents.contains("## Auth (`[project] auth`)") {
+    if agents.contains("## Auth (`[proyecto] auth`)") {
         return Ok(());
     }
     let section = if local && web {
@@ -747,7 +747,7 @@ fn add_agents_section(
     Ok(())
 }
 
-/// Turns a fresh project into an auth one (`puerto new --auth oidc|local`). The Greeting demo
+/// Turns a fresh project into an auth one (`puerto nuevo --auth oidc|local`). The Greeting demo
 /// stays open: it is listed `public`.
 pub fn apply_auth_to_new_project(
     base: &Path,

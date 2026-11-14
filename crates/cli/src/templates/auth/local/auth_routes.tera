@@ -1,4 +1,4 @@
-//! Yours: `puerto new --auth local` writes this file once.
+//! Yours: `puerto nuevo --auth local` writes this file once.
 
 use std::sync::Arc;
 

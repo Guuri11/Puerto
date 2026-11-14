@@ -1,25 +1,25 @@
-[project]
-name = "{{project-name}}"
+[proyecto]
+nombre = "{{project-name}}"
 web = true
 
-[[entity]]
-name = "Greeting"
-use_cases = ["get_greeting"]
+[[entidad]]
+nombre = "Greeting"
+casos_de_uso = ["get_greeting"]
 
 # Define typed fields on your entities:
-# [[entity]]
-# name = "Product"
-# use_cases = ["create_product", "list_products"]
+# [[entidad]]
+# nombre = "Product"
+# casos_de_uso = ["create_product", "list_products"]
 #
-# [[entity.fields]]
-# name = "name"
-# type = "String"
+# [[entidad.campos]]
+# nombre = "name"
+# tipo = "String"
 #
-# [[entity.fields]]
-# name = "price"
-# type = "i64"
+# [[entidad.campos]]
+# nombre = "price"
+# tipo = "i64"
 #
-# [[entity.fields]]
-# name = "sku"
-# type = "String"
-# unique = true
+# [[entidad.campos]]
+# nombre = "sku"
+# tipo = "String"
+# unico = true

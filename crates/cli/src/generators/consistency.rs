@@ -80,7 +80,7 @@ pub fn missing_entity_files(base: &Path, config: &PuertoConfig) -> Vec<EntityDri
         .collect()
 }
 
-/// One line per `[[consumer]]` whose handler is not on disk: the worker's `registry.rs` imports
+/// One line per `[[consumidor]]` whose handler is not on disk: the worker's `registry.rs` imports
 /// it. Empty in a project without `worker/`.
 pub fn missing_consumer_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
     if !base.join(layout::WORKER_SRC).is_dir() {
@@ -92,8 +92,8 @@ pub fn missing_consumer_files(base: &Path, config: &PuertoConfig) -> Vec<String>
         .filter(|c| !base.join(layout::consumer(&c.name)).exists())
         .map(|c| {
             format!(
-                "consumer '{0}': worker/src/consumers/{0}.rs is missing — remove its [[consumer]] \
-                 block and run `puerto generate consumer {0} --on {1}`",
+                "consumer '{0}': worker/src/consumers/{0}.rs is missing — remove its [[consumidor]] \
+                 block and run `puerto generar consumidor {0} --tras {1}`",
                 c.name,
                 c.events.join(",")
             )
@@ -101,7 +101,7 @@ pub fn missing_consumer_files(base: &Path, config: &PuertoConfig) -> Vec<String>
         .collect()
 }
 
-/// One line per file of a `[[mail]]` that is not on disk: the mail does not compile without it.
+/// One line per file of a `[[correo]]` that is not on disk: the mail does not compile without it.
 pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
     let mut lines = vec![];
     for mail in &config.mail {
@@ -119,8 +119,8 @@ pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
         for path in paths {
             if !base.join(&path).exists() {
                 lines.push(format!(
-                    "mail '{name}': {path} is missing — restore it, or remove the [[mail]] block \
-                     and the mail's other files, then run `puerto generate mail {name}`"
+                    "mail '{name}': {path} is missing — restore it, or remove the [[correo]] block \
+                     and the mail's other files, then run `puerto generar correo {name}`"
                 ));
             }
         }
@@ -128,7 +128,7 @@ pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
     lines
 }
 
-/// Domain modules on disk with no `[[entity]]` block — the inverse drift. Not an error: the code
+/// Domain modules on disk with no `[[entidad]]` block — the inverse drift. Not an error: the code
 /// compiles, it is just invisible to every Puerto command.
 pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
     if !has_generated_tree(base) {
@@ -149,7 +149,7 @@ pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
         .filter(|e| e.path().is_dir())
         .filter_map(|e| e.file_name().into_string().ok())
         // `shared` holds the shared value objects and `mail` the mails: neither is an entity. An
-        // auth project's `user` is written once by `puerto new --auth`, outside the manifest.
+        // auth project's `user` is written once by `puerto nuevo --auth`, outside the manifest.
         .filter(|name| name != "shared" && name != "mail" && !declared.contains(name))
         .filter(|name| !(config.project.has_auth() && name == "user"))
         .collect();
@@ -166,15 +166,15 @@ fn suggested_command(entity: &str, missing: &[PathBuf]) -> String {
     let is_missing = |needle: &str| missing.iter().any(|p| p.to_string_lossy().contains(needle));
 
     if is_missing(layout::DOMAIN_DIR) {
-        format!("puerto generate scaffold {entity}")
+        format!("puerto generar scaffold {entity}")
     } else if is_missing(layout::APPLICATION_DIR) {
-        format!("puerto generate application {entity}")
+        format!("puerto generar aplicacion {entity}")
     } else if is_missing(layout::INFRA_SRC) {
-        format!("puerto generate repository {entity}")
+        format!("puerto generar repositorio {entity}")
     } else if is_missing(layout::PRESENTATION_SRC) {
-        format!("puerto generate presentation {entity}")
+        format!("puerto generar presentacion {entity}")
     } else {
-        format!("puerto generate web {entity}")
+        format!("puerto generar web {entity}")
     }
 }
 
@@ -344,7 +344,7 @@ mod tests {
         ];
         assert_eq!(
             suggested_command("Invoice", &all),
-            "puerto generate scaffold Invoice"
+            "puerto generar scaffold Invoice"
         );
 
         // Domain already written (not in the missing list) — the domain-first flow's next step.
@@ -354,19 +354,19 @@ mod tests {
         ];
         assert_eq!(
             suggested_command("Invoice", &mid_flow),
-            "puerto generate application Invoice"
+            "puerto generar aplicacion Invoice"
         );
 
         let only_presentation = vec![PathBuf::from("presentation/src/api/invoice/routes.rs")];
         assert_eq!(
             suggested_command("Invoice", &only_presentation),
-            "puerto generate presentation Invoice"
+            "puerto generar presentacion Invoice"
         );
 
         let only_web = vec![PathBuf::from("web/src/domain/invoice/repository.ts")];
         assert_eq!(
             suggested_command("Invoice", &only_web),
-            "puerto generate web Invoice"
+            "puerto generar web Invoice"
         );
     }
 

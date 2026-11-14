@@ -1,6 +1,6 @@
 //! Overwrite guard for entity generation.
 //!
-//! `puerto generate scaffold <Name>` writes ~15 files across four layers. Run twice on the same
+//! `puerto generar scaffold <Name>` writes ~15 files across four layers. Run twice on the same
 //! entity it used to overwrite all of them without a word — silently discarding any business rule,
 //! custom use case body or test the user had written. Rails prompts on conflict; so do we.
 //!
@@ -17,7 +17,7 @@ use crate::generators::naming::crud_use_case;
 pub enum OverwritePolicy {
     /// Ask when a terminal is attached; abort otherwise.
     Ask,
-    /// Overwrite without asking (`--force`).
+    /// Overwrite without asking (`--forzar`).
     Force,
 }
 
@@ -127,7 +127,7 @@ pub fn guard_files_overwrite(
     }
 
     Err(format!(
-        "refusing to overwrite existing files for '{snake}'. Re-run with --force to overwrite, \
+        "refusing to overwrite existing files for '{snake}'. Re-run with --forzar to overwrite, \
          or remove the files first. Nothing was written."
     )
     .into())

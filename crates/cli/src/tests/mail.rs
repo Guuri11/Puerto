@@ -1,4 +1,4 @@
-// Phase 14.3 (ADR-0020): `puerto generate mail <name> [-- field:Type …]` in every project — the
+// Phase 14.3 (ADR-0020): `puerto generar correo <name> [-- field:Type …]` in every project — the
 // domain port, the template implementation, the templates, and the mail setup on the first one.
 use super::*;
 use crate::commands::{list, validate};
@@ -174,10 +174,13 @@ fn generate_mail_declares_it_in_puerto_toml() {
     welcome(&output);
 
     let toml = read(&output, "puerto.toml");
-    assert!(toml.contains("[[mail]]\nname = \"welcome\"\n"), "{toml}");
+    assert!(
+        toml.contains("[[correo]]\nnombre = \"welcome\"\n"),
+        "{toml}"
+    );
     // Wiring only: no field, no recipient — those are in the mail's files.
     assert!(!toml.contains("seats"), "{toml}");
-    assert!(!toml.contains("on = "), "{toml}");
+    assert!(!toml.contains("tras = "), "{toml}");
     cleanup(&dir);
 }
 
@@ -285,7 +288,7 @@ fn first_mail_documents_mail_in_the_root_agents_md() {
 
     let agents = read(&output, "AGENTS.md");
     assert!(agents.contains("## Mail"), "{agents}");
-    assert!(agents.contains("puerto generate mail"), "{agents}");
+    assert!(agents.contains("puerto generar correo"), "{agents}");
     assert!(agents.contains("infrastructure/mail/<name>/"), "{agents}");
     cleanup(&dir);
 }
@@ -362,7 +365,7 @@ fn generate_mail_refuses_fields_a_mail_cannot_carry() {
         &output,
     ));
     assert!(err.contains("duplicate"), "{err}");
-    assert!(!read(&output, "puerto.toml").contains("[[mail]]"));
+    assert!(!read(&output, "puerto.toml").contains("[[correo]]"));
     cleanup(&dir);
 }
 
@@ -407,7 +410,7 @@ fn validate_rejects_invalid_and_duplicate_mail_names() {
     let toml = read(&output, "puerto.toml");
     fs::write(
         output.join("puerto.toml"),
-        format!("{toml}\n[[mail]]\nname = \"Welcome\"\n\n[[mail]]\nname = \"Welcome\"\n"),
+        format!("{toml}\n[[correo]]\nnombre = \"Welcome\"\n\n[[correo]]\nnombre = \"Welcome\"\n"),
     )
     .unwrap();
 
@@ -426,8 +429,8 @@ fn validate_rejects_a_mail_sent_on_events_in_a_project_without_events() {
     fs::write(
         output.join("puerto.toml"),
         toml.replace(
-            "name = \"welcome\"\n",
-            "name = \"welcome\"\non = [\"greeting_created\"]\n",
+            "nombre = \"welcome\"\n",
+            "nombre = \"welcome\"\ntras = [\"greeting_created\"]\n",
         ),
     )
     .unwrap();
@@ -532,7 +535,7 @@ fn mail_on_an_event_gets_a_consumer_that_sends_it() {
     assert!(consumers.contains("pub mod mail_welcome;"), "{consumers}");
     let toml = read(&output, "puerto.toml");
     assert!(
-        toml.contains("[[mail]]\nname = \"welcome\"\non = [\"customer_created\"]\n"),
+        toml.contains("[[correo]]\nnombre = \"welcome\"\ntras = [\"customer_created\"]\n"),
         "{toml}"
     );
     cleanup(&dir);
@@ -692,14 +695,14 @@ fn mail_on_an_event_is_refused_without_what_it_needs() {
         ))
     };
 
-    assert!(try_mail(&["customer_created"], None).contains("--to"));
-    assert!(try_mail(&[], Some("email")).contains("--on"));
+    assert!(try_mail(&["customer_created"], None).contains("--para"));
+    assert!(try_mail(&[], Some("email")).contains("--tras"));
     assert!(try_mail(&["customer_archived"], Some("email")).contains("customer_archived"));
     let not_string = try_mail(&["customer_created"], Some("seats"));
     assert!(not_string.contains("seats"), "{not_string}");
     assert!(not_string.contains("String"), "{not_string}");
     assert!(try_mail(&["customer_created"], Some("phone")).contains("phone"));
-    assert!(!read(&output, "puerto.toml").contains("[[mail]]"));
+    assert!(!read(&output, "puerto.toml").contains("[[correo]]"));
     cleanup(&dir);
 }
 
@@ -715,7 +718,7 @@ fn mail_on_an_event_is_refused_in_a_project_without_events() {
         &output,
     ));
 
-    assert!(err.contains("--events"), "{err}");
+    assert!(err.contains("--eventos"), "{err}");
     cleanup(&dir);
 }
 

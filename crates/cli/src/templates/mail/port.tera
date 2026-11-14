@@ -1,5 +1,5 @@
 //! The `{{ name }}` mail: what it carries and the port that sends it. Written once by
-//! `puerto generate mail`; it is yours now — add a field, rename one, compute the recipient.
+//! `puerto generar correo`; it is yours now — add a field, rename one, compute the recipient.
 //! Its text is in `infrastructure/mail/{{ name }}/`, rendered by `Template{{ pascal }}Mailer`.
 
 use async_trait::async_trait;

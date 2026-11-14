@@ -31,30 +31,30 @@ fn list_screen_reads_and_writes_its_page_in_the_url() {
     cleanup(&dir);
 }
 
-// ── `puerto list` shows the whole manifest ─────────────────────────────────
+// ── `puerto listar` shows the whole manifest ─────────────────────────────────
 
 #[test]
 fn list_shows_custom_events_consumers_and_shared_value_objects() {
     let config: puerto_toml::PuertoConfig = toml::from_str(
         r#"
-[project]
-name = "shop"
+[proyecto]
+nombre = "shop"
 db = true
-events = "db"
+eventos = "db"
 
-[[value_object]]
-name = "Email"
-type = "String"
+[[objeto_valor]]
+nombre = "Email"
+tipo = "String"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product", "publish_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product", "publish_product"]
 db = true
-events = ["product_published"]
+eventos = ["product_published"]
 
-[[consumer]]
-name = "notify_new_product"
-events = ["product_created", "product_published"]
+[[consumidor]]
+nombre = "notify_new_product"
+eventos = ["product_created", "product_published"]
 "#,
     )
     .unwrap();
@@ -77,7 +77,7 @@ events = ["product_created", "product_published"]
 #[test]
 fn list_of_a_plain_project_has_no_empty_sections() {
     let config: puerto_toml::PuertoConfig = toml::from_str(
-        "[project]\nname = \"shop\"\n\n[[entity]]\nname = \"Product\"\nuse_cases = [\"create_product\"]\n",
+        "[proyecto]\nnombre = \"shop\"\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\n",
     )
     .unwrap();
 

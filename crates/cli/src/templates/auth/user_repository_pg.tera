@@ -11,7 +11,7 @@ use puerto_nucleo::ErrorRepositorio;
 
 use crate::db::mapear_error_sqlx;
 
-/// Runtime-checked queries (`query_as`, not `query_as!`): `puerto new` writes this file before
+/// Runtime-checked queries (`query_as`, not `query_as!`): `puerto nuevo` writes this file before
 /// there is a database to build the query cache from, and the project builds offline.
 pub struct PgUserRepository {
     pub pool: PgPool,

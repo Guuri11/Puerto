@@ -208,7 +208,7 @@ pub fn run(
     Ok(())
 }
 
-/// `--public` and `--role` of `puerto generate scaffold` in an auth project (ADR-0021 § 4): the
+/// `--publico` and `--rol` of `puerto generar scaffold` in an auth project (ADR-0021 § 4): the
 /// CRUD use cases whose routes take no `BearerAuth`, and the roles a route requires.
 #[derive(Debug, Default, Clone)]
 pub struct ScaffoldAccess {
@@ -217,7 +217,7 @@ pub struct ScaffoldAccess {
 }
 
 impl ScaffoldAccess {
-    /// `--public list_products,get_product` and `--role create_product=admin,…` as the CLI got them.
+    /// `--publico list_products,get_product` and `--rol create_product=admin,…` as the CLI got them.
     pub fn from_args(public: &[String], roles: &[String]) -> Result<Self, String> {
         let mut access = Self {
             public: public.to_vec(),
@@ -226,7 +226,7 @@ impl ScaffoldAccess {
         for arg in roles {
             let (use_case, role) = arg.split_once('=').ok_or_else(|| {
                 format!(
-                    "invalid --role '{arg}'. Expected <use_case>=<role>, e.g. delete_product=admin"
+                    "invalid --rol '{arg}'. Expected <use_case>=<role>, e.g. delete_product=admin"
                 )
             })?;
             let roles = access.roles.entry(use_case.to_string()).or_default();
@@ -242,7 +242,7 @@ impl ScaffoldAccess {
     }
 }
 
-/// Checks `access` against the entity's CRUD use cases and writes it to its `[[entity]]` block,
+/// Checks `access` against the entity's CRUD use cases and writes it to its `[[entidad]]` block,
 /// before any file is rendered: the generators read it back from there. A re-scaffold without
 /// flags keeps what the block says.
 fn record_access(
@@ -256,7 +256,7 @@ fn record_access(
     if !config.project.has_auth() {
         if !access.is_empty() {
             return Err(
-                "--public and --role need an auth project (`puerto new --auth oidc`)".into(),
+                "--publico and --rol need an auth project (`puerto nuevo --auth oidc`)".into(),
             );
         }
         return Ok(());
@@ -289,11 +289,11 @@ fn record_access(
     crate::puerto_toml::write(base, &config)
 }
 
-/// `puerto generate scaffold <Name>` without `--public` / `--role`.
+/// `puerto generar scaffold <Name>` without `--publico` / `--rol`.
 /// Reads `project.db` from `puerto.toml`, always generates full CRUD.
 /// `cli_fields` are fields passed from the CLI (e.g. `title:String price:i64`).
 ///
-/// Refuses to overwrite an already-generated entity unless `--force`; see `conflict.rs`.
+/// Refuses to overwrite an already-generated entity unless `--forzar`; see `conflict.rs`.
 #[cfg(test)]
 pub fn run_scaffold(
     name: &str,
@@ -310,7 +310,7 @@ pub fn run_scaffold(
     )
 }
 
-/// [`run_scaffold`] with `--public` / `--role`. In an auth project every CRUD route takes
+/// [`run_scaffold`] with `--publico` / `--rol`. In an auth project every CRUD route takes
 /// `BearerAuth` except the `public` ones; outside one, `access` must be empty.
 pub fn run_scaffold_with_access(
     name: &str,
@@ -369,10 +369,10 @@ pub fn run_scaffold_with_access(
     Ok(())
 }
 
-/// CLI entry point for `puerto generate value-object <Name> <type>`.
+/// CLI entry point for `puerto generar objeto-valor <Name> <type>`.
 ///
 /// Validated here, at the command that writes it: an invalid declaration used to land in
-/// puerto.toml and only surface later, in `puerto validate` or as uncompilable generated code.
+/// puerto.toml and only surface later, in `puerto validar` or as uncompilable generated code.
 pub fn run_value_object(
     name: &str,
     inner_type: &str,

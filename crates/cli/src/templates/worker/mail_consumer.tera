@@ -1,5 +1,5 @@
 //! `mail_{{ name }}`: sends the `{{ name }}` mail on {% for e in events %}`{{ e.event_type }}`{% if not loop.last %}, {% endif %}{% endfor %}. Written once by
-//! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
+//! `puerto generar correo --tras`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
 //! Delivery is at-least-once: `enviar_una_vez` keeps a `correos_enviados` row per event, so a redelivered
@@ -39,7 +39,7 @@ impl ManejadorEvento for Send{{ pascal }}Mail {
                 Err(err) => return ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle),
             },
 {%- endfor %}
-            // Not one of its events (puerto.toml `[[mail]] on`): nothing to send.
+            // Not one of its events (puerto.toml `[[correo]] tras`): nothing to send.
             _ => return ResultadoManejo::Ack,
         };
         if mail.to.trim().is_empty() {

@@ -54,14 +54,14 @@ pub fn validate_project_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// What `puerto new` was asked for on the command line; what is left out is prompted for.
+/// What `puerto nuevo` was asked for on the command line; what is left out is prompted for.
 #[derive(Debug, Default)]
 pub struct NewOptions {
     pub db: bool,
     pub no_db: bool,
     pub no_demo: bool,
     pub no_web: bool,
-    /// `--events <transport>`: `db` or `kafka`.
+    /// `--eventos <transport>`: `db` or `kafka`.
     pub events: Option<String>,
     /// `--auth <mode>`: `oidc` or `local` (ADR-0021).
     pub auth: Option<String>,
@@ -105,7 +105,7 @@ pub fn new_project(
 
     // The outbox only works inside a database transaction (ADR-0018 § 1).
     if events.is_some() && !resolved_db {
-        return Err("--events needs a database: add --db".into());
+        return Err("--eventos needs a database: add --db".into());
     }
     let resolved_events = if events.is_some() || !resolved_db {
         events

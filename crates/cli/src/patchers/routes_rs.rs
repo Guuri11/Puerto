@@ -7,7 +7,7 @@ use crate::generators::naming::to_pascal_case;
 ///
 /// `bootstrap.rs` builds `{Pascal}Api { <every use case in puerto.toml> }`, but `routes.rs`
 /// is rendered from the CRUD template, which only knows the five CRUD use cases. A use case added
-/// by `generate use-case` — or one that survived a `scaffold --force` — made bootstrap.rs name a
+/// by `generate use-case` — or one that survived a `scaffold --forzar` — made bootstrap.rs name a
 /// field the struct does not have (E0560).
 ///
 /// Idempotent, and a no-op when `routes.rs` does not exist yet (domain-first flow before

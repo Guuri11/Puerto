@@ -1,4 +1,4 @@
-//! Yours: `puerto new --auth local` writes this file once. Registration is open: close it, or add
+//! Yours: `puerto nuevo --auth local` writes this file once. Registration is open: close it, or add
 //! your rules (an invitation, a domain allow-list), here.
 
 use std::sync::Arc;

@@ -50,7 +50,7 @@ fn should_keep_a_reference_through_puerto_toml() {
     let dir = temp_dir("references_round_trip");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("puerto.toml"), "[project]\nname = \"shop\"\n").unwrap();
+    fs::write(dir.join("puerto.toml"), "[proyecto]\nnombre = \"shop\"\n").unwrap();
     let field = puerto_toml::parse_field_arg("customer_id:ref:Customer").unwrap();
 
     // Act
@@ -58,7 +58,7 @@ fn should_keep_a_reference_through_puerto_toml() {
 
     // Assert
     let written = fs::read_to_string(dir.join("puerto.toml")).unwrap();
-    assert!(written.contains("references = \"Customer\""), "{written}");
+    assert!(written.contains("referencia = \"Customer\""), "{written}");
     let config = puerto_toml::read(&dir).unwrap();
     assert_eq!(
         config.entity[0].fields[0].references.as_deref(),
@@ -76,22 +76,22 @@ fn validate_order_with(name: &str, project_extra: &str, order_field: &str) -> Re
     fs::write(
         dir.join("puerto.toml"),
         format!(
-            r#"[project]
-name = "shop"
+            r#"[proyecto]
+nombre = "shop"
 {project_extra}
-[[entity]]
-name = "Greeting"
-use_cases = ["get_greeting"]
+[[entidad]]
+nombre = "Greeting"
+casos_de_uso = ["get_greeting"]
 
-[[entity]]
-name = "Customer"
-use_cases = ["create_customer", "get_customer", "list_customers", "update_customer", "delete_customer"]
+[[entidad]]
+nombre = "Customer"
+casos_de_uso = ["create_customer", "get_customer", "list_customers", "update_customer", "delete_customer"]
 
-[[entity]]
-name = "Order"
-use_cases = ["create_order", "get_order", "list_orders", "update_order", "delete_order"]
+[[entidad]]
+nombre = "Order"
+casos_de_uso = ["create_order", "get_order", "list_orders", "update_order", "delete_order"]
 
-[[entity.fields]]
+[[entidad.campos]]
 {order_field}
 "#
         ),
@@ -107,7 +107,7 @@ fn should_validate_a_reference_to_a_declared_crud_entity() {
     let result = validate_order_with(
         "references_validate_ok",
         "",
-        "name = \"customer_id\"\ntype = \"Uuid\"\nreferences = \"Customer\"",
+        "nombre = \"customer_id\"\ntipo = \"Uuid\"\nreferencia = \"Customer\"",
     );
 
     assert!(result.is_ok(), "{result:?}");
@@ -118,7 +118,7 @@ fn should_refuse_a_reference_to_an_undeclared_entity() {
     let err = validate_order_with(
         "references_validate_undeclared",
         "",
-        "name = \"supplier_id\"\ntype = \"Uuid\"\nreferences = \"Supplier\"",
+        "nombre = \"supplier_id\"\ntipo = \"Uuid\"\nreferencia = \"Supplier\"",
     )
     .unwrap_err();
 
@@ -133,7 +133,7 @@ fn should_refuse_a_reference_to_the_entity_itself() {
     let err = validate_order_with(
         "references_validate_self",
         "",
-        "name = \"parent_id\"\ntype = \"Option<Uuid>\"\nreferences = \"Order\"",
+        "nombre = \"parent_id\"\ntipo = \"Option<Uuid>\"\nreferencia = \"Order\"",
     )
     .unwrap_err();
 
@@ -148,7 +148,7 @@ fn should_refuse_a_reference_to_an_entity_without_crud() {
     let err = validate_order_with(
         "references_validate_simple",
         "",
-        "name = \"greeting_id\"\ntype = \"Uuid\"\nreferences = \"Greeting\"",
+        "nombre = \"greeting_id\"\ntipo = \"Uuid\"\nreferencia = \"Greeting\"",
     )
     .unwrap_err();
 
@@ -163,7 +163,7 @@ fn should_refuse_a_reference_to_the_user_in_an_auth_project() {
     let err = validate_order_with(
         "references_validate_user",
         "auth = \"oidc\"",
-        "name = \"owner_id\"\ntype = \"Uuid\"\nreferences = \"User\"",
+        "nombre = \"owner_id\"\ntipo = \"Uuid\"\nreferencia = \"User\"",
     )
     .unwrap_err();
 
@@ -175,7 +175,7 @@ fn should_refuse_a_reference_that_is_not_a_uuid() {
     let err = validate_order_with(
         "references_validate_type",
         "",
-        "name = \"customer_id\"\ntype = \"i64\"\nreferences = \"Customer\"",
+        "nombre = \"customer_id\"\ntipo = \"i64\"\nreferencia = \"Customer\"",
     )
     .unwrap_err();
 
@@ -190,7 +190,7 @@ fn should_refuse_a_reference_that_is_also_a_value_object() {
     let err = validate_order_with(
         "references_validate_vo",
         "",
-        "name = \"customer_id\"\ntype = \"Uuid\"\nreferences = \"Customer\"\nvalue_object = \"CustomerRef\"",
+        "nombre = \"customer_id\"\ntipo = \"Uuid\"\nreferencia = \"Customer\"\nobjeto_valor = \"CustomerRef\"",
     )
     .unwrap_err();
 
@@ -248,7 +248,7 @@ fn should_refuse_to_scaffold_a_reference_to_a_target_without_code() {
         .to_string();
 
     // Assert
-    assert!(err.contains("puerto generate scaffold Customer"), "{err}");
+    assert!(err.contains("puerto generar scaffold Customer"), "{err}");
     assert!(!output.join("business/src/domain/order").exists());
 
     cleanup(&dir);
@@ -282,21 +282,21 @@ fn should_validate_a_reference_to_an_entity_named_user_outside_an_auth_project()
     fs::create_dir_all(&dir).unwrap();
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "shop"
+        r#"[proyecto]
+nombre = "shop"
 
-[[entity]]
-name = "User"
-use_cases = ["create_user", "get_user", "list_users", "update_user", "delete_user"]
+[[entidad]]
+nombre = "User"
+casos_de_uso = ["create_user", "get_user", "list_users", "update_user", "delete_user"]
 
-[[entity]]
-name = "Order"
-use_cases = ["create_order"]
+[[entidad]]
+nombre = "Order"
+casos_de_uso = ["create_order"]
 
-[[entity.fields]]
-name = "owner_id"
-type = "Uuid"
-references = "User"
+[[entidad.campos]]
+nombre = "owner_id"
+tipo = "Uuid"
+referencia = "User"
 "#,
     )
     .unwrap();
@@ -351,14 +351,14 @@ fn should_refuse_to_scaffold_a_reference_to_a_target_whose_table_is_not_created(
         .to_string();
 
     // Assert
-    assert!(err.contains("puerto generate scaffold Customer"), "{err}");
+    assert!(err.contains("puerto generar scaffold Customer"), "{err}");
     cleanup(&dir);
 }
 
 // ── 18.3: generated backend ─────────────────────────────────────────────────
 
 /// A project with a CRUD `Customer` and an `Order` holding `customer_id:ref:Customer` and
-/// `reviewer_id:ref:opt:Customer`. `db`: `--db`; `events`: also `[project] events = "db"`.
+/// `reviewer_id:ref:opt:Customer`. `db`: `--db`; `events`: also `[proyecto] eventos = "db"`.
 fn order_project(name: &str, db: bool, events: bool) -> (PathBuf, PathBuf) {
     let dir = temp_dir(name);
     cleanup(&dir);
@@ -369,7 +369,7 @@ fn order_project(name: &str, db: bool, events: bool) -> (PathBuf, PathBuf) {
         let toml = fs::read_to_string(&manifest).unwrap();
         fs::write(
             &manifest,
-            toml.replace("db = true", "db = true\nevents = \"db\""),
+            toml.replace("db = true", "db = true\neventos = \"db\""),
         )
         .unwrap();
     }
@@ -763,7 +763,7 @@ fn should_test_that_create_reports_a_missing_reference_on_its_field() {
                 create.contains(&format!(
                     "async fn should_return_a_validation_error_when_the_{field}_does_not_exist()"
                 )),
-                "events = {events}: {create}"
+                "eventos = {events}: {create}"
             );
             assert!(create.contains(&format!(
                 "ErrorRepositorio::ReferenciaInexistente(\"{field}\")"
@@ -891,7 +891,7 @@ fn should_filter_the_page_and_its_total_in_postgres() {
             repo.contains(
                 "FROM orders WHERE deleted = false AND ($3::uuid IS NULL OR customer_id = $3) AND ($4::uuid IS NULL OR reviewer_id = $4)"
             ),
-            "events = {events}: {repo}"
+            "eventos = {events}: {repo}"
         );
         assert!(
             repo.contains(
@@ -908,7 +908,7 @@ fn should_filter_the_page_and_its_total_in_postgres() {
                 repo.contains(&format!(
                     "async fn should_list_only_the_orders_of_the_requested_{field}(pool: PgPool)"
                 )),
-                "events = {events}: {repo}"
+                "eventos = {events}: {repo}"
             );
         }
 

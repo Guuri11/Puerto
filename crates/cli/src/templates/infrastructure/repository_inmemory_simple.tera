@@ -5,7 +5,7 @@ use business::domain::{{ snake }}::{
 };
 use puerto_nucleo::ErrorRepositorio;
 
-/// A stand-in that stores nothing — replace it with a real adapter (`puerto new --db` generates
+/// A stand-in that stores nothing — replace it with a real adapter (`puerto nuevo --db` generates
 /// Postgres repositories).
 #[derive(Default)]
 pub struct InMemory{{ pascal }}Repository;

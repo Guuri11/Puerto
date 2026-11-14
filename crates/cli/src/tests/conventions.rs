@@ -302,7 +302,7 @@ fn generated_project_has_a_root_entry_point_for_agents() {
 
     assert_eq!(claude.trim(), "@AGENTS.md");
     for must in [
-        "puerto generate",
+        "puerto generar",
         "generated/bootstrap.rs",
         "Tier 1",
         "make lint",
@@ -320,7 +320,7 @@ fn generated_project_has_a_root_entry_point_for_agents() {
 
 #[test]
 fn template_bootstrap_is_exactly_what_the_generator_writes() {
-    // `puerto new` copies the template's bootstrap.rs verbatim — it is not regenerated. When the
+    // `puerto nuevo` copies the template's bootstrap.rs verbatim — it is not regenerated. When the
     // generator changed (the logger removal), the copy kept wiring a `TracingLogger` that no longer
     // existed, and every fresh project failed to compile.
     let dir = temp_dir("template_bootstrap_drift");
@@ -554,9 +554,9 @@ fn root_agent_rules_say_how_to_work_with_puerto() {
         "presentation/src/app.rs",
         // changing an entity's fields
         "## Changing an entity's fields",
-        "puerto generate migration",
+        "puerto generar migracion",
         // the checklist, per project kind
-        "puerto validate",
+        "puerto validar",
         "make docker-compose/up",
         "make sqlx/prepare",
         "make web/sync",
@@ -600,15 +600,15 @@ fn root_agent_rules_name_every_generate_subcommand() {
     use clap::CommandFactory;
     let agents = include_str!("../../template/AGENTS.md");
     let cli = crate::Cli::command();
-    let generate = cli.find_subcommand("generate").unwrap();
+    let generate = cli.find_subcommand("generar").unwrap();
     for sub in generate.get_subcommands().map(|c| c.get_name()) {
-        let named = format!("puerto generate {sub}");
+        let named = format!("puerto generar {sub}");
         assert!(
             agents.contains(&named),
             "root AGENTS.md never names `{named}`"
         );
     }
-    for top in ["puerto validate", "puerto list"] {
+    for top in ["puerto validar", "puerto listar"] {
         assert!(agents.contains(top), "root AGENTS.md never names `{top}`");
     }
 }

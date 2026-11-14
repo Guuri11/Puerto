@@ -1,6 +1,6 @@
 use super::*;
 
-// ── puerto generate domain / application / repository / presentation ─────
+// ── puerto generar dominio / application / repository / presentation ─────
 
 #[test]
 fn generate_domain_creates_domain_files_and_mother() {

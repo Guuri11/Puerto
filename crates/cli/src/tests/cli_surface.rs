@@ -26,7 +26,7 @@ fn cli_definition_is_well_formed() {
     crate::Cli::command().debug_assert();
 }
 
-// ── puerto list ──────────────────────────────────────────────────────────
+// ── puerto listar ──────────────────────────────────────────────────────────
 
 #[test]
 fn list_fails_outside_puerto_project() {

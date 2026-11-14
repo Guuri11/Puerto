@@ -67,7 +67,7 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 
 `puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
-copy their code into the project; upgrade them with the `puerto` CLI (`puerto validate` warns when
+copy their code into the project; upgrade them with the `puerto` CLI (`puerto validar` warns when
 they drift apart). Your own middleware and routes go in `presentation/src/app.rs`, which no
 generator touches.
 
@@ -77,29 +77,29 @@ no `mod.rs` files: adding a use case is one line in `lib.rs` plus its file.
 ## `puerto.toml` is the source of truth
 
 It describes every entity, its fields and use cases, and the project's features (`db`, `web`,
-`events`, `auth`). The `puerto` CLI generates the code and the wiring from it; `puerto validate`
-checks the two still agree. `puerto list` prints what it declares, `puerto <command> --help` says
+`events`, `auth`). The `puerto` CLI generates the code and the wiring from it; `puerto validar`
+checks the two still agree. `puerto listar` prints what it declares, `puerto <command> --help` says
 everything below in more detail.
 
 | Command | What it writes |
 |---|---|
-| `puerto generate scaffold <Name> [-- fields…]` | every layer of a CRUD entity (create, get, list, update, delete) + its table migration with `db` |
-| `puerto generate domain <Name> [-- fields…]` | the domain layer only, and the entity in `puerto.toml`; then `puerto generate application <Name>`, `puerto generate repository <Name>`, `puerto generate presentation <Name>` — one layer at a time, each checking the one before |
-| `puerto generate use-case <Entity> <action>` | one more use case: its trait + mock, its impl to fill in (see below), a field on `<Entity>Api` |
-| `puerto generate value-object <Name> <type>` | a shared value object (`[[value_object]]`), reusable by every entity |
-| `puerto generate migration <name>` | an empty SQL migration (`db` projects) |
-| `puerto generate bootstrap` | rewires `generated/bootstrap.rs` from `puerto.toml` |
-| `puerto generate event <Entity> <name>` | a custom domain event (`events` projects) |
-| `puerto generate consumer <name> --on <event_type>[,…]` | a worker consumer (`events` projects) |
-| `puerto generate mail <name> [-- fields…] [--on <event_type> --to <field>]` | a mail: its port, its templates, its SMTP adapter; with `--on`, the worker sends it |
-| `puerto generate snippets` | editor snippets for the patterns below (Zed, VS Code) |
-| `puerto validate` | checks names, types, and that the manifest and the code agree |
+| `puerto generar scaffold <Name> [-- fields…]` | every layer of a CRUD entity (create, get, list, update, delete) + its table migration with `db` |
+| `puerto generar dominio <Name> [-- fields…]` | the domain layer only, and the entity in `puerto.toml`; then `puerto generar aplicacion <Name>`, `puerto generar repositorio <Name>`, `puerto generar presentacion <Name>` — one layer at a time, each checking the one before |
+| `puerto generar caso-de-uso <Entity> <action>` | one more use case: its trait + mock, its impl to fill in (see below), a field on `<Entity>Api` |
+| `puerto generar objeto-valor <Name> <type>` | a shared value object (`[[objeto_valor]]`), reusable by every entity |
+| `puerto generar migracion <name>` | an empty SQL migration (`db` projects) |
+| `puerto generar bootstrap` | rewires `generated/bootstrap.rs` from `puerto.toml` |
+| `puerto generar evento <Entity> <name>` | a custom domain event (`events` projects) |
+| `puerto generar consumidor <name> --tras <event_type>[,…]` | a worker consumer (`events` projects) |
+| `puerto generar correo <name> [-- fields…] [--tras <event_type> --para <field>]` | a mail: its port, its templates, its SMTP adapter; with `--tras`, the worker sends it |
+| `puerto generar snippets` | editor snippets for the patterns below (Zed, VS Code) |
+| `puerto validar` | checks names, types, and that the manifest and the code agree |
 
-In an auth project `scaffold` also takes `--public <use_case>[,…]` (no token needed) and
-`--role <use_case>=<role>[,…]` (see the Auth section).
+In an auth project `scaffold` also takes `--publico <use_case>[,…]` (no token needed) and
+`--rol <use_case>=<role>[,…]` (see the Auth section).
 
 With `web/`, `scaffold` also writes the entity's screens and `generate bootstrap` also rewrites the
-frontend's generated files; `puerto generate web <Name>` writes one entity's screens alone.
+frontend's generated files; `puerto generar web <Name>` writes one entity's screens alone.
 
 ### Fields
 
@@ -136,7 +136,7 @@ repository port). On the web the reference is a `<select>` of customers and a li
 | | Files | Change them by |
 |---|---|---|
 | **Rewritten on every run** — never hand-edit | `presentation/src/generated/bootstrap.rs`, `presentation/src/api/tags.rs`, `business/src/domain/<entity>/events.rs`, `worker/src/generated/registry.rs` | editing `puerto.toml`, then the command that writes them (`generate bootstrap`, `generate event`, `generate consumer`) |
-| **The entity's files** — yours, but `scaffold --force` rewrites them | the CRUD use cases, model, errors, repository, routes, DTOs, mappers and Mother of one entity | editing them; `--force` only while they are still what the generator wrote |
+| **The entity's files** — yours, but `scaffold --forzar` rewrites them | the CRUD use cases, model, errors, repository, routes, DTOs, mappers and Mother of one entity | editing them; `--forzar` only while they are still what the generator wrote |
 | **Patched** — a line added, the rest kept | each crate's `lib.rs`, `presentation/src/api.rs`, `routes.rs` (`<Entity>Api` fields), `worker/src/consumers.rs`, `puerto.toml` | editing them freely; keep the lines Puerto added |
 | **Written once** — yours from the start | `presentation/src/app.rs` (your middleware and routes), the impl of a `generate use-case`, consumers, mails and their templates, migrations, the auth files | editing them |
 
@@ -147,25 +147,25 @@ yours. `web/AGENTS.md` has the detail.
 
 ### Changing an entity's fields
 
-- **The code is still what the generator wrote:** change the `[[entity]]` block in `puerto.toml`
-  (or pass the new field list) and run `puerto generate scaffold <Name> --force`. Use cases added
+- **The code is still what the generator wrote:** change the `[[entidad]]` block in `puerto.toml`
+  (or pass the new field list) and run `puerto generar scaffold <Name> --forzar`. Use cases added
   with `generate use-case` survive; any other hand-written change to the entity's files is lost.
 - **In a `--db` project the table migration is never rewritten** (it may already be applied). Not
   applied anywhere yet: edit that `create_<entity>_table` migration. Applied: add
-  `puerto generate migration add_<field>_to_<plural>` with the `ALTER TABLE`, then
+  `puerto generar migracion add_<field>_to_<plural>` with the `ALTER TABLE`, then
   `make sqlx/migrate && make sqlx/prepare`.
 - **The code is already yours:** add the field by hand through every layer — model and Props,
   params, the Mother, the row and its conversions, the DTOs, any screen — with a migration, and
-  update `[[entity.fields]]` so `puerto.toml` keeps describing the code.
+  update `[[entidad.campos]]` so `puerto.toml` keeps describing the code.
 
 ## Working with Puerto
 
 Generate first, then write the business rules test first. Never write wiring by hand: if
 `bootstrap.rs`, a `lib.rs` module tree or `<Entity>Api` needs a line, a command writes it.
 
-1. **Model it in the generator.** A new entity: `puerto generate scaffold <Name> -- …` with its
+1. **Model it in the generator.** A new entity: `puerto generar scaffold <Name> -- …` with its
    fields, value objects and enums. One more operation on an entity:
-   `puerto generate use-case <Entity> <action>`.
+   `puerto generar caso-de-uso <Entity> <action>`.
 2. **List the scenarios** before code: the happy path, empty and invalid input, boundaries, state
    transitions, and the regression a bug fix needs.
 3. **Red.** A scaffolded entity already has tests for what it generated; add yours next to them.
@@ -190,24 +190,24 @@ The OpenAPI spec is the contract between the two halves: `docs/api/openapi.json`
 test in `bootstrap.rs`. **After a scaffold and after touching a route or a DTO, run
 `make web/sync`** (it re-exports the spec, regenerates the frontend's wire types and formats
 `web/`) and commit both. Until then `make test` fails — that failure is the drift check.
-`puerto generate scaffold` writes a CRUD entity's screens too; `puerto generate web <Name>` writes
+`puerto generar scaffold` writes a CRUD entity's screens too; `puerto generar web <Name>` writes
 them alone.
 
-## Domain events (`[project] events`)
+## Domain events (`[proyecto] eventos`)
 
 Every write of a CRUD entity goes through its unit of work, which saves the entity and records an
 event in the `outbox` table in one transaction (ADR-0018 of Puerto). The repository only reads.
 
 - **Never hand-edit `business/src/domain/<entity>/events.rs`** — it is rewritten from
   `puerto.toml` (the snapshot follows the entity's fields). Add an event with
-  `puerto generate event <Entity> <name>`, then record it from a use case:
+  `puerto generar evento <Entity> <name>`, then record it from a use case:
   `uow.record(ProductEvent::Published(ProductSnapshot::from_entity(&entity)))`.
 - A write use case: `uow_factory.begin()` → `save` → `record` → `commit`. Returning early with
   `?` before `commit` rolls everything back.
 - The snapshot is a public contract: consumers decode it. Renaming a field changes it.
 - `worker/` is the second process: it relays the outbox and runs the consumers (`make worker`).
   **Never hand-edit `worker/src/generated/registry.rs`.** Add a consumer with
-  `puerto generate consumer <name> --on <event_type>`; its handler must be idempotent — delivery
+  `puerto generar consumidor <name> --tras <event_type>`; its handler must be idempotent — delivery
   is at-least-once. See `worker/AGENTS.md`.
 
 ## Conventions
@@ -225,7 +225,7 @@ event in the `outbox` table in one transaction (ADR-0018 of Puerto). The reposit
 ## Check before you are done
 
 ```bash
-puerto validate  # the manifest and the code agree
+puerto validar  # the manifest and the code agree
 make test        # unit + integration tests
 make lint        # clippy --all-targets -D warnings — the toolchain is pinned in rust-toolchain.toml
 make format      # rustfmt check — `make format/fix` applies it
@@ -265,7 +265,7 @@ reason instead of re-deriving it or undoing it.
 
 ## Mail
 
-A mail is three pieces, written once by `puerto generate mail <name> [-- field:Type …]` and yours
+A mail is three pieces, written once by `puerto generar correo <name> [-- field:Type …]` and yours
 from then on (ADR-0020 of Puerto):
 
 - `business/src/domain/mail/<name>.rs` — `{Name}Mail` (the recipient `to` and the values its text
@@ -281,8 +281,8 @@ from then on (ADR-0020 of Puerto):
 catches every mail — `make mail/ui` — and nothing reaches a real inbox until `SMTP_URL` points at
 a provider.
 
-**Who sends it.** In a project with domain events, `puerto generate mail <name> --on
-<event_type> --to <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
+**Who sends it.** In a project with domain events, `puerto generar correo <name> --tras
+<event_type> --para <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
 in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
 per event (`puerto_correo::enviar_una_vez` keeps a `correos_enviados` row — a crash between the send and that
 row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
@@ -388,7 +388,7 @@ generate/entity: ## Scaffold a new DDD entity — make generate/entity NAME=Prod
 		exit 1; \
 	fi
 	@echo "${GREEN}Scaffolding entity '$$NAME'...${NC}"
-	puerto generate scaffold $$NAME
+	puerto generar scaffold $$NAME
 
 generate/use-case: ## Add a use case to an entity — make generate/use-case ENTITY=Product ACTION=delete_product
 	@if [ -z "$$ENTITY" ] || [ -z "$$ACTION" ]; then \
@@ -396,11 +396,11 @@ generate/use-case: ## Add a use case to an entity — make generate/use-case ENT
 		exit 1; \
 	fi
 	@echo "${GREEN}Adding use case '$$ACTION' to '$$ENTITY'...${NC}"
-	puerto generate use-case $$ENTITY $$ACTION
+	puerto generar caso-de-uso $$ENTITY $$ACTION
 
 generate/bootstrap: ## Regenerate bootstrap.rs from puerto.toml
 	@echo "${GREEN}Regenerating bootstrap.rs...${NC}"
-	puerto generate bootstrap
+	puerto generar bootstrap
 
 web/install: ## Install the frontend dependencies (needs Bun)
 	@echo "${CYAN}Installing frontend dependencies...${NC}"
@@ -495,7 +495,7 @@ generate/migration: ## Create a new SQLx migration — make generate/migration N
 		exit 1; \
 	fi
 	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
-	puerto generate migration $$NAME
+	puerto generar migracion $$NAME
 
 .PHONY: worker events/dead-letters
 
@@ -1433,7 +1433,7 @@ mod tests {
 
 === business/src/domain/mail/digest.rs ===
 //! The `digest` mail: what it carries and the port that sends it. Written once by
-//! `puerto generate mail`; it is yours now — add a field, rename one, compute the recipient.
+//! `puerto generar correo`; it is yours now — add a field, rename one, compute the recipient.
 //! Its text is in `infrastructure/mail/digest/`, rendered by `TemplateDigestMailer`.
 
 use async_trait::async_trait;
@@ -1470,7 +1470,7 @@ pub mod mocks {
 
 === business/src/domain/mail/price_alert.rs ===
 //! The `price_alert` mail: what it carries and the port that sends it. Written once by
-//! `puerto generate mail`; it is yours now — add a field, rename one, compute the recipient.
+//! `puerto generar correo`; it is yours now — add a field, rename one, compute the recipient.
 //! Its text is in `infrastructure/mail/price_alert/`, rendered by `TemplatePriceAlertMailer`.
 
 use async_trait::async_trait;
@@ -1508,7 +1508,7 @@ pub mod mocks {
 
 === business/src/domain/mail/product_live.rs ===
 //! The `product_live` mail: what it carries and the port that sends it. Written once by
-//! `puerto generate mail`; it is yours now — add a field, rename one, compute the recipient.
+//! `puerto generar correo`; it is yours now — add a field, rename one, compute the recipient.
 //! Its text is in `infrastructure/mail/product_live/`, rendered by `TemplateProductLiveMailer`.
 
 use async_trait::async_trait;
@@ -1610,7 +1610,7 @@ mod tests {
 
 === business/src/domain/product/events.rs ===
 // AUTO-GENERATED by puerto from puerto.toml — never hand-edit. The snapshot follows the entity's
-// fields; add an event with `puerto generate event Product <name>`.
+// fields; add an event with `puerto generar evento Product <name>`.
 use chrono::{DateTime, Utc};
 use puerto_nucleo::EventoDominio;
 use serde::{Deserialize, Serialize};
@@ -2725,7 +2725,7 @@ pub mod mail {
 
 === infrastructure/src/mail/digest.rs ===
 //! Renders the `digest` mail from its templates and hands it to the mailer. Written once by
-//! `puerto generate mail`; it is yours now. The text is in `infrastructure/mail/digest/`:
+//! `puerto generar correo`; it is yours now. The text is in `infrastructure/mail/digest/`:
 //! change it there — the tests below render it again, so a typo fails `make test`.
 
 use std::sync::Arc;
@@ -2834,7 +2834,7 @@ mod tests {
 
 === infrastructure/src/mail/price_alert.rs ===
 //! Renders the `price_alert` mail from its templates and hands it to the mailer. Written once by
-//! `puerto generate mail`; it is yours now. The text is in `infrastructure/mail/price_alert/`:
+//! `puerto generar correo`; it is yours now. The text is in `infrastructure/mail/price_alert/`:
 //! change it there — the tests below render it again, so a typo fails `make test`.
 
 use std::sync::Arc;
@@ -2948,7 +2948,7 @@ mod tests {
 
 === infrastructure/src/mail/product_live.rs ===
 //! Renders the `product_live` mail from its templates and hands it to the mailer. Written once by
-//! `puerto generate mail`; it is yours now. The text is in `infrastructure/mail/product_live/`:
+//! `puerto generar correo`; it is yours now. The text is in `infrastructure/mail/product_live/`:
 //! change it there — the tests below render it again, so a typo fails `make test`.
 
 use std::sync::Arc;
@@ -4350,7 +4350,7 @@ mod tests {
 }
 
 === presentation/src/api/tags.rs ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
 use poem_openapi::Tags;
 
 #[derive(Tags)]
@@ -4360,7 +4360,7 @@ pub enum ApiTags {
 }
 
 === presentation/src/generated/bootstrap.rs ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
 use std::sync::Arc;
 
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
@@ -4502,20 +4502,20 @@ mod tests {
 }
 
 === puerto.toml ===
-[project]
-name = "snapshot"
+[proyecto]
+nombre = "snapshot"
 db = true
 web = true
-events = "db"
+eventos = "db"
 
-[[entity]]
-name = "Greeting"
-use_cases = ["get_greeting"]
-fields = []
+[[entidad]]
+nombre = "Greeting"
+casos_de_uso = ["get_greeting"]
+campos = []
 
-[[entity]]
-name = "Product"
-use_cases = [
+[[entidad]]
+nombre = "Product"
+casos_de_uso = [
     "create_product",
     "get_product",
     "list_products",
@@ -4524,65 +4524,65 @@ use_cases = [
     "publish_product",
 ]
 db = true
-events = ["product_published"]
+eventos = ["product_published"]
 
-[[entity.fields]]
-name = "name"
-type = "String"
-value_object = "Name"
+[[entidad.campos]]
+nombre = "name"
+tipo = "String"
+objeto_valor = "Name"
 
-[[entity.fields]]
-name = "sku"
-type = "String"
-unique = true
-value_object = "Sku"
+[[entidad.campos]]
+nombre = "sku"
+tipo = "String"
+unico = true
+objeto_valor = "Sku"
 
-[[entity.fields]]
-name = "price"
-type = "i64"
+[[entidad.campos]]
+nombre = "price"
+tipo = "i64"
 
-[[entity.fields]]
-name = "status"
-type = "String"
-value_object = "Status"
-value_object_kind = "enum"
-enum_variants = [
+[[entidad.campos]]
+nombre = "status"
+tipo = "String"
+objeto_valor = "Status"
+clase_objeto_valor = "enum"
+variantes = [
     "Draft",
     "Published",
 ]
 
-[[entity.fields]]
-name = "tags"
-type = "Vec<String>"
+[[entidad.campos]]
+nombre = "tags"
+tipo = "Vec<String>"
 
-[[entity.fields]]
-name = "released_at"
-type = "Option<DateTime<Utc>>"
+[[entidad.campos]]
+nombre = "released_at"
+tipo = "Option<DateTime<Utc>>"
 
-[[entity.fields]]
-name = "meta"
-type = "HashMap<String, String>"
+[[entidad.campos]]
+nombre = "meta"
+tipo = "HashMap<String, String>"
 
-[[consumer]]
-name = "notify_new_product"
-events = [
+[[consumidor]]
+nombre = "notify_new_product"
+eventos = [
     "product_created",
     "product_published",
 ]
 
-[[mail]]
-name = "product_live"
-on = [
+[[correo]]
+nombre = "product_live"
+tras = [
     "product_created",
     "product_published",
 ]
 
-[[mail]]
-name = "price_alert"
-on = ["product_published"]
+[[correo]]
+nombre = "price_alert"
+tras = ["product_published"]
 
-[[mail]]
-name = "digest"
+[[correo]]
+nombre = "digest"
 
 === web/src/domain/product/errors.ts ===
 /**
@@ -4847,7 +4847,7 @@ export function productRepositoryHttp(api: ApiClient): ProductRepository {
 }
 
 === web/src/presentation/core/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
 //
 // The composition root: the only module that imports `infrastructure/`. Screens reach the
 // adapters through `useDependencies()`, so a test hands them a fake instead.
@@ -4868,7 +4868,7 @@ export function createDependencies(): Dependencies {
 }
 
 === web/src/presentation/core/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
 import { ProductDetailContainer } from "../../features/product/containers/product-detail-container";
@@ -5633,16 +5633,16 @@ business logic lives here — a consumer decodes the event and calls a use case.
 worker/src/
 ├── main.rs                  # `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(…)` (never changes)
 ├── generated.rs             # `pub mod registry;`
-├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumer]]` — never hand-edit
+├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumidor]]` — never hand-edit
 ├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
 └── consumers/
-    └── <consumer>.rs        # Yours: a `ManejadorEvento`, written once by `puerto generate consumer`
+    └── <consumer>.rs        # Yours: a `ManejadorEvento`, written once by `puerto generar consumidor`
 ```
 
 ## Critical Rules
 
-- **Add a consumer with `puerto generate consumer <name> --on <event_type>[,…]`** — it declares
-  `[[consumer]]` in `puerto.toml`, writes the handler and its tests, and regenerates
+- **Add a consumer with `puerto generar consumidor <name> --tras <event_type>[,…]`** — it declares
+  `[[consumidor]]` in `puerto.toml`, writes the handler and its tests, and regenerates
   `generated/registry.rs`. Never wire one by hand.
 - **Handlers must be idempotent.** Delivery is at-least-once: the same `event.id` can arrive
   twice. Check whether the work was already done (keyed on `event.id`) before doing it again.
@@ -5693,14 +5693,14 @@ business = { path = "../business", features = ["test-utils"] }
 serde_json = "1"
 
 === worker/src/consumers.rs ===
-//! One module per `[[consumer]]` of puerto.toml — `puerto generate consumer` adds them.
+//! One module per `[[consumidor]]` of puerto.toml — `puerto generar consumidor` adds them.
 pub mod mail_price_alert;
 pub mod mail_product_live;
 pub mod notify_new_product;
 
 === worker/src/consumers/mail_price_alert.rs ===
 //! `mail_price_alert`: sends the `price_alert` mail on `product_published`. Written once by
-//! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
+//! `puerto generar correo --tras`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
 //! Delivery is at-least-once: `enviar_una_vez` keeps a `correos_enviados` row per event, so a redelivered
@@ -5739,7 +5739,7 @@ impl ManejadorEvento for SendPriceAlertMail {
                     return ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle);
                 }
             },
-            // Not one of its events (puerto.toml `[[mail]] on`): nothing to send.
+            // Not one of its events (puerto.toml `[[correo]] tras`): nothing to send.
             _ => return ResultadoManejo::Ack,
         };
         if mail.to.trim().is_empty() {
@@ -5883,7 +5883,7 @@ mod tests {
 
 === worker/src/consumers/mail_product_live.rs ===
 //! `mail_product_live`: sends the `product_live` mail on `product_created`, `product_published`. Written once by
-//! `puerto generate mail --on`; it is yours now — change who it goes to, skip some events, add
+//! `puerto generar correo --tras`; it is yours now — change who it goes to, skip some events, add
 //! values the snapshot does not carry.
 //!
 //! Delivery is at-least-once: `enviar_una_vez` keeps a `correos_enviados` row per event, so a redelivered
@@ -5936,7 +5936,7 @@ impl ManejadorEvento for SendProductLiveMail {
                     return ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle);
                 }
             },
-            // Not one of its events (puerto.toml `[[mail]] on`): nothing to send.
+            // Not one of its events (puerto.toml `[[correo]] tras`): nothing to send.
             _ => return ResultadoManejo::Ack,
         };
         if mail.to.trim().is_empty() {
@@ -6080,7 +6080,7 @@ mod tests {
 
 === worker/src/consumers/notify_new_product.rs ===
 //! `notify_new_product`: reacts to `product_created`, `product_published`. Written once by
-//! `puerto generate consumer`; it is yours now.
+//! `puerto generar consumidor`; it is yours now.
 //!
 //! Delivery is at-least-once: the same event (the same `event.id`) can arrive twice — after a
 //! crash, a timeout or a redeploy. Whatever this does must be **idempotent**: check whether it
@@ -6123,7 +6123,7 @@ impl ManejadorEvento for NotifyNewProduct {
                 }
                 Err(err) => ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle),
             },
-            // Not subscribed (puerto.toml `[[consumer]] events`): nothing to do.
+            // Not subscribed (puerto.toml `[[consumidor]] eventos`): nothing to do.
             _ => ResultadoManejo::Ack,
         }
     }
@@ -6195,8 +6195,8 @@ mod tests {
 pub mod registry;
 
 === worker/src/generated/registry.rs ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`; add a
-// consumer with `puerto generate consumer <name> --on <event_type>`.
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`; add a
+// consumer with `puerto generar consumidor <name> --tras <event_type>`.
 use std::sync::Arc;
 
 use business::domain::product::events::{PRODUCT_CREATED, PRODUCT_PUBLISHED};
@@ -6213,7 +6213,7 @@ use crate::consumers::mail_price_alert::SendPriceAlertMail;
 use crate::consumers::mail_product_live::SendProductLiveMail;
 use crate::consumers::notify_new_product::NotifyNewProduct;
 
-/// The relay and one consumer per `[[consumer]]`, on the `db` transport: the relay hands each
+/// The relay and one consumer per `[[consumidor]]`, on the `db` transport: the relay hands each
 /// event to `entregas_eventos`, one row per consumer subscribed to its type.
 pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {
     let database_url = std::env::var("DATABASE_URL").map_err(|_| {

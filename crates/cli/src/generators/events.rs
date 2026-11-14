@@ -1,5 +1,5 @@
 //! Domain events in generated projects (ADR-0018): `events.rs` (always regenerated from
-//! puerto.toml), the unit of work ports, and `puerto generate event`.
+//! puerto.toml), the unit of work ports, and `puerto generar evento`.
 
 use crate::generators::layout;
 use std::path::Path;
@@ -115,7 +115,7 @@ pub fn regenerate_events(
     Ok(())
 }
 
-/// `puerto generate event <Entity> <name>`: declares a custom event and regenerates `events.rs`.
+/// `puerto generar evento <Entity> <name>`: declares a custom event and regenerates `events.rs`.
 /// No use case records it until one is written to.
 pub fn run_generate_event(
     entity: &str,
@@ -126,7 +126,7 @@ pub fn run_generate_event(
     if !config.project.has_events() {
         return Err(
             "this project has no domain events — they need a project created with \
-                    `puerto new --db --events db`"
+                    `puerto nuevo --db --eventos db`"
                 .into(),
         );
     }

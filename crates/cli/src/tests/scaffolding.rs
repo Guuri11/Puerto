@@ -1,6 +1,6 @@
 use super::*;
 
-// ── puerto generate scaffold ──────────────────────────────────────────────
+// ── puerto generar scaffold ──────────────────────────────────────────────
 
 #[test]
 fn scaffold_creates_all_files_for_single_word_entity() {
@@ -185,7 +185,7 @@ pub(super) fn setup_puerto_stubs(base: &Path) {
 
     fs::write(
         base.join("puerto.toml"),
-        "[project]\nname = \"test-app\"\n\n[[entity]]\nname = \"Greeting\"\nuse_cases = [\"get_greeting\"]\n",
+        "[proyecto]\nnombre = \"test-app\"\n\n[[entidad]]\nnombre = \"Greeting\"\ncasos_de_uso = [\"get_greeting\"]\n",
     )
     .unwrap();
 }
@@ -250,9 +250,9 @@ fn scaffold_updates_puerto_toml_and_regenerates_bootstrap() {
     scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
 
     let toml = fs::read_to_string(dir.join("puerto.toml")).unwrap();
-    assert!(toml.contains("name = \"Product\""));
+    assert!(toml.contains("nombre = \"Product\""));
     assert!(toml.contains("create_product"));
-    assert!(toml.contains("name = \"Greeting\"")); // original still present
+    assert!(toml.contains("nombre = \"Greeting\"")); // original still present
 
     let bootstrap =
         fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
@@ -266,7 +266,7 @@ fn scaffold_updates_puerto_toml_and_regenerates_bootstrap() {
     cleanup(&dir);
 }
 
-// ── puerto generate scaffold --db ─────────────────────────────────────────
+// ── puerto generar scaffold --db ─────────────────────────────────────────
 
 fn setup_db_puerto_stubs(base: &Path) {
     setup_puerto_stubs(base);
@@ -338,7 +338,7 @@ fn scaffold_without_db_still_uses_inmemory() {
     cleanup(&dir);
 }
 
-// ── puerto generate scaffold --crud ──────────────────────────────────────
+// ── puerto generar scaffold --crud ──────────────────────────────────────
 
 fn setup_puerto_stubs_for_crud(base: &Path) {
     setup_puerto_stubs(base);
@@ -549,7 +549,7 @@ pub(super) fn setup_puerto_stubs_with_project_db(base: &Path) {
     .unwrap();
     fs::write(
         base.join("puerto.toml"),
-        "[project]\nname = \"test-app\"\ndb = true\n\n[[entity]]\nname = \"Greeting\"\nuse_cases = [\"get_greeting\"]\n",
+        "[proyecto]\nnombre = \"test-app\"\ndb = true\n\n[[entidad]]\nnombre = \"Greeting\"\ncasos_de_uso = [\"get_greeting\"]\n",
     ).unwrap();
 }
 
@@ -691,7 +691,7 @@ fn rescaffold_refuses_to_overwrite_and_writes_nothing() {
     assert!(result.is_err(), "re-scaffold should refuse without --force");
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("--force"),
+        err.contains("--forzar"),
         "error should point at --force: {err}"
     );
     assert_eq!(

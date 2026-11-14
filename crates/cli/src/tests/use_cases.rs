@@ -1,11 +1,11 @@
 use super::*;
 
-// ── puerto generate use-case ──────────────────────────────────────────────
+// ── puerto generar caso-de-uso ──────────────────────────────────────────────
 
 pub(super) fn setup_use_case_stubs(base: &Path) {
     fs::write(
         base.join("puerto.toml"),
-        "[project]\nname = \"test-app\"\n\n[[entity]]\nname = \"Product\"\nuse_cases = [\"create_product\"]\n",
+        "[proyecto]\nnombre = \"test-app\"\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\n",
     )
     .unwrap();
 

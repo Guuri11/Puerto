@@ -1,4 +1,4 @@
-//! Yours: `puerto new --auth local` writes this file once.
+//! Yours: `puerto nuevo --auth local` writes this file once.
 //!
 //! No `Debug` on the requests: they carry a password, and a `{:?}` in a log line must not print it.
 

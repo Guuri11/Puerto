@@ -557,7 +557,7 @@ fn compile_matrix_patches_only_the_runtime_crates_a_project_names() {
     cleanup(&dir);
 }
 
-// Phase 13.2 (ADR-0018): the outbox tables `puerto new --events` writes are the ones
+// Phase 13.2 (ADR-0018): the outbox tables `puerto nuevo --eventos` writes are the ones
 // `puerto-sqlx`'s own tests run against (`MIGRACION_OUTBOX` embeds that file).
 #[test]
 fn outbox_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
@@ -581,7 +581,7 @@ fn sent_mails_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with()
     assert!(runtime_lib.contains(r#"include_str!("../migrations/sent_mails.sql")"#));
 }
 
-// Phase 16.6 (ADR-0021): `puerto-sqlx`'s `SesionesPostgres` joins the `users` table `puerto new --auth`
+// Phase 16.6 (ADR-0021): `puerto-sqlx`'s `SesionesPostgres` joins the `users` table `puerto nuevo --auth`
 // writes, so the two must be one schema (`MIGRACION_USUARIOS` embeds that file).
 #[test]
 fn users_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
@@ -593,7 +593,7 @@ fn users_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {
     assert!(runtime_lib.contains(r#"include_str!("../migrations/users.sql")"#));
 }
 
-// Phase 16.6 (ADR-0021): the credentials and sessions `puerto new --auth local` writes are the
+// Phase 16.6 (ADR-0021): the credentials and sessions `puerto nuevo --auth local` writes are the
 // tables `puerto-sqlx`'s own tests run against (`MIGRACION_AUTH` embeds that file).
 #[test]
 fn auth_migration_template_is_exactly_the_one_puerto_sqlx_is_tested_with() {

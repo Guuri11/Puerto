@@ -9,60 +9,72 @@ use crate::validation::is_pascal_case;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PuertoConfig {
+    #[serde(rename = "proyecto")]
     pub project: Project,
     #[serde(default)]
+    #[serde(rename = "entidad")]
     pub entity: Vec<Entity>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "objeto_valor")]
     pub value_object: Vec<ValueObjectDefinition>,
     /// The worker's consumers (ADR-0018 § 5) — `events` projects.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "consumidor")]
     pub consumer: Vec<Consumer>,
     /// The project's mails (ADR-0020) — wiring only: each one's data, text and recipient live in
     /// its files.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "correo")]
     pub mail: Vec<Mail>,
 }
 
-/// One `[[mail]]`: `business/src/domain/mail/<name>.rs`, `infrastructure/src/mail/<name>.rs` and
+/// One `[[correo]]`: `business/src/domain/mail/<name>.rs`, `infrastructure/src/mail/<name>.rs` and
 /// `infrastructure/mail/<name>/`.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Mail {
     /// snake_case, unique: the modules, the template folder, `{Name}Mail` / `{Name}Mailer`.
+    #[serde(rename = "nombre")]
     pub name: String,
     /// The event types the worker sends it on — `events` projects. Empty: nothing sends it yet.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "tras")]
     pub on: Vec<String>,
 }
 
-/// One `[[consumer]]`: `worker/src/consumers/<name>.rs`, subscribed to `events`.
+/// One `[[consumidor]]`: `worker/src/consumers/<name>.rs`, subscribed to `events`.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Consumer {
     /// snake_case, unique: the module, the `db` transport's consumer name and the Kafka group id.
+    #[serde(rename = "nombre")]
     pub name: String,
     /// The event types it is delivered (`product_created`), each declared by some entity.
+    #[serde(rename = "eventos")]
     pub events: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ValueObjectDefinition {
+    #[serde(rename = "nombre")]
     pub name: String,
-    #[serde(rename = "type")]
+    #[serde(rename = "tipo")]
     pub inner_type: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Project {
+    #[serde(rename = "nombre")]
     pub name: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub db: bool,
-    /// The project has a `web/` frontend (`puerto new` without `--no-web`).
+    /// The project has a `web/` frontend (`puerto nuevo` without `--sin-web`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub web: bool,
     /// Domain events (ADR-0018): the transport, `"db"` or `"kafka"`. Absent: no events. Set by
-    /// `puerto new --db --events <transport>`.
+    /// `puerto nuevo --db --eventos <transport>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "eventos")]
     pub events: Option<String>,
-    /// Auth (ADR-0021): `"oidc"` or `"local"`. Absent: no auth. Set by `puerto new --auth <mode>`.
+    /// Auth (ADR-0021): `"oidc"` or `"local"`. Absent: no auth. Set by `puerto nuevo --auth <mode>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<String>,
 }
@@ -82,45 +94,56 @@ impl Project {
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Entity {
     /// PascalCase entity name, e.g. "Product"
+    #[serde(rename = "nombre")]
     pub name: String,
     /// snake_case use case action names, e.g. ["create_product"]
+    #[serde(rename = "casos_de_uso")]
     pub use_cases: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub db: bool,
     /// Auth projects: the use cases whose routes take no `BearerAuth` — what scaffold wrote
-    /// (`--public`); after it, `routes.rs` is the user's.
+    /// (`--publico`); after it, `routes.rs` is the user's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "publicos")]
     pub public: Vec<String>,
     /// Auth projects: the roles a use case's route requires (`#[requiere_rol]`), by use case —
-    /// what scaffold wrote (`--role`). Declared before `fields`: written after the
-    /// `[[entity.fields]]`, `[entity.roles]` would read as if it belonged to the last field.
+    /// what scaffold wrote (`--rol`). Declared before `fields`: written after the
+    /// `[[entidad.campos]]`, `[entity.roles]` would read as if it belonged to the last field.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub roles: BTreeMap<String, Vec<String>>,
     #[serde(default)]
+    #[serde(rename = "campos")]
     pub fields: Vec<Field>,
     /// Custom events beyond the CRUD ones (`product_published`), snake_case — `events` projects.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "eventos")]
     pub events: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Field {
     /// Snake_case field name, e.g. "name"
+    #[serde(rename = "nombre")]
     pub name: String,
     /// Rust type string, e.g. "String", "i64", "Option<String>"
-    #[serde(rename = "type")]
+    #[serde(rename = "tipo")]
     pub field_type: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(rename = "unico")]
     pub unique: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "objeto_valor")]
     pub value_object: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "clase_objeto_valor")]
     pub value_object_kind: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "variantes")]
     pub enum_variants: Option<Vec<String>>,
     /// A reference (ADR-0022): the CRUD entity whose id this `Uuid` / `Option<Uuid>` holds. The
     /// domain holds that entity's id type; a `--db` project's column is a foreign key to it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "referencia")]
     pub references: Option<String>,
 }
 
@@ -325,10 +348,10 @@ pub fn write(base: &Path, config: &PuertoConfig) -> Result<(), Box<dyn std::erro
 ///
 /// Upsert rather than no-op: re-scaffolding an entity with a different field list used to leave
 /// puerto.toml describing the *old* fields while the code on disk had the new ones — a divergence
-/// neither `puerto validate` nor `puerto generate bootstrap` could see, in the one file documented
+/// neither `puerto validar` nor `puerto generar bootstrap` could see, in the one file documented
 /// as the source of truth.
 ///
-/// Use cases are **merged**, not replaced: actions added by `puerto generate use-case` survive a
+/// Use cases are **merged**, not replaced: actions added by `puerto generar caso-de-uso` survive a
 /// re-scaffold. Fields are replaced — they are what the caller just regenerated the code from.
 pub fn add_entity(
     base: &Path,

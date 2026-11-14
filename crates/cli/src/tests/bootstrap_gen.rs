@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn bootstrap_with_entity_without_use_cases_is_syntactically_valid() {
-    // An entity can reach puerto.toml with no use cases (hand-edited manifest; `puerto validate`
+    // An entity can reach puerto.toml with no use cases (hand-edited manifest; `puerto validar`
     // only warns). Joining an empty use-case list used to emit `EntityApi { , … }`.
     let entities = vec![puerto_toml::Entity {
         name: "Invoice".to_string(),

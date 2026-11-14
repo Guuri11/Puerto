@@ -1,5 +1,5 @@
 // Phase 13.4 (ADR-0018 § 5): the `worker/` crate of an `events` project and
-// `puerto generate consumer`; Phase 13.5: the same worker on the `kafka` transport.
+// `puerto generar consumidor`; Phase 13.5: the same worker on the `kafka` transport.
 use super::*;
 
 fn read(dir: &Path, path: &str) -> String {
@@ -42,7 +42,7 @@ fn error_of(result: Result<(), Box<dyn std::error::Error>>) -> String {
     result.err().map(|e| e.to_string()).unwrap_or_default()
 }
 
-// ── puerto new ───────────────────────────────────────────────────────────
+// ── puerto nuevo ───────────────────────────────────────────────────────────
 
 #[test]
 fn new_with_db_events_writes_the_worker_and_adds_it_to_the_workspace() {
@@ -116,7 +116,7 @@ fn new_with_db_events_tells_agents_that_the_registry_is_never_hand_edited() {
         agents.contains("Never hand-edit `worker/src/generated/registry.rs`"),
         "{agents}"
     );
-    assert!(agents.contains("puerto generate consumer"), "{agents}");
+    assert!(agents.contains("puerto generar consumidor"), "{agents}");
     assert!(agents.contains("idempotent"), "{agents}");
     let worker_agents = read(&output, "worker/AGENTS.md");
     assert!(worker_agents.contains("idempotent"), "{worker_agents}");
@@ -225,7 +225,7 @@ fn new_without_events_writes_no_worker() {
     cleanup(&dir);
 }
 
-// ── puerto generate consumer ─────────────────────────────────────────────
+// ── puerto generar consumidor ─────────────────────────────────────────────
 
 #[test]
 fn generate_consumer_writes_the_stub_the_toml_entry_and_the_registry_line() {
@@ -399,7 +399,7 @@ fn generate_consumer_is_refused_outside_an_events_project() {
         &output,
     ));
 
-    assert!(err.contains("--events"), "{err}");
+    assert!(err.contains("--eventos"), "{err}");
     cleanup(&dir);
 }
 
@@ -483,13 +483,13 @@ fn generate_bootstrap_refuses_when_a_declared_consumer_has_no_handler() {
     cleanup(&dir);
 }
 
-// ── puerto validate ─────────────────────────────────────────────────────
+// ── puerto validar ─────────────────────────────────────────────────────
 
 fn manifest_with_consumer(consumer: &str) -> String {
     format!(
-        "[project]\nname = \"shop\"\ndb = true\nevents = \"db\"\n\n[[entity]]\nname = \"Product\"\n\
-         use_cases = [\"create_product\", \"get_product\", \"list_products\", \"update_product\", \
-         \"delete_product\"]\ndb = true\nevents = [\"product_published\"]\n\n{consumer}"
+        "[proyecto]\nnombre = \"shop\"\ndb = true\neventos = \"db\"\n\n[[entidad]]\nnombre = \"Product\"\n\
+         casos_de_uso = [\"create_product\", \"get_product\", \"list_products\", \"update_product\", \
+         \"delete_product\"]\ndb = true\neventos = [\"product_published\"]\n\n{consumer}"
     )
 }
 
@@ -506,7 +506,7 @@ fn validate_manifest(name: &str, manifest: &str) -> Result<(), String> {
 #[test]
 fn validate_accepts_a_consumer_of_declared_events() {
     let manifest = manifest_with_consumer(
-        "[[consumer]]\nname = \"notify_new_product\"\nevents = [\"product_created\", \"product_published\"]\n",
+        "[[consumidor]]\nnombre = \"notify_new_product\"\neventos = [\"product_created\", \"product_published\"]\n",
     );
 
     assert_eq!(validate_manifest("validate_consumer_ok", &manifest), Ok(()));
@@ -514,8 +514,9 @@ fn validate_accepts_a_consumer_of_declared_events() {
 
 #[test]
 fn validate_rejects_a_consumer_of_an_undeclared_event() {
-    let manifest =
-        manifest_with_consumer("[[consumer]]\nname = \"audit\"\nevents = [\"product_sold\"]\n");
+    let manifest = manifest_with_consumer(
+        "[[consumidor]]\nnombre = \"audit\"\neventos = [\"product_sold\"]\n",
+    );
 
     let err = validate_manifest("validate_consumer_event", &manifest).unwrap_err();
 
@@ -528,9 +529,9 @@ fn validate_rejects_a_consumer_of_an_undeclared_event() {
 #[test]
 fn validate_rejects_bad_duplicate_and_empty_consumers() {
     let manifest = manifest_with_consumer(
-        "[[consumer]]\nname = \"Audit\"\nevents = [\"product_created\"]\n\n\
-         [[consumer]]\nname = \"notify\"\nevents = [\"product_created\"]\n\n\
-         [[consumer]]\nname = \"notify\"\nevents = []\n",
+        "[[consumidor]]\nnombre = \"Audit\"\neventos = [\"product_created\"]\n\n\
+         [[consumidor]]\nnombre = \"notify\"\neventos = [\"product_created\"]\n\n\
+         [[consumidor]]\nnombre = \"notify\"\neventos = []\n",
     );
 
     let err = validate_manifest("validate_consumer_names", &manifest).unwrap_err();
@@ -545,7 +546,7 @@ fn validate_rejects_bad_duplicate_and_empty_consumers() {
 
 #[test]
 fn validate_rejects_consumers_in_a_project_without_events() {
-    let manifest = "[project]\nname = \"shop\"\ndb = true\n\n[[consumer]]\nname = \"audit\"\nevents = [\"product_created\"]\n";
+    let manifest = "[proyecto]\nnombre = \"shop\"\ndb = true\n\n[[consumidor]]\nnombre = \"audit\"\neventos = [\"product_created\"]\n";
 
     let err = validate_manifest("validate_consumer_no_events", manifest).unwrap_err();
 

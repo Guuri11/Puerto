@@ -370,7 +370,7 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
 
     if !config.entity.iter().any(|e| e.name == pascal) {
         return Err(format!(
-            "{pascal} not found in puerto.toml. Run `puerto generate domain {pascal}` first."
+            "{pascal} not found in puerto.toml. Run `puerto generar dominio {pascal}` first."
         )
         .into());
     }
@@ -398,6 +398,6 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
     };
     println!("✓ infrastructure/      — {repo_label}");
     println!();
-    println!("  Next: puerto generate presentation {pascal}");
+    println!("  Next: puerto generar presentacion {pascal}");
     Ok(())
 }

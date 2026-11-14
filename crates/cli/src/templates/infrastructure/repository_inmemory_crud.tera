@@ -11,7 +11,7 @@ use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 /// Keeps the {{ plural }} it is given in process memory: they are lost when the process stops.
 /// Like the Postgres adapter, it hides deleted rows and lists newest first{% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %};
 /// a unique value another live row holds is `Duplicate`{% endif %}.
-/// It stands in until there is a database (`puerto new --db` generates Postgres repositories).
+/// It stands in until there is a database (`puerto nuevo --db` generates Postgres repositories).
 #[derive(Default)]
 pub struct InMemory{{ pascal }}Repository {
     rows: RwLock<HashMap<{{ pascal }}Id, {{ pascal }}>>,

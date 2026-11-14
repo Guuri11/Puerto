@@ -10,7 +10,7 @@ export function HomePage({ entries }: { entries: NavEntry[] }) {
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Home</h1>
       {entries.length === 0 ? (
-        <EmptyState message="No entities yet. Add one with `puerto generate scaffold <Name>`." />
+        <EmptyState message="No entities yet. Add one with `puerto generar scaffold <Name>`." />
       ) : (
         <ul className="menu rounded-box bg-base-100">
           {entries.map((entry) => (

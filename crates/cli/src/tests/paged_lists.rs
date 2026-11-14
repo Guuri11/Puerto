@@ -16,7 +16,7 @@ fn scaffold_crud_product(name: &str, db: bool) -> PathBuf {
     dir
 }
 
-/// A fresh `puerto new` project (web by default) with a scaffolded `Product`.
+/// A fresh `puerto nuevo` project (web by default) with a scaffolded `Product`.
 fn web_project_with_product(name: &str) -> (PathBuf, PathBuf) {
     let dir = temp_dir(name);
     cleanup(&dir);

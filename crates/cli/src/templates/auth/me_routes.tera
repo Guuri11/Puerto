@@ -1,4 +1,4 @@
-//! Yours: `puerto new --auth` writes this file once.
+//! Yours: `puerto nuevo --auth` writes this file once.
 
 use poem_openapi::{OpenApi, payload::Json};
 use puerto_web::auth::BearerAuth;

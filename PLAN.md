@@ -3113,7 +3113,7 @@ byte. Las plantillas solo cambian las llamadas, en el mismo commit. `release.yml
 publicación y `release.md` cambian a los nombres nuevos. Tests: los de cada crate;
 `make test/db`, `test/kafka`, `test/mail` y `test/auth` en verde.
 
-### 19.5 — `puerto.toml` y la CLI en castellano
+### 19.5 — `puerto.toml` y la CLI en castellano ✅
 
 - El esquema del glosario (`[proyecto]`, `[[entidad]]`, `[[entidad.campos]]`…) y los comandos y
   flags (`puerto nuevo`, `generar …`, `validar`, `--forzar`…). La sintaxis de los campos no cambia.

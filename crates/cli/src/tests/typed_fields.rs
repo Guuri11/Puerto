@@ -10,29 +10,29 @@ fn parse_puerto_toml_with_fields() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity.fields]]
-name = "name"
-type = "String"
+[[entidad.campos]]
+nombre = "name"
+tipo = "String"
 
-[[entity.fields]]
-name = "price"
-type = "i64"
+[[entidad.campos]]
+nombre = "price"
+tipo = "i64"
 
-[[entity.fields]]
-name = "sku"
-type = "String"
-unique = true
+[[entidad.campos]]
+nombre = "sku"
+tipo = "String"
+unico = true
 
-[[entity.fields]]
-name = "description"
-type = "Option<String>"
+[[entidad.campos]]
+nombre = "description"
+tipo = "Option<String>"
 "#,
     )
     .unwrap();
@@ -63,12 +63,12 @@ fn parse_puerto_toml_without_fields_backwards_compat() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Greeting"
-use_cases = ["get_greeting"]
+[[entidad]]
+nombre = "Greeting"
+casos_de_uso = ["get_greeting"]
 "#,
     )
     .unwrap();
@@ -90,8 +90,8 @@ fn add_entity_with_fields() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 "#,
     )
     .unwrap();
@@ -680,20 +680,20 @@ fn scaffold_crud_writes_dynamic_use_case_params() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "test-app"
+        r#"[proyecto]
+nombre = "test-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product", "get_product", "list_products", "update_product", "delete_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product", "get_product", "list_products", "update_product", "delete_product"]
 
-[[entity.fields]]
-name = "name"
-type = "String"
+[[entidad.campos]]
+nombre = "name"
+tipo = "String"
 
-[[entity.fields]]
-name = "price"
-type = "i64"
+[[entidad.campos]]
+nombre = "price"
+tipo = "i64"
 "#,
     )
     .unwrap();

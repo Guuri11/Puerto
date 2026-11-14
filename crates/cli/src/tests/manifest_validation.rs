@@ -1,6 +1,6 @@
 use super::*;
 
-// ── Phase 8: puerto validate ─────────────────────────────────────────────────
+// ── Phase 8: puerto validar ─────────────────────────────────────────────────
 
 #[test]
 fn validate_valid_config() {
@@ -10,20 +10,20 @@ fn validate_valid_config() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product", "get_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product", "get_product"]
 
-[[entity.fields]]
-name = "title"
-type = "String"
+[[entidad.campos]]
+nombre = "title"
+tipo = "String"
 
-[[entity.fields]]
-name = "price"
-type = "i64"
+[[entidad.campos]]
+nombre = "price"
+tipo = "i64"
 "#,
     )
     .unwrap();
@@ -42,16 +42,16 @@ fn validate_rejects_unknown_field_type() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity.fields]]
-name = "title"
-type = "FancyType"
+[[entidad.campos]]
+nombre = "title"
+tipo = "FancyType"
 "#,
     )
     .unwrap();
@@ -75,12 +75,12 @@ fn validate_rejects_invalid_entity_name() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "lowercase_product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "lowercase_product"
+casos_de_uso = ["create_product"]
 "#,
     )
     .unwrap();
@@ -104,12 +104,12 @@ fn validate_rejects_invalid_use_case_name() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["CreateProduct"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["CreateProduct"]
 "#,
     )
     .unwrap();
@@ -133,20 +133,20 @@ fn validate_rejects_duplicate_field_name() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity.fields]]
-name = "title"
-type = "String"
+[[entidad.campos]]
+nombre = "title"
+tipo = "String"
 
-[[entity.fields]]
-name = "title"
-type = "i64"
+[[entidad.campos]]
+nombre = "title"
+tipo = "i64"
 "#,
     )
     .unwrap();
@@ -170,17 +170,17 @@ fn validate_warns_on_option_unique_field() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity.fields]]
-name = "email"
-type = "Option<String>"
-unique = true
+[[entidad.campos]]
+nombre = "email"
+tipo = "Option<String>"
+unico = true
 "#,
     )
     .unwrap();
@@ -199,16 +199,16 @@ fn validate_rejects_duplicate_entity_name() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity]]
-name = "Product"
-use_cases = ["get_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["get_product"]
 "#,
     )
     .unwrap();
@@ -232,16 +232,16 @@ fn validate_rejects_invalid_field_name() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity.fields]]
-name = "BadName"
-type = "String"
+[[entidad.campos]]
+nombre = "BadName"
+tipo = "String"
 "#,
     )
     .unwrap();
@@ -285,7 +285,7 @@ fn validate_fails_on_declared_but_unscaffolded_entity() {
     assert!(result.is_err(), "a phantom entity must fail validation");
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("Invoice") && err.contains("puerto generate scaffold Invoice"),
+        err.contains("Invoice") && err.contains("puerto generar scaffold Invoice"),
         "error should name the entity and the fix: {err}"
     );
 
@@ -340,7 +340,7 @@ fn bootstrap_command_refuses_when_declared_code_is_missing() {
 
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("--allow-missing"), "got: {err}");
+    assert!(err.contains("--permitir-faltantes"), "got: {err}");
     assert_eq!(
         fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap(),
         before,
@@ -423,16 +423,16 @@ fn validate_rejects_hand_edited_system_field_name() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity.fields]]
-name = "created_at"
-type = "DateTime<Utc>"
+[[entidad.campos]]
+nombre = "created_at"
+tipo = "DateTime<Utc>"
 "#,
     )
     .unwrap();
@@ -452,12 +452,12 @@ fn validate_rejects_entity_name_that_collides_with_generated_code() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Error"
-use_cases = ["create_error"]
+[[entidad]]
+nombre = "Error"
+casos_de_uso = ["create_error"]
 "#,
     )
     .unwrap();
@@ -477,22 +477,22 @@ fn validate_rejects_conflicting_value_object_inner_types() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity.fields]]
-name = "code"
-type = "String"
-value_object = "Code"
+[[entidad.campos]]
+nombre = "code"
+tipo = "String"
+objeto_valor = "Code"
 
-[[entity.fields]]
-name = "other_code"
-type = "i64"
-value_object = "Code"
+[[entidad.campos]]
+nombre = "other_code"
+tipo = "i64"
+objeto_valor = "Code"
 "#,
     )
     .unwrap();
@@ -595,17 +595,17 @@ fn validate_rejects_sql_reserved_field_names_in_a_database_project() {
     fs::create_dir_all(&dir).unwrap();
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 db = true
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 
-[[entity.fields]]
-name = "user"
-type = "String"
+[[entidad.campos]]
+nombre = "user"
+tipo = "String"
 "#,
     )
     .unwrap();
@@ -656,14 +656,14 @@ fn validate_manifest(name: &str, manifest: &str) -> Result<(), String> {
 fn validate_accepts_public_and_roles_in_an_auth_project() {
     let result = validate_manifest(
         "validate_auth_ok",
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 auth = "oidc"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product", "list_products"]
-public = ["list_products"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product", "list_products"]
+publicos = ["list_products"]
 roles = { create_product = ["admin"] }
 "#,
     );
@@ -675,7 +675,7 @@ roles = { create_product = ["admin"] }
 fn validate_rejects_an_unknown_auth_mode() {
     let result = validate_manifest(
         "validate_auth_mode",
-        "[project]\nname = \"my-app\"\nauth = \"auth0\"\n",
+        "[proyecto]\nnombre = \"my-app\"\nauth = \"auth0\"\n",
     );
 
     assert!(result.unwrap_err().contains("unknown auth mode 'auth0'"));
@@ -685,7 +685,7 @@ fn validate_rejects_an_unknown_auth_mode() {
 fn validate_rejects_local_auth_without_a_database() {
     let result = validate_manifest(
         "validate_auth_local",
-        "[project]\nname = \"my-app\"\nauth = \"local\"\n",
+        "[proyecto]\nnombre = \"my-app\"\nauth = \"local\"\n",
     );
 
     assert!(result.unwrap_err().contains("needs project.db = true"));
@@ -695,13 +695,13 @@ fn validate_rejects_local_auth_without_a_database() {
 fn validate_rejects_public_and_roles_without_auth() {
     let result = validate_manifest(
         "validate_auth_none",
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[entity]]
-name = "Product"
-use_cases = ["list_products"]
-public = ["list_products"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["list_products"]
+publicos = ["list_products"]
 "#,
     );
 
@@ -716,13 +716,13 @@ public = ["list_products"]
 fn validate_rejects_the_user_entity_in_an_auth_project() {
     let result = validate_manifest(
         "validate_auth_user",
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 auth = "oidc"
 
-[[entity]]
-name = "User"
-use_cases = ["get_user"]
+[[entidad]]
+nombre = "User"
+casos_de_uso = ["get_user"]
 "#,
     );
 
@@ -733,13 +733,13 @@ use_cases = ["get_user"]
 fn validate_rejects_roles_naming_another_use_case() {
     let result = validate_manifest(
         "validate_auth_roles",
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 auth = "oidc"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product"]
 roles = { delete_product = ["admin"] }
 "#,
     );
@@ -758,19 +758,19 @@ fn auth_access_survives_a_write_of_puerto_toml() {
     fs::create_dir_all(&dir).unwrap();
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 auth = "oidc"
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product", "list_products"]
-public = ["list_products"]
+[[entidad]]
+nombre = "Product"
+casos_de_uso = ["create_product", "list_products"]
+publicos = ["list_products"]
 roles = { create_product = ["admin", "editor"] }
 
-[[entity.fields]]
-name = "title"
-type = "String"
+[[entidad.campos]]
+nombre = "title"
+tipo = "String"
 "#,
     )
     .unwrap();

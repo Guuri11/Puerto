@@ -1,6 +1,6 @@
-//! The worker of an `events` project (ADR-0018 § 5): the `worker/` crate `puerto new --events`
+//! The worker of an `events` project (ADR-0018 § 5): the `worker/` crate `puerto nuevo --eventos`
 //! writes, `worker/src/generated/registry.rs` (always regenerated from puerto.toml, on the
-//! project's transport) and `puerto generate consumer`.
+//! project's transport) and `puerto generar consumidor`.
 
 use crate::generators::layout;
 use std::collections::BTreeMap;
@@ -128,12 +128,12 @@ struct RegistryConsumer {
     events: Vec<String>,
     /// The aggregates whose topics it reads (Kafka): `product`, sorted.
     aggregates: Vec<String>,
-    /// The handler, as the registry builds it: the unit struct of a `[[consumer]]`, the
+    /// The handler, as the registry builds it: the unit struct of a `[[consumidor]]`, the
     /// `Send{Mail}Mail { … }` of a mail sent on events.
     handler: String,
 }
 
-/// `worker/src/generated/registry.rs`: the relay and every `[[consumer]]`, on the project's
+/// `worker/src/generated/registry.rs`: the relay and every `[[consumidor]]`, on the project's
 /// transport.
 pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::error::Error>> {
     let declared = declared_events(config);
@@ -459,7 +459,7 @@ fn redpanda_service(project_name: &str) -> String {
     )
 }
 
-/// Adds Redpanda to the `docker-compose.yml` `puerto new --db` wrote: its service after the
+/// Adds Redpanda to the `docker-compose.yml` `puerto nuevo --db` wrote: its service after the
 /// others, its volume after theirs.
 fn add_redpanda_to_compose(
     base: &Path,
@@ -483,7 +483,7 @@ fn add_redpanda_to_compose(
     Ok(())
 }
 
-/// `puerto generate consumer <name> --on <event_type>[,…]`: declares the consumer, writes its
+/// `puerto generar consumidor <name> --tras <event_type>[,…]`: declares the consumer, writes its
 /// handler, declares its module and regenerates the registry. Refuses an existing name, an event
 /// no entity declares, and a file already on disk (it is never overwritten).
 pub fn run_generate_consumer(
@@ -495,7 +495,7 @@ pub fn run_generate_consumer(
     if !has_worker(&config) {
         return Err(
             "this project has no worker — consumers need a project created with \
-             `puerto new --db --events db|kafka`"
+             `puerto nuevo --db --eventos db|kafka`"
                 .into(),
         );
     }
@@ -530,7 +530,7 @@ pub fn run_generate_consumer(
         .into());
     }
     if events.is_empty() {
-        return Err("a consumer needs at least one event: --on <event_type>".into());
+        return Err("a consumer needs at least one event: --tras <event_type>".into());
     }
     let mut unique: Vec<String> = vec![];
     for event in events {

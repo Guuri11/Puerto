@@ -1382,7 +1382,7 @@ fn vscode_web_snippets() -> Result<String, serde_json::Error> {
     Ok(serde_json::to_string_pretty(&all)? + "\n")
 }
 
-/// `puerto generate snippets [--ide <ide>]`
+/// `puerto generar snippets [--ide <ide>]`
 pub fn run(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(i) = ide {
         if !matches!(i, "zed" | "vscode") {

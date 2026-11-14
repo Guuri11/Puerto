@@ -1,5 +1,5 @@
 //! `{{ name }}`: reacts to {% for e in events %}`{{ e.event_type }}`{% if not loop.last %}, {% endif %}{% endfor %}. Written once by
-//! `puerto generate consumer`; it is yours now.
+//! `puerto generar consumidor`; it is yours now.
 //!
 //! Delivery is at-least-once: the same event (the same `event.id`) can arrive twice — after a
 //! crash, a timeout or a redeploy. Whatever this does must be **idempotent**: check whether it
@@ -33,7 +33,7 @@ impl ManejadorEvento for {{ pascal }} {
                 Err(err) => ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle),
             },
 {%- endfor %}
-            // Not subscribed (puerto.toml `[[consumer]] events`): nothing to do.
+            // Not subscribed (puerto.toml `[[consumidor]] eventos`): nothing to do.
             _ => ResultadoManejo::Ack,
         }
     }

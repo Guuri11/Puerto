@@ -1,6 +1,6 @@
 use super::*;
 
-// ── puerto new (non-interactive / flag-driven) ────────────────────────────
+// ── puerto nuevo (non-interactive / flag-driven) ────────────────────────────
 
 #[test]
 fn new_name_flag_sets_project_name() {
@@ -49,7 +49,7 @@ fn new_without_db_flag_has_no_db_files() {
     cleanup(&dir);
 }
 
-// ── puerto new ────────────────────────────────────────────────────────────
+// ── puerto nuevo ────────────────────────────────────────────────────────────
 
 #[test]
 fn creates_project_structure() {
@@ -191,8 +191,8 @@ fn puerto_toml_has_project_name_and_greeting_entity() {
     let output = generate_project("my-app", &dir).unwrap();
 
     let content = fs::read_to_string(output.join("puerto.toml")).unwrap();
-    assert!(content.contains("name = \"my-app\""));
-    assert!(content.contains("name = \"Greeting\""));
+    assert!(content.contains("nombre = \"my-app\""));
+    assert!(content.contains("nombre = \"Greeting\""));
     assert!(content.contains("get_greeting"));
 
     cleanup(&dir);
@@ -223,7 +223,7 @@ fn generated_project_compiles_and_tests_pass() {
     cleanup(&dir);
 }
 
-// ── puerto new --db ───────────────────────────────────────────────────────
+// ── puerto nuevo --db ───────────────────────────────────────────────────────
 
 pub(super) fn new_project_non_interactive(
     name: Option<String>,
@@ -463,7 +463,7 @@ fn db_project_has_db_rs_with_the_project_migrator() {
 #[test]
 fn should_declare_the_db_module_when_a_db_project_is_created() {
     // `db.rs` was written but never declared until the first scaffold: an `--events` project's
-    // worker names `infrastructure::db` and did not compile straight out of `puerto new`.
+    // worker names `infrastructure::db` and did not compile straight out of `puerto nuevo`.
     let dir = temp_dir("db_mod_declared");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -518,7 +518,7 @@ fn no_db_project_puerto_toml_omits_project_db() {
     cleanup(&dir);
 }
 
-// ── Phase 7.3: puerto new --no-demo ──────────────────────────────────────
+// ── Phase 7.3: puerto nuevo --sin-demo ──────────────────────────────────────
 
 #[test]
 fn no_demo_has_no_greeting_files() {
@@ -549,7 +549,7 @@ fn no_demo_puerto_toml_has_no_entity_block() {
 
     let content = fs::read_to_string(output.join("puerto.toml")).unwrap();
     assert!(
-        !content.contains("[[entity]]"),
+        !content.contains("[[entidad]]"),
         "puerto.toml should have no entity blocks"
     );
     assert!(
@@ -557,8 +557,8 @@ fn no_demo_puerto_toml_has_no_entity_block() {
         "puerto.toml should not mention Greeting"
     );
     assert!(
-        content.contains("[project]"),
-        "puerto.toml should still have [project]"
+        content.contains("[proyecto]"),
+        "puerto.toml should still have [proyecto]"
     );
 
     cleanup(&dir);
@@ -851,7 +851,7 @@ fn web_only_agent_rules_stay_in_a_web_project_without_their_markers() {
 
     let agents = fs::read_to_string(output.join("AGENTS.md")).unwrap();
     assert!(!agents.contains("<!--"), "{agents}");
-    assert!(agents.contains("puerto generate web <Name>"), "{agents}");
+    assert!(agents.contains("puerto generar web <Name>"), "{agents}");
     assert!(agents.contains("make web/sync"), "{agents}");
     cleanup(&dir);
 }

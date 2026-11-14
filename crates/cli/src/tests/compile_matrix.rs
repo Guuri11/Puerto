@@ -13,15 +13,15 @@ use super::*;
 pub(super) struct Scenario<'a> {
     /// Temp-dir suffix and snapshot name; must be unique per scenario.
     pub(super) name: &'a str,
-    /// A `--db` project (`puerto new --db`): Pg repositories, migrations.
+    /// A `--db` project (`puerto nuevo --db`): Pg repositories, migrations.
     pub(super) db: bool,
-    /// `puerto new --db --events <transport>`: units of work, `events.rs`, the outbox.
+    /// `puerto nuevo --db --eventos <transport>`: units of work, `events.rs`, the outbox.
     pub(super) events: Option<&'a str>,
-    /// `puerto new --auth <mode>`: the `User` entity, the provisioning authenticator, `GET /me`.
+    /// `puerto nuevo --auth <mode>`: the `User` entity, the provisioning authenticator, `GET /me`.
     pub(super) auth: Option<&'a str>,
-    /// Strip the Greeting demo before scaffolding (`puerto new --no-demo`).
+    /// Strip the Greeting demo before scaffolding (`puerto nuevo --sin-demo`).
     pub(super) no_demo: bool,
-    /// Strip the web frontend (`puerto new --no-web`).
+    /// Strip the web frontend (`puerto nuevo --sin-web`).
     pub(super) no_web: bool,
     /// Shared VOs declared in puerto.toml before any scaffold (`(name, inner_type)`).
     pub(super) shared_vos: &'a [(&'a str, &'a str)],
@@ -31,11 +31,11 @@ pub(super) struct Scenario<'a> {
     pub(super) access: &'a [Access<'a>],
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
     pub(super) use_cases: &'a [(&'a str, &'a str)],
-    /// Custom events declared after scaffolding (`puerto generate event`): `(PascalEntity, name)`.
+    /// Custom events declared after scaffolding (`puerto generar evento`): `(PascalEntity, name)`.
     pub(super) entity_events: &'a [(&'a str, &'a str)],
-    /// Worker consumers added last (`puerto generate consumer`): `(name, event types)`.
+    /// Worker consumers added last (`puerto generar consumidor`): `(name, event types)`.
     pub(super) consumers: &'a [(&'a str, &'a [&'a str])],
-    /// Mails added after the consumers (`puerto generate mail`): `(name, CLI field args, --on,
+    /// Mails added after the consumers (`puerto generar correo`): `(name, CLI field args, --tras,
     /// --to)`.
     pub(super) mails: &'a [Mail<'a>],
 }
@@ -557,7 +557,7 @@ pub(super) const EVENTS_MAIL_KAFKA: Scenario = Scenario {
     ..EVENTS_MAIL
 };
 
-/// `puerto new --db --events db` and nothing else: the worker has to build before the first
+/// `puerto nuevo --db --eventos db` and nothing else: the worker has to build before the first
 /// scaffold (it named `infrastructure::db`, which only a scaffold declared). No `query!`, so no
 /// database is needed.
 pub(super) const EVENTS_FRESH: Scenario = Scenario {
@@ -611,7 +611,7 @@ pub(super) const MAIL: Scenario = Scenario {
     entities: &[],
 };
 
-/// `puerto new --auth oidc` (Phase 16.4): the `User` entity in memory, the provisioning
+/// `puerto nuevo --auth oidc` (Phase 16.4): the `User` entity in memory, the provisioning
 /// authenticator and its tests, `GET /me` in the spec the frontend is typed from, Keycloak in a
 /// `docker-compose.yml` of its own. The Greeting demo is `public`. Two scaffolds: protected routes
 /// (`BearerAuth`, `actor`, 401/403/503) and the route tests that prove them.
@@ -664,7 +664,7 @@ pub(super) const AUTH_OIDC_DB: Scenario = Scenario {
     ..AUTH_OIDC
 };
 
-/// `puerto new --db --auth local` (Phase 16.6, 16.7): accounts and sessions in Postgres — the
+/// `puerto nuevo --db --auth local` (Phase 16.6, 16.7): accounts and sessions in Postgres — the
 /// local use cases, `/auth/*`, `SesionesPostgres` as the authenticator, the users and auth migrations —
 /// the same access rules on two scaffolds as [`AUTH_OIDC`], and the frontend that signs in with a
 /// password.
@@ -677,7 +677,7 @@ pub(super) const AUTH_LOCAL: Scenario = Scenario {
 
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
 /// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
-/// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto new`
+/// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto nuevo`
 /// used to fail.
 fn assert_scenario_compiles(scenario: &Scenario) {
     let dir = scenario_workspace(scenario.name);
@@ -698,7 +698,7 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     if let Some(transport) = scenario.events {
         scaffold::apply_events_to_new_project(output, transport).unwrap();
     }
-    // `puerto new`'s order: auth last, after the strips.
+    // `puerto nuevo`'s order: auth last, after the strips.
     if scenario.no_demo {
         scaffold::apply_no_demo(output).unwrap();
     }
@@ -710,7 +710,7 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     if let Some(mode) = scenario.auth {
         crate::generators::auth::apply_auth_to_new_project(output, mode).unwrap();
     }
-    // `puerto new`, and every later command that writes Rust, ends with `cargo fmt`: the next
+    // `puerto nuevo`, and every later command that writes Rust, ends with `cargo fmt`: the next
     // step's patchers read formatted code, as they do for a user.
     let format = || crate::generators::format::format_project(output).unwrap();
     format();
@@ -818,7 +818,7 @@ pub(super) fn assert_generated_project_is_clean(
 
 /// Builds the project against the runtime crates in this checkout, not the ones on crates.io: the
 /// templates and an unreleased runtime change are tested together (ADR-0017). Done by the harness
-/// only — `puerto new` never writes it, so it is not in the snapshots either.
+/// only — `puerto nuevo` never writes it, so it is not in the snapshots either.
 pub(super) fn patch_runtime_crates(output: &Path) {
     let crates = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let manifest = output.join("Cargo.toml");
@@ -1054,7 +1054,7 @@ fn web_shell_passes_its_own_checks() {
     fs::create_dir_all(&dir).unwrap();
 
     let output = generate_project("compile-web-shell", &dir).unwrap();
-    // What `puerto new` does last.
+    // What `puerto nuevo` does last.
     crate::generators::format::format_project(&output).unwrap();
     assert_generated_project_is_clean(&output, &dir, "web_shell", &[]);
     assert!(

@@ -1,4 +1,4 @@
-//! Yours: `puerto new --auth` writes this file once. Every authenticated caller is a `User` row
+//! Yours: `puerto nuevo --auth` writes this file once. Every authenticated caller is a `User` row
 //! (ADR-0021 § 3 of Puerto): what other entities point at (`owner: UserId`), whichever provider
 //! signed the caller in.
 

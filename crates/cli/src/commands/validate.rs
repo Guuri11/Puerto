@@ -175,13 +175,13 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 if is_enum_vo(field) {
                     if field.field_type != "String" {
                         errors.push(format!(
-                            "entity '{}': field '{}' has enum value_object but type '{}' is not String",
+                            "entity '{}': field '{}' has enum objeto_valor but type '{}' is not String",
                             entity.name, field.name, field.field_type
                         ));
                     }
                     if field.enum_variants.is_none() {
                         errors.push(format!(
-                            "entity '{}': field '{}' has enum value_object_kind but no enum_variants",
+                            "entity '{}': field '{}' has enum clase_objeto_valor but no variantes",
                             entity.name, field.name
                         ));
                     }
@@ -196,19 +196,19 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     if !VO_ALLOWED_INNER_TYPES.contains(&field.field_type.as_str()) {
                         errors.push(format!(
-                            "entity '{}': field '{}' has value_object but inner type '{}' is not a allowed (allowed: {})",
+                            "entity '{}': field '{}' has objeto_valor but inner type '{}' is not a allowed (allowed: {})",
                             entity.name, field.name, field.field_type, VO_ALLOWED_INNER_TYPES.join(", ")
                         ));
                     }
                     if !vo_inner_type_is_valid(&field.field_type) {
                         errors.push(format!(
-                            "entity '{}': field '{}' has value_object with invalid composed inner type '{}'",
+                            "entity '{}': field '{}' has objeto_valor with invalid composed inner type '{}'",
                             entity.name, field.name, field.field_type
                         ));
                     }
                     if field.enum_variants.is_some() {
                         errors.push(format!(
-                            "entity '{}': field '{}' has enum_variants but value_object_kind is not 'enum'",
+                            "entity '{}': field '{}' has variantes but clase_objeto_valor is not 'enum'",
                             entity.name, field.name
                         ));
                     }
@@ -241,18 +241,18 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut seen_shared_vo_names: Vec<String> = vec![];
     for vo_def in &config.value_object {
         if let Err(e) = crate::validation::validate_vo_name(&vo_def.name) {
-            errors.push(format!("shared value_object '{}': {}", vo_def.name, e));
+            errors.push(format!("shared objeto_valor '{}': {}", vo_def.name, e));
         }
         if seen_shared_vo_names.contains(&vo_def.name) {
             errors.push(format!(
-                "duplicate shared value_object name '{}'",
+                "duplicate shared objeto_valor name '{}'",
                 vo_def.name
             ));
         }
         seen_shared_vo_names.push(vo_def.name.clone());
         if !SHARED_VO_ALLOWED_INNER_TYPES.contains(&vo_def.inner_type.as_str()) {
             errors.push(format!(
-                "shared value_object '{}': inner type '{}' is not allowed (allowed: {})",
+                "shared objeto_valor '{}': inner type '{}' is not allowed (allowed: {})",
                 vo_def.name,
                 vo_def.inner_type,
                 SHARED_VO_ALLOWED_INNER_TYPES.join(", ")
@@ -329,7 +329,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
             .any(|c| c.name == format!("mail_{}", mail.name))
         {
             errors.push(format!(
-                "mail '{0}': the worker runs it as the consumer 'mail_{0}', which a [[consumer]] \
+                "mail '{0}': the worker runs it as the consumer 'mail_{0}', which a [[consumidor]] \
                  already uses",
                 mail.name
             ));
@@ -349,7 +349,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     errors.extend(crate::generators::consistency::auth_drift(cwd, &config));
     for orphan in crate::generators::consistency::orphan_entity_dirs(cwd, &config) {
         warnings.push(format!(
-            "'business/src/domain/{orphan}' exists but has no [[entity]] block — Puerto commands \
+            "'business/src/domain/{orphan}' exists but has no [[entidad]] block — Puerto commands \
              cannot see it"
         ));
     }

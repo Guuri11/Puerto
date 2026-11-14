@@ -1,4 +1,4 @@
-//! Yours: `puerto new --auth oidc` writes this file once. Every caller the provider vouches for
+//! Yours: `puerto nuevo --auth oidc` writes this file once. Every caller the provider vouches for
 //! becomes a `User` row on their first request (ADR-0021 § 3 of Puerto).
 
 use std::collections::HashMap;

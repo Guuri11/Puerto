@@ -8,7 +8,7 @@ pub fn patch_api_rs(base: &Path, snake: &str) -> Result<(), Box<dyn std::error::
 
     // Every generated `routes.rs` imports `crate::api::tags::ApiTags`, and `regenerate_bootstrap`
     // always writes `api/tags.rs` — so the declaration must exist whatever state `api.rs` is in
-    // (stripped by `--no-demo`, hand-edited by the user).
+    // (stripped by `--sin-demo`, hand-edited by the user).
     if !src.contains("pub mod tags;") {
         if !src.ends_with('\n') && !src.is_empty() {
             src.push('\n');

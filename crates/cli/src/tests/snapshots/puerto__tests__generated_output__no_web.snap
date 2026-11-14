@@ -37,7 +37,7 @@ declared once in the root `Cargo.toml` (`[workspace.dependencies]`, on the same 
 
 `puerto-nucleo` depends on nothing but `thiserror`, so the domain may use it; `puerto-web` carries
 poem and stays in `presentation`; `puerto-sqlx` carries sqlx and stays in `infrastructure`. Do not
-copy their code into the project; upgrade them with the `puerto` CLI (`puerto validate` warns when
+copy their code into the project; upgrade them with the `puerto` CLI (`puerto validar` warns when
 they drift apart). Your own middleware and routes go in `presentation/src/app.rs`, which no
 generator touches.
 
@@ -47,26 +47,26 @@ no `mod.rs` files: adding a use case is one line in `lib.rs` plus its file.
 ## `puerto.toml` is the source of truth
 
 It describes every entity, its fields and use cases, and the project's features (`db`, `web`,
-`events`, `auth`). The `puerto` CLI generates the code and the wiring from it; `puerto validate`
-checks the two still agree. `puerto list` prints what it declares, `puerto <command> --help` says
+`events`, `auth`). The `puerto` CLI generates the code and the wiring from it; `puerto validar`
+checks the two still agree. `puerto listar` prints what it declares, `puerto <command> --help` says
 everything below in more detail.
 
 | Command | What it writes |
 |---|---|
-| `puerto generate scaffold <Name> [-- fields…]` | every layer of a CRUD entity (create, get, list, update, delete) + its table migration with `db` |
-| `puerto generate domain <Name> [-- fields…]` | the domain layer only, and the entity in `puerto.toml`; then `puerto generate application <Name>`, `puerto generate repository <Name>`, `puerto generate presentation <Name>` — one layer at a time, each checking the one before |
-| `puerto generate use-case <Entity> <action>` | one more use case: its trait + mock, its impl to fill in (see below), a field on `<Entity>Api` |
-| `puerto generate value-object <Name> <type>` | a shared value object (`[[value_object]]`), reusable by every entity |
-| `puerto generate migration <name>` | an empty SQL migration (`db` projects) |
-| `puerto generate bootstrap` | rewires `generated/bootstrap.rs` from `puerto.toml` |
-| `puerto generate event <Entity> <name>` | a custom domain event (`events` projects) |
-| `puerto generate consumer <name> --on <event_type>[,…]` | a worker consumer (`events` projects) |
-| `puerto generate mail <name> [-- fields…] [--on <event_type> --to <field>]` | a mail: its port, its templates, its SMTP adapter; with `--on`, the worker sends it |
-| `puerto generate snippets` | editor snippets for the patterns below (Zed, VS Code) |
-| `puerto validate` | checks names, types, and that the manifest and the code agree |
+| `puerto generar scaffold <Name> [-- fields…]` | every layer of a CRUD entity (create, get, list, update, delete) + its table migration with `db` |
+| `puerto generar dominio <Name> [-- fields…]` | the domain layer only, and the entity in `puerto.toml`; then `puerto generar aplicacion <Name>`, `puerto generar repositorio <Name>`, `puerto generar presentacion <Name>` — one layer at a time, each checking the one before |
+| `puerto generar caso-de-uso <Entity> <action>` | one more use case: its trait + mock, its impl to fill in (see below), a field on `<Entity>Api` |
+| `puerto generar objeto-valor <Name> <type>` | a shared value object (`[[objeto_valor]]`), reusable by every entity |
+| `puerto generar migracion <name>` | an empty SQL migration (`db` projects) |
+| `puerto generar bootstrap` | rewires `generated/bootstrap.rs` from `puerto.toml` |
+| `puerto generar evento <Entity> <name>` | a custom domain event (`events` projects) |
+| `puerto generar consumidor <name> --tras <event_type>[,…]` | a worker consumer (`events` projects) |
+| `puerto generar correo <name> [-- fields…] [--tras <event_type> --para <field>]` | a mail: its port, its templates, its SMTP adapter; with `--tras`, the worker sends it |
+| `puerto generar snippets` | editor snippets for the patterns below (Zed, VS Code) |
+| `puerto validar` | checks names, types, and that the manifest and the code agree |
 
-In an auth project `scaffold` also takes `--public <use_case>[,…]` (no token needed) and
-`--role <use_case>=<role>[,…]` (see the Auth section).
+In an auth project `scaffold` also takes `--publico <use_case>[,…]` (no token needed) and
+`--rol <use_case>=<role>[,…]` (see the Auth section).
 
 
 ### Fields
@@ -104,32 +104,32 @@ repository port). On the web the reference is a `<select>` of customers and a li
 | | Files | Change them by |
 |---|---|---|
 | **Rewritten on every run** — never hand-edit | `presentation/src/generated/bootstrap.rs`, `presentation/src/api/tags.rs`, `business/src/domain/<entity>/events.rs`, `worker/src/generated/registry.rs` | editing `puerto.toml`, then the command that writes them (`generate bootstrap`, `generate event`, `generate consumer`) |
-| **The entity's files** — yours, but `scaffold --force` rewrites them | the CRUD use cases, model, errors, repository, routes, DTOs, mappers and Mother of one entity | editing them; `--force` only while they are still what the generator wrote |
+| **The entity's files** — yours, but `scaffold --forzar` rewrites them | the CRUD use cases, model, errors, repository, routes, DTOs, mappers and Mother of one entity | editing them; `--forzar` only while they are still what the generator wrote |
 | **Patched** — a line added, the rest kept | each crate's `lib.rs`, `presentation/src/api.rs`, `routes.rs` (`<Entity>Api` fields), `worker/src/consumers.rs`, `puerto.toml` | editing them freely; keep the lines Puerto added |
 | **Written once** — yours from the start | `presentation/src/app.rs` (your middleware and routes), the impl of a `generate use-case`, consumers, mails and their templates, migrations, the auth files | editing them |
 
 
 ### Changing an entity's fields
 
-- **The code is still what the generator wrote:** change the `[[entity]]` block in `puerto.toml`
-  (or pass the new field list) and run `puerto generate scaffold <Name> --force`. Use cases added
+- **The code is still what the generator wrote:** change the `[[entidad]]` block in `puerto.toml`
+  (or pass the new field list) and run `puerto generar scaffold <Name> --forzar`. Use cases added
   with `generate use-case` survive; any other hand-written change to the entity's files is lost.
 - **In a `--db` project the table migration is never rewritten** (it may already be applied). Not
   applied anywhere yet: edit that `create_<entity>_table` migration. Applied: add
-  `puerto generate migration add_<field>_to_<plural>` with the `ALTER TABLE`, then
+  `puerto generar migracion add_<field>_to_<plural>` with the `ALTER TABLE`, then
   `make sqlx/migrate && make sqlx/prepare`.
 - **The code is already yours:** add the field by hand through every layer — model and Props,
   params, the Mother, the row and its conversions, the DTOs, any screen — with a migration, and
-  update `[[entity.fields]]` so `puerto.toml` keeps describing the code.
+  update `[[entidad.campos]]` so `puerto.toml` keeps describing the code.
 
 ## Working with Puerto
 
 Generate first, then write the business rules test first. Never write wiring by hand: if
 `bootstrap.rs`, a `lib.rs` module tree or `<Entity>Api` needs a line, a command writes it.
 
-1. **Model it in the generator.** A new entity: `puerto generate scaffold <Name> -- …` with its
+1. **Model it in the generator.** A new entity: `puerto generar scaffold <Name> -- …` with its
    fields, value objects and enums. One more operation on an entity:
-   `puerto generate use-case <Entity> <action>`.
+   `puerto generar caso-de-uso <Entity> <action>`.
 2. **List the scenarios** before code: the happy path, empty and invalid input, boundaries, state
    transitions, and the regression a bug fix needs.
 3. **Red.** A scaffolded entity already has tests for what it generated; add yours next to them.
@@ -159,7 +159,7 @@ Generate first, then write the business rules test first. Never write wiring by 
 ## Check before you are done
 
 ```bash
-puerto validate  # the manifest and the code agree
+puerto validar  # the manifest and the code agree
 make test        # unit + integration tests
 make lint        # clippy --all-targets -D warnings — the toolchain is pinned in rust-toolchain.toml
 make format      # rustfmt check — `make format/fix` applies it
@@ -195,7 +195,7 @@ it — an ADR under `docs/adr/` or an update to these files — so the next sess
 reason instead of re-deriving it or undoing it.
 
 === presentation/src/generated/bootstrap.rs ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generate bootstrap`.
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
 use std::sync::Arc;
 
 use business::application::greeting::get_greeting::GetGreetingUseCaseImpl;
@@ -232,13 +232,13 @@ fn openapi_service<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
 }
 
 === puerto.toml ===
-[project]
-name = "snapshot"
+[proyecto]
+nombre = "snapshot"
 
-[[entity]]
-name = "Greeting"
-use_cases = ["get_greeting"]
-fields = []
+[[entidad]]
+nombre = "Greeting"
+casos_de_uso = ["get_greeting"]
+campos = []
 
 === web/.dependency-cruiser.cjs ===
 (deleted)

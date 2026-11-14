@@ -83,7 +83,7 @@ generate/entity: ## Scaffold a new DDD entity — make generate/entity NAME=Prod
 		exit 1; \
 	fi
 	@echo "${GREEN}Scaffolding entity '$$NAME'...${NC}"
-	puerto generate scaffold $$NAME
+	puerto generar scaffold $$NAME
 
 generate/use-case: ## Add a use case to an entity — make generate/use-case ENTITY=Product ACTION=delete_product
 	@if [ -z "$$ENTITY" ] || [ -z "$$ACTION" ]; then \
@@ -91,11 +91,11 @@ generate/use-case: ## Add a use case to an entity — make generate/use-case ENT
 		exit 1; \
 	fi
 	@echo "${GREEN}Adding use case '$$ACTION' to '$$ENTITY'...${NC}"
-	puerto generate use-case $$ENTITY $$ACTION
+	puerto generar caso-de-uso $$ENTITY $$ACTION
 
 generate/bootstrap: ## Regenerate bootstrap.rs from puerto.toml
 	@echo "${GREEN}Regenerating bootstrap.rs...${NC}"
-	puerto generate bootstrap
+	puerto generar bootstrap
 
 web/install: ## Install the frontend dependencies (needs Bun)
 	@echo "${CYAN}Installing frontend dependencies...${NC}"

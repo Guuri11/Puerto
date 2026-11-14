@@ -19,6 +19,6 @@ describe("HomePage", () => {
     render(<HomePage entries={[]} />);
 
     // Assert
-    expect(screen.getByText(/puerto generate scaffold/)).toBeTruthy();
+    expect(screen.getByText(/puerto generar scaffold/)).toBeTruthy();
   });
 });

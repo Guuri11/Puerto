@@ -1,4 +1,4 @@
-// Phase 13.3 (ADR-0018): `puerto new --db --events db` — units of work, `events.rs`, the outbox.
+// Phase 13.3 (ADR-0018): `puerto nuevo --db --eventos db` — units of work, `events.rs`, the outbox.
 use super::*;
 
 use crate::generators::naming::{crud_events, event_variant, is_crud_entity};
@@ -36,7 +36,7 @@ fn write_manifest(name: &str, manifest: &str) -> PathBuf {
     dir
 }
 
-// ── puerto new ───────────────────────────────────────────────────────────
+// ── puerto nuevo ───────────────────────────────────────────────────────────
 
 #[test]
 fn new_with_events_but_no_database_is_refused_naming_db() {
@@ -80,7 +80,7 @@ fn new_with_events_writes_the_transport_the_outbox_migration_and_serde() {
     let (dir, output) = events_project("events_new");
 
     let manifest = read(&output, "puerto.toml");
-    assert!(manifest.contains("events = \"db\""), "{manifest}");
+    assert!(manifest.contains("eventos = \"db\""), "{manifest}");
 
     let migrations: Vec<String> = fs::read_dir(output.join("infrastructure/migrations"))
         .unwrap()
@@ -110,7 +110,7 @@ fn new_with_events_tells_agents_that_events_rs_is_never_hand_edited() {
         agents.contains("Never hand-edit `business/src/domain/<entity>/events.rs`"),
         "{agents}"
     );
-    assert!(agents.contains("puerto generate event"), "{agents}");
+    assert!(agents.contains("puerto generar evento"), "{agents}");
     // In front of the conventions, which stay.
     let events_at = agents.find("## Domain events").unwrap_or(usize::MAX);
     let conventions_at = agents.find("## Conventions").unwrap_or(0);
@@ -414,7 +414,7 @@ fn generate_event_is_refused_outside_an_events_project() {
         .map(|e| e.to_string())
         .unwrap_or_default();
 
-    assert!(err.contains("--events"), "{err}");
+    assert!(err.contains("--eventos"), "{err}");
     cleanup(&dir);
 }
 
@@ -431,13 +431,13 @@ fn generate_event_is_refused_for_an_entity_that_is_not_crud() {
     cleanup(&dir);
 }
 
-// ── puerto validate ─────────────────────────────────────────────────────
+// ── puerto validar ─────────────────────────────────────────────────────
 
 #[test]
 fn validate_rejects_events_without_a_database() {
     let dir = write_manifest(
         "validate_events_no_db",
-        "[project]\nname = \"shop\"\nevents = \"db\"\n",
+        "[proyecto]\nnombre = \"shop\"\neventos = \"db\"\n",
     );
 
     assert!(validate::run_validate(&dir).is_err());
@@ -448,7 +448,7 @@ fn validate_rejects_events_without_a_database() {
 fn validate_rejects_an_unknown_transport() {
     let dir = write_manifest(
         "validate_events_transport",
-        "[project]\nname = \"shop\"\ndb = true\nevents = \"rabbit\"\n",
+        "[proyecto]\nnombre = \"shop\"\ndb = true\neventos = \"rabbit\"\n",
     );
 
     assert!(validate::run_validate(&dir).is_err());
@@ -459,7 +459,7 @@ fn validate_rejects_an_unknown_transport() {
 fn validate_accepts_a_database_project_with_events_and_custom_events() {
     let dir = write_manifest(
         "validate_events_ok",
-        "[project]\nname = \"shop\"\ndb = true\nevents = \"kafka\"\n\n[[entity]]\nname = \"Product\"\nuse_cases = [\"create_product\"]\nevents = [\"product_published\"]\n",
+        "[proyecto]\nnombre = \"shop\"\ndb = true\neventos = \"kafka\"\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\neventos = [\"product_published\"]\n",
     );
 
     assert!(validate::run_validate(&dir).is_ok());
@@ -478,7 +478,7 @@ fn validate_rejects_custom_events_that_clash_or_repeat() {
         let dir = write_manifest(
             name,
             &format!(
-                "[project]\nname = \"shop\"\ndb = true\nevents = \"db\"\n\n[[entity]]\nname = \"Product\"\nuse_cases = [\"create_product\"]\nevents = {events}\n"
+                "[proyecto]\nnombre = \"shop\"\ndb = true\neventos = \"db\"\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\neventos = {events}\n"
             ),
         );
         assert!(validate::run_validate(&dir).is_err(), "{events}");
@@ -490,7 +490,7 @@ fn validate_rejects_custom_events_that_clash_or_repeat() {
 fn validate_rejects_entity_events_in_a_project_without_events() {
     let dir = write_manifest(
         "validate_events_undeclared",
-        "[project]\nname = \"shop\"\ndb = true\n\n[[entity]]\nname = \"Product\"\nuse_cases = [\"create_product\"]\nevents = [\"product_published\"]\n",
+        "[proyecto]\nnombre = \"shop\"\ndb = true\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\neventos = [\"product_published\"]\n",
     );
 
     assert!(validate::run_validate(&dir).is_err());

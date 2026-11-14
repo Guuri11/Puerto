@@ -4,7 +4,7 @@ use crate::generators::web::{generate_web_dependencies, generate_web_routes, web
 
 // ── Phase 9.2: the CRUD slice of an entity in `web/` ──────────────────────
 
-/// A fresh `puerto new` project (web by default) in its own temp dir.
+/// A fresh `puerto nuevo` project (web by default) in its own temp dir.
 fn web_project(name: &str) -> (PathBuf, PathBuf) {
     let dir = temp_dir(name);
     cleanup(&dir);
@@ -36,7 +36,7 @@ fn should_name_frontend_identifiers_after_the_snake_case_name() {
 
 #[test]
 fn template_generated_web_files_are_exactly_what_the_generator_writes_for_no_entity() {
-    // `puerto new` copies `core/generated/*` verbatim, like `bootstrap.rs`; the first scaffold
+    // `puerto nuevo` copies `core/generated/*` verbatim, like `bootstrap.rs`; the first scaffold
     // rewrites them. A template copy that drifts from the generator ships a different shell.
     let (dir, output) = web_project("web_template_generated");
     let config = puerto_toml::read(&output).unwrap();
@@ -399,7 +399,7 @@ fn validate_and_bootstrap_report_a_crud_entity_without_its_screens() {
         let err = err.to_string();
         assert!(
             err.contains("web/src/presentation/features/product/containers")
-                && err.contains("puerto generate web Product"),
+                && err.contains("puerto generar web Product"),
             "{err}"
         );
     }
@@ -410,7 +410,7 @@ fn validate_and_bootstrap_report_a_crud_entity_without_its_screens() {
 fn web_agents_rules_describe_the_slice_and_the_sync_step() {
     let web_agents = TEMPLATE_DIR_WEB_AGENTS;
     assert!(web_agents.contains("make web/sync"));
-    assert!(web_agents.contains("puerto generate web"));
+    assert!(web_agents.contains("puerto generar web"));
     assert!(web_agents.contains("test-support/"));
 }
 

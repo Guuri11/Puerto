@@ -1,4 +1,4 @@
-//! `puerto generate mail <name> [-- field:Type …]` (ADR-0020): a mail's port in the domain, its
+//! `puerto generar correo <name> [-- field:Type …]` (ADR-0020): a mail's port in the domain, its
 //! template implementation in infrastructure and its templates — written once, the user's from
 //! then on. The first mail of a project also brings `puerto-correo`, Mailpit and `SMTP_URL`.
 
@@ -329,7 +329,7 @@ fn add_mail_makefile_targets(base: &Path) -> Result<(), Box<dyn std::error::Erro
 const AGENTS_MAIL_SECTION: &str = r#"
 ## Mail
 
-A mail is three pieces, written once by `puerto generate mail <name> [-- field:Type …]` and yours
+A mail is three pieces, written once by `puerto generar correo <name> [-- field:Type …]` and yours
 from then on (ADR-0020 of Puerto):
 
 - `business/src/domain/mail/<name>.rs` — `{Name}Mail` (the recipient `to` and the values its text
@@ -345,8 +345,8 @@ from then on (ADR-0020 of Puerto):
 catches every mail — `make mail/ui` — and nothing reaches a real inbox until `SMTP_URL` points at
 a provider.
 
-**Who sends it.** In a project with domain events, `puerto generate mail <name> --on
-<event_type> --to <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
+**Who sends it.** In a project with domain events, `puerto generar correo <name> --tras
+<event_type> --para <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
 in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
 per event (`puerto_correo::enviar_una_vez` keeps a `correos_enviados` row — a crash between the send and that
 row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
@@ -379,7 +379,7 @@ fn set_up_mail(base: &Path, config: &PuertoConfig) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-/// `puerto generate mail <name> [-- field:Type …]`, sent by nothing yet: see
+/// `puerto generar correo <name> [-- field:Type …]`, sent by nothing yet: see
 /// [`run_generate_mail_on`].
 #[cfg(test)]
 pub fn run_generate_mail(
@@ -390,7 +390,7 @@ pub fn run_generate_mail(
     run_generate_mail_on(name, field_args, &[], None, base)
 }
 
-/// The events a mail is sent on and the snapshot field holding its recipient (`--on`, `--to`).
+/// The events a mail is sent on and the snapshot field holding its recipient (`--tras`, `--para`).
 struct Trigger {
     events: Vec<DeclaredEvent>,
     to: String,
@@ -416,7 +416,7 @@ fn has_field(fields: &[(String, String)], name: &str, rust_type: &str) -> bool {
     fields.iter().any(|(n, t)| n == name && t == rust_type)
 }
 
-/// Checks `--on` / `--to` against the project: a worker, declared events, a `String` recipient in
+/// Checks `--tras` / `--para` against the project: a worker, declared events, a `String` recipient in
 /// every one of their snapshots.
 fn trigger(
     config: &PuertoConfig,
@@ -427,13 +427,13 @@ fn trigger(
         (true, None) => return Ok(None),
         (true, Some(_)) => {
             return Err(
-                "--to names the recipient of a mail sent on events: it needs --on <event_type>"
+                "--para names the recipient of a mail sent on events: it needs --tras <event_type>"
                     .to_string(),
             );
         }
         (false, None) => {
             return Err(
-                "--on needs --to <field>: the String field of the event's snapshot that \
+                "--tras needs --para <field>: the String field of the event's snapshot that \
                  holds the recipient"
                     .to_string(),
             );
@@ -443,7 +443,7 @@ fn trigger(
     if !has_worker(config) {
         return Err(
             "a mail sent on events needs the worker — a project created with \
-             `puerto new --db --events db|kafka`"
+             `puerto nuevo --db --eventos db|kafka`"
                 .to_string(),
         );
     }
@@ -467,7 +467,7 @@ fn trigger(
                 .map(|(n, _)| n.as_str())
                 .collect();
             return Err(format!(
-                "--to {to}: the snapshot of {} has no String field '{to}' (its String fields: {})",
+                "--para {to}: the snapshot of {} has no String field '{to}' (its String fields: {})",
                 event.event_type,
                 if strings.is_empty() {
                     "none".to_string()
@@ -618,10 +618,10 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// `puerto generate mail <name> [--on <event_type>[,…] --to <field>] [-- field:Type …]`.
+/// `puerto generar correo <name> [--tras <event_type>[,…] --para <field>] [-- field:Type …]`.
 ///
 /// Refuses a mail already declared or already on disk (its files are never overwritten), an
-/// invalid name and a field a mail cannot carry. With `--on` (an `events` project) the worker
+/// invalid name and a field a mail cannot carry. With `--tras` (an `events` project) the worker
 /// sends it: its consumer `mail_<name>` is written and wired, and the fields come from the
 /// events' snapshots.
 pub fn run_generate_mail_on(
@@ -640,7 +640,7 @@ pub fn run_generate_mail_on(
     if config.consumer.iter().any(|c| c.name == consumer_name) {
         return Err(format!(
             "the worker runs mail '{name}' as the consumer '{consumer_name}', which a \
-             [[consumer]] already uses — pick another name"
+             [[consumidor]] already uses — pick another name"
         )
         .into());
     }

@@ -8,8 +8,8 @@ This crate contains **pure Rust business logic**. It has no dependency on any we
 business/src/
 ├── lib.rs                    # The whole module tree, as nested `pub mod {}` blocks — no `mod.rs`
 ├── domain/
-│   ├── shared/               # Shared value objects (`[[value_object]]` in puerto.toml), if any
-│   ├── mail/<name>.rs        # A mail and its port `{Name}Mailer`, once `puerto generate mail` ran
+│   ├── shared/               # Shared value objects (`[[objeto_valor]]` in puerto.toml), if any
+│   ├── mail/<name>.rs        # A mail and its port `{Name}Mailer`, once `puerto generar correo` ran
 │   ├── user/                 # The caller as a `User`, in an auth project
 │   └── <entity>/
 │       ├── model.rs          # Entity + Props + constructors
@@ -27,7 +27,7 @@ business/src/
 ```
 
 Adding a use case is one line in `lib.rs` (under both `domain::<entity>::use_cases` and
-`application::<entity>`) plus its two files — `puerto generate use-case` does both.
+`application::<entity>`) plus its two files — `puerto generar caso-de-uso` does both.
 
 ## Critical Rules
 
@@ -77,14 +77,14 @@ pub mod mocks { ... }
 
 ## Adding a New Entity
 
-Run `puerto generate domain <Name>` to scaffold the domain layer in isolation, or `puerto generate scaffold <Name>` to do all layers at once.
+Run `puerto generar dominio <Name>` to scaffold the domain layer in isolation, or `puerto generar scaffold <Name>` to do all layers at once.
 
 **Layer-by-layer (recommended for AI-assisted development):**
 ```bash
-puerto generate domain <Name>          # domain + Object Mother → Next: application
-puerto generate application <Name>     # use case impls        → Next: repository
-puerto generate repository <Name>      # infra adapter         → Next: presentation
-puerto generate presentation <Name>    # HTTP layer + bootstrap wired
+puerto generar dominio <Name>          # domain + Object Mother → Next: application
+puerto generar aplicacion <Name>     # use case impls        → Next: repository
+puerto generar repositorio <Name>      # infra adapter         → Next: presentation
+puerto generar presentacion <Name>    # HTTP layer + bootstrap wired
 ```
 Each command validates that the prior step completed (entity must be in `puerto.toml`).
 
@@ -118,4 +118,4 @@ let invalid = ProductMother::new()
 - Numeric/bool/Uuid/DateTime fields get `.with_<field>(value)`
 - `Vec<T>` fields get `.with_<field>(values)`
 
-The `tests::mothers` block in `lib.rs` is patched automatically by `puerto generate domain` and `puerto generate scaffold`.
+The `tests::mothers` block in `lib.rs` is patched automatically by `puerto generar dominio` and `puerto generar scaffold`.

@@ -137,7 +137,7 @@ pub fn generate_tags_content(
     render("bootstrap/tags.tera", &ctx)
 }
 
-/// `puerto generate bootstrap` — refuses when the manifest describes code that is not on disk.
+/// `puerto generar bootstrap` — refuses when the manifest describes code that is not on disk.
 ///
 /// The write itself is unconditional in `regenerate_bootstrap()` (scaffold calls it right after
 /// writing the very files in question). The refusal belongs to the standalone command, which is
@@ -160,7 +160,7 @@ pub fn run_bootstrap_command(
         if !lines.is_empty() {
             return Err(format!(
                 "refusing to write generated wiring that will not compile:\n  {}\n\nPass \
-                 --allow-missing to write it anyway.",
+                 --permitir-faltantes to write it anyway.",
                 lines.join("\n  ")
             )
             .into());

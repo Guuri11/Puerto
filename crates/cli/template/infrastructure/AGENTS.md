@@ -38,7 +38,7 @@ they are lost on restart. It behaves like the Postgres adapter — deleted rows 
 first and paged, a `unique` value held by another live row answers `ErrorRepositorio::Duplicado` —
 and its unit tests say so. Replace it with a real adapter when storage is added.
 
-## Postgres (`puerto new --db`)
+## Postgres (`puerto nuevo --db`)
 
 - `<Entity>Db` (`#[derive(sqlx::FromRow)]`) holds the system columns (`id`, `created_at`,
   `updated_at`, `deleted`, `deleted_at`) plus the custom fields. `TryFrom<EntityDb> for Entity`
@@ -53,5 +53,5 @@ and its unit tests say so. Replace it with a real adapter when storage is added.
 
 ## Adding a New Entity Adapter
 
-Run `puerto generate repository <Name>`. It reads `[project] db` from `puerto.toml` to choose
+Run `puerto generar repositorio <Name>`. It reads `[proyecto] db` from `puerto.toml` to choose
 InMemory vs Postgres and, for Postgres, writes the migration.

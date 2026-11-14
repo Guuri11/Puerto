@@ -1,6 +1,6 @@
 use super::*;
 
-// ── puerto generate migration ─────────────────────────────────────────────
+// ── puerto generar migracion ─────────────────────────────────────────────
 
 #[test]
 fn migration_creates_migrations_dir_when_missing() {

@@ -31,25 +31,26 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Scaffold a new Puerto project
+    #[command(name = "nuevo")]
     New {
         /// Project name (skips interactive prompt)
-        #[arg(long)]
+        #[arg(long = "nombre")]
         name: Option<String>,
         /// Include database support (SQLx + Postgres) (skips interactive prompt)
         #[arg(long, conflicts_with = "no_db")]
         db: bool,
         /// Explicitly skip database support without prompting
-        #[arg(long, conflicts_with = "db")]
+        #[arg(long = "sin-db", conflicts_with = "db")]
         no_db: bool,
         /// Skip the Greeting demo entity (creates an empty project)
-        #[arg(long)]
+        #[arg(long = "sin-demo")]
         no_demo: bool,
         /// Skip the web frontend (`web/`: React + daisyUI on Bun)
-        #[arg(long)]
+        #[arg(long = "sin-web")]
         no_web: bool,
         /// Domain events (needs --db): every write records an event in an outbox, relayed through
         /// this transport
-        #[arg(long, value_parser = ["db", "kafka"], conflicts_with = "no_db")]
+        #[arg(long = "eventos", value_parser = ["db", "kafka"], conflicts_with = "no_db")]
         events: Option<String>,
         /// Auth: `oidc` verifies an OpenID Connect provider's tokens (Auth0, Keycloak — Keycloak
         /// runs in docker-compose.yml for development); `local` keeps accounts and sessions in the
@@ -57,17 +58,20 @@ enum Commands {
         #[arg(long, value_parser = ["oidc", "local"])]
         auth: Option<String>,
         /// Directory where the project will be created (defaults to current directory)
-        #[arg(long)]
+        #[arg(long = "destino")]
         destination: Option<PathBuf>,
     },
     /// Code generators for existing Puerto projects
+    #[command(name = "generar")]
     Generate {
         #[command(subcommand)]
         action: GenerateAction,
     },
     /// List entities and use cases defined in puerto.toml
+    #[command(name = "listar")]
     List,
     /// Validate puerto.toml (field types, names, entity consistency)
+    #[command(name = "validar")]
     Validate,
     /// Print shell completion script
     Completions {
@@ -83,15 +87,15 @@ enum GenerateAction {
         /// Entity name in PascalCase (e.g. Product, OrderItem)
         name: String,
         /// Overwrite an already-generated entity, discarding hand-written changes in its files
-        #[arg(long)]
+        #[arg(long = "forzar")]
         force: bool,
         /// Auth projects: use cases whose routes need no token, comma-separated
         /// (e.g. list_products,get_product). Every other route takes `auth: BearerAuth`
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long = "publico", value_delimiter = ',')]
         public: Vec<String>,
         /// Auth projects: a role a route requires, <use_case>=<role>, comma-separated
         /// (e.g. create_product=admin,delete_product=admin) — `#[requiere_rol]` on the handler
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long = "rol", value_delimiter = ',')]
         role: Vec<String>,
         /// Fields after -- separator. Primitives: title:String price:i64! desc:opt:String tags:vec:String
         /// Value Objects: name:Name:String age:Age:i64 status:Status:enum:Active/Inactive mid:Mid:opt:String
@@ -100,6 +104,7 @@ enum GenerateAction {
         fields: Vec<String>,
     },
     /// Add a use case to an existing entity
+    #[command(name = "caso-de-uso")]
     UseCase {
         /// Entity name in PascalCase (e.g. Product)
         entity: String,
@@ -107,7 +112,8 @@ enum GenerateAction {
         action: String,
     },
     /// Declare a custom domain event of a CRUD entity and regenerate its events.rs (projects
-    /// created with --events)
+    /// created with --eventos)
+    #[command(name = "evento")]
     Event {
         /// Entity name in PascalCase (e.g. Product)
         entity: String,
@@ -115,25 +121,27 @@ enum GenerateAction {
         name: String,
     },
     /// Add a consumer to the worker: an event handler, its tests and its registry entry
-    /// (projects created with --events)
+    /// (projects created with --eventos)
+    #[command(name = "consumidor")]
     Consumer {
         /// Consumer name in snake_case (e.g. notify_new_product)
         name: String,
         /// The event types it handles, comma-separated (e.g. product_created,product_published)
-        #[arg(long, value_delimiter = ',', required = true)]
+        #[arg(long = "tras", value_delimiter = ',', required = true)]
         on: Vec<String>,
     },
     /// Add a mail: its port, its template implementation and its templates (subject.txt,
     /// body.html, body.txt). The first one also adds Mailpit and SMTP_URL / MAIL_FROM to .env
+    #[command(name = "correo")]
     Mail {
         /// Mail name in snake_case (e.g. welcome, order_shipped)
         name: String,
-        /// Projects created with --events: the worker sends the mail on these event types,
+        /// Projects created with --eventos: the worker sends the mail on these event types,
         /// comma-separated (e.g. customer_created). Its fields come from the events' snapshots
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long = "tras", value_delimiter = ',')]
         on: Vec<String>,
-        /// With --on: the String field of the snapshot that holds the recipient (e.g. email)
-        #[arg(long)]
+        /// With --tras: the String field of the snapshot that holds the recipient (e.g. email)
+        #[arg(long = "para")]
         to: Option<String>,
         /// The values its text shows, after --: name:String seats:i64 plan:opt:String.
         /// Primitives and opt:<type> only; the recipient `to` is always there. None: name:String
@@ -143,10 +151,11 @@ enum GenerateAction {
     /// Regenerate presentation/src/generated/bootstrap.rs from puerto.toml
     Bootstrap {
         /// Write the file even when puerto.toml declares entities whose code is not on disk
-        #[arg(long)]
+        #[arg(long = "permitir-faltantes")]
         allow_missing: bool,
     },
     /// Create a new SQLx migration file
+    #[command(name = "migracion")]
     Migration {
         /// Migration name in snake_case (e.g. add_products_table)
         name: String,
@@ -158,6 +167,7 @@ enum GenerateAction {
         ide: Option<String>,
     },
     /// Scaffold only the domain layer for a new entity (domain-first workflow)
+    #[command(name = "dominio")]
     Domain {
         /// Entity name in PascalCase (e.g. Product, OrderItem)
         name: String,
@@ -167,16 +177,19 @@ enum GenerateAction {
         fields: Vec<String>,
     },
     /// Scaffold only the application layer for an existing entity
+    #[command(name = "aplicacion")]
     Application {
         /// Entity name in PascalCase (e.g. Product)
         name: String,
     },
     /// Scaffold only the repository (infrastructure) layer for an existing entity
+    #[command(name = "repositorio")]
     Repository {
         /// Entity name in PascalCase (e.g. Product)
         name: String,
     },
     /// Scaffold only the presentation layer for an existing entity (regenerates bootstrap.rs)
+    #[command(name = "presentacion")]
     Presentation {
         /// Entity name in PascalCase (e.g. Product)
         name: String,
@@ -187,10 +200,11 @@ enum GenerateAction {
         /// Entity name in PascalCase (e.g. Product)
         name: String,
         /// Overwrite the entity's existing frontend files, discarding hand-written changes
-        #[arg(long)]
+        #[arg(long = "forzar")]
         force: bool,
     },
     /// Declare a shared value object in puerto.toml (reusable across entities)
+    #[command(name = "objeto-valor")]
     ValueObject {
         /// Value object name in PascalCase (e.g. Email, Money)
         name: String,
@@ -275,7 +289,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 if web {
                     println!("Frontend available at  http://localhost:5173");
                 }
-                println!("Add an entity with:    puerto generate scaffold <Name>");
+                println!("Add an entity with:    puerto generar scaffold <Name>");
             })
         }
         Commands::Generate {

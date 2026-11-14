@@ -189,7 +189,7 @@ pub fn run_generate_presentation(
 
     if !config.entity.iter().any(|e| e.name == pascal) {
         return Err(format!(
-            "{pascal} not found in puerto.toml. Run `puerto generate domain {pascal}` first."
+            "{pascal} not found in puerto.toml. Run `puerto generar dominio {pascal}` first."
         )
         .into());
     }
@@ -237,6 +237,6 @@ pub fn run_generate_presentation(
     println!("✓ tags.rs              — regenerated");
     println!();
     println!("  bootstrap.rs not regenerated yet: {pascal} has no {next} layer.");
-    println!("  Next: puerto generate {next} {pascal}, then `puerto generate bootstrap`.");
+    println!("  Next: puerto generar {next} {pascal}, then `puerto generar bootstrap`.");
     Ok(())
 }

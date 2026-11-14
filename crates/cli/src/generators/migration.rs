@@ -10,8 +10,8 @@ use std::{fs, path::Path};
 /// here is the current UTC time, bumped past the newest existing migration when needed.
 ///
 /// `content` overrides the body written into the migration file. Pass `None` to leave
-/// a generic placeholder (used by `puerto generate migration`). Pass `Some(sql)` to
-/// write a pre-filled schema (used by `puerto generate scaffold` in a `--db` project).
+/// a generic placeholder (used by `puerto generar migracion`). Pass `Some(sql)` to
+/// write a pre-filled schema (used by `puerto generar scaffold` in a `--db` project).
 pub fn run_migration(
     name: &str,
     base: &Path,
@@ -67,18 +67,18 @@ pub fn run_create_table_migration(
         "• infrastructure/migrations/{existing} already creates the table — no new migration."
     );
     println!("  If the fields changed: not applied anywhere yet → edit that file;");
-    println!("  applied → `puerto generate migration <name>` with the ALTER TABLE.");
+    println!("  applied → `puerto generar migracion <name>` with the ALTER TABLE.");
     println!("  Then: make sqlx/migrate && make sqlx/prepare");
     Ok(())
 }
 
-/// CLI entry point for `puerto generate migration <name>`: only meaningful in a `--db` project.
+/// CLI entry point for `puerto generar migracion <name>`: only meaningful in a `--db` project.
 pub fn run_generate_migration(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     if !config.project.db {
         return Err(
             "this project has no database — migrations need a project created with \
-                    `puerto new --db`"
+                    `puerto nuevo --db`"
                 .into(),
         );
     }

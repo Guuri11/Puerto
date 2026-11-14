@@ -34,7 +34,7 @@ presentation/src/
 - **Error mappers are exhaustive** (no `_` arm) and every arm has a test, so a status cannot drift.
 - **Every `ApiResponse` enum** has a `from_status(StatusCode, Json<RespuestaError>) -> Self` helper.
 - **DI wiring lives in `generated/bootstrap.rs`**, rewritten from `puerto.toml` by
-  `puerto generate bootstrap` — never wire by hand.
+  `puerto generar bootstrap` — never wire by hand.
 - **`<Entity>Api` holds ports** — `Arc<dyn CreateProductUseCaseTrait>`, never the `…UseCaseImpl`.
   `routes.rs` imports nothing from `business::application`; only `bootstrap.rs` does.
 - Log failures with `tracing::warn!(code = %error.0.name, "<use_case> failed")`.
@@ -95,7 +95,7 @@ async fn should_respond_404_when_product_does_not_exist() {
 
 ## Adding a New Entity Endpoint
 
-Run `puerto generate presentation <Name>` (the entity must already be in `puerto.toml`). It
+Run `puerto generar presentacion <Name>` (the entity must already be in `puerto.toml`). It
 writes the four files, declares the module in `api.rs` and regenerates `bootstrap.rs`. A use case
-added later with `puerto generate use-case` gets a field on `<Entity>Api`; expose it by adding an
+added later with `puerto generar caso-de-uso` gets a field on `<Entity>Api`; expose it by adding an
 endpoint to `routes.rs`.

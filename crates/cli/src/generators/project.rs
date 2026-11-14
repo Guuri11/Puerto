@@ -67,7 +67,7 @@ generate/migration: ## Create a new SQLx migration — make generate/migration N
 		exit 1; \
 	fi
 	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
-	puerto generate migration $$NAME
+	puerto generar migracion $$NAME
 "#;
 
 fn docker_compose_content(project_name: &str, db_name: &str) -> String {
@@ -233,7 +233,7 @@ pub fn apply_base_env(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Write the extra files that `puerto new --db` adds on top of the base template.
+/// Write the extra files that `puerto nuevo --db` adds on top of the base template.
 pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let project_name = base.file_name().and_then(|n| n.to_str()).unwrap_or("myapp");
     let db_name = project_name.replace('-', "_");
@@ -278,7 +278,7 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
         &base.join(layout::DB_RS),
         &render("infrastructure/db.tera", &tera::Context::new())?,
     )?;
-    // …declared now, not by the first scaffold: the `--events` worker names `infrastructure::db`.
+    // …declared now, not by the first scaffold: the `--eventos` worker names `infrastructure::db`.
     let infra_lib = base.join(layout::INFRA_LIB);
     let mut lib = fs::read_to_string(&infra_lib)?;
     if !lib.contains("pub mod db;") {
@@ -302,27 +302,27 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
 }
 
 /// The root `AGENTS.md` section an `events` project gets (ADR-0010: what it names is tested).
-const AGENTS_EVENTS_SECTION: &str = r#"## Domain events (`[project] events`)
+const AGENTS_EVENTS_SECTION: &str = r#"## Domain events (`[proyecto] eventos`)
 
 Every write of a CRUD entity goes through its unit of work, which saves the entity and records an
 event in the `outbox` table in one transaction (ADR-0018 of Puerto). The repository only reads.
 
 - **Never hand-edit `business/src/domain/<entity>/events.rs`** — it is rewritten from
   `puerto.toml` (the snapshot follows the entity's fields). Add an event with
-  `puerto generate event <Entity> <name>`, then record it from a use case:
+  `puerto generar evento <Entity> <name>`, then record it from a use case:
   `uow.record(ProductEvent::Published(ProductSnapshot::from_entity(&entity)))`.
 - A write use case: `uow_factory.begin()` → `save` → `record` → `commit`. Returning early with
   `?` before `commit` rolls everything back.
 - The snapshot is a public contract: consumers decode it. Renaming a field changes it.
 - `worker/` is the second process: it relays the outbox and runs the consumers (`make worker`).
   **Never hand-edit `worker/src/generated/registry.rs`.** Add a consumer with
-  `puerto generate consumer <name> --on <event_type>`; its handler must be idempotent — delivery
+  `puerto generar consumidor <name> --tras <event_type>`; its handler must be idempotent — delivery
   is at-least-once. See `worker/AGENTS.md`.
 
 "#;
 
-/// Turns a fresh `--db` project into an `events` one (`puerto new --db --events <transport>`):
-/// `[project] events`, the outbox migration, serde for the event snapshots and the `AGENTS.md`
+/// Turns a fresh `--db` project into an `events` one (`puerto nuevo --db --eventos <transport>`):
+/// `[proyecto] eventos`, the outbox migration, serde for the event snapshots and the `AGENTS.md`
 /// section that says how writes work.
 pub fn apply_events_to_new_project(
     base: &Path,
@@ -331,7 +331,7 @@ pub fn apply_events_to_new_project(
     crate::validation::validate_events_transport(transport)?;
     let mut config = crate::puerto_toml::read(base)?;
     if !config.project.db {
-        return Err("--events needs a database: add --db".into());
+        return Err("--eventos needs a database: add --db".into());
     }
     config.project.events = Some(transport.to_string());
     crate::puerto_toml::write(base, &config)?;
@@ -403,7 +403,7 @@ fn ignore_not_found(result: std::io::Result<()>) -> std::io::Result<()> {
     }
 }
 
-/// Strip the Greeting demo entity from a freshly generated project (`puerto new --no-demo`).
+/// Strip the Greeting demo entity from a freshly generated project (`puerto nuevo --sin-demo`).
 /// Removes greeting files, rewrites the four affected source files, clears puerto.toml entities,
 /// and regenerates bootstrap.rs with an empty API.
 pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -437,7 +437,7 @@ pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // Minimal presentation api.rs. `tags` must survive the demo strip: `regenerate_bootstrap`
     // always writes `api/tags.rs`, and every generated `routes.rs` does
     // `use crate::api::tags::ApiTags;` — dropping the declaration made the first scaffold into a
-    // `--no-demo` project fail to compile (E0432).
+    // `--sin-demo` project fail to compile (E0432).
     fs::write(base.join(layout::API_RS), "pub mod error;\npub mod tags;\n")?;
 
     // Clear entities in puerto.toml.
@@ -454,8 +454,8 @@ pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
 /// The heading of the root `AGENTS.md` section that describes `web/`.
 const AGENTS_WEB_SECTION: &str = "## Frontend (`web/`)";
 
-/// Strip the web frontend from a freshly generated project (`puerto new --no-web`): the `web/`
-/// directory, `[project] web`, the root `AGENTS.md` section that describes it and the spec export
+/// Strip the web frontend from a freshly generated project (`puerto nuevo --sin-web`): the `web/`
+/// directory, `[proyecto] web`, the root `AGENTS.md` section that describes it and the spec export
 /// test in `bootstrap.rs`.
 pub fn apply_no_web(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     ignore_not_found(fs::remove_dir_all(base.join("web")))?;

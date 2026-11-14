@@ -259,12 +259,12 @@ fn scaffold_with_shared_vo_writes_shared_files() {
 
     fs::write(
         dir.join("puerto.toml"),
-        r#"[project]
-name = "my-app"
+        r#"[proyecto]
+nombre = "my-app"
 
-[[value_object]]
-name = "Email"
-type = "String"
+[[objeto_valor]]
+nombre = "Email"
+tipo = "String"
 "#,
     )
     .unwrap();
@@ -305,7 +305,7 @@ fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
     cleanup(&dir);
     setup_puerto_stubs(&dir);
 
-    fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
+    fs::write(dir.join("puerto.toml"), "[proyecto]\nnombre = \"my-app\"\n").unwrap();
 
     scaffold::run(
         "Customer",
@@ -340,14 +340,14 @@ fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
     cleanup(&dir);
 }
 
-// ── puerto generate value-object ─────────────────────────────────────────────
+// ── puerto generar objeto-valor ─────────────────────────────────────────────
 
 #[test]
 fn value_object_adds_entry_to_puerto_toml() {
     let dir = temp_dir("vo_add_entry");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
+    fs::write(dir.join("puerto.toml"), "[proyecto]\nnombre = \"my-app\"\n").unwrap();
 
     puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
 
@@ -364,7 +364,7 @@ fn value_object_add_is_idempotent() {
     let dir = temp_dir("vo_idempotent");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
+    fs::write(dir.join("puerto.toml"), "[proyecto]\nnombre = \"my-app\"\n").unwrap();
 
     puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
     puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
@@ -380,7 +380,7 @@ fn value_object_multiple_entries_preserved() {
     let dir = temp_dir("vo_multiple");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("puerto.toml"), "[project]\nname = \"my-app\"\n").unwrap();
+    fs::write(dir.join("puerto.toml"), "[proyecto]\nnombre = \"my-app\"\n").unwrap();
 
     puerto_toml::add_value_object(&dir, "Email", "String").unwrap();
     puerto_toml::add_value_object(&dir, "Money", "i64").unwrap();

@@ -255,7 +255,7 @@ pub fn run_generate_application(name: &str, base: &Path) -> Result<(), Box<dyn s
 
     if !config.entity.iter().any(|e| e.name == pascal) {
         return Err(format!(
-            "{pascal} not found in puerto.toml. Run `puerto generate domain {pascal}` first."
+            "{pascal} not found in puerto.toml. Run `puerto generar dominio {pascal}` first."
         )
         .into());
     }
@@ -273,6 +273,6 @@ pub fn run_generate_application(name: &str, base: &Path) -> Result<(), Box<dyn s
 
     println!("✓ business/application/ — 5 use case impls (create, get, list, update, delete)");
     println!();
-    println!("  Next: puerto generate repository {pascal}");
+    println!("  Next: puerto generar repositorio {pascal}");
     Ok(())
 }

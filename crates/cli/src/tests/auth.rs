@@ -2,7 +2,7 @@ use super::*;
 use crate::commands::new::{NewOptions, new_project};
 use crate::generators::auth::AGENTS_AUTH_SECTION;
 
-// ── Phase 16.4: `puerto new --auth oidc` ─────────────────────────────────────
+// ── Phase 16.4: `puerto nuevo --auth oidc` ─────────────────────────────────────
 
 fn new_auth_project(name: &str, options: NewOptions) -> (PathBuf, PathBuf) {
     let dir = temp_dir(name);
@@ -699,7 +699,7 @@ fn scaffold_in_an_auth_web_project_without_roles_checks_none() {
     cleanup(&dir);
 }
 
-// ── Phase 16.6: `puerto new --auth local` ────────────────────────────────────
+// ── Phase 16.6: `puerto nuevo --auth local` ────────────────────────────────────
 
 fn new_local_project(name: &str, options: NewOptions) -> Result<(PathBuf, PathBuf), String> {
     let dir = temp_dir(name);
@@ -813,7 +813,7 @@ fn new_with_local_auth_grants_roles_from_make_and_reads_the_session_lifetime() {
     assert!(makefile.contains("array_append(roles"), "{makefile}");
     assert!(!makefile.contains("auth/ui:"), "{makefile}");
     let agents = read(&output, "AGENTS.md");
-    assert!(agents.contains("## Auth (`[project] auth`)"), "{agents}");
+    assert!(agents.contains("## Auth (`[proyecto] auth`)"), "{agents}");
     assert!(agents.contains("make auth/grant"), "{agents}");
     assert!(!agents.contains("Keycloak"), "{agents}");
     cleanup(&dir);

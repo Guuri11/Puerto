@@ -1,4 +1,4 @@
-//! Name and shape validation shared by the CLI parser and `puerto validate`.
+//! Name and shape validation shared by the CLI parser and `puerto validar`.
 //!
 //! These two used to diverge: `parse_field_arg` checked snake_case and nothing else, while
 //! `run_validate` re-implemented its own predicates. Anything they both missed — a field called
@@ -11,7 +11,7 @@
 use crate::generators::layout;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
-/// Fields every generated entity already has. A `[[entity.fields]]` entry with one of these names
+/// Fields every generated entity already has. A `[[entidad.campos]]` entry with one of these names
 /// emits the struct field twice (E0124).
 pub const SYSTEM_FIELDS: &[&str] = &["id", "created_at", "updated_at", "deleted", "deleted_at"];
 
@@ -133,7 +133,7 @@ pub const SQL_RESERVED_WORDS: &[&str] = &[
     "with",
 ];
 
-/// Inner types a shared `[[value_object]]` may wrap.
+/// Inner types a shared `[[objeto_valor]]` may wrap.
 pub const SHARED_VO_ALLOWED_INNER_TYPES: &[&str] =
     &["String", "i64", "bool", "f64", "Uuid", "DateTime<Utc>"];
 
@@ -183,7 +183,7 @@ pub fn is_pascal_case(name: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric())
 }
 
-/// Full check for a `[[entity.fields]]` name.
+/// Full check for a `[[entidad.campos]]` name.
 pub fn validate_field_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("field name is empty".to_string());
@@ -251,7 +251,7 @@ pub fn validate_use_case_name(action: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// A `[[consumer]]` name becomes a module (`worker/src/consumers/<name>.rs`), a type
+/// A `[[consumidor]]` name becomes a module (`worker/src/consumers/<name>.rs`), a type
 /// (`NotifyNewProduct`) and the `db` transport's consumer column.
 pub fn validate_consumer_name(name: &str) -> Result<(), String> {
     if !is_valid_field_name(name) {
@@ -268,7 +268,7 @@ pub fn validate_consumer_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// A `[[mail]]` name becomes two modules (`domain::mail::<name>`, `mail::<name>`), a template
+/// A `[[correo]]` name becomes two modules (`domain::mail::<name>`, `mail::<name>`), a template
 /// folder and the types `{Name}Mail` / `{Name}Mailer`.
 pub fn validate_mail_name(name: &str) -> Result<(), String> {
     if !is_valid_field_name(name) {
@@ -285,7 +285,7 @@ pub fn validate_mail_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// The inner type of a shared `[[value_object]]`.
+/// The inner type of a shared `[[objeto_valor]]`.
 pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
     if !SHARED_VO_ALLOWED_INNER_TYPES.contains(&inner_type) {
         return Err(format!(
@@ -408,7 +408,7 @@ pub fn validate_vo_coherence(
         if let Some(shared) = shared_vos.iter().find(|v| v.name == vo_name) {
             if inner != "enum" && shared.inner_type != inner {
                 errors.push(format!(
-                    "value object '{vo_name}' is declared as [[value_object]] with type \
+                    "value object '{vo_name}' is declared as [[objeto_valor]] with type \
                      '{}' but field '{}' uses it as '{inner}'",
                     shared.inner_type, field.name
                 ));
@@ -498,7 +498,7 @@ pub fn validate_references(
         match config.entity.iter().find(|e| e.name == target) {
             None => errors.push(format!(
                 "field '{name}' references {target}, which is not declared in puerto.toml — \
-                 `puerto generate scaffold {target}` first"
+                 `puerto generar scaffold {target}` first"
             )),
             Some(entity) if !is_crud_entity(&pascal_to_snake(target), &entity.use_cases) => errors
                 .push(format!(
@@ -537,7 +537,7 @@ pub fn validate_references_before_writing(
             if !model.exists() || !migrated {
                 errors.push(format!(
                     "{pascal} references {target}, which has no code yet — run \
-                     `puerto generate scaffold {target}` first"
+                     `puerto generar scaffold {target}` first"
                 ));
             }
         }
@@ -549,7 +549,7 @@ pub fn validate_references_before_writing(
     }
 }
 
-/// The transports `[project] events` can name (ADR-0018 § 4).
+/// The transports `[proyecto] eventos` can name (ADR-0018 § 4).
 pub const EVENT_TRANSPORTS: &[&str] = &["db", "kafka"];
 
 pub fn validate_events_transport(transport: &str) -> Result<(), String> {
@@ -596,7 +596,7 @@ pub fn validate_event_name(snake: &str, event: &str, declared: &[String]) -> Res
     Ok(())
 }
 
-/// The modes `[project] auth` can name (ADR-0021 § 1).
+/// The modes `[proyecto] auth` can name (ADR-0021 § 1).
 pub const AUTH_MODES: &[&str] = &["oidc", "local"];
 
 pub fn validate_auth_mode(mode: &str) -> Result<(), String> {

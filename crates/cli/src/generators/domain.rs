@@ -407,7 +407,7 @@ pub fn write_mother(
     Ok(())
 }
 
-/// `puerto generate domain <Name> [-- fields]` — the first step of the domain-first workflow.
+/// `puerto generar dominio <Name> [-- fields]` — the first step of the domain-first workflow.
 ///
 /// `cli_fields` are the trailing `-- name:Type` arguments, already parsed and type-checked.
 /// They are persisted to puerto.toml here, which is what makes the later layered commands
@@ -426,7 +426,7 @@ pub fn run_generate_domain(
 
     if config.entity.iter().any(|e| e.name == pascal) {
         return Err(format!(
-            "{pascal} is already in puerto.toml. Use `puerto generate use-case` to add a use case."
+            "{pascal} is already in puerto.toml. Use `puerto generar caso-de-uso` to add a use case."
         )
         .into());
     }
@@ -488,6 +488,6 @@ pub fn run_generate_domain(
     println!("✓ business/tests/     — {pascal}Mother (Object Mother)");
     println!("✓ puerto.toml         — {pascal} registered");
     println!();
-    println!("  Next: puerto generate application {pascal}");
+    println!("  Next: puerto generar aplicacion {pascal}");
     Ok(())
 }

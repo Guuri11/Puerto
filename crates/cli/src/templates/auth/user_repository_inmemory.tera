@@ -9,7 +9,7 @@ use business::domain::user::{
 use puerto_nucleo::ErrorRepositorio;
 
 /// Keeps the users in process memory: they are lost when the process stops, and provisioned again
-/// on their next request. It stands in until there is a database (`puerto new --db`).
+/// on their next request. It stands in until there is a database (`puerto nuevo --db`).
 #[derive(Default)]
 pub struct InMemoryUserRepository {
     rows: RwLock<HashMap<UserId, User>>,

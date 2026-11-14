@@ -16,7 +16,7 @@ pub fn run_list(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// What `puerto list` prints: the project, its entities with their use cases and custom events,
+/// What `puerto listar` prints: the project, its entities with their use cases and custom events,
 /// the shared value objects, the worker's consumers and the mails. A section with nothing in it is left out.
 pub fn list_report(config: &crate::puerto_toml::PuertoConfig) -> String {
     let mut out = format!("Project: {}\n", config.project.name);
