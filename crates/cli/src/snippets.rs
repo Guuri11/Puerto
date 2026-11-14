@@ -971,7 +971,7 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Test — SQLx integration test": {
     "prefix": "sqlx-test",
     "body": [
-      "#[sqlx::test(migrations = \"./migrations\")]",
+      "#[sqlx::test(migrator = \"crate::db::MIGRATOR\")]",
       "async fn should_${1:expected}_when_${2:condition}(pool: PgPool) {",
       "\t// Arrange",
       "\tlet repo = Pg${3:Entity}Repository::new(pool.clone());",
@@ -982,7 +982,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t// Assert",
       "}"
     ],
-    "description": "#[sqlx::test] integration test with real Postgres pool and migrations."
+    "description": "#[sqlx::test] integration test with real Postgres pool, migrated by the shared MIGRATOR."
   },
   "Test — SQLx repository test module": {
     "prefix": "sqlx-repo-test-module",
@@ -998,7 +998,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tentity",
       "\t}",
       "",
-      "\t#[sqlx::test(migrations = \"./migrations\")]",
+      "\t#[sqlx::test(migrator = \"crate::db::MIGRATOR\")]",
       "\tasync fn should_persist_and_retrieve_by_id(pool: PgPool) {",
       "\t\t// Arrange",
       "\t\tlet entity = seed(&pool, \"example\").await;",
@@ -1015,7 +1015,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tassert_eq!(found.name, entity.name);",
       "\t}",
       "",
-      "\t#[sqlx::test(migrations = \"./migrations\")]",
+      "\t#[sqlx::test(migrator = \"crate::db::MIGRATOR\")]",
       "\tasync fn should_return_none_for_nonexistent_id(pool: PgPool) {",
       "\t\t// Act",
       "\t\tlet result = Pg${2:Entity}Repository::new(pool)",

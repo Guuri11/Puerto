@@ -206,3 +206,56 @@ fn generate_repository_writes_no_create_table_when_one_exists() {
     assert_eq!(table_migrations(&dir, "category").len(), 1);
     cleanup(&dir);
 }
+
+// ── Phase 19.2: Postgres tests share the MIGRATOR ───────────────────────────
+//
+// `#[sqlx::test(migrations = "./migrations")]` copies every migration into each test (the SQL through
+// `include_str!` and its checksums); `migrator = "…"` only refers to the static. In ant_backend the
+// change took its tests' rebuild from 27 s to 7 s (ADR 0004 of digitalia).
+
+#[test]
+fn every_postgres_test_in_the_templates_uses_the_shared_migrator() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = vec![src.join("snippets.rs")];
+    let mut dirs = vec![src.join("templates")];
+    while let Some(dir) = dirs.pop() {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+
+    let copying: Vec<_> = files
+        .iter()
+        .filter(|f| {
+            fs::read_to_string(f)
+                .unwrap()
+                .contains("sqlx::test(migrations")
+        })
+        .collect();
+
+    assert!(
+        copying.is_empty(),
+        "these still copy the migrations into each test: {copying:?}"
+    );
+}
+
+#[test]
+fn generated_postgres_repository_tests_use_the_shared_migrator() {
+    let dir = temp_dir("migrator_shared_repository");
+    cleanup(&dir);
+    setup_puerto_stubs(&dir);
+    fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+    scaffold::run("Product", &dir, true, true, &[], &[]).unwrap();
+
+    let repository =
+        fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
+
+    assert!(repository.contains("#[sqlx::test(migrator = \"crate::db::MIGRATOR\")]"));
+    assert!(!repository.contains("sqlx::test(migrations"));
+    cleanup(&dir);
+}

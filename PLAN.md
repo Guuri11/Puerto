@@ -3085,7 +3085,7 @@ También se comprueba que `cargo test -p 'dominio_*' -p 'aplicacion_*'` acepta g
 toolchain fijada. Las cifras se añaden a la ADR-0023, que pasa a aceptada o se vuelve a discutir
 con ellas.
 
-### 19.2 — El migrador compartido en los tests de Postgres (antes de mover nada)
+### 19.2 — El migrador compartido en los tests de Postgres (antes de mover nada) ✅
 
 Los 18 `#[sqlx::test(migrations = "./migrations")]` de las plantillas pasan a
 `#[sqlx::test(migrator = "crate::db::MIGRATOR")]`: el `MIGRATOR` ya existe en `db.rs`. Así cada

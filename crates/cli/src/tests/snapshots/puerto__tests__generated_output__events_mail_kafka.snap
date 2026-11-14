@@ -3296,7 +3296,7 @@ pub(crate) mod integration_tests {
         entity
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
         let entity = seed(&pool).await;
@@ -3320,7 +3320,7 @@ pub(crate) mod integration_tests {
         assert!(!found.deleted);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
         let result = test_repo(pool)
@@ -3332,7 +3332,7 @@ pub(crate) mod integration_tests {
         assert!(result.is_none());
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_list_all_products_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
@@ -3352,7 +3352,7 @@ pub(crate) mod integration_tests {
         assert_eq!(page.total, 1);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
         // Arrange
         for _ in 0..3 {
@@ -3492,7 +3492,7 @@ mod integration_tests {
         sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_write_the_product_and_its_event_when_committed(pool: PgPool) {
         // Arrange
         let entity = new_product();
@@ -3515,7 +3515,7 @@ mod integration_tests {
         assert_eq!(aggregate_id, entity.id.value());
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_write_nothing_when_dropped_without_commit(pool: PgPool) {
         // Arrange
         let entity = new_product();
@@ -3537,7 +3537,7 @@ mod integration_tests {
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_update_the_product_when_saved_again(pool: PgPool) {
         // Arrange
         let mut entity = new_product();
@@ -3562,7 +3562,7 @@ mod integration_tests {
         assert_eq!(found.name.value(), "updated");
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_write_neither_row_nor_event_when_the_sku_is_taken(pool: PgPool) {
         // Arrange
         let first = new_product();

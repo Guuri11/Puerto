@@ -123,7 +123,7 @@ mod tests {
         User::provision("issuer", "ada", Some("ada@example.com".into()), None)
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_find_a_saved_user_when_looked_up_by_subject_or_id(pool: PgPool) {
         // Arrange
         let repository = PgUserRepository::new(pool);
@@ -142,7 +142,7 @@ mod tests {
         assert_eq!(by_id.map(|u| u.subject), Some("ada".to_string()));
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_reject_a_second_user_when_the_subject_is_taken(pool: PgPool) {
         // Arrange
         let repository = PgUserRepository::new(pool);

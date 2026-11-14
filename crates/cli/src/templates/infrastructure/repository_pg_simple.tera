@@ -89,7 +89,7 @@ mod integration_tests {
         entity
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
         let entity = seed(&pool, "example").await;
@@ -103,7 +103,7 @@ mod integration_tests {
         assert!(!found.deleted);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
         let result = test_repo(pool).find_by_id({{ pascal }}Id::generate()).await.unwrap();
@@ -112,7 +112,7 @@ mod integration_tests {
         assert!(result.is_none());
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
         let mut entity = seed(&pool, "original").await;

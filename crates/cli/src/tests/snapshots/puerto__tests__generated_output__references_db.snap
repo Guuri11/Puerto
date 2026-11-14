@@ -4032,7 +4032,7 @@ pub(crate) mod integration_tests {
         entity
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
         let entity = seed(&pool).await;
@@ -4051,7 +4051,7 @@ pub(crate) mod integration_tests {
         assert!(!found.deleted);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
         let result = test_repo(pool)
@@ -4063,7 +4063,7 @@ pub(crate) mod integration_tests {
         assert!(result.is_none());
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
         let mut entity = seed(&pool).await;
@@ -4082,7 +4082,7 @@ pub(crate) mod integration_tests {
         assert_eq!(found.email, "updated");
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_list_all_customers_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
@@ -4102,7 +4102,7 @@ pub(crate) mod integration_tests {
         assert_eq!(page.total, 1);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
         // Arrange
         for _ in 0..3 {
@@ -4121,7 +4121,7 @@ pub(crate) mod integration_tests {
         assert_eq!((page.limit, page.offset), (2, 2));
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_reject_a_duplicate_email(pool: PgPool) {
         // Arrange
         let first = seed(&pool).await;
@@ -4387,7 +4387,7 @@ pub(crate) mod integration_tests {
         entity
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
         let entity = seed(&pool).await;
@@ -4407,7 +4407,7 @@ pub(crate) mod integration_tests {
         assert!(!found.deleted);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
         let result = test_repo(pool)
@@ -4419,7 +4419,7 @@ pub(crate) mod integration_tests {
         assert!(result.is_none());
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
         let entity = seed(&pool).await;
@@ -4432,7 +4432,7 @@ pub(crate) mod integration_tests {
         assert!(found.is_some());
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_list_all_orders_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
@@ -4452,7 +4452,7 @@ pub(crate) mod integration_tests {
         assert_eq!(page.total, 1);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
         // Arrange
         for _ in 0..3 {
@@ -4471,7 +4471,7 @@ pub(crate) mod integration_tests {
         assert_eq!((page.limit, page.offset), (2, 2));
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_reject_a_missing_customer_id(pool: PgPool) {
         // Arrange: a customer_id no row has.
         let mut entity = build(&pool).await;
@@ -4487,7 +4487,7 @@ pub(crate) mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_reject_a_missing_reviewer_id(pool: PgPool) {
         // Arrange: a reviewer_id no row has.
         let mut entity = build(&pool).await;
@@ -4503,7 +4503,7 @@ pub(crate) mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_list_only_the_orders_of_the_requested_customer_id(pool: PgPool) {
         // Arrange: one order with this customer_id, one without.
         let target = crate::customer::repository::integration_tests::seed(&pool).await;
@@ -4532,7 +4532,7 @@ pub(crate) mod integration_tests {
         assert_eq!(page.total, 1);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_list_only_the_orders_of_the_requested_reviewer_id(pool: PgPool) {
         // Arrange: one order with this reviewer_id, one without.
         let target = crate::customer::repository::integration_tests::seed(&pool).await;
@@ -4773,7 +4773,7 @@ pub(crate) mod integration_tests {
         entity
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
         let entity = seed(&pool).await;
@@ -4792,7 +4792,7 @@ pub(crate) mod integration_tests {
         assert!(!found.deleted);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
         let result = test_repo(pool)
@@ -4804,7 +4804,7 @@ pub(crate) mod integration_tests {
         assert!(result.is_none());
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
         let mut entity = seed(&pool).await;
@@ -4823,7 +4823,7 @@ pub(crate) mod integration_tests {
         assert_eq!(found.carrier, "updated");
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_list_all_shipments_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
@@ -4843,7 +4843,7 @@ pub(crate) mod integration_tests {
         assert_eq!(page.total, 1);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
         // Arrange
         for _ in 0..3 {
@@ -4865,7 +4865,7 @@ pub(crate) mod integration_tests {
         assert_eq!((page.limit, page.offset), (2, 2));
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_reject_a_duplicate_order_id(pool: PgPool) {
         // Arrange
         let first = seed(&pool).await;
@@ -4879,7 +4879,7 @@ pub(crate) mod integration_tests {
         assert_eq!(result.unwrap_err(), RepositoryError::Duplicate);
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_reject_a_missing_order_id(pool: PgPool) {
         // Arrange: a order_id no row has.
         let mut entity = build(&pool).await;
@@ -4895,7 +4895,7 @@ pub(crate) mod integration_tests {
         );
     }
 
-    #[sqlx::test(migrations = "./migrations")]
+    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
     async fn should_list_only_the_shipments_of_the_requested_order_id(pool: PgPool) {
         // Arrange: one shipment with this order_id, one without.
         let target = crate::order::repository::integration_tests::seed(&pool).await;
