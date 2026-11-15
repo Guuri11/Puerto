@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use business::domain::mail::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
+use dominio_correo::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
 {%- for import in imports %}
 use {{ import }};
 {%- endfor %}
@@ -53,9 +53,9 @@ impl ManejadorEvento for Send{{ pascal }}Mail {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use business::domain::mail::{{ name }}::mocks::Mock{{ pascal }}Mailer;
-    use business::domain::{{ first.entity_snake }}::events::{{ first.entity_pascal }}Event;
-    use business::tests::mothers::{{ first.entity_snake }}_mother::{{ first.entity_pascal }}Mother;
+    use dominio_correo::{{ name }}::mocks::Mock{{ pascal }}Mailer;
+    use dominio_{{ first.entity_snake }}::eventos::{{ first.entity_pascal }}Event;
+    use dominio_{{ first.entity_snake }}::pruebas::madres::{{ first.entity_pascal }}Mother;
     use puerto_nucleo::eventos::MOTIVO_ERROR_PERMANENTE;
     use puerto_nucleo::correo::ErrorCorreo;
     use puerto_correo::pruebas::CorreosEnviadosEnMemoria;

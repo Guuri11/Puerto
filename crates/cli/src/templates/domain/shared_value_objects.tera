@@ -1,6 +1,6 @@
 {% import "domain/value_object_macros.tera" as macros %}{% for v in vos %}{% if not loop.first %}
 
-{% endif %}use super::errors::{{ v.vo }}Error;
+{% endif %}use crate::errores::{{ v.vo }}Error;
 {% if v.inner == "Uuid" %}use uuid::Uuid;
 {% elif v.inner == "DateTime<Utc>" %}use chrono::{DateTime, Utc};
 {% endif %}

@@ -3,12 +3,11 @@
 use async_trait::async_trait;
 use puerto_nucleo::ErrorRepositorio;
 
-use crate::domain::{{ snake }}::{
-    errors::{{ pascal }}Error,
-    events::{{ "{" }}{{ pascal }}Event, {{ pascal }}Snapshot},
-    repository::{{ pascal }}RepositoryTrait,
+use dominio_{{ snake }}::{
+    errores::{{ pascal }}Error,
+    eventos::{{ "{" }}{{ pascal }}Event, {{ pascal }}Snapshot},
+    repositorio::{{ pascal }}RepositoryTrait,
     unit_of_work::{{ pascal }}UnitOfWorkFactory,
-    use_cases::delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
 };
 
 pub struct Delete{{ pascal }}UseCaseImpl {
@@ -46,10 +45,10 @@ impl Delete{{ pascal }}UseCaseTrait for Delete{{ pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
-{% endif %}    use crate::domain::{{ snake }}::{
-        model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
-        repository::mocks::Mock{{ pascal }}Repository,
+{% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
+{% endif %}    use dominio_{{ snake }}::{
+        modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
+        repositorio::mocks::Mock{{ pascal }}Repository,
         unit_of_work::mocks::RecordingUnitOfWorkFactory,
     };
     use puerto_nucleo::EventoDominio;
@@ -74,7 +73,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(Delete{{ pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}id: entity_id })
+            .execute(Delete{{ pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: entity_id })
             .await;
 
         // Assert
@@ -100,7 +99,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(Delete{{ pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}id: {{ pascal }}Id::generate() })
+            .execute(Delete{{ pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: {{ pascal }}Id::generate() })
             .await;
 
         // Assert

@@ -849,7 +849,7 @@ fn assert_spec_export_is_stable(output: &Path, dir: &Path, name: &str, envs: &[(
         "scenario '{name}': `cargo test` did not export docs/api/openapi.json"
     );
     let result = std::process::Command::new("cargo")
-        .args(["test", "-p", "presentation", "openapi"])
+        .args(["test", "-p", "api", "openapi"])
         .env("CARGO_TARGET_DIR", dir.join("target"))
         .envs(envs.iter().copied())
         .current_dir(output)
@@ -1208,7 +1208,7 @@ pub(super) fn assert_edited_postgres_scenario_is_clean(
     for args in [
         &["database", "drop", "-y"][..],
         &["database", "create"][..],
-        &["migrate", "run", "--source", "infrastructure/migrations"][..],
+        &["migrate", "run", "--source", "migraciones"][..],
     ] {
         let status = std::process::Command::new("sqlx")
             .args(args)
@@ -1233,11 +1233,14 @@ pub(super) fn assert_edited_postgres_scenario_is_clean(
 /// Phase 15.2: the server (and the worker) started against a database that is down end with a
 /// message and a hint — exit code 1, no panic, no password.
 fn assert_startup_reports_a_database_that_is_down(output: &Path, dir: &Path, database_url: &str) {
-    let binaries: Vec<&str> = ["presentation", "worker"]
-        .into_iter()
-        .filter(|b| output.join(b).is_dir())
-        .collect();
-    for binary in &binaries {
+    let binaries: Vec<(&str, &str)> = [
+        ("api", "presentacion/api"),
+        ("worker", "presentacion/worker"),
+    ]
+    .into_iter()
+    .filter(|(_, dir)| output.join(dir).is_dir())
+    .collect();
+    for (binary, member) in &binaries {
         let built = std::process::Command::new("cargo")
             .args(["build", "-p", binary])
             .env("CARGO_TARGET_DIR", dir.join("target"))
@@ -1248,9 +1251,9 @@ fn assert_startup_reports_a_database_that_is_down(output: &Path, dir: &Path, dat
             .expect("failed to run cargo");
         assert!(built.success(), "cargo build -p {binary}");
 
-        // The executable is the `[[bin]]` name when the member declares one (presentation's is
-        // the project's name), else the package's.
-        let manifest = fs::read_to_string(output.join(binary).join("Cargo.toml")).unwrap();
+        // The executable is the `[[bin]]` name when the member declares one (api's is the
+        // project's name), else the package's.
+        let manifest = fs::read_to_string(output.join(member).join("Cargo.toml")).unwrap();
         let executable = manifest
             .split_once("[[bin]]")
             .and_then(|(_, bin)| bin.lines().find_map(|l| l.strip_prefix("name = ")))

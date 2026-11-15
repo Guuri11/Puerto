@@ -3121,9 +3121,13 @@ publicación y `release.md` cambian a los nombres nuevos. Tests: los de cada cra
 
 Tests: cada clave de ida y vuelta por `puerto.toml`; cada comando y cada flag nuevos.
 
-### 19.6 — La estructura por contexto (ADR-0023)
+### 19.6 — La estructura por contexto (ADR-0023) ✅
 
-Con los nombres de estructura del glosario y los identificadores todavía en inglés. En piezas:
+Con los nombres de estructura del glosario y los identificadores todavía en inglés. Se hizo en un
+solo commit: la estructura entera se mueve a la vez para que un escenario compile. Lo que la
+implementación fijó está en la ADR-0023 § Implementación; dos desvíos de este plan: el contexto del
+demo es `contextos/greeting` (el nombre sale de la entidad, que es `Saludo` en la 19.7) y
+`registro.rs` no usa `cableado` (los consumidores no reciben casos de uso). Las piezas:
 
 - **19.6a — La plantilla y `nuevo`:** `nucleo`, `migraciones/` + `migrador` (con `build.rs`),
   `contextos/saludo/…` (el demo, aún `Greeting` por dentro), `presentacion/{cableado,api}` (`api`

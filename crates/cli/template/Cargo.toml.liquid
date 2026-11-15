@@ -1,9 +1,27 @@
 [workspace]
-members = ["business", "infrastructure", "presentation"]
+# One crate per context and layer (ADR-0023 of Puerto): `contextos/*/*` takes in every new one.
+members = ["nucleo", "contextos/*/*", "presentacion/*"]
 resolver = "3"
+
+[workspace.dependencies]
+# Third-party crates: one version for the whole project.
+async-trait = "0.1"
+thiserror = "2"
+tracing = "0.1"
+mockall = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+poem = "3"
+# `chrono` feature: without it poem-openapi has no `Type` impl for DateTime<Utc>.
+poem-openapi = { version = "5", features = ["swagger-ui", "uuid", "chrono"] }
 
 # The Puerto runtime (ADR-0017 of Puerto): what every Puerto project shares lives in these crates,
 # on the same minor as the `puerto` CLI that generated this project.
-[workspace.dependencies]
 puerto-nucleo = "PUERTO_RUNTIME_VERSION"
 puerto-web = "PUERTO_RUNTIME_VERSION"
+
+# This project's crates: every `Cargo.toml` names them with `{ workspace = true }`.
+cableado = { path = "presentacion/cableado" }
+dominio_greeting = { path = "contextos/greeting/dominio" }
+aplicacion_greeting = { path = "contextos/greeting/aplicacion" }
+infra_greeting = { path = "contextos/greeting/infraestructura" }
+rest_greeting = { path = "contextos/greeting/rest" }

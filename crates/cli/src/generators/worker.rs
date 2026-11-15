@@ -1,8 +1,8 @@
-//! The worker of an `events` project (ADR-0018 § 5): the `worker/` crate `puerto nuevo --eventos`
-//! writes, `worker/src/generated/registry.rs` (always regenerated from puerto.toml, on the
-//! project's transport) and `puerto generar consumidor`.
+//! The worker of an `events` project (ADR-0018 § 5): the `presentacion/worker` crate
+//! `puerto nuevo --eventos` writes, its `generado/registro.rs` (always regenerated from puerto.toml,
+//! on the project's transport) and `puerto generar consumidor`.
 
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -133,7 +133,7 @@ struct RegistryConsumer {
     handler: String,
 }
 
-/// `worker/src/generated/registry.rs`: the relay and every `[[consumidor]]`, on the project's
+/// `presentacion/worker/src/generado/registro.rs`: the relay and every `[[consumidor]]`, on the project's
 /// transport.
 pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::error::Error>> {
     let declared = declared_events(config);
@@ -181,7 +181,7 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         aggregates.dedup();
         let mail_pascal = to_pascal_case(&mail.name);
         template_mailers.push(format!(
-            "infrastructure::mail::{}::Template{mail_pascal}Mailer",
+            "infra_correo::{}::Template{mail_pascal}Mailer",
             mail.name
         ));
         let pascal = format!("Send{mail_pascal}Mail");
@@ -202,7 +202,7 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         .into_iter()
         .map(|(snake, mut names)| {
             names.sort();
-            format!("business::domain::{snake}::events::{}", braced(&names))
+            format!("dominio_{snake}::eventos::{}", braced(&names))
         })
         .collect();
     let kafka = on_kafka(config);
@@ -218,12 +218,9 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         (true, false) => &["DescartadosPostgres", "OutboxPostgres"],
     };
     let adapters: Vec<String> = adapters.iter().map(|a| a.to_string()).collect();
-    imports.push(format!(
-        "infrastructure::db::eventos::{}",
-        braced(&adapters)
-    ));
+    imports.push(format!("puerto_sqlx::eventos::{}", braced(&adapters)));
     if mails {
-        imports.push("infrastructure::db::correo::CorreosEnviadosPostgres".into());
+        imports.push("puerto_sqlx::correo::CorreosEnviadosPostgres".into());
         imports.extend(template_mailers);
     }
     imports.push("puerto_eventos::{Bucles, ConfigWorker}".into());
@@ -271,7 +268,7 @@ fn braced(names: &[String]) -> String {
     }
 }
 
-/// `worker/src/consumers/<name>.rs`: a `ManejadorEvento` that matches each subscribed event,
+/// `presentacion/worker/src/consumidores/<name>.rs`: a `ManejadorEvento` that matches each subscribed event,
 /// decodes its snapshot (dead-lettering what does not decode), logs and acks — with its tests.
 pub fn generate_consumer(
     name: &str,
@@ -294,7 +291,7 @@ pub fn generate_consumer(
         .into_iter()
         .map(|(snake, (mut names, _))| {
             names.sort();
-            format!("business::domain::{snake}::events::{}", braced(&names))
+            format!("dominio_{snake}::eventos::{}", braced(&names))
         })
         .collect();
 
@@ -307,8 +304,8 @@ pub fn generate_consumer(
     Ok(render("worker/consumer.tera", &ctx)?)
 }
 
-/// Rewrites `registry.rs` of a project that has a worker — after `generate bootstrap`, a scaffold
-/// and `generate consumer`, like `bootstrap.rs`.
+/// Rewrites `registry.rs` of a project that has a worker — after `generar bootstrap`, a scaffold
+/// and `generar consumidor`, like `bootstrap.rs`.
 pub fn regenerate_registry(
     base: &Path,
     config: &PuertoConfig,
@@ -317,7 +314,79 @@ pub fn regenerate_registry(
     if !has_worker(config) || !dir.is_dir() {
         return Ok(());
     }
-    write_file(&dir.join("registry.rs"), &generate_registry(config)?)?;
+    write_file(&base.join(layout::REGISTRY_RS), &generate_registry(config)?)?;
+    add_worker_dependencies(base, config)
+}
+
+/// The project crates the worker's code names: the domain of every context whose events a
+/// consumer decodes (its Object Mother too, in the consumers' tests), and the `correo` context
+/// once a mail is sent on events. Added to `presentacion/worker/Cargo.toml`, never removed.
+fn add_worker_dependencies(
+    base: &Path,
+    config: &PuertoConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::generators::bootstrap::add_crate_dependency;
+    let declared = declared_events(config);
+    let mut contexts: Vec<String> = vec![];
+    let subscriptions =
+        config
+            .consumer
+            .iter()
+            .cloned()
+            .chain(
+                config
+                    .mail
+                    .iter()
+                    .filter(|m| !m.on.is_empty())
+                    .map(|m| Consumer {
+                        name: format!("mail_{}", m.name),
+                        events: m.on.clone(),
+                    }),
+            );
+    for consumer in subscriptions {
+        for event in subscribed(&consumer, &declared)? {
+            if !contexts.contains(&event.entity_snake) {
+                contexts.push(event.entity_snake);
+            }
+        }
+    }
+    contexts.sort();
+    for c in &contexts {
+        let name = layout::crate_name(c, Layer::Domain);
+        add_crate_dependency(
+            base,
+            layout::WORKER_MANIFEST,
+            "dependencies",
+            &name,
+            "{ workspace = true }",
+        )?;
+        add_crate_dependency(
+            base,
+            layout::WORKER_MANIFEST,
+            "dev-dependencies",
+            &name,
+            "{ workspace = true, features = [\"pruebas\"] }",
+        )?;
+    }
+    if config.mail.iter().any(|m| !m.on.is_empty()) {
+        let correo = layout::MAIL_CONTEXT;
+        for layer in [Layer::Domain, Layer::Infrastructure] {
+            add_crate_dependency(
+                base,
+                layout::WORKER_MANIFEST,
+                "dependencies",
+                &layout::crate_name(correo, layer),
+                "{ workspace = true }",
+            )?;
+        }
+        add_crate_dependency(
+            base,
+            layout::WORKER_MANIFEST,
+            "dev-dependencies",
+            &layout::crate_name(correo, Layer::Domain),
+            "{ workspace = true, features = [\"pruebas\"] }",
+        )?;
+    }
     Ok(())
 }
 
@@ -362,21 +431,6 @@ events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
 pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     let kafka = on_kafka(&config);
-    let manifest = base.join("Cargo.toml");
-    let src = fs::read_to_string(&manifest)?;
-    if !src.contains("\"worker\"") {
-        let members = "members = [\"business\", \"infrastructure\", \"presentation\"]";
-        if !src.contains(members) {
-            return Err(format!("{}: unexpected workspace members", manifest.display()).into());
-        }
-        fs::write(
-            &manifest,
-            src.replace(
-                members,
-                "members = [\"business\", \"infrastructure\", \"presentation\", \"worker\"]",
-            ),
-        )?;
-    }
     crate::generators::project::add_workspace_dependency(base, "puerto-eventos")?;
     if kafka {
         crate::generators::project::add_workspace_dependency(base, "puerto-kafka")?;
@@ -386,9 +440,18 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
     ctx.insert("kafka", &kafka);
     for (path, template) in [
         (layout::WORKER_MANIFEST, "worker/cargo_toml.tera"),
-        ("worker/AGENTS.md", "worker/agents.tera"),
-        ("worker/src/main.rs", "worker/main.tera"),
-        ("worker/src/generated.rs", "worker/generated.tera"),
+        (
+            &format!("{}/AGENTS.md", layout::WORKER_DIR),
+            "worker/agents.tera",
+        ),
+        (
+            &format!("{}/main.rs", layout::WORKER_SRC),
+            "worker/main.tera",
+        ),
+        (
+            &format!("{}/generado.rs", layout::WORKER_SRC),
+            "worker/generated.tera",
+        ),
         (layout::CONSUMERS_RS, "worker/consumers.tera"),
     ] {
         write_file(&base.join(path), &render(template, &ctx)?)?;
@@ -397,6 +460,7 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
         &base.join(layout::REGISTRY_RS),
         &generate_registry(&config)?,
     )?;
+    crate::generators::crates::sync_workspace_dependencies(base)?;
 
     let makefile = base.join("Makefile");
     if makefile.exists() {
@@ -569,9 +633,11 @@ pub fn run_generate_consumer(
             .join(", ")
     );
     println!(
-        "  worker/src/consumers/{name}.rs — yours: make it idempotent, it can see an event twice."
+        "  presentacion/worker/src/consumidores/{name}.rs — yours: make it idempotent, it can see an event twice."
     );
-    println!("  worker/src/generated/registry.rs regenerated. Run it with `make worker`.");
+    println!(
+        "  presentacion/worker/src/generado/registro.rs regenerated. Run it with `make worker`."
+    );
     Ok(())
 }
 

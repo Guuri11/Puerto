@@ -99,7 +99,7 @@ fn generated_use_case_logs_no_payload_and_its_test_is_marked_to_write() {
 
     scaffold::run_use_case("Product", "archive_product", &dir).unwrap();
 
-    let impl_rs = read(&dir, "business/src/application/product/archive_product.rs");
+    let impl_rs = read(&dir, "contextos/product/aplicacion/src/archive_product.rs");
     // The params are user data (architecture.md): the log names the use case only.
     assert!(!impl_rs.contains("?params"), "{impl_rs}");
     assert!(impl_rs.contains("tracing::info!(\"archive_product: start\");"));

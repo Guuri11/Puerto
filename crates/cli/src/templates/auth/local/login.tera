@@ -5,11 +5,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use puerto_nucleo::auth::{AlmacenCredenciales, HasherContrasena, Sesion, AlmacenSesiones};
 
-use crate::domain::user::{
-    errors::UserError,
-    model::{LOCAL_ISSUER, User},
-    repository::UserRepositoryTrait,
-    use_cases::login::{LoginParams, LoginUseCaseTrait},
+use dominio_usuario::{
+    errores::UserError,
+    modelo::{LOCAL_ISSUER, User},
+    repositorio::UserRepositoryTrait,
 };
 
 pub struct LoginUseCaseImpl {
@@ -48,7 +47,7 @@ mod tests {
     use puerto_nucleo::auth::dobles::{MockAlmacenCredenciales, MockHasherContrasena, MockAlmacenSesiones};
 
     use super::*;
-    use crate::domain::user::repository::mocks::MockUserRepository;
+    use dominio_usuario::repositorio::mocks::MockUserRepository;
 
     /// Accepts `correct horse battery` against the hash `stored`; refuses anything else.
     fn hasher() -> MockHasherContrasena {

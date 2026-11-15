@@ -36,6 +36,17 @@ fn generate_project(name: &str, destination: &Path) -> Result<PathBuf, Box<dyn s
     Ok(output_dir)
 }
 
+/// The generated wiring of a project: `presentacion/cableado/src/lib.rs` (repositories and use
+/// cases) followed by `presentacion/api/src/generado/bootstrap.rs` (the APIs on them).
+fn wiring(base: &Path) -> String {
+    let read = |rel: &str| fs::read_to_string(base.join(rel)).unwrap_or_default();
+    format!(
+        "{}\n{}",
+        read("presentacion/cableado/src/lib.rs"),
+        read("presentacion/api/src/generado/bootstrap.rs")
+    )
+}
+
 mod auth;
 mod auth_e2e;
 mod bootstrap_gen;

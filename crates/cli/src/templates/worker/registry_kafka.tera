@@ -8,7 +8,7 @@ use {{ import }};
 {% endfor -%}
 {% if consumers %}
 {% for m in modules -%}
-use crate::consumers::{{ m.0 }}::{{ m.1 }};
+use crate::consumidores::{{ m.0 }}::{{ m.1 }};
 {% endfor -%}
 {% endif %}
 /// The relay and one consumer per `[[consumidor]]`, on the `kafka` transport: the relay publishes
@@ -17,10 +17,10 @@ use crate::consumers::{{ m.0 }}::{{ m.1 }};
 pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {
     let database_url = std::env::var("DATABASE_URL")
         .map_err(|_| "DATABASE_URL is not set — set it in .env (.env.example has one)".to_string())?;
-    let pool = infrastructure::db::crear_pool_postgres(&database_url)
+    let pool = puerto_sqlx::crear_pool_postgres(&database_url)
         .await
         .map_err(|e| format!("{e} — is the database up? `make docker-compose/up`"))?;
-    infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)
+    puerto_sqlx::ejecutar_migraciones(&pool, &migrador::MIGRADOR)
         .await
         .map_err(|e| e.to_string())?;
     let kafka = ConfigKafka::from_env("{{ project }}").map_err(|e| e.to_string())?;

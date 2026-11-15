@@ -11,8 +11,8 @@ fn migration_creates_migrations_dir_when_missing() {
     scaffold::run_migration("add_products_table", &dir, None).unwrap();
 
     assert!(
-        dir.join("infrastructure/migrations").exists(),
-        "expected infrastructure/migrations to be created automatically"
+        dir.join("migraciones").exists(),
+        "expected migraciones to be created automatically"
     );
 
     cleanup(&dir);
@@ -29,7 +29,7 @@ fn generate_migration_is_refused_in_a_project_without_database() {
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("--db"));
-    assert!(!dir.join("infrastructure/migrations").exists());
+    assert!(!dir.join("migraciones").exists());
 
     cleanup(&dir);
 }
@@ -46,7 +46,7 @@ fn migrations_created_in_the_same_second_get_distinct_versions() {
         scaffold::run_migration(name, &dir, Some("SELECT 1;\n")).unwrap();
     }
 
-    let mut versions: Vec<String> = fs::read_dir(dir.join("infrastructure/migrations"))
+    let mut versions: Vec<String> = fs::read_dir(dir.join("migraciones"))
         .unwrap()
         .flatten()
         .map(|e| {
@@ -78,7 +78,7 @@ fn migration_file_carries_the_given_body() {
 
     scaffold::run_migration("create_x_table", &dir, Some("CREATE TABLE xs ();\n")).unwrap();
 
-    let entry = fs::read_dir(dir.join("infrastructure/migrations"))
+    let entry = fs::read_dir(dir.join("migraciones"))
         .unwrap()
         .flatten()
         .next()
@@ -133,7 +133,7 @@ fn db_scaffold_names_the_table_and_the_paths_with_the_real_plural() {
     setup_puerto_stubs_with_project_db(&dir);
     scaffold::run_scaffold("Category", &dir, &[], OverwritePolicy::Ask).unwrap();
 
-    let migration = fs::read_dir(dir.join("infrastructure/migrations"))
+    let migration = fs::read_dir(dir.join("migraciones"))
         .unwrap()
         .map(|e| fs::read_to_string(e.unwrap().path()).unwrap())
         .collect::<String>();
@@ -142,12 +142,14 @@ fn db_scaffold_names_the_table_and_the_paths_with_the_real_plural() {
         "{migration}"
     );
 
-    let repo = fs::read_to_string(dir.join("infrastructure/src/category/repository.rs")).unwrap();
+    let repo =
+        fs::read_to_string(dir.join("contextos/category/infraestructura/src/repositorio.rs"))
+            .unwrap();
     assert!(repo.contains("FROM categories WHERE"), "{repo}");
     assert!(repo.contains("INSERT INTO categories ("), "{repo}");
     assert!(!repo.contains("categorys"), "{repo}");
 
-    let routes = fs::read_to_string(dir.join("presentation/src/api/category/routes.rs")).unwrap();
+    let routes = fs::read_to_string(dir.join("contextos/category/rest/src/rutas.rs")).unwrap();
     assert!(routes.contains(r#"path = "/categories""#), "{routes}");
     assert!(routes.contains(r#"path = "/categories/:id""#), "{routes}");
     assert!(
@@ -163,7 +165,7 @@ fn db_scaffold_names_the_table_and_the_paths_with_the_real_plural() {
 
 fn table_migrations(dir: &Path, snake: &str) -> Vec<String> {
     let suffix = format!("_create_{snake}_table.sql");
-    fs::read_dir(dir.join("infrastructure/migrations"))
+    fs::read_dir(dir.join("migraciones"))
         .unwrap()
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -180,15 +182,14 @@ fn forced_rescaffold_keeps_the_one_migration_that_creates_the_table() {
     setup_puerto_stubs_with_project_db(&dir);
     scaffold::run_scaffold("Category", &dir, &[], OverwritePolicy::Ask).unwrap();
     let first = table_migrations(&dir, "category");
-    let first_body =
-        fs::read_to_string(dir.join("infrastructure/migrations").join(&first[0])).unwrap();
+    let first_body = fs::read_to_string(dir.join("migraciones").join(&first[0])).unwrap();
 
     let fields = [scaffold_test_field("title", "String")];
     scaffold::run_scaffold("Category", &dir, &fields, OverwritePolicy::Force).unwrap();
 
     let after = table_migrations(&dir, "category");
     assert_eq!(after, first, "a second CREATE TABLE migration was written");
-    let body = fs::read_to_string(dir.join("infrastructure/migrations").join(&after[0])).unwrap();
+    let body = fs::read_to_string(dir.join("migraciones").join(&after[0])).unwrap();
     assert_eq!(body, first_body, "the existing migration was rewritten");
     cleanup(&dir);
 }
@@ -249,13 +250,14 @@ fn generated_postgres_repository_tests_use_the_shared_migrator() {
     let dir = temp_dir("migrator_shared_repository");
     cleanup(&dir);
     setup_puerto_stubs(&dir);
-    fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
-    scaffold::run("Product", &dir, true, true, &[], &[]).unwrap();
+    fs::create_dir_all(dir.join("migraciones")).unwrap();
+    scaffold::run("Product", &dir, true, &[], &[]).unwrap();
 
     let repository =
-        fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/infraestructura/src/repositorio.rs"))
+            .unwrap();
 
-    assert!(repository.contains("#[sqlx::test(migrator = \"crate::db::MIGRATOR\")]"));
+    assert!(repository.contains("#[sqlx::test(migrator = \"migrador::MIGRADOR\")]"));
     assert!(!repository.contains("sqlx::test(migrations"));
     cleanup(&dir);
 }

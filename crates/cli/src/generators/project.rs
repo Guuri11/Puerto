@@ -1,4 +1,4 @@
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use std::{fs, path::Path};
 
 use crate::generators::naming::write_file;
@@ -36,7 +36,7 @@ reset-db: ## Wipe database and re-run migrations (DESTRUCTIVE)
 	echo "${CYAN}Restarting containers...${NC}"; \
 	$(DOCKER_COMPOSE) up -d --wait; \
 	echo "${GREEN}Running migrations...${NC}"; \
-	sqlx migrate run --source infrastructure/migrations
+	sqlx migrate run --source migraciones
 
 # The template's `run` and `test/infrastructure` keep their recipes; here they gain the database.
 run test/infrastructure: docker-compose/up
@@ -51,7 +51,7 @@ sqlx/offline: ## Switch SQLx to OFFLINE mode (use saved cache)
 
 sqlx/migrate: docker-compose/up ## Run pending database migrations
 	@echo "${GREEN}Running migrations...${NC}"
-	sqlx migrate run --source infrastructure/migrations
+	sqlx migrate run --source migraciones
 
 sqlx/prepare: docker-compose/up ## Regenerate SQLx offline cache (requires live DB)
 	@echo "${GREEN}Preparing SQLx cache...${NC}"
@@ -139,29 +139,65 @@ fn patch_makefile_setup_for_db(base: &Path) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-fn patch_infra_cargo_toml(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join(layout::INFRA_MANIFEST);
-    let mut src = fs::read_to_string(&path)?;
-    if src.contains("sqlx") {
-        return Ok(()); // idempotent
+/// `migrador/`: the one `MIGRADOR` of the whole database (ADR-0023 § 6).
+const MIGRADOR_MANIFEST: &str = r#"[package]
+name = "migrador"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sqlx = { workspace = true }
+"#;
+
+const MIGRADOR_LIB: &str = r#"//! The migrations of the whole database (`migraciones/`), embedded at compile time: `api` applies
+//! them at startup, and every Postgres test runs on them —
+//! `#[sqlx::test(migrator = "migrador::MIGRADOR")]` (ADR-0023 § 6 of Puerto).
+
+pub static MIGRADOR: sqlx::migrate::Migrator = sqlx::migrate!("../migraciones");
+"#;
+
+/// Without it, `migrate!` does not see a new migration until some `.rs` file changes.
+const MIGRADOR_BUILD: &str = r#"fn main() {
+    println!("cargo:rerun-if-changed=../migraciones");
+}
+"#;
+
+/// The workspace side of `--db`: `migrador` as a member, `sqlx` and `puerto-sqlx` as dependencies,
+/// and the `api` binary on both (the pool, the migrations at startup, the readiness ping).
+fn add_migrador(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    write_file(
+        &base.join(layout::MIGRADOR_DIR).join("Cargo.toml"),
+        MIGRADOR_MANIFEST,
+    )?;
+    write_file(
+        &base.join(layout::MIGRADOR_DIR).join("src/lib.rs"),
+        MIGRADOR_LIB,
+    )?;
+    write_file(
+        &base.join(layout::MIGRADOR_DIR).join("build.rs"),
+        MIGRADOR_BUILD,
+    )?;
+    let manifest = base.join(layout::WORKSPACE_MANIFEST);
+    let src = fs::read_to_string(&manifest)?;
+    if !src.contains("\"migrador\"") {
+        fs::write(
+            &manifest,
+            src.replacen("\"nucleo\", ", "\"nucleo\", \"migrador\", ", 1),
+        )?;
     }
-    if !src.ends_with('\n') {
-        src.push('\n');
+    add_workspace_dependency(base, "puerto-sqlx")?;
+    crate::generators::crates::add_internal_dependency(base, "migrador", layout::MIGRADOR_DIR)?;
+    for name in ["migrador", "puerto-sqlx"] {
+        crate::generators::bootstrap::add_crate_dependency(
+            base,
+            layout::API_MANIFEST,
+            "dependencies",
+            name,
+            "{ workspace = true }",
+        )?;
     }
-    // The adapter is the runtime's (ADR-0017); `sqlx` stays for the repositories' queries and the
-    // project's `migrate!`.
-    src = src.replace(
-        "puerto-nucleo = { workspace = true }\n",
-        "puerto-nucleo = { workspace = true }\npuerto-sqlx = { workspace = true }\n",
-    );
-    // Before `[dev-dependencies]`, so the runtime dependencies stay together.
-    let sqlx = "[dependencies.sqlx]\nversion = \"0.8\"\nfeatures = [\"runtime-tokio-rustls\", \"postgres\", \"macros\", \"migrate\", \"uuid\", \"chrono\", \"json\"]\n\n";
-    src = match src.find("[dev-dependencies]") {
-        Some(at) => format!("{}{sqlx}{}", &src[..at], &src[at..]),
-        None => format!("{src}\n{}", sqlx.trim_end_matches('\n')) + "\n",
-    };
-    fs::write(&path, src)?;
-    add_workspace_dependency(base, "puerto-sqlx")
+    crate::generators::crates::sync_workspace_dependencies(base)?;
+    Ok(())
 }
 
 /// Adds the service `name` (its YAML, indented as a service) to `docker-compose.yml`: after the
@@ -191,31 +227,67 @@ pub(crate) fn add_compose_service(
     Ok(())
 }
 
-/// Adds runtime crate `name` to the root `[workspace.dependencies]`, next to the ones the template
-/// declares and on the same minor as this CLI.
+/// Adds runtime crate `name` to the root `[workspace.dependencies]`, after the runtime crates the
+/// template declares and on the same minor as this CLI.
 pub(crate) fn add_workspace_dependency(
     base: &Path,
     name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join("Cargo.toml");
-    let src = fs::read_to_string(&path)?;
-    if src.contains(&format!("{name} = ")) {
+    let version = format!(
+        "\"{}\"",
+        crate::runtime::requirement(env!("CARGO_PKG_VERSION"))
+    );
+    let path = base.join(layout::WORKSPACE_MANIFEST);
+    let src = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    // No runtime crate left (`--sin-demo` without web): under the block's comment again.
+    let comment = "# on the same minor as the `puerto` CLI that generated this project.\n";
+    if !src.lines().any(|l| l.starts_with("puerto-")) && src.contains(comment) {
+        fs::write(
+            &path,
+            src.replacen(comment, &format!("{comment}{name} = {version}\n"), 1),
+        )?;
+        return Ok(());
+    }
+    insert_workspace_dependency(base, name, &version, Some("puerto-"))
+}
+
+/// Adds `name = value` to the root `[workspace.dependencies]` unless it is there: after the last
+/// entry starting with `after` when there is one, else at the end of the table.
+pub(crate) fn insert_workspace_dependency(
+    base: &Path,
+    name: &str,
+    value: &str,
+    after: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join(layout::WORKSPACE_MANIFEST);
+    let src = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if src.lines().any(|l| l.starts_with(&format!("{name} = "))) {
         return Ok(());
     }
     let header = "[workspace.dependencies]\n";
     let Some(at) = src.find(header) else {
         return Err(format!("{}: no [workspace.dependencies] table", path.display()).into());
     };
-    let line = format!(
-        "{name} = \"{}\"",
-        crate::runtime::requirement(env!("CARGO_PKG_VERSION"))
-    );
-    // After the table's last entry: before the next table (and the blank line ahead of it), or at
-    // the end of the file.
+    let line = format!("{name} = {value}");
     let body = at + header.len();
     let table_end = src[body..].find("\n[").map_or(src.len(), |i| body + i + 1);
-    let end = body + src[body..table_end].trim_end().len();
-    let out = if end > body {
+    let table = &src[body..table_end];
+    // The end of the last `after…` line, else of the table's last entry.
+    let anchor = after
+        .and_then(|prefix| {
+            let mut offset = 0;
+            let mut found = None;
+            for l in table.split_inclusive('\n') {
+                if l.starts_with(prefix) {
+                    found = Some(offset + l.trim_end().len());
+                }
+                offset += l.len();
+            }
+            found
+        })
+        .unwrap_or_else(|| table.trim_end().len());
+    let end = body + anchor;
+    let out = if anchor > 0 {
         format!("{}\n{line}{}", &src[..end], &src[end..])
     } else {
         format!("{}{line}\n{}", &src[..body], &src[body..])
@@ -270,24 +342,9 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
         "[env]\nSQLX_OFFLINE = \"true\"\n",
     )?;
 
-    // infrastructure/migrations/ directory (empty, sqlx needs it)
+    // migraciones/ (empty: sqlx needs it) and the crate that embeds it.
     fs::create_dir_all(base.join(layout::MIGRATIONS_DIR))?;
-
-    // infrastructure/src/db.rs
-    write_file(
-        &base.join(layout::DB_RS),
-        &render("infrastructure/db.tera", &tera::Context::new())?,
-    )?;
-    // …declared now, not by the first scaffold: the `--eventos` worker names `infrastructure::db`.
-    let infra_lib = base.join(layout::INFRA_LIB);
-    let mut lib = fs::read_to_string(&infra_lib)?;
-    if !lib.contains("pub mod db;") {
-        lib.push_str("pub mod db;\n");
-        fs::write(&infra_lib, lib)?;
-    }
-
-    // Patch infrastructure/Cargo.toml to add sqlx
-    patch_infra_cargo_toml(base)?;
+    add_migrador(base)?;
 
     // Patch Makefile: setup target + docker/sqlx targets
     patch_makefile_setup_for_db(base)?;
@@ -307,17 +364,17 @@ const AGENTS_EVENTS_SECTION: &str = r#"## Domain events (`[proyecto] eventos`)
 Every write of a CRUD entity goes through its unit of work, which saves the entity and records an
 event in the `outbox` table in one transaction (ADR-0018 of Puerto). The repository only reads.
 
-- **Never hand-edit `business/src/domain/<entity>/events.rs`** — it is rewritten from
+- **Never hand-edit `contextos/<c>/dominio/src/eventos.rs`** — it is rewritten from
   `puerto.toml` (the snapshot follows the entity's fields). Add an event with
   `puerto generar evento <Entity> <name>`, then record it from a use case:
   `uow.record(ProductEvent::Published(ProductSnapshot::from_entity(&entity)))`.
 - A write use case: `uow_factory.begin()` → `save` → `record` → `commit`. Returning early with
   `?` before `commit` rolls everything back.
 - The snapshot is a public contract: consumers decode it. Renaming a field changes it.
-- `worker/` is the second process: it relays the outbox and runs the consumers (`make worker`).
-  **Never hand-edit `worker/src/generated/registry.rs`.** Add a consumer with
+- `presentacion/worker/` is the second process: it relays the outbox and runs the consumers (`make worker`).
+  **Never hand-edit `presentacion/worker/src/generado/registro.rs`.** Add a consumer with
   `puerto generar consumidor <name> --tras <event_type>`; its handler must be idempotent — delivery
-  is at-least-once. See `worker/AGENTS.md`.
+  is at-least-once. See `presentacion/worker/AGENTS.md`.
 
 "#;
 
@@ -343,27 +400,6 @@ pub fn apply_events_to_new_project(
         outbox
     };
     crate::generators::migration::run_migration("outbox", base, Some(&outbox))?;
-
-    // `events.rs` derives serde on the snapshots; the domain models stay serde-free.
-    let manifest = base.join(layout::BUSINESS_MANIFEST);
-    let src = fs::read_to_string(&manifest)?;
-    if !src.contains("serde_json") {
-        let patched = src.replace(
-            "uuid = { version = \"1\", features = [\"v4\"] }\nchrono = \"0.4\"\n",
-            "uuid = { version = \"1\", features = [\"v4\", \"serde\"] }\n\
-                 chrono = { version = \"0.4\", features = [\"serde\"] }\n\
-                 serde = { version = \"1\", features = [\"derive\"] }\n\
-                 serde_json = \"1\"\n",
-        );
-        if !patched.contains("serde_json") {
-            return Err(format!(
-                "{}: no uuid/chrono dependencies to extend",
-                manifest.display()
-            )
-            .into());
-        }
-        fs::write(&manifest, patched)?;
-    }
 
     let agents_path = base.join("AGENTS.md");
     let agents = fs::read_to_string(&agents_path)?;
@@ -403,49 +439,24 @@ fn ignore_not_found(result: std::io::Result<()>) -> std::io::Result<()> {
     }
 }
 
-/// Strip the Greeting demo entity from a freshly generated project (`puerto nuevo --sin-demo`).
-/// Removes greeting files, rewrites the four affected source files, clears puerto.toml entities,
-/// and regenerates bootstrap.rs with an empty API.
+/// Strip the Greeting demo entity from a freshly generated project (`puerto nuevo --sin-demo`):
+/// its context's four crates and their declarations, its entity in puerto.toml, and the wiring
+/// regenerated without it.
 pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    // Remove greeting directories and the sibling declaration file.
-    for dir in [
-        layout::domain_dir("greeting"),
-        layout::application_dir("greeting"),
-        layout::infra_dir("greeting"),
-        layout::api_dir("greeting"),
-    ] {
-        ignore_not_found(fs::remove_dir_all(base.join(dir)))?;
+    ignore_not_found(fs::remove_dir_all(
+        base.join(layout::context_dir("greeting")),
+    ))?;
+    crate::generators::crates::remove_contexts_member(base)?;
+    for layer in Layer::ALL {
+        let name = layout::crate_name("greeting", layer);
+        crate::generators::crates::remove_internal_dependency(base, &name)?;
+        crate::generators::crates::remove_dependency_line(base, layout::API_MANIFEST, &name)?;
     }
-    ignore_not_found(fs::remove_file(base.join(layout::api_module("greeting"))))?;
 
-    // Minimal business lib.rs: empty domain and application blocks for the patchers to fill.
-    // `ErrorRepositorio` and the page types come from `puerto-nucleo`; `pub mod shared;` arrives
-    // with the first shared value object.
-    fs::write(
-        base.join(layout::BUSINESS_LIB),
-        "pub mod domain {\n}\npub mod application {\n}\n",
-    )?;
-
-    // Minimal infrastructure lib.rs: no adapters yet. A `--db` project keeps its `db` module.
-    let infra_lib = if crate::puerto_toml::read(base).is_ok_and(|c| c.project.db) {
-        "pub mod db;\n"
-    } else {
-        ""
-    };
-    fs::write(base.join(layout::INFRA_LIB), infra_lib)?;
-
-    // Minimal presentation api.rs. `tags` must survive the demo strip: `regenerate_bootstrap`
-    // always writes `api/tags.rs`, and every generated `routes.rs` does
-    // `use crate::api::tags::ApiTags;` — dropping the declaration made the first scaffold into a
-    // `--sin-demo` project fail to compile (E0432).
-    fs::write(base.join(layout::API_RS), "pub mod error;\npub mod tags;\n")?;
-
-    // Clear entities in puerto.toml.
     let mut config = crate::puerto_toml::read(base)?;
     config.entity.clear();
     crate::puerto_toml::write(base, &config)?;
 
-    // Regenerate bootstrap.rs with no entities.
     crate::generators::bootstrap::regenerate_bootstrap(base)?;
 
     Ok(())

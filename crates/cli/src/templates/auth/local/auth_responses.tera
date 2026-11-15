@@ -2,8 +2,8 @@ use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 use puerto_web::RespuestaError;
 
-use crate::api::auth::dto::SessionDto;
-use crate::api::me::dto::MeDto;
+use crate::auth::dto::SessionDto;
+use crate::me::dto::MeDto;
 
 #[derive(ApiResponse)]
 pub enum RegisterResponse {

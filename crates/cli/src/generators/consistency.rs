@@ -1,6 +1,6 @@
 //! Does `puerto.toml` describe the code that is actually on disk?
 //!
-//! `generated/bootstrap.rs` is written from the manifest alone: one `use` per entity, one per use
+//! `generado/bootstrap.rs` is written from the manifest alone: one `use` per entity, one per use
 //! case, with no check that any of it exists. An entity declared but never scaffolded produced a
 //! bootstrap full of E0433s — in the *generated* project, at `cargo build`, far from the command
 //! that caused it.
@@ -8,7 +8,7 @@
 //! The list below is deliberately not "every file scaffold writes" (that is `conflict::entity_files`)
 //! but exactly the files `bootstrap.rs` imports. Those are the ones whose absence does not compile.
 
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use std::path::{Path, PathBuf};
 
 use crate::generators::naming::pascal_to_snake;
@@ -25,15 +25,15 @@ pub struct EntityDrift {
 pub fn bootstrap_required_files(entity: &Entity) -> Vec<PathBuf> {
     let snake = pascal_to_snake(&entity.name);
     let mut files = vec![
-        PathBuf::from(layout::domain_file(&snake, "repository")),
-        PathBuf::from(layout::infra_file(&snake, "repository")),
-        PathBuf::from(layout::api_file(&snake, "routes")),
+        PathBuf::from(layout::domain_file(&snake, "repositorio")),
+        PathBuf::from(layout::infra_file(&snake, "repositorio")),
+        PathBuf::from(layout::rest_file(&snake, "rutas")),
     ];
     files.extend(
         entity
             .use_cases
             .iter()
-            .map(|uc| PathBuf::from(layout::use_case_impl(&snake, uc))),
+            .map(|uc| PathBuf::from(layout::use_case(&snake, uc))),
     );
     files
 }
@@ -41,10 +41,9 @@ pub fn bootstrap_required_files(entity: &Entity) -> Vec<PathBuf> {
 /// Whether `base` looks like a generated project at all.
 ///
 /// Without this, every unit test that writes a bare `puerto.toml` into a temp dir would report
-/// every entity as drifted. A project with no `business/src/domain` has nothing to be
-/// inconsistent *with*.
+/// every entity as drifted. A project with no `nucleo/` has nothing to be inconsistent *with*.
 fn has_generated_tree(base: &Path) -> bool {
-    base.join(layout::DOMAIN_DIR).is_dir()
+    base.join(layout::NUCLEO_DIR).is_dir()
 }
 
 /// The files the generated code imports for this entity: `bootstrap.rs`'s, plus — in a web
@@ -92,9 +91,10 @@ pub fn missing_consumer_files(base: &Path, config: &PuertoConfig) -> Vec<String>
         .filter(|c| !base.join(layout::consumer(&c.name)).exists())
         .map(|c| {
             format!(
-                "consumer '{0}': worker/src/consumers/{0}.rs is missing — remove its [[consumidor]] \
-                 block and run `puerto generar consumidor {0} --tras {1}`",
+                "consumer '{0}': {1} is missing — remove its [[consumidor]] block and run \
+                 `puerto generar consumidor {0} --tras {2}`",
                 c.name,
+                layout::consumer(&c.name),
                 c.events.join(",")
             )
         })
@@ -128,7 +128,7 @@ pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
     lines
 }
 
-/// Domain modules on disk with no `[[entidad]]` block — the inverse drift. Not an error: the code
+/// Contexts on disk with no `[[entidad]]` block — the inverse drift. Not an error: the code
 /// compiles, it is just invisible to every Puerto command.
 pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
     if !has_generated_tree(base) {
@@ -140,7 +140,7 @@ pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
         .map(|e| pascal_to_snake(&e.name))
         .collect();
 
-    let Ok(entries) = std::fs::read_dir(base.join(layout::DOMAIN_DIR)) else {
+    let Ok(entries) = std::fs::read_dir(base.join(layout::CONTEXTS_DIR)) else {
         return vec![];
     };
 
@@ -148,10 +148,10 @@ pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
         .flatten()
         .filter(|e| e.path().is_dir())
         .filter_map(|e| e.file_name().into_string().ok())
-        // `shared` holds the shared value objects and `mail` the mails: neither is an entity. An
-        // auth project's `user` is written once by `puerto nuevo --auth`, outside the manifest.
-        .filter(|name| name != "shared" && name != "mail" && !declared.contains(name))
-        .filter(|name| !(config.project.has_auth() && name == "user"))
+        // `correo` holds the mails: not an entity. An auth project's `usuario` is written once by
+        // `puerto nuevo --auth`, outside the manifest.
+        .filter(|name| name != layout::MAIL_CONTEXT && !declared.contains(name))
+        .filter(|name| !(config.project.has_auth() && name == layout::USER_CONTEXT))
         .collect();
     orphans.sort();
     orphans
@@ -165,13 +165,14 @@ pub fn orphan_entity_dirs(base: &Path, config: &PuertoConfig) -> Vec<String> {
 fn suggested_command(entity: &str, missing: &[PathBuf]) -> String {
     let is_missing = |needle: &str| missing.iter().any(|p| p.to_string_lossy().contains(needle));
 
-    if is_missing(layout::DOMAIN_DIR) {
+    let layer = |l: Layer| format!("/{}/", l.dir());
+    if is_missing(&layer(Layer::Domain)) {
         format!("puerto generar scaffold {entity}")
-    } else if is_missing(layout::APPLICATION_DIR) {
+    } else if is_missing(&layer(Layer::Application)) {
         format!("puerto generar aplicacion {entity}")
-    } else if is_missing(layout::INFRA_SRC) {
+    } else if is_missing(&layer(Layer::Infrastructure)) {
         format!("puerto generar repositorio {entity}")
-    } else if is_missing(layout::PRESENTATION_SRC) {
+    } else if is_missing(&layer(Layer::Rest)) {
         format!("puerto generar presentacion {entity}")
     } else {
         format!("puerto generar web {entity}")
@@ -202,7 +203,7 @@ struct Handler<'a> {
     body: Vec<&'a str>,
 }
 
-/// The handlers of the `#[OpenApi] impl` in a rustfmt-formatted `routes.rs`: items indented four
+/// The handlers of the `#[OpenApi] impl` in a rustfmt-formatted `rutas.rs`: items indented four
 /// spaces, from `#[OpenApi]` to the `}` that closes the impl.
 fn handlers(routes: &str) -> Vec<Handler<'_>> {
     let mut lines = routes
@@ -263,7 +264,7 @@ impl Handler<'_> {
     }
 }
 
-/// Auth projects: one line per use case whose handler in `routes.rs` does not match what
+/// Auth projects: one line per use case whose handler in `rutas.rs` does not match what
 /// `puerto.toml` says of it — a `public` route that takes `BearerAuth`, a protected one that does
 /// not, a role in `roles` with no `#[requiere_rol]`. Textual: a use case whose handler is not
 /// found (renamed, moved) is not checked.
@@ -273,7 +274,7 @@ pub fn auth_drift(base: &Path, config: &PuertoConfig) -> Vec<String> {
     }
     let mut lines = vec![];
     for entity in &config.entity {
-        let path = layout::api_file(&pascal_to_snake(&entity.name), "routes");
+        let path = layout::rest_file(&pascal_to_snake(&entity.name), "rutas");
         let Ok(routes) = std::fs::read_to_string(base.join(&path)) else {
             continue;
         };
@@ -328,19 +329,19 @@ mod tests {
         let files = bootstrap_required_files(&entity);
 
         assert!(files.contains(&PathBuf::from(
-            "business/src/application/order_item/create_order_item.rs"
+            "contextos/order_item/aplicacion/src/create_order_item.rs"
         )));
         assert!(files.contains(&PathBuf::from(
-            "business/src/application/order_item/list_order_item.rs"
+            "contextos/order_item/aplicacion/src/list_order_item.rs"
         )));
-        assert!(files.contains(&PathBuf::from("presentation/src/api/order_item/routes.rs")));
+        assert!(files.contains(&PathBuf::from("contextos/order_item/rest/src/rutas.rs")));
     }
 
     #[test]
     fn suggests_scaffold_when_nothing_exists_and_the_next_layer_otherwise() {
         let all = vec![
-            PathBuf::from("business/src/domain/invoice/repository.rs"),
-            PathBuf::from("infrastructure/src/invoice/repository.rs"),
+            PathBuf::from("contextos/invoice/dominio/src/repositorio.rs"),
+            PathBuf::from("contextos/invoice/infraestructura/src/repositorio.rs"),
         ];
         assert_eq!(
             suggested_command("Invoice", &all),
@@ -349,15 +350,15 @@ mod tests {
 
         // Domain already written (not in the missing list) — the domain-first flow's next step.
         let mid_flow = vec![
-            PathBuf::from("business/src/application/invoice/create_invoice.rs"),
-            PathBuf::from("infrastructure/src/invoice/repository.rs"),
+            PathBuf::from("contextos/invoice/aplicacion/src/create_invoice.rs"),
+            PathBuf::from("contextos/invoice/infraestructura/src/repositorio.rs"),
         ];
         assert_eq!(
             suggested_command("Invoice", &mid_flow),
             "puerto generar aplicacion Invoice"
         );
 
-        let only_presentation = vec![PathBuf::from("presentation/src/api/invoice/routes.rs")];
+        let only_presentation = vec![PathBuf::from("contextos/invoice/rest/src/rutas.rs")];
         assert_eq!(
             suggested_command("Invoice", &only_presentation),
             "puerto generar presentacion Invoice"
@@ -450,8 +451,8 @@ mod tests {
     }
 
     fn auth_project(dir: &Path, entity: Entity) -> PuertoConfig {
-        std::fs::create_dir_all(dir.join("presentation/src/api/product")).unwrap();
-        std::fs::write(dir.join("presentation/src/api/product/routes.rs"), ROUTES).unwrap();
+        std::fs::create_dir_all(dir.join("contextos/product/rest/src")).unwrap();
+        std::fs::write(dir.join("contextos/product/rest/src/rutas.rs"), ROUTES).unwrap();
         PuertoConfig {
             project: crate::puerto_toml::Project {
                 name: "x".into(),

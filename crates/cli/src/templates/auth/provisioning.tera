@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use business::domain::user::{
-    model::{User, UserId},
-    repository::UserRepositoryTrait,
+use dominio_usuario::{
+    modelo::{User, UserId},
+    repositorio::UserRepositoryTrait,
 };
 use puerto_nucleo::auth::{ErrorAuth, Autenticador, Principal};
 use puerto_nucleo::ErrorRepositorio;
@@ -109,7 +109,7 @@ impl Autenticador for ProvisioningAuthenticator {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::user::repository::mocks::MockUserRepository;
+    use dominio_usuario::repositorio::mocks::MockUserRepository;
     use puerto_nucleo::auth::dobles::MockAutenticador;
     use uuid::Uuid;
 

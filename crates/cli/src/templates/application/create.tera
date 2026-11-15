@@ -3,11 +3,10 @@
 use async_trait::async_trait;
 {% for import in vo_imports %}use {{ import }};
 {% endfor %}
-use crate::domain::{{ snake }}::{
-    errors::{{ pascal }}Error,
-    model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
-    repository::{{ pascal }}RepositoryTrait,
-    use_cases::create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
+use dominio_{{ snake }}::{
+    errores::{{ pascal }}Error,
+    modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
+    repositorio::{{ pascal }}RepositoryTrait,
 };
 
 pub struct Create{{ pascal }}UseCaseImpl {
@@ -31,8 +30,8 @@ impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
-{% endif %}    use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
+{% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
+{% endif %}    use dominio_{{ snake }}::repositorio::mocks::Mock{{ pascal }}Repository;
     use puerto_nucleo::ErrorRepositorio;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
@@ -49,7 +48,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{% if actor %}                actor: PrincipalMother::random(),
+{% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
@@ -74,7 +73,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{% if actor %}                actor: PrincipalMother::random(),
+{% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
@@ -97,7 +96,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{% if actor %}                actor: PrincipalMother::random(),
+{% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}{{ macros::params(fields=fields, word="example") }}            })
             .await;
 
@@ -120,7 +119,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(Create{{ pascal }}Params {
-{% if actor %}                actor: PrincipalMother::random(),
+{% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}{{ macros::params(fields=fields, word="example", empty=f.name) }}            })
             .await;
 

@@ -210,12 +210,12 @@ pub fn reference_id(field: &Field) -> Option<String> {
         .map(|target| format!("{target}Id"))
 }
 
-/// The path of a reference's id type from crate `krate` (`crate` in `business`, `business`
-/// elsewhere): `{krate}::domain::customer::model::CustomerId`.
-pub fn reference_import(field: &Field, krate: &str) -> Option<String> {
+/// The path of a reference's id type, which lives in its owner's domain crate (ADR-0023 § 3):
+/// `dominio_customer::modelo::CustomerId`.
+pub fn reference_import(field: &Field) -> Option<String> {
     let target = field.references.as_deref()?;
     let snake = crate::generators::naming::pascal_to_snake(target);
-    Some(format!("{krate}::domain::{snake}::model::{target}Id"))
+    Some(format!("dominio_{snake}::modelo::{target}Id"))
 }
 
 /// What naming the field's **domain** type needs from the registry: nothing for a reference,
@@ -254,18 +254,21 @@ pub fn literal_names_vo(field: &Field) -> bool {
     is_value_object(field) && !is_option_vo(field) && !is_vec_vo(field)
 }
 
-pub fn vo_import_path(field: &Field, snake: &str, shared_vos: &[ValueObjectDefinition]) -> String {
+/// A value object's path: a shared one is `nucleo`'s; a local one, its domain crate's — `crate`
+/// from inside it (`in_domain`).
+pub fn vo_import_path(
+    field: &Field,
+    snake: &str,
+    shared_vos: &[ValueObjectDefinition],
+    in_domain: bool,
+) -> String {
+    let vo = field.value_object.as_deref().unwrap_or_default();
     if is_shared_vo(field, shared_vos) {
-        format!(
-            "crate::domain::shared::value_objects::{}",
-            field.value_object.as_deref().unwrap()
-        )
+        format!("nucleo::valores::{vo}")
+    } else if in_domain {
+        format!("crate::valores::{vo}")
     } else {
-        format!(
-            "crate::domain::{}::value_objects::{}",
-            snake,
-            field.value_object.as_deref().unwrap()
-        )
+        format!("dominio_{snake}::valores::{vo}")
     }
 }
 

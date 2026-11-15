@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;{% for import in imports %}
 use {{ import }};{% endfor %}
 
-use super::errors::{{ pascal }}Error;
+use crate::errores::{{ pascal }}Error;
 
 /// The id of every `{{ pascal }}`: a `Uuid` that cannot be passed where another entity's id is expected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

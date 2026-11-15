@@ -1,0 +1,17 @@
+[package]
+name = "rest_greeting"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aplicacion_greeting = { workspace = true }
+dominio_greeting = { workspace = true }
+puerto-web = { workspace = true }
+poem = { workspace = true }
+poem-openapi = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+aplicacion_greeting = { workspace = true, features = ["pruebas"] }
+poem = { workspace = true, features = ["test"] }
+tokio = { workspace = true }

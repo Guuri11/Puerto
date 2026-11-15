@@ -312,7 +312,7 @@ fn validate_warns_but_passes_on_an_undeclared_domain_module() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("drift-orphan", &dir).unwrap();
 
-    fs::create_dir_all(output.join("business/src/domain/ghost")).unwrap();
+    fs::create_dir_all(output.join("contextos/ghost/dominio")).unwrap();
 
     // Orphan code compiles — it is simply invisible to Puerto. A warning, not an error.
     assert!(validate::run_validate(&output).is_ok());
@@ -332,8 +332,7 @@ fn bootstrap_command_refuses_when_declared_code_is_missing() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("drift-bootstrap", &dir).unwrap();
 
-    let before =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let before = wiring(&output);
     declare_phantom_entity(&output, "Invoice");
 
     let result = scaffold::run_bootstrap_command(&output, false);
@@ -342,7 +341,7 @@ fn bootstrap_command_refuses_when_declared_code_is_missing() {
     let err = result.unwrap_err().to_string();
     assert!(err.contains("--permitir-faltantes"), "got: {err}");
     assert_eq!(
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap(),
+        wiring(&output),
         before,
         "a refused command must not have written anything"
     );
@@ -361,8 +360,7 @@ fn bootstrap_command_writes_anyway_with_allow_missing() {
 
     scaffold::run_bootstrap_command(&output, true).unwrap();
 
-    let bootstrap =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let bootstrap = wiring(&output);
     assert!(bootstrap.contains("InvoiceApi"));
 
     cleanup(&dir);
@@ -514,11 +512,11 @@ fn scaffold_refuses_an_entity_name_that_collides_with_generated_code() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("reserved-name", &dir).unwrap();
 
-    let result = scaffold::run_scaffold("Tracing", &output, &[], OverwritePolicy::Ask);
+    let result = scaffold::run_scaffold("Correo", &output, &[], OverwritePolicy::Ask);
 
     assert!(result.is_err());
     assert!(
-        !output.join("business/src/domain/tracing").is_dir(),
+        !output.join("contextos/correo").is_dir(),
         "nothing may be written for a refused name"
     );
 

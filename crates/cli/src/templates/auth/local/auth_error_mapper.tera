@@ -1,23 +1,20 @@
-use business::domain::user::errors::UserError;
+use dominio_usuario::errores::UserError;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
 use puerto_web::RespuestaError;
 
-use crate::api::error::IntoErrorResponse;
-
-impl IntoErrorResponse for UserError {
-    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
-    fn into_error_response(self) -> (StatusCode, Json<RespuestaError>) {
-        let status = match &self {
-            UserError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            UserError::InvalidCredentials => StatusCode::UNAUTHORIZED,
-            UserError::NotFound => StatusCode::NOT_FOUND,
-            UserError::Duplicate => StatusCode::CONFLICT,
-            UserError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
-            UserError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        (status, Json(RespuestaError::from_codigo(self.to_string())))
-    }
+/// A user error as its HTTP status and body (ADR-0007 of Puerto). Exhaustive on purpose: a new
+/// error variant does not compile until it has a status.
+pub fn a_respuesta_error(err: UserError) -> (StatusCode, Json<RespuestaError>) {
+    let status = match &err {
+        UserError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        UserError::InvalidCredentials => StatusCode::UNAUTHORIZED,
+        UserError::NotFound => StatusCode::NOT_FOUND,
+        UserError::Duplicate => StatusCode::CONFLICT,
+        UserError::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+        UserError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (status, Json(RespuestaError::from_codigo(err.to_string())))
 }
 
 #[cfg(test)]
@@ -25,7 +22,7 @@ mod tests {
     use super::*;
 
     fn mapped(err: UserError) -> (StatusCode, String) {
-        let (status, Json(body)) = err.into_error_response();
+        let (status, Json(body)) = a_respuesta_error(err);
         (status, body.codigo)
     }
 

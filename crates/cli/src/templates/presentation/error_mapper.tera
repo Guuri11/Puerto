@@ -1,24 +1,23 @@
-{% import "presentation/macros.tera" as macros %}use business::domain::{{ snake }}::errors::{{ pascal }}Error;
+{% import "presentation/macros.tera" as macros %}use dominio_{{ snake }}::errores::{{ pascal }}Error;
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
 use puerto_web::RespuestaError;
 
-use crate::api::error::IntoErrorResponse;
-
-impl IntoErrorResponse for {{ pascal }}Error {
-    /// Exhaustive on purpose: a new error variant does not compile until it has a status.
-    fn into_error_response(self) -> (StatusCode, Json<RespuestaError>) {
-        let status = match &self {
-            {{ pascal }}Error::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            {{ pascal }}Error::NotFound => StatusCode::NOT_FOUND,
-            {{ pascal }}Error::Duplicate => StatusCode::CONFLICT,
-            {{ pascal }}Error::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
-            {{ pascal }}Error::Unknown => StatusCode::INTERNAL_SERVER_ERROR,{% if auth %}
-            {{ pascal }}Error::Forbidden => StatusCode::FORBIDDEN,{% endif %}{% for v in vos %}
-            {{ pascal }}Error::Invalid{{ v.vo }} => StatusCode::UNPROCESSABLE_ENTITY,{% endfor %}
-        };
-        (status, Json(RespuestaError::from_codigo(self.to_string())))
-    }
+/// A {{ snake }} error as its HTTP status and body (ADR-0007 of Puerto): validation failures and
+/// invalid value objects are 422 — the request was well-formed (poem answers 400 for one that is
+/// not) but breaks a domain rule. Exhaustive on purpose: a new error variant does not compile
+/// until it has a status.
+pub fn a_respuesta_error(err: {{ pascal }}Error) -> (StatusCode, Json<RespuestaError>) {
+    let status = match &err {
+        {{ pascal }}Error::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        {{ pascal }}Error::NotFound => StatusCode::NOT_FOUND,
+        {{ pascal }}Error::Duplicate => StatusCode::CONFLICT,
+        {{ pascal }}Error::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
+        {{ pascal }}Error::Unknown => StatusCode::INTERNAL_SERVER_ERROR,{% if auth %}
+        {{ pascal }}Error::Forbidden => StatusCode::FORBIDDEN,{% endif %}{% for v in vos %}
+        {{ pascal }}Error::Invalid{{ v.vo }} => StatusCode::UNPROCESSABLE_ENTITY,{% endfor %}
+    };
+    (status, Json(RespuestaError::from_codigo(err.to_string())))
 }
 
 #[cfg(test)]

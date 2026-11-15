@@ -27,7 +27,7 @@ struct EventCtx {
     constant: String,
 }
 
-/// `business/src/domain/{snake}/events.rs`: the snapshot, the CRUD events plus `custom` ones.
+/// `contextos/{snake}/dominio/src/eventos.rs`: the snapshot, the CRUD events plus `custom` ones.
 pub fn generate_events(
     pascal: &str,
     snake: &str,
@@ -85,7 +85,7 @@ pub fn generate_domain_unit_of_work(pascal: &str, snake: &str) -> Result<String,
 }
 
 /// Rewrites `events.rs` of every entity whose writes go through a unit of work — after a scaffold,
-/// `generate bootstrap` and `generate event`, like `bootstrap.rs`.
+/// `generar bootstrap` and `generar evento`, like `bootstrap.rs`.
 pub fn regenerate_events(
     base: &Path,
     config: &PuertoConfig,
@@ -96,13 +96,13 @@ pub fn regenerate_events(
         .filter(|e| uses_unit_of_work(e, config.project.has_events()))
     {
         let snake = pascal_to_snake(&entity.name);
-        let dir = base.join(layout::domain_dir(&snake));
+        let path = base.join(layout::domain_file(&snake, "eventos"));
         // An entity declared but not scaffolded yet: its drift is reported by bootstrap.
-        if !dir.is_dir() {
+        if !base.join(layout::domain_file(&snake, "modelo")).exists() {
             continue;
         }
         write_file(
-            &dir.join("events.rs"),
+            &path,
             &generate_events(
                 &entity.name,
                 &snake,
@@ -152,7 +152,7 @@ pub fn run_generate_event(
         "✓ Event '{event}' added to {pascal}: {pascal}Event::{}",
         event_variant(&snake, event)
     );
-    println!("  business/src/domain/{snake}/events.rs regenerated.");
+    println!("  {} regenerated.", layout::domain_file(&snake, "eventos"));
     println!(
         "  Record it from a use case: uow.record({pascal}Event::{}({pascal}Snapshot::from_entity(&entity)))",
         event_variant(&snake, event)

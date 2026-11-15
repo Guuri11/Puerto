@@ -25,17 +25,17 @@ fn project(name: &str, db: bool, events: Option<&str>) -> (PathBuf, PathBuf) {
 #[test]
 fn main_lets_a_failed_build_end_the_process_with_its_message() {
     let main = crate::TEMPLATE_DIR
-        .get_file("presentation/src/main.rs.liquid")
+        .get_file("presentacion/api/src/main.rs")
         .and_then(|f| f.contents_utf8())
         .unwrap();
-    assert!(main.contains(".intentar_servir(generated::bootstrap::build_app)"));
+    assert!(main.contains(".intentar_servir(api::generado::bootstrap::build_app)"));
 }
 
 #[test]
 fn db_bootstrap_reports_a_database_it_cannot_use_instead_of_panicking() {
     let (dir, output) = project("startup_db", true, None);
 
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     let code = non_test_code(&bootstrap);
     assert!(code.contains(
         "pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {"
@@ -52,7 +52,7 @@ fn db_bootstrap_reports_a_database_it_cannot_use_instead_of_panicking() {
 fn inmemory_bootstrap_builds_the_app_the_same_way() {
     let (dir, output) = project("startup_inmemory", false, None);
 
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     assert!(bootstrap.contains("-> Result<impl Endpoint, String> {"));
     assert!(bootstrap.contains("Ok(crate::app::configure("));
     assert!(!bootstrap.contains("DATABASE_URL"));
@@ -69,12 +69,12 @@ fn worker_reports_what_it_cannot_reach_instead_of_panicking() {
             Some(transport),
         );
 
-        let main = read(&output, "worker/src/main.rs");
+        let main = read(&output, "presentacion/worker/src/main.rs");
         assert!(
-            main.contains(".intentar_ejecutar(generated::registry::build_worker)"),
+            main.contains(".intentar_ejecutar(generado::registro::build_worker)"),
             "{transport}"
         );
-        let registry = read(&output, "worker/src/generated/registry.rs");
+        let registry = read(&output, "presentacion/worker/src/generado/registro.rs");
         let code = non_test_code(&registry);
         assert!(
             code.contains(

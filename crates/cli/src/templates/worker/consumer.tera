@@ -42,8 +42,8 @@ impl ManejadorEvento for {{ pascal }} {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use business::domain::{{ first.entity_snake }}::events::{{ first.entity_pascal }}Event;
-    use business::tests::mothers::{{ first.entity_snake }}_mother::{{ first.entity_pascal }}Mother;
+    use dominio_{{ first.entity_snake }}::eventos::{{ first.entity_pascal }}Event;
+    use dominio_{{ first.entity_snake }}::pruebas::madres::{{ first.entity_pascal }}Mother;
 
     fn {{ first.const_lower }}() -> SobreEvento {
         let snapshot = {{ first.entity_pascal }}Snapshot::from_entity(&{{ first.entity_pascal }}Mother::random());

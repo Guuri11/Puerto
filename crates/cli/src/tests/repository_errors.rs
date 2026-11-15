@@ -5,14 +5,14 @@ fn read(dir: &Path, path: &str) -> String {
     fs::read_to_string(dir.join(path)).unwrap()
 }
 
-fn scaffold_product(name: &str, db: bool, crud: bool, fields: &[puerto_toml::Field]) -> PathBuf {
+fn scaffold_product(name: &str, db: bool, _crud: bool, fields: &[puerto_toml::Field]) -> PathBuf {
     let dir = temp_dir(name);
     cleanup(&dir);
     setup_puerto_stubs(&dir);
     if db {
-        fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+        fs::create_dir_all(dir.join("migraciones")).unwrap();
     }
-    scaffold::run("Product", &dir, db, crud, fields, &[]).unwrap();
+    scaffold::run("Product", &dir, db, fields, &[]).unwrap();
     dir
 }
 
@@ -23,9 +23,9 @@ fn greeting_repository_returns_the_repository_error() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("repo-error-greeting", &dir).unwrap();
 
-    let port = read(&output, "business/src/domain/greeting/repository.rs");
+    let port = read(&output, "contextos/greeting/dominio/src/repositorio.rs");
     assert!(port.contains("Result<Option<Greeting>, ErrorRepositorio>"));
-    let errors = read(&output, "business/src/domain/greeting/errors.rs");
+    let errors = read(&output, "contextos/greeting/dominio/src/errores.rs");
     assert!(errors.contains("impl From<ErrorRepositorio> for GreetingError"));
 
     cleanup(&dir);
@@ -35,7 +35,7 @@ fn greeting_repository_returns_the_repository_error() {
 fn crud_repository_port_returns_the_repository_error() {
     let dir = scaffold_product("repo_error_crud_port", false, true, &[]);
 
-    let port = read(&dir, "business/src/domain/product/repository.rs");
+    let port = read(&dir, "contextos/product/dominio/src/repositorio.rs");
     assert!(port.contains("use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};"));
     assert!(
         port.contains("async fn save(&self, entity: &Product) -> Result<(), ErrorRepositorio>;")
@@ -50,7 +50,7 @@ fn crud_repository_port_returns_the_repository_error() {
 fn non_crud_repository_port_returns_the_repository_error() {
     let dir = scaffold_product("repo_error_simple_port", false, false, &[]);
 
-    let port = read(&dir, "business/src/domain/product/repository.rs");
+    let port = read(&dir, "contextos/product/dominio/src/repositorio.rs");
     assert!(port.contains("Result<Option<Product>, ErrorRepositorio>"));
     assert!(!port.contains("ProductError"));
 
@@ -61,7 +61,7 @@ fn non_crud_repository_port_returns_the_repository_error() {
 fn entity_error_converts_the_repository_error_and_tests_each_arm() {
     let dir = scaffold_product("repo_error_from", false, true, &[]);
 
-    let errors = read(&dir, "business/src/domain/product/errors.rs");
+    let errors = read(&dir, "contextos/product/dominio/src/errores.rs");
     assert!(errors.contains("impl From<ErrorRepositorio> for ProductError"));
     assert!(errors.contains("ErrorRepositorio::Duplicado => Self::Duplicate,"));
     assert!(errors.contains(
@@ -81,7 +81,7 @@ fn entity_error_converts_the_repository_error_and_tests_each_arm() {
 fn inmemory_repository_returns_the_repository_error() {
     let dir = scaffold_product("repo_error_inmemory", false, true, &[]);
 
-    let repository = read(&dir, "infrastructure/src/product/repository.rs");
+    let repository = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
     assert!(repository.contains("ErrorRepositorio"));
     assert!(!repository.contains("ProductError"));
 
@@ -96,7 +96,7 @@ fn postgres_repositories_map_driver_errors_in_one_place() {
     ] {
         let dir = scaffold_product(name, true, crud, &[]);
 
-        let repository = read(&dir, "infrastructure/src/product/repository.rs");
+        let repository = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
         assert!(repository.contains("mapear_error_sqlx"), "{name}");
         assert!(!repository.contains("23505"), "{name}");
         assert!(
@@ -118,7 +118,7 @@ fn postgres_test_rejects_a_duplicate_when_a_field_is_unique() {
     sku.unique = true;
     let dir = scaffold_product("repo_error_pg_unique", true, true, &[sku]);
 
-    let repository = read(&dir, "infrastructure/src/product/repository.rs");
+    let repository = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
     assert!(repository.contains("async fn should_reject_a_duplicate_sku(pool: PgPool)"));
     assert!(repository.contains("ErrorRepositorio::Duplicado"));
 
@@ -129,7 +129,7 @@ fn postgres_test_rejects_a_duplicate_when_a_field_is_unique() {
 fn postgres_test_has_no_duplicate_case_without_a_unique_field() {
     let dir = scaffold_product("repo_error_pg_no_unique", true, true, &[]);
 
-    let repository = read(&dir, "infrastructure/src/product/repository.rs");
+    let repository = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
     assert!(!repository.contains("should_reject_a_duplicate"));
 
     cleanup(&dir);
@@ -151,30 +151,22 @@ fn shared_value_objects_are_declared_in_shared_rs_without_mod_rs() {
         inner_type: "String".to_string(),
     }];
     // Since 12.0 a project ships no `shared.rs`: the first shared VO creates it.
-    assert!(!dir.join("business/src/domain/shared.rs").exists());
+    assert!(!dir.join("nucleo/src/lib.rs").exists());
 
-    scaffold::run(
-        "User",
-        &dir,
-        false,
-        true,
-        std::slice::from_ref(&email),
-        &vos,
-    )
-    .unwrap();
-    scaffold::run("Account", &dir, false, true, &[email], &vos).unwrap();
+    scaffold::run("User", &dir, false, std::slice::from_ref(&email), &vos).unwrap();
+    scaffold::run("Account", &dir, false, &[email], &vos).unwrap();
 
-    assert!(!dir.join("business/src/domain/shared/mod.rs").exists());
-    let shared = read(&dir, "business/src/domain/shared.rs");
+    assert!(!dir.join("contextos/shared/dominio/src/mod.rs").exists());
+    let shared = read(&dir, "nucleo/src/lib.rs");
     assert!(!shared.contains("repository_error"));
-    assert_eq!(shared.matches("pub mod errors;").count(), 1);
-    assert_eq!(shared.matches("pub mod value_objects;").count(), 1);
+    assert_eq!(shared.matches("pub mod errores;").count(), 1);
+    assert_eq!(shared.matches("pub mod valores;").count(), 1);
+    assert!(dir.join("nucleo/src/valores.rs").exists());
+    let manifest = read(&dir, "contextos/user/dominio/Cargo.toml");
     assert!(
-        dir.join("business/src/domain/shared/value_objects.rs")
-            .exists()
+        manifest.contains("nucleo = { workspace = true }"),
+        "{manifest}"
     );
-    let lib = read(&dir, "business/src/lib.rs");
-    assert_eq!(lib.matches("pub mod shared;").count(), 1);
 
     cleanup(&dir);
 }

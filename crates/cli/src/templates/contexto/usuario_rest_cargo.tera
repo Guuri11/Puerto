@@ -1,0 +1,22 @@
+[package]
+name = "rest_usuario"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+{% if local %}aplicacion_usuario = { workspace = true }
+{% endif %}dominio_usuario = { workspace = true }
+puerto-nucleo = { workspace = true }
+puerto-web = { workspace = true }
+poem = { workspace = true }
+poem-openapi = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+{% if local %}aplicacion_usuario = { workspace = true, features = ["pruebas"] }
+{% endif %}# `MockAutenticador`, for the routes that take `BearerAuth`.
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
+poem = { workspace = true, features = ["test"] }
+tokio = { workspace = true }

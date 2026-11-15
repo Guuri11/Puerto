@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 {%- if local %}
 
-use super::errors::UserError;
+use crate::errores::UserError;
 
 /// The issuer of the accounts this API keeps itself (`POST /auth/register`).
 pub const LOCAL_ISSUER: &str = "local";

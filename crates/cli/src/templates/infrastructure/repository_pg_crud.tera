@@ -3,16 +3,16 @@ use sqlx::PgPool;
 {% if has_map %}use sqlx::types::Json;
 use std::collections::HashMap;
 {% endif %}
-{% set refs = fields | filter(attribute="is_ref", value=true) %}use business::domain::{{ snake }}::{
-    model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
-    repository::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
+{% set refs = fields | filter(attribute="is_ref", value=true) %}use dominio_{{ snake }}::{
+    modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
+    repositorio::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
 };
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
-
-use super::entity::{{ pascal }}Db;
-{% if references and not events %}use crate::db::{ClaveForanea, mapear_error_sqlx, mapear_error_sqlx_con};
-{% else %}use crate::db::mapear_error_sqlx;
+{% if references and not events %}use puerto_sqlx::{ClaveForanea, mapear_error_sqlx, mapear_error_sqlx_con};
+{% else %}use puerto_sqlx::mapear_error_sqlx;
 {% endif %}
+use crate::fila::{{ pascal }}Db;
+
 pub struct Pg{{ pascal }}Repository {
     pub pool: PgPool,
 }
@@ -113,44 +113,18 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
     }
 {% endif %}}
 
-/// `pub(crate)`: an entity that references {{ pascal }} seeds its rows with this module's `seed`.
 #[cfg(test)]
-pub(crate) mod integration_tests {
+mod integration_tests {
     use super::*;
-    use business::domain::{{ snake }}::model::{{ pascal }}Props;
-{% if events %}    use business::domain::{{ snake }}::unit_of_work::{{ pascal }}UnitOfWorkFactory;
-
-    use crate::{{ snake }}::unit_of_work::Pg{{ pascal }}UnitOfWorkFactory;
-{% endif %}
-{% for import in test_imports %}    use {{ import }};
-{% endfor %}{% if not events %}{% for import in reference_imports %}    use {{ import }};
+{% set uniques = fields | filter(attribute="unique", value=true) %}    use crate::pruebas::siembra::{{ "{" }}{% if refs or (uniques and not events) %}build, {% endif %}seed{% if events %}, store{% endif %}};
+{% if not events %}{% if update_vo_import %}    use {{ update_vo_import }};
+{% endif %}{% for import in reference_imports %}    use {{ import }};
 {% endfor %}{% endif %}
     fn test_repo(pool: PgPool) -> Pg{{ pascal }}Repository {
         Pg{{ pascal }}Repository::new(pool)
     }
-{% if events %}
-    /// The repository only reads: rows are written through the unit of work.
-    async fn store(pool: &PgPool, entity: &{{ pascal }}) {
-        let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
-        uow.save(entity).await.unwrap();
-        uow.commit().await.unwrap();
-    }
-{% endif %}
-    /// A valid {{ snake }}, not stored{% if seeds_references %}: the rows it references are seeded first{% endif %}.
-    {% if seeds_references %}async fn build(pool: &PgPool){% else %}fn build(){% endif %} -> {{ pascal }} {
-        {{ pascal }}::new({{ pascal }}Props {
-{% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
-{% endfor %}        }).unwrap()
-    }
 
-    /// A stored {{ snake }}.
-    pub(crate) async fn seed(pool: &PgPool) -> {{ pascal }} {
-        let entity = build({% if seeds_references %}pool).await{% else %}){% endif %};
-        {% if events %}store(pool, &entity).await;{% else %}test_repo(pool.clone()).save(&entity).await.unwrap();{% endif %}
-        entity
-    }
-
-    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_persist_and_retrieve_by_id(pool: PgPool) {
         // Arrange
         let entity = seed(&pool).await;
@@ -164,7 +138,7 @@ pub(crate) mod integration_tests {
 {% endfor %}        assert!(!found.deleted);
     }
 
-    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_return_none_for_nonexistent_id(pool: PgPool) {
         // Act
         let result = test_repo(pool).find_by_id({{ pascal }}Id::generate()).await.unwrap();
@@ -173,7 +147,7 @@ pub(crate) mod integration_tests {
         assert!(result.is_none());
     }
 
-{% if not events %}    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+{% if not events %}    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_update_entity_on_save_conflict(pool: PgPool) {
         // Arrange
 {% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entity = seed(&pool).await;
@@ -196,7 +170,7 @@ pub(crate) mod integration_tests {
         assert!(found.is_some());
 {% endif %}    }
 
-{% endif %}    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+{% endif %}    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_list_all_{{ plural }}_excluding_deleted(pool: PgPool) {
         // Arrange
         seed(&pool).await;
@@ -213,7 +187,7 @@ pub(crate) mod integration_tests {
         assert_eq!(page.total, 1);
     }
 
-    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
         // Arrange
         for _ in 0..3 {
@@ -233,7 +207,7 @@ pub(crate) mod integration_tests {
     }
 {% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques and not events %}{% set u = uniques.0 %}
 
-    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_reject_a_duplicate_{{ u.name }}(pool: PgPool) {
         // Arrange
         let first = seed(&pool).await;
@@ -248,7 +222,7 @@ pub(crate) mod integration_tests {
     }
 {% endif %}{% if not events %}{% for r in references %}
 
-    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_reject_a_missing_{{ r.field }}(pool: PgPool) {
         // Arrange: a {{ r.field }} no row has.
         let mut entity = build({% if seeds_references %}&pool).await{% else %}){% endif %};
@@ -262,10 +236,10 @@ pub(crate) mod integration_tests {
     }
 {% endfor %}{% endif %}{% for r in refs %}
 
-    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_list_only_the_{{ plural }}_of_the_requested_{{ r.name }}(pool: PgPool) {
         // Arrange: one {{ snake }} with this {{ r.name }}, one without.
-        let target = crate::{{ r.ref_target_snake }}::repository::integration_tests::seed(&pool).await;
+        let target = infra_{{ r.ref_target_snake }}::pruebas::siembra::seed(&pool).await;
         let mut wanted = build({% if seeds_references %}&pool).await{% else %}){% endif %};
         wanted.{{ r.name }} = {% if r.field_type is starting_with("Option<") %}Some(target.id){% else %}target.id{% endif %};
         {% if events %}store(&pool, &wanted).await;{% else %}test_repo(pool.clone()).save(&wanted).await.unwrap();{% endif %}

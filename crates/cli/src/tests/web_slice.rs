@@ -463,7 +463,7 @@ fn messages_cover_every_code_of_errors_rs_and_name_the_field_it_is_about() {
     scaffold::run_scaffold("Product", &output, &args, OverwritePolicy::Ask).unwrap();
 
     let messages = read(&output, "web/src/domain/product/messages.ts");
-    let errors = read(&output, "business/src/domain/product/errors.rs");
+    let errors = read(&output, "contextos/product/dominio/src/errores.rs");
     for line in errors.lines().filter(|l| l.contains("#[error(\"product.")) {
         let code = line.split('"').nth(1).unwrap();
         if code.ends_with("{0}") {

@@ -10,9 +10,9 @@ fn scaffold_crud_product(name: &str, db: bool) -> PathBuf {
     cleanup(&dir);
     setup_puerto_stubs(&dir);
     if db {
-        fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+        fs::create_dir_all(dir.join("migraciones")).unwrap();
     }
-    scaffold::run("Product", &dir, db, true, &[], &[]).unwrap();
+    scaffold::run("Product", &dir, db, &[], &[]).unwrap();
     dir
 }
 
@@ -30,7 +30,7 @@ fn web_project_with_product(name: &str) -> (PathBuf, PathBuf) {
 fn repository_port_reads_a_page() {
     let dir = scaffold_crud_product("paged_port", false);
 
-    let port = read(&dir, "business/src/domain/product/repository.rs");
+    let port = read(&dir, "contextos/product/dominio/src/repositorio.rs");
     assert!(port.contains(
         "async fn find_all(&self, page: PeticionPagina) -> Result<Pagina<Product>, ErrorRepositorio>;"
     ));
@@ -43,13 +43,10 @@ fn repository_port_reads_a_page() {
 fn list_use_case_takes_and_returns_a_page() {
     let dir = scaffold_crud_product("paged_use_case", false);
 
-    let contract = read(
-        &dir,
-        "business/src/domain/product/use_cases/list_products.rs",
-    );
+    let contract = read(&dir, "contextos/product/aplicacion/src/list_products.rs");
     assert!(contract.contains("pub page: PeticionPagina,"));
     assert!(contract.contains("Result<Pagina<Product>, ProductError>"));
-    let implementation = read(&dir, "business/src/application/product/list_products.rs");
+    let implementation = read(&dir, "contextos/product/aplicacion/src/list_products.rs");
     assert!(implementation.contains(".find_all(params.page)"));
     assert!(implementation.contains("fn should_pass_the_requested_page_to_the_repository()"));
 
@@ -60,7 +57,7 @@ fn list_use_case_takes_and_returns_a_page() {
 fn postgres_repository_limits_offsets_and_counts() {
     let dir = scaffold_crud_product("paged_postgres", true);
 
-    let repository = read(&dir, "infrastructure/src/product/repository.rs");
+    let repository = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
     assert!(repository.contains("ORDER BY created_at DESC, id LIMIT $1 OFFSET $2"));
     assert!(repository.contains("i64::from(page.limite())"));
     assert!(repository.contains("i64::from(page.desplazamiento())"));
@@ -80,7 +77,7 @@ fn postgres_repository_limits_offsets_and_counts() {
 fn inmemory_repository_answers_a_page_of_its_rows() {
     let dir = scaffold_crud_product("paged_inmemory", false);
 
-    let repository = read(&dir, "infrastructure/src/product/repository.rs");
+    let repository = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
     assert!(repository.contains("Ok(Pagina::new(items, total, page))"));
 
     cleanup(&dir);
@@ -90,17 +87,17 @@ fn inmemory_repository_answers_a_page_of_its_rows() {
 fn list_route_reads_limit_and_offset_and_answers_a_page_dto() {
     let dir = scaffold_crud_product("paged_route", false);
 
-    let routes = read(&dir, "presentation/src/api/product/routes.rs");
+    let routes = read(&dir, "contextos/product/rest/src/rutas.rs");
     assert!(routes.contains("limit: Query<Option<u32>>, offset: Query<Option<u32>>"));
     assert!(routes.contains("page: PeticionPagina::new(limit.0, offset.0)"));
     assert!(routes.contains("ProductPageDto::from_domain(&page)"));
     assert!(routes.contains("fn should_pass_limit_and_offset_to_the_use_case()"));
     assert!(routes.contains(r#".get("/products?limit=5&offset=10")"#));
-    let dto = read(&dir, "presentation/src/api/product/dto.rs");
+    let dto = read(&dir, "contextos/product/rest/src/dto.rs");
     assert!(dto.contains("pub struct ProductPageDto {"));
     assert!(dto.contains("pub items: Vec<ProductDto>,"));
     assert!(dto.contains("pub total: u64,"));
-    let responses = read(&dir, "presentation/src/api/product/responses.rs");
+    let responses = read(&dir, "contextos/product/rest/src/respuestas.rs");
     assert!(responses.contains("Ok(Json<ProductPageDto>)"));
 
     cleanup(&dir);

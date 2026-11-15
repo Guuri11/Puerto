@@ -7,7 +7,7 @@ use crate::validation::is_pascal_case;
 
 // ── Config types ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct PuertoConfig {
     #[serde(rename = "proyecto")]
     pub project: Project,
@@ -28,8 +28,7 @@ pub struct PuertoConfig {
     pub mail: Vec<Mail>,
 }
 
-/// One `[[correo]]`: `business/src/domain/mail/<name>.rs`, `infrastructure/src/mail/<name>.rs` and
-/// `infrastructure/mail/<name>/`.
+/// One `[[correo]]`: its port, its template mailer and its templates, in the `correo` context.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Mail {
     /// snake_case, unique: the modules, the template folder, `{Name}Mail` / `{Name}Mailer`.
@@ -41,7 +40,7 @@ pub struct Mail {
     pub on: Vec<String>,
 }
 
-/// One `[[consumidor]]`: `worker/src/consumers/<name>.rs`, subscribed to `events`.
+/// One `[[consumidor]]`: `presentacion/worker/src/consumidores/<name>.rs`, subscribed to `events`.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Consumer {
     /// snake_case, unique: the module, the `db` transport's consumer name and the Kafka group id.
@@ -60,7 +59,7 @@ pub struct ValueObjectDefinition {
     pub inner_type: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Project {
     #[serde(rename = "nombre")]
     pub name: String,
@@ -102,7 +101,7 @@ pub struct Entity {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub db: bool,
     /// Auth projects: the use cases whose routes take no `BearerAuth` — what scaffold wrote
-    /// (`--publico`); after it, `routes.rs` is the user's.
+    /// (`--publico`); after it, `rutas.rs` is the user's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(rename = "publicos")]
     pub public: Vec<String>,

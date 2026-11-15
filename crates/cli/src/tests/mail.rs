@@ -48,7 +48,7 @@ fn generate_mail_writes_the_port_its_template_implementation_and_the_templates()
 
     welcome(&output);
 
-    let domain = read(&output, "business/src/domain/mail/welcome.rs");
+    let domain = read(&output, "contextos/correo/dominio/src/welcome.rs");
     assert!(domain.contains("pub struct WelcomeMail {"), "{domain}");
     assert!(domain.contains("pub to: String,"), "{domain}");
     assert!(domain.contains("pub name: String,"), "{domain}");
@@ -63,7 +63,7 @@ fn generate_mail_writes_the_port_its_template_implementation_and_the_templates()
         "{domain}"
     );
     assert!(domain.contains("pub WelcomeMailer {}"), "{domain}");
-    assert!(domain.contains("#[cfg(any(test, feature = \"test-utils\"))]"));
+    assert!(domain.contains("#[cfg(any(test, feature = \"pruebas\"))]"));
     // The domain names no template engine and no SMTP.
     assert!(!domain.contains("puerto_correo"), "{domain}");
     assert!(
@@ -71,7 +71,7 @@ fn generate_mail_writes_the_port_its_template_implementation_and_the_templates()
         "{domain}"
     );
 
-    let infra = read(&output, "infrastructure/src/mail/welcome.rs");
+    let infra = read(&output, "contextos/correo/infraestructura/src/welcome.rs");
     assert!(
         infra.contains("pub struct TemplateWelcomeMailer {"),
         "{infra}"
@@ -81,23 +81,32 @@ fn generate_mail_writes_the_port_its_template_implementation_and_the_templates()
         "{infra}"
     );
     assert!(
-        infra.contains("include_str!(\"../../mail/welcome/subject.txt\")"),
+        infra.contains("include_str!(\"../plantillas/welcome/subject.txt\")"),
         "{infra}"
     );
     assert!(
-        infra.contains("include_str!(\"../../mail/welcome/body.html\")"),
+        infra.contains("include_str!(\"../plantillas/welcome/body.html\")"),
         "{infra}"
     );
     assert!(
-        infra.contains("include_str!(\"../../mail/welcome/body.txt\")"),
+        infra.contains("include_str!(\"../plantillas/welcome/body.txt\")"),
         "{infra}"
     );
     assert!(infra.contains("EnviadorCorreoGrabador"), "{infra}");
 
-    let subject = read(&output, "infrastructure/mail/welcome/subject.txt");
+    let subject = read(
+        &output,
+        "contextos/correo/infraestructura/plantillas/welcome/subject.txt",
+    );
     assert!(subject.contains("{{ name }}"), "{subject}");
-    let html = read(&output, "infrastructure/mail/welcome/body.html");
-    let text = read(&output, "infrastructure/mail/welcome/body.txt");
+    let html = read(
+        &output,
+        "contextos/correo/infraestructura/plantillas/welcome/body.html",
+    );
+    let text = read(
+        &output,
+        "contextos/correo/infraestructura/plantillas/welcome/body.txt",
+    );
     for body in [&html, &text] {
         assert!(body.contains("{{ name }}"), "{body}");
         assert!(body.contains("{{ seats }}"), "{body}");
@@ -113,7 +122,7 @@ fn generate_mail_without_fields_carries_a_name() {
 
     scaffold::run_generate_mail("welcome", &[], &output).unwrap();
 
-    let domain = read(&output, "business/src/domain/mail/welcome.rs");
+    let domain = read(&output, "contextos/correo/dominio/src/welcome.rs");
     assert!(domain.contains("pub name: String,"), "{domain}");
     cleanup(&dir);
 }
@@ -134,7 +143,7 @@ fn generate_mail_imports_what_its_field_types_need() {
     )
     .unwrap();
 
-    let domain = read(&output, "business/src/domain/mail/receipt.rs");
+    let domain = read(&output, "contextos/correo/dominio/src/receipt.rs");
     assert!(domain.contains("use uuid::Uuid;"), "{domain}");
     assert!(domain.contains("use chrono::{DateTime, Utc};"), "{domain}");
     assert!(domain.contains("pub paid_at: DateTime<Utc>,"), "{domain}");
@@ -148,22 +157,18 @@ fn generate_mail_declares_its_modules_in_both_crates() {
     welcome(&output);
     scaffold::run_generate_mail("receipt", &[], &output).unwrap();
 
-    let business = read(&output, "business/src/lib.rs");
-    assert_eq!(business.matches("pub mod mail {").count(), 1, "{business}");
-    assert!(business.contains("pub mod welcome;"), "{business}");
-    assert!(business.contains("pub mod receipt;"), "{business}");
-    // Inside `domain`: the mail data and its port are domain types.
-    let domain_block = &business[business.find("pub mod domain {").unwrap()..];
-    let domain_end = domain_block.find("\n}\n").unwrap();
+    // The `correo` context: the mail data and its port are domain types, their templates and
+    // mailers infrastructure.
+    for layer in ["dominio", "infraestructura"] {
+        let lib = read(&output, &format!("contextos/correo/{layer}/src/lib.rs"));
+        assert_eq!(lib, "pub mod receipt;\npub mod welcome;\n", "{layer}");
+    }
+    let root = read(&output, "Cargo.toml");
     assert!(
-        domain_block[..domain_end].contains("pub mod mail {"),
-        "{business}"
+        root.contains("dominio_correo = { path = \"contextos/correo/dominio\" }"),
+        "{root}"
     );
-
-    let infra = read(&output, "infrastructure/src/lib.rs");
-    assert_eq!(infra.matches("pub mod mail {").count(), 1, "{infra}");
-    assert!(infra.contains("pub mod welcome;"), "{infra}");
-    assert!(infra.contains("pub mod receipt;"), "{infra}");
+    assert!(root.contains("infra_correo = { path = \"contextos/correo/infraestructura\" }"));
     cleanup(&dir);
 }
 
@@ -194,7 +199,7 @@ fn first_mail_adds_puerto_mail_to_the_workspace_and_infrastructure() {
 
     let root = read(&output, "Cargo.toml");
     assert!(root.contains("puerto-correo = \""), "{root}");
-    let infra = read(&output, "infrastructure/Cargo.toml");
+    let infra = read(&output, "contextos/correo/infraestructura/Cargo.toml");
     let (deps, dev) = infra.split_once("[dev-dependencies]").unwrap();
     assert!(
         deps.contains("puerto-correo = { workspace = true }"),
@@ -289,7 +294,10 @@ fn first_mail_documents_mail_in_the_root_agents_md() {
     let agents = read(&output, "AGENTS.md");
     assert!(agents.contains("## Mail"), "{agents}");
     assert!(agents.contains("puerto generar correo"), "{agents}");
-    assert!(agents.contains("infrastructure/mail/<name>/"), "{agents}");
+    assert!(
+        agents.contains("contextos/correo/infraestructura/plantillas/<name>/"),
+        "{agents}"
+    );
     cleanup(&dir);
 }
 
@@ -299,7 +307,7 @@ fn second_mail_does_not_repeat_the_setup() {
     welcome(&output);
     let files = [
         "Cargo.toml",
-        "infrastructure/Cargo.toml",
+        "contextos/correo/infraestructura/Cargo.toml",
         "docker-compose.yml",
         ".env",
         ".env.example",
@@ -336,7 +344,7 @@ fn generate_mail_refuses_a_name_that_is_not_snake_case_or_is_a_keyword() {
         let err = error_of(scaffold::run_generate_mail(name, &[], &output));
         assert!(err.contains(name), "{name}: {err}");
     }
-    assert!(!output.join("business/src/domain/mail").exists());
+    assert!(!output.join("contextos/correo").exists());
     cleanup(&dir);
 }
 
@@ -370,10 +378,10 @@ fn generate_mail_refuses_fields_a_mail_cannot_carry() {
 }
 
 #[test]
-fn an_entity_named_mail_is_refused_because_mails_own_the_module() {
-    let err = crate::validation::validate_entity_name("Mail").unwrap_err();
+fn an_entity_named_correo_is_refused_because_mails_own_the_context() {
+    let err = crate::validation::validate_entity_name("Correo").unwrap_err();
 
-    assert!(err.contains("mail"), "{err}");
+    assert!(err.contains("correo"), "{err}");
 }
 
 // ── validate / list ──────────────────────────────────────────────────────
@@ -391,16 +399,20 @@ fn validate_accepts_a_project_with_mails() {
 fn validate_reports_a_mail_whose_files_are_missing() {
     let (dir, output) = project("mail_validate_drift");
     welcome(&output);
-    fs::remove_file(output.join("infrastructure/mail/welcome/body.html")).unwrap();
-    fs::remove_file(output.join("business/src/domain/mail/welcome.rs")).unwrap();
+    fs::remove_file(output.join("contextos/correo/infraestructura/plantillas/welcome/body.html"))
+        .unwrap();
+    fs::remove_file(output.join("contextos/correo/dominio/src/welcome.rs")).unwrap();
 
     let err = error_of(validate::run_validate(&output));
 
     assert!(
-        err.contains("infrastructure/mail/welcome/body.html"),
+        err.contains("contextos/correo/infraestructura/plantillas/welcome/body.html"),
         "{err}"
     );
-    assert!(err.contains("business/src/domain/mail/welcome.rs"), "{err}");
+    assert!(
+        err.contains("contextos/correo/dominio/src/welcome.rs"),
+        "{err}"
+    );
     cleanup(&dir);
 }
 
@@ -511,7 +523,10 @@ fn mail_on_an_event_gets_a_consumer_that_sends_it() {
 
     welcome_on_created(&output);
 
-    let handler = read(&output, "worker/src/consumers/mail_welcome.rs");
+    let handler = read(
+        &output,
+        "presentacion/worker/src/consumidores/mail_welcome.rs",
+    );
     assert!(
         handler.contains("pub struct SendWelcomeMail {"),
         "{handler}"
@@ -531,7 +546,7 @@ fn mail_on_an_event_gets_a_consumer_that_sends_it() {
     assert!(handler.contains("MockWelcomeMailer"), "{handler}");
     assert!(handler.contains("CorreosEnviadosEnMemoria"), "{handler}");
 
-    let consumers = read(&output, "worker/src/consumers.rs");
+    let consumers = read(&output, "presentacion/worker/src/consumidores.rs");
     assert!(consumers.contains("pub mod mail_welcome;"), "{consumers}");
     let toml = read(&output, "puerto.toml");
     assert!(
@@ -547,9 +562,9 @@ fn mail_on_an_event_is_a_consumer_of_the_registry() {
 
     welcome_on_created(&output);
 
-    let registry = read(&output, "worker/src/generated/registry.rs");
+    let registry = read(&output, "presentacion/worker/src/generado/registro.rs");
     assert!(
-        registry.contains("use crate::consumers::mail_welcome::SendWelcomeMail;"),
+        registry.contains("use crate::consumidores::mail_welcome::SendWelcomeMail;"),
         "{registry}"
     );
     assert!(registry.contains(".enrutar(\"mail_welcome\", &[CUSTOMER_CREATED])"));
@@ -576,7 +591,7 @@ fn mail_on_an_event_is_a_kafka_consumer_on_the_kafka_transport() {
 
     welcome_on_created(&output);
 
-    let registry = read(&output, "worker/src/generated/registry.rs");
+    let registry = read(&output, "presentacion/worker/src/generado/registro.rs");
     assert!(registry.contains("\"mail_welcome\","), "{registry}");
     assert!(registry.contains("&[\"customer\"]"), "{registry}");
     assert!(registry.contains("SendWelcomeMail {"), "{registry}");
@@ -590,13 +605,16 @@ fn mail_on_an_event_carries_the_snapshot_fields_a_template_prints() {
 
     welcome_on_created(&output);
 
-    let domain = read(&output, "business/src/domain/mail/welcome.rs");
+    let domain = read(&output, "contextos/correo/dominio/src/welcome.rs");
     assert!(domain.contains("pub name: String,"), "{domain}");
     assert!(domain.contains("pub seats: i64,"), "{domain}");
     // The recipient is `to`, not a field twice; a Vec is not printed.
     assert!(!domain.contains("pub email:"), "{domain}");
     assert!(!domain.contains("pub tags:"), "{domain}");
-    let handler = read(&output, "worker/src/consumers/mail_welcome.rs");
+    let handler = read(
+        &output,
+        "presentacion/worker/src/consumidores/mail_welcome.rs",
+    );
     assert!(handler.contains("name: customer.name,"), "{handler}");
     assert!(handler.contains("seats: customer.seats,"), "{handler}");
     cleanup(&dir);
@@ -614,7 +632,7 @@ fn mail_on_an_event_takes_only_fields_its_snapshot_has() {
         &output,
     )
     .unwrap();
-    let domain = read(&output, "business/src/domain/mail/welcome.rs");
+    let domain = read(&output, "contextos/correo/dominio/src/welcome.rs");
     assert!(!domain.contains("pub seats:"), "{domain}");
 
     for (field, reason) in [("nickname:String", "nickname"), ("seats:String", "seats")] {
@@ -645,19 +663,16 @@ fn first_mail_on_an_event_adds_the_sent_log_and_puerto_mail_to_the_worker() {
     )
     .unwrap();
 
-    let migrations: Vec<String> = fs::read_dir(output.join("infrastructure/migrations"))
+    let migrations: Vec<String> = fs::read_dir(output.join("migraciones"))
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())
         .filter(|m| m.ends_with("_correos_enviados.sql"))
         .collect();
     assert_eq!(migrations.len(), 1, "{migrations:?}");
-    let sql = read(
-        &output,
-        &format!("infrastructure/migrations/{}", migrations[0]),
-    );
+    let sql = read(&output, &format!("migraciones/{}", migrations[0]));
     assert!(sql.ends_with(include_str!("../templates/infrastructure/sent_mails.sql")));
 
-    let worker = read(&output, "worker/Cargo.toml");
+    let worker = read(&output, "presentacion/worker/Cargo.toml");
     let (deps, dev) = worker.split_once("[dev-dependencies]").unwrap();
     assert_eq!(
         deps.matches("puerto-correo = { workspace = true }").count(),
@@ -676,8 +691,12 @@ fn mail_without_on_in_an_events_project_has_no_consumer() {
 
     welcome(&output);
 
-    assert!(!output.join("worker/src/consumers/mail_welcome.rs").exists());
-    let registry = read(&output, "worker/src/generated/registry.rs");
+    assert!(
+        !output
+            .join("presentacion/worker/src/consumidores/mail_welcome.rs")
+            .exists()
+    );
+    let registry = read(&output, "presentacion/worker/src/generado/registro.rs");
     assert!(!registry.contains("EnviadorCorreoSmtp"), "{registry}");
     cleanup(&dir);
 }
@@ -757,17 +776,17 @@ fn mail_and_consumer_names_never_share_a_consumer() {
 fn a_missing_mail_consumer_is_drift_for_validate_and_bootstrap() {
     let (dir, output) = customer_project("mail_on_drift", "db");
     welcome_on_created(&output);
-    fs::remove_file(output.join("worker/src/consumers/mail_welcome.rs")).unwrap();
+    fs::remove_file(output.join("presentacion/worker/src/consumidores/mail_welcome.rs")).unwrap();
 
     let validate = error_of(validate::run_validate(&output));
     let bootstrap = error_of(scaffold::run_bootstrap_command(&output, false));
 
     assert!(
-        validate.contains("worker/src/consumers/mail_welcome.rs"),
+        validate.contains("presentacion/worker/src/consumidores/mail_welcome.rs"),
         "{validate}"
     );
     assert!(
-        bootstrap.contains("worker/src/consumers/mail_welcome.rs"),
+        bootstrap.contains("presentacion/worker/src/consumidores/mail_welcome.rs"),
         "{bootstrap}"
     );
     cleanup(&dir);

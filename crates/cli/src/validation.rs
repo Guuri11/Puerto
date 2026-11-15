@@ -144,20 +144,10 @@ const RESERVED_TYPE_NAMES: &[&str] = &[
     "Arc", "Error",
 ];
 
-/// Module names the generated project already occupies. Entity names become module names
-/// (`business/src/domain/{snake}/`, `presentation/src/api/{snake}/`).
+/// Context names the generated project already occupies: an entity's snake case name is its
+/// context, `contextos/{snake}/` (ADR-0023).
 const RESERVED_MODULE_NAMES: &[&str] = &[
-    "shared",  // business/src/domain/shared — shared value objects
-    "tracing", // infrastructure declares entity modules at its crate root: `tracing::` would
-    // then be ambiguous with the crate every generated layer logs through (E0659)
-    "db",        // infrastructure/src/db.rs (`--db` projects)
-    "tags",      // presentation/src/api/tags.rs
-    "error",     // presentation/src/api/error.rs
-    "generated", // presentation/src/generated
-    "api",       // presentation/src/api.rs
-    "mocks",     // repository.rs mock module
-    "tests",     // business/src/tests
-    "mail",      // business/src/domain/mail, infrastructure/src/mail — the project's mails
+    "correo", // contextos/correo — the project's mails
 ];
 
 /// snake_case: lowercase letters, digits and underscores, starting with a letter.
@@ -251,7 +241,7 @@ pub fn validate_use_case_name(action: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// A `[[consumidor]]` name becomes a module (`worker/src/consumers/<name>.rs`), a type
+/// A `[[consumidor]]` name becomes a module (`presentacion/worker/src/consumidores/<name>.rs`), a type
 /// (`NotifyNewProduct`) and the `db` transport's consumer column.
 pub fn validate_consumer_name(name: &str) -> Result<(), String> {
     if !is_valid_field_name(name) {
@@ -322,7 +312,7 @@ pub fn validate_entity_name(pascal: &str) -> Result<(), String> {
     }
     if RESERVED_MODULE_NAMES.contains(&snake.as_str()) {
         return Err(format!(
-            "entity name '{pascal}' becomes the module name '{snake}', which the generated project \
+            "entity name '{pascal}' becomes the context '{snake}', which the generated project \
              already uses. Pick another name"
         ));
     }
@@ -508,7 +498,57 @@ pub fn validate_references(
             Some(_) => {}
         }
     }
+    if errors.is_empty()
+        && let Some(cycle) = reference_cycle(pascal, fields, config)
+    {
+        errors.push(format!(
+            "{}: this reference closes a cycle. Each context is its own crates, and Cargo cannot \
+             build crates that depend on each other in a circle (ADR-0023 § 3) — drop one of the \
+             references",
+            cycle.join(" → ")
+        ));
+    }
     errors
+}
+
+/// The references, followed from `pascal` (with `fields`, its fields to be) through the other
+/// entities' declared ones, back to `pascal`: `["Order", "Customer", "Order"]`, or none.
+fn reference_cycle(
+    pascal: &str,
+    fields: &[Field],
+    config: &crate::puerto_toml::PuertoConfig,
+) -> Option<Vec<String>> {
+    let targets = |entity: &str| -> Vec<String> {
+        let fields = if entity == pascal {
+            fields
+        } else {
+            match config.entity.iter().find(|e| e.name == entity) {
+                Some(e) => e.fields.as_slice(),
+                None => &[],
+            }
+        };
+        fields.iter().filter_map(|f| f.references.clone()).collect()
+    };
+    // Depth first, one path at a time; `seen` stops at an entity already explored.
+    let mut seen: Vec<String> = vec![];
+    let mut stack: Vec<Vec<String>> = vec![vec![pascal.to_string()]];
+    while let Some(path) = stack.pop() {
+        let last = path.last().cloned().unwrap_or_default();
+        for target in targets(&last) {
+            if target == pascal {
+                let mut cycle = path.clone();
+                cycle.push(target);
+                return Some(cycle);
+            }
+            if !seen.contains(&target) {
+                seen.push(target.clone());
+                let mut next = path.clone();
+                next.push(target);
+                stack.push(next);
+            }
+        }
+    }
+    None
 }
 
 /// [`validate_references`], then each target's code on disk: its model (the id type) and, in a
@@ -526,7 +566,7 @@ pub fn validate_references_before_writing(
     if errors.is_empty() {
         for target in fields.iter().filter_map(|f| f.references.as_deref()) {
             let snake = pascal_to_snake(target);
-            let model = base.join(layout::domain_file(&snake, "model"));
+            let model = base.join(layout::domain_file(&snake, "modelo"));
             let suffix = format!("_create_{snake}_table.sql");
             let migrated = !config.project.db
                 || std::fs::read_dir(base.join(layout::MIGRATIONS_DIR))
@@ -609,17 +649,17 @@ pub fn validate_auth_mode(mode: &str) -> Result<(), String> {
     ))
 }
 
-/// Module names an auth project already occupies: the `User` entity it is created with
-/// (`domain/user`, `infrastructure/src/user`), `GET /me` (`api/me`) and `/auth/*` (`api/auth`).
-const AUTH_RESERVED_MODULE_NAMES: &[&str] = &["user", "me", "auth"];
+/// Names an auth project already occupies: its `usuario` context, the `User` entity it is created
+/// with, and the APIs of `GET /me` (`MeApi`) and `/auth/*` (`AuthApi`).
+const AUTH_RESERVED_MODULE_NAMES: &[&str] = &["usuario", "user", "me", "auth"];
 
 /// The entity names an auth project cannot scaffold, on top of [`validate_entity_name`].
 pub fn validate_auth_entity_name(pascal: &str) -> Result<(), String> {
     let snake = crate::generators::naming::pascal_to_snake(pascal);
     if AUTH_RESERVED_MODULE_NAMES.contains(&snake.as_str()) {
         return Err(format!(
-            "entity name '{pascal}' becomes the module name '{snake}', which an auth project \
-             already uses (the User entity, GET /me, /auth). Pick another name"
+            "entity name '{pascal}' becomes the context '{snake}', which an auth project already \
+             uses (the usuario context, the User entity, GET /me, /auth). Pick another name"
         ));
     }
     Ok(())
@@ -716,8 +756,7 @@ mod tests {
     fn rejects_entity_names_that_collide_with_generated_code() {
         assert!(validate_entity_name("Error").is_err());
         assert!(validate_entity_name("String").is_err());
-        assert!(validate_entity_name("Tracing").is_err()); // module would shadow `tracing`
-        assert!(validate_entity_name("Db").is_err()); // infrastructure/src/db.rs
+        assert!(validate_entity_name("Correo").is_err()); // contextos/correo holds the mails
         assert!(validate_entity_name("Type").is_err()); // module would be `type`
         assert!(validate_entity_name("Product").is_ok());
     }
@@ -913,5 +952,53 @@ mod tests {
         let errors = validate_entity_access(&product(&["list_products", "list_products"], &[]));
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(errors[0].contains("listed twice"), "{errors:?}");
+    }
+
+    #[test]
+    fn should_name_the_cycle_a_reference_would_close() {
+        // Arrange: Customer → Region already; Region gains a reference back to Customer.
+        let reference = |name: &str, target: &str| Field {
+            name: name.to_string(),
+            field_type: "Uuid".to_string(),
+            references: Some(target.to_string()),
+            ..Field::default()
+        };
+        let crud = |name: &str, snake: &str, plural: &str, fields: Vec<Field>| {
+            crate::puerto_toml::Entity {
+                name: name.to_string(),
+                use_cases: ["create", "get", "list", "update", "delete"]
+                    .iter()
+                    .map(|a| match *a {
+                        "list" => format!("list_{plural}"),
+                        a => format!("{a}_{snake}"),
+                    })
+                    .collect(),
+                fields,
+                ..Default::default()
+            }
+        };
+        let config = crate::puerto_toml::PuertoConfig {
+            entity: vec![
+                crud(
+                    "Customer",
+                    "customer",
+                    "customers",
+                    vec![reference("region_id", "Region")],
+                ),
+                crud("Region", "region", "regions", vec![]),
+            ],
+            ..Default::default()
+        };
+
+        // Act
+        let errors = validate_references("Region", &[reference("owner_id", "Customer")], &config);
+
+        // Assert
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(
+            errors[0].starts_with("Region → Customer → Region"),
+            "{}",
+            errors[0]
+        );
     }
 }

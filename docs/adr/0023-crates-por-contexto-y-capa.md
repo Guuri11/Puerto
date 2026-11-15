@@ -46,7 +46,7 @@ migraciones/               el SQL de toda la base de datos (hay claves foráneas
 migrador/                  → migrador          MIGRADOR + build.rs              (proyectos --db)
 contextos/<c>/
   dominio/                 → dominio_<c>       modelo, valores, errores, repositorio, unit_of_work,
-                                               eventos; pruebas/ (madres, dobles del repositorio)
+                                               eventos; pruebas/ (madres); cada doble, junto a su trait
   aplicacion/              → aplicacion_<c>    un fichero por caso de uso: params, trait, impl,
                                                su doble y sus tests
   infraestructura/         → infra_<c>         en memoria o Postgres: fila, repositorio, unit_of_work
@@ -172,6 +172,34 @@ portátil de desarrollo (16 hilos, 15 GB), con rustc 1.95.0 y `SQLX_OFFLINE=true
 - `cargo test -p 'dominio_*' -p 'aplicacion_*'` y `cargo nextest run -p …` aceptan globs, y la
   caché `.sqlx` de la raíz sigue valiendo.
 - **Hallazgo:** los helpers de siembra de los tests de Postgres van en cadena entre crates (§ 5).
+
+## Implementación (Fase 19.6, 2026-11-14)
+
+Lo que la implementación fijó y la decisión no decía:
+
+- **El doble va junto a su trait**, en el mismo fichero (`repositorio.rs` → `mocks`, cada caso de
+  uso → su `mocks`), detrás de la feature `pruebas`. En `pruebas/` quedan las madres y, en los
+  crates de infraestructura de Postgres, la siembra. Es la misma regla para el repositorio y para
+  los casos de uso.
+- **El caso de uso se escribe con dos plantillas** (contrato e implementación) que el generador une
+  bajo un solo bloque de `use`, sin repetir ningún elemento (`generators/merge.rs`): dos `use` del
+  mismo nombre son E0252.
+- **La madre de `Principal` pasa al runtime** (`puerto_nucleo::auth::dobles::MadrePrincipal`): con
+  un crate por contexto no hay un `business` común donde ponerla, y la usan los tests de todos.
+- **Un glob de `members` que no casa con nada, Cargo lo lee como una ruta** y no carga el
+  workspace. Un proyecto sin contextos (`--sin-demo`) no lista `contextos/*/*` hasta el primero;
+  `migrador` solo aparece en los proyectos `--db`.
+- **Las rutas necesitan la aplicación**: guardan los traits de los casos de uso, que viven en
+  `aplicacion_<c>`. `generar presentacion` se niega hasta que existe; la API ya no puede ir antes
+  que la aplicación.
+- **El cableado de auth se queda en `bootstrap.rs`**: pide configuración (el proveedor OIDC, la
+  duración de las sesiones). `cableado` construye los contextos de `puerto.toml`.
+- **`registro.rs` no usa `cableado` todavía**: los consumidores no reciben casos de uso. Lo hará
+  cuando un consumidor generado llame a uno.
+- **Nombres reservados**: una entidad no puede llamarse `Correo` (el contexto de los correos), ni
+  `Usuario` en un proyecto con auth.
+- Hasta la 19.7 los identificadores siguen en inglés; lo nuevo de la 19.6 ya nace en castellano
+  (`CasosDeUso`, `construir`, `a_respuesta_error`, `MadrePrincipal`).
 
 ## Alternativas descartadas
 

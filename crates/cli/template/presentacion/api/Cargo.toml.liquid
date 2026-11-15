@@ -1,0 +1,22 @@
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "{{project-name}}"
+path = "src/main.rs"
+
+[dependencies]
+# The repositories and use cases of every context, built (`generado/bootstrap.rs`).
+cableado = { workspace = true }
+# The server, health probes, configuration and error body (`main.rs`, `generado/bootstrap.rs`).
+puerto-web = { workspace = true }
+poem = { workspace = true }
+poem-openapi = { workspace = true }
+tokio = { workspace = true }
+rest_greeting = { workspace = true }
+
+[dev-dependencies]
+# The spec export test builds every API from the use cases' doubles.
+aplicacion_greeting = { workspace = true, features = ["pruebas"] }

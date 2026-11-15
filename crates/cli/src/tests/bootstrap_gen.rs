@@ -34,7 +34,13 @@ fn bootstrap_with_use_cases_lists_them_in_the_api_initializer() {
     let content =
         crate::generators::bootstrap::generate_bootstrap_content(&entities, false).unwrap();
 
-    assert!(content.contains("let product_api = ProductApi { create_product, get_product };"));
+    assert!(
+        content.contains(
+            "let product_api = ProductApi { create_product: casos_product.create_product, \
+             get_product: casos_product.get_product };"
+        ),
+        "{content}"
+    );
 }
 
 // ── Phase 9.1: the OpenAPI spec export ────────────────────────────────────
@@ -56,9 +62,9 @@ fn web_bootstrap_exports_the_spec_from_mocked_use_cases() {
             .unwrap();
 
     assert!(content.contains("fn openapi_spec_matches_docs_api_openapi_json()"));
-    assert!(content.contains(
-        "use business::domain::product::use_cases::list_products::mocks::MockListProductsUseCase;"
-    ));
+    assert!(
+        content.contains("use aplicacion_product::list_products::mocks::MockListProductsUseCase;")
+    );
     assert!(content.contains("list_products: Arc::new(MockListProductsUseCase::new())"));
     assert!(content.contains("UPDATE_OPENAPI"));
     assert!(content.contains("docs/api/openapi.json"));
@@ -110,8 +116,7 @@ fn no_web_project_bootstrap_drops_the_spec_test() {
 
     scaffold::apply_no_web(&output).unwrap();
 
-    let bootstrap =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let bootstrap = wiring(&output);
     assert!(!bootstrap.contains("openapi_spec_matches"), "{bootstrap}");
     cleanup(&dir);
 }

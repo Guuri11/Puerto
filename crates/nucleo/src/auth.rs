@@ -156,6 +156,41 @@ pub mod dobles {
     use super::*;
     use mockall::mock;
 
+    /// Quien llama, para los tests (ADR-0021): un usuario con sesión y un id nuevo, con o sin
+    /// roles.
+    #[derive(Debug, Default)]
+    pub struct MadrePrincipal {
+        roles: Vec<String>,
+    }
+
+    impl MadrePrincipal {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        pub fn con_roles<I, S>(mut self, roles: I) -> Self
+        where
+            I: IntoIterator<Item = S>,
+            S: Into<String>,
+        {
+            self.roles = roles.into_iter().map(Into::into).collect();
+            self
+        }
+
+        pub fn construir(self) -> Principal {
+            let id_usuario = Uuid::now_v7();
+            Principal::new(id_usuario, format!("sujeto-{id_usuario}"))
+                .con_email(format!("{}@example.com", id_usuario.simple()))
+                .con_nombre("Ada Lovelace")
+                .con_roles(self.roles)
+        }
+
+        /// Alguien con sesión y sin ningún rol.
+        pub fn aleatorio() -> Principal {
+            Self::new().construir()
+        }
+    }
+
     mock! {
         pub Autenticador {}
 
@@ -202,6 +237,20 @@ mod tests {
         MockAlmacenCredenciales, MockAlmacenSesiones, MockAutenticador, MockHasherContrasena,
     };
     use super::*;
+
+    #[test]
+    fn should_build_a_fresh_caller_with_the_roles_it_is_given() {
+        // Act
+        let admin = dobles::MadrePrincipal::new()
+            .con_roles(["admin"])
+            .construir();
+        let otro = dobles::MadrePrincipal::aleatorio();
+
+        // Assert
+        assert!(admin.tiene_rol("admin"));
+        assert!(otro.roles.is_empty());
+        assert_ne!(admin.id_usuario, otro.id_usuario);
+    }
 
     #[test]
     fn should_hold_no_role_or_profile_when_built_from_an_id_and_a_subject() {

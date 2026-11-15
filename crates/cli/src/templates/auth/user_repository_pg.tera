@@ -3,13 +3,13 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use business::domain::user::{
-    model::{User, UserId},
-    repository::UserRepositoryTrait,
+use dominio_usuario::{
+    modelo::{User, UserId},
+    repositorio::UserRepositoryTrait,
 };
 use puerto_nucleo::ErrorRepositorio;
 
-use crate::db::mapear_error_sqlx;
+use puerto_sqlx::mapear_error_sqlx;
 
 /// Runtime-checked queries (`query_as`, not `query_as!`): `puerto nuevo` writes this file before
 /// there is a database to build the query cache from, and the project builds offline.
@@ -123,7 +123,7 @@ mod tests {
         User::provision("emisor", "ada", Some("ada@example.com".into()), None)
     }
 
-    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_find_a_saved_user_when_looked_up_by_subject_or_id(pool: PgPool) {
         // Arrange
         let repository = PgUserRepository::new(pool);
@@ -142,7 +142,7 @@ mod tests {
         assert_eq!(by_id.map(|u| u.subject), Some("ada".to_string()));
     }
 
-    #[sqlx::test(migrator = "crate::db::MIGRATOR")]
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn should_reject_a_second_user_when_the_subject_is_taken(pool: PgPool) {
         // Arrange
         let repository = PgUserRepository::new(pool);

@@ -1,0 +1,17 @@
+[package]
+name = "dominio_greeting"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+puerto-nucleo = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+mockall = { workspace = true, optional = true }
+
+[features]
+# The doubles (`mock!`) for the tests of other crates (ADR-0023 § 5 of Puerto).
+pruebas = ["dep:mockall"]
+
+[dev-dependencies]
+mockall = { workspace = true }

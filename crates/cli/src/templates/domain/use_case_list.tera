@@ -2,7 +2,7 @@ use async_trait::async_trait;
 {% if actor %}use puerto_nucleo::auth::Principal;
 {% endif %}use puerto_nucleo::{Pagina, PeticionPagina};
 
-use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
+use dominio_{{ snake }}::{errores::{{ pascal }}Error, modelo::{{ pascal }}};
 {% for import in reference_imports %}use {{ import }};
 {% endfor %}
 #[derive(Debug, Clone)]
@@ -20,7 +20,7 @@ pub trait List{{ plural_pascal }}UseCaseTrait: Send + Sync {
     async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Pagina<{{ pascal }}>, {{ pascal }}Error>;
 }
 
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(test, feature = "pruebas"))]
 pub mod mocks {
     use mockall::mock;
 

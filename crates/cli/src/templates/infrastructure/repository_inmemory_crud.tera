@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 {% set refs = fields | filter(attribute="is_ref", value=true) %}use async_trait::async_trait;
-use business::domain::{{ snake }}::{
-    model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
-    repository::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
+use dominio_{{ snake }}::{
+    modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
+    repositorio::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
 };
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
@@ -85,7 +85,7 @@ impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use business::domain::{{ snake }}::model::{{ pascal }}Props;
+    use dominio_{{ snake }}::modelo::{{ pascal }}Props;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
     fn new_{{ snake }}() -> {{ pascal }} {

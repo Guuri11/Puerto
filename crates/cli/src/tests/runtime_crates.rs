@@ -31,7 +31,10 @@ fn new_project_depends_on_puerto_nucleo_at_the_cli_minor() {
         "{root}"
     );
     assert!(!root.contains(crate::runtime::VERSION_MARKER));
-    for member in ["business", "infrastructure", "presentation"] {
+    for member in [
+        "contextos/greeting/dominio",
+        "contextos/greeting/infraestructura",
+    ] {
         let manifest = read(&output, &format!("{member}/Cargo.toml"));
         assert!(
             manifest.contains("puerto-nucleo = { workspace = true }"),
@@ -47,13 +50,13 @@ fn new_project_ships_no_copy_of_the_runtime_types() {
     let (dir, output) = new_project("runtime-no-shared");
 
     for path in [
-        "business/src/domain/shared.rs",
-        "business/src/domain/shared/pagination.rs",
-        "business/src/domain/shared/repository_error.rs",
+        "contextos/shared",
+        "nucleo/src/pagination.rs",
+        "nucleo/src/repository_error.rs",
     ] {
         assert!(!output.join(path).exists(), "{path}");
     }
-    assert!(!read(&output, "business/src/lib.rs").contains("pub mod shared;"));
+    assert!(!read(&output, "nucleo/src/lib.rs").contains("pub mod"));
 
     cleanup(&dir);
 }
@@ -63,11 +66,14 @@ fn no_demo_project_declares_no_shared_module() {
     let (dir, output) = new_project("runtime-no-demo");
     scaffold::apply_no_demo(&output).unwrap();
 
-    assert_eq!(
-        read(&output, "business/src/lib.rs"),
-        "pub mod domain {\n}\npub mod application {\n}\n"
+    assert!(!output.join("contextos/greeting").exists());
+    assert!(!read(&output, "nucleo/src/lib.rs").contains("pub mod"));
+    let root = read(&output, "Cargo.toml");
+    assert!(!root.contains("_greeting"), "{root}");
+    assert!(
+        !root.contains("\"contextos/*/*\""),
+        "cargo reads a glob that matches nothing as a path:\n{root}"
     );
-    assert!(!output.join("business/src/domain/shared.rs").exists());
 
     cleanup(&dir);
 }
@@ -77,9 +83,9 @@ fn greeting_takes_the_repository_error_from_puerto_nucleo() {
     let (dir, output) = new_project("runtime-greeting");
 
     for path in [
-        "business/src/domain/greeting/errors.rs",
-        "business/src/domain/greeting/repository.rs",
-        "infrastructure/src/greeting/repository.rs",
+        "contextos/greeting/dominio/src/errores.rs",
+        "contextos/greeting/dominio/src/repositorio.rs",
+        "contextos/greeting/infraestructura/src/repositorio.rs",
     ] {
         let source = read(&output, path);
         assert!(
@@ -102,37 +108,33 @@ fn scaffold_imports_the_runtime_types_from_puerto_nucleo() {
         cleanup(&dir);
         setup_puerto_stubs(&dir);
         if db {
-            fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
+            fs::create_dir_all(dir.join("migraciones")).unwrap();
         }
-        scaffold::run("Product", &dir, db, true, &[], &[]).unwrap();
+        scaffold::run("Product", &dir, db, &[], &[]).unwrap();
 
         for (path, import) in [
             (
-                "business/src/domain/product/errors.rs",
+                "contextos/product/dominio/src/errores.rs",
                 "use puerto_nucleo::ErrorRepositorio;",
             ),
             (
-                "business/src/domain/product/repository.rs",
+                "contextos/product/dominio/src/repositorio.rs",
                 "use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};",
             ),
             (
-                "business/src/domain/product/use_cases/list_products.rs",
+                "contextos/product/aplicacion/src/list_products.rs",
                 "use puerto_nucleo::{Pagina, PeticionPagina};",
             ),
             (
-                "business/src/application/product/list_products.rs",
-                "use puerto_nucleo::Pagina;",
-            ),
-            (
-                "infrastructure/src/product/repository.rs",
+                "contextos/product/infraestructura/src/repositorio.rs",
                 "use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};",
             ),
             (
-                "presentation/src/api/product/routes.rs",
+                "contextos/product/rest/src/rutas.rs",
                 "use puerto_nucleo::PeticionPagina;",
             ),
             (
-                "presentation/src/api/product/dto.rs",
+                "contextos/product/rest/src/dto.rs",
                 "use puerto_nucleo::Pagina;",
             ),
         ] {
@@ -143,33 +145,6 @@ fn scaffold_imports_the_runtime_types_from_puerto_nucleo() {
                 !source.contains("shared::repository_error"),
                 "{name}: {path}"
             );
-        }
-
-        cleanup(&dir);
-    }
-}
-
-#[test]
-fn non_crud_scaffold_imports_the_repository_error_from_puerto_nucleo() {
-    for (name, db) in [("runtime_simple_mem", false), ("runtime_simple_pg", true)] {
-        let dir = temp_dir(name);
-        cleanup(&dir);
-        setup_puerto_stubs(&dir);
-        if db {
-            fs::create_dir_all(dir.join("infrastructure/migrations")).unwrap();
-        }
-        scaffold::run("Product", &dir, db, false, &[], &[]).unwrap();
-
-        for path in [
-            "business/src/domain/product/repository.rs",
-            "infrastructure/src/product/repository.rs",
-        ] {
-            let source = read(&dir, path);
-            assert!(
-                source.contains("use puerto_nucleo::ErrorRepositorio;"),
-                "{name}: {path}"
-            );
-            assert!(!source.contains("domain::shared"), "{name}: {path}");
         }
 
         cleanup(&dir);
@@ -266,7 +241,7 @@ fn new_project_depends_on_puerto_web_from_presentation_only() {
         root.contains(&format!("puerto-web = \"{}\"", cli_minor())),
         "{root}"
     );
-    let presentation = read(&output, "presentation/Cargo.toml");
+    let presentation = read(&output, "presentacion/api/Cargo.toml");
     assert!(presentation.contains("puerto-web = { workspace = true }"));
     // The server, `.env` and the subscriber are the runtime's now.
     assert!(!presentation.contains("dotenvy"), "{presentation}");
@@ -274,7 +249,11 @@ fn new_project_depends_on_puerto_web_from_presentation_only() {
         !presentation.contains("tracing-subscriber"),
         "{presentation}"
     );
-    for member in ["business", "infrastructure"] {
+    for member in [
+        "contextos/greeting/dominio",
+        "contextos/greeting/aplicacion",
+        "contextos/greeting/infraestructura",
+    ] {
         assert!(!read(&output, &format!("{member}/Cargo.toml")).contains("puerto-web"));
     }
 
@@ -285,14 +264,15 @@ fn new_project_depends_on_puerto_web_from_presentation_only() {
 fn new_project_main_hands_the_server_to_puerto_web() {
     let (dir, output) = new_project("runtime-web-main");
 
-    let main = read(&output, "presentation/src/main.rs");
+    let main = read(&output, "presentacion/api/src/main.rs");
     assert!(main.contains("puerto_web::Config::from_env()?"), "{main}");
     assert!(main.contains("puerto_web::App::new(config)"), "{main}");
     assert!(
-        main.contains(".intentar_servir(generated::bootstrap::build_app)"),
+        main.contains(".intentar_servir(api::generado::bootstrap::build_app)"),
         "{main}"
     );
-    assert!(main.contains("mod app;"), "{main}");
+    let lib = read(&output, "presentacion/api/src/lib.rs");
+    assert!(lib.contains("mod app;"), "{lib}");
     for gone in [
         "run_with_graceful_shutdown",
         "tracing_subscriber",
@@ -309,20 +289,17 @@ fn new_project_main_hands_the_server_to_puerto_web() {
 fn new_project_ships_no_copy_of_the_http_shell() {
     let (dir, output) = new_project("runtime-web-no-copy");
 
-    assert!(!output.join("presentation/src/health.rs").exists());
-    // `IntoErrorResponse` stays: an `error_mapper.rs` implements it for an error of `business`,
-    // which the orphan rule only allows for a trait of `presentation` itself.
-    let error = read(&output, "presentation/src/api/error.rs");
-    assert!(error.contains("pub trait IntoErrorResponse"), "{error}");
-    assert!(error.contains("use puerto_web::RespuestaError;"), "{error}");
-    assert!(!error.contains("struct RespuestaError"), "{error}");
+    assert!(!output.join("presentacion/api/src/health.rs").exists());
+    // A REST crate maps its context's errors with a free function: neither `puerto-web`'s body nor
+    // the domain's error is its own, so it cannot implement a trait of theirs (ADR-0023 § 8).
     let greeting = format!(
         "{}{}",
-        read(&output, "presentation/src/api/greeting/error_mapper.rs"),
-        read(&output, "presentation/src/api/greeting/responses.rs")
+        read(&output, "contextos/greeting/rest/src/errores.rs"),
+        read(&output, "contextos/greeting/rest/src/respuestas.rs")
     );
     assert!(!greeting.contains("error::RespuestaError"), "{greeting}");
-    assert!(greeting.contains("use crate::api::error::IntoErrorResponse;"));
+    assert!(greeting.contains("pub fn a_respuesta_error(err: GreetingError)"));
+    assert!(!greeting.contains("struct RespuestaError"), "{greeting}");
     assert!(greeting.contains("use puerto_web::RespuestaError;"));
 
     cleanup(&dir);
@@ -332,7 +309,7 @@ fn new_project_ships_no_copy_of_the_http_shell() {
 fn bootstrap_builds_the_routes_with_puerto_web_and_hands_them_to_the_app_hook() {
     let (dir, output) = new_project("runtime-web-bootstrap");
 
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     assert!(
         bootstrap.contains(
             "pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String>"
@@ -360,13 +337,13 @@ fn db_bootstrap_probes_the_database_through_puerto_web() {
     // The readiness check pings the database once an entity is stored in it.
     scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
 
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     assert!(
         bootstrap.contains("puerto_web::health::sondear(move ||"),
         "{bootstrap}"
     );
     assert!(
-        bootstrap.contains("infrastructure::db::ping(&pool)"),
+        bootstrap.contains("puerto_sqlx::ping(&pool)"),
         "{bootstrap}"
     );
     assert!(!bootstrap.contains("always_ready"), "{bootstrap}");
@@ -378,7 +355,7 @@ fn db_bootstrap_probes_the_database_through_puerto_web() {
 fn new_project_has_a_hand_written_app_hook() {
     let (dir, output) = new_project("runtime-web-app-hook");
 
-    let app = read(&output, "presentation/src/app.rs");
+    let app = read(&output, "presentacion/api/src/app.rs");
     assert!(
         app.contains("pub fn configure(routes: Route) -> impl Endpoint"),
         "{app}"
@@ -391,7 +368,7 @@ fn new_project_has_a_hand_written_app_hook() {
 #[test]
 fn app_hook_survives_scaffold_force_and_bootstrap_byte_for_byte() {
     let (dir, output) = new_project("runtime-web-app-survives");
-    let hook = output.join("presentation/src/app.rs");
+    let hook = output.join("presentacion/api/src/app.rs");
     let custom = "use poem::{Endpoint, EndpointExt, Route, middleware::SetHeader};\n\npub fn configure(routes: Route) -> impl Endpoint {\n    routes.with(SetHeader::new().overriding(\"x-team\", \"orders\"))\n}\n";
     fs::write(&hook, custom).unwrap();
 
@@ -406,19 +383,19 @@ fn app_hook_survives_scaffold_force_and_bootstrap_byte_for_byte() {
 
 #[test]
 fn scaffold_takes_the_error_body_from_puerto_web() {
-    for (name, crud) in [("runtime_web_crud", true), ("runtime_web_simple", false)] {
+    for name in ["runtime_web_crud"] {
         let dir = temp_dir(name);
         cleanup(&dir);
         setup_puerto_stubs(&dir);
-        scaffold::run("Product", &dir, false, crud, &[], &[]).unwrap();
+        scaffold::run("Product", &dir, false, &[], &[]).unwrap();
 
         for (path, import) in [
             (
-                "presentation/src/api/product/error_mapper.rs",
+                "contextos/product/rest/src/errores.rs",
                 "use puerto_web::RespuestaError;",
             ),
             (
-                "presentation/src/api/product/responses.rs",
+                "contextos/product/rest/src/respuestas.rs",
                 "use puerto_web::RespuestaError;",
             ),
         ] {
@@ -474,13 +451,23 @@ fn db_project_depends_on_puerto_sqlx_from_infrastructure_only() {
         root.contains(&format!("puerto-sqlx = \"{}\"", cli_minor())),
         "{root}"
     );
-    let infrastructure = read(&output, "infrastructure/Cargo.toml");
+    // The binary opens the pool and runs the migrations; each context's infrastructure crate
+    // names it when it is scaffolded.
+    let api = read(&output, "presentacion/api/Cargo.toml");
+    assert!(api.contains("puerto-sqlx = { workspace = true }"), "{api}");
+    assert!(api.contains("migrador = { workspace = true }"), "{api}");
+    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    let infrastructure = read(&output, "contextos/product/infraestructura/Cargo.toml");
     assert!(
         infrastructure.contains("puerto-sqlx = { workspace = true }"),
         "{infrastructure}"
     );
-    for member in ["business", "presentation"] {
-        assert!(!read(&output, &format!("{member}/Cargo.toml")).contains("puerto-sqlx"));
+    for member in ["dominio", "aplicacion", "rest"] {
+        assert!(
+            !read(&output, &format!("contextos/product/{member}/Cargo.toml"))
+                .contains("puerto-sqlx"),
+            "{member}"
+        );
     }
 
     cleanup(&dir);
@@ -492,9 +479,8 @@ fn project_without_db_does_not_depend_on_puerto_sqlx() {
 
     for path in [
         "Cargo.toml",
-        "business/Cargo.toml",
-        "infrastructure/Cargo.toml",
-        "presentation/Cargo.toml",
+        "contextos/greeting/infraestructura/Cargo.toml",
+        "presentacion/api/Cargo.toml",
     ] {
         assert!(!read(&output, path).contains("puerto-sqlx"), "{path}");
     }
@@ -503,16 +489,21 @@ fn project_without_db_does_not_depend_on_puerto_sqlx() {
 }
 
 #[test]
-fn db_module_keeps_only_the_project_migrations_and_re_exports_puerto_sqlx() {
+fn migrador_keeps_only_the_project_migrations() {
     let (dir, output) = new_db_project("runtime-sqlx-db-rs");
 
-    let db = read(&output, "infrastructure/src/db.rs");
-    assert!(db.contains("pub use puerto_sqlx::*;"), "{db}");
+    let db = read(&output, "migrador/src/lib.rs");
     assert!(
         db.contains(
-            "pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!(\"./migrations\");"
+            "pub static MIGRADOR: sqlx::migrate::Migrator = sqlx::migrate!(\"../migraciones\");"
         ),
         "{db}"
+    );
+    // `migrate!` does not see a new migration until a `.rs` file changes, without it.
+    let build = read(&output, "migrador/build.rs");
+    assert!(
+        build.contains("cargo:rerun-if-changed=../migraciones"),
+        "{build}"
     );
     // The pool, the probe and the error mapping are the runtime's — no code of their own here.
     for gone in ["fn ", "23505", "PgPoolOptions", "ErrorBaseDatos"] {
@@ -527,15 +518,13 @@ fn db_bootstrap_runs_the_project_migrations_through_puerto_sqlx() {
     let (dir, output) = new_db_project("runtime-sqlx-bootstrap");
     scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
 
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     assert!(
-        bootstrap.contains(
-            "infrastructure::db::ejecutar_migraciones(&pool, &infrastructure::db::MIGRATOR)"
-        ),
+        bootstrap.contains("puerto_sqlx::ejecutar_migraciones(&pool, &migrador::MIGRADOR)"),
         "{bootstrap}"
     );
     assert!(
-        bootstrap.contains("infrastructure::db::crear_pool_postgres(&database_url)"),
+        bootstrap.contains("puerto_sqlx::crear_pool_postgres(&database_url)"),
         "{bootstrap}"
     );
 

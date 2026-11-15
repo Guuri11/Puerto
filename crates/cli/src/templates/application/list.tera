@@ -3,11 +3,10 @@
 use async_trait::async_trait;
 use puerto_nucleo::Pagina;
 
-use crate::domain::{{ snake }}::{
-    errors::{{ pascal }}Error,
-    model::{{ pascal }},
-    repository::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
-    use_cases::list_{{ plural }}::{List{{ plural_pascal }}Params, List{{ plural_pascal }}UseCaseTrait},
+use dominio_{{ snake }}::{
+    errores::{{ pascal }}Error,
+    modelo::{{ pascal }},
+    repositorio::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
 };
 
 pub struct List{{ plural_pascal }}UseCaseImpl {
@@ -35,11 +34,11 @@ impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl 
 #[cfg(test)]
 mod tests {
     use super::*;
-{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
+{% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use puerto_nucleo::PeticionPagina;
-    use crate::domain::{{ snake }}::{
-        model::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
-        repository::mocks::Mock{{ pascal }}Repository,
+    use dominio_{{ snake }}::{
+        modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
+        repositorio::mocks::Mock{{ pascal }}Repository,
     };
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}{% for import in reference_imports %}{% if import not in test_imports %}    use {{ import }};
@@ -62,7 +61,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}page: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
         let page = result.unwrap();
@@ -81,7 +80,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}page: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
         let page = result.unwrap();
@@ -101,7 +100,7 @@ mod tests {
         };
 
         let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: PrincipalMother::random(), {% endif %}page: PeticionPagina::new(Some(5), Some(10)){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}page: PeticionPagina::new(Some(5), Some(10)){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
         assert_eq!(result.unwrap().desplazamiento, 10);
@@ -123,7 +122,7 @@ mod tests {
 
         let result = use_case
             .execute(List{{ plural_pascal }}Params {
-{% if actor %}                actor: PrincipalMother::random(),
+{% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}                page: PeticionPagina::default(),
 {% for r in refs %}                {{ r.name }}: filter.{{ r.name }},
 {% endfor %}            })

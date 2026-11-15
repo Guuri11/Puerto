@@ -11,36 +11,13 @@ use std::{fs, path::Path};
 //   \t  → tab character (indentation)
 
 pub const SNIPPETS_JSON: &str = r##"{
-  "Domain — lib.rs entity block": {
-    "prefix": "lib-domain-entity",
-    "body": [
-      "pub mod ${1:entity} {",
-      "\tpub mod errors;",
-      "\tpub mod model;",
-      "\tpub mod repository;",
-      "\tpub mod use_cases {",
-      "\t\tpub mod ${2:create};",
-      "\t}",
-      "}"
-    ],
-    "description": "Inline domain entity block for business/src/lib.rs."
-  },
-  "Application — lib.rs entity block": {
-    "prefix": "lib-application-entity",
-    "body": [
-      "pub mod ${1:entity} {",
-      "\tpub mod ${2:create};",
-      "}"
-    ],
-    "description": "Inline application entity block for business/src/lib.rs."
-  },
   "Domain — model.rs": {
     "prefix": "domain-model",
     "body": [
       "use chrono::{DateTime, Utc};",
       "use uuid::Uuid;",
       "",
-      "use super::errors::${1:Entity}Error;",
+      "use crate::errores::${1:Entity}Error;",
       "",
       "/// The id of every `${1:Entity}`: a `Uuid` that cannot be passed where another entity's id is expected.",
       "#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]",
@@ -143,7 +120,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use async_trait::async_trait;",
       "use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};",
       "",
-      "use super::model::{${1:Entity}, ${1:Entity}Id};",
+      "use crate::modelo::{${1:Entity}, ${1:Entity}Id};",
       "",
       "#[async_trait]",
       "pub trait ${1:Entity}RepositoryTrait: Send + Sync {",
@@ -152,7 +129,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\tasync fn save(&self, entity: &${1:Entity}) -> Result<(), ErrorRepositorio>;",
       "}",
       "",
-      "#[cfg(any(test, feature = \"test-utils\"))]",
+      "#[cfg(any(test, feature = \"pruebas\"))]",
       "pub mod mocks {",
       "\tuse mockall::mock;",
             "\tuse super::*;",
@@ -171,12 +148,12 @@ pub const SNIPPETS_JSON: &str = r##"{
     ],
     "description": "Repository port trait (find_all, find_by_id, save) returning ErrorRepositorio + mockall mock in pub mod mocks. In an events project the port only reads: drop save, writes go through the unit of work (uow-write)."
   },
-  "Domain — use_cases/<action>.rs": {
+  "Application — <action>.rs contract": {
     "prefix": "domain-use-case",
     "body": [
       "use async_trait::async_trait;",
       "",
-      "use crate::domain::${1:entity}::{errors::${2:Entity}Error, model::${2:Entity}};",
+      "use dominio_${1:entity}::{errores::${2:Entity}Error, modelo::${2:Entity}};",
       "",
       "#[derive(Debug, Clone)]",
       "pub struct ${3:Action}${2:Entity}Params {",
@@ -189,7 +166,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\tasync fn execute(&self, params: ${3:Action}${2:Entity}Params) -> Result<${2:Entity}, ${2:Entity}Error>;",
       "}",
       "",
-      "#[cfg(any(test, feature = \"test-utils\"))]",
+      "#[cfg(any(test, feature = \"pruebas\"))]",
       "pub mod mocks {",
       "\tuse mockall::mock;",
       "",
@@ -205,7 +182,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t}",
       "}"
     ],
-    "description": "Use case Params struct + UseCaseTrait + mockall mock in pub mod mocks (route tests and the spec export use it)."
+    "description": "The contract that opens a use case's file in the application crate: Params struct + UseCaseTrait + mockall mock in pub mod mocks (route tests and the spec export use it). The impl and its tests follow in the same file (app-use-case)."
   },
   "Application — use case impl + tests": {
     "prefix": "app-use-case",
@@ -214,11 +191,10 @@ pub const SNIPPETS_JSON: &str = r##"{
       "",
       "use async_trait::async_trait;",
       "",
-      "use crate::domain::${1:entity}::{",
-      "\terrors::${2:Entity}Error,",
-      "\tmodel::{${2:Entity}, ${2:Entity}Props},",
-      "\trepository::${2:Entity}RepositoryTrait,",
-      "\tuse_cases::${3:action}::{${4:Action}${2:Entity}Params, ${4:Action}${2:Entity}UseCaseTrait},",
+      "use dominio_${1:entity}::{",
+      "\terrores::${2:Entity}Error,",
+      "\tmodelo::{${2:Entity}, ${2:Entity}Props},",
+      "\trepositorio::${2:Entity}RepositoryTrait,",
       "};",
       "",
       "pub struct ${4:Action}${2:Entity}UseCaseImpl {",
@@ -243,7 +219,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[cfg(test)]",
       "mod tests {",
       "\tuse super::*;",
-      "\tuse crate::domain::${1:entity}::repository::mocks::Mock${2:Entity}Repository;",
+      "\tuse dominio_${1:entity}::repositorio::mocks::Mock${2:Entity}Repository;",
       "",
       "\t#[tokio::test]",
       "\tasync fn should_create_${1:entity}_when_name_is_valid() {",
@@ -313,13 +289,12 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use async_trait::async_trait;",
       "use puerto_nucleo::ErrorRepositorio;",
       "",
-      "use crate::domain::${1:entity}::{",
-      "\terrors::${2:Entity}Error,",
-      "\tevents::{${2:Entity}Event, ${2:Entity}Snapshot},",
-      "\tmodel::${2:Entity},",
-      "\trepository::${2:Entity}RepositoryTrait,",
+      "use dominio_${1:entity}::{",
+      "\terrores::${2:Entity}Error,",
+      "\teventos::{${2:Entity}Event, ${2:Entity}Snapshot},",
+      "\tmodelo::${2:Entity},",
+      "\trepositorio::${2:Entity}RepositoryTrait,",
       "\tunit_of_work::${2:Entity}UnitOfWorkFactory,",
-      "\tuse_cases::${3:action}::{${4:Action}${2:Entity}Params, ${4:Action}${2:Entity}UseCaseTrait},",
       "};",
       "",
       "pub struct ${4:Action}${2:Entity}UseCaseImpl {",
@@ -354,11 +329,11 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[cfg(test)]",
       "mod tests {",
       "\tuse super::*;",
-      "\tuse crate::domain::${1:entity}::{",
-      "\t\tmodel::${2:Entity}Id, repository::mocks::Mock${2:Entity}Repository,",
+      "\tuse dominio_${1:entity}::{",
+      "\t\tmodelo::${2:Entity}Id, repositorio::mocks::Mock${2:Entity}Repository,",
       "\t\tunit_of_work::mocks::RecordingUnitOfWorkFactory,",
       "\t};",
-      "\tuse crate::tests::mothers::${1:entity}_mother::${2:Entity}Mother;",
+      "\tuse dominio_${1:entity}::pruebas::madres::${2:Entity}Mother;",
       "\tuse puerto_nucleo::EventoDominio;",
       "",
       "\t#[tokio::test]",
@@ -409,15 +384,6 @@ pub const SNIPPETS_JSON: &str = r##"{
     ],
     "description": "Events projects: a use case on an existing entity — read through the repository, write through the unit of work, record the event; tests with RecordingUnitOfWorkFactory."
   },
-  "Infrastructure — lib.rs entity block (InMemory)": {
-    "prefix": "lib-infra-entity",
-    "body": [
-      "pub mod ${1:entity} {",
-      "\tpub mod repository;",
-      "}"
-    ],
-    "description": "Infrastructure entity block for infrastructure/src/lib.rs (InMemory)."
-  },
   "Infrastructure — repository.rs (in-memory)": {
     "prefix": "inmemory-repo",
     "body": [
@@ -425,9 +391,9 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use std::sync::{PoisonError, RwLock};",
       "",
       "use async_trait::async_trait;",
-      "use business::domain::${1:entity}::{",
-      "\tmodel::{${2:Entity}, ${2:Entity}Id},",
-      "\trepository::${2:Entity}RepositoryTrait,",
+      "use dominio_${1:entity}::{",
+      "\tmodelo::{${2:Entity}, ${2:Entity}Id},",
+      "\trepositorio::${2:Entity}RepositoryTrait,",
       "};",
       "use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};",
       "",
@@ -471,16 +437,6 @@ pub const SNIPPETS_JSON: &str = r##"{
     ],
     "description": "In-memory repository adapter (the default without --db): keeps rows in a map, hides deleted ones, pages newest first."
   },
-  "Infrastructure — lib.rs entity block (SQLx)": {
-    "prefix": "lib-infra-entity-db",
-    "body": [
-      "pub mod ${1:entity} {",
-      "\tpub mod entity;",
-      "\tpub mod repository;",
-      "}"
-    ],
-    "description": "Infrastructure entity block for infrastructure/src/lib.rs (SQLx/Postgres)."
-  },
   "Infrastructure — entity.rs (DB row struct)": {
     "prefix": "persistence-entity",
     "body": [
@@ -489,7 +445,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use sqlx::FromRow;",
       "use uuid::Uuid;",
       "",
-      "use business::domain::${1:entity}::{errors::${2:Entity}Error, model::{${2:Entity}, ${2:Entity}Id}};",
+      "use dominio_${1:entity}::{errores::${2:Entity}Error, modelo::{${2:Entity}, ${2:Entity}Id}};",
       "",
       "#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]",
       "pub struct ${2:Entity}Db {",
@@ -536,15 +492,15 @@ pub const SNIPPETS_JSON: &str = r##"{
     "prefix": "persistence-repo",
     "body": [
       "use async_trait::async_trait;",
-      "use business::domain::${1:entity}::{",
-      "\tmodel::{${2:Entity}, ${2:Entity}Id},",
-      "\trepository::${2:Entity}RepositoryTrait,",
+      "use dominio_${1:entity}::{",
+      "\tmodelo::{${2:Entity}, ${2:Entity}Id},",
+      "\trepositorio::${2:Entity}RepositoryTrait,",
       "};",
       "use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};",
       "use sqlx::PgPool;",
       "",
-      "use super::entity::${2:Entity}Db;",
-      "use crate::db::mapear_error_sqlx;",
+      "use crate::fila::${2:Entity}Db;",
+      "use puerto_sqlx::mapear_error_sqlx;",
       "",
       "pub struct Pg${2:Entity}Repository {",
       "\tpub pool: PgPool,",
@@ -627,22 +583,12 @@ pub const SNIPPETS_JSON: &str = r##"{
       "}",
       "$0"
     ],
-    "description": "PgEntityRepository: find_all, find_by_id, save with SQLx macros, tracing logs, driver errors through db::mapear_error_sqlx."
-  },
-  "Presentation — api/<entity>.rs module decls": {
-    "prefix": "lib-presentation-entity",
-    "body": [
-      "pub mod dto;",
-      "pub mod error_mapper;",
-      "pub mod responses;",
-      "pub mod routes;"
-    ],
-    "description": "Module declarations for presentation/src/api/<entity>.rs."
+    "description": "PgEntityRepository: find_all, find_by_id, save with SQLx macros, tracing logs, driver errors through puerto_sqlx::mapear_error_sqlx."
   },
   "Presentation — dto.rs response DTO": {
     "prefix": "poem-dto",
     "body": [
-      "use business::domain::${1:entity}::model::${2:Entity};",
+      "use dominio_${1:entity}::modelo::${2:Entity};",
       "use poem_openapi::Object;",
       "use uuid::Uuid;",
       "",
@@ -684,7 +630,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "use poem_openapi::{ApiResponse, payload::Json};",
       "use puerto_web::RespuestaError;",
       "",
-      "use crate::api::${1:entity}::dto::${2:Entity}Dto;",
+      "use crate::dto::${2:Entity}Dto;",
       "",
       "#[derive(ApiResponse)]",
       "pub enum ${3:Action}${2:Entity}Response {",
@@ -716,27 +662,24 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Presentation — error_mapper.rs": {
     "prefix": "poem-error-mapper",
     "body": [
-      "use business::domain::${1:entity}::errors::${2:Entity}Error;",
+      "use dominio_${1:entity}::errores::${2:Entity}Error;",
       "use poem::http::StatusCode;",
       "use poem_openapi::payload::Json;",
       "use puerto_web::RespuestaError;",
       "",
-      "use crate::api::error::IntoErrorResponse;",
       "",
-      "impl IntoErrorResponse for ${2:Entity}Error {",
-      "\tfn into_error_response(self) -> (StatusCode, Json<RespuestaError>) {",
-      "\t\tlet status = match &self {",
-      "\t\t\t${2:Entity}Error::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,",
-      "\t\t\t${2:Entity}Error::NotFound => StatusCode::NOT_FOUND,",
-      "\t\t\t${2:Entity}Error::Duplicate => StatusCode::CONFLICT,",
-      "\t\t\t${2:Entity}Error::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,",
-      "\t\t\t${2:Entity}Error::Unknown => StatusCode::INTERNAL_SERVER_ERROR,",
-      "\t\t};",
-      "\t\t(status, Json(RespuestaError::from_codigo(self.to_string())))",
-      "\t}",
+      "pub fn a_respuesta_error(err: ${2:Entity}Error) -> (StatusCode, Json<RespuestaError>) {",
+      "\tlet status = match &err {",
+      "\t\t${2:Entity}Error::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,",
+      "\t\t${2:Entity}Error::NotFound => StatusCode::NOT_FOUND,",
+      "\t\t${2:Entity}Error::Duplicate => StatusCode::CONFLICT,",
+      "\t\t${2:Entity}Error::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,",
+      "\t\t${2:Entity}Error::Unknown => StatusCode::INTERNAL_SERVER_ERROR,",
+      "\t};",
+      "\t(status, Json(RespuestaError::from_codigo(err.to_string())))",
       "}"
     ],
-    "description": "IntoErrorResponse impl: exhaustive status mapping, the error code in `codigo` (validation → 422)."
+    "description": "The REST crate's errores.rs: a free function, exhaustive status mapping, the error code in `codigo` (validation → 422)."
   },
   "Test — error mapper arm": {
     "prefix": "poem-error-mapper-test",
@@ -744,7 +687,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[test]",
       "fn should_map_${1:not_found}_to_${2:404}_with_its_code() {",
       "\t// Act",
-      "\tlet (status, Json(body)) = ${3:Entity}Error::${4:NotFound}.into_error_response();",
+      "\tlet (status, Json(body)) = a_respuesta_error(${3:Entity}Error::${4:NotFound});",
       "",
       "\t// Assert",
       "\tassert_eq!(status, StatusCode::${5:NOT_FOUND});",
@@ -758,13 +701,17 @@ pub const SNIPPETS_JSON: &str = r##"{
     "body": [
       "use std::sync::Arc;",
       "",
-      "use business::domain::${1:entity}::use_cases::${3:action}::{${4:Action}${2:Entity}Params, ${4:Action}${2:Entity}UseCaseTrait};",
-      "use poem_openapi::{OpenApi, payload::Json};",
+      "use aplicacion_${1:entity}::${3:action}::{${4:Action}${2:Entity}Params, ${4:Action}${2:Entity}UseCaseTrait};",
+      "use poem_openapi::{OpenApi, Tags, payload::Json};",
       "",
-      "use crate::api::error::IntoErrorResponse;",
-      "use crate::api::tags::ApiTags;",
-      "use crate::api::${1:entity}::dto::{${4:Action}${2:Entity}Request, ${2:Entity}Dto};",
-      "use crate::api::${1:entity}::responses::${4:Action}${2:Entity}Response;",
+      "use crate::dto::{${4:Action}${2:Entity}Request, ${2:Entity}Dto};",
+      "use crate::errores::a_respuesta_error;",
+      "use crate::respuestas::${4:Action}${2:Entity}Response;",
+      "",
+      "#[derive(Tags)]",
+      "enum ApiTags {",
+      "\t${2:Entity},",
+      "}",
       "",
       "pub struct ${2:Entity}Api {",
       "\tpub ${3:action}: Arc<dyn ${4:Action}${2:Entity}UseCaseTrait>,",
@@ -778,7 +725,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tmatch self.${3:action}.execute(${4:Action}${2:Entity}Params { name: body.name.clone() }).await {",
       "\t\t\tOk(entity) => ${4:Action}${2:Entity}Response::Created(Json(${2:Entity}Dto::from_domain(&entity))),",
       "\t\t\tErr(err) => {",
-      "\t\t\t\tlet (status, error) = err.into_error_response();",
+      "\t\t\t\tlet (status, error) = a_respuesta_error(err);",
       "\t\t\t\ttracing::warn!(code = %error.0.codigo, \"${3:action} failed\");",
       "\t\t\t\t${4:Action}${2:Entity}Response::from_status(status, error)",
       "\t\t\t}",
@@ -797,7 +744,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\tmatch self.${4:action}.execute(${5:Action}${6:Entity}Params { name: body.name.clone() }).await {",
       "\t\tOk(entity) => ${5:Action}${6:Entity}Response::Created(Json(${6:Entity}Dto::from_domain(&entity))),",
       "\t\tErr(err) => {",
-      "\t\t\tlet (status, error) = err.into_error_response();",
+      "\t\t\tlet (status, error) = a_respuesta_error(err);",
       "\t\t\ttracing::warn!(code = %error.0.codigo, \"${4:action} failed\");",
       "\t\t\t${5:Action}${6:Entity}Response::from_status(status, error)",
       "\t\t}",
@@ -815,7 +762,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\tmatch self.get_${2:entity}.execute(Get${1:Entity}Params { id: ${1:Entity}Id::from_uuid(id.0) }).await {",
       "\t\tOk(entity) => Get${1:Entity}Response::Ok(Json(${1:Entity}Dto::from_domain(&entity))),",
       "\t\tErr(err) => {",
-      "\t\t\tlet (status, error) = err.into_error_response();",
+      "\t\t\tlet (status, error) = a_respuesta_error(err);",
       "\t\t\ttracing::warn!(code = %error.0.codigo, \"get_${2:entity} failed\");",
       "\t\t\tGet${1:Entity}Response::from_status(status, error)",
       "\t\t}",
@@ -837,7 +784,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t{",
       "\t\tOk(entity) => ${1:Action}${2:Entity}Response::Ok(Json(${2:Entity}Dto::from_domain(&entity))),",
       "\t\tErr(err) => {",
-      "\t\t\tlet (status, error) = err.into_error_response();",
+      "\t\t\tlet (status, error) = a_respuesta_error(err);",
       "\t\t\ttracing::warn!(code = %error.0.codigo, \"${5:action} failed\");",
       "\t\t\t${1:Action}${2:Entity}Response::from_status(status, error)",
       "\t\t}",
@@ -919,7 +866,7 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Test — Object Mother": {
     "prefix": "object-mother",
     "body": [
-      "use crate::domain::${1:entity}::model::{${2:Entity}, ${2:Entity}Props};",
+      "use crate::modelo::{${2:Entity}, ${2:Entity}Props};",
       "",
       "pub struct ${2:Entity}Mother {",
       "\tname: Option<String>,",
@@ -971,7 +918,7 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Test — SQLx integration test": {
     "prefix": "sqlx-test",
     "body": [
-      "#[sqlx::test(migrator = \"crate::db::MIGRATOR\")]",
+      "#[sqlx::test(migrator = \"migrador::MIGRADOR\")]",
       "async fn should_${1:expected}_when_${2:condition}(pool: PgPool) {",
       "\t// Arrange",
       "\tlet repo = Pg${3:Entity}Repository::new(pool.clone());",
@@ -990,7 +937,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[cfg(test)]",
       "mod integration_tests {",
       "\tuse super::*;",
-      "\tuse business::domain::${1:entity}::model::${2:Entity}Props;",
+      "\tuse dominio_${1:entity}::modelo::${2:Entity}Props;",
       "",
       "\tasync fn seed(pool: &PgPool, name: &str) -> ${2:Entity} {",
       "\t\tlet entity = ${2:Entity}::new(${2:Entity}Props { name: name.to_string() }).unwrap();",
@@ -998,7 +945,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tentity",
       "\t}",
       "",
-      "\t#[sqlx::test(migrator = \"crate::db::MIGRATOR\")]",
+      "\t#[sqlx::test(migrator = \"migrador::MIGRADOR\")]",
       "\tasync fn should_persist_and_retrieve_by_id(pool: PgPool) {",
       "\t\t// Arrange",
       "\t\tlet entity = seed(&pool, \"example\").await;",
@@ -1015,7 +962,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tassert_eq!(found.name, entity.name);",
       "\t}",
       "",
-      "\t#[sqlx::test(migrator = \"crate::db::MIGRATOR\")]",
+      "\t#[sqlx::test(migrator = \"migrador::MIGRADOR\")]",
       "\tasync fn should_return_none_for_nonexistent_id(pool: PgPool) {",
       "\t\t// Act",
       "\t\tlet result = Pg${2:Entity}Repository::new(pool)",

@@ -1,7 +1,9 @@
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use std::path::Path;
 
+use crate::generators::crates::ContextDeps;
 use crate::generators::effective_fields;
+use crate::generators::merge::merge_use_case;
 use crate::generators::naming::{
     crud_use_case, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
 };
@@ -10,7 +12,6 @@ use crate::generators::types::{
     FieldCtx, field_ctx, is_value_object, literal_import, literal_names_vo, reference_import,
     vo_import_path,
 };
-use crate::patchers::lib_rs::patch_business_lib_application_crud;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ fn use_case_context(
     for import in eff
         .iter()
         .filter(|f| is_value_object(f))
-        .map(|f| vo_import_path(f, snake, shared_vos))
+        .map(|f| vo_import_path(f, snake, shared_vos, false))
     {
         if !vo_imports.contains(&import) {
             vo_imports.push(import);
@@ -58,12 +59,12 @@ fn use_case_context(
     let named_vos = eff
         .iter()
         .filter(|f| !matches!(test_imports, TestImports::ParamsOnly) && literal_names_vo(f))
-        .map(|f| vo_import_path(f, snake, shared_vos));
+        .map(|f| vo_import_path(f, snake, shared_vos, false));
     // `CustomerId::generate()` in Params and Props literals; an optional reference's is `None`.
     let required_references = eff
         .iter()
         .filter(|f| !f.field_type.starts_with("Option<"))
-        .filter_map(|f| reference_import(f, "crate"));
+        .filter_map(reference_import);
     for import in literal_imports.chain(named_vos).chain(required_references) {
         if !tests.contains(&import) {
             tests.push(import);
@@ -80,11 +81,12 @@ fn use_case_context(
     ctx.insert("test_imports", &tests);
     // Every reference's id: the list's filter test names the optional ones too.
     let mut reference_imports = vec![];
-    crate::generators::domain::push_reference_imports(&mut reference_imports, &eff, "crate");
+    crate::generators::domain::push_reference_imports(&mut reference_imports, &eff);
     ctx.insert("reference_imports", &reference_imports);
     ctx
 }
 
+#[cfg(test)]
 fn render_use_case(
     action: &str,
     test_imports: TestImports,
@@ -136,6 +138,7 @@ fn render_write_use_case_with_events(
 
 // ── Public generators ─────────────────────────────────────────────────────────
 
+#[cfg(test)]
 pub fn generate_create_use_case_impl(
     pascal: &str,
     snake: &str,
@@ -215,6 +218,43 @@ pub fn generate_delete_use_case_impl(
 
 // ── File writers ──────────────────────────────────────────────────────────────
 
+/// The contract of a CRUD use case: params, trait and double. `actor`: a protected use case of an
+/// auth project — its params carry the caller.
+fn render_contract(
+    action: &str,
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+    actor: bool,
+) -> Result<String, RenderError> {
+    let template = format!("domain/use_case_{action}.tera");
+    if matches!(action, "create" | "update") {
+        return crate::generators::domain::generate_use_case_trait(
+            &template,
+            &[],
+            pascal,
+            snake,
+            fields,
+            actor,
+        );
+    }
+    let eff = effective_fields(fields);
+    let field_ctxs: Vec<FieldCtx> = eff
+        .iter()
+        .map(|f| field_ctx(f, pascal, shared_vos))
+        .collect();
+    let mut reference_imports = vec![];
+    crate::generators::domain::push_reference_imports(&mut reference_imports, &eff);
+    let mut ctx = entity_ctx(pascal, snake);
+    ctx.insert("fields", &field_ctxs);
+    ctx.insert("reference_imports", &reference_imports);
+    ctx.insert("actor", &actor);
+    render(&template, &ctx)
+}
+
+/// The context's application crate: one file per CRUD use case — contract, implementation and
+/// tests (ADR-0023 § 4) — then its `Cargo.toml` and `lib.rs`. A custom use case's file is kept.
 pub fn write_application_files(
     pascal: &str,
     snake: &str,
@@ -222,9 +262,9 @@ pub fn write_application_files(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join(layout::application_dir(snake));
     let access = crate::generators::auth::Access::of(base, pascal);
-    let events = crate::puerto_toml::events_enabled(base);
+    let config = crate::puerto_toml::read(base).ok();
+    let events = config.as_ref().is_some_and(|c| c.project.has_events());
     let use_cases = [
         ("create", TestImports::ParamsOnly),
         ("get", TestImports::Props),
@@ -236,16 +276,25 @@ pub fn write_application_files(
         let use_case = crud_use_case(action, snake);
         let actor = access.is_protected(&use_case);
         // An `events` project's writes go through the unit of work, recording their event.
-        let content = if events && matches!(action, "create" | "update" | "delete") {
+        let implementation = if events && matches!(action, "create" | "update" | "delete") {
             render_write_use_case_with_events(
                 action, imports, pascal, snake, fields, shared_vos, actor,
             )?
         } else {
             render_use_case_as(action, imports, pascal, snake, fields, shared_vos, actor)?
         };
-        write_file(&dir.join(format!("{use_case}.rs")), &content)?;
+        let contract = render_contract(action, pascal, snake, fields, shared_vos, actor)?;
+        write_file(
+            &base.join(layout::use_case(snake, &use_case)),
+            &merge_use_case(&contract, &implementation),
+        )?;
     }
-    Ok(())
+    crate::generators::crates::finish(
+        base,
+        snake,
+        Layer::Application,
+        &ContextDeps::read(base, fields),
+    )
 }
 
 pub fn run_generate_application(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -269,9 +318,11 @@ pub fn run_generate_application(name: &str, base: &Path) -> Result<(), Box<dyn s
     let shared_vos = config.value_object.clone();
 
     write_application_files(&pascal, &snake, base, &fields, &shared_vos)?;
-    patch_business_lib_application_crud(base, &snake)?;
 
-    println!("✓ business/application/ — 5 use case impls (create, get, list, update, delete)");
+    println!(
+        "✓ {}/ — 5 use cases (create, get, list, update, delete)",
+        layout::crate_dir(&snake, Layer::Application)
+    );
     println!();
     println!("  Next: puerto generar repositorio {pascal}");
     Ok(())

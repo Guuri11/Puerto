@@ -6,11 +6,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use puerto_nucleo::auth::{AlmacenCredenciales, HasherContrasena};
 
-use crate::domain::user::{
-    errors::UserError,
-    model::{LOCAL_ISSUER, User},
-    repository::UserRepositoryTrait,
-    use_cases::register_user::{RegisterUserParams, RegisterUserUseCaseTrait},
+use dominio_usuario::{
+    errores::UserError,
+    modelo::{LOCAL_ISSUER, User},
+    repositorio::UserRepositoryTrait,
 };
 
 /// Shorter passwords are refused (`user.validation_error.password_too_short`); NIST's minimum is 8,
@@ -71,7 +70,7 @@ mod tests {
     use puerto_nucleo::auth::dobles::{MockAlmacenCredenciales, MockHasherContrasena};
 
     use super::*;
-    use crate::domain::user::repository::mocks::MockUserRepository;
+    use dominio_usuario::repositorio::mocks::MockUserRepository;
 
     const PASSWORD: &str = "correct horse battery";
 

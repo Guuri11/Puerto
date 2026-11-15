@@ -1,7 +1,7 @@
 use crate::generators::layout;
 use std::{fs, path::Path};
 
-/// Add a new SQLx migration file: `infrastructure/migrations/{version}_{name}.sql`.
+/// Add a new SQLx migration file: `migraciones/{version}_{name}.sql`.
 ///
 /// The file is written directly, in the format `sqlx migrate add` uses, rather than by shelling
 /// out to it. sqlx keys migrations by the 14-digit timestamp prefix and `sqlx migrate add` only
@@ -31,7 +31,7 @@ pub fn run_migration(
     let body = content.unwrap_or("-- Add migration script here\n");
     fs::write(&path, format!("{header}{body}"))?;
 
-    println!("✓ Migration '{normalised}' created in infrastructure/migrations/");
+    println!("✓ Migration '{normalised}' created in migraciones/");
     // The project builds with SQLX_OFFLINE=true: until the query cache knows the new schema, the
     // queries that use it do not compile.
     if content.is_some() {
@@ -63,9 +63,7 @@ pub fn run_create_table_migration(
     let Some(existing) = existing else {
         return run_migration(&name, base, Some(sql));
     };
-    println!(
-        "• infrastructure/migrations/{existing} already creates the table — no new migration."
-    );
+    println!("• migraciones/{existing} already creates the table — no new migration.");
     println!("  If the fields changed: not applied anywhere yet → edit that file;");
     println!("  applied → `puerto generar migracion <name>` with the ALTER TABLE.");
     println!("  Then: make sqlx/migrate && make sqlx/prepare");

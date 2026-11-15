@@ -4,9 +4,9 @@ use sqlx::FromRow;
 use uuid::Uuid;{% for import in imports %}
 use {{ import }};{% endfor %}
 
-use business::domain::{{ snake }}::{
-    errors::{{ pascal }}Error,
-    model::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
+use dominio_{{ snake }}::{
+    errores::{{ pascal }}Error,
+    modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

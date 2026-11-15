@@ -1,0 +1,21 @@
+[package]
+name = "infra_usuario"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_usuario = { workspace = true }
+puerto-nucleo = { workspace = true }
+{% if db %}puerto-sqlx = { workspace = true }
+sqlx = { workspace = true }
+{% endif %}async-trait = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+dominio_usuario = { workspace = true, features = ["pruebas"] }
+{% if not local %}# `aprovisionamiento.rs` tests over `MockAutenticador`.
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
+{% endif %}{% if db %}migrador = { workspace = true }
+{% endif %}tokio = { workspace = true }

@@ -4,7 +4,7 @@
 //! entity it used to overwrite all of them without a word — silently discarding any business rule,
 //! custom use case body or test the user had written. Rails prompts on conflict; so do we.
 //!
-//! Files Puerto declares auto-generated (`generated/bootstrap.rs`, `api/tags.rs`) are deliberately
+//! Files Puerto declares auto-generated (`generado/bootstrap.rs`, `presentacion/cableado`) are deliberately
 //! **not** guarded: they are regenerated from puerto.toml by design and carry a header saying so.
 
 use crate::generators::layout;
@@ -29,34 +29,28 @@ pub enum OverwritePolicy {
 /// `web`: the entity also gets a frontend slice (`web::web_entity_files`).
 pub fn entity_files(snake: &str, db: bool, web: bool) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = vec![
-        layout::domain_file(snake, "model"),
-        layout::domain_file(snake, "errors"),
-        layout::domain_file(snake, "repository"),
-        layout::domain_file(snake, "value_objects"),
-        layout::use_case_contract(snake, &format!("create_{snake}")),
-        layout::use_case_contract(snake, &format!("get_{snake}")),
-        layout::use_case_contract(snake, &crud_use_case("list", snake)),
-        layout::use_case_contract(snake, &format!("update_{snake}")),
-        layout::use_case_contract(snake, &format!("delete_{snake}")),
-        layout::use_case_impl(snake, &format!("create_{snake}")),
-        layout::use_case_impl(snake, &format!("get_{snake}")),
-        layout::use_case_impl(snake, &crud_use_case("list", snake)),
-        layout::use_case_impl(snake, &format!("update_{snake}")),
-        layout::use_case_impl(snake, &format!("delete_{snake}")),
+        layout::domain_file(snake, "modelo"),
+        layout::domain_file(snake, "errores"),
+        layout::domain_file(snake, "repositorio"),
+        layout::domain_file(snake, "valores"),
         layout::mother(snake),
-        layout::infra_file(snake, "repository"),
-        layout::api_module(snake),
-        layout::api_file(snake, "dto"),
-        layout::api_file(snake, "routes"),
-        layout::api_file(snake, "responses"),
-        layout::api_file(snake, "error_mapper"),
+        layout::use_case(snake, &crud_use_case("create", snake)),
+        layout::use_case(snake, &crud_use_case("get", snake)),
+        layout::use_case(snake, &crud_use_case("list", snake)),
+        layout::use_case(snake, &crud_use_case("update", snake)),
+        layout::use_case(snake, &crud_use_case("delete", snake)),
+        layout::infra_file(snake, "repositorio"),
+        layout::rest_file(snake, "dto"),
+        layout::rest_file(snake, "rutas"),
+        layout::rest_file(snake, "respuestas"),
+        layout::rest_file(snake, "errores"),
     ]
     .into_iter()
     .map(PathBuf::from)
     .collect();
 
     if db {
-        files.push(PathBuf::from(layout::infra_file(snake, "entity")));
+        files.push(PathBuf::from(layout::infra_file(snake, "fila")));
     }
     if web {
         files.extend(crate::generators::web::web_entity_files(snake));
@@ -142,12 +136,12 @@ mod tests {
         assert!(
             !entity_files("product", false, false)
                 .iter()
-                .any(|f| f.ends_with("entity.rs"))
+                .any(|f| f.ends_with("fila.rs"))
         );
         assert!(
             entity_files("product", true, false)
                 .iter()
-                .any(|f| f.ends_with("entity.rs"))
+                .any(|f| f.ends_with("fila.rs"))
         );
     }
 

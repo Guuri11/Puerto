@@ -81,7 +81,7 @@ fn curl(args: &[&str]) -> String {
     body
 }
 
-/// Imports the generated `infrastructure/keycloak/realm.json` into the test Keycloak, as the
+/// Imports the generated `keycloak/realm.json` into the test Keycloak, as the
 /// project's `docker-compose.yml` does on its first start — replacing one an earlier run left.
 fn import_realm(keycloak: &str, output: &Path) {
     let token = curl(&[
@@ -104,7 +104,7 @@ fn import_realm(keycloak: &str, output: &Path) {
         .args(["-s", "-X", "DELETE", "-H", &bearer])
         .arg(format!("{keycloak}/admin/realms/{OIDC_PROJECT}"))
         .output();
-    let realm = output.join("infrastructure/keycloak/realm.json");
+    let realm = output.join("keycloak/realm.json");
     curl(&[
         "-X",
         "POST",

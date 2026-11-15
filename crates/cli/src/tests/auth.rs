@@ -73,25 +73,32 @@ fn new_with_auth_writes_the_user_the_provisioning_and_me() {
     );
 
     for file in [
-        "business/src/domain/user/model.rs",
-        "business/src/domain/user/errors.rs",
-        "business/src/domain/user/repository.rs",
-        "infrastructure/src/user/repository.rs",
-        "infrastructure/src/user/provisioning.rs",
-        "infrastructure/keycloak/realm.json",
-        "presentation/src/api/me.rs",
-        "presentation/src/api/me/dto.rs",
-        "presentation/src/api/me/routes.rs",
+        "contextos/usuario/dominio/src/modelo.rs",
+        "contextos/usuario/dominio/src/errores.rs",
+        "contextos/usuario/dominio/src/repositorio.rs",
+        "contextos/usuario/infraestructura/src/repositorio.rs",
+        "contextos/usuario/infraestructura/src/aprovisionamiento.rs",
+        "keycloak/realm.json",
+        "contextos/usuario/rest/src/me.rs",
+        "contextos/usuario/rest/src/me/dto.rs",
+        "contextos/usuario/rest/src/me/rutas.rs",
         "docker-compose.yml",
     ] {
         assert!(output.join(file).exists(), "{file}");
     }
-    assert!(read(&output, "business/src/lib.rs").contains("pub mod user {"));
-    assert!(
-        read(&output, "infrastructure/src/user/repository.rs").contains("InMemoryUserRepository")
+    assert_eq!(
+        read(&output, "contextos/usuario/dominio/src/lib.rs"),
+        "pub mod errores;\npub mod modelo;\npub mod repositorio;\n"
     );
-    assert!(read(&output, "presentation/src/api.rs").contains("pub mod me;"));
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    assert!(
+        read(
+            &output,
+            "contextos/usuario/infraestructura/src/repositorio.rs"
+        )
+        .contains("InMemoryUserRepository")
+    );
+    assert!(read(&output, "contextos/usuario/rest/src/lib.rs").contains("pub mod me;"));
+    let bootstrap = wiring(&output);
     assert!(
         bootstrap.contains("AutenticadorOidc::descubrir"),
         "{bootstrap}"
@@ -117,8 +124,14 @@ fn new_with_auth_and_db_keeps_users_in_postgres() {
         },
     );
 
-    assert!(read(&output, "infrastructure/src/user/repository.rs").contains("PgUserRepository"));
-    let migrations: Vec<String> = fs::read_dir(output.join("infrastructure/migrations"))
+    assert!(
+        read(
+            &output,
+            "contextos/usuario/infraestructura/src/repositorio.rs"
+        )
+        .contains("PgUserRepository")
+    );
+    let migrations: Vec<String> = fs::read_dir(output.join("migraciones"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
@@ -126,10 +139,10 @@ fn new_with_auth_and_db_keeps_users_in_postgres() {
         .iter()
         .find(|m| m.ends_with("_create_users_table.sql"))
         .unwrap_or_else(|| panic!("{migrations:?}"));
-    let sql = read(&output, &format!("infrastructure/migrations/{users}"));
+    let sql = read(&output, &format!("migraciones/{users}"));
     assert!(sql.contains("UNIQUE (emisor, sujeto)"), "{sql}");
     // No entity uses the database yet: the bootstrap still opens the pool, for the users.
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     assert!(bootstrap.contains("crear_pool_postgres"), "{bootstrap}");
     assert!(
         bootstrap.contains("PgUserRepository::new(pool.clone())"),
@@ -157,17 +170,20 @@ fn new_with_auth_without_the_demo_still_declares_the_user_and_me() {
         },
     );
 
-    let business = read(&output, "business/src/lib.rs");
-    assert!(business.contains("pub mod user {"), "{business}");
-    assert!(business.contains("pub mod principal_mother;"), "{business}");
-    assert!(!business.contains("greeting"), "{business}");
-    let infrastructure = read(&output, "infrastructure/src/lib.rs");
+    let root = read(&output, "Cargo.toml");
     assert!(
-        infrastructure.contains("pub mod provisioning;"),
+        root.contains("\"contextos/*/*\""),
+        "the usuario context is a member:\n{root}"
+    );
+    assert!(root.contains("dominio_usuario = { path"), "{root}");
+    assert!(!root.contains("greeting"), "{root}");
+    let infrastructure = read(&output, "contextos/usuario/infraestructura/src/lib.rs");
+    assert!(
+        infrastructure.contains("pub mod aprovisionamiento;"),
         "{infrastructure}"
     );
-    let api = read(&output, "presentation/src/api.rs");
-    assert!(api.contains("pub mod me;"), "{api}");
+    let api = read(&output, "presentacion/api/Cargo.toml");
+    assert!(api.contains("rest_usuario = { workspace = true }"), "{api}");
     assert!(!api.contains("greeting"), "{api}");
     cleanup(&dir);
 }
@@ -203,7 +219,7 @@ fn new_with_auth_points_env_and_make_at_the_development_provider() {
     assert!(makefile.contains("auth/ui: docker-compose/up"));
     assert!(makefile.contains("docker-compose/up: ##"));
     assert!(makefile.contains("\nrun: docker-compose/up\n"));
-    let realm = read(&output, "infrastructure/keycloak/realm.json");
+    let realm = read(&output, "keycloak/realm.json");
     let realm: serde_json::Value = serde_json::from_str(&realm).expect("realm.json is JSON");
     assert_eq!(realm["realm"], "auth-new-env");
     assert_eq!(realm["users"][0]["email"], "admin@auth-new-env.localhost");
@@ -222,7 +238,7 @@ fn new_with_auth_gives_development_a_password_grant_client_and_a_user_without_ro
         },
     );
 
-    let realm = read(&output, "infrastructure/keycloak/realm.json");
+    let realm = read(&output, "keycloak/realm.json");
     let realm: serde_json::Value = serde_json::from_str(&realm).expect("realm.json is JSON");
     let clients = realm["clients"].as_array().unwrap();
     let web = clients.iter().find(|c| c["clientId"] == "web").unwrap();
@@ -283,8 +299,8 @@ fn new_with_auth_adds_the_auth_section_to_agents_md() {
     assert!(agents.find("## Auth").unwrap() < agents.find("## Conventions").unwrap());
     // What the section names exists in the project it describes (ADR-0010).
     for path in [
-        "business/src/domain/user",
-        "infrastructure/src/user/provisioning.rs",
+        "contextos/usuario/dominio/",
+        "contextos/usuario/infraestructura/src/aprovisionamiento.rs",
     ] {
         assert!(AGENTS_AUTH_SECTION.contains(path), "{path}");
         assert!(output.join(path).exists(), "{path}");
@@ -297,8 +313,8 @@ fn new_with_auth_adds_the_auth_section_to_agents_md() {
 fn new_without_auth_writes_none_of_it() {
     let (dir, output) = new_auth_project_without_auth("auth_none");
 
-    assert!(!output.join("business/src/domain/user").exists());
-    assert!(!output.join("presentation/src/api/me.rs").exists());
+    assert!(!output.join("contextos/usuario").exists());
+    assert!(!output.join("contextos/usuario/rest").exists());
     assert!(!read(&output, "AGENTS.md").contains("## Auth"));
     assert!(!read(&output, "Cargo.toml").contains("puerto-auth"));
     cleanup(&dir);
@@ -343,7 +359,7 @@ fn scaffold_in_an_auth_project_protects_every_route_but_the_public_ones() {
     )
     .unwrap();
 
-    let routes = read(&output, "presentation/src/api/product/routes.rs");
+    let routes = read(&output, "contextos/product/rest/src/rutas.rs");
     assert_eq!(routes.matches("auth: BearerAuth").count(), 4, "{routes}");
     assert_eq!(routes.matches("actor: auth.0").count(), 4, "{routes}");
     assert_eq!(routes.matches("#[requiere_rol(\"admin\")]").count(), 1);
@@ -358,12 +374,14 @@ fn scaffold_in_an_auth_project_protects_every_route_but_the_public_ones() {
     let use_case = |uc: &str| {
         read(
             &output,
-            &format!("business/src/domain/product/use_cases/{uc}.rs"),
+            &format!("contextos/product/aplicacion/src/{uc}.rs"),
         )
     };
     assert!(use_case("create_product").contains("pub actor: Principal,"));
     assert!(!use_case("list_products").contains("actor"));
-    assert!(read(&output, "business/src/domain/product/errors.rs").contains("product.forbidden"));
+    assert!(
+        read(&output, "contextos/product/dominio/src/errores.rs").contains("product.forbidden")
+    );
     // What scaffold wrote is what validate checks.
     assert!(validate::run_validate(&output).is_ok());
     cleanup(&dir);
@@ -388,8 +406,7 @@ fn rescaffold_without_flags_keeps_what_the_manifest_says() {
         .unwrap();
     assert_eq!(product.public, vec!["list_products"]);
     assert!(
-        read(&output, "presentation/src/api/product/routes.rs")
-            .contains("#[requiere_rol(\"admin\")]")
+        read(&output, "contextos/product/rest/src/rutas.rs").contains("#[requiere_rol(\"admin\")]")
     );
     cleanup(&dir);
 }
@@ -401,7 +418,7 @@ fn scaffold_refuses_access_naming_another_use_case_before_writing() {
     let result = scaffold_product(&output, &access(&["list_product"], &[]));
 
     assert!(result.unwrap_err().contains("'list_product' is not one of"));
-    assert!(!output.join("business/src/domain/product").exists());
+    assert!(!output.join("contextos/product").exists());
     cleanup(&dir);
 }
 
@@ -468,7 +485,7 @@ fn a_custom_use_case_of_an_auth_project_takes_the_caller() {
 
     let params = read(
         &output,
-        "business/src/domain/product/use_cases/publish_product.rs",
+        "contextos/product/aplicacion/src/publish_product.rs",
     );
     assert!(params.contains("pub actor: Principal,"), "{params}");
     cleanup(&dir);
@@ -738,13 +755,13 @@ fn local_project(name: &str) -> (PathBuf, PathBuf) {
 
 /// The file name and content of the migration whose name ends with `suffix`.
 fn migration_ending(output: &Path, suffix: &str) -> (String, String) {
-    let dir = output.join("infrastructure/migrations");
+    let dir = output.join("migraciones");
     let name = fs::read_dir(&dir)
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .find(|m| m.ends_with(suffix))
         .unwrap_or_else(|| panic!("no *{suffix} in {}", dir.display()));
-    let content = read(output, &format!("infrastructure/migrations/{name}"));
+    let content = read(output, &format!("migraciones/{name}"));
     (name, content)
 }
 
@@ -755,28 +772,25 @@ fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
     let config = puerto_toml::read(&output).unwrap();
     assert_eq!(config.project.auth.as_deref(), Some("local"));
     for file in [
-        "business/src/domain/user/use_cases/register_user.rs",
-        "business/src/domain/user/use_cases/login.rs",
-        "business/src/domain/user/use_cases/logout.rs",
-        "business/src/application/user/register_user.rs",
-        "business/src/application/user/login.rs",
-        "business/src/application/user/logout.rs",
-        "presentation/src/api/auth.rs",
-        "presentation/src/api/auth/dto.rs",
-        "presentation/src/api/auth/routes.rs",
-        "presentation/src/api/auth/responses.rs",
-        "presentation/src/api/auth/error_mapper.rs",
-        "presentation/src/api/me/routes.rs",
+        "contextos/usuario/aplicacion/src/register_user.rs",
+        "contextos/usuario/aplicacion/src/login.rs",
+        "contextos/usuario/aplicacion/src/logout.rs",
+        "contextos/usuario/rest/src/auth.rs",
+        "contextos/usuario/rest/src/auth/dto.rs",
+        "contextos/usuario/rest/src/auth/rutas.rs",
+        "contextos/usuario/rest/src/auth/respuestas.rs",
+        "contextos/usuario/rest/src/auth/errores.rs",
+        "contextos/usuario/rest/src/me/rutas.rs",
     ] {
         assert!(output.join(file).exists(), "{file} missing");
     }
     // No provider to provision from, and none to run.
     assert!(
         !output
-            .join("infrastructure/src/user/provisioning.rs")
+            .join("contextos/usuario/infraestructura/src/aprovisionamiento.rs")
             .exists()
     );
-    assert!(!output.join("infrastructure/keycloak").exists());
+    assert!(!output.join("keycloak").exists());
     assert!(!read(&output, "docker-compose.yml").contains("keycloak"));
     // The tables `puerto-sqlx` is tested against, users first: credentials and sessions
     // reference them.
@@ -785,7 +799,7 @@ fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
     assert!(users_sql.ends_with(include_str!("../../../sqlx/migrations/users.sql")));
     assert!(auth_sql.ends_with(include_str!("../../../sqlx/migrations/auth.sql")));
     assert!(users < auth, "{users} runs before {auth}");
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     for wired in [
         "SesionesPostgres::new",
         "CredencialesPostgres::new",
@@ -796,7 +810,7 @@ fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
         assert!(bootstrap.contains(wired), "{wired}: {bootstrap}");
     }
     assert!(!bootstrap.contains("Oidc"), "{bootstrap}");
-    assert!(read(&output, "presentation/Cargo.toml").contains("features = [\"local\"]"));
+    assert!(read(&output, "presentacion/api/Cargo.toml").contains("features = [\"local\"]"));
     assert!(validate::run_validate(&output).is_ok());
     cleanup(&dir);
 }
@@ -903,7 +917,7 @@ fn scaffold_in_a_local_auth_project_protects_routes_as_in_an_oidc_one() {
     )
     .unwrap();
 
-    let routes = read(&output, "presentation/src/api/product/routes.rs");
+    let routes = read(&output, "contextos/product/rest/src/rutas.rs");
     assert_eq!(routes.matches("auth: BearerAuth").count(), 4, "{routes}");
     assert_eq!(routes.matches("#[requiere_rol(\"admin\")]").count(), 1);
     assert!(validate::run_validate(&output).is_ok());

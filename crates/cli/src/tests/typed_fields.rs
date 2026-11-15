@@ -368,9 +368,9 @@ fn scaffold_with_empty_fields_produces_backward_compat_model() {
     let dir = temp_dir("scaffold_empty_fields");
     cleanup(&dir);
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
+    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
 
-    let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
+    let content = fs::read_to_string(dir.join("contextos/product/dominio/src/modelo.rs")).unwrap();
     assert!(content.contains("pub struct ProductProps"));
     assert!(content.contains("pub name: String,"));
     assert!(content.contains("pub struct Product"));
@@ -378,7 +378,7 @@ fn scaffold_with_empty_fields_produces_backward_compat_model() {
     assert!(content.contains("should_create_product_when_name_is_valid"));
 
     let mother =
-        fs::read_to_string(dir.join("business/src/tests/mothers/product_mother.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/dominio/src/pruebas/madres.rs")).unwrap();
     assert!(mother.contains("pub struct ProductMother"));
     assert!(mother.contains("with_name"));
 
@@ -391,14 +391,14 @@ fn scaffold_crud_with_empty_fields_produces_backward_compat_model() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, true, &[], &[]).unwrap();
+    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
 
-    let content = fs::read_to_string(dir.join("business/src/domain/product/model.rs")).unwrap();
+    let content = fs::read_to_string(dir.join("contextos/product/dominio/src/modelo.rs")).unwrap();
     assert!(content.contains("pub struct ProductProps"));
     assert!(content.contains("pub name: String,"));
 
     let mother =
-        fs::read_to_string(dir.join("business/src/tests/mothers/product_mother.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/dominio/src/pruebas/madres.rs")).unwrap();
     assert!(mother.contains("ProductMother"));
     assert!(mother.contains("with_name"));
 
@@ -726,7 +726,7 @@ tipo = "i64"
 fn write_application_files_with_fields_generates_dynamic_impls() {
     let dir = temp_dir("app_files_with_fields");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
 
     fs::create_dir_all(dir.join("business/src/application/product")).unwrap();
 
@@ -754,13 +754,13 @@ fn write_application_files_with_fields_generates_dynamic_impls() {
     .unwrap();
 
     let create_content =
-        fs::read_to_string(dir.join("business/src/application/product/create_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/aplicacion/src/create_product.rs")).unwrap();
     assert!(create_content.contains("title: params.title,"));
     assert!(create_content.contains("price: params.price,"));
     assert!(create_content.contains("Product::new(ProductProps"));
 
     let update_content =
-        fs::read_to_string(dir.join("business/src/application/product/update_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/aplicacion/src/update_product.rs")).unwrap();
     assert!(update_content.contains("entity.title = params.title;"));
     assert!(update_content.contains("entity.price = params.price;"));
     assert!(update_content.contains("if params.title.trim().is_empty()"));
@@ -938,7 +938,7 @@ fn generate_update_use_case_impl_with_custom_fields_has_tests() {
 fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
     let dir = temp_dir("app_files_dynamic_all");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
 
     fs::create_dir_all(dir.join("business/src/application/product")).unwrap();
 
@@ -966,20 +966,20 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
     .unwrap();
 
     let get_content =
-        fs::read_to_string(dir.join("business/src/application/product/get_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/aplicacion/src/get_product.rs")).unwrap();
     assert!(get_content.contains("GetProductUseCaseImpl"));
     assert!(get_content.contains("should_return_product_when_id_exists"));
     assert!(get_content.contains("Product::new(ProductProps"));
     assert!(get_content.contains("title: \"example\".to_string(),"));
 
     let list_content =
-        fs::read_to_string(dir.join("business/src/application/product/list_products.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/aplicacion/src/list_products.rs")).unwrap();
     assert!(list_content.contains("ListProductsUseCaseImpl"));
     assert!(list_content.contains("should_return_the_page_of_products"));
     assert!(list_content.contains("title: \"first\".to_string(),"));
 
     let delete_content =
-        fs::read_to_string(dir.join("business/src/application/product/delete_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/aplicacion/src/delete_product.rs")).unwrap();
     assert!(delete_content.contains("DeleteProductUseCaseImpl"));
     assert!(delete_content.contains("should_soft_delete_product_when_id_exists"));
     assert!(delete_content.contains("Product::new(ProductProps"));
@@ -1173,8 +1173,11 @@ fn generate_crud_infra_db_repository_backward_compat() {
     assert!(result.contains("id, created_at, updated_at, deleted, deleted_at, name"));
     assert!(result.contains("should_persist_and_retrieve_by_id"));
     assert!(result.contains("should_list_all_products_excluding_deleted"));
-    assert!(result.contains("ProductProps"));
-    assert!(result.contains("name: \"example\".to_string()"));
+    let seed =
+        crate::generators::infrastructure::generate_pg_seed("Product", "product", &[], &[], false)
+            .unwrap();
+    assert!(seed.contains("ProductProps"), "{seed}");
+    assert!(seed.contains("name: \"example\".to_string()"), "{seed}");
 }
 
 #[test]
@@ -1204,8 +1207,16 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
     assert!(result.contains("title = $6, price = $7"));
     assert!(result.contains("db.title"));
     assert!(result.contains("db.price"));
-    assert!(result.contains("title: \"example\".to_string()"));
-    assert!(result.contains("price: 42"));
+    let seed = crate::generators::infrastructure::generate_pg_seed(
+        "Product",
+        "product",
+        &fields,
+        &[],
+        false,
+    )
+    .unwrap();
+    assert!(seed.contains("title: \"example\".to_string()"), "{seed}");
+    assert!(seed.contains("price: 42"), "{seed}");
     assert!(result.contains("assert_eq!(found.title, entity.title)"));
     assert!(result.contains("assert_eq!(found.price, entity.price)"));
     assert!(result.contains("entity.title = \"updated\".to_string()"));
@@ -1344,7 +1355,7 @@ fn generate_crud_routes_with_custom_fields() {
 fn write_repository_files_with_fields_generates_dynamic_entity_and_repo() {
     let dir = temp_dir("repo_files_dynamic");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
 
     let fields = vec![
         crate::puerto_toml::Field {
@@ -1370,12 +1381,14 @@ fn write_repository_files_with_fields_generates_dynamic_entity_and_repo() {
     )
     .unwrap();
 
-    let entity = fs::read_to_string(dir.join("infrastructure/src/product/entity.rs")).unwrap();
+    let entity =
+        fs::read_to_string(dir.join("contextos/product/infraestructura/src/fila.rs")).unwrap();
     assert!(entity.contains("pub title: String"));
     assert!(entity.contains("pub price: i64"));
     assert!(!entity.contains("pub name: String"));
 
-    let repo = fs::read_to_string(dir.join("infrastructure/src/product/repository.rs")).unwrap();
+    let repo = fs::read_to_string(dir.join("contextos/product/infraestructura/src/repositorio.rs"))
+        .unwrap();
     assert!(repo.contains("title, price"));
     assert!(repo.contains("PgProductRepository"));
 
@@ -1386,7 +1399,7 @@ fn write_repository_files_with_fields_generates_dynamic_entity_and_repo() {
 fn write_presentation_files_with_fields_generates_dynamic_dto_and_routes() {
     let dir = temp_dir("pres_files_dynamic");
     cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
+    setup_puerto_stubs(&dir);
 
     let fields = vec![
         crate::puerto_toml::Field {
@@ -1405,12 +1418,12 @@ fn write_presentation_files_with_fields_generates_dynamic_dto_and_routes() {
     crate::generators::presentation::write_presentation_files("Product", "product", &dir, &fields)
         .unwrap();
 
-    let dto = fs::read_to_string(dir.join("presentation/src/api/product/dto.rs")).unwrap();
+    let dto = fs::read_to_string(dir.join("contextos/product/rest/src/dto.rs")).unwrap();
     assert!(dto.contains("pub title: String"));
     assert!(dto.contains("pub price: i64"));
     assert!(!dto.contains("pub name: String"));
 
-    let routes = fs::read_to_string(dir.join("presentation/src/api/product/routes.rs")).unwrap();
+    let routes = fs::read_to_string(dir.join("contextos/product/rest/src/rutas.rs")).unwrap();
     assert!(routes.contains("title: body.title.clone()"));
     assert!(routes.contains("price: body.price,"));
 
@@ -1508,8 +1521,8 @@ fn db_project_enables_sqlx_json_and_commits_the_offline_cache() {
 
     crate::generators::project::apply_db_to_new_project(&output).unwrap();
 
-    let infra = fs::read_to_string(output.join("infrastructure/Cargo.toml")).unwrap();
-    assert!(infra.contains("\"json\""), "{infra}");
+    let root = fs::read_to_string(output.join("Cargo.toml")).unwrap();
+    assert!(root.contains("\"json\""), "{root}");
     // `.cargo/config.toml` sets SQLX_OFFLINE=true: an ignored `.sqlx/` means no clone builds.
     let gitignore = fs::read_to_string(output.join(".gitignore")).unwrap();
     assert!(!gitignore.contains(".sqlx"), "{gitignore}");
@@ -1524,7 +1537,7 @@ fn pg_repository_tests_import_what_their_seed_names() {
         puerto_toml::parse_field_arg("status:Status:enum:Active/Inactive").unwrap(),
     ];
 
-    let repo = crate::generators::infrastructure::generate_crud_infra_db_repository(
+    let repo = crate::generators::infrastructure::generate_pg_seed(
         "Product",
         "product",
         &fields,
@@ -1533,7 +1546,10 @@ fn pg_repository_tests_import_what_their_seed_names() {
     )
     .unwrap();
 
-    assert!(repo.contains("use business::domain::product::value_objects::Status;"));
+    assert!(
+        repo.contains("use dominio_product::valores::Status;"),
+        "{repo}"
+    );
     assert!(
         !repo.contains("Utc::now()"),
         "a ns-precision timestamp cannot round-trip Postgres"
@@ -1545,7 +1561,7 @@ fn pg_repository_seed_varies_unique_fields() {
     let mut sku = scaffold_test_field("sku", "String");
     sku.unique = true;
 
-    let repo = crate::generators::infrastructure::generate_crud_infra_db_repository(
+    let repo = crate::generators::infrastructure::generate_pg_seed(
         "Product",
         "product",
         &[sku],

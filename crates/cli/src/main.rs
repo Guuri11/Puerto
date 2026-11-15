@@ -148,7 +148,8 @@ enum GenerateAction {
         #[arg(raw = true)]
         fields: Vec<String>,
     },
-    /// Regenerate presentation/src/generated/bootstrap.rs from puerto.toml
+    /// Regenerate the wiring (presentacion/cableado, presentacion/api/src/generado/bootstrap.rs)
+    /// from puerto.toml
     Bootstrap {
         /// Write the file even when puerto.toml declares entities whose code is not on disk
         #[arg(long = "permitir-faltantes")]
@@ -270,9 +271,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 format_after_generation(&path);
                 let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 let web = path.join("web").is_dir();
-                println!("├── business/        (domain logic)");
-                println!("├── infrastructure/  (adapters)");
-                println!("├── presentation/    (openapi routes)");
+                println!("├── nucleo/          (shared value objects)");
+                println!("├── contextos/       (one crate per context and layer)");
+                println!("├── presentacion/    (the API binary and its wiring)");
                 if web {
                     println!("├── web/             (React frontend)");
                 }

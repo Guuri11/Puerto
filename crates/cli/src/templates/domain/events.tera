@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;{% for import in imports %}
 use {{ import }};{% endfor %}
 
-use super::model::{{ pascal }};
+use crate::modelo::{{ pascal }};
 {% for e in events %}
 pub const {{ e.constant }}: &str = "{{ e.event_type }}";{% endfor %}
 
@@ -70,7 +70,7 @@ impl EventoDominio for {{ pascal }}Event {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::mothers::{{ snake }}_mother::{{ pascal }}Mother;
+    use crate::pruebas::madres::{{ pascal }}Mother;
 
     #[test]
     fn should_describe_every_event_when_one_is_recorded() {

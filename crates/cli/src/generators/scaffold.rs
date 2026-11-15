@@ -2,183 +2,39 @@ use crate::generators::layout;
 use std::path::Path;
 
 use crate::generators::conflict::{OverwritePolicy, guard_entity_overwrite};
-use crate::generators::naming::entity_ctx;
-use crate::generators::types::{is_shared_vo, is_value_object};
 use crate::generators::{
-    application::{generate_create_use_case_impl, write_application_files},
-    domain::{generate_create_use_case_trait, generate_model, write_domain_files, write_mother},
-    infrastructure::{generate_infra_entity, write_repository_files},
+    application::write_application_files,
+    domain::write_domain_files,
+    infrastructure::write_repository_files,
     migration::run_create_table_migration,
-    naming::{crud_use_cases, pascal_to_snake, to_pascal_case, write_file},
+    naming::{crud_use_cases, pascal_to_snake, to_pascal_case},
     presentation::write_presentation_files,
-    render::render,
     web::write_web_files,
-};
-use crate::patchers::lib_rs::{
-    patch_business_lib_shared, patch_business_lib_value_objects, patch_libs, patch_mothers_lib,
-    unpatch_business_lib_value_objects,
 };
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
-// ── Single use case (non-CRUD) ────────────────────────────────────────────────
-
-fn write_files(
-    pascal: &str,
-    snake: &str,
-    base: &Path,
-    db: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    write_file(
-        &base.join(layout::domain_file(snake, "model")),
-        &generate_model(pascal, snake, &[], &[])?,
-    )?;
-    let mut errors_ctx = entity_ctx(pascal, snake);
-    errors_ctx.insert("vo_fields", &Vec::<String>::new());
-    write_file(
-        &base.join(layout::domain_file(snake, "errors")),
-        &render("domain/errors.tera", &errors_ctx)?,
-    )?;
-    {
-        let repo_ctx = entity_ctx(pascal, snake);
-        write_file(
-            &base.join(layout::domain_file(snake, "repository")),
-            &render("domain/repository_simple.tera", &repo_ctx)?,
-        )?;
-    }
-    write_file(
-        &base.join(layout::use_case_contract(snake, &format!("create_{snake}"))),
-        &generate_create_use_case_trait(pascal, snake, &[])?,
-    )?;
-    write_file(
-        &base.join(layout::use_case_impl(snake, &format!("create_{snake}"))),
-        &generate_create_use_case_impl(pascal, snake, &[], &[])?,
-    )?;
-    let infra_ctx = entity_ctx(pascal, snake);
-    if db {
-        write_file(
-            &base.join(layout::infra_file(snake, "entity")),
-            &generate_infra_entity(pascal, snake, &[], &[])?,
-        )?;
-        write_file(
-            &base.join(layout::infra_file(snake, "repository")),
-            &render("infrastructure/repository_pg_simple.tera", &infra_ctx)?,
-        )?;
-    } else {
-        write_file(
-            &base.join(layout::infra_file(snake, "repository")),
-            &render("infrastructure/repository_inmemory_simple.tera", &infra_ctx)?,
-        )?;
-    }
-    write_file(
-        &base.join(layout::api_module(snake)),
-        "pub mod dto;\npub mod error_mapper;\npub mod responses;\npub mod routes;\n",
-    )?;
-    {
-        use crate::generators::presentation::{
-            build_dto_ctx, build_error_mapper_ctx, build_simple_ctx,
-        };
-        write_file(
-            &base.join(layout::api_file(snake, "dto")),
-            &render(
-                "presentation/dto.tera",
-                &build_dto_ctx(pascal, snake, &[], false),
-            )?,
-        )?;
-        write_file(
-            &base.join(layout::api_file(snake, "responses")),
-            &render(
-                "presentation/responses_simple.tera",
-                &build_simple_ctx(pascal, snake),
-            )?,
-        )?;
-        write_file(
-            &base.join(layout::api_file(snake, "error_mapper")),
-            &render(
-                "presentation/error_mapper.tera",
-                &build_error_mapper_ctx(pascal, snake, &[]),
-            )?,
-        )?;
-        write_file(
-            &base.join(layout::api_file(snake, "routes")),
-            &render(
-                "presentation/routes_simple.tera",
-                &build_simple_ctx(pascal, snake),
-            )?,
-        )?;
-    }
-    Ok(())
-}
-
-// ── CRUD (delegates to per-layer writers) ────────────────────────────────────
-
-fn write_files_crud(
-    pascal: &str,
-    snake: &str,
-    base: &Path,
-    db: bool,
-    fields: &[Field],
-    shared_vos: &[ValueObjectDefinition],
-) -> Result<(), Box<dyn std::error::Error>> {
-    write_domain_files(pascal, snake, base, fields, shared_vos)?;
-    write_application_files(pascal, snake, base, fields, shared_vos)?;
-    write_repository_files(pascal, snake, base, db, fields, shared_vos)?;
-    write_presentation_files(pascal, snake, base, fields)?;
-    Ok(())
-}
-
-// ── Public entry points ───────────────────────────────────────────────────────
-
-/// Low-level scaffold: write files + patch lib.rs files.
-/// `crud = true` generates 5 use cases; `crud = false` generates only create.
+/// Low-level scaffold: the four crates of the entity's context (ADR-0023), its web slice, its
+/// `[[entidad]]` block and the regenerated wiring. Always the five CRUD use cases.
 pub fn run(
     name: &str,
     base: &Path,
     db: bool,
-    crud: bool,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pascal = to_pascal_case(name);
     let snake = pascal_to_snake(&pascal);
-    let web_project = crate::puerto_toml::read(base).is_ok_and(|c| c.project.web);
-    let web_slice = web_project && crud;
+    let web = crate::puerto_toml::read(base).is_ok_and(|c| c.project.web);
 
-    if crud {
-        write_files_crud(&pascal, &snake, base, db, fields, shared_vos)?;
-    } else {
-        write_files(&pascal, &snake, base, db)?;
-    }
-    if web_slice {
+    write_domain_files(&pascal, &snake, base, fields, shared_vos)?;
+    write_application_files(&pascal, &snake, base, fields, shared_vos)?;
+    write_repository_files(&pascal, &snake, base, db, fields, shared_vos)?;
+    write_presentation_files(&pascal, &snake, base, fields)?;
+    if web {
         write_web_files(&pascal, base, fields)?;
     }
-    patch_libs(&snake, base, db, crud)?;
 
-    if !fields.is_empty()
-        && fields
-            .iter()
-            .any(|f| is_value_object(f) && !is_shared_vo(f, shared_vos))
-    {
-        patch_business_lib_value_objects(base, &snake)?;
-    } else {
-        unpatch_business_lib_value_objects(base, &snake)?;
-    }
-
-    if !shared_vos.is_empty() {
-        use crate::generators::domain::write_shared_vo_files;
-        write_shared_vo_files(base, shared_vos)?;
-        patch_business_lib_shared(base)?;
-    }
-
-    write_mother(&pascal, &snake, base, fields, shared_vos)?;
-    patch_mothers_lib(base, &snake)?;
-
-    let use_cases = if crud {
-        crud_use_cases(&snake)
-    } else {
-        vec![format!("create_{snake}")]
-    };
-
-    crate::puerto_toml::add_entity(base, &pascal, use_cases, db, fields.to_vec())?;
+    crate::puerto_toml::add_entity(base, &pascal, crud_use_cases(&snake), db, fields.to_vec())?;
     crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)?;
     crate::generators::bootstrap::regenerate_bootstrap(base)?;
 
@@ -187,19 +43,16 @@ pub fn run(
     } else {
         format!("InMemory{pascal}Repository")
     };
-    let uc_label = if crud {
-        "create, get, list, update, delete"
-    } else {
-        "create"
-    };
-    println!("✓ business/        — model, errors, repository trait, use cases ({uc_label})");
-    println!("✓ infrastructure/  — {repo_name}");
-    println!("✓ presentation/    — routes, dto, responses, error mapper");
-    if web_slice {
-        println!("✓ web/             — list, detail and form screens, HTTP repository");
+    let dir = layout::context_dir(&snake);
+    println!("✓ {dir}/dominio/         — model, errors, repository port, {pascal}Mother");
+    println!("✓ {dir}/aplicacion/      — create, get, list, update, delete");
+    println!("✓ {dir}/infraestructura/ — {repo_name}");
+    println!("✓ {dir}/rest/            — routes, dto, responses, errors");
+    if web {
+        println!("✓ web/ — list, detail and form screens, HTTP repository");
     }
     println!("✓ Done. Zero manual wiring.");
-    if web_project {
+    if web {
         println!(
             "\nThe API changed. Next: make web/sync   (exports the spec, regenerates the web types)"
         );
@@ -360,7 +213,7 @@ pub fn run_scaffold_with_access(
     )?;
     record_access(base, &pascal, db, &fields, access)?;
 
-    run(name, base, db, true, &fields, &shared_vos)?;
+    run(name, base, db, &fields, &shared_vos)?;
     if db {
         let snake = pascal_to_snake(&pascal);
         let migration_sql = crate::generators::infrastructure::create_table_sql(&snake, &fields);

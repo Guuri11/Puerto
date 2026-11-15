@@ -2,21 +2,25 @@
 
 use std::sync::Arc;
 
-use business::domain::user::model::User;
-use business::domain::user::use_cases::{
+use dominio_usuario::modelo::User;
+use aplicacion_usuario::{
     login::{LoginParams, LoginUseCaseTrait},
     logout::{LogoutParams, LogoutUseCaseTrait},
     register_user::{RegisterUserParams, RegisterUserUseCaseTrait},
 };
 use poem::Request;
-use poem_openapi::{OpenApi, payload::Json};
+use poem_openapi::{OpenApi, Tags, payload::Json};
 use puerto_web::auth::{BearerAuth, bearer_token};
 
-use crate::api::auth::dto::{LoginRequest, RegisterRequest, SessionDto};
-use crate::api::auth::responses::{LoginResponse, LogoutResponse, RegisterResponse};
-use crate::api::error::IntoErrorResponse;
-use crate::api::me::dto::MeDto;
-use crate::api::tags::ApiTags;
+use crate::auth::dto::{LoginRequest, RegisterRequest, SessionDto};
+use crate::auth::errores::a_respuesta_error;
+use crate::auth::respuestas::{LoginResponse, LogoutResponse, RegisterResponse};
+use crate::me::dto::MeDto;
+
+#[derive(Tags)]
+enum ApiTags {
+    Auth,
+}
 
 /// `/auth/*`: the accounts this API keeps itself (ADR-0021 § 2 of Puerto). A session token goes
 /// back as `Authorization: Bearer <token>`; `GET /me` says who it belongs to.
@@ -49,7 +53,7 @@ impl AuthApi {
         match self.register_user.execute(params).await {
             Ok(user) => RegisterResponse::Created(Json(me(&user))),
             Err(err) => {
-                let (status, error) = err.into_error_response();
+                let (status, error) = a_respuesta_error(err);
                 RegisterResponse::from_status(status, error)
             }
         }
@@ -66,7 +70,7 @@ impl AuthApi {
         match self.login.execute(params).await {
             Ok(session) => LoginResponse::Ok(Json(SessionDto::from_session(session))),
             Err(err) => {
-                let (status, error) = err.into_error_response();
+                let (status, error) = a_respuesta_error(err);
                 LoginResponse::from_status(status, error)
             }
         }
@@ -80,7 +84,7 @@ impl AuthApi {
         match self.logout.execute(LogoutParams { token }).await {
             Ok(()) => LogoutResponse::NoContent,
             Err(err) => {
-                let (status, error) = err.into_error_response();
+                let (status, error) = a_respuesta_error(err);
                 LogoutResponse::from_status(status, error)
             }
         }
@@ -89,8 +93,8 @@ impl AuthApi {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::user::errors::UserError;
-    use business::domain::user::use_cases::{
+    use dominio_usuario::errores::UserError;
+    use aplicacion_usuario::{
         login::mocks::MockLoginUseCase, logout::mocks::MockLogoutUseCase,
         register_user::mocks::MockRegisterUserUseCase,
     };

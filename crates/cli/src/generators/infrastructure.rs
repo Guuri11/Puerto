@@ -1,6 +1,7 @@
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use std::path::Path;
 
+use crate::generators::crates::ContextDeps;
 use crate::generators::domain::push_reference_imports;
 use crate::generators::effective_fields;
 use crate::generators::migration::run_create_table_migration;
@@ -9,10 +10,9 @@ use crate::generators::naming::{
 };
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
-    FieldCtx, field_ctx, is_reference, is_shared_vo, is_value_object, literal_names_vo,
-    reference_id, resolve_type, seed_literal,
+    FieldCtx, field_ctx, is_enum_vo, is_reference, is_value_object, literal_names_vo, reference_id,
+    resolve_type, seed_literal, vo_import_path,
 };
-use crate::patchers::lib_rs::patch_infra_lib;
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 // ── SQL helpers ───────────────────────────────────────────────────────────────
@@ -105,12 +105,12 @@ pub fn generate_infra_entity(
         imports.push("std::collections::HashMap".to_string());
     }
     for f in eff.iter().filter(|f| is_value_object(f)) {
-        let import = business_vo_path(f, snake, shared_vos);
+        let import = vo_import_path(f, snake, shared_vos, false);
         if !imports.contains(&import) {
             imports.push(import);
         }
     }
-    push_reference_imports(&mut imports, &eff, "business");
+    push_reference_imports(&mut imports, &eff);
 
     let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("imports", &imports);
@@ -130,7 +130,21 @@ pub fn generate_crud_infra_db_repository(
     render("infrastructure/repository_pg_crud.tera", &ctx)
 }
 
-/// `infrastructure/src/{snake}/unit_of_work.rs`: the upsert the Pg repository has in a project
+/// `pruebas/siembra.rs` of a Postgres infrastructure crate: `build` and `seed`, for its tests and
+/// for those of the contexts that reference it (ADR-0023 § 5).
+pub fn generate_pg_seed(
+    pascal: &str,
+    snake: &str,
+    fields: &[Field],
+    shared_vos: &[ValueObjectDefinition],
+    events: bool,
+) -> Result<String, RenderError> {
+    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos);
+    ctx.insert("events", &events);
+    render("infrastructure/siembra.tera", &ctx)
+}
+
+/// `contextos/{snake}/infraestructura/src/unit_of_work.rs`: the upsert the Pg repository has in a project
 /// without events, inside a `puerto_sqlx::uow::TransaccionPostgres`.
 pub fn generate_pg_unit_of_work(
     pascal: &str,
@@ -164,7 +178,7 @@ fn pg_crud_ctx(
         .filter(|f| f.is_ref && !f.field_type.starts_with("Option<"))
     {
         f.seed_literal = format!(
-            "crate::{}::repository::integration_tests::seed(pool).await.id",
+            "infra_{}::pruebas::siembra::seed(pool).await.id",
             f.ref_target_snake
         );
     }
@@ -178,20 +192,33 @@ fn pg_crud_ctx(
                 "constraint": foreign_key_name(&table, &f.name),
                 "field": f.name,
                 "id": reference_id(f),
-                "import": crate::generators::types::reference_import(f, "business"),
+                "import": crate::generators::types::reference_import(f),
                 "optional": f.field_type.starts_with("Option<"),
             })
         })
         .collect();
     ctx.insert("references", &references);
     let mut reference_imports = vec![];
-    push_reference_imports(&mut reference_imports, &eff, "business");
+    push_reference_imports(&mut reference_imports, &eff);
     ctx.insert("reference_imports", &reference_imports);
     ctx.insert(
         "seeds_references",
         &eff.iter()
             .any(|f| is_reference(f) && !f.field_type.starts_with("Option<")),
     );
+    // The VO the update test sets, when the field it updates is one (the seed's own imports are
+    // `pruebas::siembra`'s).
+    let update_vo_import = eff
+        .iter()
+        .find(|f| f.field_type == "String" && !is_value_object(f) && !is_reference(f))
+        .is_none()
+        .then(|| {
+            eff.iter()
+                .find(|f| is_value_object(f) && !is_enum_vo(f) && f.field_type == "String")
+        })
+        .flatten()
+        .map(|f| vo_import_path(f, snake, shared_vos, false));
+    ctx.insert("update_vo_import", &update_vo_import);
     ctx.insert("all_cols", &sql_col_list(&eff));
     ctx.insert("select_cols", &sql_select_list(&eff));
     ctx.insert("has_map", &eff.iter().any(|f| f.field_type == MAP_TYPE));
@@ -226,7 +253,7 @@ fn seed_ctx_with(
     // Option/Vec VOs are seeded as `None` / `vec![]` and need no import.
     let mut test_imports: Vec<String> = vec![];
     for f in eff.iter().filter(|f| literal_names_vo(f)) {
-        let import = business_vo_path(f, snake, shared_vos);
+        let import = vo_import_path(f, snake, shared_vos, false);
         if !test_imports.contains(&import) {
             test_imports.push(import);
         }
@@ -246,16 +273,6 @@ fn seed_ctx_with(
     ctx.insert("test_imports", &test_imports);
     ctx.insert("fields", &field_ctxs(&eff, pascal, shared_vos));
     ctx
-}
-
-/// A VO's path from the infrastructure crate.
-fn business_vo_path(f: &Field, snake: &str, shared_vos: &[ValueObjectDefinition]) -> String {
-    let vo = f.value_object.as_deref().unwrap_or_default();
-    if is_shared_vo(f, shared_vos) {
-        format!("business::domain::shared::value_objects::{vo}")
-    } else {
-        format!("business::domain::{snake}::value_objects::{vo}")
-    }
 }
 
 fn field_ctxs(eff: &[Field], pascal: &str, shared_vos: &[ValueObjectDefinition]) -> Vec<FieldCtx> {
@@ -321,6 +338,8 @@ pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
     sql
 }
 
+/// The context's infrastructure crate: the in-memory repository, or the Postgres row, repository,
+/// unit of work (`events` projects) and test seeds — then its `Cargo.toml` and `lib.rs`.
 pub fn write_repository_files(
     pascal: &str,
     snake: &str,
@@ -329,38 +348,48 @@ pub fn write_repository_files(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let events = crate::puerto_toml::events_enabled(base);
     if db {
         write_file(
-            &base.join(layout::infra_file(snake, "entity")),
+            &base.join(layout::infra_file(snake, "fila")),
             &generate_infra_entity(pascal, snake, fields, shared_vos)?,
         )?;
-        let events = crate::puerto_toml::events_enabled(base);
         write_file(
-            &base.join(layout::infra_file(snake, "repository")),
+            &base.join(layout::infra_file(snake, "repositorio")),
             &generate_crud_infra_db_repository(pascal, snake, fields, shared_vos, events)?,
         )?;
+        let unit_of_work = base.join(layout::infra_file(snake, "unit_of_work"));
         if events {
             write_file(
-                &base.join(layout::infra_file(snake, "unit_of_work")),
+                &unit_of_work,
                 &generate_pg_unit_of_work(pascal, snake, fields, shared_vos)?,
             )?;
         }
+        write_file(
+            &base.join(layout::infra_file(snake, "pruebas/siembra")),
+            &generate_pg_seed(pascal, snake, fields, shared_vos, events)?,
+        )?;
     } else {
         write_file(
-            &base.join(layout::infra_file(snake, "repository")),
+            &base.join(layout::infra_file(snake, "repositorio")),
             &render(
                 "infrastructure/repository_inmemory_crud.tera",
                 // A reference is seeded, and filtered by, `CustomerId::generate()`: nothing
                 // checks it.
                 &seed_ctx_with(pascal, snake, fields, shared_vos, &{
                     let mut imports = vec![];
-                    push_reference_imports(&mut imports, &effective_fields(fields), "business");
+                    push_reference_imports(&mut imports, &effective_fields(fields));
                     imports
                 }),
             )?,
         )?;
     }
-    Ok(())
+    crate::generators::crates::finish(
+        base,
+        snake,
+        Layer::Infrastructure,
+        &ContextDeps::read(base, fields),
+    )
 }
 
 pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -385,7 +414,6 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
         .unwrap_or_default();
 
     write_repository_files(&pascal, &snake, base, db, &fields, &shared_vos)?;
-    patch_infra_lib(base, &snake, db, true)?;
 
     if db {
         run_create_table_migration(&snake, base, &create_table_sql(&snake, &fields))?;
@@ -396,7 +424,10 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
     } else {
         format!("InMemory{pascal}Repository")
     };
-    println!("✓ infrastructure/      — {repo_label}");
+    println!(
+        "✓ {}/ — {repo_label}",
+        layout::crate_dir(&snake, Layer::Infrastructure)
+    );
     println!();
     println!("  Next: puerto generar presentacion {pascal}");
     Ok(())

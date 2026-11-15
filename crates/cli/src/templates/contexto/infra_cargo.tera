@@ -1,0 +1,30 @@
+[package]
+name = "infra_{{ c }}"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_{{ c }} = { workspace = true }
+puerto-nucleo = { workspace = true }
+{% if shared %}nucleo = { workspace = true }
+{% endif %}{% for r in refs %}dominio_{{ r }} = { workspace = true }
+{% endfor %}{% if db %}{% for r in refs %}infra_{{ r }} = { workspace = true, optional = true }
+{% endfor %}puerto-sqlx = { workspace = true }
+serde = { workspace = true }
+sqlx = { workspace = true }
+{% endif %}async-trait = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+{% if events %}serde_json = { workspace = true }
+{% endif %}
+[features]
+{% if db %}# The seed helpers of the Postgres tests (`pruebas::siembra`), for the tests of the contexts that
+# reference this one (ADR-0023 § 5 of Puerto).
+{% endif %}pruebas = ["dominio_{{ c }}/pruebas"{% if db %}{% for r in refs %}, "dep:infra_{{ r }}", "infra_{{ r }}/pruebas"{% endfor %}{% endif %}]
+
+[dev-dependencies]
+dominio_{{ c }} = { workspace = true, features = ["pruebas"] }
+{% if db %}{% for r in refs %}infra_{{ r }} = { workspace = true, features = ["pruebas"] }
+{% endfor %}migrador = { workspace = true }
+{% endif %}tokio = { workspace = true }

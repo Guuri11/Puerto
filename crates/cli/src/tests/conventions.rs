@@ -12,10 +12,9 @@ fn new_project_bootstrap_injects_no_logger() {
 
     let output = generate_project("logger-test", &dir).unwrap();
 
-    let content =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let content = wiring(&output);
     assert!(!content.contains("logger"), "{content}");
-    let main = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
+    let main = fs::read_to_string(output.join("presentacion/api/src/main.rs")).unwrap();
     assert!(main.contains("puerto_web::App::new(config)"), "{main}");
 
     cleanup(&dir);
@@ -26,10 +25,10 @@ fn scaffold_use_case_impl_logs_with_tracing() {
     let dir = temp_dir("logger_scaffold_impl");
     cleanup(&dir);
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
+    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
 
     let content =
-        fs::read_to_string(dir.join("business/src/application/product/create_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/aplicacion/src/create_product.rs")).unwrap();
     assert!(content.contains("tracing::info!"), "{content}");
     assert!(!content.contains("logger"), "{content}");
 
@@ -45,7 +44,7 @@ fn use_case_generator_impl_logs_with_tracing() {
     scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
 
     let content =
-        fs::read_to_string(dir.join("business/src/application/product/delete_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/product/aplicacion/src/delete_product.rs")).unwrap();
     assert!(content.contains("tracing::info!"), "{content}");
     assert!(!content.contains("logger"), "{content}");
 
@@ -58,12 +57,17 @@ fn scaffold_bootstrap_wires_use_cases_without_a_logger() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, false, &[], &[]).unwrap();
+    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
 
-    let content = fs::read_to_string(dir.join("presentation/src/generated/bootstrap.rs")).unwrap();
-    assert!(content.contains(
-        "let create_product = Arc::new(CreateProductUseCaseImpl { repository: Arc::new(InMemoryProductRepository::new()) as Arc<dyn ProductRepositoryTrait> });"
-    ), "{content}");
+    let content = wiring(&dir);
+    assert!(
+        content.contains("create_product: Arc::new(CreateProductUseCaseImpl { repository: Arc::clone(&repository) }),"),
+        "{content}"
+    );
+    assert!(
+        content.contains("let repository: Arc<dyn ProductRepositoryTrait> = Arc::new(InMemoryProductRepository::new());"),
+        "{content}"
+    );
     assert!(!content.contains("logger"), "{content}");
 
     cleanup(&dir);
@@ -139,14 +143,23 @@ fn generated_project_logs_with_tracing_and_has_no_logger_port() {
             "{path} still has a logger field"
         );
     }
-    assert!(!output.join("business/src/domain/logger.rs").exists());
-    assert!(!output.join("infrastructure/src/logger.rs").exists());
+    assert!(
+        !output
+            .join("contextos/product/dominio/src/logger.rs")
+            .exists()
+    );
+    assert!(
+        !output
+            .join("contextos/product/infraestructura/src/logger.rs")
+            .exists()
+    );
     let create =
-        fs::read_to_string(output.join("business/src/application/product/create_product.rs"))
+        fs::read_to_string(output.join("contextos/product/aplicacion/src/create_product.rs"))
             .unwrap();
     assert!(create.contains("tracing::info!"), "{create}");
-    let business_toml = fs::read_to_string(output.join("business/Cargo.toml")).unwrap();
-    assert!(business_toml.contains("tracing"), "{business_toml}");
+    let application_toml =
+        fs::read_to_string(output.join("contextos/product/aplicacion/Cargo.toml")).unwrap();
+    assert!(application_toml.contains("tracing"), "{application_toml}");
 
     cleanup(&dir);
 }
@@ -160,10 +173,9 @@ fn no_demo_project_has_no_logger_module() {
 
     scaffold::apply_no_demo(&output).unwrap();
 
-    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    let lib = fs::read_to_string(output.join("nucleo/src/lib.rs")).unwrap();
     assert!(!lib.contains("logger"), "{lib}");
-    let infra = fs::read_to_string(output.join("infrastructure/src/lib.rs")).unwrap();
-    assert!(!infra.contains("logger"), "{infra}");
+    assert!(!wiring(&output).contains("logger"));
     cleanup(&dir);
 }
 
@@ -220,16 +232,12 @@ fn responses_offer_422_and_no_longer_map_400() {
 fn readiness_pings_the_database_in_a_db_project() {
     let (dir, output) = project_with_product("health_db", true);
 
-    let bootstrap =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
-    let db_rs = fs::read_to_string(output.join("infrastructure/src/db.rs")).unwrap();
-
+    let bootstrap = wiring(&output);
+    // `ping` is `puerto-sqlx`'s, which the binary names.
     assert!(
-        bootstrap.contains("infrastructure::db::ping(&pool)"),
+        bootstrap.contains("puerto_sqlx::ping(&pool)"),
         "{bootstrap}"
     );
-    // `ping` is `puerto-sqlx`'s, re-exported by the project's `db` module.
-    assert!(db_rs.contains("pub use puerto_sqlx::*;"), "{db_rs}");
     cleanup(&dir);
 }
 
@@ -247,7 +255,15 @@ fn generated_project_pins_its_toolchain_and_uses_edition_2024() {
     let toolchain = fs::read_to_string(output.join("rust-toolchain.toml")).unwrap();
     assert!(toolchain.contains("channel = \"1.95.0\""), "{toolchain}");
     assert!(toolchain.contains("clippy") && toolchain.contains("rustfmt"));
-    for krate in ["business", "infrastructure", "presentation"] {
+    for krate in [
+        "nucleo",
+        "contextos/greeting/dominio",
+        "contextos/greeting/aplicacion",
+        "contextos/greeting/infraestructura",
+        "contextos/greeting/rest",
+        "presentacion/cableado",
+        "presentacion/api",
+    ] {
         let manifest = fs::read_to_string(output.join(format!("{krate}/Cargo.toml"))).unwrap();
         assert!(
             manifest.contains("edition = \"2024\""),
@@ -303,11 +319,12 @@ fn generated_project_has_a_root_entry_point_for_agents() {
     assert_eq!(claude.trim(), "@AGENTS.md");
     for must in [
         "puerto generar",
-        "generated/bootstrap.rs",
+        "generado/bootstrap.rs",
         "Tier 1",
         "make lint",
         "one commit",
-        "business/AGENTS.md",
+        "contextos/AGENTS.md",
+        "presentacion/AGENTS.md",
         // ADR-0017: an agent must know which code is the project's and which is the runtime's.
         "puerto-nucleo",
         "puerto-web",
@@ -330,8 +347,7 @@ fn template_bootstrap_is_exactly_what_the_generator_writes() {
     let config = puerto_toml::read(&output).unwrap();
 
     let shipped =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
-    let tags = fs::read_to_string(output.join("presentation/src/api/tags.rs")).unwrap();
+        fs::read_to_string(output.join("presentacion/api/src/generado/bootstrap.rs")).unwrap();
 
     assert_eq!(
         shipped,
@@ -340,13 +356,25 @@ fn template_bootstrap_is_exactly_what_the_generator_writes() {
             config.project.web
         )
         .unwrap(),
-        "template/presentation/src/generated/bootstrap.rs is stale — regenerate it"
+        "template/presentacion/api/src/generado/bootstrap.rs is stale — regenerate it"
+    );
+    // `presentacion/cableado` is copied verbatim too, and `puerto generar bootstrap` must not
+    // change it.
+    let cableado = |file: &str| fs::read_to_string(output.join("presentacion/cableado").join(file));
+    let (manifest, lib) = (
+        cableado("Cargo.toml").unwrap(),
+        cableado("src/lib.rs").unwrap(),
+    );
+    crate::generators::bootstrap::regenerate_bootstrap(&output).unwrap();
+    assert_eq!(
+        manifest,
+        cableado("Cargo.toml").unwrap(),
+        "template/presentacion/cableado/Cargo.toml.liquid is stale — regenerate it"
     );
     assert_eq!(
-        tags,
-        crate::generators::bootstrap::generate_tags_content(&config.entity, &Default::default())
-            .unwrap(),
-        "template/presentation/src/api/tags.rs is stale — regenerate it"
+        lib,
+        cableado("src/lib.rs").unwrap(),
+        "template/presentacion/cableado/src/lib.rs is stale — regenerate it"
     );
     cleanup(&dir);
 }
@@ -372,7 +400,7 @@ fn scaffolded_product(name: &str) -> (PathBuf, PathBuf) {
 fn scaffold_routes_hold_use_case_ports_not_impls() {
     let (dir, output) = scaffolded_product("t26_routes_ports");
 
-    let routes = fs::read_to_string(output.join("presentation/src/api/product/routes.rs")).unwrap();
+    let routes = fs::read_to_string(output.join("contextos/product/rest/src/rutas.rs")).unwrap();
     for uc in [
         "CreateProduct",
         "GetProduct",
@@ -403,11 +431,11 @@ fn scaffold_use_case_traits_ship_a_mock() {
         ("delete_product", "DeleteProduct"),
     ] {
         let src = fs::read_to_string(
-            output.join(format!("business/src/domain/product/use_cases/{module}.rs")),
+            output.join(format!("contextos/product/aplicacion/src/{module}.rs")),
         )
         .unwrap();
         assert!(
-            src.contains("#[cfg(any(test, feature = \"test-utils\"))]\npub mod mocks {"),
+            src.contains("#[cfg(any(test, feature = \"pruebas\"))]\npub mod mocks {"),
             "{src}"
         );
         assert!(src.contains(&format!("pub {uc}UseCase {{}}")), "{src}");
@@ -420,10 +448,15 @@ fn scaffold_use_case_traits_ship_a_mock() {
 fn object_mothers_are_available_to_other_crates_tests() {
     let (dir, output) = scaffolded_product("t26_mothers_feature");
 
-    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
+    let lib = fs::read_to_string(output.join("contextos/product/dominio/src/lib.rs")).unwrap();
     assert!(
-        lib.contains("#[cfg(any(test, feature = \"test-utils\"))]\npub mod tests {"),
+        lib.contains("#[cfg(any(test, feature = \"pruebas\"))]\npub mod pruebas {"),
         "{lib}"
+    );
+    let manifest = fs::read_to_string(output.join("contextos/product/dominio/Cargo.toml")).unwrap();
+    assert!(
+        manifest.contains("pruebas = [\"dep:mockall\"]"),
+        "{manifest}"
     );
 
     cleanup(&dir);
@@ -433,7 +466,7 @@ fn object_mothers_are_available_to_other_crates_tests() {
 fn scaffold_routes_test_every_status_path_with_mocked_use_cases() {
     let (dir, output) = scaffolded_product("t26_routes_tests");
 
-    let routes = fs::read_to_string(output.join("presentation/src/api/product/routes.rs")).unwrap();
+    let routes = fs::read_to_string(output.join("contextos/product/rest/src/rutas.rs")).unwrap();
     assert!(routes.contains("#[cfg(test)]\nmod tests {"), "{routes}");
     assert!(routes.contains("poem::test::TestClient") || routes.contains("test::TestClient"));
     for status in [
@@ -462,17 +495,15 @@ fn template_greeting_api_holds_a_port_and_is_tested() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("t26-greeting", &dir).unwrap();
 
-    let routes =
-        fs::read_to_string(output.join("presentation/src/api/greeting/routes.rs")).unwrap();
+    let routes = fs::read_to_string(output.join("contextos/greeting/rest/src/rutas.rs")).unwrap();
     assert!(
         routes.contains("Arc<dyn GetGreetingUseCaseTrait>"),
         "{routes}"
     );
     assert!(!routes.contains("UseCaseImpl"), "{routes}");
     assert!(routes.contains("MockGetGreetingUseCase"), "{routes}");
-    let uc =
-        fs::read_to_string(output.join("business/src/domain/greeting/use_cases/get_greeting.rs"))
-            .unwrap();
+    let uc = fs::read_to_string(output.join("contextos/greeting/aplicacion/src/get_greeting.rs"))
+        .unwrap();
     assert!(uc.contains("pub GetGreetingUseCase {}"), "{uc}");
 
     cleanup(&dir);
@@ -485,18 +516,20 @@ fn presentation_tests_get_business_test_utils_and_the_poem_test_client() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("t26-presentation-deps", &dir).unwrap();
 
-    let manifest = fs::read_to_string(output.join("presentation/Cargo.toml")).unwrap();
+    let manifest = fs::read_to_string(output.join("presentacion/api/Cargo.toml")).unwrap();
     let dev = manifest
         .split("[dev-dependencies]")
         .nth(1)
-        .expect("presentation has [dev-dependencies]");
+        .expect("api has [dev-dependencies]");
     assert!(
-        dev.contains(r#"business = { path = "../business", features = ["test-utils"] }"#),
+        dev.contains(r#"aplicacion_greeting = { workspace = true, features = ["pruebas"] }"#),
         "{manifest}"
     );
+    let rest = fs::read_to_string(output.join("contextos/greeting/rest/Cargo.toml")).unwrap();
+    let rest_dev = rest.split("[dev-dependencies]").nth(1).unwrap();
     assert!(
-        dev.contains(r#"poem = { version = "3", features = ["test"] }"#),
-        "{manifest}"
+        rest_dev.contains(r#"poem = { workspace = true, features = ["test"] }"#),
+        "{rest}"
     );
 
     cleanup(&dir);
@@ -522,18 +555,18 @@ fn generated_make_lint_lints_the_tests_too() {
 }
 
 #[test]
-fn business_agent_rules_describe_what_a_use_case_file_holds() {
+fn context_agent_rules_describe_what_a_use_case_file_holds() {
     // 17.2: it said "exactly Params + Trait", but every use case file ships its mock, and an
     // events project writes through a unit of work the tree did not show.
-    let agents = include_str!("../../template/business/AGENTS.md");
+    let agents = include_str!("../../template/contextos/AGENTS.md");
     assert!(!agents.contains("exactly `Params struct` + `Trait`"));
     for must in [
         "mocks::Mock<Action>UseCase",
         "unit_of_work.rs",
-        "events.rs",
+        "eventos.rs",
         "RecordingUnitOfWorkFactory",
     ] {
-        assert!(agents.contains(must), "business/AGENTS.md misses '{must}'");
+        assert!(agents.contains(must), "contextos/AGENTS.md misses '{must}'");
     }
 }
 
@@ -551,7 +584,7 @@ fn root_agent_rules_say_how_to_work_with_puerto() {
         // generated vs yours
         "Rewritten on every run",
         "Written once",
-        "presentation/src/app.rs",
+        "presentacion/api/src/app.rs",
         // changing an entity's fields
         "## Changing an entity's fields",
         "puerto generar migracion",

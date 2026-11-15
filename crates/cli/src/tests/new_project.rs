@@ -10,7 +10,7 @@ fn new_name_flag_sets_project_name() {
 
     let output = new_project_non_interactive(Some("explicit-name".into()), false, &dir).unwrap();
 
-    let content = fs::read_to_string(output.join("presentation/Cargo.toml")).unwrap();
+    let content = fs::read_to_string(output.join("presentacion/api/Cargo.toml")).unwrap();
     assert!(content.contains("name = \"explicit-name\""));
 
     cleanup(&dir);
@@ -28,8 +28,8 @@ fn new_db_flag_creates_db_files() {
     assert!(output.join(".env").exists());
     assert!(output.join(".env.example").exists());
     assert!(output.join(".cargo/config.toml").exists());
-    assert!(output.join("infrastructure/migrations").is_dir());
-    assert!(output.join("infrastructure/src/db.rs").exists());
+    assert!(output.join("migraciones").is_dir());
+    assert!(output.join("migrador/src/lib.rs").exists());
 
     cleanup(&dir);
 }
@@ -44,7 +44,7 @@ fn new_without_db_flag_has_no_db_files() {
 
     assert!(!output.join(".env.example").exists());
     assert!(!output.join(".cargo/config.toml").exists());
-    assert!(!output.join("infrastructure/src/db.rs").exists());
+    assert!(!output.join("migrador/src/lib.rs").exists());
 
     cleanup(&dir);
 }
@@ -60,9 +60,22 @@ fn creates_project_structure() {
     let output = generate_project("test-app", &dir).unwrap();
 
     assert!(output.join("Cargo.toml").exists());
-    assert!(output.join("business/src/lib.rs").exists());
-    assert!(output.join("infrastructure/src/lib.rs").exists());
-    assert!(output.join("presentation/src/main.rs").exists());
+    assert!(output.join("nucleo/src/lib.rs").exists());
+    for layer in ["dominio", "aplicacion", "infraestructura", "rest"] {
+        assert!(
+            output
+                .join(format!("contextos/greeting/{layer}/src/lib.rs"))
+                .exists()
+        );
+        assert!(
+            output
+                .join(format!("contextos/greeting/{layer}/Cargo.toml"))
+                .exists()
+        );
+    }
+    assert!(output.join("presentacion/cableado/Cargo.toml").exists());
+    assert!(output.join("presentacion/api/src/main.rs").exists());
+    assert!(output.join("presentacion/api/src/lib.rs").exists());
 
     cleanup(&dir);
 }
@@ -75,7 +88,7 @@ fn presentation_cargo_toml_has_project_name() {
 
     let output = generate_project("my-puerto-app", &dir).unwrap();
 
-    let content = fs::read_to_string(output.join("presentation/Cargo.toml")).unwrap();
+    let content = fs::read_to_string(output.join("presentacion/api/Cargo.toml")).unwrap();
     assert!(content.contains("name = \"my-puerto-app\""));
 
     cleanup(&dir);
@@ -89,10 +102,11 @@ fn main_rs_is_minimal_entry_point() {
 
     let output = generate_project("cool-project", &dir).unwrap();
 
-    let content = fs::read_to_string(output.join("presentation/src/main.rs")).unwrap();
-    assert!(content.contains("generated::bootstrap::build_app"));
-    assert!(content.contains("mod generated"));
+    let content = fs::read_to_string(output.join("presentacion/api/src/main.rs")).unwrap();
+    assert!(content.contains("api::generado::bootstrap::build_app"));
     assert!(!content.contains("{{project-name}}"));
+    let lib = fs::read_to_string(output.join("presentacion/api/src/lib.rs")).unwrap();
+    assert!(lib.contains("pub mod generado"), "{lib}");
 
     cleanup(&dir);
 }
@@ -105,8 +119,7 @@ fn bootstrap_rs_wires_ddd_layers() {
 
     let output = generate_project("api-test", &dir).unwrap();
 
-    let content =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let content = wiring(&output);
     assert!(content.contains("GetGreetingUseCaseImpl"));
     assert!(content.contains("InMemoryGreetingRepository"));
     assert!(content.contains("GreetingApi"));
@@ -126,58 +139,53 @@ fn ddd_layers_exist() {
 
     assert!(
         output
-            .join("business/src/domain/greeting/model.rs")
+            .join("contextos/greeting/dominio/src/modelo.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/domain/greeting/errors.rs")
+            .join("contextos/greeting/dominio/src/errores.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/domain/greeting/repository.rs")
+            .join("contextos/greeting/dominio/src/repositorio.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/domain/greeting/use_cases/get_greeting.rs")
+            .join("contextos/greeting/aplicacion/src/get_greeting.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/application/greeting/get_greeting.rs")
+            .join("contextos/greeting/aplicacion/src/get_greeting.rs")
             .exists()
     );
     assert!(
         output
-            .join("infrastructure/src/greeting/repository.rs")
+            .join("contextos/greeting/infraestructura/src/repositorio.rs")
+            .exists()
+    );
+    assert!(output.join("contextos/greeting/rest/src/rutas.rs").exists());
+    assert!(output.join("contextos/greeting/rest/src/dto.rs").exists());
+    assert!(
+        output
+            .join("contextos/greeting/rest/src/errores.rs")
             .exists()
     );
     assert!(
         output
-            .join("presentation/src/api/greeting/routes.rs")
-            .exists()
-    );
-    assert!(output.join("presentation/src/api/greeting/dto.rs").exists());
-    assert!(
-        output
-            .join("presentation/src/api/greeting/error_mapper.rs")
-            .exists()
-    );
-    assert!(
-        output
-            .join("presentation/src/api/greeting/responses.rs")
+            .join("contextos/greeting/rest/src/respuestas.rs")
             .exists()
     );
     assert!(output.join("puerto.toml").exists());
-    assert!(output.join("presentation/src/generated.rs").exists());
     assert!(
         output
-            .join("presentation/src/generated/bootstrap.rs")
+            .join("presentacion/api/src/generado/bootstrap.rs")
             .exists()
     );
-    assert!(output.join("presentation/src/api/tags.rs").exists());
+    assert!(output.join("presentacion/cableado/src/lib.rs").exists());
 
     cleanup(&dir);
 }
@@ -444,32 +452,40 @@ fn db_project_has_migrations_dir() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_db_project("db-app", &dir).unwrap();
-    assert!(output.join("infrastructure/migrations").is_dir());
+    assert!(output.join("migraciones").is_dir());
     cleanup(&dir);
 }
 
 #[test]
-fn db_project_has_db_rs_with_the_project_migrator() {
+fn db_project_has_the_migrador_crate() {
     let dir = temp_dir("db_db_rs");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_db_project("db-app", &dir).unwrap();
-    let content = fs::read_to_string(output.join("infrastructure/src/db.rs")).unwrap();
-    assert!(content.contains("MIGRATOR"));
-    assert!(content.contains("puerto_sqlx"));
+    let content = fs::read_to_string(output.join("migrador/src/lib.rs")).unwrap();
+    assert!(content.contains("pub static MIGRADOR"));
+    assert!(output.join("migrador/build.rs").exists());
     cleanup(&dir);
 }
 
 #[test]
-fn should_declare_the_db_module_when_a_db_project_is_created() {
+fn should_declare_the_migrador_when_a_db_project_is_created() {
     // `db.rs` was written but never declared until the first scaffold: an `--events` project's
-    // worker names `infrastructure::db` and did not compile straight out of `puerto nuevo`.
+    // worker names the migrator and did not compile straight out of `puerto nuevo`.
     let dir = temp_dir("db_mod_declared");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_db_project("db-app", &dir).unwrap();
-    let lib = fs::read_to_string(output.join("infrastructure/src/lib.rs")).unwrap();
-    assert_eq!(lib.matches("pub mod db;").count(), 1, "{lib}");
+    let root = fs::read_to_string(output.join("Cargo.toml")).unwrap();
+    assert!(
+        root.contains("members = [\"nucleo\", \"migrador\", "),
+        "{root}"
+    );
+    assert_eq!(
+        root.matches("migrador = { path = \"migrador\" }").count(),
+        1,
+        "{root}"
+    );
     cleanup(&dir);
 }
 
@@ -479,9 +495,14 @@ fn db_project_infrastructure_cargo_has_sqlx() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_db_project("db-app", &dir).unwrap();
-    let content = fs::read_to_string(output.join("infrastructure/Cargo.toml")).unwrap();
-    assert!(content.contains("sqlx"));
+    let content = fs::read_to_string(output.join("Cargo.toml")).unwrap();
+    assert!(content.contains("sqlx = { version = \"0.8\""), "{content}");
     assert!(content.contains("postgres"));
+    let migrador = fs::read_to_string(output.join("migrador/Cargo.toml")).unwrap();
+    assert!(
+        migrador.contains("sqlx = { workspace = true }"),
+        "{migrador}"
+    );
     cleanup(&dir);
 }
 
@@ -529,11 +550,7 @@ fn no_demo_has_no_greeting_files() {
     let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
     scaffold::apply_no_demo(&output).unwrap();
 
-    assert!(!output.join("business/src/domain/greeting").exists());
-    assert!(!output.join("business/src/application/greeting").exists());
-    assert!(!output.join("infrastructure/src/greeting").exists());
-    assert!(!output.join("presentation/src/api/greeting").exists());
-    assert!(!output.join("presentation/src/api/greeting.rs").exists());
+    assert!(!output.join("contextos/greeting").exists());
 
     cleanup(&dir);
 }
@@ -573,27 +590,17 @@ fn no_demo_lib_files_have_no_greeting_modules() {
     let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
     scaffold::apply_no_demo(&output).unwrap();
 
-    let biz_lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
-    assert!(
-        !biz_lib.contains("greeting"),
-        "business lib.rs should not reference greeting"
-    );
-
-    let infra_lib = fs::read_to_string(output.join("infrastructure/src/lib.rs")).unwrap();
-    assert!(
-        !infra_lib.contains("greeting"),
-        "infra lib.rs should not reference greeting"
-    );
-
-    let api_rs = fs::read_to_string(output.join("presentation/src/api.rs")).unwrap();
-    assert!(
-        !api_rs.contains("greeting"),
-        "api.rs should not reference greeting"
-    );
-    assert!(
-        api_rs.contains("pub mod error"),
-        "api.rs should retain error module"
-    );
+    for manifest in [
+        "Cargo.toml",
+        "presentacion/api/Cargo.toml",
+        "presentacion/cableado/Cargo.toml",
+    ] {
+        let content = fs::read_to_string(output.join(manifest)).unwrap();
+        assert!(
+            !content.contains("_greeting"),
+            "{manifest} should not name a greeting crate:\n{content}"
+        );
+    }
 
     cleanup(&dir);
 }
@@ -607,8 +614,7 @@ fn no_demo_bootstrap_has_no_greeting() {
     let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
     scaffold::apply_no_demo(&output).unwrap();
 
-    let content =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let content = wiring(&output);
     assert!(
         !content.contains("Greeting"),
         "bootstrap.rs should have no Greeting reference"
@@ -631,14 +637,10 @@ fn default_project_still_has_greeting_files() {
 
     assert!(
         output
-            .join("business/src/domain/greeting/model.rs")
+            .join("contextos/greeting/dominio/src/modelo.rs")
             .exists()
     );
-    assert!(
-        output
-            .join("presentation/src/api/greeting/routes.rs")
-            .exists()
-    );
+    assert!(output.join("contextos/greeting/rest/src/rutas.rs").exists());
 
     cleanup(&dir);
 }
@@ -653,51 +655,14 @@ fn no_demo_then_scaffold_generates_new_entity() {
     scaffold::apply_no_demo(&output).unwrap();
     scaffold::run_scaffold("Player", &output, &[], OverwritePolicy::Ask).unwrap();
 
-    assert!(output.join("business/src/domain/player/model.rs").exists());
     assert!(
         output
-            .join("presentation/src/api/player/routes.rs")
+            .join("contextos/player/dominio/src/modelo.rs")
             .exists()
     );
-    assert!(!output.join("business/src/domain/greeting").exists());
+    assert!(output.join("contextos/player/rest/src/rutas.rs").exists());
+    assert!(!output.join("contextos/greeting").exists());
 
-    cleanup(&dir);
-}
-
-// ── T-02: --no-demo keeps the tags module ─────────────────────────────────
-
-#[test]
-fn no_demo_keeps_tags_module_declared() {
-    let dir = temp_dir("no_demo_tags");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let output = generate_project("no-demo-tags", &dir).unwrap();
-
-    scaffold::apply_no_demo(&output).unwrap();
-
-    let api_rs = fs::read_to_string(output.join("presentation/src/api.rs")).unwrap();
-    assert!(
-        api_rs.contains("pub mod tags;"),
-        "generated routes.rs import crate::api::tags::ApiTags — the declaration must survive \
-         --no-demo. Got:\n{api_rs}"
-    );
-    cleanup(&dir);
-}
-
-#[test]
-fn api_rs_patch_restores_missing_tags_module() {
-    let dir = temp_dir("api_rs_tags_restore");
-    cleanup(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    let output = generate_project("tags-restore", &dir).unwrap();
-
-    // Simulate a hand-edited api.rs that lost the declaration.
-    fs::write(output.join("presentation/src/api.rs"), "pub mod error;\n").unwrap();
-    crate::patchers::api_rs::patch_api_rs(&output, "product").unwrap();
-
-    let api_rs = fs::read_to_string(output.join("presentation/src/api.rs")).unwrap();
-    assert!(api_rs.contains("pub mod tags;"));
-    assert!(api_rs.contains("pub mod product;"));
     cleanup(&dir);
 }
 

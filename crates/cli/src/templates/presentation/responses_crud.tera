@@ -7,7 +7,7 @@ use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 use puerto_web::RespuestaError;
 
-use crate::api::{{ snake }}::dto::{{ "{" }}{{ pascal }}Dto, {{ pascal }}PageDto};
+use crate::dto::{{ "{" }}{{ pascal }}Dto, {{ pascal }}PageDto};
 
 #[derive(ApiResponse)]
 pub enum Create{{ pascal }}Response {

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
-use super::model::{{ "{" }}{{ pascal }}, {{ pascal }}Id};
+use crate::modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id};
 {% for import in reference_imports %}use {{ import }};
 {% endfor %}{% set refs = fields | filter(attribute="is_ref", value=true) %}{% if refs %}
 /// What `find_all` narrows the page to: one id per reference, `None` does not filter.
@@ -18,7 +18,7 @@ pub trait {{ pascal }}RepositoryTrait: Send + Sync {
 {% else %}    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
 {% endif %}}
 
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(test, feature = "pruebas"))]
 pub mod mocks {
     use mockall::mock;
 

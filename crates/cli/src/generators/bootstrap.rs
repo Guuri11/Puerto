@@ -1,10 +1,12 @@
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use std::{fs, path::Path};
 
 use serde::Serialize;
 
-use crate::generators::naming::{crud_use_case, is_crud_entity, pascal_to_snake, to_pascal_case};
-use crate::generators::render::{RenderError, render};
+use crate::generators::naming::{
+    crud_use_case, is_crud_entity, pascal_to_snake, to_pascal_case, write_file,
+};
+use crate::generators::render::render;
 
 #[derive(Serialize)]
 struct BootstrapUseCase {
@@ -22,6 +24,9 @@ struct BootstrapEntity {
     db: bool,
     /// Its writes go through a `Pg{Entity}UnitOfWorkFactory` (ADR-0018 § 2).
     uow: bool,
+    /// Some use case is built with the repository / the unit of work factory.
+    needs_repository: bool,
+    needs_uow: bool,
     use_cases: Vec<BootstrapUseCase>,
 }
 
@@ -39,24 +44,29 @@ fn build_context(
         .iter()
         .map(|entity| {
             let snake = pascal_to_snake(&entity.name);
-            // `create` only writes; `get` and `list` only read; the rest (update, delete and
-            // every custom use case) read, then write.
+            let uow = uses_unit_of_work(entity, events);
+            // With a unit of work, `create` only writes; `get` and `list` only read; the rest
+            // (update, delete and every custom use case) read, then write. Without one, every use
+            // case holds the repository.
             let create = crud_use_case("create", &snake);
             let reads = [crud_use_case("get", &snake), crud_use_case("list", &snake)];
+            let use_cases: Vec<BootstrapUseCase> = entity
+                .use_cases
+                .iter()
+                .map(|uc| BootstrapUseCase {
+                    action: uc.clone(),
+                    uc_pascal: to_pascal_case(uc),
+                    repository: !uow || *uc != create,
+                    uow: uow && !reads.contains(uc),
+                })
+                .collect();
             BootstrapEntity {
                 pascal: entity.name.clone(),
                 db: entity.db,
-                uow: uses_unit_of_work(entity, events),
-                use_cases: entity
-                    .use_cases
-                    .iter()
-                    .map(|uc| BootstrapUseCase {
-                        action: uc.clone(),
-                        uc_pascal: to_pascal_case(uc),
-                        repository: *uc != create,
-                        uow: !reads.contains(uc),
-                    })
-                    .collect(),
+                uow,
+                needs_repository: use_cases.iter().any(|uc| uc.repository),
+                needs_uow: use_cases.iter().any(|uc| uc.uow),
+                use_cases,
                 snake,
             }
         })
@@ -74,6 +84,12 @@ fn build_context(
     let local = project.auth.as_deref() == Some("local");
     ctx.insert("local", &local);
     ctx.insert("apis", &api_expression(entities, auth, local));
+    ctx.insert("any_db", &entities.iter().any(|e| e.db));
+    // The spec export test wraps a mock per use case in an `Arc`.
+    ctx.insert(
+        "wraps_mocks",
+        &(local || entities.iter().any(|e| !e.use_cases.is_empty())),
+    );
     ctx
 }
 
@@ -102,7 +118,7 @@ fn api_expression(entities: &[crate::puerto_toml::Entity], auth: bool, local: bo
 pub fn generate_bootstrap_content(
     entities: &[crate::puerto_toml::Entity],
     web: bool,
-) -> Result<String, RenderError> {
+) -> Result<String, crate::generators::render::RenderError> {
     let project = crate::puerto_toml::Project {
         web,
         ..Default::default()
@@ -112,29 +128,13 @@ pub fn generate_bootstrap_content(
 
 /// `project`: whether it has a frontend (the spec export test), domain events (its CRUD entities
 /// are wired with a unit of work), auth (the authenticator, `GET /me`) and a database.
+#[cfg(test)]
 pub fn generate_bootstrap_for(
     entities: &[crate::puerto_toml::Entity],
     project: &crate::puerto_toml::Project,
-) -> Result<String, RenderError> {
+) -> Result<String, crate::generators::render::RenderError> {
     let ctx = build_context(entities, project);
     render("bootstrap/bootstrap.tera", &ctx)
-}
-
-/// An auth project: `GET /me` is tagged `Me`; a local one's `/auth/*`, `Auth`.
-pub fn generate_tags_content(
-    entities: &[crate::puerto_toml::Entity],
-    project: &crate::puerto_toml::Project,
-) -> Result<String, RenderError> {
-    let mut tags: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
-    if project.has_auth() {
-        tags.push("Me");
-    }
-    if project.auth.as_deref() == Some("local") {
-        tags.push("Auth");
-    }
-    let mut ctx = tera::Context::new();
-    ctx.insert("tags_entities", &tags);
-    render("bootstrap/tags.tera", &ctx)
 }
 
 /// `puerto generar bootstrap` — refuses when the manifest describes code that is not on disk.
@@ -174,8 +174,9 @@ pub fn run_bootstrap_command(
     Ok(())
 }
 
-/// Read puerto.toml and overwrite `presentation/src/generated/bootstrap.rs`,
-/// `presentation/src/api/tags.rs` and, in a web project, `web/src/presentation/core/generated/*`.
+/// Read puerto.toml and overwrite the generated wiring: `presentacion/cableado` (its `Cargo.toml`
+/// too), `presentacion/api/src/generado/bootstrap.rs` and, in a web project,
+/// `web/src/presentation/core/generated/*`. The `api` crate gains the REST crate of every context.
 ///
 /// Warns — rather than refuses — on manifest/filesystem drift: this runs inside `scaffold`, where
 /// the entity being generated is fine and it is some *other* declared entity that is missing.
@@ -195,27 +196,81 @@ pub fn regenerate_bootstrap(base: &Path) -> Result<(), Box<dyn std::error::Error
         eprintln!("⚠ {line}");
     }
 
-    let bootstrap_path = base.join(layout::BOOTSTRAP_RS);
-    if let Some(parent) = bootstrap_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(
-        bootstrap_path,
-        generate_bootstrap_for(&config.entity, &config.project)?,
+    let ctx = build_context(&config.entity, &config.project);
+    write_file(
+        &base.join(layout::CABLEADO_MANIFEST),
+        &render("bootstrap/cableado_cargo.tera", &ctx)?,
     )?;
-
-    let tags_path = base.join(layout::TAGS_RS);
-    if let Some(parent) = tags_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(
-        tags_path,
-        generate_tags_content(&config.entity, &config.project)?,
+    write_file(
+        &base.join(layout::CABLEADO_LIB),
+        &render("bootstrap/cableado.tera", &ctx)?,
     )?;
+    write_file(
+        &base.join(layout::BOOTSTRAP_RS),
+        &render("bootstrap/bootstrap.tera", &ctx)?,
+    )?;
+    for entity in &config.entity {
+        let snake = pascal_to_snake(&entity.name);
+        add_crate_dependency(
+            base,
+            layout::API_MANIFEST,
+            "dependencies",
+            &layout::crate_name(&snake, Layer::Rest),
+            "{ workspace = true }",
+        )?;
+        if !entity.use_cases.is_empty() {
+            // The spec export test builds every API from the use cases' doubles.
+            add_crate_dependency(
+                base,
+                layout::API_MANIFEST,
+                "dev-dependencies",
+                &layout::crate_name(&snake, Layer::Application),
+                "{ workspace = true, features = [\"pruebas\"] }",
+            )?;
+        }
+    }
 
+    crate::generators::crates::sync_workspace_dependencies(base)?;
     crate::generators::events::regenerate_events(base, &config)?;
     crate::generators::worker::regenerate_registry(base, &config)?;
     crate::generators::web::regenerate_web(base, &config)?;
 
+    Ok(())
+}
+
+/// Adds `name = value` to the `[section]` of the crate manifest `manifest` (a path under `base`)
+/// unless it is there: at the end of the section, which is created at the end of the file when
+/// missing. How a binary gains a crate of the project (ADR-0023 § 7).
+pub fn add_crate_dependency(
+    base: &Path,
+    manifest: &str,
+    section: &str,
+    name: &str,
+    value: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join(manifest);
+    let src = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let header = format!("[{section}]\n");
+    let line = format!("{name} = {value}\n");
+    let out = match src.find(&header) {
+        Some(at) => {
+            let body = at + header.len();
+            let end = src[body..].find("\n[").map_or(src.len(), |i| body + i + 1);
+            if src[body..end]
+                .lines()
+                .any(|l| l.starts_with(&format!("{name} = ")))
+            {
+                return Ok(());
+            }
+            let end = body + src[body..end].trim_end().len();
+            let sep = if end > body { "\n" } else { "" };
+            format!("{}{sep}{}{}", &src[..end], line.trim_end(), &src[end..])
+        }
+        None => {
+            let sep = if src.ends_with('\n') { "\n" } else { "\n\n" };
+            format!("{src}{sep}{header}{line}")
+        }
+    };
+    fs::write(&path, out)?;
     Ok(())
 }

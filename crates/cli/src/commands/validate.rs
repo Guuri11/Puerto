@@ -349,8 +349,8 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     errors.extend(crate::generators::consistency::auth_drift(cwd, &config));
     for orphan in crate::generators::consistency::orphan_entity_dirs(cwd, &config) {
         warnings.push(format!(
-            "'business/src/domain/{orphan}' exists but has no [[entidad]] block — Puerto commands \
-             cannot see it"
+            "'contextos/{orphan}' exists but has no [[entidad]] block — Puerto commands cannot \
+             see it"
         ));
     }
 

@@ -1,19 +1,16 @@
-use crate::generators::layout;
+use crate::generators::crates::ContextDeps;
+use crate::generators::layout::{self, Layer};
 use std::{fs, path::Path};
 
 use serde_json::json;
 
 use crate::generators::naming::{
-    crud_use_case, crud_use_cases, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
+    crud_use_cases, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
 use crate::generators::types::{
     FieldCtx, field_ctx, field_rust_type, is_enum_vo, is_reference, is_shared_vo, is_value_object,
     literal_import, reference_import, resolve_type, type_import, vo_import_path, vo_inner_type,
-};
-use crate::patchers::lib_rs::{
-    patch_business_lib_domain_crud, patch_business_lib_shared, patch_business_lib_value_objects,
-    patch_mothers_lib, unpatch_business_lib_value_objects,
 };
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
@@ -45,15 +42,15 @@ pub fn generate_model(
     for f in eff.iter().filter(|f| is_value_object(f)) {
         let vo = f.value_object.as_deref().unwrap_or_default();
         let import = if is_shared_vo(f, shared_vos) {
-            format!("crate::domain::shared::value_objects::{vo}")
+            format!("nucleo::valores::{vo}")
         } else {
-            format!("super::value_objects::{vo}")
+            format!("crate::valores::{vo}")
         };
         if !imports.contains(&import) {
             imports.push(import);
         }
     }
-    push_reference_imports(&mut imports, &eff, "crate");
+    push_reference_imports(&mut imports, &eff);
 
     let field_ctxs: Vec<FieldCtx> = eff
         .iter()
@@ -65,9 +62,9 @@ pub fn generate_model(
     render("domain/model.tera", &ctx)
 }
 
-/// Appends the id type of every reference among `fields`, as crate `krate` reaches it, once each.
-pub(crate) fn push_reference_imports(imports: &mut Vec<String>, fields: &[Field], krate: &str) {
-    for import in fields.iter().filter_map(|f| reference_import(f, krate)) {
+/// Appends the id type of every reference among `fields`, once each.
+pub(crate) fn push_reference_imports(imports: &mut Vec<String>, fields: &[Field]) {
+    for import in fields.iter().filter_map(reference_import) {
         if !imports.contains(&import) {
             imports.push(import);
         }
@@ -96,13 +93,13 @@ pub fn generate_mother(
     let vo_imports = eff
         .iter()
         .filter(|f| is_value_object(f))
-        .map(|f| vo_import_path(f, snake, shared_vos));
+        .map(|f| vo_import_path(f, snake, shared_vos, true));
     for import in primitive_imports.map(str::to_string).chain(vo_imports) {
         if !imports.contains(&import) {
             imports.push(import);
         }
     }
-    push_reference_imports(&mut imports, &eff, "crate");
+    push_reference_imports(&mut imports, &eff);
 
     let field_ctxs: Vec<FieldCtx> = eff
         .iter()
@@ -130,7 +127,7 @@ pub fn generate_value_objects(
         return Ok(String::new());
     }
 
-    let mut imports = vec![format!("super::errors::{pascal}Error")];
+    let mut imports = vec![format!("crate::errores::{pascal}Error")];
     for f in vo_fields.iter().filter(|f| !is_enum_vo(f)) {
         let Some(import) = resolve_type(&vo_inner_type(f))
             .ok()
@@ -161,6 +158,7 @@ pub fn generate_value_objects(
     render("domain/value_objects.tera", &ctx)
 }
 
+#[cfg(test)]
 pub fn generate_create_use_case_trait(
     pascal: &str,
     snake: &str,
@@ -195,7 +193,7 @@ pub fn generate_update_use_case_trait(
 /// A use case trait whose Params carry every field as its primitive type. `template_imports` are
 /// the imports the template writes itself. `actor`: a protected use case of an auth project — its
 /// Params also carry the caller.
-fn generate_use_case_trait(
+pub(crate) fn generate_use_case_trait(
     template: &str,
     template_imports: &[&str],
     pascal: &str,
@@ -210,7 +208,7 @@ fn generate_use_case_trait(
             extra_imports.push(imp.to_string());
         }
     }
-    push_reference_imports(&mut extra_imports, &eff, "crate");
+    push_reference_imports(&mut extra_imports, &eff);
     // Params hold primitives — but a reference's id type, like the entity's own id.
     let params_fields: Vec<serde_json::Value> = eff
         .iter()
@@ -254,6 +252,8 @@ fn render_shared(template: &str, vos: &[ValueObjectDefinition]) -> Result<String
     render(template, &ctx)
 }
 
+/// `nucleo/src/{valores,errores}.rs` from the declared shared value objects, and `nucleo`'s
+/// `lib.rs` declaring them.
 pub fn write_shared_vo_files(
     base: &Path,
     shared_vos: &[ValueObjectDefinition],
@@ -261,38 +261,25 @@ pub fn write_shared_vo_files(
     if shared_vos.is_empty() {
         return Ok(());
     }
-
-    let shared_dir = base.join(layout::SHARED_DIR);
-    fs::create_dir_all(&shared_dir)?;
-
+    let src = base.join(layout::NUCLEO_SRC);
     write_file(
-        &shared_dir.join("value_objects.rs"),
+        &src.join("valores.rs"),
         &generate_shared_value_objects(shared_vos)?,
     )?;
-
     write_file(
-        &shared_dir.join("errors.rs"),
+        &src.join("errores.rs"),
         &generate_shared_errors_combined(shared_vos)?,
     )?;
-
-    // Declared in `shared.rs` (created here by the first shared VO), never a `shared/mod.rs`.
-    let shared_rs = base.join(layout::SHARED_RS);
-    let mut declarations = fs::read_to_string(&shared_rs).unwrap_or_default();
-    for module in ["errors", "value_objects"] {
-        let line = format!("pub mod {module};");
-        if !declarations.lines().any(|l| l.trim() == line) {
-            if !declarations.is_empty() && !declarations.ends_with('\n') {
-                declarations.push('\n');
-            }
-            declarations.push_str(&line);
-            declarations.push('\n');
-        }
-    }
-    fs::write(&shared_rs, declarations)?;
-
+    crate::generators::crates::write_lib(base, layout::NUCLEO_DIR, NUCLEO_HEADER)?;
     Ok(())
 }
 
+/// The doc comment of `nucleo/src/lib.rs` (the template's).
+pub const NUCLEO_HEADER: &str = "//! What every context shares: the value objects declared with `puerto generar objeto-valor`\n\
+     //! (ADR-0023 of Puerto). No I/O, no dependency on any context.\n";
+
+/// The context's domain crate: model, errors, value objects, repository port, events and unit of
+/// work (`events` projects), the Object Mother, then its `Cargo.toml` and `lib.rs`.
 pub fn write_domain_files(
     pascal: &str,
     snake: &str,
@@ -300,8 +287,9 @@ pub fn write_domain_files(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join(layout::domain_dir(snake));
-    let write = |file: String, content: String| write_file(&dir.join(file), &content);
+    let write = |module: &str, content: String| {
+        write_file(&base.join(layout::domain_file(snake, module)), &content)
+    };
 
     let eff = effective_fields(fields);
     let vo_fields: Vec<serde_json::Value> = eff
@@ -317,14 +305,14 @@ pub fn write_domain_files(
     if let Some(first) = eff.iter().find(|f| is_reference(f)) {
         errors_ctx.insert("first_reference", &first.name);
     }
-    // The repository port and the list's Params filter by each reference (18.4).
+    // The repository port filters the list by each reference (18.4).
     let mut ctx = entity_ctx(pascal, snake);
     let field_ctxs: Vec<FieldCtx> = eff
         .iter()
         .map(|f| field_ctx(f, pascal, shared_vos))
         .collect();
     let mut reference_imports = vec![];
-    push_reference_imports(&mut reference_imports, &eff, "crate");
+    push_reference_imports(&mut reference_imports, &eff);
     ctx.insert("fields", &field_ctxs);
     ctx.insert("reference_imports", &reference_imports);
     let config = crate::puerto_toml::read(base).ok();
@@ -332,27 +320,24 @@ pub fn write_domain_files(
     let mut repository_ctx = ctx.clone();
     repository_ctx.insert("events", &events);
 
-    write(
-        "model.rs".into(),
-        generate_model(pascal, snake, fields, shared_vos)?,
-    )?;
-    write(
-        "errors.rs".into(),
-        render("domain/errors.tera", &errors_ctx)?,
-    )?;
+    write("modelo", generate_model(pascal, snake, fields, shared_vos)?)?;
+    write("errores", render("domain/errors.tera", &errors_ctx)?)?;
+    let valores = base.join(layout::domain_file(snake, "valores"));
     if eff
         .iter()
         .any(|f| is_value_object(f) && !is_shared_vo(f, shared_vos))
     {
-        let vos = generate_value_objects(pascal, snake, fields, shared_vos)?;
-        write("value_objects.rs".into(), vos)?;
-    } else if dir.join("value_objects.rs").exists() {
+        write(
+            "valores",
+            generate_value_objects(pascal, snake, fields, shared_vos)?,
+        )?;
+    } else if valores.exists() {
         // A forced re-scaffold without local VOs: the old file names error variants that the new
-        // errors.rs no longer has.
-        std::fs::remove_file(dir.join("value_objects.rs"))?;
+        // errores.rs no longer has.
+        fs::remove_file(valores)?;
     }
     write(
-        "repository.rs".into(),
+        "repositorio",
         render("domain/repository.tera", &repository_ctx)?,
     )?;
     if events {
@@ -363,48 +348,20 @@ pub fn write_domain_files(
             .map(|e| e.events.clone())
             .unwrap_or_default();
         write(
-            "events.rs".into(),
+            "eventos",
             crate::generators::events::generate_events(pascal, snake, fields, shared_vos, &custom)?,
         )?;
         write(
-            "unit_of_work.rs".into(),
+            "unit_of_work",
             crate::generators::events::generate_domain_unit_of_work(pascal, snake)?,
         )?;
     }
-    let actor = |action: &str| access.is_protected(&crud_use_case(action, snake));
-    let use_case = |action: &str| format!("use_cases/{}.rs", crud_use_case(action, snake));
-    for (action, template) in [
-        ("create", "domain/use_case_create.tera"),
-        ("update", "domain/use_case_update.tera"),
-    ] {
-        write(
-            use_case(action),
-            generate_use_case_trait(template, &[], pascal, snake, fields, actor(action))?,
-        )?;
-    }
-    for action in ["get", "list", "delete"] {
-        let mut ctx = ctx.clone();
-        ctx.insert("actor", &actor(action));
-        write(
-            use_case(action),
-            render(&format!("domain/use_case_{action}.tera"), &ctx)?,
-        )?;
-    }
-    Ok(())
-}
-
-pub fn write_mother(
-    pascal: &str,
-    snake: &str,
-    base: &Path,
-    fields: &[Field],
-    shared_vos: &[ValueObjectDefinition],
-) -> Result<(), Box<dyn std::error::Error>> {
     write_file(
         &base.join(layout::mother(snake)),
         &generate_mother(pascal, snake, fields, shared_vos)?,
     )?;
-    Ok(())
+    write_shared_vo_files(base, shared_vos)?;
+    crate::generators::crates::finish(base, snake, Layer::Domain, &ContextDeps::read(base, fields))
 }
 
 /// `puerto generar dominio <Name> [-- fields]` — the first step of the domain-first workflow.
@@ -448,44 +405,25 @@ pub fn run_generate_domain(
     crate::validation::validate_references_before_writing(&pascal, &fields, &config, base)?;
 
     write_domain_files(&pascal, &snake, base, &fields, &shared_vos)?;
-    write_mother(&pascal, &snake, base, &fields, &shared_vos)?;
-    patch_business_lib_domain_crud(base, &snake)?;
-
     let has_vo = fields.iter().any(is_value_object);
     let has_local_vo = fields
         .iter()
         .any(|f| is_value_object(f) && !is_shared_vo(f, &shared_vos));
-    if has_local_vo {
-        patch_business_lib_value_objects(base, &snake)?;
-    } else {
-        unpatch_business_lib_value_objects(base, &snake)?;
-    }
-
-    if !shared_vos.is_empty() {
-        write_shared_vo_files(base, &shared_vos)?;
-        patch_business_lib_shared(base)?;
-    }
-
-    patch_mothers_lib(base, &snake)?;
 
     let use_cases = crud_use_cases(&snake);
     crate::puerto_toml::add_entity(base, &pascal, use_cases, config.project.db, fields.clone())?;
 
+    let dir = layout::crate_dir(&snake, Layer::Domain);
     if has_local_vo {
-        println!(
-            "✓ business/domain/    — model, errors, value_objects, repository trait, 5 use case traits"
-        );
+        println!("✓ {dir}/ — model, errors, value objects, repository port, {pascal}Mother");
     } else if has_vo {
-        println!(
-            "✓ business/domain/    — model, errors (shared VOs), repository trait, 5 use case traits"
-        );
+        println!("✓ {dir}/ — model, errors (shared VOs), repository port, {pascal}Mother");
     } else {
-        println!("✓ business/domain/    — model, errors, repository trait, 5 use case traits");
+        println!("✓ {dir}/ — model, errors, repository port, {pascal}Mother");
     }
     if !shared_vos.is_empty() {
-        println!("✓ business/domain/shared/ — shared value objects + errors");
+        println!("✓ {}/ — shared value objects + errors", layout::NUCLEO_DIR);
     }
-    println!("✓ business/tests/     — {pascal}Mother (Object Mother)");
     println!("✓ puerto.toml         — {pascal} registered");
     println!();
     println!("  Next: puerto generar aplicacion {pascal}");

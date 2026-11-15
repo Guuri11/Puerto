@@ -11,32 +11,32 @@ fn generate_domain_creates_domain_files_and_mother() {
 
     scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
 
-    assert!(output.join("business/src/domain/widget/model.rs").exists());
-    assert!(output.join("business/src/domain/widget/errors.rs").exists());
     assert!(
         output
-            .join("business/src/domain/widget/repository.rs")
+            .join("contextos/widget/dominio/src/modelo.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/domain/widget/use_cases/create_widget.rs")
+            .join("contextos/widget/dominio/src/errores.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/domain/widget/use_cases/delete_widget.rs")
+            .join("contextos/widget/dominio/src/repositorio.rs")
             .exists()
     );
+    // The use cases — contract and implementation — are the application crate's.
+    assert!(!output.join("contextos/widget/aplicacion").exists());
     assert!(
         output
-            .join("business/src/tests/mothers/widget_mother.rs")
+            .join("contextos/widget/dominio/src/pruebas/madres.rs")
             .exists()
     );
 
-    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
-    assert!(lib.contains("pub mod widget"));
-    assert!(lib.contains("pub mod widget_mother;"));
+    let lib = fs::read_to_string(output.join("contextos/widget/dominio/src/lib.rs")).unwrap();
+    assert!(lib.contains("pub mod modelo;"), "{lib}");
+    assert!(lib.contains("pub mod madres;"), "{lib}");
 
     let toml = fs::read_to_string(output.join("puerto.toml")).unwrap();
     assert!(toml.contains("Widget"));
@@ -59,7 +59,7 @@ fn generate_domain_writes_cli_fields_into_model_and_manifest() {
     ];
     scaffold::run_generate_domain("Invoice", &output, &fields).unwrap();
 
-    let model = fs::read_to_string(output.join("business/src/domain/invoice/model.rs")).unwrap();
+    let model = fs::read_to_string(output.join("contextos/invoice/dominio/src/modelo.rs")).unwrap();
     assert!(model.contains("pub amount: i64"), "got:\n{model}");
     assert!(model.contains("pub status: Status"), "got:\n{model}");
 
@@ -93,11 +93,11 @@ fn generate_domain_fields_reach_the_later_layers() {
     scaffold::run_generate_presentation("Invoice", &output).unwrap();
 
     let impl_rs =
-        fs::read_to_string(output.join("business/src/application/invoice/create_invoice.rs"))
+        fs::read_to_string(output.join("contextos/invoice/aplicacion/src/create_invoice.rs"))
             .unwrap();
     assert!(impl_rs.contains("amount"), "got:\n{impl_rs}");
 
-    let dto = fs::read_to_string(output.join("presentation/src/api/invoice/dto.rs")).unwrap();
+    let dto = fs::read_to_string(output.join("contextos/invoice/rest/src/dto.rs")).unwrap();
     assert!(dto.contains("pub amount: i64"), "got:\n{dto}");
 
     cleanup(&dir);
@@ -137,32 +137,32 @@ fn generate_application_creates_use_case_impls() {
 
     assert!(
         output
-            .join("business/src/application/widget/create_widget.rs")
+            .join("contextos/widget/aplicacion/src/create_widget.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/application/widget/get_widget.rs")
+            .join("contextos/widget/aplicacion/src/get_widget.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/application/widget/list_widgets.rs")
+            .join("contextos/widget/aplicacion/src/list_widgets.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/application/widget/update_widget.rs")
+            .join("contextos/widget/aplicacion/src/update_widget.rs")
             .exists()
     );
     assert!(
         output
-            .join("business/src/application/widget/delete_widget.rs")
+            .join("contextos/widget/aplicacion/src/delete_widget.rs")
             .exists()
     );
 
-    let lib = fs::read_to_string(output.join("business/src/lib.rs")).unwrap();
-    assert!(lib.contains("pub mod create_widget;"));
+    let lib = fs::read_to_string(output.join("contextos/widget/aplicacion/src/lib.rs")).unwrap();
+    assert!(lib.contains("pub mod create_widget;"), "{lib}");
 
     cleanup(&dir);
 }
@@ -198,10 +198,12 @@ fn generate_repository_creates_infra_files() {
 
     assert!(
         output
-            .join("infrastructure/src/widget/repository.rs")
+            .join("contextos/widget/infraestructura/src/repositorio.rs")
             .exists()
     );
-    let repo = fs::read_to_string(output.join("infrastructure/src/widget/repository.rs")).unwrap();
+    let repo =
+        fs::read_to_string(output.join("contextos/widget/infraestructura/src/repositorio.rs"))
+            .unwrap();
     assert!(repo.contains("InMemoryWidgetRepository"));
 
     cleanup(&dir);
@@ -219,62 +221,67 @@ fn generate_presentation_creates_all_files_and_regenerates_bootstrap() {
     scaffold::run_generate_repository("Widget", &output).unwrap();
     scaffold::run_generate_presentation("Widget", &output).unwrap();
 
-    assert!(output.join("presentation/src/api/widget.rs").exists());
+    assert!(output.join("contextos/widget/rest/src/lib.rs").exists());
+    assert!(output.join("contextos/widget/rest/src/rutas.rs").exists());
+    assert!(output.join("contextos/widget/rest/src/dto.rs").exists());
     assert!(
         output
-            .join("presentation/src/api/widget/routes.rs")
+            .join("contextos/widget/rest/src/respuestas.rs")
             .exists()
     );
-    assert!(output.join("presentation/src/api/widget/dto.rs").exists());
-    assert!(
-        output
-            .join("presentation/src/api/widget/responses.rs")
-            .exists()
-    );
-    assert!(
-        output
-            .join("presentation/src/api/widget/error_mapper.rs")
-            .exists()
-    );
+    assert!(output.join("contextos/widget/rest/src/errores.rs").exists());
 
-    let bootstrap =
-        fs::read_to_string(output.join("presentation/src/generated/bootstrap.rs")).unwrap();
+    let bootstrap = wiring(&output);
     assert!(bootstrap.contains("WidgetApi"));
 
     cleanup(&dir);
 }
 
 #[test]
-fn should_write_the_api_but_not_bootstrap_when_presentation_comes_before_the_other_layers() {
-    // API first: routes, DTOs and the error mapper only need the domain, so `presentation` may run
-    // right after `domain`. `bootstrap.rs` also imports the use case implementations and the
-    // repository adapter — rewritten now, it named modules that do not exist and the project
-    // stopped compiling, while the command printed "All layers wired".
+fn should_refuse_the_api_until_the_application_crate_exists() {
+    // The routes hold the use cases' traits, which live in the application crate (ADR-0023 § 4):
+    // written right after `domain`, the REST crate named a crate that does not exist and the
+    // workspace stopped loading.
     let dir = temp_dir("gen_presentation_api_first");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
     scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
-    let bootstrap_path = output.join("presentation/src/generated/bootstrap.rs");
-    let bootstrap_before = fs::read_to_string(&bootstrap_path).unwrap();
+
+    // Act
+    let err = scaffold::run_generate_presentation("Widget", &output)
+        .unwrap_err()
+        .to_string();
+
+    // Assert
+    assert!(err.contains("puerto generar aplicacion Widget"), "{err}");
+    assert!(!output.join("contextos/widget/rest").exists());
+
+    cleanup(&dir);
+}
+
+#[test]
+fn should_write_the_api_but_not_the_wiring_before_the_repository() {
+    // `bootstrap.rs` and `cableado` also name the repository adapter: rewritten without it, the
+    // project stopped compiling while the command printed "All layers wired".
+    let dir = temp_dir("gen_presentation_before_repo");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_project("myapp", &dir).unwrap();
+    scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
+    scaffold::run_generate_application("Widget", &output).unwrap();
+    let before = wiring(&output);
 
     // Act
     scaffold::run_generate_presentation("Widget", &output).unwrap();
 
     // Assert
-    assert!(
-        output
-            .join("presentation/src/api/widget/routes.rs")
-            .exists()
-    );
+    assert!(output.join("contextos/widget/rest/src/rutas.rs").exists());
     assert_eq!(
-        fs::read_to_string(&bootstrap_path).unwrap(),
-        bootstrap_before,
-        "bootstrap.rs must wait for the application and repository layers"
+        wiring(&output),
+        before,
+        "the wiring waits for the repository"
     );
-    // routes.rs tags its endpoints `ApiTags::Widget`: the tags are written now.
-    let tags = fs::read_to_string(output.join("presentation/src/api/tags.rs")).unwrap();
-    assert!(tags.contains("Widget"), "{tags}");
 
     cleanup(&dir);
 }
@@ -305,15 +312,15 @@ fn generate_scaffold_includes_object_mother() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
 
-    scaffold::run("Widget", &output, false, true, &[], &[]).unwrap();
+    scaffold::run("Widget", &output, false, &[], &[]).unwrap();
 
     assert!(
         output
-            .join("business/src/tests/mothers/widget_mother.rs")
+            .join("contextos/widget/dominio/src/pruebas/madres.rs")
             .exists()
     );
     let mother =
-        fs::read_to_string(output.join("business/src/tests/mothers/widget_mother.rs")).unwrap();
+        fs::read_to_string(output.join("contextos/widget/dominio/src/pruebas/madres.rs")).unwrap();
     assert!(mother.contains("WidgetMother"));
     assert!(mother.contains("pub fn random()"));
 

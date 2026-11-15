@@ -5,7 +5,7 @@ use crate::generators::naming::to_pascal_case;
 
 /// Give `{Pascal}Api` a field for every use case in `use_cases` it does not already have.
 ///
-/// `bootstrap.rs` builds `{Pascal}Api { <every use case in puerto.toml> }`, but `routes.rs`
+/// `bootstrap.rs` builds `{Pascal}Api { <every use case in puerto.toml> }`, but `rutas.rs`
 /// is rendered from the CRUD template, which only knows the five CRUD use cases. A use case added
 /// by `generate use-case` — or one that survived a `scaffold --forzar` — made bootstrap.rs name a
 /// field the struct does not have (E0560).
@@ -18,7 +18,7 @@ pub fn patch_routes_use_cases(
     snake: &str,
     use_cases: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join(layout::api_file(snake, "routes"));
+    let path = base.join(layout::rest_file(snake, "rutas"));
     if !path.exists() {
         return Ok(());
     }
@@ -56,8 +56,7 @@ fn add_api_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pasca
     // Appended as the last field, right before the struct's closing brace.
     src.insert_str(body_start + body_len + 1, &field);
 
-    let import =
-        format!("use business::domain::{snake}::use_cases::{uc}::{uc_pascal}UseCaseTrait;\n");
+    let import = format!("use aplicacion_{snake}::{uc}::{uc_pascal}UseCaseTrait;\n");
     if !src.contains(&import) {
         src.insert_str(0, &import);
     }
@@ -87,7 +86,7 @@ fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str,
         return;
     }
 
-    let mock = format!("business::domain::{snake}::use_cases::{uc}::mocks::Mock{uc_pascal}UseCase");
+    let mock = format!("aplicacion_{snake}::{uc}::mocks::Mock{uc_pascal}UseCase");
     // Read before `struct Mocks` grows: it precedes the literal, so `close` would move.
     let in_mocks = src.contains(MOCKS_OPEN);
     let line_start = src[..close].rfind('\n').map_or(0, |i| i + 1);

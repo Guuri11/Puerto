@@ -3,7 +3,7 @@
     #[test]
     fn {{ name }}() {
         // Act
-        let (status, Json(body)) = {{ error }}.into_error_response();
+        let (status, Json(body)) = a_respuesta_error({{ error }});
 
         // Assert
         assert_eq!(status, StatusCode::{{ status }});

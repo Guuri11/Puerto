@@ -1,5 +1,5 @@
-use crate::domain::{{ snake }}::model::{{ pascal }};
-use crate::domain::{{ snake }}::model::{{ pascal }}Props;{% for import in imports %}
+use crate::modelo::{{ pascal }};
+use crate::modelo::{{ pascal }}Props;{% for import in imports %}
 use {{ import }};{% endfor %}
 
 pub struct {{ pascal }}Mother {

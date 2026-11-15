@@ -1,0 +1,19 @@
+[package]
+name = "aplicacion_greeting"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_greeting = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+mockall = { workspace = true, optional = true }
+
+[features]
+# The use cases' doubles (`mock!`) for the tests of other crates (ADR-0023 § 5 of Puerto).
+pruebas = ["dep:mockall", "dominio_greeting/pruebas"]
+
+[dev-dependencies]
+dominio_greeting = { workspace = true, features = ["pruebas"] }
+mockall = { workspace = true }
+tokio = { workspace = true }

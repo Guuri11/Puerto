@@ -1,10 +1,14 @@
 //! Yours: `puerto nuevo --auth` writes this file once.
 
-use poem_openapi::{OpenApi, payload::Json};
+use poem_openapi::{OpenApi, Tags, payload::Json};
 use puerto_web::auth::BearerAuth;
 
-use crate::api::me::dto::MeDto;
-use crate::api::tags::ApiTags;
+use crate::me::dto::MeDto;
+
+#[derive(Tags)]
+enum ApiTags {
+    Me,
+}
 
 /// `GET /me`: what the frontend asks after sign-in. No or a bad token is answered by `BearerAuth`
 /// before the handler runs (401 `auth.no_autenticado`, 503 `auth.no_disponible`).

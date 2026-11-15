@@ -1,4 +1,4 @@
-use business::domain::{{ snake }}::model::{{ pascal }};
+use dominio_{{ snake }}::modelo::{{ pascal }};
 use poem_openapi::Object;
 {% if is_crud %}use puerto_nucleo::Pagina;
 {% endif %}use uuid::Uuid;{% for import in imports %}

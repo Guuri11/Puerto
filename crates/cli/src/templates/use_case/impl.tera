@@ -2,13 +2,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::domain::{{ snake }}::{
-    errors::{{ pascal }}Error,
-    model::{{ pascal }},
-    repository::{{ pascal }}RepositoryTrait,
+use dominio_{{ snake }}::{
+    errores::{{ pascal }}Error,
+    modelo::{{ pascal }},
+    repositorio::{{ pascal }}RepositoryTrait,
 {% if uow %}    unit_of_work::{{ pascal }}UnitOfWorkFactory,
-{% endif %}    use_cases::{{ uc }}::{{ "{" }}{{ uc_pascal }}Params, {{ uc_pascal }}UseCaseTrait},
-};
+{% endif %}};
 
 pub struct {{ uc_pascal }}UseCaseImpl {
     pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
@@ -29,8 +28,8 @@ impl {{ uc_pascal }}UseCaseTrait for {{ uc_pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{{ snake }}::repository::mocks::Mock{{ pascal }}Repository;
-{% if uow %}    use crate::domain::{{ snake }}::unit_of_work::mocks::RecordingUnitOfWorkFactory;
+    use dominio_{{ snake }}::repositorio::mocks::Mock{{ pascal }}Repository;
+{% if uow %}    use dominio_{{ snake }}::unit_of_work::mocks::RecordingUnitOfWorkFactory;
 {% endif %}
 
     #[tokio::test]

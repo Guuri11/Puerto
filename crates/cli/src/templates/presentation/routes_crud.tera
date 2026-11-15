@@ -1,8 +1,8 @@
 {% set refs = fields | filter(attribute="is_ref", value=true) %}use std::sync::Arc;
 
-use business::domain::{{ snake }}::model::{{ pascal }}Id;
+use dominio_{{ snake }}::modelo::{{ pascal }}Id;
 {% for import in reference_imports %}use {{ import }};
-{% endfor %}use business::domain::{{ snake }}::use_cases::{
+{% endfor %}use aplicacion_{{ snake }}::{
     create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
     delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
     get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
@@ -10,7 +10,7 @@ use business::domain::{{ snake }}::model::{{ pascal }}Id;
     update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
 };
 use poem_openapi::{
-    OpenApi,
+    OpenApi, Tags,
     param::{Path, Query},
     payload::Json,
 };
@@ -19,17 +19,21 @@ use puerto_nucleo::PeticionPagina;
 {% endif %}{% if any_role %}use puerto_web::requiere_rol;
 {% endif %}use uuid::Uuid;
 
-use crate::api::error::IntoErrorResponse;
-use crate::api::tags::ApiTags;
-use crate::api::{{ snake }}::dto::{
+use crate::dto::{
     Create{{ pascal }}Request, Update{{ pascal }}Request, {{ pascal }}Dto, {{ pascal }}PageDto,
 };
-use crate::api::{{ snake }}::responses::{
+use crate::errores::a_respuesta_error;
+use crate::respuestas::{
     Create{{ pascal }}Response, Delete{{ pascal }}Response, Get{{ pascal }}Response, List{{ plural_pascal }}Response,
     Update{{ pascal }}Response,
 };
 
-/// Holds the use case ports; `generated/bootstrap.rs` plugs in the implementations.
+#[derive(Tags)]
+enum ApiTags {
+    {{ pascal }},
+}
+
+/// Holds the use case ports; `generado/bootstrap.rs` plugs in the implementations.
 pub struct {{ pascal }}Api {
     pub create_{{ snake }}: Arc<dyn Create{{ pascal }}UseCaseTrait>,
     pub get_{{ snake }}: Arc<dyn Get{{ pascal }}UseCaseTrait>,
@@ -54,7 +58,7 @@ impl {{ pascal }}Api {
         {
             Ok(entity) => Create{{ pascal }}Response::Created(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
-                let (status, error) = err.into_error_response();
+                let (status, error) = a_respuesta_error(err);
                 tracing::warn!(code = %error.0.codigo, "create_{{ snake }} failed");
                 Create{{ pascal }}Response::from_status(status, error)
             }
@@ -72,7 +76,7 @@ impl {{ pascal }}Api {
         {
             Ok(entity) => Get{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
-                let (status, error) = err.into_error_response();
+                let (status, error) = a_respuesta_error(err);
                 tracing::warn!(code = %error.0.codigo, "get_{{ snake }} failed");
                 Get{{ pascal }}Response::from_status(status, error)
             }
@@ -94,7 +98,7 @@ impl {{ pascal }}Api {
         {
             Ok(page) => List{{ plural_pascal }}Response::Ok(Json({{ pascal }}PageDto::from_domain(&page))),
             Err(err) => {
-                let (status, error) = err.into_error_response();
+                let (status, error) = a_respuesta_error(err);
                 tracing::error!(code = %error.0.codigo, "list_{{ plural }} failed");
                 List{{ plural_pascal }}Response::from_status(status, error)
             }
@@ -116,7 +120,7 @@ impl {{ pascal }}Api {
         {
             Ok(entity) => Update{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
             Err(err) => {
-                let (status, error) = err.into_error_response();
+                let (status, error) = a_respuesta_error(err);
                 tracing::warn!(code = %error.0.codigo, "update_{{ snake }} failed");
                 Update{{ pascal }}Response::from_status(status, error)
             }
@@ -134,7 +138,7 @@ impl {{ pascal }}Api {
         {
             Ok(()) => Delete{{ pascal }}Response::NoContent,
             Err(err) => {
-                let (status, error) = err.into_error_response();
+                let (status, error) = a_respuesta_error(err);
                 tracing::warn!(code = %error.0.codigo, "delete_{{ snake }} failed");
                 Delete{{ pascal }}Response::from_status(status, error)
             }
@@ -144,14 +148,14 @@ impl {{ pascal }}Api {
 
 #[cfg(test)]
 mod tests {
-    use business::domain::{{ snake }}::errors::{{ pascal }}Error;
-    use business::domain::{{ snake }}::use_cases::{
+    use dominio_{{ snake }}::errores::{{ pascal }}Error;
+    use aplicacion_{{ snake }}::{
         create_{{ snake }}::mocks::MockCreate{{ pascal }}UseCase, delete_{{ snake }}::mocks::MockDelete{{ pascal }}UseCase,
         get_{{ snake }}::mocks::MockGet{{ pascal }}UseCase, list_{{ plural }}::mocks::MockList{{ plural_pascal }}UseCase,
         update_{{ snake }}::mocks::MockUpdate{{ pascal }}UseCase,
     };
-    use business::tests::mothers::{{ snake }}_mother::{{ pascal }}Mother;{% if auth %}
-    use business::tests::mothers::principal_mother::PrincipalMother;
+    use dominio_{{ snake }}::pruebas::madres::{{ pascal }}Mother;{% if auth %}
+    use puerto_nucleo::auth::dobles::MadrePrincipal;
     use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
     use puerto_nucleo::auth::dobles::MockAutenticador;
     use puerto_nucleo::auth::{ErrorAuth, Autenticador};{% else %}
@@ -177,10 +181,10 @@ mod tests {
     fn authenticator() -> Arc<dyn Autenticador> {
         let mut authenticator = MockAutenticador::new();
         authenticator.expect_autenticar().returning(|token| match token {
-            "caller" => Ok({% if caller_roles %}PrincipalMother::new()
-                .with_roles([{% for role in caller_roles %}"{{ role }}"{% if not loop.last %}, {% endif %}{% endfor %}])
-                .build(){% else %}PrincipalMother::random(){% endif %}),
-            "nobody" => Ok(PrincipalMother::random()),
+            "caller" => Ok({% if caller_roles %}MadrePrincipal::new()
+                .con_roles([{% for role in caller_roles %}"{{ role }}"{% if not loop.last %}, {% endif %}{% endfor %}])
+                .construir(){% else %}MadrePrincipal::aleatorio(){% endif %}),
+            "nobody" => Ok(MadrePrincipal::aleatorio()),
             _ => Err(ErrorAuth::Invalido),
         });
         Arc::new(authenticator)

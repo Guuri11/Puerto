@@ -45,7 +45,7 @@ pub(super) fn project_tree(root: &Path) -> BTreeMap<String, String> {
 /// Migration versions are timestamps; everything else Puerto writes is deterministic.
 fn normalize_path(path: &str) -> String {
     match path.rsplit_once('/') {
-        Some((dir, file)) if dir.ends_with("migrations") => match file.split_once('_') {
+        Some((dir, file)) if dir.ends_with("migraciones") => match file.split_once('_') {
             Some((version, rest)) if version.chars().all(|c| c.is_ascii_digit()) => {
                 format!("{dir}/<version>_{rest}")
             }
@@ -126,11 +126,11 @@ snapshot_scenarios! {
 #[test]
 fn should_hide_only_the_migration_version_from_snapshots() {
     assert_eq!(
-        normalize_path("infrastructure/migrations/20261011093000_create_product_table.sql"),
-        "infrastructure/migrations/<version>_create_product_table.sql"
+        normalize_path("migraciones/20261011093000_create_product_table.sql"),
+        "migraciones/<version>_create_product_table.sql"
     );
     assert_eq!(
-        normalize_path("business/src/domain/product/model.rs"),
-        "business/src/domain/product/model.rs"
+        normalize_path("contextos/product/dominio/src/modelo.rs"),
+        "contextos/product/dominio/src/modelo.rs"
     );
 }

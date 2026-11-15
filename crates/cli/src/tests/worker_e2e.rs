@@ -157,7 +157,7 @@ pub(super) fn build_project(
         scaffold::run_generate_consumer("always_retry", &["product_created".into()], output)
             .unwrap();
         fs::write(
-            output.join("worker/src/consumers/always_retry.rs"),
+            output.join("presentacion/worker/src/consumidores/always_retry.rs"),
             ALWAYS_RETRY,
         )
         .unwrap();
@@ -186,7 +186,7 @@ pub(super) fn build_scenario_project(
     for args in [
         &["database", "drop", "-y"][..],
         &["database", "create"][..],
-        &["migrate", "run", "--source", "infrastructure/migrations"][..],
+        &["migrate", "run", "--source", "migraciones"][..],
     ] {
         let status = Command::new("sqlx")
             .args(args)

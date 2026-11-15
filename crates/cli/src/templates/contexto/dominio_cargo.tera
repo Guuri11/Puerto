@@ -1,0 +1,24 @@
+[package]
+name = "dominio_{{ c }}"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+puerto-nucleo = { workspace = true }
+{% if shared %}nucleo = { workspace = true }
+{% endif %}{% for r in refs %}dominio_{{ r }} = { workspace = true }
+{% endfor %}async-trait = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+{% if events %}serde = { workspace = true }
+serde_json = { workspace = true }
+{% endif %}mockall = { workspace = true, optional = true }
+
+[features]
+# The doubles (`mock!`) and the Object Mother, for the tests of other crates (ADR-0023 § 5 of Puerto).
+pruebas = ["dep:mockall"]
+
+[dev-dependencies]
+mockall = { workspace = true }
+tokio = { workspace = true }

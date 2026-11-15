@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use puerto_nucleo::ErrorRepositorio;
 
-use super::{events::{{ pascal }}Event, model::{{ pascal }}};
+use crate::{eventos::{{ pascal }}Event, modelo::{{ pascal }}};
 
 /// One transaction over a {{ snake }} (ADR-0018 § 2): what it saves and the events it records are
 /// written together on `commit`, or not at all. Dropping it without `commit` rolls it back, so an
@@ -20,7 +20,7 @@ pub trait {{ pascal }}UnitOfWorkFactory: Send + Sync {
     async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, ErrorRepositorio>;
 }
 
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(test, feature = "pruebas"))]
 pub mod mocks {
     use std::sync::{Arc, Mutex, MutexGuard};
 

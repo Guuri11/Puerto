@@ -1,6 +1,7 @@
 //! The `{{ name }}` mail: what it carries and the port that sends it. Written once by
 //! `puerto generar correo`; it is yours now — add a field, rename one, compute the recipient.
-//! Its text is in `infrastructure/mail/{{ name }}/`, rendered by `Template{{ pascal }}Mailer`.
+//! Its text is in `contextos/correo/infraestructura/plantillas/{{ name }}/`, rendered by
+//! `Template{{ pascal }}Mailer`.
 
 use async_trait::async_trait;
 use puerto_nucleo::correo::ErrorCorreo;
@@ -24,7 +25,7 @@ pub trait {{ pascal }}Mailer: Send + Sync {
     async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), ErrorCorreo>;
 }
 
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(test, feature = "pruebas"))]
 pub mod mocks {
     use super::*;
     use mockall::mock;

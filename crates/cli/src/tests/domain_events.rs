@@ -82,7 +82,7 @@ fn new_with_events_writes_the_transport_the_outbox_migration_and_serde() {
     let manifest = read(&output, "puerto.toml");
     assert!(manifest.contains("eventos = \"db\""), "{manifest}");
 
-    let migrations: Vec<String> = fs::read_dir(output.join("infrastructure/migrations"))
+    let migrations: Vec<String> = fs::read_dir(output.join("migraciones"))
         .unwrap()
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -91,13 +91,25 @@ fn new_with_events_writes_the_transport_the_outbox_migration_and_serde() {
         .iter()
         .find(|m| m.ends_with("_outbox.sql"))
         .unwrap_or_else(|| panic!("no outbox migration in {migrations:?}"));
-    let sql = read(&output, &format!("infrastructure/migrations/{outbox}"));
+    let sql = read(&output, &format!("migraciones/{outbox}"));
     assert!(sql.ends_with(include_str!("../templates/infrastructure/outbox.sql")));
 
-    let business = read(&output, "business/Cargo.toml");
-    assert!(business.contains("serde = { version = \"1\", features = [\"derive\"] }"));
-    assert!(business.contains("serde_json = \"1\""));
-    assert!(business.contains("features = [\"v4\", \"serde\"]"));
+    // The snapshots derive serde: every domain crate of an events project names it, and the root
+    // declares the versions once one does.
+    scaffold_product(&output);
+    let root = read(&output, "Cargo.toml");
+    assert!(
+        root.contains("serde = { version = \"1\", features = [\"derive\"] }"),
+        "{root}"
+    );
+    assert!(root.contains("serde_json = \"1\""), "{root}");
+    assert!(root.contains("features = [\"v4\", \"serde\"]"), "{root}");
+    let domain = read(&output, "contextos/product/dominio/Cargo.toml");
+    assert!(domain.contains("serde = { workspace = true }"), "{domain}");
+    assert!(
+        domain.contains("serde_json = { workspace = true }"),
+        "{domain}"
+    );
     cleanup(&dir);
 }
 
@@ -107,7 +119,7 @@ fn new_with_events_tells_agents_that_events_rs_is_never_hand_edited() {
 
     let agents = read(&output, "AGENTS.md");
     assert!(
-        agents.contains("Never hand-edit `business/src/domain/<entity>/events.rs`"),
+        agents.contains("Never hand-edit `contextos/<c>/dominio/src/eventos.rs`"),
         "{agents}"
     );
     assert!(agents.contains("puerto generar evento"), "{agents}");
@@ -139,7 +151,7 @@ fn scaffold_in_an_events_project_writes_events_and_units_of_work() {
 
     scaffold_product(&output);
 
-    let events = read(&output, "business/src/domain/product/events.rs");
+    let events = read(&output, "contextos/product/dominio/src/eventos.rs");
     assert!(events.starts_with("// AUTO-GENERATED"));
     assert!(events.contains("pub struct ProductSnapshot"));
     assert!(events.contains("#[serde(rename_all = \"camelCase\")]"));
@@ -150,24 +162,24 @@ fn scaffold_in_an_events_project_writes_events_and_units_of_work() {
     assert!(events.contains("pub const PRODUCT_CREATED: &str = \"product_created\";"));
     assert!(events.contains("impl EventoDominio for ProductEvent"));
 
-    let uow = read(&output, "business/src/domain/product/unit_of_work.rs");
+    let uow = read(&output, "contextos/product/dominio/src/unit_of_work.rs");
     assert!(uow.contains("pub trait ProductUnitOfWork: Send"));
     assert!(uow.contains("pub trait ProductUnitOfWorkFactory: Send + Sync"));
     assert!(uow.contains("pub struct RecordingUnitOfWorkFactory"));
 
-    let pg_uow = read(&output, "infrastructure/src/product/unit_of_work.rs");
+    let pg_uow = read(
+        &output,
+        "contextos/product/infraestructura/src/unit_of_work.rs",
+    );
     assert!(pg_uow.contains("pub struct PgProductUnitOfWorkFactory"));
     assert!(pg_uow.contains("ON CONFLICT (id) DO UPDATE"));
     assert!(pg_uow.contains("use puerto_sqlx::uow::TransaccionPostgres;"));
 
-    let lib = read(&output, "business/src/lib.rs");
-    assert!(lib.contains("pub mod events;"));
-    assert!(lib.contains("pub mod unit_of_work;"));
-    let infra_lib = read(&output, "infrastructure/src/lib.rs");
-    assert!(
-        infra_lib.contains("    pub mod unit_of_work;\n"),
-        "{infra_lib}"
-    );
+    let lib = read(&output, "contextos/product/dominio/src/lib.rs");
+    assert!(lib.contains("pub mod eventos;"), "{lib}");
+    assert!(lib.contains("pub mod unit_of_work;"), "{lib}");
+    let infra_lib = read(&output, "contextos/product/infraestructura/src/lib.rs");
+    assert!(infra_lib.contains("pub mod unit_of_work;\n"), "{infra_lib}");
     cleanup(&dir);
 }
 
@@ -177,10 +189,13 @@ fn scaffold_in_an_events_project_leaves_the_repository_read_only() {
 
     scaffold_product(&output);
 
-    let port = read(&output, "business/src/domain/product/repository.rs");
+    let port = read(&output, "contextos/product/dominio/src/repositorio.rs");
     assert!(!port.contains("async fn save"), "{port}");
     assert!(port.contains("async fn find_by_id"));
-    let pg = read(&output, "infrastructure/src/product/repository.rs");
+    let pg = read(
+        &output,
+        "contextos/product/infraestructura/src/repositorio.rs",
+    );
     assert!(!pg.contains("async fn save"), "{pg}");
     assert!(
         !pg.contains("INSERT INTO"),
@@ -202,7 +217,7 @@ fn scaffold_in_an_events_project_writes_through_the_unit_of_work() {
     ] {
         let uc = read(
             &output,
-            &format!("business/src/application/product/{action}_product.rs"),
+            &format!("contextos/product/aplicacion/src/{action}_product.rs"),
         );
         assert!(
             uc.contains("pub uow_factory: Arc<dyn ProductUnitOfWorkFactory>,"),
@@ -218,20 +233,20 @@ fn scaffold_in_an_events_project_writes_through_the_unit_of_work() {
     }
     let create = read(
         &output,
-        "business/src/application/product/create_product.rs",
+        "contextos/product/aplicacion/src/create_product.rs",
     );
     assert!(!create.contains("pub repository:"), "create only writes");
     assert!(create.contains("fn should_record_product_created_when_fields_are_valid()"));
     assert!(create.contains("fn should_not_commit_when_the_store_rejects_a_duplicate()"));
     let update = read(
         &output,
-        "business/src/application/product/update_product.rs",
+        "contextos/product/aplicacion/src/update_product.rs",
     );
     assert!(update.contains("pub repository: Arc<dyn ProductRepositoryTrait>,"));
     assert!(update.contains(
         "fn should_return_not_found_and_record_nothing_when_the_product_does_not_exist()"
     ));
-    let get = read(&output, "business/src/application/product/get_product.rs");
+    let get = read(&output, "contextos/product/aplicacion/src/get_product.rs");
     assert!(
         !get.contains("uow_factory"),
         "reads do not open a unit of work"
@@ -245,18 +260,18 @@ fn scaffold_in_an_events_project_wires_the_unit_of_work_in_bootstrap() {
 
     scaffold_product(&output);
 
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     assert!(bootstrap.contains(
-        "let product_uow: Arc<dyn ProductUnitOfWorkFactory> = Arc::new(PgProductUnitOfWorkFactory::new(pool.clone()));"
+        "let uow_factory: Arc<dyn ProductUnitOfWorkFactory> = Arc::new(PgProductUnitOfWorkFactory::new(pool.clone()));"
+    ), "{bootstrap}");
+    assert!(bootstrap.contains(
+        "create_product: Arc::new(CreateProductUseCaseImpl { uow_factory: Arc::clone(&uow_factory) }),"
     ));
     assert!(bootstrap.contains(
-        "let create_product = Arc::new(CreateProductUseCaseImpl { uow_factory: Arc::clone(&product_uow) });"
+        "get_product: Arc::new(GetProductUseCaseImpl { repository: Arc::clone(&repository) }),"
     ));
     assert!(bootstrap.contains(
-        "let get_product = Arc::new(GetProductUseCaseImpl { repository: Arc::clone(&product_repo) });"
-    ));
-    assert!(bootstrap.contains(
-        "let update_product = Arc::new(UpdateProductUseCaseImpl { repository: Arc::clone(&product_repo), uow_factory: Arc::clone(&product_uow) });"
+        "update_product: Arc::new(UpdateProductUseCaseImpl { repository: Arc::clone(&repository), uow_factory: Arc::clone(&uow_factory) }),"
     ));
     cleanup(&dir);
 }
@@ -273,20 +288,22 @@ fn scaffold_without_events_writes_no_events_files() {
 
     assert!(
         !output
-            .join("business/src/domain/product/events.rs")
+            .join("contextos/product/dominio/src/eventos.rs")
             .exists()
     );
     assert!(
         !output
-            .join("business/src/domain/product/unit_of_work.rs")
+            .join("contextos/product/dominio/src/unit_of_work.rs")
             .exists()
     );
     assert!(
         !output
-            .join("infrastructure/src/product/unit_of_work.rs")
+            .join("contextos/product/infraestructura/src/unit_of_work.rs")
             .exists()
     );
-    assert!(read(&output, "business/src/domain/product/repository.rs").contains("async fn save"));
+    assert!(
+        read(&output, "contextos/product/dominio/src/repositorio.rs").contains("async fn save")
+    );
     cleanup(&dir);
 }
 
@@ -297,10 +314,10 @@ fn the_demo_entity_keeps_its_repository_in_an_events_project() {
 
     assert!(
         !output
-            .join("business/src/domain/greeting/events.rs")
+            .join("contextos/greeting/dominio/src/eventos.rs")
             .exists()
     );
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     assert!(!bootstrap.contains("UnitOfWork"), "{bootstrap}");
     cleanup(&dir);
 }
@@ -316,15 +333,15 @@ fn custom_use_case_in_an_events_project_gets_the_repository_and_the_unit_of_work
 
     let uc = read(
         &output,
-        "business/src/application/product/publish_product.rs",
+        "contextos/product/aplicacion/src/publish_product.rs",
     );
     assert!(uc.contains("pub repository: Arc<dyn ProductRepositoryTrait>,"));
     assert!(uc.contains("pub uow_factory: Arc<dyn ProductUnitOfWorkFactory>,"));
     assert!(uc.contains("Writes go through the unit of work"));
-    let bootstrap = read(&output, "presentation/src/generated/bootstrap.rs");
+    let bootstrap = wiring(&output);
     assert!(bootstrap.contains(
-        "let publish_product = Arc::new(PublishProductUseCaseImpl { repository: Arc::clone(&product_repo), uow_factory: Arc::clone(&product_uow) });"
-    ));
+        "publish_product: Arc::new(PublishProductUseCaseImpl { repository: Arc::clone(&repository), uow_factory: Arc::clone(&uow_factory) }),"
+    ), "{bootstrap}");
     cleanup(&dir);
 }
 
@@ -338,13 +355,13 @@ fn generate_event_declares_it_and_regenerates_events_rs() {
     let config = puerto_toml::read(&output).unwrap();
     let product = config.entity.iter().find(|e| e.name == "Product").unwrap();
     assert_eq!(product.events, ["product_published"]);
-    let events = read(&output, "business/src/domain/product/events.rs");
+    let events = read(&output, "contextos/product/dominio/src/eventos.rs");
     assert!(events.contains("    Published(ProductSnapshot),"));
     assert!(events.contains("Self::Published(_) => PRODUCT_PUBLISHED,"));
     // No use case records it until one is written to.
     let create = read(
         &output,
-        "business/src/application/product/create_product.rs",
+        "contextos/product/aplicacion/src/create_product.rs",
     );
     assert!(!create.contains("Published"));
     cleanup(&dir);
@@ -363,7 +380,7 @@ fn custom_events_survive_a_forced_rescaffold_and_a_bootstrap() {
     scaffold::run_scaffold("Product", &output, &fields, OverwritePolicy::Force).unwrap();
     scaffold::run_bootstrap_command(&output, false).unwrap();
 
-    let events = read(&output, "business/src/domain/product/events.rs");
+    let events = read(&output, "contextos/product/dominio/src/eventos.rs");
     assert!(events.contains("    Published(ProductSnapshot),"));
     cleanup(&dir);
 }

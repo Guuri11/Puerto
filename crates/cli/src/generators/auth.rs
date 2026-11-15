@@ -2,15 +2,13 @@
 //! `Autenticador` in front of the provider, `GET /me`, and Keycloak for development. Every file
 //! here is written once — the project's from then on.
 
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use std::fs;
 use std::path::Path;
 
 use crate::generators::naming::write_file;
 use crate::generators::project::{add_compose_service, add_workspace_dependency};
 use crate::generators::render::render;
-use crate::patchers::api_rs::patch_api_rs;
-use crate::patchers::lib_rs::insert_before_block_end;
 
 /// The Keycloak a project runs in development; `make test/auth` tests Puerto against the same tag.
 pub const KEYCLOAK_IMAGE: &str = "quay.io/keycloak/keycloak:26.8.0";
@@ -110,35 +108,56 @@ fn render_for(template: &str, local: bool) -> Result<String, Box<dyn std::error:
     Ok(render(template, &ctx)?)
 }
 
-/// The `User` entity: model, errors and repository port. Declared in `business/src/lib.rs` — it is
-/// not an `[[entidad]]`, so no scaffold or `bootstrap.rs` entity block ever touches it.
-fn write_user_domain(base: &Path, local: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join(layout::domain_dir("user"));
-    write_file(
-        &dir.join("model.rs"),
-        &render_for("auth/user_model.tera", local)?,
-    )?;
-    write_file(
-        &dir.join("errors.rs"),
-        &render_for("auth/user_errors.tera", local)?,
-    )?;
-    write_file(
-        &dir.join("repository.rs"),
-        &render_static("auth/user_repository.tera")?,
-    )?;
-    // The callers the scaffolded tests pass as `actor`.
-    write_file(
-        &base.join(layout::mother("principal")),
-        &render_static("auth/principal_mother.tera")?,
-    )?;
-    crate::patchers::lib_rs::patch_mothers_lib(base, "principal")?;
-    let lib = base.join(layout::BUSINESS_LIB);
-    let src = fs::read_to_string(&lib)?;
-    if !src.contains("pub mod user {") {
-        let block = "\n    pub mod user {\n        pub mod errors;\n        pub mod model;\n        pub mod repository;\n    }\n";
-        fs::write(&lib, insert_before_block_end(&src, "domain", block)?)?;
+/// One crate of the `usuario` context: its files, written once, then its `Cargo.toml`, `lib.rs`
+/// and workspace entry (ADR-0023: it is not an `[[entidad]]`, so no scaffold or `cableado` entity
+/// block touches it).
+fn write_user_crate(
+    base: &Path,
+    layer: Layer,
+    files: &[(&str, String)],
+    db: bool,
+    local: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let c = layout::USER_CONTEXT;
+    let dir = layout::crate_dir(c, layer);
+    for (file, content) in files {
+        write_file(&base.join(&dir).join("src").join(file), content)?;
     }
+    let template = match layer {
+        Layer::Domain => "contexto/usuario_dominio_cargo.tera",
+        Layer::Application => "contexto/usuario_aplicacion_cargo.tera",
+        Layer::Infrastructure => "contexto/usuario_infra_cargo.tera",
+        Layer::Rest => "contexto/usuario_rest_cargo.tera",
+    };
+    let mut ctx = tera::Context::new();
+    ctx.insert("db", &db);
+    ctx.insert("local", &local);
+    write_file(
+        &base.join(layout::crate_manifest(c, layer)),
+        &render(template, &ctx)?,
+    )?;
+    crate::generators::crates::write_lib(base, &dir, "")?;
+    crate::generators::crates::add_internal_dependency(base, &layout::crate_name(c, layer), &dir)?;
+    crate::generators::crates::sync_workspace_dependencies(base)?;
     Ok(())
+}
+
+/// The `User` entity: model, errors and repository port.
+fn write_user_domain(base: &Path, db: bool, local: bool) -> Result<(), Box<dyn std::error::Error>> {
+    write_user_crate(
+        base,
+        Layer::Domain,
+        &[
+            ("modelo.rs", render_for("auth/user_model.tera", local)?),
+            ("errores.rs", render_for("auth/user_errors.tera", local)?),
+            (
+                "repositorio.rs",
+                render_static("auth/user_repository.tera")?,
+            ),
+        ],
+        db,
+        local,
+    )
 }
 
 /// The user repository (in memory, or Postgres with its migration) and, for OIDC, the provisioning
@@ -148,19 +167,19 @@ fn write_user_infrastructure(
     db: bool,
     local: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = base.join(layout::infra_dir("user"));
     let repository = if db {
         "auth/user_repository_pg.tera"
     } else {
         "auth/user_repository_inmemory.tera"
     };
-    write_file(&dir.join("repository.rs"), &render_static(repository)?)?;
+    let mut files = vec![("repositorio.rs", render_static(repository)?)];
     if !local {
-        write_file(
-            &dir.join("provisioning.rs"),
-            &render_static("auth/provisioning.tera")?,
-        )?;
+        files.push((
+            "aprovisionamiento.rs",
+            render_static("auth/provisioning.tera")?,
+        ));
     }
+    write_user_crate(base, Layer::Infrastructure, &files, db, local)?;
     if db {
         crate::generators::migration::run_migration(
             "create_users_table",
@@ -168,89 +187,52 @@ fn write_user_infrastructure(
             Some(&render_static("auth/users.sql")?),
         )?;
     }
-    let lib = base.join(layout::INFRA_LIB);
-    let mut src = fs::read_to_string(&lib)?;
-    if !src.contains("pub mod user {") {
-        if !src.is_empty() && !src.ends_with('\n') {
-            src.push('\n');
-        }
-        src.push_str(if local {
-            "pub mod user {\n    pub mod repository;\n}\n"
-        } else {
-            "pub mod user {\n    pub mod provisioning;\n    pub mod repository;\n}\n"
-        });
-        fs::write(&lib, src)?;
-    }
     Ok(())
 }
 
-/// `GET /me`: `presentation/src/api/me.rs` and its `dto.rs` and `routes.rs`.
-fn write_me_api(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let api = base.join(layout::API_DIR);
-    write_file(&api.join("me.rs"), &render_static("auth/me.tera")?)?;
-    write_file(&api.join("me/dto.rs"), &render_static("auth/me_dto.tera")?)?;
-    write_file(
-        &api.join("me/routes.rs"),
-        &render_static("auth/me_routes.tera")?,
-    )?;
-    patch_api_rs(base, "me")
-}
-
-/// The local use cases, in the order a `lib.rs` declares them.
+/// The local use cases: one file each, contract and implementation (ADR-0023 § 4).
 const LOCAL_USE_CASES: [&str; 3] = ["login", "logout", "register_user"];
 
-/// Local accounts (`PLAN.md` § 16.6): `register_user`, `login`, `logout` and `POST /auth/*`, the
-/// credentials and sessions migration after `users`'.
-fn write_local_accounts(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let business = base.join(layout::BUSINESS_SRC);
-    for uc in LOCAL_USE_CASES {
-        write_file(
-            &business.join(format!("domain/user/use_cases/{uc}.rs")),
-            &render_static(&format!("auth/local/{uc}_trait.tera"))?,
-        )?;
-        write_file(
-            &business.join(format!("application/user/{uc}.rs")),
-            &render_static(&format!("auth/local/{uc}.tera"))?,
-        )?;
+/// The `usuario` REST crate: `GET /me` and, with local accounts, `POST /auth/*`.
+fn write_user_rest(base: &Path, db: bool, local: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let mut files = vec![
+        ("me.rs", render_static("auth/me.tera")?),
+        ("me/dto.rs", render_static("auth/me_dto.tera")?),
+        ("me/rutas.rs", render_static("auth/me_routes.tera")?),
+    ];
+    if local {
+        for (file, template) in [
+            ("auth.rs", "auth_api"),
+            ("auth/dto.rs", "auth_dto"),
+            ("auth/errores.rs", "auth_error_mapper"),
+            ("auth/respuestas.rs", "auth_responses"),
+            ("auth/rutas.rs", "auth_routes"),
+        ] {
+            files.push((file, render_static(&format!("auth/local/{template}.tera"))?));
+        }
     }
-    let lib = business.join("lib.rs");
-    let src = fs::read_to_string(&lib)?;
-    if !src.contains("pub mod register_user;") {
-        let decls: String = LOCAL_USE_CASES
-            .iter()
-            .map(|uc| format!("            pub mod {uc};\n"))
-            .collect();
-        let src = insert_before_block_end(
-            &src,
-            "user",
-            &format!("        pub mod use_cases {{\n{decls}        }}\n"),
-        )?;
-        let decls: String = LOCAL_USE_CASES
-            .iter()
-            .map(|uc| format!("        pub mod {uc};\n"))
-            .collect();
-        let src = insert_before_block_end(
-            &src,
-            "application",
-            &format!("\n    pub mod user {{\n{decls}    }}\n"),
-        )?;
-        fs::write(&lib, src)?;
-    }
+    write_user_crate(base, Layer::Rest, &files, db, local)
+}
 
-    let api = base.join(layout::API_DIR);
-    for (file, template) in [
-        ("auth.rs", "auth_api"),
-        ("auth/dto.rs", "auth_dto"),
-        ("auth/error_mapper.rs", "auth_error_mapper"),
-        ("auth/responses.rs", "auth_responses"),
-        ("auth/routes.rs", "auth_routes"),
-    ] {
-        write_file(
-            &api.join(file),
-            &render_static(&format!("auth/local/{template}.tera"))?,
-        )?;
+/// Local accounts (`PLAN.md` § 16.6): `register_user`, `login`, `logout`, the credentials and
+/// sessions migration after `users`'.
+fn write_local_accounts(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let mut files = vec![];
+    for uc in LOCAL_USE_CASES {
+        files.push((
+            uc,
+            crate::generators::merge::merge_use_case(
+                &render_static(&format!("auth/local/{uc}_trait.tera"))?,
+                &render_static(&format!("auth/local/{uc}.tera"))?,
+            ),
+        ));
     }
-    patch_api_rs(base, "auth")?;
+    let files: Vec<(String, String)> = files
+        .into_iter()
+        .map(|(uc, content)| (format!("{uc}.rs"), content))
+        .collect();
+    let files: Vec<(&str, String)> = files.iter().map(|(f, c)| (f.as_str(), c.clone())).collect();
+    write_user_crate(base, Layer::Application, &files, true, true)?;
 
     crate::generators::migration::run_migration(
         "create_auth_tables",
@@ -260,76 +242,57 @@ fn write_local_accounts(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// `puerto-auth` and the `usuario` crates for the `api` binary: `bootstrap.rs` builds the
+/// authenticator, the user repository and, with local accounts, the use cases and the hasher.
+fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::generators::bootstrap::add_crate_dependency;
+    add_workspace_dependency(base, "puerto-auth")?;
+    let feature = if local { "local" } else { "oidc" };
+    add_crate_dependency(
+        base,
+        layout::API_MANIFEST,
+        "dependencies",
+        "puerto-auth",
+        &format!("{{ workspace = true, features = [\"{feature}\"] }}"),
+    )?;
+    add_crate_dependency(
+        base,
+        layout::API_MANIFEST,
+        "dependencies",
+        "puerto-nucleo",
+        "{ workspace = true }",
+    )?;
+    let c = layout::USER_CONTEXT;
+    let mut layers = vec![Layer::Domain, Layer::Infrastructure, Layer::Rest];
+    if local {
+        layers.push(Layer::Application);
+    }
+    for layer in layers {
+        add_crate_dependency(
+            base,
+            layout::API_MANIFEST,
+            "dependencies",
+            &layout::crate_name(c, layer),
+            "{ workspace = true }",
+        )?;
+    }
+    if local {
+        // The spec export test builds `AuthApi` from the use cases' doubles.
+        add_crate_dependency(
+            base,
+            layout::API_MANIFEST,
+            "dev-dependencies",
+            &layout::crate_name(c, Layer::Application),
+            "{ workspace = true, features = [\"pruebas\"] }",
+        )?;
+    }
+    Ok(())
+}
+
 /// Inserts `line` after the first line of `manifest` that is exactly `after`.
 fn insert_after_line(manifest: &str, after: &str, line: &str) -> Option<String> {
     let at = manifest.find(&format!("{after}\n"))? + after.len() + 1;
     Some(format!("{}{line}\n{}", &manifest[..at], &manifest[at..]))
-}
-
-/// `puerto-auth` for `bootstrap.rs`, and the mocks the generated tests use.
-fn add_dependencies(base: &Path, local: bool) -> Result<(), Box<dyn std::error::Error>> {
-    add_workspace_dependency(base, "puerto-auth")?;
-    let core = "puerto-nucleo = { workspace = true }";
-    let core_mocks = "puerto-nucleo = { workspace = true, features = [\"pruebas\"] }";
-
-    let path = base.join(layout::PRESENTATION_MANIFEST);
-    let src = fs::read_to_string(&path)?;
-    if !src.contains("puerto-auth") {
-        let src = insert_after_line(
-            &src,
-            core,
-            if local {
-                "# The password hasher `bootstrap.rs` builds (ADR-0021).\npuerto-auth = { workspace = true, features = [\"local\"] }"
-            } else {
-                "# The OIDC adapter `bootstrap.rs` builds (ADR-0021).\npuerto-auth = { workspace = true, features = [\"oidc\"] }"
-            },
-        )
-        .and_then(|src| {
-            insert_after_line(
-                &src,
-                "business = { path = \"../business\", features = [\"test-utils\"] }",
-                &format!("# `MockAutenticador`, for the routes that take `BearerAuth`.\n{core_mocks}"),
-            )
-        })
-        .ok_or_else(|| {
-            format!(
-                "{}: no `{core}` or business test-utils dev-dependency",
-                path.display()
-            )
-        })?;
-        fs::write(&path, src)?;
-    }
-
-    // `provisioning.rs` tests over `MockUserRepository` and `MockAutenticador`.
-    let path = base.join(layout::INFRA_MANIFEST);
-    let src = fs::read_to_string(&path)?;
-    if !src.contains(core_mocks) {
-        let src = insert_after_line(
-            &src,
-            "[dev-dependencies]",
-            &format!(
-                "business = {{ path = \"../business\", features = [\"test-utils\"] }}\n{core_mocks}"
-            ),
-        )
-        .ok_or_else(|| format!("{}: no [dev-dependencies]", path.display()))?;
-        fs::write(&path, src)?;
-    }
-
-    // The local use cases' tests drive the ports' mocks.
-    if local {
-        let path = base.join(layout::BUSINESS_MANIFEST);
-        let src = fs::read_to_string(&path)?;
-        if !src.contains(core_mocks) {
-            let src = insert_after_line(
-                &src,
-                "[dev-dependencies]",
-                &format!("# The auth ports' mocks (`MockHasherContrasena`, …).\n{core_mocks}"),
-            )
-            .ok_or_else(|| format!("{}: no [dev-dependencies]", path.display()))?;
-            fs::write(&path, src)?;
-        }
-    }
-    Ok(())
 }
 
 fn keycloak_service(project: &str) -> String {
@@ -337,7 +300,7 @@ fn keycloak_service(project: &str) -> String {
         r#"  keycloak:
     image: {KEYCLOAK_IMAGE}
     container_name: {project}-keycloak
-    # Imports infrastructure/keycloak/realm.json on the first start: the `web` client, the
+    # Imports keycloak/realm.json on the first start: the `web` client, the
     # `admin` role and a user holding it (`make auth/ui`).
     command: start-dev --import-realm
     ports:
@@ -347,7 +310,7 @@ fn keycloak_service(project: &str) -> String {
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: "true"
     volumes:
-      - ./infrastructure/keycloak:/opt/keycloak/data/import:ro
+      - ./keycloak:/opt/keycloak/data/import:ro
     restart: unless-stopped
     healthcheck:
       # The image has no curl: bash's /dev/tcp asks the management port.
@@ -636,16 +599,16 @@ protected request against the provider at `AUTH_ISSUER` — Keycloak in developm
 - `puerto generar scaffold <Name>` protects every CRUD route. `--publico list_products,get_product`
   leaves routes open; `--rol delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
   the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
-  `puerto validar` checks `routes.rs` still says the same — change both together.
+  `puerto validar` checks `rutas.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
-  build one with `PrincipalMother`. `generate use-case` adds it too.
+  build one with `puerto_nucleo::auth::dobles::MadrePrincipal`. `generar caso-de-uso` adds it too.
 - **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `usuarios.roles` column is not read.
 - Calling the API by hand: `curl -H "Authorization: Bearer $(make -s auth/token)" …` —
   `admin@…` holds `admin`, `make -s auth/token EMAIL=user@…` no role. It asks the development
   realm's `dev-cli` client (password grant): never create such a client in a real provider.
-- Every caller is a `User` (`business/src/domain/user/`), created on their first request by
-  `infrastructure/src/user/provisioning.rs`. Point at a person with a `UserId`, never with the
-  provider's subject. These files are yours.
+- Every caller is a `User` (`contextos/usuario/dominio/`), created on their first request by
+  `contextos/usuario/infraestructura/src/aprovisionamiento.rs`. Point at a person with a `UserId`,
+  never with the provider's subject. These files are yours.
 - `GET /me` answers the caller as the API resolved them. The frontend reads it, never the token.
 - A rule that depends on data ("only the owner edits") belongs in the use case, not in an
   attribute.
@@ -665,16 +628,16 @@ the token as `Authorization: Bearer <token>`; the database keeps only its SHA-25
 - `puerto generar scaffold <Name>` protects every CRUD route. `--publico list_products,get_product`
   leaves routes open; `--rol delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
   the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
-  `puerto validar` checks `routes.rs` still says the same — change both together.
+  `puerto validar` checks `rutas.rs` still says the same — change both together.
 - A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
-  build one with `PrincipalMother`. `generate use-case` adds it too.
+  build one with `puerto_nucleo::auth::dobles::MadrePrincipal`. `generar caso-de-uso` adds it too.
 - **Roles are the `usuarios.roles` column**: `make auth/grant EMAIL=… ROLE=…`. They apply from the
   next request.
 - Passwords are argon2id hashes in `credentials`; `User` carries no secret. A login with an unknown
   email and one with a wrong password get the same `401 auth.invalid_credentials`, in the same time.
   Sessions last `AUTH_SESSION_TTL` (`.env`); expired rows are refused, pruning them is yours.
-- `register_user`, `login`, `logout` (`business/src/{domain,application}/user/`) and
-  `presentation/src/api/auth/` are yours. Registration is open: close it, or add rules, there.
+- `register_user`, `login`, `logout` (`contextos/usuario/aplicacion/`) and
+  `contextos/usuario/rest/src/auth/` are yours. Registration is open: close it, or add rules, there.
 - `GET /me` answers the caller as the API resolved them.
 - A rule that depends on data ("only the owner edits") belongs in the use case, not in an
   attribute.
@@ -766,9 +729,9 @@ pub fn apply_auth_to_new_project(
 
     let local = mode == "local";
 
-    write_user_domain(base, local)?;
+    write_user_domain(base, config.project.db, local)?;
     write_user_infrastructure(base, config.project.db, local)?;
-    write_me_api(base)?;
+    write_user_rest(base, config.project.db, local)?;
     add_dependencies(base, local)?;
     if local {
         write_local_accounts(base)?;

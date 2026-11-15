@@ -2,18 +2,18 @@
 
 The second process of this project (ADR-0018 of Puerto). The API's units of work write every
 event to the `outbox` table in the entity's own transaction; this process **relays** the outbox
-to the transport and **runs the consumers**. It is a composition root, like `presentation`: no
+to the transport and **runs the consumers**. It is a composition root, like `presentacion/api`: no
 business logic lives here — a consumer decodes the event and calls a use case.
 
 ## Layer Structure
 
 ```
-worker/src/
+presentacion/worker/src/
 ├── main.rs                  # `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(…)` (never changes)
-├── generated.rs             # `pub mod registry;`
-├── generated/registry.rs    # AUTO-GENERATED: the relay and every `[[consumidor]]` — never hand-edit
-├── consumers.rs             # `pub mod <consumer>;` — no `mod.rs`
-└── consumers/
+├── generado.rs              # `pub mod registro;`
+├── generado/registro.rs     # AUTO-GENERATED: the relay and every `[[consumidor]]` — never hand-edit
+├── consumidores.rs          # `pub mod <consumer>;` — no `mod.rs`
+└── consumidores/
     └── <consumer>.rs        # Yours: a `ManejadorEvento`, written once by `puerto generar consumidor`
 ```
 
@@ -21,7 +21,7 @@ worker/src/
 
 - **Add a consumer with `puerto generar consumidor <name> --tras <event_type>[,…]`** — it declares
   `[[consumidor]]` in `puerto.toml`, writes the handler and its tests, and regenerates
-  `generated/registry.rs`. Never wire one by hand.
+  `generado/registro.rs`. Never wire one by hand.
 - **Handlers must be idempotent.** Delivery is at-least-once: the same `event.id` can arrive
   twice. Check whether the work was already done (keyed on `event.id`) before doing it again.
 - **Answer honestly**: `Ack` when done; `Retry` for a failure that may pass (redelivered with a

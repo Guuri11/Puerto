@@ -1,0 +1,26 @@
+[package]
+name = "aplicacion_{{ c }}"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_{{ c }} = { workspace = true }
+puerto-nucleo = { workspace = true }
+{% if shared %}nucleo = { workspace = true }
+{% endif %}{% for r in refs %}dominio_{{ r }} = { workspace = true }
+{% endfor %}async-trait = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+mockall = { workspace = true, optional = true }
+
+[features]
+# The use cases' doubles (`mock!`), for the tests of other crates (ADR-0023 § 5 of Puerto).
+pruebas = ["dep:mockall", "dominio_{{ c }}/pruebas"]
+
+[dev-dependencies]
+{% if auth %}# The tests' callers: `MadrePrincipal`, and the routes' `MockAutenticador`.
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
+{% endif %}dominio_{{ c }} = { workspace = true, features = ["pruebas"] }
+mockall = { workspace = true }
+tokio = { workspace = true }

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 {% if actor %}use puerto_nucleo::auth::Principal;
 {% endif %}
-use crate::domain::{{ snake }}::{errors::{{ pascal }}Error, model::{{ pascal }}};
+use dominio_{{ snake }}::{errores::{{ pascal }}Error, modelo::{{ pascal }}};
 
 #[derive(Debug, Clone)]
 pub struct {{ uc_pascal }}Params {
@@ -16,7 +16,7 @@ pub trait {{ uc_pascal }}UseCaseTrait: Send + Sync {
     async fn execute(&self, params: {{ uc_pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
 }
 
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(test, feature = "pruebas"))]
 pub mod mocks {
     use mockall::mock;
 

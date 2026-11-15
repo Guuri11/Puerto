@@ -1,11 +1,11 @@
 //! Renders the `{{ name }}` mail from its templates and hands it to the mailer. Written once by
-//! `puerto generar correo`; it is yours now. The text is in `infrastructure/mail/{{ name }}/`:
+//! `puerto generar correo`; it is yours now. The text is in `plantillas/{{ name }}/`:
 //! change it there — the tests below render it again, so a typo fails `make test`.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use business::domain::mail::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
+use dominio_correo::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
 use puerto_correo::{ErrorCorreo, EnviadorCorreo, Plantillas};
 use serde::Serialize;
 {%- for import in imports %}
@@ -13,10 +13,10 @@ use {{ import }};
 {%- endfor %}
 
 const TEMPLATES: Plantillas = Plantillas::new(
-    include_str!("../../mail/{{ name }}/subject.txt"),
-    include_str!("../../mail/{{ name }}/body.html"),
+    include_str!("../plantillas/{{ name }}/subject.txt"),
+    include_str!("../plantillas/{{ name }}/body.html"),
 )
-.con_texto(include_str!("../../mail/{{ name }}/body.txt"));
+.con_texto(include_str!("../plantillas/{{ name }}/body.txt"));
 
 /// What the templates see: the mail's fields but the recipient, under their own names.
 #[derive(Serialize)]
@@ -36,7 +36,7 @@ impl<'a> Context<'a> {
     }
 }
 
-/// The `{{ name }}` mail, rendered from `infrastructure/mail/{{ name }}/` and sent through `mailer`
+/// The `{{ name }}` mail, rendered from `plantillas/{{ name }}/` and sent through `mailer`
 /// (`puerto_correo::EnviadorCorreoSmtp` where it runs).
 pub struct Template{{ pascal }}Mailer {
     mailer: Arc<dyn EnviadorCorreo>,
@@ -78,7 +78,7 @@ mod tests {
         // Assert
         let email = match email {
             Ok(email) => email,
-            Err(err) => panic!("infrastructure/mail/{{ name }}/ does not render: {err}"),
+            Err(err) => panic!("plantillas/{{ name }}/ does not render: {err}"),
         };
         assert!(!email.asunto.is_empty());
         assert!(!email.html.is_empty());

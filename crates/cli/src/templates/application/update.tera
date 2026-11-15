@@ -3,11 +3,10 @@
 use async_trait::async_trait;
 {% for import in vo_imports %}use {{ import }};
 {% endfor %}
-use crate::domain::{{ snake }}::{
-    errors::{{ pascal }}Error,
-    model::{{ pascal }},
-    repository::{{ pascal }}RepositoryTrait,
-    use_cases::update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
+use dominio_{{ snake }}::{
+    errores::{{ pascal }}Error,
+    modelo::{{ pascal }},
+    repositorio::{{ pascal }}RepositoryTrait,
 };
 
 pub struct Update{{ pascal }}UseCaseImpl {
@@ -44,10 +43,10 @@ impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-{% if actor %}    use crate::tests::mothers::principal_mother::PrincipalMother;
-{% endif %}    use crate::domain::{{ snake }}::{
-        model::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
-        repository::mocks::Mock{{ pascal }}Repository,
+{% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
+{% endif %}    use dominio_{{ snake }}::{
+        modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
+        repositorio::mocks::Mock{{ pascal }}Repository,
     };
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
@@ -70,7 +69,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-{% if actor %}                actor: PrincipalMother::random(),
+{% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: entity_id,
 {{ macros::params(fields=fields, word="updated") }}            })
             .await;
@@ -91,7 +90,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-{% if actor %}                actor: PrincipalMother::random(),
+{% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: {{ pascal }}Id::generate(),
 {{ macros::params(fields=fields, word="new") }}            })
             .await;
@@ -118,7 +117,7 @@ mod tests {
         // Act
         let result = use_case
             .execute(Update{{ pascal }}Params {
-{% if actor %}                actor: PrincipalMother::random(),
+{% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: entity_id,
 {{ macros::params(fields=fields, word="updated", empty=f.name) }}            })
             .await;

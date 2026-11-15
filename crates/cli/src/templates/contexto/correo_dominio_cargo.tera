@@ -1,0 +1,18 @@
+[package]
+name = "dominio_correo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+puerto-nucleo = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+mockall = { workspace = true, optional = true }
+
+[features]
+# The mailers' doubles (`mock!`), for the tests of the code that sends them (ADR-0023 § 5 of Puerto).
+pruebas = ["dep:mockall"]
+
+[dev-dependencies]
+mockall = { workspace = true }

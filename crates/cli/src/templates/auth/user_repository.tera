@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use puerto_nucleo::ErrorRepositorio;
 
-use super::model::{User, UserId};
+use crate::modelo::{User, UserId};
 
 #[async_trait]
 pub trait UserRepositoryTrait: Send + Sync {
@@ -16,7 +16,7 @@ pub trait UserRepositoryTrait: Send + Sync {
     async fn save(&self, user: &User) -> Result<(), ErrorRepositorio>;
 }
 
-#[cfg(any(test, feature = "test-utils"))]
+#[cfg(any(test, feature = "pruebas"))]
 pub mod mocks {
     use mockall::mock;
 

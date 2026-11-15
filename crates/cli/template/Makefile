@@ -1,6 +1,6 @@
 .PHONY: help setup run \
         test test/domain test/application test/infrastructure \
-        lint format format/fix check clean \
+        lint format format/fix check clean clean/incremental \
         audit audit/fix \
         generate/entity generate/use-case generate/bootstrap \
         web/install web/require-install web/dev web/test web/lint web/sync
@@ -29,24 +29,24 @@ setup: ## Install required dev tools (run once after cloning)
 
 run: ## Run the API server (http://localhost:8080)
 	@echo "${GREEN}Starting API server (in memory: data is lost on restart)...${NC}"
-	$(CARGO) run -p presentation
+	$(CARGO) run -p api
 
 test: ## Run all tests
 	@echo "${YELLOW}Running all tests...${NC}"
 	$(CARGO) nextest run --workspace
 	@if [ -d web ]; then $(MAKE) web/test; fi
 
-test/domain: ## Run domain layer tests
+test/domain: ## Run the tests of every domain crate (dominio_*)
 	@echo "${YELLOW}Running domain tests...${NC}"
-	$(CARGO) nextest run -p business -E 'test(domain)'
+	$(CARGO) nextest run --workspace -E 'package(dominio_*)' --no-tests=warn
 
-test/application: ## Run application layer tests
-	@echo "${YELLOW}Running application layer tests...${NC}"
-	$(CARGO) nextest run -p business -E 'test(application)'
+test/application: ## Run the tests of every application crate (aplicacion_*)
+	@echo "${YELLOW}Running application tests...${NC}"
+	$(CARGO) nextest run --workspace -E 'package(aplicacion_*)' --no-tests=warn
 
-test/infrastructure: ## Run infrastructure layer tests (requires DB)
+test/infrastructure: ## Run the tests of every infrastructure crate (infra_*; requires DB with --db)
 	@echo "${YELLOW}Running infrastructure tests...${NC}"
-	$(CARGO) nextest run -p infrastructure
+	$(CARGO) nextest run --workspace -E 'package(infra_*)' --no-tests=warn
 
 lint: ## Clippy with -D warnings
 	@echo "${CYAN}Linting code...${NC}"
@@ -68,6 +68,10 @@ check: ## Fast compile check (no binary)
 clean: ## Remove build artifacts
 	@echo "${RED}Cleaning build artifacts...${NC}"
 	$(CARGO) clean
+
+clean/incremental: ## Remove the incremental caches (they grow fast with one crate per context)
+	@echo "${RED}Removing incremental caches...${NC}"
+	rm -rf target/debug/incremental target/release/incremental
 
 audit: ## Run security audit on dependencies
 	@echo "${CYAN}Running security audit...${NC}"
@@ -93,7 +97,7 @@ generate/use-case: ## Add a use case to an entity — make generate/use-case ENT
 	@echo "${GREEN}Adding use case '$$ACTION' to '$$ENTITY'...${NC}"
 	puerto generar caso-de-uso $$ENTITY $$ACTION
 
-generate/bootstrap: ## Regenerate bootstrap.rs from puerto.toml
+generate/bootstrap: ## Regenerate the wiring (cableado, bootstrap.rs) from puerto.toml
 	@echo "${GREEN}Regenerating bootstrap.rs...${NC}"
 	puerto generar bootstrap
 
@@ -122,7 +126,7 @@ web/lint: web/require-install ## Typecheck, lint and check the frontend Dependen
 
 web/sync: web/require-install ## After a scaffold or a DTO change: export the OpenAPI spec, regenerate the web types
 	@echo "${CYAN}Exporting docs/api/openapi.json...${NC}"
-	UPDATE_OPENAPI=1 $(CARGO) test -p presentation openapi
+	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
 	@echo "${CYAN}Generating web/src/infrastructure/http/schema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formatting web/ (Biome, no lint fixes)...${NC}"

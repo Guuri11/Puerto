@@ -1,16 +1,16 @@
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use serde_json::json;
 use std::path::Path;
 
 use crate::generators::auth::Access;
 use crate::generators::bootstrap::regenerate_bootstrap;
+use crate::generators::crates::ContextDeps;
 use crate::generators::effective_fields;
 use crate::generators::naming::{
     crud_use_case, crud_use_cases, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
 };
 use crate::generators::render::render;
 use crate::generators::types::{FieldCtx, field_ctx, literal_import, resolve_type};
-use crate::patchers::api_rs::patch_api_rs;
 use crate::puerto_toml::Field;
 
 pub(crate) fn build_dto_ctx(
@@ -106,7 +106,7 @@ fn build_routes_crud_ctx(
         }
     }
     let mut reference_imports = vec![];
-    crate::generators::domain::push_reference_imports(&mut reference_imports, &eff, "business");
+    crate::generators::domain::push_reference_imports(&mut reference_imports, &eff);
     let mut ctx = simple_ctx(pascal, snake, &eff);
     ctx.insert("test_imports", &test_imports);
     ctx.insert("reference_imports", &reference_imports);
@@ -138,6 +138,8 @@ pub fn generate_crud_routes(
     )
 }
 
+/// The context's REST crate: DTOs, responses, the error mapping and the routes with their tests,
+/// then its `Cargo.toml` and `lib.rs`.
 pub fn write_presentation_files(
     pascal: &str,
     snake: &str,
@@ -151,32 +153,28 @@ pub fn write_presentation_files(
     // `{Entity}Error::Forbidden` exists in every CRUD entity of an auth project.
     error_mapper_ctx.insert("auth", &access.is_auth());
     write_file(
-        &base.join(layout::api_module(snake)),
-        "pub mod dto;\npub mod error_mapper;\npub mod responses;\npub mod routes;\n",
-    )?;
-    write_file(
-        &base.join(layout::api_file(snake, "dto")),
+        &base.join(layout::rest_file(snake, "dto")),
         &render(
             "presentation/dto.tera",
             &build_dto_ctx(pascal, snake, fields, true),
         )?,
     )?;
     write_file(
-        &base.join(layout::api_file(snake, "responses")),
+        &base.join(layout::rest_file(snake, "respuestas")),
         &render("presentation/responses_crud.tera", &responses_ctx)?,
     )?;
     write_file(
-        &base.join(layout::api_file(snake, "error_mapper")),
+        &base.join(layout::rest_file(snake, "errores")),
         &render("presentation/error_mapper.tera", &error_mapper_ctx)?,
     )?;
     write_file(
-        &base.join(layout::api_file(snake, "routes")),
+        &base.join(layout::rest_file(snake, "rutas")),
         &render(
             "presentation/routes_crud.tera",
             &build_routes_crud_ctx(pascal, snake, fields, &access),
         )?,
     )?;
-    Ok(())
+    crate::generators::crates::finish(base, snake, Layer::Rest, &ContextDeps::read(base, fields))
 }
 
 pub fn run_generate_presentation(
@@ -194,6 +192,18 @@ pub fn run_generate_presentation(
         .into());
     }
 
+    // The routes hold the use cases' traits, which live in the application crate (ADR-0023 § 4).
+    if !base
+        .join(layout::crate_manifest(&snake, Layer::Application))
+        .exists()
+    {
+        return Err(format!(
+            "{pascal} has no application crate yet: the routes hold its use cases. Run \
+             `puerto generar aplicacion {pascal}` first."
+        )
+        .into());
+    }
+
     let fields = config
         .entity
         .iter()
@@ -202,13 +212,14 @@ pub fn run_generate_presentation(
         .unwrap_or_default();
 
     write_presentation_files(&pascal, &snake, base, &fields)?;
-    patch_api_rs(base, &snake)?;
     crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)?;
-    println!("✓ presentation/        — routes, dto, responses, error_mapper");
+    println!(
+        "✓ {}/ — routes, dto, responses, errors",
+        layout::crate_dir(&snake, Layer::Rest)
+    );
 
-    // API first is allowed: the routes only need the domain. `bootstrap.rs` also imports the use
-    // case implementations and the repository adapter, so it waits for them — written now, it
-    // would not compile.
+    // The routes only need the domain and the application crates. The wiring also names the
+    // repository adapter, so it waits for it — written now, it would not compile.
     let entity = config.entity.iter().find(|e| e.name == pascal);
     let missing: Vec<_> = entity
         .map(crate::generators::consistency::bootstrap_required_files)
@@ -224,17 +235,7 @@ pub fn run_generate_presentation(
         return Ok(());
     }
 
-    // The routes tag their endpoints `ApiTags::{pascal}`.
-    write_file(
-        &base.join(layout::TAGS_RS),
-        &crate::generators::bootstrap::generate_tags_content(&config.entity, &config.project)?,
-    )?;
-    let next = if missing.iter().any(|p| p.starts_with("business")) {
-        "application"
-    } else {
-        "repository"
-    };
-    println!("✓ tags.rs              — regenerated");
+    let next = "repositorio";
     println!();
     println!("  bootstrap.rs not regenerated yet: {pascal} has no {next} layer.");
     println!("  Next: puerto generar {next} {pascal}, then `puerto generar bootstrap`.");

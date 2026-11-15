@@ -14,7 +14,7 @@ fn scaffold_inmemory_product(name: &str, args: &[&str]) -> PathBuf {
         .iter()
         .map(|arg| puerto_toml::parse_field_arg(arg).unwrap())
         .collect();
-    scaffold::run("Product", &dir, false, true, &fields, &[]).unwrap();
+    scaffold::run("Product", &dir, false, &fields, &[]).unwrap();
     dir
 }
 
@@ -22,7 +22,7 @@ fn scaffold_inmemory_product(name: &str, args: &[&str]) -> PathBuf {
 fn inmemory_repository_keeps_rows_in_a_map_keyed_by_id() {
     let dir = scaffold_inmemory_product("inmemory_map", &[]);
 
-    let repo = read(&dir, "infrastructure/src/product/repository.rs");
+    let repo = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
     assert!(repo.contains("rows: RwLock<HashMap<ProductId, Product>>,"));
     assert!(repo.contains("#[derive(Default)]\npub struct InMemoryProductRepository {"));
     assert!(repo.contains("pub fn new() -> Self {"));
@@ -37,7 +37,7 @@ fn inmemory_repository_keeps_rows_in_a_map_keyed_by_id() {
 fn inmemory_repository_skips_deleted_rows_and_pages_like_postgres() {
     let dir = scaffold_inmemory_product("inmemory_paging", &[]);
 
-    let repo = read(&dir, "infrastructure/src/product/repository.rs");
+    let repo = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
     assert!(repo.contains(".filter(|row| !row.deleted)"));
     assert!(repo.contains("b.created_at"));
     assert!(repo.contains(".skip(page.desplazamiento() as usize)"));
@@ -49,12 +49,18 @@ fn inmemory_repository_skips_deleted_rows_and_pages_like_postgres() {
 #[test]
 fn inmemory_repository_checks_only_the_unique_fields() {
     let plain = scaffold_inmemory_product("inmemory_no_unique", &["name:String"]);
-    let repo = read(&plain, "infrastructure/src/product/repository.rs");
+    let repo = read(
+        &plain,
+        "contextos/product/infraestructura/src/repositorio.rs",
+    );
     assert!(!repo.contains("ErrorRepositorio::Duplicado"));
     cleanup(&plain);
 
     let unique = scaffold_inmemory_product("inmemory_unique", &["name:String", "sku:String!"]);
-    let repo = read(&unique, "infrastructure/src/product/repository.rs");
+    let repo = read(
+        &unique,
+        "contextos/product/infraestructura/src/repositorio.rs",
+    );
     assert!(repo.contains("&& row.sku == entity.sku"));
     assert!(!repo.contains("row.name == entity.name"));
     assert!(repo.contains("return Err(ErrorRepositorio::Duplicado);"));
@@ -66,7 +72,7 @@ fn inmemory_repository_checks_only_the_unique_fields() {
 fn inmemory_repository_ships_its_unit_tests() {
     let dir = scaffold_inmemory_product("inmemory_tests", &[]);
 
-    let repo = read(&dir, "infrastructure/src/product/repository.rs");
+    let repo = read(&dir, "contextos/product/infraestructura/src/repositorio.rs");
     for test in [
         "async fn should_find_a_saved_product_by_id()",
         "async fn should_update_the_row_when_saved_again()",
@@ -82,13 +88,16 @@ fn inmemory_repository_ships_its_unit_tests() {
 
 #[test]
 fn infrastructure_crate_can_run_async_tests() {
-    let cargo = crate::TEMPLATE_DIR
-        .get_file("infrastructure/Cargo.toml.liquid")
-        .and_then(|f| f.contents_utf8())
-        .unwrap();
-    assert!(cargo.contains(
-        "[dev-dependencies]\ntokio = { version = \"1\", features = [\"rt\", \"macros\"] }"
-    ));
+    let dir = temp_dir("infra_async_tests");
+    cleanup(&dir);
+    setup_puerto_stubs(&dir);
+    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
+
+    let cargo =
+        fs::read_to_string(dir.join("contextos/product/infraestructura/Cargo.toml")).unwrap();
+    assert!(cargo.contains("[dev-dependencies]"), "{cargo}");
+    assert!(cargo.contains("tokio = { workspace = true }"), "{cargo}");
+    cleanup(&dir);
 }
 
 #[test]

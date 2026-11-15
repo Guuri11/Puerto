@@ -2,7 +2,7 @@
 //! template implementation in infrastructure and its templates — written once, the user's from
 //! then on. The first mail of a project also brings `puerto-correo`, Mailpit and `SMTP_URL`.
 
-use crate::generators::layout;
+use crate::generators::layout::{self, Layer};
 use std::fs;
 use std::path::Path;
 
@@ -16,7 +16,6 @@ use crate::generators::types::resolve_type;
 use crate::generators::worker::{
     DeclaredEvent, declared_events, has_worker, regenerate_registry, subscribed, with_module,
 };
-use crate::patchers::lib_rs::{insert_before_block_end, patch_lib_block};
 use crate::puerto_toml::{Consumer, Field, Mail, PuertoConfig, parse_field_arg};
 
 /// The SMTP server development runs against (ADR-0020 § 5): SMTP on 1025, UI and API on 8025.
@@ -173,73 +172,27 @@ fn render_files(
     ))
 }
 
-/// `pub mod <name>;` in `domain { mail { … } }` of `business/src/lib.rs`, opening the block on
-/// the first mail.
-fn patch_business_lib(base: &Path, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join(layout::BUSINESS_LIB);
-    let src = fs::read_to_string(&path)?;
-    let patched = if src.contains("pub mod mail {") {
-        // Right before the block's closing brace (indented by 4): no blank line, so rustfmt
-        // keeps the declarations sorted.
-        patch_lib_block(
-            &src,
-            &["domain", "mail"],
-            &format!("    pub mod {name};\n    "),
-        )?
-    } else {
-        insert_before_block_end(
-            &src,
-            "domain",
-            &format!("\n    pub mod mail {{\n        pub mod {name};\n    }}\n"),
-        )?
-    };
-    fs::write(&path, patched)?;
-    Ok(())
-}
-
-/// `pub mod <name>;` in `mail { … }` of `infrastructure/src/lib.rs`, opening the block on the
-/// first mail.
-fn patch_infra_lib(base: &Path, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let path = base.join(layout::INFRA_LIB);
-    let mut src = fs::read_to_string(&path)?;
-    if src.contains("pub mod mail {") {
-        src = insert_before_block_end(&src, "mail", &format!("    pub mod {name};\n"))?;
-    } else {
-        if !src.is_empty() && !src.ends_with('\n') {
-            src.push('\n');
+/// The `correo` context's crates (ADR-0023): `dominio_correo` holds the mails' ports,
+/// `infra_correo` their template mailers on `puerto-correo`. Their `lib.rs` declares every mail on
+/// disk.
+fn write_mail_crates(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let c = layout::MAIL_CONTEXT;
+    for (layer, template) in [
+        (Layer::Domain, "contexto/correo_dominio_cargo.tera"),
+        (Layer::Infrastructure, "contexto/correo_infra_cargo.tera"),
+    ] {
+        let manifest = base.join(layout::crate_manifest(c, layer));
+        if !manifest.exists() {
+            write_file(&manifest, &render(template, &tera::Context::new())?)?;
         }
-        src.push_str(&format!("pub mod mail {{\n    pub mod {name};\n}}\n"));
+        crate::generators::crates::write_lib(base, &layout::crate_dir(c, layer), "")?;
+        crate::generators::crates::add_internal_dependency(
+            base,
+            &layout::crate_name(c, layer),
+            &layout::crate_dir(c, layer),
+        )?;
     }
-    fs::write(&path, src)?;
-    Ok(())
-}
-
-/// `puerto-correo` for the template mailers, and its fakes for their tests.
-fn add_puerto_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    add_workspace_dependency(base, "puerto-correo")?;
-    let path = base.join(layout::INFRA_MANIFEST);
-    let mut src = fs::read_to_string(&path)?;
-    if src.contains("puerto-correo") {
-        return Ok(());
-    }
-    let core = "puerto-nucleo = { workspace = true }\n";
-    if !src.contains(core) {
-        return Err(format!("{}: no `{}`", path.display(), core.trim_end()).into());
-    }
-    src = src.replacen(
-        core,
-        &format!("{core}puerto-correo = {{ workspace = true }}\n"),
-        1,
-    );
-    let dev = "puerto-correo = { workspace = true, features = [\"pruebas\"] }\n";
-    src = match src.find("[dev-dependencies]\n") {
-        Some(at) => {
-            let at = at + "[dev-dependencies]\n".len();
-            format!("{}{dev}{}", &src[..at], &src[at..])
-        }
-        None => format!("{src}\n[dev-dependencies]\n{dev}"),
-    };
-    fs::write(&path, src)?;
+    crate::generators::crates::sync_workspace_dependencies(base)?;
     Ok(())
 }
 
@@ -332,21 +285,22 @@ const AGENTS_MAIL_SECTION: &str = r#"
 A mail is three pieces, written once by `puerto generar correo <name> [-- field:Type …]` and yours
 from then on (ADR-0020 of Puerto):
 
-- `business/src/domain/mail/<name>.rs` — `{Name}Mail` (the recipient `to` and the values its text
-  shows) and the port `{Name}Mailer`. Code that sends it depends on the port; tests use
+- `contextos/correo/dominio/src/<name>.rs` — `{Name}Mail` (the recipient `to` and the values its
+  text shows) and the port `{Name}Mailer`. Code that sends it depends on the port; tests use
   `mocks::Mock{Name}Mailer`.
-- `infrastructure/src/mail/<name>.rs` — `Template{Name}Mailer`: renders the templates and hands
-  the message to the `puerto_correo::Mailer` (SMTP). Its tests render every template, so a typo in
-  one fails `make test`.
-- `infrastructure/mail/<name>/` — `subject.txt`, `body.html`, `body.txt`: minijinja, strict (an
-  unknown variable is an error). Wrap an optional field in `{% if x is not none %}`.
+- `contextos/correo/infraestructura/src/<name>.rs` — `Template{Name}Mailer`: renders the templates
+  and hands the message to the `puerto_correo::EnviadorCorreo` (SMTP). Its tests render every
+  template, so a typo in one fails `make test`.
+- `contextos/correo/infraestructura/plantillas/<name>/` — `subject.txt`, `body.html`, `body.txt`:
+  minijinja, strict (an unknown variable is an error). Wrap an optional field in
+  `{% if x is not none %}`.
 
 `SMTP_URL` and `MAIL_FROM` are in `.env`. In development Mailpit (`make docker-compose/up`)
 catches every mail — `make mail/ui` — and nothing reaches a real inbox until `SMTP_URL` points at
 a provider.
 
 **Who sends it.** In a project with domain events, `puerto generar correo <name> --tras
-<event_type> --para <field>` also writes `worker/src/consumers/mail_<name>.rs` (yours) and wires it
+<event_type> --para <field>` also writes `presentacion/worker/src/consumidores/mail_<name>.rs` (yours) and wires it
 in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
 per event (`puerto_correo::enviar_una_vez` keeps a `correos_enviados` row — a crash between the send and that
 row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
@@ -371,7 +325,7 @@ fn add_agents_section(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
 /// Everything the first mail of a project needs beyond its own files.
 fn set_up_mail(base: &Path, config: &PuertoConfig) -> Result<(), Box<dyn std::error::Error>> {
     let project = &config.project.name;
-    add_puerto_mail(base)?;
+    add_workspace_dependency(base, "puerto-correo")?;
     add_mailpit_to_compose(base, project)?;
     add_mail_env(base, project)?;
     add_mail_makefile_targets(base)?;
@@ -531,7 +485,7 @@ fn trigger_fields(
     Ok(fields)
 }
 
-/// `worker/src/consumers/mail_<name>.rs`: decodes each event's snapshot, builds the mail and
+/// `presentacion/worker/src/consumidores/mail_<name>.rs`: decodes each event's snapshot, builds the mail and
 /// sends it through `enviar_una_vez` — with its tests.
 fn render_handler(
     name: &str,
@@ -561,7 +515,7 @@ fn render_handler(
             } else {
                 format!("{{{}}}", names.join(", "))
             };
-            format!("business::domain::{snake}::events::{names}")
+            format!("dominio_{snake}::eventos::{names}")
         })
         .collect();
     let mut ctx = tera::Context::new();
@@ -615,6 +569,7 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let sql = render("infrastructure/sent_mails.sql", &tera::Context::new())?;
         crate::generators::migration::run_migration("correos_enviados", base, Some(&sql))?;
     }
+    crate::generators::crates::sync_workspace_dependencies(base)?;
     Ok(())
 }
 
@@ -690,8 +645,7 @@ pub fn run_generate_mail_on(
     write_file(&templates.join("subject.txt"), &subject)?;
     write_file(&templates.join("body.html"), &html)?;
     write_file(&templates.join("body.txt"), &text)?;
-    patch_business_lib(base, name)?;
-    patch_infra_lib(base, name)?;
+    write_mail_crates(base)?;
     if first {
         set_up_mail(base, &config)?;
     }
@@ -708,12 +662,22 @@ pub fn run_generate_mail_on(
 
     let pascal = to_pascal_case(name);
     println!("✓ Mail '{name}' added — yours from here on:");
-    println!("  business/src/domain/mail/{name}.rs       {pascal}Mail + the port {pascal}Mailer");
-    println!("  infrastructure/src/mail/{name}.rs        Template{pascal}Mailer, with its tests");
-    println!("  infrastructure/mail/{name}/              subject.txt, body.html, body.txt");
+    println!(
+        "  {}  {pascal}Mail + the port {pascal}Mailer",
+        layout::mail_port(name)
+    );
+    println!(
+        "  {}  Template{pascal}Mailer, with its tests",
+        layout::mail_adapter(name)
+    );
+    println!(
+        "  {}/  subject.txt, body.html, body.txt",
+        layout::mail_templates_dir(name)
+    );
     if let Some(trigger) = &trigger {
         println!(
-            "  worker/src/consumers/{consumer_name}.rs  sends it on {}, to `{}` — once per event",
+            "  {}  sends it on {}, to `{}` — once per event",
+            layout::consumer(&consumer_name),
             trigger
                 .events
                 .iter()
@@ -785,23 +749,8 @@ mod tests {
     fn scratch(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("puerto_mail_unit_{name}"));
         let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(dir.join("infrastructure/src")).unwrap();
+        fs::create_dir_all(&dir).unwrap();
         dir
-    }
-
-    #[test]
-    fn should_start_the_mail_block_on_its_own_line_when_lib_rs_has_no_final_newline() {
-        let dir = scratch("infra_lib");
-        let lib = dir.join("infrastructure/src/lib.rs");
-        fs::write(&lib, "pub mod greeting {\n    pub mod repository;\n}").unwrap();
-
-        patch_infra_lib(&dir, "welcome").unwrap();
-
-        assert_eq!(
-            fs::read_to_string(&lib).unwrap(),
-            "pub mod greeting {\n    pub mod repository;\n}\npub mod mail {\n    pub mod welcome;\n}\n"
-        );
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
