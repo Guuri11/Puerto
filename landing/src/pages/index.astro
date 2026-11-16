@@ -18,37 +18,37 @@ import nightTheme from '@/themes/puerto-night.json';
 const manifest = [
   {
     what: 'Entities',
-    command: 'puerto generate scaffold Product -- name:String sku:String!',
+    command: 'puerto generar scaffold Producto -- nombre:String sku:String!',
     gets: 'A model with its own id type, five use cases, five routes, the wiring and the screens. Every piece with its tests.',
     href: '/docs/guides/entities/',
   },
   {
     what: 'Value objects',
-    command: 'email:Email:String  status:Status:enum:Draft/Paid',
+    command: 'email:Email:String  estado:Estado:enum:Borrador/Pagado',
     gets: 'A type per concept, validated once in the domain, unwrapped at the edges.',
     href: '/docs/guides/value-objects/',
   },
   {
     what: 'Postgres',
-    command: 'puerto new --db',
+    command: 'puerto nuevo --db',
     gets: 'SQLx queries checked at compile time, migrations written for you, unique indexes that respect soft deletes.',
     href: '/docs/guides/database/',
   },
   {
     what: 'Domain events',
-    command: 'puerto new --db --events db|kafka',
+    command: 'puerto nuevo --db --eventos db|kafka',
     gets: 'A transactional outbox and a worker. At-least-once delivery, retries with backoff, nothing dropped without a dead letter.',
     href: '/docs/guides/events/',
   },
   {
     what: 'Mail',
-    command: 'puerto generate mail welcome --on customer_created --to email',
+    command: 'puerto generar correo bienvenida --tras cliente_creado --para email',
     gets: 'A port, three templates, and a consumer that sends it once per event.',
     href: '/docs/guides/mail/',
   },
   {
     what: 'Auth',
-    command: 'puerto new --auth oidc|local',
+    command: 'puerto nuevo --auth oidc|local',
     gets: 'Auth0, Keycloak or your own accounts. Routes protected by default, roles in one attribute.',
     href: '/docs/guides/auth/',
   },
@@ -57,6 +57,12 @@ const manifest = [
     command: 'web/',
     gets: 'React typed from the OpenAPI spec, with the same dependency rule as the backend.',
     href: '/docs/guides/web/',
+  },
+  {
+    what: 'In Spanish',
+    command: 'RepositorioProducto · crear_producto · /productos',
+    gets: 'Everything generated is written in Spanish, from types to routes and error codes. One glossary names it all.',
+    href: '/docs/start/anatomy/',
   },
   {
     what: 'Agent rules',
@@ -68,9 +74,9 @@ const manifest = [
 
 const steps = [
   { command: site.install, says: 'Install the CLI.' },
-  { command: 'puerto new --name shop --db', says: 'A workspace with three crates, a frontend and Postgres.' },
+  { command: 'puerto nuevo --nombre tienda --db', says: 'A workspace with a crate per layer, a frontend and Postgres.' },
   {
-    command: 'puerto generate scaffold Product -- name:String price:i64 sku:String!',
+    command: 'puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!',
     says: 'Every layer of an entity. Then make run.',
   },
 ];
@@ -118,8 +124,9 @@ const steps = [
       <h2 class="h2" id="rule-title" data-reveal>Same shape,<br />every project.</h2>
       <p class="measure" data-reveal>
         Shipping got fast when every container became the same size. Puerto does that to your
-        code: three crates, one dependency rule, the same files in the same places. Whoever
-        opens a Puerto project, a new hire or an agent, knows where everything is on day one.
+        code: four crates per context, one dependency rule, the same files in the same places.
+        Whoever opens a Puerto project, a new hire or an agent, knows where everything is on day
+        one.
       </p>
       <p class="measure" data-reveal>
         The rule is not a convention you keep. Each layer is a crate, so a domain model that
@@ -176,8 +183,8 @@ const steps = [
     <div class="agents__text">
       <h2 class="h2" id="agents-title" data-reveal>Written by agents.<br />Reviewed by rustc.</h2>
       <p class="measure" data-reveal>
-        An agent that has used repositories elsewhere reaches for <code>save</code>. In a Puerto
-        project with domain events, the repository has none: writes go through a unit of work
+        An agent that has used repositories elsewhere reaches for <code>guardar</code>, save. In a
+        Puerto project with domain events, the repository has none: writes go through a unit of work
         that records the event. So the mistake is not a bug found in production. It is this,
         captured from a real <code>cargo check</code> on a generated project.
       </p>
@@ -622,7 +629,7 @@ const steps = [
       );
     });
 
-    // Los contenedores bajan de la grúa uno a uno: business primero, que es la base.
+    // Los contenedores bajan de la grúa uno a uno: dominio primero, que es la base.
     const stack = document.querySelector('[data-stack]');
     if (stack) {
       const boxes = gsap.utils.toArray<HTMLElement>('[data-stack-box]', stack).reverse();

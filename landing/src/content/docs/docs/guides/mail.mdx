@@ -6,62 +6,65 @@ description: Generate a mail as a domain port with its templates, send it exactl
 import { FileTree, Aside } from '@astrojs/starlight/components';
 
 In Puerto a mail is a domain concept with a port, like a repository. The code that decides to
-send it depends on `WelcomeMailer`, never on SMTP, and its text lives in three template files
-you edit like any other file.
+send it depends on `EnviadorCorreoBienvenida`, never on SMTP, and its text lives in three
+template files you edit like any other file.
 
 ```bash
-puerto generate mail welcome -- name:String plan:opt:String
+puerto generar correo bienvenida -- nombre:String plan:opt:String
 ```
 
 ```txt title="output"
-✓ Mail 'welcome' added — yours from here on:
-  business/src/domain/mail/welcome.rs       WelcomeMail + the port WelcomeMailer
-  infrastructure/src/mail/welcome.rs        TemplateWelcomeMailer, with its tests
-  infrastructure/mail/welcome/              subject.txt, body.html, body.txt
-  Mailpit added to docker-compose.yml; SMTP_URL and MAIL_FROM to .env. See the mails with `make mail/ui`.
+✓ Mail 'bienvenida' added — yours from here on:
+  contextos/correo/dominio/src/bienvenida.rs  CorreoBienvenida + the port EnviadorCorreoBienvenida
+  contextos/correo/infraestructura/src/bienvenida.rs  EnviadorCorreoBienvenidaPlantilla, with its tests
+  contextos/correo/infraestructura/plantillas/bienvenida/  asunto.txt, cuerpo.html, cuerpo.txt
+  Mailpit added to docker-compose.yml; SMTP_URL and MAIL_FROM to .env. See the mails with `make correo/ui`.
 ```
 
 The fields after `--` are the values the text shows. They are primitives or `opt:<type>`, and
-the recipient `to` is always there.
+the recipient `para` is always there. Every mail lives in one context, `correo`, with a
+`dominio` and an `infraestructura` crate and no use cases, so no entity can be called `Correo`.
 
 ## The three pieces
 
 <FileTree>
-- business/src/domain/mail/welcome.rs **WelcomeMail** and the port **WelcomeMailer**
-- infrastructure/src/mail/welcome.rs **TemplateWelcomeMailer**: renders, then sends
-- infrastructure/mail/welcome/
-  - subject.txt
-  - body.html
-  - body.txt
+- contextos/correo/
+  - dominio/src/bienvenida.rs **CorreoBienvenida** and the port **EnviadorCorreoBienvenida**
+  - infraestructura/
+    - src/bienvenida.rs **EnviadorCorreoBienvenidaPlantilla**: renders, then sends
+    - plantillas/bienvenida/
+      - asunto.txt
+      - cuerpo.html
+      - cuerpo.txt
 </FileTree>
 
-```rust title="business/src/domain/mail/welcome.rs (excerpt)"
+```rust title="contextos/correo/dominio/src/bienvenida.rs (excerpt)"
 #[derive(Debug, Clone, PartialEq)]
-pub struct WelcomeMail {
-    pub to: String,
-    pub name: String,
+pub struct CorreoBienvenida {
+    pub para: String,
+    pub nombre: String,
     pub plan: Option<String>,
 }
 
 #[async_trait]
-pub trait WelcomeMailer: Send + Sync {
-    async fn send(&self, mail: &WelcomeMail) -> Result<(), MailError>;
+pub trait EnviadorCorreoBienvenida: Send + Sync {
+    async fn enviar(&self, correo: &CorreoBienvenida) -> Result<(), ErrorCorreo>;
 }
 ```
 
 The templates are [minijinja](https://github.com/mitsuhiko/minijinja), in strict mode: an
 unknown variable is an error, not an empty string. Wrap an optional field in a check:
 
-```jinja title="infrastructure/mail/welcome/body.txt"
-Welcome
+```jinja title="contextos/correo/infraestructura/plantillas/bienvenida/cuerpo.txt"
+Bienvenida
 
-Name: {{ name }}
+Nombre: {{ nombre }}
 {% if plan is not none %}Plan: {{ plan }}
 {% endif %}
 ```
 
-`TemplateWelcomeMailer`'s tests render every template, so a typo in one fails `make test`, not
-a customer's inbox.
+`EnviadorCorreoBienvenidaPlantilla`'s tests render every template, so a typo in one fails
+`make test`, not a customer's inbox.
 
 ## Sending it when something happens
 
@@ -69,44 +72,47 @@ In a project with [domain events](/docs/guides/events/), tie the mail to an even
 writes the consumer that sends it:
 
 ```bash
-puerto generate mail welcome --on customer_created --to email
+puerto generar correo bienvenida --tras cliente_creado --para email
 ```
 
-`--to` names the snapshot's `String` field that holds the address. The fields come from the
+`--para` names the snapshot's `String` field that holds the address. The fields come from the
 event's snapshot, so you do not list them. The worker gets
-`worker/src/consumers/mail_welcome.rs`, which builds the mail from the snapshot and sends it
-**once per event**:
+`presentacion/worker/src/consumidores/correo_bienvenida.rs`, which builds the mail from the
+snapshot and sends it **once per event**:
 
-```rust title="worker/src/consumers/mail_welcome.rs (excerpt)"
-let mail = match event.event_type.as_str() {
-    CUSTOMER_CREATED => match event.decode::<CustomerSnapshot>() {
-        Ok(customer) => WelcomeMail {
-            to: customer.email.clone(),
-            name: customer.name,
-            nickname: customer.nickname,
+```rust title="presentacion/worker/src/consumidores/correo_bienvenida.rs (excerpt)"
+let correo = match evento.tipo_evento.as_str() {
+    CLIENTE_CREADO => match evento.decodificar::<SnapshotCliente>() {
+        Ok(cliente) => CorreoBienvenida {
+            para: cliente.email.clone(),
+            nombre: cliente.nombre,
         },
-        Err(err) => return HandlerOutcome::dead_letter(REASON_PAYLOAD_INVALID, err.detail),
+        Err(err) => {
+            return ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle);
+        }
     },
-    _ => return HandlerOutcome::Ack,
+    _ => return ResultadoManejo::Ack,
 };
 ```
 
-Events are delivered at least once, so `send_once` from `puerto-mail` keeps a `sent_mails` row
-per event: a redelivered event does not send the mail again. A crash between the send and that
-row sends it twice, never zero times. A permanent SMTP failure (`5xx`) is dead-lettered, and a
-temporary one (`4xx`, a server that is down) is retried
-([ADR-0020](/docs/decisions/adr/0020-mail-port-per-mail-sent-from-the-worker/)).
+Events are delivered at least once, so `puerto_correo::enviar_una_vez` keeps a
+`correos_enviados` row per event: a redelivered event does not send the mail again. A crash
+between the send and that row sends it twice, never zero times. A permanent SMTP failure (`5xx`)
+is dead-lettered, and a temporary one (`4xx`, a server that is down) is retried
+([ADR-0020](/docs/decisions/adr/0020-mail-port-per-mail-sent-from-the-worker/)). The first mail
+tied to an event adds the `correos_enviados` migration.
 
 <Aside type="caution">
-Keep the consumer's `MAIL` constant as it is. It is the key in `sent_mails`, and renaming it
-sends every past mail again on the next redelivery.
+Keep the consumer's `CORREO` constant as it is. It is the key in `correos_enviados`, and renaming
+it sends every past mail again on the next redelivery.
 </Aside>
 
 ## Sending from a use case
 
 Without events, the port is there and the implementation is there, but Puerto does not wire a
-mailer into a use case yet. Hold an `Arc<dyn WelcomeMailer>` in the use case and test it with
-`mocks::MockWelcomeMailer`. That is the piece the next phases add, for password resets.
+mailer into a use case yet. Hold an `Arc<dyn EnviadorCorreoBienvenida>` in the use case and test
+it with `dominio_correo::bienvenida::dobles::MockEnviadorCorreoBienvenida`. That is the piece
+the next phases add, for password resets.
 
 ## Development and production
 
@@ -114,7 +120,7 @@ mailer into a use case yet. Hold an `Arc<dyn WelcomeMailer>` in the use case and
 in development. Nothing reaches a real inbox.
 
 ```bash
-make mail/ui      # open Mailpit
+make correo/ui      # starts the containers, prints Mailpit's address: http://localhost:8025
 ```
 
 | Variable | Development | Production |

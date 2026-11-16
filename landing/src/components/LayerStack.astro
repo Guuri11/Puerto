@@ -1,10 +1,10 @@
 ---
 /**
- * Las tres capas como tres contenedores idénticos apilados: el diagrama de la regla de
- * dependencias. Lo usan la home y las docs (por eso su CSS no depende de Tailwind).
+ * Los cuatro crates de un contexto como contenedores apilados: el diagrama de la regla de
+ * dependencias (ADR-0023). Lo usan la home y las docs (por eso su CSS no depende de Tailwind).
  *
- * Es una lista ordenada de verdad: de fuera hacia dentro. El color nunca va solo, cada caja
- * lleva su nombre. → DESIGN.md § 2 y § 12
+ * Es una lista ordenada de verdad: de fuera hacia dentro. El color es el anillo (entrada,
+ * adaptador, núcleo) y nunca va solo: cada caja lleva su nombre. → DESIGN.md § 2 y § 12
  */
 interface Props {
   /** En la home, los contenedores entran apilándose (los anima la página, no este componente). */
@@ -15,34 +15,49 @@ const { animate = false } = Astro.props;
 
 const layers = [
   {
-    id: 'presentation',
-    code: 'PRE',
-    crate: 'presentation/',
-    holds: 'Routes, DTOs, response enums, error mapping, the wiring',
-    knows: 'business, infrastructure',
+    id: 'rest',
+    ring: 'presentation',
+    code: 'RST',
+    crate: 'rest_<c>',
+    holds: 'Routes, DTOs, response enums, error mapping, route tests',
+    knows: 'aplicacion_<c>, dominio_<c>',
+    shift: 2,
   },
   {
-    id: 'infrastructure',
+    id: 'infraestructura',
+    ring: 'infrastructure',
     code: 'INF',
-    crate: 'infrastructure/',
-    holds: 'Adapters: Postgres repositories, units of work, mailers',
-    knows: 'business',
+    crate: 'infra_<c>',
+    holds: 'Adapters: in-memory or Postgres repositories, units of work, mail senders',
+    knows: 'dominio_<c>',
+    shift: 3,
   },
   {
-    id: 'business',
-    code: 'BUS',
-    crate: 'business/',
-    holds: 'Domain models, value objects, ports, use cases',
-    knows: 'nothing in the workspace',
+    id: 'aplicacion',
+    ring: 'business',
+    code: 'APL',
+    crate: 'aplicacion_<c>',
+    holds: 'Use cases, one file each: params, trait, double, implementation, tests',
+    knows: 'dominio_<c>',
+    shift: 1,
+  },
+  {
+    id: 'dominio',
+    ring: 'business',
+    code: 'DOM',
+    crate: 'dominio_<c>',
+    holds: 'Models, typed ids, value objects, errors, repository ports, events',
+    knows: 'nucleo and puerto-nucleo only',
+    shift: 0,
   },
 ] as const;
 ---
 
 <figure class="stack not-content" data-stack={animate ? '' : undefined}>
-  <ol class="stack__list" aria-label="The three crates, from the outside in">
+  <ol class="stack__list" aria-label="The four crates of a context, from the outside in">
     {
       layers.map((l, i) => (
-        <li class={`stack__box stack__box--${l.id}`} style={`--i: ${i}`} data-stack-box>
+        <li class={`stack__box stack__box--${l.ring}`} style={`--i: ${i}; --shift: ${l.shift}`} data-stack-box>
           <div class="stack__head">
             <span class="stack__name">{l.id}</span>
             <span class="stack__code" aria-hidden="true">
@@ -58,7 +73,9 @@ const layers = [
     }
   </ol>
   <figcaption class="stack__caption">
-    Dependencies point inward only. Each layer is a crate, so the rule is checked by the compiler.
+    One context, from the outside in. Dependencies point inward only, and each layer of each
+    context is its own crate, so Cargo checks the rule. Only <code>presentacion/</code>, the wiring
+    and the binaries, sees them all.
   </figcaption>
 </figure>
 
@@ -76,10 +93,10 @@ const layers = [
     gap: 6px;
   }
 
-  /* Tres cajas iguales; el desplazamiento es el de la grúa, como en el logo. */
+  /* Cajas iguales; el desplazamiento es el de la grúa, como en el logo. */
   .stack__box {
     position: relative;
-    width: min(calc(100% - 3.25rem), 38rem);
+    width: min(calc(100% - 3.3rem), 38rem);
     padding: 1rem 1.25rem 1.1rem;
     color: #f4f1ea;
     background-color: var(--layer);
@@ -91,28 +108,23 @@ const layers = [
     margin: 0;
   }
 
+  .stack__box {
+    margin-inline-start: calc(var(--shift) * 1.1rem);
+  }
   .stack__box--presentation {
     --layer: var(--color-layer-presentation);
-    margin-inline-start: 1.5rem;
   }
   .stack__box--infrastructure {
     --layer: var(--color-layer-infrastructure);
-    margin-inline-start: 3.25rem;
   }
   .stack__box--business {
     --layer: var(--color-layer-business);
-    margin-inline-start: 0;
   }
 
   @media (width < 640px) {
-    .stack__box--presentation {
-      margin-inline-start: 0.75rem;
-    }
-    .stack__box--infrastructure {
-      margin-inline-start: 1.5rem;
-    }
     .stack__box {
-      width: calc(100% - 1.5rem);
+      width: calc(100% - 1.75rem);
+      margin-inline-start: calc(var(--shift) * 0.55rem);
     }
   }
 
@@ -126,7 +138,8 @@ const layers = [
   .stack__name {
     font-family: var(--font-stencil);
     font-weight: 800;
-    font-size: 1.625rem;
+    /* «infraestructura» tiene que caber en una caja de móvil. */
+    font-size: clamp(1.125rem, 5vw, 1.625rem);
     line-height: 1;
     letter-spacing: 0.04em;
     text-transform: uppercase;

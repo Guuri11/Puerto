@@ -47,10 +47,11 @@ for (const file of files) {
   const number = heading?.[1] ?? file.slice(0, 4);
   // Los títulos de los ADR llevan `código`; en la barra lateral y en <title> sobran.
   const title = (heading?.[2] ?? file).replace(/`/g, '').trim();
-  const status = text.match(/^\*\*Status:\*\*\s+(.+)$/m)?.[1] ?? '';
+  // Las ADR en castellano (0023 en adelante) dicen **Estado:** y ## Contexto.
+  const status = text.match(/^\*\*(?:Status|Estado):\*\*\s+(.+)$/m)?.[1] ?? '';
   const body = rewriteLinks(text.replace(/^#\s+.+\n/, ''), 'docs/adr');
   // La description sale del primer párrafo del contexto: dice el problema, que es lo que se busca.
-  const context = (text.split(/^## Context\s*$/m)[1] ?? '')
+  const context = (text.split(/^## Context(?:o)?\s*$/m)[1] ?? '')
     .split(/\n\s*\n/)
     .map((p) => p.replace(/\s+/g, ' ').replace(/[`*]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim())
     .find((p) => p && !p.startsWith('|') && !p.startsWith('#'));
@@ -137,23 +138,23 @@ const codeify = (s) =>
     .replace(/\.\. Possible/, '. Possible');
 
 const GUIDES = {
-  new: ['Quick start', '/docs/start/quick-start/'],
-  'generate scaffold': ['Entities and fields', '/docs/guides/entities/'],
-  'generate use-case': ['Use cases', '/docs/guides/use-cases/'],
-  'generate value-object': ['Value objects', '/docs/guides/value-objects/'],
-  'generate migration': ['Database and migrations', '/docs/guides/database/'],
-  'generate event': ['Domain events', '/docs/guides/events/'],
-  'generate consumer': ['Consumers', '/docs/guides/events/#consumers'],
-  'generate mail': ['Mail', '/docs/guides/mail/'],
-  'generate web': ['The web frontend', '/docs/guides/web/'],
-  'generate domain': ['Layer by layer', '/docs/guides/layer-by-layer/'],
-  'generate application': ['Layer by layer', '/docs/guides/layer-by-layer/'],
-  'generate repository': ['Layer by layer', '/docs/guides/layer-by-layer/'],
-  'generate presentation': ['Layer by layer', '/docs/guides/layer-by-layer/'],
-  'generate bootstrap': ['When the wiring is out of date', '/docs/guides/layer-by-layer/#when-the-wiring-is-out-of-date'],
-  'generate snippets': ['IDE snippets', '/docs/guides/configuration/#ide-snippets'],
-  list: ['puerto.toml', '/docs/reference/puerto-toml/'],
-  validate: ['What puerto validate checks', '/docs/reference/puerto-toml/#what-puerto-validate-checks'],
+  nuevo: ['Quick start', '/docs/start/quick-start/'],
+  'generar scaffold': ['Entities and fields', '/docs/guides/entities/'],
+  'generar caso-de-uso': ['Use cases', '/docs/guides/use-cases/'],
+  'generar objeto-valor': ['Value objects', '/docs/guides/value-objects/'],
+  'generar migracion': ['Database and migrations', '/docs/guides/database/'],
+  'generar evento': ['Domain events', '/docs/guides/events/'],
+  'generar consumidor': ['Consumers', '/docs/guides/events/#consumers'],
+  'generar correo': ['Mail', '/docs/guides/mail/'],
+  'generar web': ['The web frontend', '/docs/guides/web/'],
+  'generar dominio': ['Layer by layer', '/docs/guides/layer-by-layer/'],
+  'generar aplicacion': ['Layer by layer', '/docs/guides/layer-by-layer/'],
+  'generar repositorio': ['Layer by layer', '/docs/guides/layer-by-layer/'],
+  'generar presentacion': ['Layer by layer', '/docs/guides/layer-by-layer/'],
+  'generar bootstrap': ['When the wiring is out of date', '/docs/guides/layer-by-layer/#when-the-wiring-is-out-of-date'],
+  'generar snippets': ['IDE snippets', '/docs/guides/configuration/#ide-snippets'],
+  listar: ['puerto.toml', '/docs/reference/puerto-toml/'],
+  validar: ['What puerto validar checks', '/docs/reference/puerto-toml/#what-puerto-validar-checks'],
 };
 
 const commandDoc = ({ command, help }) => {
@@ -176,14 +177,14 @@ const commandDoc = ({ command, help }) => {
   return out.join('\n');
 };
 
-const project = cli.commands.filter((c) => !c.command.startsWith('generate '));
-const generators = cli.commands.filter((c) => c.command.startsWith('generate '));
+const project = cli.commands.filter((c) => !c.command.startsWith('generar '));
+const generators = cli.commands.filter((c) => c.command.startsWith('generar '));
 writeFileSync(
   join(OUT, 'reference/cli.md'),
   [
     '---',
     'title: CLI',
-    `description: ${yaml('Every puerto command and option, generated from the help of the released CLI: new, the generators, list, validate and completions.')}`,
+    `description: ${yaml('Every puerto command and option, generated from the help of the released CLI: nuevo, the generators, listar, validar and completions.')}`,
     'tableOfContents:',
     '  maxHeadingLevel: 2',
     '---',
@@ -200,7 +201,7 @@ writeFileSync(
     '## Generators',
     '',
     'Every generator reads and updates `puerto.toml`, refuses to overwrite files that already',
-    'exist (`scaffold --force` and `web --force` are the explicit exceptions) and prints the next',
+    'exist (`scaffold --forzar` and `web --forzar` are the explicit exceptions) and prints the next',
     'step.',
     '',
     ...generators.map((c) => commandDoc(c).replace(/^## /, '### ')),
@@ -224,7 +225,7 @@ const CONDITIONS = [
   ['every project', () => true],
   ['`web/`', (f) => f.web],
   ['`--db`', (f) => f.db],
-  ['`--events`', (f) => !!f.events],
+  ['`--eventos`', (f) => !!f.events],
   ['`--auth`', (f) => !!f.auth],
   ['`--auth oidc`', (f) => f.auth === 'oidc'],
   ['`--auth local`', (f) => f.auth === 'local'],
@@ -250,14 +251,14 @@ writeFileSync(
     '',
     "A generated project's `Makefile` is its command line. `make help` lists the targets of that",
     'project; this page lists them all, read from the Makefiles of every combination of',
-    `\`puerto new\` flags that \`puerto ${meta.version}\` generates.`,
+    `\`puerto nuevo\` flags that \`puerto ${meta.version}\` generates.`,
     '',
     '| Target | Does | In |',
     '|---|---|---|',
     ...makeRows,
-    '| `make mail/ui` | Where the mails sent in development land (Mailpit) | after `puerto generate mail` |',
+    '| `make correo/ui` | Dónde llegan los correos enviados en desarrollo (Mailpit) | after `puerto generar correo` |',
     '',
-    'Targets that need a service (`sqlx/migrate`, `worker`, `test/infrastructure`…) start',
+    'Targets that need a service (`sqlx/migrate`, `worker`, `test/infraestructura`…) start',
     '`docker compose` first. `make test` and `make lint` include `web/` whenever the directory exists.',
     '',
   ].join('\n'),

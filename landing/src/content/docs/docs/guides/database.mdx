@@ -5,7 +5,7 @@ description: Start a Puerto project with Postgres and SQLx, run its migrations, 
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-`puerto new --db` gives a project a Postgres database through [SQLx](https://github.com/launchbadge/sqlx):
+`puerto nuevo --db` gives a project a Postgres database through [SQLx](https://github.com/launchbadge/sqlx):
 checked SQL, written out in each repository, with no ORM in between. A project without `--db`
 keeps its data in memory, which is good enough to try an idea and is lost on restart.
 
@@ -16,13 +16,13 @@ keeps its data in memory, which is good enough to try an idea and is lost on res
 1. **Create it and add an entity.**
 
    ```bash
-   puerto new --name shop --db
-   cd shop
-   puerto generate scaffold Product -- name:String price:i64 sku:String!
+   puerto nuevo --nombre tienda --db
+   cd tienda
+   puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
    ```
 
    ```txt title="output (end)"
-   ✓ Migration 'create_product_table' created in infrastructure/migrations/
+   ✓ Migration 'crear_tabla_producto' created in migraciones/
      Schema pre-filled — run: make sqlx/migrate && make sqlx/prepare
    ```
 
@@ -49,7 +49,7 @@ keeps its data in memory, which is good enough to try an idea and is lost on res
    says so and exits, instead of panicking:
 
    ```txt
-   … — is the database up? `make docker-compose/up`
+   … — ¿está arrancada la base de datos? `make docker-compose/up`
    ```
 
 </Steps>
@@ -58,43 +58,61 @@ keeps its data in memory, which is good enough to try an idea and is lost on res
 
 | | In memory | `--db` |
 |---|---|---|
-| Repository | `InMemoryProductRepository` | `PgProductRepository` + `entity.rs` (the row) |
-| Migration | none | `create_product_table.sql`, schema pre-filled from the fields |
+| Repository | `RepositorioProductoEnMemoria` | `RepositorioProductoPostgres` + `fila.rs` (the row, `FilaProducto`) |
+| Migration | none | `migraciones/…_crear_tabla_producto.sql`, schema pre-filled from the fields |
 | `/health/ready` | always ready | runs `SELECT 1`; `503` when Postgres does not answer |
 | Tests | unit | unit + `#[sqlx::test]` integration tests per repository |
-| Files | | `.env`, `.env.example`, `docker-compose.yml`, `.cargo/config.toml` |
+| Files | | `docker-compose.yml`, `.cargo/config.toml`, `DATABASE_URL` in `.env`, `migraciones/`, the `migrador` crate |
 
 The scaffold writes the whole table, so there is nothing to fill in:
 
-```sql title="infrastructure/migrations/…_create_product_table.sql"
--- Puerto migration: create_product_table
--- Run `make sqlx/prepare` after editing this file.
+```sql title="migraciones/…_crear_tabla_producto.sql"
+-- Migración de Puerto: crear_tabla_producto
+-- Ejecuta `make sqlx/prepare` después de editar este fichero.
 
-CREATE TABLE products (
+CREATE TABLE productos (
     id UUID PRIMARY KEY,
-    name TEXT NOT NULL,
-    price BIGINT NOT NULL,
+    nombre TEXT NOT NULL,
+    precio BIGINT NOT NULL,
     sku TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMPTZ
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    borrado BOOLEAN NOT NULL DEFAULT FALSE,
+    borrado_en TIMESTAMPTZ
 );
 
-CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;
+CREATE UNIQUE INDEX productos_sku_key ON productos (sku) WHERE borrado = false;
 ```
 
 Deletes are soft, so the unique index is partial: a deleted product does not keep its SKU taken
 ([ADR-0003](/docs/decisions/adr/0003-unique-indexes-are-partial/)).
 
+A reference is a foreign key. `puerto generar scaffold Pedido -- cliente_id:ref:Cliente` writes
+the constraint and an index for the list's filter:
+
+```sql title="migraciones/…_crear_tabla_pedido.sql (excerpt)"
+cliente_id UUID NOT NULL CONSTRAINT pedidos_cliente_id_fkey REFERENCES clientes (id),
+-- …
+CREATE INDEX pedidos_cliente_id_idx ON pedidos (cliente_id);
+```
+
+The database checks that the customer exists, not the use case
+([ADR-0022](/docs/decisions/adr/0022-references-are-typed-ids-checked-by-foreign-keys/)).
+
+Every context's migrations live in one directory, `migraciones/` at the root, because they all
+build one database. The `migrador` crate embeds them at compile time as
+`migrador::MIGRADOR` (`sqlx::migrate!("../migraciones")`), and its `build.rs` tells Cargo to
+rebuild when that directory changes, so a new migration is picked up even when no `.rs` file
+changed. The API runs `MIGRADOR` at startup, and every Postgres test runs on it.
+
 ## Writing a migration
 
 ```bash
-puerto generate migration add_stock_to_products
+puerto generar migracion anadir_stock_a_productos
 ```
 
 ```txt title="output"
-✓ Migration 'add_stock_to_products' created in infrastructure/migrations/
+✓ Migration 'anadir_stock_a_productos' created in migraciones/
   Edit the file, then run: make sqlx/migrate && make sqlx/prepare
 ```
 
@@ -123,43 +141,51 @@ make sqlx/check       # verify .sqlx/ matches the queries (for CI)
 
 ## Errors from the driver
 
-Every Pg repository maps driver errors through one function, `map_sqlx_error`, from
-`puerto-sqlx`: a unique violation becomes `RepositoryError::Duplicate` (`409`), and anything
-else `Unavailable`. A row the domain rejects (stored data gone bad) is logged and reported as
-`InvalidData`, a `500`, never a `422` that would blame the caller
+Every Postgres repository maps driver errors through one function, `mapear_error_sqlx`, from
+`puerto-sqlx`: a unique violation becomes `ErrorRepositorio::Duplicado` (`409`), and anything
+else `NoDisponible`. A row the domain rejects (stored data gone bad) is logged and reported as
+`DatosInvalidos`, a `500`, never a `422` that would blame the caller
 ([ADR-0015](/docs/decisions/adr/0015-repositories-return-one-repository-error/)).
+
+An entity with references maps through `mapear_error_sqlx_con`, which knows its foreign keys by
+constraint name. A write that names a customer who does not exist violates
+`pedidos_cliente_id_fkey` and becomes `ErrorRepositorio::ReferenciaInexistente("cliente_id")`,
+which the entity's error turns into `pedido.validacion.cliente_id_no_encontrado`, a `422` on that
+field.
 
 ## Integration tests
 
-Each Pg repository comes with `#[sqlx::test]` tests: SQLx creates a fresh database per test,
-applies the migrations, and drops it afterwards.
+Each Postgres repository comes with `#[sqlx::test]` tests: SQLx creates a fresh database per test,
+applies the migrations of `migrador::MIGRADOR`, and drops it afterwards.
 
 ```rust
-#[sqlx::test(migrations = "./migrations")]
-async fn should_persist_and_retrieve_by_id(pool: PgPool) {
-    // Arrange
-    let entity = seed(&pool).await;
+#[sqlx::test(migrator = "migrador::MIGRADOR")]
+async fn deberia_guardar_y_recuperar_por_id(pool: PgPool) {
+    // Preparar
+    let entidad = sembrar(&pool).await;
 
-    // Act
-    let found = test_repo(pool)
-        .find_by_id(entity.id)
+    // Actuar
+    let encontrado = repositorio_de_prueba(pool)
+        .buscar_por_id(entidad.id)
         .await
         .unwrap()
         .unwrap();
 
-    // Assert
-    assert_eq!(found.id, entity.id);
+    // Comprobar
+    assert_eq!(encontrado.id, entidad.id);
     // …
 }
 ```
 
-They need `DATABASE_URL` and a running Postgres: `make test/infrastructure`, or `make test` with
-`make docker-compose/up` first.
+`sembrar` comes from `infra_producto::pruebas::siembra`, public behind the `pruebas` feature, so
+the tests of a context that references `Producto` can seed one too. The tests need `DATABASE_URL`
+and a running Postgres: `make test/infraestructura`, or `make test` with `make docker-compose/up`
+first.
 
 ## Housekeeping
 
 | Command | Does |
 |---|---|
-| `make db-up` / `make db-down` | Start or stop the containers |
-| `make reset-db` | Drop everything and re-run the migrations. Asks you to type `DESTROY` |
-| `make generate/migration NAME=…` | The same as `puerto generate migration` |
+| `make db/arrancar` / `make db/parar` | Start or stop the containers |
+| `make db/reiniciar` | Drop everything and re-run the migrations. Asks you to type `DESTRUIR` |
+| `make generar/migracion NOMBRE=…` | The same as `puerto generar migracion` |

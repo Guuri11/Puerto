@@ -1,26 +1,26 @@
 ---
 title: Testing
-description: The tests Puerto generates in every layer, how to write your own with mocks and Object Mothers, and the checks a project runs before every commit.
+description: The tests Puerto generates in every layer, how to write your own with doubles and Object Mothers, and the checks a project runs before every commit.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
 A fresh scaffold passes `make test`, `make lint` and `make format`, and it is not because it has
-few tests. Every generated piece comes with the tests that pin down its behaviour, in the layer
+few tests. Every generated piece comes with the tests that pin down its behaviour, in the crate
 where that behaviour lives.
 
 | Layer | Tests | Against |
 |---|---|---|
 | Domain model | the rules in `new`, value object parsing | nothing |
-| Errors | each `From<RepositoryError>` arm | nothing |
-| Use cases | success and each failure path | mocked repository or recording unit of work |
+| Errors | each `From<ErrorRepositorio>` arm | nothing |
+| Use cases | success and each failure path | a repository double or `UnitOfWorkFactoryGrabadora` |
 | Repositories | persist, find, page, soft delete, uniqueness | in memory, or a real Postgres with `#[sqlx::test]` |
-| Routes | status per outcome, over the real `OpenApiService` | mocked use cases |
+| Routes | status per outcome, over the real `OpenApiService` | use case doubles |
 | Error mappers | one test per variant: its status and its code | nothing |
-| Consumers | ack, ack twice (idempotency), bad payload | Object Mother envelopes |
+| Consumers | ack, ack twice (idempotency), bad payload | envelopes built from an Object Mother |
 | Mail | every template renders | nothing |
 | Screens | list, detail, form, errors under fields | in-memory fake repository |
-| Spec | `docs/api/openapi.json` equals the live spec | mocked use cases |
+| Spec | `docs/api/openapi.json` equals the live spec | use case doubles |
 
 ## Conventions
 
@@ -28,65 +28,80 @@ Puerto's tests, and the ones its `AGENTS.md` asks you and your agent to write, f
 
 ```rust
 #[tokio::test]
-async fn should_reject_the_price_when_it_is_not_positive() {
-    // Arrange
-    // Act
-    // Assert
+async fn deberia_rechazar_el_precio_cuando_no_es_positivo() {
+    // Preparar
+    // Actuar
+    // Comprobar
 }
 ```
 
-- Names say `should_<expected_behaviour>_when_<scenario>`.
-- `// Arrange`, `// Act`, `// Assert`, in that order.
+- Names say `deberia_<expected_behaviour>_cuando_<scenario>` (should … when …).
+- `// Preparar`, `// Actuar`, `// Comprobar` (arrange, act, assert), in that order.
+- Tests live in the file they test, in a `#[cfg(test)] mod tests`.
 - TDD: the failing test first, then the least code that passes it.
 - No `unwrap()` or `expect()` outside tests.
 
-## Mocks come with the ports
+## Doubles come with the ports
 
-Every port is a trait, and every trait file carries its `mockall` mock behind
-`#[cfg(any(test, feature = "test-utils"))]`: `MockProductRepository`, `MockCreateProductUseCase`,
-`MockWelcomeMailer`. The feature lets `presentation`'s tests use `business`'s mocks without
-shipping them in the binary.
+Every port is a trait, and every trait file carries its `mockall` double in a `dobles` module
+behind `#[cfg(any(test, feature = "pruebas"))]`:
+`dominio_producto::repositorio::dobles::MockRepositorioProducto`,
+`aplicacion_producto::crear_producto::dobles::MockCrearProducto`,
+`dominio_correo::bienvenida::dobles::MockEnviadorCorreoBienvenida`. A crate that uses another's
+doubles turns the `pruebas` feature on in its `[dev-dependencies]`, so `rest_producto`'s tests use
+`aplicacion_producto`'s doubles without shipping them in the binary.
 
 ```rust
-let mut repo = MockProductRepository::new();
-repo.expect_find_by_id().returning(|_| Ok(None));
-repo.expect_save().never();
+let mut repositorio_doble = MockRepositorioProducto::new();
+repositorio_doble.expect_buscar_por_id().returning(|_| Ok(None));
+repositorio_doble.expect_guardar().never();
 ```
 
-In an events project, write use cases are tested with `RecordingUnitOfWorkFactory`, which keeps
-what was saved, which events were recorded and whether it committed:
+In an events project, write use cases are tested with `UnitOfWorkFactoryGrabadora`
+(`dominio_producto::unit_of_work::dobles`), which keeps what was saved, which events were
+recorded and whether it committed:
 
 ```rust
-let recorded = uow_factory.recorded();
-assert!(recorded.committed);
-assert_eq!(recorded.saved.len(), 1);
+let grabado = uow_factory.grabado();
+assert!(grabado.confirmado);
+assert_eq!(grabado.guardados.len(), 1);
 ```
 
 ## Object Mothers
 
-`business/src/tests/mothers/product_mother.rs` builds valid entities, so a test states only what
-matters to it:
+`contextos/producto/dominio/src/pruebas/madres.rs` builds valid entities, so a test states only
+what matters to it:
 
 ```rust
-let product = ProductMother::random();
-let many = ProductMother::random_vec(5);
-let props = ProductMother::new().with_empty_name().build_props();
+let producto = MadreProducto::aleatorio();
+let barato = MadreProducto::new().con_precio(1).construir();
+let varios = MadreProducto::aleatorios(5);
+let props = MadreProducto::new().con_nombre_vacio().construir_props();
 ```
 
-Mothers are behind the same `test-utils` gate as the mocks, so route tests and worker tests build
-return values with them instead of a second set of fixtures. The frontend has its own
-(`web/src/test-support/product.ts`), next to an in-memory fake of the repository.
+Every field has `.con_<campo>(valor)`, and required `String` fields also `.con_<campo>_vacio()`.
+Mothers are behind the same `pruebas` feature as the doubles
+(`dominio_producto::pruebas::madres::MadreProducto`), so route tests and worker tests build return
+values with them instead of a second set of fixtures. The frontend has its own
+(`web/src/test-support/producto.ts`), next to an in-memory fake of the repository.
 
 ## Running them
 
 ```bash
-make test                  # cargo nextest on the workspace, then bun test in web/
-make test/domain           # business, domain tests only
-make test/application      # business, application tests only
-make test/infrastructure   # starts Postgres first in --db projects
-make lint                  # clippy -D warnings, plus typecheck, Biome and the dependency rule in web/
-make format                # cargo fmt --check
+make test                   # cargo nextest on the workspace, then bun test in web/
+make test/dominio           # every dominio_* crate
+make test/aplicacion        # every aplicacion_* crate
+make test/infraestructura   # every infra_* crate; needs the database in --db projects
+make lint                   # clippy -D warnings, plus typecheck, Biome and the dependency rule in web/
+make format                 # cargo fmt --check
 ```
+
+One crate is `cargo test -p dominio_producto`.
+
+In a `--db` project, repository tests run against a real database, so start it first with
+`make docker-compose/up`. Each one is a `#[sqlx::test(migrator = "migrador::MIGRADOR")]`: a
+throwaway database per test, migrated by the project's one migrator, so no test carries its own
+copy of the migrations. The rows a test needs come from the crate's `pruebas::siembra::sembrar`.
 
 <Aside type="note" title="How Puerto tests itself">
 Puerto's own suite generates projects in every combination (in memory, `--db`, events on `db`

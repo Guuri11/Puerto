@@ -8,21 +8,26 @@ import { LinkCard } from '@astrojs/starlight/components';
 Puerto is a Rust framework for building backends the way Rails and Laravel let you build them:
 one command gives you the whole piece, wired and tested. The difference is the shape of what you
 get. Instead of models and controllers, Puerto generates a **Domain-Driven Design** project with
-**Clean Architecture**: your business rules live in a crate that depends on no framework, and
+**Clean Architecture**: your business rules live in crates that depend on no framework, and
 everything else is an adapter around it.
 
 ```bash
-puerto new --name shop --db
-cd shop
-puerto generate scaffold Product -- name:String price:i64 sku:String!
+puerto nuevo --nombre tienda --db
+cd tienda
+puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
 make run    # Swagger UI on http://localhost:8080
 ```
 
-That `scaffold` writes a `Product` entity with its own id type, a validated model, an error enum,
+That `scaffold` writes a `Producto` entity with its own id type, a validated model, an error enum,
 a repository port and its Postgres adapter, a migration with a partial unique index, five use
 cases with their unit tests, five routes with their route tests, the DTOs, the error mapping, the
 dependency wiring and a React screen for each action. Then it formats everything with
 `cargo fmt`. Nothing is left as `todo!()`.
+
+What Puerto generates is in Spanish: the commands, the manifest, the code, the routes and the
+error codes (`contextos/producto/`, `crear_producto`, `producto.no_encontrado`).
+[Reading a generated project](/docs/start/anatomy/#reading-a-generated-project) glosses the
+names you will meet first.
 
 ## Two halves
 
@@ -32,7 +37,7 @@ repository, with no macro hiding the wiring, so you, your editor and your agent 
 call.
 
 **A runtime.** What is identical in every project and not meant to be edited is not copied in. It
-lives in crates (`puerto-core`, `puerto-web`, `puerto-sqlx` and the rest) released in lockstep
+lives in crates (`puerto-nucleo`, `puerto-web`, `puerto-sqlx` and the rest) released in lockstep
 with the CLI, so a fix reaches your project through `cargo update`.
 [ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/) draws the line.
 
@@ -44,7 +49,7 @@ opens one, a teammate or an agent, already knows where everything is.
 
 **The compiler is the reviewer.** Puerto prefers a compile error to a convention you have to
 remember. Each entity's id is its own type, so passing a customer id where an order id goes does
-not compile. In a project with domain events the repository has no `save`, so a write that skips
+not compile. In a project with domain events the repository has no `guardar` (save), so a write that skips
 the outbox does not compile. Error mappers have no catch-all arm, so a new error variant does not
 compile until it has an HTTP status.
 
@@ -65,8 +70,9 @@ coding agents, and want a structure that keeps that code honest.
   the database is [SQLx](https://github.com/launchbadge/sqlx) on Postgres. Puerto decides how they
   fit together; it does not replace them.
 - **Not an ORM.** Repositories are written-out SQL that you can read and change.
-- **Not stable yet.** Puerto is `0.x`. Breaking changes ship with a migration guide in the
-  [changelog](/docs/changelog/).
+- **Not stable yet.** Puerto is `0.x`. Breaking changes are listed in the
+  [changelog](/docs/changelog/), with a migration guide when there are projects to migrate. 0.21,
+  which changed the layout and the language of everything generated, has none.
 
 <LinkCard
   title="Install Puerto"

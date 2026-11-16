@@ -14,19 +14,30 @@ that write the wiring, and a compiler that refuses architectural mistakes with a
 ## The rules ship with the project
 
 Every project has a root `AGENTS.md` and a one-line `CLAUDE.md` (`@AGENTS.md`), so Claude Code,
-Codex, Cursor and the rest load the same instructions. Each crate (`business/`,
-`infrastructure/`, `presentation/`, `web/`, `worker/`) has its own `AGENTS.md` with the detail of
-that layer.
+Codex, Cursor and the rest load the same instructions. `contextos/AGENTS.md` has the detail of a
+context's four crates, and `presentacion/AGENTS.md` that of the wiring and the binaries; a web
+project adds `web/AGENTS.md`, and an events project `presentacion/worker/AGENTS.md`. Like
+everything Puerto generates, they are written in Spanish.
 
 The root file covers:
 
 - the architecture and the dependency rule, with what each crate must **never** contain;
 - the runtime crates and what each one owns, so the agent does not copy their code in;
-- the `puerto` commands, and which files are regenerated and must not be edited;
+- the `puerto` commands, the field syntax, and which files are regenerated, which are patched and
+  which are yours;
+- the order of work: generate, list the scenarios, the failing test, the rule in the domain, then
+  the endpoint, API first;
 - the sections for what the project has turned on: the frontend, domain events, auth, mail;
 - the conventions: TDD, test names, error codes, logging, no `unwrap()`;
-- the checks to run before saying "done": `make test`, `make lint`, `make format`;
+- the checks to run before saying "done": `puerto validar`, `make test`, `make lint`,
+  `make format`;
 - how to work: one commit per piece, and which changes a human must read.
+
+`contextos/AGENTS.md` lays out a context file by file, with the rules an agent is most likely to
+break: the two constructors, typed ids, one file per use case, writes through the unit of work in
+an events project, tests next to the code, the Object Mothers. `presentacion/AGENTS.md` says what
+is generated and must not be edited, the error contract, the health probes and the shape of a
+handler.
 
 <Aside type="note" title="Tested, so it cannot drift">
 Agent instructions are generated output, and Puerto tests them like any other: the root file must
@@ -37,15 +48,16 @@ followed the wrong rules ([ADR-0010](/docs/decisions/adr/0010-generated-agent-ru
 
 ## The compiler does the reviewing
 
-An agent that has used repositories in other frameworks will reach for `save`. In a Puerto
-project with domain events, that is a compile error, and `rustc` points at the right port:
+An agent that has used repositories in other frameworks will reach for `guardar` (save). In a
+Puerto project with domain events, the repository has none, so that is a compile error:
 
 <Code code={compiler.code} lang="rust" title={compiler.file} />
 
 <Code code={compiler.error} lang="txt" title="cargo check" />
 
 That output is not written by hand: a script generates a project, writes that use case and runs
-`cargo check`, after every Puerto release. The agent reads it, switches to the unit of work, and the event gets recorded. Nobody
+`cargo check`, after every Puerto release. The agent reads it, finds the `uow_factory` next to the
+repository in the same struct, switches to the unit of work, and the event gets recorded. Nobody
 had to catch it in review. The same goes for mixing up two entities' ids, an error variant without
 an HTTP status, a consumer listening to an event that no longer exists, or a frontend type that
 disagrees with the API. [The architecture](/docs/start/architecture/#what-the-compiler-enforces-for-you)
@@ -58,18 +70,19 @@ dependency injection, module declarations, route tables, the frontend's composit
 Puerto project the agent does not write it. `AGENTS.md` tells it to run the generator:
 
 ```bash
-puerto generate scaffold <Name> -- title:String price:i64!
-puerto generate use-case <Entity> <action>
-puerto generate bootstrap
-puerto validate
+puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
+puerto generar caso-de-uso Producto cambiar_precio_producto
+puerto generar bootstrap
+puerto validar
 ```
 
 For bigger features, the [layer-by-layer generators](/docs/guides/layer-by-layer/) keep the
-agent's context to one layer at a time: domain first, tested, then the next.
+agent's context to one crate at a time: domain first, tested, then the next.
 
 ## Where a person still reads the diff
 
-The generated `AGENTS.md` sorts changes by how forgiving the system is when they are wrong:
+The generated `AGENTS.md` sorts changes by how forgiving the system is when they are wrong (it
+calls the tiers `Nivel 1` and `Nivel 2`):
 
 - **Tier 1: fails silently, slowly or expensively.** A green suite is not enough; a person reads
   the whole diff before it is committed. SQL migrations, money and other arithmetic the business

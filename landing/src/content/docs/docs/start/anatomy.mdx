@@ -5,74 +5,109 @@ description: Every file a Puerto project contains, which ones are regenerated fr
 
 import { FileTree, Aside } from '@astrojs/starlight/components';
 
-A Puerto project is a Cargo workspace with three crates, one per layer, plus a React frontend.
-This is `shop`, with one entity, after `puerto generate scaffold Product`:
+A Puerto project is a Cargo workspace with four crates per entity, one per layer, plus the
+binaries that wire them and a React frontend. Each entity is a context, under `contextos/`. This
+is `tienda`, with one entity, after `puerto generar scaffold Producto`:
 
 <FileTree>
 - puerto.toml the manifest: entities, fields, use cases
 - AGENTS.md rules for coding agents (CLAUDE.md imports it)
 - Makefile run, test, lint, format, migrate…
 - rust-toolchain.toml Rust 1.95.0, pinned
-- business/ **the domain and the application**: no framework
-  - src/
-    - lib.rs every module, declared inline
-    - domain/product/
-      - model.rs Product, ProductId, ProductProps, the rules
-      - errors.rs ProductError: machine-readable codes
-      - repository.rs ProductRepositoryTrait, the port, + its mock
-      - value_objects.rs when a field has one
-      - use_cases/ one trait + params per use case, + mocks
-    - application/product/ one implementation per use case, with its tests
-    - tests/mothers/product_mother.rs ProductMother, for tests in every crate
-- infrastructure/ **adapters**: implementations of the domain's ports
-  - src/
-    - lib.rs
-    - product/repository.rs InMemoryProductRepository, or Pg… with --db
-- presentation/ **the HTTP API**: poem-openapi
-  - src/
-    - main.rs starts the server from puerto-web
-    - app.rs yours: middleware and routes of your own
-    - generated/bootstrap.rs the wiring, regenerated from puerto.toml
-    - api/product/
-      - routes.rs ProductApi: five endpoints, with route tests
-      - dto.rs the wire types
-      - responses.rs one response enum per endpoint
-      - error_mapper.rs ProductError → HTTP status
+- Cargo.toml the workspace: members by glob, every crate in workspace.dependencies
+- nucleo/ **shared value objects**: no I/O
+- contextos/
+  - producto/ **one context**: four crates
+    - dominio/ **dominio_producto**: the domain, no framework
+      - src/
+        - lib.rs one pub mod per file
+        - modelo.rs Producto, IdProducto, PropsProducto, the rules
+        - errores.rs ErrorProducto: machine-readable codes
+        - repositorio.rs RepositorioProducto, the port, + its mock
+        - valores.rs when a field has a value object
+        - pruebas/madres.rs MadreProducto, for tests in every crate
+    - aplicacion/ **aplicacion_producto**: the use cases
+      - src/
+        - crear_producto.rs params, trait, mock, implementation and tests
+        - …
+    - infraestructura/ **infra_producto**: adapters of the domain's ports
+      - src/repositorio.rs RepositorioProductoEnMemoria, or …Postgres with --db
+    - rest/ **rest_producto**: the HTTP API, poem-openapi
+      - src/
+        - rutas.rs ApiProducto: five endpoints, with route tests
+        - dto.rs the wire types
+        - respuestas.rs one response enum per endpoint
+        - errores.rs a_respuesta_error: ErrorProducto → HTTP status
+- presentacion/
+  - cableado/ the composition root: repositories and use cases, regenerated
+  - api/ **the binary**
+    - src/
+      - main.rs starts the server from puerto-web
+      - app.rs yours: middleware and routes of your own
+      - generado/bootstrap.rs mounts the APIs on cableado, regenerated
 - web/ **React + daisyUI on Bun**: same layers, see The web frontend
 - docs/api/openapi.json the API contract, exported by a test
 </FileTree>
 
-`--db` adds `infrastructure/migrations/`, `.env`, `docker-compose.yml` and a Postgres repository
-per entity. `--events` adds a fourth crate, `worker/`. `--auth` adds a `User` entity and its
-routes. Each has its own guide.
+`--db` adds `migraciones/` (the SQL of the whole database), the `migrador` crate,
+`docker-compose.yml` and a Postgres repository per entity. `--eventos` adds a second binary,
+`presentacion/worker/`. `--auth` adds the `usuario` context and its routes. Each has its own guide.
+
+## Reading a generated project
+
+Puerto is built for its author's own projects, which are written in Spanish, so everything it
+generates is in Spanish too
+([ADR-0024](/docs/decisions/adr/0024-lo-generado-en-castellano/)). Puerto's own source and this
+site stay in English. The names you will meet first:
+
+| In the code | Means |
+|---|---|
+| `contextos/`, `nucleo` | contexts, core (the shared value objects) |
+| `dominio`, `aplicacion`, `infraestructura` (`infra_<c>`), `presentacion` | domain, application, infrastructure, presentation |
+| `cableado` | wiring: the composition root |
+| `CasosDeUso`; `crear_`, `obtener_`, `listar_`, `actualizar_`, `borrar_` | use cases; create, get, list, update, delete |
+| `ejecutar` | execute, the one method of a use case |
+| `repositorio`: `guardar`, `buscar_por_id`, `buscar_todos` | repository: save, find by id, find all |
+| `modelo`, `errores`, `valores`, `rutas`, `respuestas` | model, errors, value objects, routes, responses |
+| `madres` (`MadreProducto`): `aleatorio`, `con_<campo>`, `construir` | object mothers: random, with a field, build |
+| `pruebas`, `dobles` (`MockRepositorioProducto`) | tests (the feature that exposes test helpers), test doubles |
+| `creado_en`, `actualizado_en`, `borrado`, `borrado_en` | created at, updated at, deleted, deleted at |
+| `codigo`, `mensaje`; `limite`, `desplazamiento`, `elementos` | code, message; limit, offset, items |
+| `deberia_…_cuando_…`; `Preparar`, `Actuar`, `Comprobar` | should … when …; Arrange, Act, Assert |
+| `generado`, `migraciones`, `migrador` | generated, migrations, migrator |
+
+Every generated name is in the
+[glossary](https://github.com/Guuri11/Puerto/blob/main/docs/glosario.md).
 
 ## Three kinds of file
 
 What makes a Puerto project safe to regenerate is that each file has one owner.
 
 **Regenerated.** Rewritten from `puerto.toml` by every command that changes the manifest. They
-start with `AUTO-GENERATED`. Never edit them by hand: change the manifest and run the generator.
+start with a `GENERADO` comment (`AUTO-GENERATED` in `web/`). Never edit them by hand: change
+the manifest and run the generator.
 
 | File | Rewritten by |
 |---|---|
-| `presentation/src/generated/bootstrap.rs` | `scaffold`, `use-case`, `presentation`, `bootstrap` |
-| `business/src/domain/<entity>/events.rs` | `scaffold`, `event`, `bootstrap` (events projects) |
-| `worker/src/generated/registry.rs` | `consumer`, `mail --on`, `bootstrap` (events projects) |
+| `presentacion/cableado/`, `presentacion/api/src/generado/bootstrap.rs` | `scaffold`, `caso-de-uso`, `presentacion`, `bootstrap` |
+| `contextos/<c>/dominio/src/eventos.rs` | `scaffold`, `evento`, `bootstrap` (events projects) |
+| `presentacion/worker/src/generado/registro.rs` | `consumidor`, `correo --tras`, `bootstrap` (events projects) |
 | `web/src/presentation/core/generated/*` | `scaffold`, `web`, `bootstrap` (web projects) |
 | `docs/api/openapi.json`, `web/src/infrastructure/http/schema.d.ts` | `make web/sync` |
 
 **Written once, then yours.** A generator writes them when it creates the piece, then never
 touches them again. Models, use cases, repositories, routes, consumers, mail templates, screens:
-almost everything. Edit them freely. `puerto generate scaffold` refuses to overwrite an entity
-that already has files, and `--force` is the explicit way to discard your changes.
+almost everything. Edit them freely. `puerto generar scaffold` refuses to overwrite an entity
+that already has files, and `--forzar` is the explicit way to discard your changes.
 
-**Patched.** A few files get one line added and nothing else: the `lib.rs` of each crate
-(module declarations), `presentation/src/api.rs`, and `puerto.toml` itself.
+**Patched.** A few files get a line added and nothing else: `aplicacion_<c>/src/lib.rs` and
+`rutas.rs` (a `pub mod` and an `Api<Entidad>` field per new use case), the root `Cargo.toml` and
+`presentacion/api/Cargo.toml` (the crates of a new context), and `puerto.toml` itself.
 
 <Aside type="tip">
-Modules are declared inline in each crate's `lib.rs`, as nested `pub mod {}` blocks. There are no
-`mod.rs` files. Adding a module is one line in `lib.rs` plus its file, which is exactly what the
-generators patch.
+Each crate's `lib.rs` is flat: one `pub mod` line per file, and no `mod.rs` files. Adding a use
+case is one line in `aplicacion_<c>/src/lib.rs` plus its file, which is exactly what
+`puerto generar caso-de-uso` writes.
 </Aside>
 
 ## `puerto.toml`
@@ -80,36 +115,36 @@ generators patch.
 The manifest is the source of truth. After the scaffold above it reads:
 
 ```toml title="puerto.toml"
-[project]
-name = "shop"
+[proyecto]
+nombre = "tienda"
 web = true
 
-[[entity]]
-name = "Product"
-use_cases = [
-    "create_product",
-    "get_product",
-    "list_products",
-    "update_product",
-    "delete_product",
+[[entidad]]
+nombre = "Producto"
+casos_de_uso = [
+    "crear_producto",
+    "obtener_producto",
+    "listar_productos",
+    "actualizar_producto",
+    "borrar_producto",
 ]
 
-[[entity.fields]]
-name = "name"
-type = "String"
+[[entidad.campos]]
+nombre = "nombre"
+tipo = "String"
 
-[[entity.fields]]
-name = "price"
-type = "i64"
+[[entidad.campos]]
+nombre = "precio"
+tipo = "i64"
 
-[[entity.fields]]
-name = "sku"
-type = "String"
-unique = true
+[[entidad.campos]]
+nombre = "sku"
+tipo = "String"
+unico = true
 ```
 
-`puerto validate` checks it against the code (a declared entity with no files, a consumer with no
-handler, a route whose roles disagree with the manifest) and `puerto list` prints what it
+`puerto validar` checks it against the code (a declared entity with no files, a consumer with no
+handler, a route whose roles disagree with the manifest) and `puerto listar` prints what it
 declares. The full schema is in the [puerto.toml reference](/docs/reference/puerto-toml/).
 
 ## The runtime crates
@@ -119,11 +154,11 @@ under `[workspace.dependencies]` and inherited by each crate:
 
 ```toml title="Cargo.toml"
 [workspace.dependencies]
-puerto-core = "0.19"
-puerto-web = "0.19"
+puerto-web = "0.21"
+puerto-nucleo = "0.21"
 ```
 
-`puerto-core` (repository error, paged lists, the ports) is the only one the domain may import:
-it depends on nothing but `thiserror`. `puerto-web` carries poem and stays in `presentation`.
-`puerto-sqlx` carries sqlx and stays in `infrastructure`. The
-[runtime crates reference](/docs/reference/runtime-crates/) lists them all.
+`puerto-nucleo` (repository error, paged lists, the ports) is the only one the domain may import:
+it has no driver, no runtime and no I/O. `puerto-web` carries poem and stays in the `rest_<c>`
+crates and `api`. `puerto-sqlx` carries sqlx and stays in the `infra_<c>` crates and the
+binaries. The [runtime crates reference](/docs/reference/runtime-crates/) lists them all.

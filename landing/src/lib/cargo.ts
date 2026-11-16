@@ -73,13 +73,3 @@ export function languageOf(path: string): string {
   const ext = name.split('.').pop() ?? '';
   return BY_EXTENSION[ext] ?? 'txt';
 }
-
-/** La capa a la que pertenece un fichero, para su color. */
-export type Layer = 'business' | 'infrastructure' | 'presentation' | 'web' | 'worker' | 'root';
-
-export function layerOf(path: string): Layer {
-  const top = path.split('/')[0];
-  if (top === 'business' || top === 'infrastructure' || top === 'presentation') return top;
-  if (top === 'web' || top === 'worker') return top;
-  return 'root';
-}

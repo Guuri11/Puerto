@@ -12,7 +12,8 @@ reason instead of re-deriving it or quietly reverting it.
 
 An accepted ADR is never rewritten. When a decision changes, a new ADR supersedes it, and both
 link to each other. These pages are the files in
-[`docs/adr/`](https://github.com/Guuri11/Puerto/tree/main/docs/adr), published as they are.
+[`docs/adr/`](https://github.com/Guuri11/Puerto/tree/main/docs/adr), published as they are:
+in English up to 0022, and in Spanish from 0023 on, like the code Puerto generates.
 
 <table>
   <thead>
@@ -31,6 +32,11 @@ link to each other. These pages are the files in
 
 ## Where to start
 
+- [0023: One crate per context and layer](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)
+  is the layout of a generated project, with the measurements behind it.
+- [0024: Everything generated is in Spanish](/docs/decisions/adr/0024-lo-generado-en-castellano/)
+  is the language rule and its exceptions; the vocabulary is the
+  [glossary](https://github.com/Guuri11/Puerto/blob/main/docs/glosario.md).
 - [0017: Runtime crates next to the generator](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)
   draws the line between what Puerto generates and what it ships as a dependency, and compares
   Loco, Pavex, Laravel, Rails and Spring Boot.

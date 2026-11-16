@@ -16,8 +16,8 @@ misma forma, así que cualquiera, persona o agente, se mueve por ellos desde el 
 | Puerto | En el muelle |
 |---|---|
 | `puerto.toml` | el manifiesto de carga |
-| `business` / `infrastructure` / `presentation` | tres contenedores apilados, cada uno de su color |
-| `puerto generate scaffold Product` | una carga con su etiqueta: ficheros, capas |
+| los crates de un contexto (`dominio`, `aplicacion`, `infraestructura`, `rest`) | contenedores apilados; el color es su anillo: núcleo, adaptador, entrada |
+| `puerto generar scaffold Producto` | una carga con su etiqueta: ficheros, capas |
 | outbox + worker | la cola de descarga |
 
 **Lo que no se hace:** anclas, olas, faros, timones, gaviotas, cuerdas. Nada náutico de
@@ -103,8 +103,10 @@ Rust y la de la marca vieja).
 ## 4. El logotipo en la web
 
 Símbolo: **tres contenedores idénticos apilados**, cada uno desplazado unos píxeles como los
-deja la grúa: business abajo, infrastructure en medio y presentation arriba, cada uno de su
-color. Que sean **idénticos** es la tesis: el estándar. Wordmark: `PUERTO` en Big Shoulders
+deja la grúa, cada uno de un color de capa. Desde la 0.21 (un crate por contexto y capa) los
+colores son los tres anillos de la regla de dependencias: azul el núcleo (`dominio`,
+`aplicacion`, `nucleo`), óxido los adaptadores (`infraestructura`), verde las entradas (`rest`,
+`presentacion`); los tokens conservan sus nombres (`--color-layer-business`…). Que sean **idénticos** es la tesis: el estándar. Wordmark: `PUERTO` en Big Shoulders
 Stencil 800.
 
 > Propuesta descartada, 2026-10-13: los contenedores formando la silueta de una P. Con tres

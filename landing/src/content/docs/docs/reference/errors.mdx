@@ -1,77 +1,82 @@
 ---
 title: Error contract
-description: The error contract of every Puerto API - machine-readable codes in name, which HTTP status each error maps to, and how a new error variant gets one.
+description: The error contract of every Puerto API - machine-readable codes in codigo, which HTTP status each error maps to, and how a new error variant gets one.
 ---
 
-Every error a Puerto API answers has the same body, `ErrorResponse` from `puerto-web`:
+Every error a Puerto API answers has the same body, `RespuestaError` from `puerto-web`:
 
 ```json
-{ "name": "product.validation_error.name_empty", "message": "product.validation_error.name_empty" }
+{ "codigo": "producto.validacion.nombre_vacio", "mensaje": "producto.validacion.nombre_vacio" }
 ```
 
-- **`name` is the code**, machine-readable and stable: clients branch on it. For domain errors,
-  `message` is the same code. Errors are never sentences in the backend; turning a code into a
-  sentence is the client's job (the generated frontend does it in `messages.ts`).
-- Codes are `<entity>.<error>`, all lowercase: `product.not_found`,
-  `product.validation_error.<detail>`, `customer.invalid_email`.
+- **`codigo` is the code**, machine-readable and stable: clients branch on it. For domain
+  errors, `mensaje` is the same code. Errors are never sentences in the backend; turning a code
+  into a sentence is the client's job (the generated frontend does it in `messages.ts`).
+- Codes are `<entidad>.<error>`, all lowercase: `producto.no_encontrado`,
+  `producto.validacion.<detalle>`, `cliente.email_invalido`.
 
 ## Status by error
 
-Each entity's error enum, and the status its mapper gives each variant:
+Each entity's error enum, `Error<Entidad>` in `contextos/<c>/dominio/src/errores.rs`, and the
+status `a_respuesta_error` in `contextos/<c>/rest/src/errores.rs` gives each variant:
 
 | Variant | Code | Status |
 |---|---|---|
-| `ValidationError(detail)` | `<entity>.validation_error.<detail>` | `422` |
-| `Invalid<Vo>` (one per value object) | `<entity>.invalid_<vo>` | `422` |
-| `NotFound` | `<entity>.not_found` | `404` |
-| `Duplicate` | `<entity>.duplicate` | `409` |
-| `Forbidden` (auth projects) | `<entity>.forbidden` | `403` |
-| `RepositoryError` | `<entity>.repository_error` | `500` |
-| `Unknown` | `<entity>.unknown` | `500` |
+| `Validacion(detalle)` | `<entidad>.validacion.<detalle>` | `422` |
+| `<Vo>Invalido` (one per value object) | `<entidad>.<vo>_invalido` | `422` |
+| `NoEncontrado` | `<entidad>.no_encontrado` | `404` |
+| `Duplicado` | `<entidad>.duplicado` | `409` |
+| `Prohibido` (auth projects) | `<entidad>.prohibido` | `403` |
+| `Repositorio` | `<entidad>.repositorio` | `500` |
+| `Desconocido` | `<entidad>.desconocido` | `500` |
 
 `400` is left to poem, for a body it cannot parse. So a client can tell "malformed JSON" (400)
-from "the title is empty" (422) by the status alone
+from "the name is empty" (422) by the status alone
 ([ADR-0007](/docs/decisions/adr/0007-error-contract-code-in-name-422/)).
 
 ## Errors that are not the entity's
 
 | Status | Code | From |
 |---|---|---|
-| `401` | `auth.unauthenticated` | `BearerAuth`: no token, or an invalid or expired one |
-| `401` | `auth.invalid_credentials` | local login |
-| `403` | `auth.forbidden` | `#[require_role]` |
-| `503` | `auth.unavailable` | the OIDC provider could not be reached |
-| `500` | `auth.not_configured` | a protected route with no `Authenticator` registered |
+| `401` | `auth.no_autenticado` | `BearerAuth`: no token, or an invalid or expired one |
+| `401` | `auth.credenciales_invalidas` | local login |
+| `403` | `auth.prohibido` | `#[requiere_rol]` |
+| `503` | `auth.no_disponible` | the token could not be checked: the OIDC provider or the database is down |
+| `500` | `auth.no_configurado` | a protected route with no `Autenticador` registered |
 
 ## Repository failures
 
-Repositories answer one `RepositoryError` from `puerto-core` with three variants, the three
-outcomes a use case treats differently. Each entity error converts from it
+Repositories answer one `ErrorRepositorio` from `puerto-nucleo`, with one variant per outcome a
+use case treats differently. Each entity error converts from it
 ([ADR-0015](/docs/decisions/adr/0015-repositories-return-one-repository-error/)):
 
-| `RepositoryError` | Becomes | Status |
+| `ErrorRepositorio` | Becomes | Status |
 |---|---|---|
-| `Duplicate` | `<entity>.duplicate` | `409` |
-| `InvalidData` (a stored row the domain rejects) | `<entity>.repository_error` | `500` |
-| `Unavailable` (the store failed) | `<entity>.repository_error` | `500` |
+| `Duplicado` | `<entidad>.duplicado` | `409` |
+| `ReferenciaInexistente(campo)` (a foreign key refused the write) | `<entidad>.validacion.<campo>_no_encontrado` | `422` |
+| `DatosInvalidos` (a stored row the domain rejects) | `<entidad>.repositorio` | `500` |
+| `NoDisponible` (the store failed) | `<entidad>.repositorio` | `500` |
 
-"Not found" is not a repository error: `find_by_id` answers `Ok(None)` and the use case decides.
+`ReferenciaInexistente` only becomes a validation error in an entity with
+[references](/docs/reference/field-types/#references); elsewhere it is `<entidad>.repositorio`.
+"Not found" is not a repository error: `buscar_por_id` answers `Ok(None)` and the use case
+decides.
 
 ## Adding an error
 
-Add the variant to the entity's error enum with its `#[error("…")]` code. The mapper in
-`presentation/src/api/<entity>/error_mapper.rs` has no catch-all arm, so the project does not
-compile until you give the new variant a status. Add its test next to the others, one per arm:
+Add the variant to the entity's error enum with its `#[error("…")]` code. `a_respuesta_error` in
+`contextos/<c>/rest/src/errores.rs` has no catch-all arm, so the project does not compile until
+you give the new variant a status. Add its test next to the others, one per arm:
 
 ```rust
 #[test]
-fn should_map_validation_error_to_422_with_its_code() {
-    // Act
-    let (status, Json(body)) =
-        ProductError::ValidationError("name_empty".into()).into_error_response();
+fn deberia_mapear_validacion_a_422_con_su_codigo() {
+    // Actuar
+    let (status, Json(cuerpo)) =
+        a_respuesta_error(ErrorProducto::Validacion("nombre_vacio".into()));
 
-    // Assert
+    // Comprobar
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(body.name, "product.validation_error.name_empty");
+    assert_eq!(cuerpo.codigo, "producto.validacion.nombre_vacio");
 }
 ```

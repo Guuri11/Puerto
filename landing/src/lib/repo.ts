@@ -40,7 +40,8 @@ export const adrs: Adr[] = readdirSync(join(ROOT, 'docs/adr'))
   .map((file) => {
     const text = readFileSync(join(ROOT, 'docs/adr', file), 'utf8');
     const heading = text.match(/^#\s+(\d{4})\s+[—-]\s+(.+)$/m);
-    const status = text.match(/^\*\*Status:\*\*\s+(\w+)(?:\s+\((\d{4}-\d{2}-\d{2}))?/m);
+    // Las ADR en castellano (0023 en adelante) dicen **Estado:** Aceptada.
+    const status = text.match(/^\*\*(?:Status|Estado):\*\*\s+(\w+)(?:\s+\((\d{4}-\d{2}-\d{2}))?/m);
     return {
       number: heading?.[1] ?? file.slice(0, 4),
       slug: file.replace(/\.md$/, ''),

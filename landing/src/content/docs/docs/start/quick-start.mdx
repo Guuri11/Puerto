@@ -1,46 +1,48 @@
 ---
 title: Quick start
-description: Create a Puerto project, scaffold a Product entity across every layer, call its API and open its screens, in about five minutes.
+description: Create a Puerto project, scaffold a Producto entity across every layer, call its API and open its screens, in about five minutes.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-This page builds a small catalogue: a `Product` with a name, a price and a unique SKU, served as a
-REST API with its own React screens. It runs in memory, so you need nothing but Rust and, for the
-screens, [Bun](https://bun.sh). Every output on this page was captured from a real run.
+This page builds a small catalogue: a `Producto` (product) with a name, a price and a unique SKU,
+served as a REST API with its own React screens. It runs in memory, so you need nothing but Rust
+and, for the screens, [Bun](https://bun.sh). Every output on this page was captured from a real
+run.
 
 <Steps>
 
 1. **Create the project.**
 
    ```bash
-   puerto new --name shop --no-db --no-demo
+   puerto nuevo --nombre tienda --sin-db --sin-demo
    ```
 
    ```txt title="output"
-   ├── business/        (domain logic)
-   ├── infrastructure/  (adapters)
-   ├── presentation/    (openapi routes)
+   ├── nucleo/          (shared value objects)
+   ├── contextos/       (one crate per context and layer)
+   ├── presentacion/    (the binaries and their wiring)
    ├── web/             (React frontend)
    └── Cargo.toml
-   ✓ Project 'shop' created.
+   ✓ Project 'tienda' created.
    ```
 
-   `--no-db` keeps the data in memory, and `--no-demo` leaves out the `Greeting` example entity.
-   Leave both flags out and `puerto new` asks.
+   `--sin-db` keeps the data in memory, and `--sin-demo` leaves out the `Saludo` example entity.
+   Leave both flags out and `puerto nuevo` asks.
 
 2. **Scaffold an entity.**
 
    ```bash
-   cd shop
-   puerto generate scaffold Product -- name:String price:i64 sku:String!
+   cd tienda
+   puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
    ```
 
    ```txt title="output"
-   ✓ business/        — model, errors, repository trait, use cases (create, get, list, update, delete)
-   ✓ infrastructure/  — InMemoryProductRepository
-   ✓ presentation/    — routes, dto, responses, error mapper
-   ✓ web/             — list, detail and form screens, HTTP repository
+   ✓ contextos/producto/dominio/         — model, errors, repository port, MadreProducto
+   ✓ contextos/producto/aplicacion/      — create, get, list, update, delete
+   ✓ contextos/producto/infraestructura/ — RepositorioProductoEnMemoria
+   ✓ contextos/producto/rest/            — routes, dto, responses, errors
+   ✓ web/ — list, detail and form screens, HTTP repository
    ✓ Done. Zero manual wiring.
 
    The API changed. Next: make web/sync   (exports the spec, regenerates the web types)
@@ -62,34 +64,34 @@ screens, [Bun](https://bun.sh). Every output on this page was captured from a re
 4. **Call it.**
 
    ```bash
-   curl -X POST localhost:8080/api/products \
+   curl -X POST localhost:8080/api/productos \
      -H 'content-type: application/json' \
-     -d '{"name":"Lamp","price":4900,"sku":"LMP-01"}'
+     -d '{"nombre":"Lampara","precio":4900,"sku":"LMP-01"}'
    ```
 
    ```json title="201 Created"
-   {"id":"535f6905-8372-4349-af7d-c9fb49455ed5","name":"Lamp","price":4900,"sku":"LMP-01"}
+   {"id":"1f1d2bb9-a92d-48c4-ab78-f56cfcccdcd7","nombre":"Lampara","precio":4900,"sku":"LMP-01"}
    ```
 
    The same SKU again, then an empty name:
 
    ```json title="409 Conflict"
-   {"message":"product.duplicate","name":"product.duplicate"}
+   {"codigo":"producto.duplicado","mensaje":"producto.duplicado"}
    ```
 
    ```json title="422 Unprocessable Entity"
-   {"message":"product.validation_error.name_empty","name":"product.validation_error.name_empty"}
+   {"codigo":"producto.validacion.nombre_vacio","mensaje":"producto.validacion.nombre_vacio"}
    ```
 
-   Errors are machine-readable codes in `name`, and domain validation is a 422. That is the
+   Errors are machine-readable codes in `codigo`, and domain validation is a 422. That is the
    [error contract](/docs/reference/errors/), the same in every Puerto project. Lists are paged:
 
    ```bash
-   curl 'localhost:8080/api/products?limit=10'
+   curl 'localhost:8080/api/productos?limite=10'
    ```
 
    ```json title="200 OK"
-   {"items":[{"id":"535f6905-…","name":"Lamp","price":4900,"sku":"LMP-01"}],"limit":10,"offset":0,"total":1}
+   {"desplazamiento":0,"elementos":[{"id":"1f1d2bb9-a92d-48c4-ab78-f56cfcccdcd7","nombre":"Lampara","precio":4900,"sku":"LMP-01"}],"limite":10,"total":1}
    ```
 
 5. **Open the screens.** In another terminal:
@@ -99,8 +101,8 @@ screens, [Bun](https://bun.sh). Every output on this page was captured from a re
    make web/install && make web/dev   # http://localhost:5173
    ```
 
-   `/products` lists them, `/products/new` creates one, and a rejected form shows the message next
-   to the field it is about.
+   `/productos` lists them, `/productos/new` creates one, and a rejected form shows the message
+   next to the field it is about.
 
 6. **Check it.**
 
@@ -117,21 +119,22 @@ screens, [Bun](https://bun.sh). Every output on this page was captured from a re
 
 ## What you have now
 
-- `business/src/domain/product/model.rs` holds `Product` and its id type, `ProductId`. The rules
-  go in `Product::new`: it already refuses an empty `name` and an empty `sku`.
-- `business/src/application/product/` holds the five use cases, each with unit tests against a
-  mocked repository.
-- `presentation/src/api/product/routes.rs` holds the five endpoints. Their tests drive the real
+- `contextos/producto/dominio/src/modelo.rs` holds `Producto` and its id type, `IdProducto`. The
+  rules go in `Producto::new`: it already refuses an empty `nombre` and an empty `sku`.
+- `contextos/producto/aplicacion/src/` holds the five use cases, one file each, with unit tests
+  against a mocked repository.
+- `contextos/producto/rest/src/rutas.rs` holds the five endpoints. Their tests drive the real
   `OpenApiService` with mocked use cases.
-- `presentation/src/generated/bootstrap.rs` wires all of it. You never edit it.
+- `presentacion/cableado/` and `presentacion/api/src/generado/bootstrap.rs` wire all of it. You
+  never edit them.
 
 <Aside type="tip">
-Run `git diff` after any `puerto generate` command. Every change it made is there, formatted.
+Run `git diff` after any `puerto generar` command. Every change it made is there, formatted.
 </Aside>
 
 ## Next
 
-- Keep the data: [Database and migrations](/docs/guides/database/) (`puerto new --db`).
+- Keep the data: [Database and migrations](/docs/guides/database/) (`puerto nuevo --db`).
 - Add a rule that is not CRUD: [Use cases](/docs/guides/use-cases/).
 - React to writes: [Domain events](/docs/guides/events/).
 - Understand why it is laid out this way: [The architecture](/docs/start/architecture/).

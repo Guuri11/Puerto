@@ -35,10 +35,10 @@ make setup    # cargo-nextest, cargo-audit, and sqlx-cli in --db projects
 |---|---|---|
 | [rustup](https://rustup.rs) | always | The project's `rust-toolchain.toml` pins Rust 1.95.0 with `rustfmt` and `clippy`, so `make lint` gives the same answer on every machine ([ADR-0009](/docs/decisions/adr/0009-generated-projects-pin-their-toolchain/)) |
 | [cargo-nextest](https://nexte.st) | always | `make test` runs the workspace with it |
-| Docker | `--db`, `--events`, `--auth oidc`, mail | `docker-compose.yml` runs Postgres, Mailpit, Keycloak or Redpanda for development |
+| Docker | `--db`, `--eventos`, `--auth oidc`, `generar correo` | `docker-compose.yml` runs Postgres, Mailpit, Keycloak or Redpanda for development |
 | [sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli) | `--db` | `make sqlx/migrate` and `make sqlx/prepare` |
-| [Bun](https://bun.sh) | the web frontend (default) | `web/` is React on Bun. `--no-web` leaves it out |
-| `cmake`, libcurl headers | `--events kafka` | `rdkafka` builds librdkafka from source |
+| [Bun](https://bun.sh) | the web frontend (default) | `web/` is React on Bun. `--sin-web` leaves it out |
+| `cmake`, libcurl headers | `--eventos kafka` | `rdkafka` builds librdkafka from source |
 
 <Aside type="note">
 For a Kafka project, the libcurl headers are `libcurl4-openssl-dev` on Debian and Ubuntu and
@@ -52,5 +52,5 @@ cargo install puerto --locked --force
 ```
 
 A project depends on the runtime crates of the minor version that generated it. When you upgrade
-the CLI, read [Upgrading](/docs/guides/upgrading/): `puerto validate` warns when the two drift
+the CLI, read [Upgrading](/docs/guides/upgrading/): `puerto validar` warns when the two drift
 apart.

@@ -3,132 +3,170 @@ title: The puerto.toml manifest
 description: The full schema of puerto.toml, the manifest every Puerto generator reads and updates - project flags, entities, fields, value objects, consumers and mails.
 ---
 
-`puerto.toml` is the source of truth of a project. The generators write it, `bootstrap.rs`,
-`events.rs`, `registry.rs` and the frontend's generated files are derived from it, and
-`puerto validate` checks the code against it. You can edit it by hand; run
-`puerto generate bootstrap` and `puerto validate` afterwards.
+`puerto.toml` is the source of truth of a project. The generators write it; `cableado`,
+`bootstrap.rs`, `eventos.rs`, `registro.rs` and the frontend's generated files are derived from
+it; and `puerto validar` checks the code against it. You can edit it by hand; run
+`puerto generar bootstrap` and `puerto validar` afterwards.
 
 A complete example, from a project with a database, events, auth and a mail:
 
 ```toml title="puerto.toml"
-[project]
-name = "shop"
+[proyecto]
+nombre = "tienda"
 db = true
 web = true
-events = "db"
+eventos = "db"
 auth = "local"
 
-[[entity]]
-name = "Product"
-use_cases = [
-    "create_product",
-    "get_product",
-    "list_products",
-    "update_product",
-    "delete_product",
-    "reprice_product",
+[[entidad]]
+nombre = "Cliente"
+casos_de_uso = [
+    "crear_cliente",
+    "obtener_cliente",
+    "listar_clientes",
+    "actualizar_cliente",
+    "borrar_cliente",
 ]
 db = true
-public = ["list_products", "get_product"]
-events = ["product_published"]
 
-[entity.roles]
-delete_product = ["admin"]
+[[entidad.campos]]
+nombre = "email"
+tipo = "String"
+objeto_valor = "Email"
 
-[[entity.fields]]
-name = "name"
-type = "String"
+[[entidad.campos]]
+nombre = "nombre"
+tipo = "String"
 
-[[entity.fields]]
-name = "sku"
-type = "String"
-unique = true
+[[entidad]]
+nombre = "Producto"
+casos_de_uso = [
+    "crear_producto",
+    "obtener_producto",
+    "listar_productos",
+    "actualizar_producto",
+    "borrar_producto",
+    "publicar_producto",
+]
+db = true
+publicos = [
+    "listar_productos",
+    "obtener_producto",
+]
+eventos = ["producto_publicado"]
 
-[[entity.fields]]
-name = "status"
-type = "String"
-value_object = "Status"
-value_object_kind = "enum"
-enum_variants = ["Draft", "Published"]
+[entidad.roles]
+borrar_producto = ["admin"]
 
-[[entity]]
-name = "Order"
-use_cases = ["create_order", "get_order", "list_orders", "update_order", "delete_order"]
+[[entidad.campos]]
+nombre = "nombre"
+tipo = "String"
+
+[[entidad.campos]]
+nombre = "sku"
+tipo = "String"
+unico = true
+
+[[entidad]]
+nombre = "Pedido"
+casos_de_uso = [
+    "crear_pedido",
+    "obtener_pedido",
+    "listar_pedidos",
+    "actualizar_pedido",
+    "borrar_pedido",
+]
 db = true
 
-[[entity.fields]]
-name = "product_id"
-type = "Uuid"
-references = "Product"
+[[entidad.campos]]
+nombre = "cliente_id"
+tipo = "Uuid"
+referencia = "Cliente"
 
-[[value_object]]
-name = "Email"
-type = "String"
+[[entidad.campos]]
+nombre = "estado"
+tipo = "String"
+objeto_valor = "Estado"
+clase_objeto_valor = "enum"
+variantes = [
+    "Pendiente",
+    "Confirmado",
+    "Cancelado",
+]
 
-[[consumer]]
-name = "notify_new_product"
-events = ["product_created", "product_published"]
+[[objeto_valor]]
+nombre = "Email"
+tipo = "String"
 
-[[mail]]
-name = "welcome"
-on = ["customer_created"]
+[[consumidor]]
+nombre = "avisar_producto_nuevo"
+eventos = [
+    "producto_creado",
+    "producto_publicado",
+]
+
+[[correo]]
+nombre = "bienvenida"
+tras = ["cliente_creado"]
 ```
 
-## `[project]`
+## `[proyecto]`
 
 | Key | Type | Set by | Meaning |
 |---|---|---|---|
-| `name` | string | `new --name` | The project's name: crates, database, topics |
-| `db` | bool | `new --db` | Postgres through SQLx. Absent means `false` |
-| `web` | bool | `new` (default), `--no-web` | The React frontend in `web/` |
-| `events` | `"db"` \| `"kafka"` | `new --events` | Domain events and their transport. Needs `db` |
-| `auth` | `"oidc"` \| `"local"` | `new --auth` | Authentication mode. `local` needs `db` |
+| `nombre` | string | `nuevo --nombre` | The project's name: crates, database, topics |
+| `db` | bool | `nuevo --db` | Postgres through SQLx. Absent means `false` |
+| `web` | bool | `nuevo` (default), `--sin-web` | The React frontend in `web/` |
+| `eventos` | `"db"` \| `"kafka"` | `nuevo --eventos` | Domain events and their transport. Needs `db` |
+| `auth` | `"oidc"` \| `"local"` | `nuevo --auth` | Authentication mode. `local` needs `db` |
 
-## `[[entity]]`
+## `[[entidad]]`
 
 | Key | Type | Set by | Meaning |
 |---|---|---|---|
-| `name` | string | `scaffold`, `domain` | PascalCase |
-| `use_cases` | string[] | `scaffold`, `use-case` | Every use case `bootstrap.rs` wires. The five CRUD ones make it a CRUD entity, with routes and screens |
+| `nombre` | string | `scaffold`, `dominio` | PascalCase. Each entity is a context, `contextos/<snake>/` |
+| `casos_de_uso` | string[] | `scaffold`, `caso-de-uso` | Every use case `cableado` builds. The five CRUD ones make it a CRUD entity, with routes and screens |
 | `db` | bool | `scaffold` in a `db` project | Postgres repository instead of in memory |
-| `public` | string[] | `scaffold --public` | Auth projects: use cases whose routes need no token |
-| `roles` | table | `scaffold --role` | Auth projects: `use_case = ["role", …]`; the caller needs all of them |
-| `events` | string[] | `generate event` | Custom event types, beyond `_created`, `_updated`, `_deleted` |
+| `publicos` | string[] | `scaffold --publico` | Auth projects: use cases whose routes need no token |
+| `roles` | table | `scaffold --rol` | Auth projects: `caso_de_uso = ["rol", …]`; the caller needs all of them |
+| `eventos` | string[] | `generar evento` | Custom event types, beyond `_creado`, `_actualizado`, `_borrado` |
 
-## `[[entity.fields]]`
+## `[[entidad.campos]]`
 
 | Key | Type | Meaning |
 |---|---|---|
-| `name` | string | snake_case |
-| `type` | string | `String`, `i64`, `f64`, `bool`, `Uuid`, `DateTime<Utc>`, `HashMap<String, String>`, or `Option<…>` / `Vec<…>` of them. See [Field types](/docs/reference/field-types/) |
-| `unique` | bool | A partial unique index, and `409` on a duplicate |
-| `value_object` | string | The value object wrapping it, local or shared |
-| `value_object_kind` | `"enum"` | An enum value object; `type` is then `String` |
-| `enum_variants` | string[] | Its PascalCase variants |
-| `references` | string | Another CRUD entity whose id this field holds; `type` is then `Uuid` or `Option<Uuid>`. A foreign key in `db` projects. See [References](/docs/reference/field-types/#references) |
+| `nombre` | string | snake_case |
+| `tipo` | string | `String`, `i64`, `f64`, `bool`, `Uuid`, `DateTime<Utc>`, `HashMap<String, String>`, or `Option<…>` / `Vec<…>` of them. See [Field types](/docs/reference/field-types/) |
+| `unico` | bool | A partial unique index, and `409` on a duplicate |
+| `objeto_valor` | string | The value object wrapping it, local or shared |
+| `clase_objeto_valor` | `"enum"` | An enum value object; `tipo` is then `String` |
+| `variantes` | string[] | Its PascalCase variants |
+| `referencia` | string | Another CRUD entity whose id this field holds; `tipo` is then `Uuid` or `Option<Uuid>`. A foreign key in `db` projects. See [References](/docs/reference/field-types/#references) |
 
-## `[[value_object]]`
+## `[[objeto_valor]]`
 
-Shared value objects, declared by `generate value-object`: `name` (PascalCase) and `type` (its
-inner primitive). A field that names one without a type uses this one.
+Shared value objects, declared by `generar objeto-valor`: `nombre` (PascalCase) and `tipo` (its
+inner primitive). They live in the `nucleo` crate. A field that names one without a type uses
+this one.
 
-## `[[consumer]]`
+## `[[consumidor]]`
 
-Events projects. Written by `generate consumer`: `name` (snake_case, the handler's file and its
-consumer group) and `events` (the event types it handles). A consumer whose file is missing makes
-`validate` fail and `generate bootstrap` refuse.
+Events projects. Written by `generar consumidor`: `nombre` (snake_case, the handler's file and
+its consumer group) and `eventos` (the event types it handles). A consumer whose file is missing
+makes `validar` fail and `generar bootstrap` refuse.
 
-## `[[mail]]`
+## `[[correo]]`
 
-Written by `generate mail`: `name`, and `on` when the worker sends it on events.
+Written by `generar correo`: `nombre`, and `tras` when the worker sends it after events.
 
-## What `puerto validate` checks
+## What `puerto validar` checks
 
 - Names: PascalCase entities, snake_case fields and use cases, no Rust keywords, no SQL reserved
-  words in `db` projects, no names the generated code already uses.
+  words in `db` projects, no names the generated code or another context already uses.
 - Types: every field type is one Puerto generates, and every shared value object exists.
-- Consistency: `events` and `auth = "local"` need `db`; every declared entity, consumer and mail
+- Consistency: `eventos` and `auth = "local"` need `db`; every declared entity, consumer and mail
   has its files; in web projects, every CRUD entity has its screens; in auth projects, each
-  route's `BearerAuth` and `#[require_role]` match `public` and `roles`; every `references`
-  names another declared CRUD entity and is a `Uuid` or `Option<Uuid>`.
+  route's `BearerAuth` and `#[requiere_rol]` match `publicos` and `roles`; every `referencia`
+  names another declared CRUD entity, is a `Uuid` or `Option<Uuid>`, and closes no cycle between
+  contexts.
 - The runtime: a warning for each `puerto-*` crate on another minor than the CLI.

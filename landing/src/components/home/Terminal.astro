@@ -1,43 +1,26 @@
 ---
 /**
- * La terminal: el visitante elige una carga (una entidad) y los flags de `puerto new`, y ve lo
+ * La terminal: el visitante elige una carga (una entidad) y los flags de `puerto nuevo`, y ve lo
  * que escribe el CLI publicado. Nada de lo que enseña está escrito a mano: árbol, comandos,
  * stdout y ficheros salen de `pnpm harvest` (scripts/harvest.mjs). → DESIGN.md § 8
  *
  * Se renderiza en el servidor con la combinación por defecto, para que sin JavaScript (y para
  * los buscadores) haya contenido real. El script la reconstruye igual al cambiar algo.
  */
-import { entities, matrix, readCargo, layerOf, harvestVersion } from '@/lib/cargo';
+import { entities, matrix, readCargo, harvestVersion } from '@/lib/cargo';
+import { groupFiles, inGroup } from '@/lib/groups';
 
-const DEFAULT = { entity: 'product', db: true, events: null, auth: null, web: true };
+const DEFAULT = { entity: 'producto', db: true, events: null, auth: null, web: true };
 const comboId = (f: { db: boolean; events: string | null; auth: string | null; web: boolean }, e: string) =>
   [f.db ? 'db' : 'nodb', f.events ? `ev-${f.events}` : 'noev', f.auth ? `auth-${f.auth}` : 'noauth', f.web ? 'web' : 'noweb'].join('_') + `__${e}`;
 
 const initial = readCargo(comboId(DEFAULT, DEFAULT.entity));
 const written = initial.files.filter((f) => f.status !== 'kept');
 
-const LAYER_ORDER = ['business', 'infrastructure', 'presentation', 'worker', 'web', 'root'] as const;
-const LAYER_LABEL: Record<string, string> = {
-  business: 'business',
-  infrastructure: 'infrastructure',
-  presentation: 'presentation',
-  worker: 'worker',
-  web: 'web',
-  root: 'project root',
-};
-
-function groups(files: typeof initial.files) {
-  return LAYER_ORDER.map((layer) => ({
-    layer,
-    files: files.filter((f) => layerOf(f.path) === layer),
-  })).filter((g) => g.files.length);
-}
-
 const split = (path: string) => {
   const i = path.lastIndexOf('/');
   return i < 0 ? { dir: '', name: path } : { dir: path.slice(0, i + 1), name: path.slice(i + 1) };
 };
-const inLayer = (path: string, layer: string) => (layer === 'root' ? path : path.slice(path.indexOf('/') + 1));
 
 const data = {
   matrix: matrix.map((m) => ({ id: m.id })),
@@ -51,7 +34,7 @@ const data = {
   <div class="frame try__head">
     <h2 class="h2" id="try-title" data-reveal>One command.<br />Every layer.</h2>
     <p class="lede try__lede" data-reveal>
-      Pick an entity and the flags of <code>puerto new</code>. Every file below was written
+      Pick an entity and the flags of <code>puerto nuevo</code>. Every file below was written
       by <code>puerto {harvestVersion}</code> itself, captured when this site was built.
       Nothing is typed for the page.
     </p>
@@ -93,17 +76,17 @@ const data = {
           </fieldset>
 
           <fieldset class="term__set">
-            <legend class="term__legend">puerto new</legend>
+            <legend class="term__legend">puerto nuevo</legend>
             <label class="term__flag">
               <input type="checkbox" name="db" checked={DEFAULT.db} />
               <span><code>--db</code> Postgres and SQLx</span>
             </label>
             <label class="term__flag">
               <input type="checkbox" name="web" checked={DEFAULT.web} />
-              <span><code>web/</code> React frontend <small>(off: <code>--no-web</code>)</small></span>
+              <span><code>web/</code> React frontend <small>(off: <code>--sin-web</code>)</small></span>
             </label>
             <div class="term__choice" role="radiogroup" aria-label="Domain events">
-              <span class="term__choice-label"><code>--events</code></span>
+              <span class="term__choice-label"><code>--eventos</code></span>
               {
                 [
                   ['', 'none'],
@@ -164,15 +147,15 @@ const data = {
               <span class="term__row-meta">what the CLI printed</span>
             </button>
             {
-              groups(written).map((g) => (
-                <div class={`term__group term__group--${g.layer}`}>
+              groupFiles(written).map((g) => (
+                <div class={`term__group term__group--${g.ring}`}>
                   <div class="term__group-head">
-                    <span class="term__group-name">{LAYER_LABEL[g.layer]}</span>
+                    <span class="term__group-name">{g.label}</span>
                     <span class="term__group-count">{g.files.length}</span>
                   </div>
                   <ul>
                     {g.files.map((f) => {
-                      const { dir, name } = split(inLayer(f.path, g.layer));
+                      const { dir, name } = split(inGroup(f.path, g.dir));
                       return (
                         <li>
                           <button type="button" class="term__row" data-hash={f.hash} data-path={f.path}>
@@ -747,6 +730,7 @@ const data = {
 
 <script>
   import { gsap } from 'gsap';
+  import { groupFiles, inGroup } from '@/lib/groups';
 
   type Status = 'added' | 'changed' | 'kept';
   interface CargoFile {
@@ -768,19 +752,6 @@ const data = {
     initial: Cargo;
   }
 
-  const LAYERS = ['business', 'infrastructure', 'presentation', 'worker', 'web', 'root'] as const;
-  const LABEL: Record<string, string> = {
-    business: 'business',
-    infrastructure: 'infrastructure',
-    presentation: 'presentation',
-    worker: 'worker',
-    web: 'web',
-    root: 'project root',
-  };
-  const layerOf = (p: string) => {
-    const top = p.split('/')[0];
-    return (LAYERS as readonly string[]).includes(top) && top !== 'root' ? top : 'root';
-  };
   const esc = (s: string) =>
     s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
@@ -819,7 +790,7 @@ const data = {
       [s.db ? 'db' : 'nodb', s.events ? `ev-${s.events}` : 'noev', s.auth ? `auth-${s.auth}` : 'noauth', s.web ? 'web' : 'noweb'].join('_') +
       `__${s.entity}`;
 
-    /** `--events` y `--auth local` necesitan `--db`, como en el CLI. */
+    /** `--eventos` y `--auth local` necesitan `--db`, como en el CLI. */
     const enforce = () => {
       const db = (form.elements.namedItem('db') as HTMLInputElement).checked;
       form.querySelectorAll<HTMLInputElement>('input[name="events"]').forEach((i) => {
@@ -835,7 +806,7 @@ const data = {
     const syncUrl = () => {
       const s = state();
       const q = new URLSearchParams();
-      if (s.entity !== 'product') q.set('cargo', s.entity);
+      if (s.entity !== 'producto') q.set('cargo', s.entity);
       if (!s.db) q.set('db', '0');
       if (!s.web) q.set('web', '0');
       if (s.events) q.set('events', s.events);
@@ -886,14 +857,12 @@ const data = {
       const html = [
         `<button type="button" class="term__row term__row--stdout" data-stdout aria-current="${selected === null}"><span class="term__row-name">stdout</span><span class="term__row-meta">what the CLI printed</span></button>`,
       ];
-      for (const layer of LAYERS) {
-        const group = files.filter((f) => layerOf(f.path) === layer);
-        if (!group.length) continue;
+      for (const g of groupFiles(files)) {
         html.push(
-          `<div class="term__group term__group--${layer}"><div class="term__group-head"><span class="term__group-name">${LABEL[layer]}</span><span class="term__group-count">${group.length}</span></div><ul>`,
+          `<div class="term__group term__group--${g.ring}"><div class="term__group-head"><span class="term__group-name">${esc(g.label)}</span><span class="term__group-count">${g.files.length}</span></div><ul>`,
         );
-        for (const f of group) {
-          const rel = layer === 'root' ? f.path : f.path.slice(f.path.indexOf('/') + 1);
+        for (const f of g.files) {
+          const rel = inGroup(f.path, g.dir);
           const cut = rel.lastIndexOf('/') + 1;
           const badge = f.status === 'added' ? '+' : f.status === 'changed' ? '~' : '';
           const isNew = !before.has(f.path) ? ' data-new' : '';

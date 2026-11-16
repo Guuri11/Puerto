@@ -2,6 +2,19 @@
 
 Log de modificaciones. Lo más reciente arriba.
 
+## 2026-11-16 — Puerto 0.21: un crate por contexto, lo generado en castellano
+
+- La cosecha (`harvest.mjs`) y la captura del compilador (`capture-compiler.mjs`) usan el CLI en
+  castellano (`puerto nuevo`, `generar scaffold`, `--eventos`…) y las cargas `Producto`, `Pedido`,
+  `Cliente` en el proyecto `tienda`.
+- La terminal agrupa los ficheros por directorio real (`contextos/producto/dominio/`, `nucleo/`,
+  `presentacion/api/`…, `src/lib/groups.ts`, compartido por el servidor y el navegador), con el
+  color del anillo. El `LayerStack` enseña los cuatro crates de un contexto.
+- `sync-repo-docs.mjs` y `repo.ts` leen también las ADR en castellano (`**Estado:**`,
+  `## Contexto`).
+- La home: una línea nueva en el manifiesto («In Spanish»); los comandos, en castellano.
+- Las 22 páginas de docs, al vocabulario de la 0.21; la prosa sigue en inglés.
+
 ## 2026-10-13 — Lanzamiento
 
 - Desplegada en producción (`1904402`): squirrel 83/100 (B) frente a 58 (F) del baseline.

@@ -27,8 +27,8 @@ to.
 
 ## What the server gives you
 
-`main.rs` is four lines: it reads `Config` and hands `bootstrap.rs`'s routes to `puerto-web`'s
-`App`, which serves:
+`presentacion/api/src/main.rs` is four lines: it reads `Config` and hands `bootstrap.rs`'s routes
+to `puerto-web`'s `App`, which serves:
 
 | Path | |
 |---|---|
@@ -44,20 +44,24 @@ startup, such as a database that is down, is an error message and exit code 1, n
 
 ## Your own middleware and routes
 
-`presentation/src/app.rs` is written once by `puerto new` and never touched again:
+`presentacion/api/src/app.rs` is written once by `puerto nuevo` and never touched again.
+`generado/bootstrap.rs` hands it every route, the API, the Swagger UI and the health probes, last:
 
-```rust title="presentation/src/app.rs"
-//! Yours: `puerto new` writes this file once and no generator touches it again.
+```rust title="presentacion/api/src/app.rs"
+//! Lo escribe una vez `puerto nuevo`; desde entonces es tuyo y ningún generador vuelve a tocarlo.
 //!
-//! `generated/bootstrap.rs` hands every route — the API, the Swagger UI, the health probes — to
-//! `configure` last. Add middleware (`routes.with(…)`) or routes of your own (`routes.at(…)`) here.
+//! `generado/bootstrap.rs` entrega todas las rutas —la API, la Swagger UI, las sondas de salud— a
+//! `configurar`, lo último. Añade aquí middleware (`rutas.with(…)`) o rutas propias
+//! (`rutas.at(…)`).
 
 use poem::{Endpoint, Route};
 
-pub fn configure(routes: Route) -> impl Endpoint {
-    routes
+pub fn configurar(rutas: Route) -> impl Endpoint {
+    rutas
 }
 ```
+
+Add middleware with `rutas.with(…)` and routes of your own with `rutas.at(…)`.
 
 Rate limiting, request ids, a webhook endpoint outside the OpenAPI service: they go here, and
 regenerating `bootstrap.rs` never loses them.
@@ -66,11 +70,11 @@ regenerating `bootstrap.rs` never loses them.
 
 Plain `tracing`, with no logger to inject
 ([ADR-0006](/docs/decisions/adr/0006-logging-through-tracing-not-a-logger-port/)). Every request
-is logged with its method, path, status and duration, and every use case logs `start` and `done`
+is logged with its method, path, status and duration, and every use case logs `inicio` and `fin`
 with its id. Never log the params or a request body: they are user data.
 
 ```rust
-tracing::info!(id = %product.id, "reprice_product: done");
+tracing::info!(id = %producto.id, "cambiar_precio_producto: fin");
 ```
 
 ## The toolchain
@@ -82,7 +86,7 @@ same on every machine and in CI. Bump it on purpose, then fix what the new clipp
 
 ## IDE snippets
 
-`puerto new` writes snippets for Zed (`.zed/snippets/`, loaded automatically) and VS Code
+`puerto nuevo` writes snippets for Zed (`.zed/snippets/`, loaded automatically) and VS Code
 (`.vscode/*.code-snippets`). Neovim with LuaSnip can load the VS Code ones:
 
 ```lua
@@ -93,8 +97,9 @@ They follow the generator's own shapes: `domain-model`, `repository-trait`, `app
 `uow-write`, `poem-endpoint-action`, `poem-response-enum`, `poem-route-test`, `consumer-arm`,
 `object-mother`, `sqlx-test`, `vo-enum` and more for Rust; `migration-create-table`,
 `migration-unique-index` and `sql-soft-delete` for SQL; `web-container`, `web-repo-method`,
-`web-form-field` and `web-route` for the frontend. Rewrite them with
-`puerto generate snippets [--ide zed|vscode]`.
+`web-form-field` and `web-route` for the frontend. The prefixes are English; what they write
+follows the project's Spanish names (`deberia_…_cuando_…`, `// Preparar`, `ejecutar`…). Rewrite
+them with `puerto generar snippets [--ide zed|vscode]`.
 
 <Aside type="tip">
 The snippets are tested in Puerto's own suite: an entity is built from them alone and run

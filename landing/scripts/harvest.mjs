@@ -43,28 +43,28 @@ if (binVersion !== workspaceVersion) {
 
 // ── CLI reference ──────────────────────────────────────────────────────────────────────────
 const COMMANDS = [
-  ['new'],
-  ['generate', 'scaffold'],
-  ['generate', 'use-case'],
-  ['generate', 'value-object'],
-  ['generate', 'migration'],
-  ['generate', 'event'],
-  ['generate', 'consumer'],
-  ['generate', 'mail'],
-  ['generate', 'web'],
-  ['generate', 'domain'],
-  ['generate', 'application'],
-  ['generate', 'repository'],
-  ['generate', 'presentation'],
-  ['generate', 'bootstrap'],
-  ['generate', 'snippets'],
-  ['list'],
-  ['validate'],
+  ['nuevo'],
+  ['generar', 'scaffold'],
+  ['generar', 'caso-de-uso'],
+  ['generar', 'objeto-valor'],
+  ['generar', 'migracion'],
+  ['generar', 'evento'],
+  ['generar', 'consumidor'],
+  ['generar', 'correo'],
+  ['generar', 'web'],
+  ['generar', 'dominio'],
+  ['generar', 'aplicacion'],
+  ['generar', 'repositorio'],
+  ['generar', 'presentacion'],
+  ['generar', 'bootstrap'],
+  ['generar', 'snippets'],
+  ['listar'],
+  ['validar'],
   ['completions'],
 ];
 const cli = {
   root: run(['--help']),
-  generate: run(['generate', '--help']),
+  generar: run(['generar', '--help']),
   commands: COMMANDS.map((c) => ({ command: c.join(' '), help: run([...c, '--help']) })),
 };
 
@@ -74,20 +74,22 @@ const cli = {
  * value objects with an enum, an optional and a vector.
  */
 const ENTITIES = [
-  { id: 'product', name: 'Product', fields: ['name:String', 'price:i64', 'sku:String!'] },
+  { id: 'producto', name: 'Producto', plural: 'productos', fields: ['nombre:String', 'precio:i64', 'sku:String!'] },
   {
-    id: 'order',
-    name: 'Order',
-    fields: ['amount:Amount:f64', 'status:Status:enum:Pending/Confirmed/Cancelled', 'note:opt:String'],
+    id: 'pedido',
+    name: 'Pedido',
+    plural: 'pedidos',
+    fields: ['importe:Importe:f64', 'estado:Estado:enum:Pendiente/Confirmado/Cancelado', 'nota:opt:String'],
   },
   {
-    id: 'customer',
-    name: 'Customer',
-    fields: ['email:Email:String!', 'name:String', 'tags:Tag:vec:String'],
+    id: 'cliente',
+    name: 'Cliente',
+    plural: 'clientes',
+    fields: ['email:Email:String!', 'nombre:String', 'etiquetas:Etiqueta:vec:String'],
   },
 ];
 
-/** Every valid combination of `puerto new` flags. `--events` and `--auth local` need `--db`. */
+/** Every valid combination of `puerto nuevo` flags. `--eventos` and `--auth local` need `--db`. */
 function combos() {
   const out = [];
   for (const db of [false, true])
@@ -101,19 +103,18 @@ const comboId = ({ db, events, auth, web }) =>
   [db ? 'db' : 'nodb', events ? `ev-${events}` : 'noev', auth ? `auth-${auth}` : 'noauth', web ? 'web' : 'noweb'].join('_');
 
 function newArgs({ db, events, auth, web }) {
-  const args = ['new', '--name', 'shop', db ? '--db' : '--no-db', '--no-demo'];
-  if (!web) args.push('--no-web');
-  if (events) args.push('--events', events);
+  const args = ['nuevo', '--nombre', 'tienda', db ? '--db' : '--sin-db', '--sin-demo'];
+  if (!web) args.push('--sin-web');
+  if (events) args.push('--eventos', events);
   if (auth) args.push('--auth', auth);
   return args;
 }
 
 function scaffoldArgs(entity, { auth }) {
-  const args = ['generate', 'scaffold', entity.name];
+  const args = ['generar', 'scaffold', entity.name];
   // In auth projects, show the two flags that shape the routes: reads stay open, deletes need admin.
   if (auth) {
-    const plural = `${entity.id}s`;
-    args.push('--public', `list_${plural},get_${entity.id}`, '--role', `delete_${entity.id}=admin`);
+    args.push('--publico', `listar_${entity.plural},obtener_${entity.id}`, '--rol', `borrar_${entity.id}=admin`);
   }
   return [...args, '--', ...entity.fields];
 }
@@ -141,7 +142,7 @@ function walk(dir, root = dir, acc = new Map()) {
  */
 function normalizeMigrations(files) {
   const out = new Map();
-  const migrations = [...files.keys()].filter((p) => /migrations\/\d{14}_/.test(p)).sort();
+  const migrations = [...files.keys()].filter((p) => /migraciones\/\d{14}_/.test(p)).sort();
   const renamed = new Map(
     migrations.map((p, i) => [p, p.replace(/\d{14}_/, `2026010100${String(i).padStart(4, '0')}_`)]),
   );
@@ -166,8 +167,8 @@ for (const flags of combos()) {
     const dir = join(scratch, id);
     mkdirSync(dir);
     const nArgs = newArgs(flags);
-    const newOut = run([...nArgs, '--destination', '.'], dir);
-    const project = join(dir, 'shop');
+    const newOut = run([...nArgs, '--destino', '.'], dir);
+    const project = join(dir, 'tienda');
     const before = normalizeMigrations(walk(project));
     const sArgs = scaffoldArgs(entity, flags);
     const scaffoldOut = run(sArgs, project);
