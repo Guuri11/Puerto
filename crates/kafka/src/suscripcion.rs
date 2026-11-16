@@ -117,7 +117,7 @@ struct Poisoned {
 /// One `[[consumer]]` on Kafka: a consumer group (`<prefix>.<consumer>`) on the topics of its
 /// aggregates, handing out the records of its event types one at a time, in partition order.
 ///
-/// - The offset is committed after the outcome (`Ack`, or `DeadLetter` once recorded): a worker
+/// - The offset is committed after the outcome (`Ack`, or `Descartar` once recorded): a worker
 ///   that stops before that sees the record again — at-least-once.
 /// - `Retry` keeps the record and hands it out again after the policy's backoff, as the next
 ///   attempt; nothing is read meanwhile. A restart starts its attempts over.

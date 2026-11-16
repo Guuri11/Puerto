@@ -9,8 +9,9 @@ use serde::Serialize;
 /// ```
 /// use puerto_correo::Plantillas;
 ///
-/// const WELCOME: Plantillas = Plantillas::new("Welcome, {{ name }}", "<p>Hi {{ name }}</p>")
-///     .con_texto("Hi {{ name }}");
+/// const BIENVENIDA: Plantillas =
+///     Plantillas::new("Bienvenida, {{ nombre }}", "<p>Hola, {{ nombre }}</p>")
+///         .con_texto("Hola, {{ nombre }}");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Plantillas {
@@ -37,7 +38,7 @@ impl Plantillas {
     ///
     /// Strict: a variable the context does not have is an error, never an empty string. The HTML
     /// body escapes what it interpolates; the subject is folded onto one line. Any failure is a
-    /// [`MailError::Permanent`] — rendering the same event again cannot fix a template.
+    /// [`ErrorCorreo::Permanente`] — rendering the same event again cannot fix a template.
     pub fn renderizar(
         &self,
         to: impl Into<String>,

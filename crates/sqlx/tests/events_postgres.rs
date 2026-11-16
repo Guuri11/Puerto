@@ -94,7 +94,7 @@ async fn count(pool: &PgPool, sql: &str) -> i64 {
 }
 
 /// Writes one product and its event per name through committed units of work, oldest first, and
-/// returns the products' ids — the events' `aggregate_id`s.
+/// returns the products' ids — the events' `id_agregado`s.
 async fn write_events(pool: &PgPool, names: &[&'static str]) -> Vec<Uuid> {
     let mut ids = Vec::new();
     for name in names {

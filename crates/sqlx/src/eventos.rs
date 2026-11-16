@@ -1,5 +1,5 @@
 //! The Postgres side of domain events (ADR-0018 § 4): the outbox the relay reads, the `db`
-//! transport (`event_deliveries`) and the dead-letter sink every transport writes to. The tables
+//! transport (`entregas_eventos`) and the dead-letter sink every transport writes to. The tables
 //! are `migrations/outbox.sql`, which `puerto new --eventos` writes into the project.
 
 mod dead_letters;

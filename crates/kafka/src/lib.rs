@@ -1,4 +1,4 @@
-//! The Kafka transport of Puerto projects with domain events (`puerto new --events kafka`,
+//! The Kafka transport of Puerto projects with domain events (`puerto nuevo --eventos kafka`,
 //! ADR-0018 § 4): the publisher the outbox relay of `puerto-events` hands each event to, and the
 //! subscription each consumer reads. The outbox and the dead letters stay in Postgres
 //! (`puerto_sqlx::events`).
@@ -9,18 +9,18 @@
 //! - A consumer is a consumer group (`<prefix>.<consumer>`) on the topics of the event types it
 //!   subscribes to; the records of other types are skipped. Its offset is committed once the
 //!   outcome is settled, so what was not settled is delivered again after a restart.
-//! - A `Retry` is retried in process with the delivery policy's backoff, then dead-lettered: the
+//! - A `Reintentar` is retried in process with the delivery policy's backoff, then dead-lettered: the
 //!   records behind it wait (a partition stalls), they are never handled ahead of it.
 //!
 //! ```ignore
-//! let kafka = ConfigKafka::from_env("shop")?;
-//! kafka.asegurar_topics(&["product"]).await?;
-//! Loops::new(&config)
-//!     .relay(PgOutbox::new(pool.clone()), PublicadorKafka::new(&kafka)?)
-//!     .consumer(
-//!         SuscripcionKafka::new(&kafka, "notify_new_product", &["product"], &[PRODUCT_CREATED], dead_letters.clone())?,
-//!         NotifyNewProduct,
-//!         dead_letters,
+//! let kafka = ConfigKafka::from_env("tienda")?;
+//! kafka.asegurar_topics(&["producto"]).await?;
+//! Bucles::new(&config)
+//!     .relay(OutboxPostgres::new(pool.clone()), PublicadorKafka::new(&kafka)?)
+//!     .consumidor(
+//!         SuscripcionKafka::new(&kafka, "avisar_producto_nuevo", &["producto"], &[PRODUCTO_CREADO], descartados.clone())?,
+//!         AvisarProductoNuevo,
+//!         descartados,
 //!     )
 //! ```
 

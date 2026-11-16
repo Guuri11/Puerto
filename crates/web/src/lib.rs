@@ -8,11 +8,14 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), puerto_web::Error> {
 //!     let config = puerto_web::Config::from_env()?;
-//!     puerto_web::App::new(config).try_serve(generated::bootstrap::build_app).await
+//!     puerto_web::App::new(config)
+//!         .intentar_servir(api::generado::bootstrap::construir_app)
+//!         .await
 //! }
 //! ```
 //!
-//! and `generated/bootstrap.rs` — the composition root — builds the routes with [`rutas`].
+//! and `generado/bootstrap.rs` — over the `cableado` composition root — builds the routes with
+//! [`rutas`].
 
 pub mod app;
 pub mod auth;

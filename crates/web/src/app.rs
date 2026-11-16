@@ -73,7 +73,7 @@ impl App {
     }
 
     /// [`App::servir`] with a `build` that can fail — the project's
-    /// `generated::bootstrap::build_app`, which connects to the database. Its error is logged and
+    /// `api::generado::bootstrap::construir_app`, which connects to the database. Its error is logged and
     /// returned as [`Error::Arranque`]: `main` prints it and exits 1, nothing is bound.
     pub async fn intentar_servir<F, Fut, E, X>(self, build: F) -> Result<(), Error>
     where

@@ -54,7 +54,7 @@ impl<S: SuscripcionEventos> Consumidor<S> {
         }
     }
 
-    /// Never more than the subscription hands out per batch (`max_batch`).
+    /// Never more than the subscription hands out per batch (`lote_maximo`).
     pub fn con_tamano_lote(mut self, tamano_lote: u32) -> Self {
         self.tamano_lote = tamano_lote.max(1).min(self.suscripcion.lote_maximo());
         self

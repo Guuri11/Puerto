@@ -27,7 +27,7 @@ pub enum ResultadoManejo {
     Reintentar,
     /// Never deliver it again, and keep a dead letter saying why.
     Descartar {
-        /// One of the `REASON_*` codes.
+        /// One of the `MOTIVO_*` codes.
         motivo: &'static str,
         detalle: String,
     },

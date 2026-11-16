@@ -54,7 +54,7 @@ pub enum ErrorCorreo {
     Permanente(String),
 }
 
-/// Sends a rendered message. `puerto_mail::SmtpMailer` in a project, a recording fake in tests.
+/// Sends a rendered message. `puerto_correo::EnviadorCorreoSmtp` in a project, a recording fake in tests.
 #[async_trait]
 pub trait EnviadorCorreo: Send + Sync {
     async fn enviar(&self, email: &Correo) -> Result<(), ErrorCorreo>;

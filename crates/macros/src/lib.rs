@@ -9,13 +9,15 @@ use syn::{FnArg, ImplItemFn, LitStr, Pat, ReturnType, Type, parse_quote};
 /// is answered `403 auth.prohibido` before the body runs.
 ///
 /// ```ignore
-/// #[oai(path = "/products/:id", method = "delete")]
-/// #[require_role("admin")]
-/// async fn delete(&self, auth: BearerAuth, id: Path<Uuid>) -> DeleteProductResponse { … }
+/// #[oai(path = "/productos/:id", method = "delete")]
+/// #[requiere_rol("admin")]
+/// async fn borrar(&self, auth: BearerAuth, id: Path<Uuid>) -> RespuestaBorrarProducto {
+///     // …
+/// }
 /// ```
 ///
-/// The return type must have `from_status(StatusCode, Json<ErrorResponse>)`, as every generated
-/// response enum does. The 403 is not documented by the macro: the enum's `Forbidden` variant is.
+/// The return type must have `from_status(StatusCode, Json<RespuestaError>)`, as every generated
+/// response enum does. The 403 is not documented by the macro: the enum's `Prohibido` variant is.
 #[proc_macro_attribute]
 pub fn requiere_rol(
     attr: proc_macro::TokenStream,
@@ -49,13 +51,13 @@ fn role_check(attr: TokenStream, handler: &ImplItemFn) -> syn::Result<TokenStrea
     let role: LitStr = syn::parse2(attr).map_err(|err| {
         syn::Error::new(
             err.span(),
-            "#[require_role] takes one role name: #[require_role(\"admin\")]",
+            "#[requiere_rol] takes one role name: #[requiere_rol(\"admin\")]",
         )
     })?;
     if !is_role_name(&role.value()) {
         return Err(syn::Error::new_spanned(
             &role,
-            "#[require_role]: a role name is lowercase letters, digits, `_`, `:` or `-`, starting with a letter",
+            "#[requiere_rol]: a role name is lowercase letters, digits, `_`, `:` or `-`, starting with a letter",
         ));
     }
     let auth = bearer_auth_param(handler)?;
@@ -64,7 +66,7 @@ fn role_check(attr: TokenStream, handler: &ImplItemFn) -> syn::Result<TokenStrea
         ReturnType::Default => {
             return Err(syn::Error::new_spanned(
                 &handler.sig,
-                "#[require_role] needs a handler returning a response enum with `from_status`",
+                "#[requiere_rol] needs a handler returning a response enum with `from_status`",
             ));
         }
     };
@@ -89,13 +91,13 @@ fn bearer_auth_param(handler: &ImplItemFn) -> syn::Result<&syn::Ident> {
             Pat::Ident(binding) => Ok(&binding.ident),
             other => Err(syn::Error::new_spanned(
                 other,
-                "#[require_role]: bind the `BearerAuth` parameter to a name: `auth: BearerAuth`",
+                "#[requiere_rol]: bind the `BearerAuth` parameter to a name: `auth: BearerAuth`",
             )),
         };
     }
     Err(syn::Error::new_spanned(
         &handler.sig,
-        "#[require_role] needs the handler to take `auth: BearerAuth`: a role is checked on an authenticated caller",
+        "#[requiere_rol] needs the handler to take `auth: BearerAuth`: a role is checked on an authenticated caller",
     ))
 }
 

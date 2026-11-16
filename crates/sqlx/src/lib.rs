@@ -1,18 +1,16 @@
 //! The Postgres adapter every Puerto project with a database shares (ADR-0017): the connection
 //! pool, migrations at startup, the readiness ping and the one mapping from driver errors to
-//! [`RepositoryError`].
+//! [`ErrorRepositorio`].
 //!
 //! The migrations are the project's own: `sqlx::migrate!` embeds a directory at compile time, so
-//! the project declares its [`Migrator`] and hands it over. A generated `infrastructure/src/db.rs`
-//! is
+//! the project declares its [`Migrator`] and hands it over. A generated project's `migrador`
+//! crate is
 //!
 //! ```ignore
-//! pub use puerto_sqlx::*;
-//!
-//! pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+//! pub static MIGRADOR: sqlx::migrate::Migrator = sqlx::migrate!("../migraciones");
 //! ```
 //!
-//! and its repositories call `crate::db::mapear_error_sqlx`.
+//! and its repositories call `puerto_sqlx::mapear_error_sqlx`.
 //!
 //! A project with domain events (ADR-0018) also uses [`uow::TransaccionPostgres`] in its generated units
 //! of work, and its worker the outbox, the `db` transport and the dead-letter sink in [`eventos`].
@@ -126,7 +124,7 @@ pub struct ClaveForanea {
 }
 
 /// [`mapear_error_sqlx`], knowing the entity's foreign keys: a violation of one of them is
-/// [`RepositoryError::MissingReference`] with its field. One the list does not name is
+/// [`ErrorRepositorio::ReferenciaInexistente`] with its field. One the list does not name is
 /// `Unavailable` — nothing can tell the caller which input was wrong.
 pub fn mapear_error_sqlx_con(err: &sqlx::Error, references: &[ClaveForanea]) -> ErrorRepositorio {
     let Some(db_err) = err.as_database_error() else {

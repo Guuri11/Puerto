@@ -22,9 +22,9 @@ pub use manejador::{
 /// An event an aggregate records. Each entity's `{Entity}Event` implements it, generated from
 /// puerto.toml: the payload is the entity's snapshot, never the domain model itself.
 pub trait EventoDominio {
-    /// Past tense, snake_case: `product_created`.
+    /// Past tense, snake_case: `producto_creado`.
     fn tipo_evento(&self) -> &'static str;
-    /// The entity it happened to, snake_case: `product`.
+    /// The entity it happened to, snake_case: `producto`.
     fn tipo_agregado(&self) -> &'static str;
     fn id_agregado(&self) -> Uuid;
     /// The payload's shape. A consumer that reads an older one can tell.

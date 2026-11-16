@@ -1,11 +1,11 @@
 //! The HTTP side of auth (ADR-0021 § 4): [`BearerAuth`], the parameter that makes a handler
 //! authenticated, and [`prohibido`], the answer `#[requiere_rol]` gives a caller without the role.
 //!
-//! `BearerAuth` asks the [`Authenticator`] the routes carry as data — `bootstrap.rs` registers it:
+//! `BearerAuth` asks the [`Autenticador`] the routes carry as data — `bootstrap.rs` registers it:
 //!
 //! ```ignore
-//! let authenticator: Arc<dyn Authenticator> = Arc::new(…);
-//! puerto_web::routes(openapi_service(…), &config, ready).data(authenticator)
+//! let autenticador: Arc<dyn Autenticador> = Arc::new(sesiones);
+//! puerto_web::rutas(servicio_openapi(api), &config, disponible).data(autenticador)
 //! ```
 
 use std::sync::Arc;
@@ -19,18 +19,18 @@ use puerto_nucleo::{Autenticador, ErrorAuth, Principal};
 
 use crate::RespuestaError;
 
-/// No token, a token that is not `Bearer`, or one the [`Authenticator`] rejected.
+/// No token, a token that is not `Bearer`, or one the [`Autenticador`] rejected.
 pub const NO_AUTENTICADO: &str = "auth.no_autenticado";
 /// An authenticated caller without the role the route requires.
 pub const PROHIBIDO: &str = "auth.prohibido";
 /// The token could not be checked: the provider or the database is down — not the caller's fault.
 pub const NO_DISPONIBLE: &str = "auth.no_disponible";
-/// The routes carry no [`Authenticator`]: `bootstrap.rs` did not register one.
+/// The routes carry no [`Autenticador`]: `bootstrap.rs` did not register one.
 pub const NO_CONFIGURADO: &str = "auth.no_configurado";
 
 /// The authenticated caller of a handler that takes it: `auth: BearerAuth`.
 ///
-/// A request without a bearer token, or with one the [`Authenticator`] rejects, never reaches the
+/// A request without a bearer token, or with one the [`Autenticador`] rejects, never reaches the
 /// handler: it is answered `401 auth.unauthenticated` (`503 auth.unavailable` when the token could
 /// not be checked). The route's spec entry carries `security: [{"BearerAuth": []}]`.
 pub struct BearerAuth(pub Principal);
@@ -76,9 +76,10 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 RespuestaError {
                     codigo: NO_CONFIGURADO.into(),
-                    mensaje: "no Authenticator is registered on the routes: bootstrap.rs must add \
-                              `.data(authenticator)` with an `Arc<dyn Authenticator>`"
-                        .into(),
+                    mensaje:
+                        "no hay ningún Autenticador registrado en las rutas: bootstrap.rs tiene \
+                              que añadir `.data(autenticador)` con un `Arc<dyn Autenticador>`"
+                            .into(),
                 },
             ));
         };
@@ -93,7 +94,7 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
     }
 }
 
-/// The status and body for a token the [`Authenticator`] did not accept.
+/// The status and body for a token the [`Autenticador`] did not accept.
 pub fn rechazo(err: ErrorAuth) -> (StatusCode, Json<RespuestaError>) {
     match err {
         ErrorAuth::NoDisponible => {
@@ -103,7 +104,7 @@ pub fn rechazo(err: ErrorAuth) -> (StatusCode, Json<RespuestaError>) {
                 Json(RespuestaError::from_codigo(NO_DISPONIBLE)),
             )
         }
-        // `Invalido`, `Expired`, and whatever `AuthError` gains: the caller is not authenticated.
+        // `Invalido`, `Expirado`, and whatever `ErrorAuth` gains: the caller is not authenticated.
         _ => (
             StatusCode::UNAUTHORIZED,
             Json(RespuestaError::from_codigo(NO_AUTENTICADO)),

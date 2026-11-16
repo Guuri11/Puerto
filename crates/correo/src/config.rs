@@ -80,7 +80,7 @@ impl ConfigCorreo {
 
 impl fmt::Debug for ConfigCorreo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MailConfig")
+        f.debug_struct("ConfigCorreo")
             .field("smtp_url", &redact(&self.url_smtp))
             .field("from", &self.remitente)
             .finish()

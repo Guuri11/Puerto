@@ -9,7 +9,7 @@ use puerto_nucleo::ErrorRepositorio;
 use puerto_nucleo::correo::{Correo, CorreosEnviados, EnviadorCorreo, ErrorCorreo};
 use uuid::Uuid;
 
-/// Keeps every [`Email`] it is asked to send — or fails each one, with [`Self::fallando_con`].
+/// Keeps every [`Correo`] it is asked to send — or fails each one, with [`Self::fallando_con`].
 #[derive(Debug, Default)]
 pub struct EnviadorCorreoGrabador {
     sent: Mutex<Vec<Correo>>,
@@ -63,7 +63,7 @@ impl CorreosEnviadosEnMemoria {
         Self::default()
     }
 
-    /// Neither read nor written: every call answers `RepositoryError::Unavailable`.
+    /// Neither read nor written: every call answers `ErrorRepositorio::NoDisponible`.
     pub fn no_disponible() -> Self {
         Self {
             read_failure: Some(ErrorRepositorio::NoDisponible),
@@ -72,7 +72,7 @@ impl CorreosEnviadosEnMemoria {
         }
     }
 
-    /// Reads, but `mark_sent` answers `error`.
+    /// Reads, but `marcar_enviado` answers `error`.
     pub fn fallando_al_marcar(error: ErrorRepositorio) -> Self {
         Self {
             mark_failure: Some(error),

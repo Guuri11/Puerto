@@ -3,8 +3,8 @@ use poem_openapi::{Object, payload::Json};
 
 /// Every error body the API returns (ADR-0007).
 ///
-/// `codigo` is the machine-readable code clients branch on — `product.not_found`,
-/// `product.validation_error.title_empty`. `mensaje` is for people and logs; for domain errors,
+/// `codigo` is the machine-readable code clients branch on — `producto.no_encontrado`,
+/// `producto.validacion.titulo_vacio`. `mensaje` is for people and logs; for domain errors,
 /// whose `Display` *is* the code, the two are equal.
 #[derive(Object, Debug)]
 pub struct RespuestaError {

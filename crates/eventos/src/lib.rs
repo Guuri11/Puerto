@@ -2,15 +2,19 @@
 //! the outbox onto the transport, one consume loop per consumer, the health probes and graceful
 //! shutdown.
 //!
-//! It only sees the transport ports of `puerto_nucleo::events::transport`: the project's
-//! `worker/src/generated/registry.rs` hands it the adapters (`puerto_sqlx::events` for the `db`
-//! transport) and its consumers.
+//! It only sees the transport ports of `puerto_nucleo::eventos::transporte`: the project's
+//! `presentacion/worker/src/generado/registro.rs` hands it the adapters (`puerto_sqlx::eventos`
+//! for the `db` transport) and its consumers.
 //!
 //! ```ignore
-//! pub async fn build_worker(config: ConfigWorker) -> Loops {
-//!     Loops::new(&config)
-//!         .relay(PgOutbox::new(pool.clone()), deliveries)
-//!         .consumer(PgSubscription::new(pool.clone(), "notify_new_product"), NotifyNewProduct, dead_letters)
+//! pub async fn construir_worker(config: ConfigWorker) -> Result<Bucles, String> {
+//!     Ok(Bucles::new(&config)
+//!         .relay(OutboxPostgres::new(pool.clone()), entregas)
+//!         .consumidor(
+//!             SuscripcionPostgres::new(pool.clone(), "avisar_producto_nuevo"),
+//!             AvisarProductoNuevo,
+//!             descartados,
+//!         ))
 //! }
 //! ```
 

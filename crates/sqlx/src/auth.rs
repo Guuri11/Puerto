@@ -65,9 +65,9 @@ pub fn parsear_ttl(value: &str) -> Option<Duration> {
     n.checked_mul(unit).map(Duration::from_secs)
 }
 
-/// `sessions`: a [`SessionStore`] for `login` and `logout`, and the [`Authenticator`] of a local
-/// project — the presented token's hash, joined with its user. The roles are the `usuarios.roles`
-/// column (`make auth/grant`).
+/// `sesiones`: an [`AlmacenSesiones`] for `login` and `logout`, and the [`Autenticador`] of a
+/// local project — the presented token's hash, joined with its user. The roles are the
+/// `usuarios.roles` column (`make auth/conceder`).
 pub struct SesionesPostgres {
     pool: PgPool,
     ttl: TimeDelta,
@@ -156,7 +156,7 @@ impl Autenticador for SesionesPostgres {
     }
 }
 
-/// `credentials`: one password hash per user.
+/// `credenciales`: one password hash per user.
 pub struct CredencialesPostgres {
     pool: PgPool,
 }

@@ -10,7 +10,7 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/Guuri11/Puerto"
-homepage = "https://github.com/Guuri11/Puerto"
+homepage = "https://puerto-rs.vercel.app"
 
 # A runtime crate depending on another: published with this version, built from the checkout. Bump
 # it with `[workspace.package] version` — crates.io resolves the `version`, not the `path`.

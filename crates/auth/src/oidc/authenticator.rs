@@ -45,12 +45,12 @@ pub enum ErrorOidc {
     NoSigningKey { url: String },
 }
 
-/// The [`Authenticator`] of an OIDC project — an OAuth2 resource server.
+/// The [`Autenticador`] of an OIDC project — an OAuth2 resource server.
 ///
 /// Accepts a JWT access token signed with RS256 or ES256 by a key in the provider's JWKS (never
 /// `none`, never an HMAC), issued by the configured issuer for the configured audience, within
-/// `exp` / `nbf` give or take [`MARGEN`]. The [`Principal`] has the token's `sub`, `email`, `name`
-/// and the roles at [`ClaimRoles`]; its `user_id` is nil until the project provisions the caller.
+/// `exp` / `nbf` give or take 60 s. The [`Principal`] has the token's `sub`, `email`, `name`
+/// and the roles at [`ClaimRoles`]; its `id_usuario` is nil until the project provisions the caller.
 pub struct AutenticadorOidc {
     http: reqwest::Client,
     issuer: String,

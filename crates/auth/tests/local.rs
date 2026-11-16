@@ -1,4 +1,4 @@
-//! The `local` feature (ADR-0021 § 2): argon2id password hashes behind `PasswordHasher`.
+//! The `local` feature (ADR-0021 § 2): argon2id password hashes behind `HasherContrasena`.
 
 use puerto_auth::local::{HasherArgon2, hash_contrasena, verificar_contrasena};
 use puerto_nucleo::auth::HasherContrasena;

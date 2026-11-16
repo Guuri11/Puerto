@@ -1,7 +1,7 @@
 //! Auth (ADR-0021): who is calling and the port that says so. A route sees a [`Principal`], never a
 //! token; where the token was checked — an OIDC provider, a local session — is the
 //! [`Autenticador`]'s business. The adapters are `puerto-auth`'s and `puerto-sqlx`'s, the HTTP
-//! side (`BearerAuth`, `#[require_role]`) `puerto-web`'s.
+//! side (`BearerAuth`, `#[requiere_rol]`) `puerto-web`'s.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -13,7 +13,7 @@ use crate::ErrorRepositorio;
 /// The authenticated caller.
 ///
 /// `id_usuario` is the local `User` row every caller has (ADR-0021 § 3); `sujeto` is who the
-/// provider says it is. `roles` decide `#[require_role]`; rules that depend on data take the
+/// provider says it is. `roles` decide `#[requiere_rol]`; rules that depend on data take the
 /// principal in their params and decide in the use case.
 ///
 /// `#[non_exhaustive]`: built with [`Principal::new`] and the `with_*` methods, so a new field
@@ -100,7 +100,7 @@ pub trait Autenticador: Send + Sync {
 #[error("auth.hash_fallido")]
 pub struct ErrorHash;
 
-/// Turns passwords into stored hashes and checks them. `puerto_auth::Argon2Hasher` in a project;
+/// Turns passwords into stored hashes and checks them. `puerto_auth::HasherArgon2` in a project;
 /// the generated `register_user` and `login` use cases see only this port.
 #[async_trait]
 pub trait HasherContrasena: Send + Sync {

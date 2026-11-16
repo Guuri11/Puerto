@@ -1,4 +1,4 @@
-//! The `db` transport: no broker, one `event_deliveries` row per event and subscribed consumer.
+//! The `db` transport: no broker, one `entregas_eventos` row per event and subscribed consumer.
 
 use std::collections::BTreeMap;
 use std::time::Duration;

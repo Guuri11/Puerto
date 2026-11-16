@@ -7,15 +7,15 @@ use puerto_nucleo::correo::{CorreosEnviados, ErrorCorreo};
 use puerto_nucleo::eventos::{MOTIVO_ERROR_PERMANENTE, ResultadoManejo};
 use uuid::Uuid;
 
-/// Sends `mail` for the event `event_id` unless `enviados` says it already went out, then records it.
+/// Sends `mail` for the event `id_evento` unless `enviados` says it already went out, then records it.
 ///
 /// | | Outcome |
 /// |---|---|
 /// | already sent | `Ack`, without sending |
-/// | the log cannot be read | `Retry` |
+/// | the log cannot be read | `Reintentar` |
 /// | sent | `Ack` (also when the mark fails: retrying would send it again) |
-/// | [`MailError::Permanent`] | dead letter `permanent_error` |
-/// | [`MailError::Transient`] | `Retry` |
+/// | [`ErrorCorreo::Permanente`] | `Descartar`, `error_permanente` |
+/// | [`ErrorCorreo::Transitorio`] | `Reintentar` |
 ///
 /// `send` is not polled unless the mail is due, so it can be the `send(…)` call itself.
 pub async fn enviar_una_vez(

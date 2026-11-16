@@ -43,7 +43,7 @@ fn decoy() -> Option<&'static str> {
         .as_deref()
 }
 
-/// [`PasswordHasher`] over argon2id. Each hash and check runs on tokio's blocking pool: it is tens
+/// [`HasherContrasena`] over argon2id. Each hash and check runs on tokio's blocking pool: it is tens
 /// of milliseconds of CPU, which would otherwise stall every request sharing the worker thread.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HasherArgon2;

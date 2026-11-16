@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::mapear_error_sqlx;
 
-/// `sent_mails`. Marking the same mail for the same event twice keeps one row.
+/// `correos_enviados`. Marking the same mail for the same event twice keeps one row.
 pub struct CorreosEnviadosPostgres {
     pool: PgPool,
 }

@@ -1,5 +1,5 @@
 //! `BearerAuth` and `#[requiere_rol]` as a generated project uses them: inside an `#[OpenApi] impl`,
-//! with the `Authenticator` registered on the routes by `.data(…)`, as `bootstrap.rs` does.
+//! with the `Autenticador` registered on the routes by `.data(…)`, as `bootstrap.rs` does.
 
 use std::sync::Arc;
 

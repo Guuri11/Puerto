@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use super::unavailable;
 
-/// `dead_letters`, whatever the transport. Recording the same event for the same consumer twice
-/// keeps the first record (`dead_letters_event_consumer`).
+/// `descartados`, whatever the transport. Recording the same event for the same consumer twice
+/// keeps the first record (`descartados_evento_consumidor`).
 pub struct DescartadosPostgres {
     pool: PgPool,
 }

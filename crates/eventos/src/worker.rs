@@ -22,7 +22,7 @@ use crate::conductor::{Latido, Pasada, conducir};
 use crate::consumidor::Consumidor;
 use crate::relay::Relay;
 
-/// What the worker runs, built by the project's `generated/registry.rs`: the relay and one
+/// What the worker runs, built by the project's `generado/registro.rs`: the relay and one
 /// consumer per `[[consumidor]]`, each set up from the [`ConfigWorker`].
 pub struct Bucles {
     config: ConfigWorker,
@@ -79,9 +79,11 @@ impl Bucles {
 ///
 /// ```ignore
 /// #[tokio::main]
-/// async fn main() -> Result<(), puerto_events::Error> {
-///     let config = puerto_events::ConfigWorker::from_env()?;
-///     puerto_events::Worker::new(config).try_run(generated::registry::build_worker).await
+/// async fn main() -> Result<(), puerto_eventos::Error> {
+///     let config = puerto_eventos::ConfigWorker::from_env()?;
+///     puerto_eventos::Worker::new(config)
+///         .intentar_ejecutar(generado::registro::construir_worker)
+///         .await
 /// }
 /// ```
 pub struct Worker {
@@ -95,7 +97,7 @@ impl Worker {
 
     /// Sets up tracing (`RUST_LOG`), builds the loops with `build` and runs them, serving
     /// `/health` and `/health/ready` on `WORKER_PORT`, until Ctrl-C or SIGTERM. The loops then
-    /// finish the pass they are in, for at most `SHUTDOWN_DEADLINE`. For a `build` that cannot
+    /// finish the pass they are in, for at most `PLAZO_APAGADO`. For a `build` that cannot
     /// fail; see [`Worker::intentar_ejecutar`].
     pub async fn ejecutar<F, Fut>(self, build: F) -> Result<(), Error>
     where
@@ -107,8 +109,8 @@ impl Worker {
     }
 
     /// [`Worker::ejecutar`] with a `build` that can fail — the project's
-    /// `generated::registry::build_worker`, which connects to the database (and the broker). Its
-    /// error is logged and returned as [`Error::Startup`]: `main` prints it and exits 1.
+    /// `generado::registro::construir_worker`, which connects to the database (and the broker). Its
+    /// error is logged and returned as [`Error::Arranque`]: `main` prints it and exits 1.
     pub async fn intentar_ejecutar<F, Fut, X>(self, build: F) -> Result<(), Error>
     where
         F: FnOnce(ConfigWorker) -> Fut,

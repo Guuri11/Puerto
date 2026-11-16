@@ -63,12 +63,12 @@ impl ConfigKafka {
         })
     }
 
-    /// The topic an aggregate's events are published to: `shop.product`.
+    /// The topic an aggregate's events are published to: `tienda.producto`.
     pub fn topic(&self, aggregate_type: &str) -> String {
         format!("{}.{aggregate_type}", self.prefijo_topic)
     }
 
-    /// A consumer's group: `shop.notify_new_product`. Two projects on one cluster never share one.
+    /// A consumer's group: `tienda.avisar_producto_nuevo`. Two projects on one cluster never share one.
     pub fn grupo(&self, consumer: &str) -> String {
         format!("{}.{consumer}", self.prefijo_topic)
     }

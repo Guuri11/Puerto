@@ -59,7 +59,7 @@ impl Default for ClaimRoles {
     }
 }
 
-/// The caller the claims describe. `user_id` is nil: the project's provisioning (ADR-0021 § 3)
+/// The caller the claims describe. `id_usuario` is nil: the project's provisioning (ADR-0021 § 3)
 /// fills it with the local user's id.
 pub(crate) fn principal(
     claims: &Map<String, Value>,

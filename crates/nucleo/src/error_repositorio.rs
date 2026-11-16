@@ -2,7 +2,7 @@ use thiserror::Error;
 
 /// What a repository port fails with, whatever the entity and the adapter. Each entity's error
 /// converts it (`From<ErrorRepositorio>`), so a use case propagates it with `?`. Its codes reach the
-/// logs only: the API answers with the entity's own (`product.duplicate`).
+/// logs only: the API answers with the entity's own (`producto.duplicado`).
 ///
 /// `#[non_exhaustive]`: a later version may add a failure without breaking the projects that
 /// match on it — their `_` arm treats it as the store's problem until they give it a meaning.

@@ -1,4 +1,4 @@
-//! The SMTP adapter of [`Mailer`]: `lettre` over tokio and rustls, with pooled connections.
+//! The SMTP adapter of [`EnviadorCorreo`]: `lettre` over tokio and rustls, with pooled connections.
 
 use async_trait::async_trait;
 use lettre::message::header::ContentType;
@@ -9,7 +9,7 @@ use puerto_nucleo::correo::{Correo, EnviadorCorreo, ErrorCorreo};
 
 use crate::config::{ConfigCorreo, ErrorConfigCorreo};
 
-/// Sends every [`Email`] from `MAIL_FROM` through the server at `SMTP_URL`.
+/// Sends every [`Correo`] from `MAIL_FROM` through the server at `SMTP_URL`.
 #[derive(Clone)]
 pub struct EnviadorCorreoSmtp {
     transport: AsyncSmtpTransport<Tokio1Executor>,
@@ -18,7 +18,7 @@ pub struct EnviadorCorreoSmtp {
 
 impl EnviadorCorreoSmtp {
     /// Opens no connection: the first send does, so a server that is down shows up as a retry,
-    /// not as a worker that will not start. Call it inside the tokio runtime (`build_worker`):
+    /// not as a worker that will not start. Call it inside the tokio runtime (`construir_worker`):
     /// the connection pool lives on it.
     pub fn new(config: &ConfigCorreo) -> Result<Self, ErrorConfigCorreo> {
         let transport = AsyncSmtpTransport::<Tokio1Executor>::from_url(&config.url_smtp)
