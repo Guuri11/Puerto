@@ -1,0 +1,5 @@
+//! Las migraciones de toda la base de datos (`migraciones/`), incrustadas al compilar: `api` las
+//! aplica al arrancar y todos los tests de Postgres corren sobre ellas —
+//! `#[sqlx::test(migrator = "migrador::MIGRADOR")]` (ADR-0023 § 6 de Puerto).
+
+pub static MIGRADOR: sqlx::migrate::Migrator = sqlx::migrate!("../migraciones");

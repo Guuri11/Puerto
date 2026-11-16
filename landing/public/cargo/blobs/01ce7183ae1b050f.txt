@@ -1,0 +1,114 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+use std::sync::Arc;
+
+use infra_usuario::aprovisionamiento::AutenticadorAprovisionador;
+use infra_usuario::repositorio::RepositorioUsuarioPostgres;
+use poem::Endpoint;
+use poem::EndpointExt;
+use poem_openapi::OpenApiService;
+use puerto_nucleo::auth::Autenticador;
+use rest_pedido::rutas::ApiPedido;
+use rest_usuario::me::rutas::ApiMe;
+
+/// Las rutas, cableadas. Un error es lo que paró el arranque: `main` lo muestra y sale con 1.
+pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        "DATABASE_URL no está definida — defínela en .env (.env.example trae una)".to_string()
+    })?;
+    let pool = puerto_sqlx::crear_pool_postgres(&database_url)
+        .await
+        .map_err(|e| format!("{e} — ¿está arrancada la base de datos? `make docker-compose/up`"))?;
+    puerto_sqlx::ejecutar_migraciones(&pool, &migrador::MIGRADOR)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Los tokens del proveedor, y una fila `Usuario` para cada quien llama (ADR-0021 § 3).
+    let config_auth = puerto_auth::ConfigOidc::from_env().map_err(|e| e.to_string())?;
+    let emisor = config_auth.emisor.clone();
+    let proveedor = puerto_auth::AutenticadorOidc::descubrir(config_auth)
+        .await
+        .map_err(|e| {
+            format!("{e} — ¿está arrancado el proveedor de auth? `make docker-compose/up`")
+        })?;
+    let autenticador: Arc<dyn Autenticador> = Arc::new(AutenticadorAprovisionador::new(
+        Arc::new(proveedor),
+        Arc::new(RepositorioUsuarioPostgres::new(pool.clone())),
+        emisor,
+    ));
+    let api_me = ApiMe;
+
+    let casos_pedido = cableado::pedido::construir(&pool);
+    let api_pedido = ApiPedido {
+        crear_pedido: casos_pedido.crear_pedido,
+        obtener_pedido: casos_pedido.obtener_pedido,
+        listar_pedidos: casos_pedido.listar_pedidos,
+        actualizar_pedido: casos_pedido.actualizar_pedido,
+        borrar_pedido: casos_pedido.borrar_pedido,
+    };
+
+    let disponible = puerto_web::health::sondear(move || {
+        let pool = pool.clone();
+        async move { puerto_sqlx::ping(&pool).await }
+    });
+
+    // `app.rs` es del proyecto: el middleware y las rutas que se añadan allí envuelven todo esto.
+    Ok(crate::app::configurar(puerto_web::rutas(
+        servicio_openapi((api_pedido, api_me)),
+        &config,
+        disponible,
+    ))
+    // Lo que consulta cada `BearerAuth`.
+    .data(autenticador))
+}
+
+/// El servicio de la API, construido en un solo sitio: cualquier otro que lea su spec (el test de
+/// exportación de un proyecto con `web/`) ve la API que responde el servidor.
+fn servicio_openapi<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
+    OpenApiService::new(api, env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use aplicacion_pedido::actualizar_pedido::dobles::MockActualizarPedido;
+    use aplicacion_pedido::borrar_pedido::dobles::MockBorrarPedido;
+    use aplicacion_pedido::crear_pedido::dobles::MockCrearPedido;
+    use aplicacion_pedido::listar_pedidos::dobles::MockListarPedidos;
+    use aplicacion_pedido::obtener_pedido::dobles::MockObtenerPedido;
+
+    /// El contrato de la API del que se generan los tipos del frontend (`make web/sync`).
+    const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/api/openapi.json");
+
+    /// Se construye con casos de uso dobles: sin servidor ni base de datos. Si falta el fichero,
+    /// se escribe; si es distinto, falla: ejecuta `make web/sync` (pone `UPDATE_OPENAPI=1`) y haz
+    /// commit del diff.
+    #[test]
+    fn la_spec_openapi_coincide_con_docs_api_openapi_json() {
+        let api_pedido = ApiPedido {
+            crear_pedido: Arc::new(MockCrearPedido::new()),
+            obtener_pedido: Arc::new(MockObtenerPedido::new()),
+            listar_pedidos: Arc::new(MockListarPedidos::new()),
+            actualizar_pedido: Arc::new(MockActualizarPedido::new()),
+            borrar_pedido: Arc::new(MockBorrarPedido::new()),
+        };
+        let api_me = ApiMe;
+        let spec = servicio_openapi((api_pedido, api_me)).spec();
+
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
+                .parent()
+                .expect("docs/api/openapi.json tiene directorio padre");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
+            return;
+        }
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
+        assert!(
+            en_disco == spec,
+            "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
+        );
+    }
+}

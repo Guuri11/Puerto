@@ -1,0 +1,47 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+//! Los repositorios, unidades de trabajo y casos de uso de cada contexto, construidos para los
+//! binarios (ADR-0023 § 7 de Puerto). Aquí no hay HTTP: `api` monta sus rutas sobre estos casos de
+//! uso.
+
+pub mod producto {
+    use std::sync::Arc;
+
+    use aplicacion_producto::actualizar_producto::{ActualizarProducto, ActualizarProductoImpl};
+    use aplicacion_producto::borrar_producto::{BorrarProducto, BorrarProductoImpl};
+    use aplicacion_producto::crear_producto::{CrearProducto, CrearProductoImpl};
+    use aplicacion_producto::listar_productos::{ListarProductos, ListarProductosImpl};
+    use aplicacion_producto::obtener_producto::{ObtenerProducto, ObtenerProductoImpl};
+    use dominio_producto::repositorio::RepositorioProducto;
+    use infra_producto::repositorio::RepositorioProductoPostgres;
+
+    /// Los casos de uso de `producto`, sobre sus adaptadores.
+    pub struct CasosDeUso {
+        pub crear_producto: Arc<dyn CrearProducto>,
+        pub obtener_producto: Arc<dyn ObtenerProducto>,
+        pub listar_productos: Arc<dyn ListarProductos>,
+        pub actualizar_producto: Arc<dyn ActualizarProducto>,
+        pub borrar_producto: Arc<dyn BorrarProducto>,
+    }
+
+    pub fn construir(pool: &sqlx::PgPool) -> CasosDeUso {
+        let repositorio: Arc<dyn RepositorioProducto> =
+            Arc::new(RepositorioProductoPostgres::new(pool.clone()));
+        CasosDeUso {
+            crear_producto: Arc::new(CrearProductoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            obtener_producto: Arc::new(ObtenerProductoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            listar_productos: Arc::new(ListarProductosImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            actualizar_producto: Arc::new(ActualizarProductoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            borrar_producto: Arc::new(BorrarProductoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+        }
+    }
+}

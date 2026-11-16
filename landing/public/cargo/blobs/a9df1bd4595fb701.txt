@@ -1,0 +1,10 @@
+pub mod errores;
+pub mod eventos;
+pub mod modelo;
+pub mod repositorio;
+pub mod unit_of_work;
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod pruebas {
+    pub mod madres;
+}

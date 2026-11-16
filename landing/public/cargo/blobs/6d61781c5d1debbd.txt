@@ -1,0 +1,73 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen } from "@testing-library/react";
+import { ClienteError } from "../../../../domain/cliente/errors";
+import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
+import { renderScreen } from "../../../../test-support/render";
+import { ClienteListContainer } from "./cliente-list-container";
+
+describe("ClienteListContainer", () => {
+  test("should show a row per cliente when there are some", async () => {
+    // Arrange
+    const seed = [ClienteMother.random(), ClienteMother.random()];
+    const clienteRepository = fakeClienteRepository(seed);
+
+    // Act
+    renderScreen(<ClienteListContainer />, { clienteRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ClienteMother.random());
+    const clienteRepository = fakeClienteRepository(seed);
+    renderScreen(<ClienteListContainer />, { clienteRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
+  });
+
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ClienteMother.random());
+    const clienteRepository = fakeClienteRepository(seed);
+    const path = "/clientes?page=2";
+
+    // Act
+    renderScreen(<ClienteListContainer />, { clienteRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
+  test("should say so when there is no cliente", async () => {
+    // Arrange
+    const clienteRepository = fakeClienteRepository();
+
+    // Act
+    renderScreen(<ClienteListContainer />, { clienteRepository });
+
+    // Assert
+    expect(await screen.findByText("No clientes yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the clientes cannot be listed", async () => {
+    // Arrange
+    const clienteRepository = {
+      ...fakeClienteRepository(),
+      list: () => Promise.reject(new ClienteError("cliente.repositorio")),
+    };
+
+    // Act
+    renderScreen(<ClienteListContainer />, { clienteRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("cliente.repositorio");
+  });
+});

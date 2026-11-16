@@ -1,0 +1,55 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+use std::sync::Arc;
+
+use infra_usuario::aprovisionamiento::AutenticadorAprovisionador;
+use infra_usuario::repositorio::RepositorioUsuarioEnMemoria;
+use poem::Endpoint;
+use poem::EndpointExt;
+use poem_openapi::OpenApiService;
+use puerto_nucleo::auth::Autenticador;
+use rest_pedido::rutas::ApiPedido;
+use rest_usuario::me::rutas::ApiMe;
+
+/// Las rutas, cableadas. Un error es lo que paró el arranque: `main` lo muestra y sale con 1.
+pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
+    // Los tokens del proveedor, y una fila `Usuario` para cada quien llama (ADR-0021 § 3).
+    let config_auth = puerto_auth::ConfigOidc::from_env().map_err(|e| e.to_string())?;
+    let emisor = config_auth.emisor.clone();
+    let proveedor = puerto_auth::AutenticadorOidc::descubrir(config_auth)
+        .await
+        .map_err(|e| {
+            format!("{e} — ¿está arrancado el proveedor de auth? `make docker-compose/up`")
+        })?;
+    let autenticador: Arc<dyn Autenticador> = Arc::new(AutenticadorAprovisionador::new(
+        Arc::new(proveedor),
+        Arc::new(RepositorioUsuarioEnMemoria::new()),
+        emisor,
+    ));
+    let api_me = ApiMe;
+
+    let casos_pedido = cableado::pedido::construir();
+    let api_pedido = ApiPedido {
+        crear_pedido: casos_pedido.crear_pedido,
+        obtener_pedido: casos_pedido.obtener_pedido,
+        listar_pedidos: casos_pedido.listar_pedidos,
+        actualizar_pedido: casos_pedido.actualizar_pedido,
+        borrar_pedido: casos_pedido.borrar_pedido,
+    };
+
+    let disponible = puerto_web::health::siempre_disponible();
+
+    // `app.rs` es del proyecto: el middleware y las rutas que se añadan allí envuelven todo esto.
+    Ok(crate::app::configurar(puerto_web::rutas(
+        servicio_openapi((api_pedido, api_me)),
+        &config,
+        disponible,
+    ))
+    // Lo que consulta cada `BearerAuth`.
+    .data(autenticador))
+}
+
+/// El servicio de la API, construido en un solo sitio: cualquier otro que lea su spec (el test de
+/// exportación de un proyecto con `web/`) ve la API que responde el servidor.
+fn servicio_openapi<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
+    OpenApiService::new(api, env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+}

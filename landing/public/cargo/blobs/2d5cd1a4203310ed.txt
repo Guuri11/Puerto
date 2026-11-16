@@ -1,0 +1,7 @@
+# Auth — el proveedor OpenID Connect con el que inicia sesión el navegador (ADR-0021).
+# Keycloak en desarrollo; Auth0: VITE_AUTH_ISSUER=https://<tenant>.auth0.com/,
+# VITE_AUTH_CLIENT_ID=<el client id de la SPA>, VITE_AUTH_AUDIENCE=<el identificador de la
+# API, el AUTH_AUDIENCE de la API>.
+VITE_AUTH_ISSUER=http://localhost:8180/realms/tienda
+VITE_AUTH_CLIENT_ID=web
+VITE_AUTH_AUDIENCE=

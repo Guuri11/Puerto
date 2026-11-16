@@ -1,0 +1,34 @@
+[proyecto]
+nombre = "tienda"
+db = true
+
+[[entidad]]
+nombre = "Pedido"
+casos_de_uso = [
+    "crear_pedido",
+    "obtener_pedido",
+    "listar_pedidos",
+    "actualizar_pedido",
+    "borrar_pedido",
+]
+db = true
+
+[[entidad.campos]]
+nombre = "importe"
+tipo = "f64"
+objeto_valor = "Importe"
+
+[[entidad.campos]]
+nombre = "estado"
+tipo = "String"
+objeto_valor = "Estado"
+clase_objeto_valor = "enum"
+variantes = [
+    "Pendiente",
+    "Confirmado",
+    "Cancelado",
+]
+
+[[entidad.campos]]
+nombre = "nota"
+tipo = "Option<String>"

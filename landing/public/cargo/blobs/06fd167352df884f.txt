@@ -1,0 +1,13 @@
+/**
+ * A request about a cliente that the API refused. `code` is the API's `RespuestaError.codigo`:
+ * `cliente.no_encontrado`, `cliente.validacion.<field>_vacio`.
+ */
+export class ClienteError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "ClienteError";
+    this.code = code;
+  }
+}

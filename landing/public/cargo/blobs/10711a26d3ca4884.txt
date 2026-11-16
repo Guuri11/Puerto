@@ -1,0 +1,19 @@
+[package]
+name = "worker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+puerto-nucleo = { workspace = true }
+# El relay, los bucles de consumo, las sondas de salud y el apagado ordenado (`main.rs`,
+# `generado/registro.rs`).
+puerto-eventos = { workspace = true }
+# El pool, las migraciones en el arranque y las tablas de outbox, entregas y descartados.
+puerto-sqlx = { workspace = true }
+migrador = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

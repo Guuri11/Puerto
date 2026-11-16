@@ -1,0 +1,110 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ClienteError } from "../../../../domain/cliente/errors";
+import type { ClienteDraft } from "../../../../domain/cliente/model";
+import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
+import { renderScreen } from "../../../../test-support/render";
+import { ClienteFormContainer } from "./cliente-form-container";
+
+function type(label: string, value: string) {
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+/** Fills the empty form with `draft`, the way a user would. */
+async function fillIn(draft: ClienteDraft) {
+  await screen.findByText("Save");
+  type("Email", draft.email);
+  type("Nombre", draft.nombre);
+  type("Etiquetas", draft.etiquetas.join(", "));
+}
+
+describe("ClienteFormContainer", () => {
+  test("should create the cliente from what was typed and show it", async () => {
+    // Arrange
+    const draft = ClienteMother.draft();
+    const clienteRepository = fakeClienteRepository();
+    const { history } = renderScreen(<ClienteFormContainer />, { clienteRepository });
+    await fillIn(draft);
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toStartWith("/clientes/"));
+    const {
+      items: [created],
+    } = await clienteRepository.list({ limit: 1, offset: 0 });
+    expect(created).toMatchObject(draft);
+    expect(history.at(-1)).toBe(`/clientes/${created?.id}`);
+  });
+
+  test("should save the edited cliente when an existing one is submitted", async () => {
+    // Arrange
+    const seeded = ClienteMother.random();
+    const clienteRepository = fakeClienteRepository([seeded]);
+    const { history } = renderScreen(<ClienteFormContainer id={seeded.id} />, {
+      clienteRepository,
+    });
+
+    // Act
+    fireEvent.click(await screen.findByText("Save"));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe(`/clientes/${seeded.id}`));
+    expect(await clienteRepository.get(seeded.id)).toEqual(seeded);
+  });
+
+  test("should show the code itself when the API answers one the form does not know", async () => {
+    // Arrange
+    const code = "cliente.validacion.invalid";
+    const clienteRepository = {
+      ...fakeClienteRepository(),
+      create: () => Promise.reject(new ClienteError(code)),
+    };
+    renderScreen(<ClienteFormContainer />, { clienteRepository });
+    await fillIn(ClienteMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(code);
+  });
+
+  test("should say a cliente with these values exists when the API answers a duplicate", async () => {
+    // Arrange
+    const clienteRepository = {
+      ...fakeClienteRepository(),
+      create: () => Promise.reject(new ClienteError("cliente.duplicado")),
+    };
+    renderScreen(<ClienteFormContainer />, { clienteRepository });
+    await fillIn(ClienteMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "A cliente with these values already exists",
+    );
+  });
+
+  test("should show the message under its input when the API rejects one field", async () => {
+    // Arrange
+    const clienteRepository = {
+      ...fakeClienteRepository(),
+      create: () => Promise.reject(new ClienteError("cliente.email_invalido")),
+    };
+    renderScreen(<ClienteFormContainer />, { clienteRepository });
+    await fillIn(ClienteMother.draft());
+
+    // Act
+    fireEvent.click(screen.getByText("Save"));
+
+    // Assert
+    expect(await screen.findByText("Email is not valid")).toBeTruthy();
+    const input = screen.getByLabelText("Email");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

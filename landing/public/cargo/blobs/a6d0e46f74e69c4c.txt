@@ -1,0 +1,115 @@
+use std::collections::HashMap;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use async_trait::async_trait;
+use dominio_usuario::{
+    modelo::{IdUsuario, Usuario},
+    repositorio::RepositorioUsuario,
+};
+use puerto_nucleo::ErrorRepositorio;
+
+/// Guarda los usuarios en la memoria del proceso: se pierden cuando el proceso se detiene y se dan
+/// de alta de nuevo en su siguiente petición. Hace las veces de base de datos hasta que la haya
+/// (`puerto nuevo --db`).
+#[derive(Default)]
+pub struct RepositorioUsuarioEnMemoria {
+    filas: RwLock<HashMap<IdUsuario, Usuario>>,
+}
+
+impl RepositorioUsuarioEnMemoria {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // Un cerrojo envenenado significa que un escritor entró en pánico; cada escritura es una única
+    // inserción, así que el mapa sigue entero y se usa tal cual.
+    fn read(&self) -> RwLockReadGuard<'_, HashMap<IdUsuario, Usuario>> {
+        self.filas.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn write(&self) -> RwLockWriteGuard<'_, HashMap<IdUsuario, Usuario>> {
+        self.filas.write().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+#[async_trait]
+impl RepositorioUsuario for RepositorioUsuarioEnMemoria {
+    async fn buscar_por_sujeto(
+        &self,
+        emisor: &str,
+        sujeto: &str,
+    ) -> Result<Option<Usuario>, ErrorRepositorio> {
+        Ok(self
+            .read()
+            .values()
+            .find(|usuario| usuario.emisor == emisor && usuario.sujeto == sujeto)
+            .cloned())
+    }
+
+    async fn buscar_por_id(&self, id: IdUsuario) -> Result<Option<Usuario>, ErrorRepositorio> {
+        Ok(self.read().get(&id).cloned())
+    }
+
+    async fn guardar(&self, usuario: &Usuario) -> Result<(), ErrorRepositorio> {
+        let mut filas = self.write();
+        let ocupado = filas.values().any(|otro| {
+            otro.id != usuario.id && otro.emisor == usuario.emisor && otro.sujeto == usuario.sujeto
+        });
+        if ocupado {
+            return Err(ErrorRepositorio::Duplicado);
+        }
+        filas.insert(usuario.id, usuario.clone());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ada() -> Usuario {
+        Usuario::aprovisionar("issuer", "ada", Some("ada@example.com".into()), None)
+    }
+
+    #[tokio::test]
+    async fn deberia_encontrar_un_usuario_guardado_cuando_se_busca_por_sujeto_o_por_id() {
+        // Preparar
+        let repositorio = RepositorioUsuarioEnMemoria::new();
+        let usuario = ada();
+        repositorio.guardar(&usuario).await.expect("guardado");
+
+        // Actuar
+        let por_sujeto = repositorio.buscar_por_sujeto("issuer", "ada").await;
+        let por_id = repositorio.buscar_por_id(usuario.id).await;
+
+        // Comprobar
+        assert_eq!(por_sujeto, Ok(Some(usuario.clone())));
+        assert_eq!(por_id, Ok(Some(usuario)));
+    }
+
+    #[tokio::test]
+    async fn no_deberia_encontrar_a_nadie_cuando_el_sujeto_es_de_otro_emisor() {
+        // Preparar
+        let repositorio = RepositorioUsuarioEnMemoria::new();
+        repositorio.guardar(&ada()).await.expect("guardado");
+
+        // Actuar
+        let encontrado = repositorio.buscar_por_sujeto("other-issuer", "ada").await;
+
+        // Comprobar
+        assert_eq!(encontrado, Ok(None));
+    }
+
+    #[tokio::test]
+    async fn deberia_rechazar_un_segundo_usuario_cuando_el_sujeto_esta_ocupado() {
+        // Preparar
+        let repositorio = RepositorioUsuarioEnMemoria::new();
+        repositorio.guardar(&ada()).await.expect("guardado");
+
+        // Actuar
+        let resultado = repositorio.guardar(&ada()).await;
+
+        // Comprobar
+        assert_eq!(resultado, Err(ErrorRepositorio::Duplicado));
+    }
+}

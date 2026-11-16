@@ -1,0 +1,43 @@
+[proyecto]
+nombre = "tienda"
+db = true
+web = true
+auth = "oidc"
+
+[[entidad]]
+nombre = "Pedido"
+casos_de_uso = [
+    "crear_pedido",
+    "obtener_pedido",
+    "listar_pedidos",
+    "actualizar_pedido",
+    "borrar_pedido",
+]
+db = true
+publicos = [
+    "listar_pedidos",
+    "obtener_pedido",
+]
+
+[entidad.roles]
+borrar_pedido = ["admin"]
+
+[[entidad.campos]]
+nombre = "importe"
+tipo = "f64"
+objeto_valor = "Importe"
+
+[[entidad.campos]]
+nombre = "estado"
+tipo = "String"
+objeto_valor = "Estado"
+clase_objeto_valor = "enum"
+variantes = [
+    "Pendiente",
+    "Confirmado",
+    "Cancelado",
+]
+
+[[entidad.campos]]
+nombre = "nota"
+tipo = "Option<String>"

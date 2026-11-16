@@ -1,0 +1,38 @@
+[proyecto]
+nombre = "tienda"
+db = true
+web = true
+auth = "oidc"
+
+[[entidad]]
+nombre = "Cliente"
+casos_de_uso = [
+    "crear_cliente",
+    "obtener_cliente",
+    "listar_clientes",
+    "actualizar_cliente",
+    "borrar_cliente",
+]
+db = true
+publicos = [
+    "listar_clientes",
+    "obtener_cliente",
+]
+
+[entidad.roles]
+borrar_cliente = ["admin"]
+
+[[entidad.campos]]
+nombre = "email"
+tipo = "String"
+unico = true
+objeto_valor = "Email"
+
+[[entidad.campos]]
+nombre = "nombre"
+tipo = "String"
+
+[[entidad.campos]]
+nombre = "etiquetas"
+tipo = "Vec<String>"
+objeto_valor = "Etiqueta"

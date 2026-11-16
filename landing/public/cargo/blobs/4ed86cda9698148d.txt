@@ -1,0 +1,95 @@
+use crate::valores::Estado;
+use crate::valores::Importe;
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use crate::errores::ErrorPedido;
+
+/// El id de cada `Pedido`: un `Uuid` que no se puede pasar donde se espera el id de otra
+/// entidad.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IdPedido(Uuid);
+
+impl IdPedido {
+    /// Un id nuevo y aleatorio — para una entidad que se está creando.
+    pub fn generar() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// Un id leído de fuera (un parámetro de ruta, una fila) — sin validar: cualquier `Uuid` es un
+    /// id.
+    pub fn from_uuid(valor: Uuid) -> Self {
+        Self(valor)
+    }
+
+    pub fn valor(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for IdPedido {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PropsPedido {
+    pub importe: Importe,
+    pub estado: Estado,
+    pub nota: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Pedido {
+    pub id: IdPedido,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    pub importe: Importe,
+    pub estado: Estado,
+    pub nota: Option<String>,
+}
+
+impl Pedido {
+    pub fn new(props: PropsPedido) -> Result<Self, ErrorPedido> {
+        let ahora = chrono::Utc::now();
+        Ok(Self {
+            id: IdPedido::generar(),
+            creado_en: ahora,
+            actualizado_en: ahora,
+            borrado: false,
+            borrado_en: None,
+            importe: props.importe,
+            estado: props.estado,
+            nota: props.nota,
+        })
+    }
+
+    pub fn from_repositorio(datos: Pedido) -> Self {
+        datos
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_crear_pedido_cuando_los_campos_son_validos() {
+        let resultado = Pedido::new(PropsPedido {
+            importe: Importe::new(1.5).expect("Importe::new rechazó el valor de ejemplo"),
+            estado: Estado::Pendiente,
+            nota: None,
+        });
+        assert!(resultado.is_ok());
+    }
+
+    #[test]
+    fn deberia_rechazar_pedido_cuando_estado_no_es_una_variante_conocida() {
+        let resultado = "VarianteInvalida".parse::<Estado>();
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "pedido.estado_invalido");
+    }
+}

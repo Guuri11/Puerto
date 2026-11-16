@@ -1,0 +1,73 @@
+use puerto_nucleo::ErrorRepositorio;
+use puerto_nucleo::auth::ErrorHash;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ErrorUsuario {
+    #[error("usuario.no_encontrado")]
+    NoEncontrado,
+    #[error("usuario.duplicado")]
+    Duplicado,
+    #[error("usuario.repositorio")]
+    Repositorio,
+    /// `email_invalid`, `password_too_short`.
+    #[error("usuario.validacion.{0}")]
+    Validacion(String),
+    /// Un email desconocido o una contraseña equivocada: a quien llama no se le dice cuál.
+    #[error("auth.credenciales_invalidas")]
+    CredencialesInvalidas,
+    /// No se pudo calcular el hash de la contraseña.
+    #[error("usuario.desconocido")]
+    Desconocido,
+}
+
+impl From<ErrorRepositorio> for ErrorUsuario {
+    /// `ErrorRepositorio` es `#[non_exhaustive]`: una variante que añada una versión posterior es
+    /// problema del almacén (500) hasta que tenga un significado aquí.
+    fn from(err: ErrorRepositorio) -> Self {
+        match err {
+            ErrorRepositorio::Duplicado => Self::Duplicado,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
+            _ => Self::Repositorio,
+        }
+    }
+}
+
+impl From<ErrorHash> for ErrorUsuario {
+    fn from(_: ErrorHash) -> Self {
+        Self::Desconocido
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_convertir_un_duplicado_en_el_duplicado_de_usuario() {
+        let err = ErrorUsuario::from(ErrorRepositorio::Duplicado);
+        assert_eq!(err.to_string(), "usuario.duplicado");
+    }
+
+    #[test]
+    fn deberia_convertir_un_almacen_no_disponible_en_un_error_de_repositorio() {
+        let err = ErrorUsuario::from(ErrorRepositorio::NoDisponible);
+        assert_eq!(err.to_string(), "usuario.repositorio");
+    }
+
+    #[test]
+    fn deberia_decir_credenciales_invalidas_sea_cual_sea_la_parte_equivocada() {
+        assert_eq!(
+            ErrorUsuario::CredencialesInvalidas.to_string(),
+            "auth.credenciales_invalidas"
+        );
+    }
+
+    #[test]
+    fn deberia_convertir_un_hash_fallido_en_el_desconocido_de_usuario() {
+        assert_eq!(
+            ErrorUsuario::from(ErrorHash).to_string(),
+            "usuario.desconocido"
+        );
+    }
+}

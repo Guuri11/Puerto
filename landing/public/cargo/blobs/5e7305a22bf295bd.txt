@@ -1,0 +1,31 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+use poem::Endpoint;
+use poem_openapi::OpenApiService;
+use rest_producto::rutas::ApiProducto;
+
+/// Las rutas, cableadas. Un error es lo que paró el arranque: `main` lo muestra y sale con 1.
+pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
+    let casos_producto = cableado::producto::construir();
+    let api_producto = ApiProducto {
+        crear_producto: casos_producto.crear_producto,
+        obtener_producto: casos_producto.obtener_producto,
+        listar_productos: casos_producto.listar_productos,
+        actualizar_producto: casos_producto.actualizar_producto,
+        borrar_producto: casos_producto.borrar_producto,
+    };
+
+    let disponible = puerto_web::health::siempre_disponible();
+
+    // `app.rs` es del proyecto: el middleware y las rutas que se añadan allí envuelven todo esto.
+    Ok(crate::app::configurar(puerto_web::rutas(
+        servicio_openapi(api_producto),
+        &config,
+        disponible,
+    )))
+}
+
+/// El servicio de la API, construido en un solo sitio: cualquier otro que lea su spec (el test de
+/// exportación de un proyecto con `web/`) ve la API que responde el servidor.
+fn servicio_openapi<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
+    OpenApiService::new(api, env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+}

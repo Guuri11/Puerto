@@ -1,0 +1,23 @@
+[package]
+name = "rest_pedido"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aplicacion_pedido = { workspace = true }
+dominio_pedido = { workspace = true }
+puerto-nucleo = { workspace = true }
+puerto-web = { workspace = true }
+poem = { workspace = true }
+poem-openapi = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+# Quien llama en los tests: `MadrePrincipal`, y el `MockAutenticador` de las rutas.
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
+aplicacion_pedido = { workspace = true, features = ["pruebas"] }
+dominio_pedido = { workspace = true, features = ["pruebas"] }
+poem = { workspace = true, features = ["test"] }
+tokio = { workspace = true }

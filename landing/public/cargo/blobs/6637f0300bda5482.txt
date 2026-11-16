@@ -1,0 +1,30 @@
+import type { ProductoDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ProductoProblem {
+  field: keyof ProductoDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "producto.validacion.nombre_vacio": "Nombre is required",
+  "producto.validacion.sku_vacio": "Sku is required",
+  "producto.duplicado": "A producto with these values already exists",
+  "producto.no_encontrado": "This producto no longer exists",
+  "producto.repositorio": "The producto could not be saved, try again later",
+  "producto.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof ProductoDraft> = {
+  "producto.validacion.nombre_vacio": "nombre",
+  "producto.validacion.sku_vacio": "sku",
+};
+
+export function toProblem(code: string): ProductoProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}

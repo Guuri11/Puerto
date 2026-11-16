@@ -1,0 +1,14 @@
+import type { Producto } from "../../../../domain/producto/model";
+
+export function ProductoDetailView({ producto }: { producto: Producto }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Nombre</dt>
+      <dd>{producto.nombre}</dd>
+      <dt className="font-semibold">Precio</dt>
+      <dd>{producto.precio}</dd>
+      <dt className="font-semibold">Sku</dt>
+      <dd>{producto.sku}</dd>
+    </dl>
+  );
+}

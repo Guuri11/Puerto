@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/pedido/messages";
+import type { Pedido } from "../../../../domain/pedido/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
+import { PedidoFormView, toPedidoDraft, toPedidoForm } from "../views/pedido-form-view";
+
+/** Creates a pedido, or edits the one with `id`. */
+export function PedidoFormContainer({ id }: { id?: string }) {
+  const { pedidoRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : pedidoRepository.get(id)),
+    [pedidoRepository, id],
+  );
+  const title = id === undefined ? "New pedido" : "Edit pedido";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <PedidoForm existing={existing.data} />}
+      <Link href={id === undefined ? "/pedidos" : `/pedidos/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function PedidoForm({ existing }: { existing: Pedido | null }) {
+  const { pedidoRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toPedidoForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toPedidoDraft(values);
+      const saved =
+        existing === null
+          ? await pedidoRepository.create(draft)
+          : await pedidoRepository.update(existing.id, draft);
+      navigate(`/pedidos/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <PedidoFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
+      </div>
+    </div>
+  );
+}

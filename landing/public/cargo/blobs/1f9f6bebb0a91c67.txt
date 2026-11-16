@@ -1,0 +1,73 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen } from "@testing-library/react";
+import { ProductoError } from "../../../../domain/producto/errors";
+import { fakeProductoRepository, ProductoMother } from "../../../../test-support/producto";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductoListContainer } from "./producto-list-container";
+
+describe("ProductoListContainer", () => {
+  test("should show a row per producto when there are some", async () => {
+    // Arrange
+    const seed = [ProductoMother.random(), ProductoMother.random()];
+    const productoRepository = fakeProductoRepository(seed);
+
+    // Act
+    renderScreen(<ProductoListContainer />, { productoRepository });
+
+    // Assert
+    expect(await screen.findAllByText("View")).toHaveLength(2);
+  });
+
+  test("should show the next page when Next is pressed", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ProductoMother.random());
+    const productoRepository = fakeProductoRepository(seed);
+    renderScreen(<ProductoListContainer />, { productoRepository });
+    expect(await screen.findAllByText("View")).toHaveLength(20);
+
+    // Act
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    expect(screen.getAllByText("View")).toHaveLength(5);
+  });
+
+  test("should open the page the URL names", async () => {
+    // Arrange
+    const seed = Array.from({ length: 25 }, () => ProductoMother.random());
+    const productoRepository = fakeProductoRepository(seed);
+    const path = "/productos?page=2";
+
+    // Act
+    renderScreen(<ProductoListContainer />, { productoRepository }, path);
+
+    // Assert
+    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+  });
+
+  test("should say so when there is no producto", async () => {
+    // Arrange
+    const productoRepository = fakeProductoRepository();
+
+    // Act
+    renderScreen(<ProductoListContainer />, { productoRepository });
+
+    // Assert
+    expect(await screen.findByText("No productos yet.")).toBeTruthy();
+  });
+
+  test("should show the error code when the productos cannot be listed", async () => {
+    // Arrange
+    const productoRepository = {
+      ...fakeProductoRepository(),
+      list: () => Promise.reject(new ProductoError("producto.repositorio")),
+    };
+
+    // Act
+    renderScreen(<ProductoListContainer />, { productoRepository });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("producto.repositorio");
+  });
+});

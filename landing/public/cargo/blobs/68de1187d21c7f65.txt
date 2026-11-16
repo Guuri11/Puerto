@@ -1,0 +1,71 @@
+import { ProductoError } from "../../domain/producto/errors";
+import type { Producto, ProductoDraft } from "../../domain/producto/model";
+import type { ProductoRepository } from "../../domain/producto/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type ProductoDto = components["schemas"]["DtoProducto"];
+type ProductoRequest = components["schemas"]["PeticionCrearProducto"];
+
+function toProducto(dto: ProductoDto): Producto {
+  return {
+    id: dto.id,
+    nombre: dto.nombre,
+    precio: dto.precio,
+    sku: dto.sku,
+  };
+}
+
+function toRequest(draft: ProductoDraft): ProductoRequest {
+  return {
+    nombre: draft.nombre,
+    precio: draft.precio,
+    sku: draft.sku,
+  };
+}
+
+/** `ProductoRepository` over the REST API (`/productos`). */
+export function productoRepositoryHttp(api: ApiClient): ProductoRepository {
+  return {
+    async list(page) {
+      const { data, error, response } = await api.GET("/productos", {
+        params: { query: { limite: page.limit, desplazamiento: page.offset } },
+      });
+      if (data === undefined) throw new ProductoError(apiErrorCode(error, response));
+      return {
+        items: data.elementos.map(toProducto),
+        total: data.total,
+        limit: data.limite,
+        offset: data.desplazamiento,
+      };
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/productos/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new ProductoError(apiErrorCode(error, response));
+      return toProducto(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/productos", {
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new ProductoError(apiErrorCode(error, response));
+      return toProducto(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/productos/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new ProductoError(apiErrorCode(error, response));
+      return toProducto(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/productos/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new ProductoError(apiErrorCode(error, response));
+    },
+  };
+}

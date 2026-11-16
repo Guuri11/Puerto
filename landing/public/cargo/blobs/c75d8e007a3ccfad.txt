@@ -1,0 +1,153 @@
+// La variante de éxito lleva el DTO entero, así que crece más que las de error a medida que la
+// entidad gana campos. Una respuesta se construye una vez por petición y se devuelve: meter el DTO
+// en un `Box` solo añadiría una reserva de memoria.
+#![allow(clippy::large_enum_variant)]
+
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::RespuestaError;
+
+use crate::dto::{DtoPaginaPedido, DtoPedido};
+
+#[derive(ApiResponse)]
+pub enum RespuestaCrearPedido {
+    #[oai(status = 201)]
+    Creado(Json<DtoPedido>),
+    #[oai(status = 422)]
+    NoProcesable(Json<RespuestaError>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 409)]
+    Conflicto(Json<RespuestaError>),
+    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
+    #[oai(status = 503)]
+    NoDisponible(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaCrearPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaObtenerPedido {
+    #[oai(status = 200)]
+    Ok(Json<DtoPedido>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaObtenerPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaListarPedidos {
+    #[oai(status = 200)]
+    Ok(Json<DtoPaginaPedido>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaListarPedidos {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaActualizarPedido {
+    #[oai(status = 200)]
+    Ok(Json<DtoPedido>),
+    #[oai(status = 422)]
+    NoProcesable(Json<RespuestaError>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    #[oai(status = 409)]
+    Conflicto(Json<RespuestaError>),
+    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
+    #[oai(status = 503)]
+    NoDisponible(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaActualizarPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaBorrarPedido {
+    #[oai(status = 204)]
+    SinContenido,
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
+    #[oai(status = 503)]
+    NoDisponible(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaBorrarPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}

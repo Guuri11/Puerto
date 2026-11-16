@@ -1,0 +1,13 @@
+/**
+ * A request about a producto that the API refused. `code` is the API's `RespuestaError.codigo`:
+ * `producto.no_encontrado`, `producto.validacion.<field>_vacio`.
+ */
+export class ProductoError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "ProductoError";
+    this.code = code;
+  }
+}

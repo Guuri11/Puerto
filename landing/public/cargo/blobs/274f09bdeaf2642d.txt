@@ -1,0 +1,160 @@
+use async_trait::async_trait;
+use dominio_producto::errores::ErrorProducto;
+use dominio_producto::modelo::{Producto, PropsProducto};
+use dominio_producto::repositorio::RepositorioProducto;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsCrearProducto {
+    pub nombre: String,
+    pub precio: i64,
+    pub sku: String,
+}
+
+#[async_trait]
+pub trait CrearProducto: Send + Sync {
+    async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CrearProducto {}
+
+        #[async_trait]
+        impl CrearProducto for CrearProducto {
+            async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto>;
+        }
+    }
+}
+
+pub struct CrearProductoImpl {
+    pub repositorio: Arc<dyn RepositorioProducto>,
+}
+
+#[async_trait]
+impl CrearProducto for CrearProductoImpl {
+    async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto> {
+        tracing::info!("crear_producto: inicio");
+        let entidad = Producto::new(PropsProducto {
+            nombre: params.nombre,
+            precio: params.precio,
+            sku: params.sku,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "crear_producto: rechazado"))?;
+        self.repositorio.guardar(&entidad).await.inspect_err(
+            |e| tracing::error!(error = %e, "crear_producto: fallo del repositorio"),
+        )?;
+        tracing::info!(id = %entidad.id, "crear_producto: fin");
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_producto::repositorio::dobles::MockRepositorioProducto;
+    use puerto_nucleo::ErrorRepositorio;
+
+    #[tokio::test]
+    async fn deberia_crear_producto_cuando_los_campos_son_validos() {
+        // Preparar
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = CrearProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearProducto {
+                nombre: "example".to_string(),
+                precio: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
+        assert_eq!(resultado.unwrap().nombre, "example");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
+        // Preparar
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_guardar()
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
+        let caso_de_uso = CrearProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearProducto {
+                nombre: "example".to_string(),
+                precio: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "producto.duplicado");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_nombre_es_una_cadena_vacia() {
+        // Preparar
+        let repositorio_doble = MockRepositorioProducto::new();
+        let caso_de_uso = CrearProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearProducto {
+                nombre: "".to_string(),
+                precio: 42,
+                sku: "example".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "producto.validacion.nombre_vacio"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
+        // Preparar
+        let repositorio_doble = MockRepositorioProducto::new();
+        let caso_de_uso = CrearProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearProducto {
+                nombre: "example".to_string(),
+                precio: 42,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "producto.validacion.sku_vacio"
+        );
+    }
+}

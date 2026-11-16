@@ -1,0 +1,411 @@
+use std::sync::Arc;
+
+use aplicacion_pedido::{
+    actualizar_pedido::{ActualizarPedido, ParamsActualizarPedido},
+    borrar_pedido::{BorrarPedido, ParamsBorrarPedido},
+    crear_pedido::{CrearPedido, ParamsCrearPedido},
+    listar_pedidos::{ListarPedidos, ParamsListarPedidos},
+    obtener_pedido::{ObtenerPedido, ParamsObtenerPedido},
+};
+use dominio_pedido::modelo::IdPedido;
+use poem_openapi::{
+    OpenApi, Tags,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_nucleo::PeticionPagina;
+use uuid::Uuid;
+
+use crate::dto::{DtoPaginaPedido, DtoPedido, PeticionActualizarPedido, PeticionCrearPedido};
+use crate::errores::a_respuesta_error;
+use crate::respuestas::{
+    RespuestaActualizarPedido, RespuestaBorrarPedido, RespuestaCrearPedido, RespuestaListarPedidos,
+    RespuestaObtenerPedido,
+};
+
+#[derive(Tags)]
+enum ApiTags {
+    Pedido,
+}
+
+/// Guarda los puertos de los casos de uso; `generado/bootstrap.rs` conecta las implementaciones.
+pub struct ApiPedido {
+    pub crear_pedido: Arc<dyn CrearPedido>,
+    pub obtener_pedido: Arc<dyn ObtenerPedido>,
+    pub listar_pedidos: Arc<dyn ListarPedidos>,
+    pub actualizar_pedido: Arc<dyn ActualizarPedido>,
+    pub borrar_pedido: Arc<dyn BorrarPedido>,
+}
+
+#[OpenApi]
+impl ApiPedido {
+    /// Crea: Pedido
+    #[oai(path = "/pedidos", method = "post", tag = "ApiTags::Pedido")]
+    async fn crear(&self, cuerpo: Json<PeticionCrearPedido>) -> RespuestaCrearPedido {
+        match self
+            .crear_pedido
+            .ejecutar(ParamsCrearPedido {
+                importe: cuerpo.importe,
+                estado: cuerpo.estado.clone(),
+                nota: cuerpo.nota.clone(),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaCrearPedido::Creado(Json(DtoPedido::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "crear_pedido falló");
+                RespuestaCrearPedido::from_status(status, error)
+            }
+        }
+    }
+
+    /// Obtiene: Pedido por id
+    #[oai(path = "/pedidos/:id", method = "get", tag = "ApiTags::Pedido")]
+    async fn obtener(&self, id: Path<Uuid>) -> RespuestaObtenerPedido {
+        match self
+            .obtener_pedido
+            .ejecutar(ParamsObtenerPedido {
+                id: IdPedido::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaObtenerPedido::Ok(Json(DtoPedido::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "obtener_pedido falló");
+                RespuestaObtenerPedido::from_status(status, error)
+            }
+        }
+    }
+
+    /// Lista Pedidos, página a página (el dominio acota `limite`)
+    #[oai(path = "/pedidos", method = "get", tag = "ApiTags::Pedido")]
+    async fn listar(
+        &self,
+        limite: Query<Option<u32>>,
+        desplazamiento: Query<Option<u32>>,
+    ) -> RespuestaListarPedidos {
+        match self
+            .listar_pedidos
+            .ejecutar(ParamsListarPedidos {
+                pagina: PeticionPagina::new(limite.0, desplazamiento.0),
+            })
+            .await
+        {
+            Ok(pagina) => RespuestaListarPedidos::Ok(Json(DtoPaginaPedido::from_dominio(&pagina))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::error!(codigo = %error.0.codigo, "listar_pedidos falló");
+                RespuestaListarPedidos::from_status(status, error)
+            }
+        }
+    }
+
+    /// Actualiza: Pedido
+    #[oai(path = "/pedidos/:id", method = "put", tag = "ApiTags::Pedido")]
+    async fn actualizar(
+        &self,
+        id: Path<Uuid>,
+        cuerpo: Json<PeticionActualizarPedido>,
+    ) -> RespuestaActualizarPedido {
+        match self
+            .actualizar_pedido
+            .ejecutar(ParamsActualizarPedido {
+                id: IdPedido::from_uuid(id.0),
+                importe: cuerpo.importe,
+                estado: cuerpo.estado.clone(),
+                nota: cuerpo.nota.clone(),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaActualizarPedido::Ok(Json(DtoPedido::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "actualizar_pedido falló");
+                RespuestaActualizarPedido::from_status(status, error)
+            }
+        }
+    }
+
+    /// Borra: Pedido
+    #[oai(path = "/pedidos/:id", method = "delete", tag = "ApiTags::Pedido")]
+    async fn borrar(&self, id: Path<Uuid>) -> RespuestaBorrarPedido {
+        match self
+            .borrar_pedido
+            .ejecutar(ParamsBorrarPedido {
+                id: IdPedido::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => RespuestaBorrarPedido::SinContenido,
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "borrar_pedido falló");
+                RespuestaBorrarPedido::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_pedido::{
+        actualizar_pedido::dobles::MockActualizarPedido, borrar_pedido::dobles::MockBorrarPedido,
+        crear_pedido::dobles::MockCrearPedido, listar_pedidos::dobles::MockListarPedidos,
+        obtener_pedido::dobles::MockObtenerPedido,
+    };
+    use dominio_pedido::errores::ErrorPedido;
+    use dominio_pedido::pruebas::madres::MadrePedido;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_nucleo::Pagina;
+
+    use super::*;
+
+    /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
+    /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
+    #[derive(Default)]
+    struct Dobles {
+        crear: MockCrearPedido,
+        obtener: MockObtenerPedido,
+        listar: MockListarPedidos,
+        actualizar: MockActualizarPedido,
+        borrar: MockBorrarPedido,
+    }
+
+    impl Dobles {
+        fn cliente(self) -> TestClient<Route> {
+            let api = ApiPedido {
+                crear_pedido: Arc::new(self.crear),
+                obtener_pedido: Arc::new(self.obtener),
+                listar_pedidos: Arc::new(self.listar),
+                actualizar_pedido: Arc::new(self.actualizar),
+                borrar_pedido: Arc::new(self.borrar),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn peticion_crear() -> PeticionCrearPedido {
+        PeticionCrearPedido {
+            importe: 1.5,
+            estado: "example".to_string(),
+            nota: None,
+        }
+    }
+
+    fn peticion_actualizar() -> PeticionActualizarPedido {
+        PeticionActualizarPedido {
+            importe: 1.5,
+            estado: "example".to_string(),
+            nota: None,
+        }
+    }
+
+    fn ruta_elemento() -> String {
+        format!("/pedidos/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_201_cuando_se_crea_pedido() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Ok(MadrePedido::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/pedidos")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_pedido_no_supera_la_validacion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorPedido::Validacion("invalid".to_string())));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/pedidos")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_pedido_existe() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Ok(MadrePedido::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_pedido_no_existe() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorPedido::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_con_una_pagina_de_pedidos_cuando_se_listan() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .returning(|params| Ok(Pagina::new(MadrePedido::aleatorios(2), 7, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/pedidos").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let json = respuesta.json().await;
+        let cuerpo = json.value().object();
+        cuerpo.get("elementos").array().assert_len(2);
+        cuerpo.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .withf(|params| params.pagina == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .get("/pedidos?limite=5&desplazamiento=10")
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorPedido::Repositorio));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/pedidos").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_se_actualiza_pedido() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .actualizar
+            .expect_ejecutar()
+            .returning(|_| Ok(MadrePedido::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_se_actualiza_pedido_inexistente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .actualizar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorPedido::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_204_cuando_se_borra_pedido() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
+
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_se_borra_pedido_inexistente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .borrar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorPedido::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+}

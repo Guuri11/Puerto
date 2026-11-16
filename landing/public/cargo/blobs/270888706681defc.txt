@@ -1,0 +1,286 @@
+//! Lo escribe una vez `puerto nuevo --auth local`; desde entonces es tuyo. El registro está
+//! abierto: ciérralo, o añade tus reglas (una invitación, una lista de dominios permitidos), aquí.
+
+use async_trait::async_trait;
+use dominio_usuario::errores::ErrorUsuario;
+use dominio_usuario::modelo::{EMISOR_LOCAL, Usuario};
+use dominio_usuario::repositorio::RepositorioUsuario;
+use puerto_nucleo::auth::{AlmacenCredenciales, HasherContrasena};
+use std::sync::Arc;
+
+/// Una cuenta nueva: un email que no tenga otra cuenta y una contraseña de al menos
+/// `MIN_PASSWORD_LENGTH` caracteres.
+pub struct ParamsRegistrarUsuario {
+    pub email: String,
+    pub contrasena: String,
+    pub nombre: Option<String>,
+}
+
+#[async_trait]
+pub trait RegistrarUsuario: Send + Sync {
+    async fn ejecutar(&self, params: ParamsRegistrarUsuario) -> Result<Usuario, ErrorUsuario>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub RegistrarUsuario {}
+
+        #[async_trait]
+        impl RegistrarUsuario for RegistrarUsuario {
+            async fn ejecutar(&self, params: ParamsRegistrarUsuario) -> Result<Usuario, ErrorUsuario>;
+        }
+    }
+}
+
+/// Las contraseñas más cortas se rechazan (`usuario.validacion.contrasena_demasiado_corta`); el mínimo del
+/// NIST es 8, y OWASP aconseja más para una contraseña sola.
+pub const LONGITUD_MINIMA_CONTRASENA: usize = 12;
+
+pub struct RegistrarUsuarioImpl {
+    pub usuarios: Arc<dyn RepositorioUsuario>,
+    pub credenciales: Arc<dyn AlmacenCredenciales>,
+    pub hasher: Arc<dyn HasherContrasena>,
+}
+
+#[async_trait]
+impl RegistrarUsuario for RegistrarUsuarioImpl {
+    async fn ejecutar(&self, params: ParamsRegistrarUsuario) -> Result<Usuario, ErrorUsuario> {
+        tracing::info!("registrar_usuario: inicio");
+        if params.contrasena.chars().count() < LONGITUD_MINIMA_CONTRASENA {
+            return Err(ErrorUsuario::Validacion(
+                "contrasena_demasiado_corta".into(),
+            ));
+        }
+        let usuario_nuevo = Usuario::registrar(&params.email, params.nombre)?;
+        let hash = self.hasher.hash(&params.contrasena).await?;
+        // El usuario y sus credenciales son dos escrituras. Un usuario al que nunca llegó la
+        // segunda no tiene contraseña, así que nadie puede iniciar sesión con él: el siguiente
+        // registro de ese email se lo queda.
+        let usuario = match self
+            .usuarios
+            .buscar_por_sujeto(EMISOR_LOCAL, &usuario_nuevo.sujeto)
+            .await?
+        {
+            Some(existente) => {
+                if self
+                    .credenciales
+                    .hash_contrasena(existente.id.valor())
+                    .await?
+                    .is_some()
+                {
+                    tracing::warn!("registrar_usuario: el email está ocupado");
+                    return Err(ErrorUsuario::Duplicado);
+                }
+                existente
+            }
+            None => {
+                self.usuarios.guardar(&usuario_nuevo).await?;
+                usuario_nuevo
+            }
+        };
+        self.credenciales
+            .guardar_hash_contrasena(usuario.id.valor(), &hash)
+            .await?;
+        tracing::info!(id = %usuario.id, "registrar_usuario: fin");
+        Ok(usuario)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use puerto_nucleo::ErrorRepositorio;
+    use puerto_nucleo::auth::ErrorHash;
+    use puerto_nucleo::auth::dobles::{MockAlmacenCredenciales, MockHasherContrasena};
+
+    use super::*;
+    use dominio_usuario::repositorio::dobles::MockRepositorioUsuario;
+
+    const CONTRASENA: &str = "correct horse battery";
+
+    fn hasher() -> MockHasherContrasena {
+        let mut hasher = MockHasherContrasena::new();
+        hasher
+            .expect_hash()
+            .returning(|contrasena| Ok(format!("hashed:{contrasena}")));
+        hasher
+    }
+
+    fn caso_de_uso(
+        usuarios: MockRepositorioUsuario,
+        credenciales: MockAlmacenCredenciales,
+        hasher: MockHasherContrasena,
+    ) -> RegistrarUsuarioImpl {
+        RegistrarUsuarioImpl {
+            usuarios: Arc::new(usuarios),
+            credenciales: Arc::new(credenciales),
+            hasher: Arc::new(hasher),
+        }
+    }
+
+    fn params(email: &str, contrasena: &str) -> ParamsRegistrarUsuario {
+        ParamsRegistrarUsuario {
+            email: email.into(),
+            contrasena: contrasena.into(),
+            nombre: Some("Ada".into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn deberia_crear_la_cuenta_y_guardar_solo_el_hash_cuando_el_email_es_nuevo() {
+        // Preparar
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios
+            .expect_buscar_por_sujeto()
+            .withf(|emisor, sujeto| emisor == EMISOR_LOCAL && sujeto == "ada@example.com")
+            .returning(|_, _| Ok(None));
+        usuarios.expect_guardar().times(1).returning(|_| Ok(()));
+        let mut credenciales = MockAlmacenCredenciales::new();
+        credenciales
+            .expect_guardar_hash_contrasena()
+            .withf(|_, hash| hash == "hashed:correct horse battery")
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        // Actuar
+        let resultado = caso_de_uso(usuarios, credenciales, hasher())
+            .ejecutar(params("Ada@Example.com", CONTRASENA))
+            .await;
+
+        // Comprobar
+        let usuario = resultado.expect("cuenta registrada");
+        assert_eq!(usuario.sujeto, "ada@example.com");
+        assert_eq!(usuario.nombre.as_deref(), Some("Ada"));
+    }
+
+    #[tokio::test]
+    async fn deberia_rechazar_la_cuenta_cuando_la_contrasena_es_demasiado_corta() {
+        // Preparar: no se toca ningún almacén.
+        let caso_de_uso = caso_de_uso(
+            MockRepositorioUsuario::new(),
+            MockAlmacenCredenciales::new(),
+            MockHasherContrasena::new(),
+        );
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(params("ada@example.com", "elevenchars"))
+            .await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "usuario.validacion.contrasena_demasiado_corta"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_rechazar_la_cuenta_cuando_el_email_no_es_valido() {
+        // Actuar
+        let resultado = caso_de_uso(
+            MockRepositorioUsuario::new(),
+            MockAlmacenCredenciales::new(),
+            MockHasherContrasena::new(),
+        )
+        .ejecutar(params("ada", CONTRASENA))
+        .await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "usuario.validacion.email_invalido"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_rechazar_la_cuenta_cuando_el_email_esta_ocupado() {
+        // Preparar
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios.expect_buscar_por_sujeto().returning(|_, _| {
+            Ok(Some(
+                Usuario::registrar("ada@example.com", None).expect("cuenta válida"),
+            ))
+        });
+        usuarios.expect_guardar().never();
+        let mut credenciales = MockAlmacenCredenciales::new();
+        credenciales
+            .expect_hash_contrasena()
+            .returning(|_| Ok(Some("hashed:theirs".into())));
+        credenciales.expect_guardar_hash_contrasena().never();
+
+        // Actuar
+        let resultado = caso_de_uso(usuarios, credenciales, hasher())
+            .ejecutar(params("ada@example.com", CONTRASENA))
+            .await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap_err().to_string(), "usuario.duplicado");
+    }
+
+    #[tokio::test]
+    async fn deberia_recuperar_una_cuenta_que_se_quedo_sin_contrasena() {
+        // Preparar
+        let huerfano = Usuario::registrar("ada@example.com", None).expect("cuenta válida");
+        let id_huerfano = huerfano.id;
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios
+            .expect_buscar_por_sujeto()
+            .returning(move |_, _| Ok(Some(huerfano.clone())));
+        usuarios.expect_guardar().never();
+        let mut credenciales = MockAlmacenCredenciales::new();
+        credenciales
+            .expect_hash_contrasena()
+            .returning(|_| Ok(None));
+        credenciales
+            .expect_guardar_hash_contrasena()
+            .withf(move |id_usuario, _| *id_usuario == id_huerfano.valor())
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        // Actuar
+        let resultado = caso_de_uso(usuarios, credenciales, hasher())
+            .ejecutar(params("ada@example.com", CONTRASENA))
+            .await;
+
+        // Comprobar
+        assert_eq!(resultado.expect("cuenta registrada").id, id_huerfano);
+    }
+
+    #[tokio::test]
+    async fn no_deberia_escribir_nada_cuando_falla_el_hash_de_la_contrasena() {
+        // Preparar
+        let mut hasher = MockHasherContrasena::new();
+        hasher.expect_hash().returning(|_| Err(ErrorHash));
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios.expect_guardar().never();
+
+        // Actuar
+        let resultado = caso_de_uso(usuarios, MockAlmacenCredenciales::new(), hasher)
+            .ejecutar(params("ada@example.com", CONTRASENA))
+            .await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap_err().to_string(), "usuario.desconocido");
+    }
+
+    #[tokio::test]
+    async fn deberia_informar_de_un_error_de_repositorio_cuando_el_almacen_no_responde() {
+        // Preparar
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios
+            .expect_buscar_por_sujeto()
+            .returning(|_, _| Err(ErrorRepositorio::NoDisponible));
+
+        // Actuar
+        let resultado = caso_de_uso(usuarios, MockAlmacenCredenciales::new(), hasher())
+            .ejecutar(params("ada@example.com", CONTRASENA))
+            .await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap_err().to_string(), "usuario.repositorio");
+    }
+}

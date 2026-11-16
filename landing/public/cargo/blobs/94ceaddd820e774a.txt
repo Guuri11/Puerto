@@ -1,0 +1,21 @@
+[package]
+name = "rest_producto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aplicacion_producto = { workspace = true }
+dominio_producto = { workspace = true }
+puerto-nucleo = { workspace = true }
+puerto-web = { workspace = true }
+poem = { workspace = true }
+poem-openapi = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+aplicacion_producto = { workspace = true, features = ["pruebas"] }
+dominio_producto = { workspace = true, features = ["pruebas"] }
+poem = { workspace = true, features = ["test"] }
+tokio = { workspace = true }

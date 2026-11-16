@@ -1,8 +1,0 @@
-pub mod db;
-pub mod user {
-    pub mod repository;
-}
-pub mod product {
-    pub mod entity;
-    pub mod repository;
-}

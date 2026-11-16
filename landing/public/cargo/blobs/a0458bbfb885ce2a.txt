@@ -1,0 +1,44 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+use poem::Endpoint;
+use poem_openapi::OpenApiService;
+use rest_pedido::rutas::ApiPedido;
+
+/// Las rutas, cableadas. Un error es lo que paró el arranque: `main` lo muestra y sale con 1.
+pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        "DATABASE_URL no está definida — defínela en .env (.env.example trae una)".to_string()
+    })?;
+    let pool = puerto_sqlx::crear_pool_postgres(&database_url)
+        .await
+        .map_err(|e| format!("{e} — ¿está arrancada la base de datos? `make docker-compose/up`"))?;
+    puerto_sqlx::ejecutar_migraciones(&pool, &migrador::MIGRADOR)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let casos_pedido = cableado::pedido::construir(&pool);
+    let api_pedido = ApiPedido {
+        crear_pedido: casos_pedido.crear_pedido,
+        obtener_pedido: casos_pedido.obtener_pedido,
+        listar_pedidos: casos_pedido.listar_pedidos,
+        actualizar_pedido: casos_pedido.actualizar_pedido,
+        borrar_pedido: casos_pedido.borrar_pedido,
+    };
+
+    let disponible = puerto_web::health::sondear(move || {
+        let pool = pool.clone();
+        async move { puerto_sqlx::ping(&pool).await }
+    });
+
+    // `app.rs` es del proyecto: el middleware y las rutas que se añadan allí envuelven todo esto.
+    Ok(crate::app::configurar(puerto_web::rutas(
+        servicio_openapi(api_pedido),
+        &config,
+        disponible,
+    )))
+}
+
+/// El servicio de la API, construido en un solo sitio: cualquier otro que lea su spec (el test de
+/// exportación de un proyecto con `web/`) ve la API que responde el servidor.
+fn servicio_openapi<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
+    OpenApiService::new(api, env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+}

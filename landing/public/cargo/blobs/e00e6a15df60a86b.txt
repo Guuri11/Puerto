@@ -1,0 +1,53 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use dominio_producto::{
+    errores::ErrorProducto,
+    modelo::{IdProducto, Producto},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct FilaProducto {
+    pub id: Uuid,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    pub nombre: String,
+    pub precio: i64,
+    pub sku: String,
+}
+
+impl TryFrom<FilaProducto> for Producto {
+    type Error = ErrorProducto;
+
+    fn try_from(fila: FilaProducto) -> Result<Self, Self::Error> {
+        Ok(Self::from_repositorio(Producto {
+            id: IdProducto::from_uuid(fila.id),
+            creado_en: fila.creado_en,
+            actualizado_en: fila.actualizado_en,
+            borrado: fila.borrado,
+            borrado_en: fila.borrado_en,
+            nombre: fila.nombre,
+            precio: fila.precio,
+            sku: fila.sku,
+        }))
+    }
+}
+
+impl From<&Producto> for FilaProducto {
+    fn from(entidad: &Producto) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            creado_en: entidad.creado_en,
+            actualizado_en: entidad.actualizado_en,
+            borrado: entidad.borrado,
+            borrado_en: entidad.borrado_en,
+            nombre: entidad.nombre.clone(),
+            precio: entidad.precio,
+            sku: entidad.sku.clone(),
+        }
+    }
+}

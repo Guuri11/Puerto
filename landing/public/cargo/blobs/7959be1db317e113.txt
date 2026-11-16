@@ -1,0 +1,26 @@
+[package]
+name = "infra_producto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_producto = { workspace = true }
+puerto-nucleo = { workspace = true }
+puerto-sqlx = { workspace = true }
+serde = { workspace = true }
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+# Las funciones de siembra de los tests de Postgres (`pruebas::siembra`), para los tests de los
+# contextos que referencian a este (ADR-0023 § 5 de Puerto).
+pruebas = ["dominio_producto/pruebas"]
+
+[dev-dependencies]
+dominio_producto = { workspace = true, features = ["pruebas"] }
+migrador = { workspace = true }
+tokio = { workspace = true }

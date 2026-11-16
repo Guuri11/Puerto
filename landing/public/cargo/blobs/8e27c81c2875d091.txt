@@ -1,0 +1,32 @@
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "tienda"
+path = "src/main.rs"
+
+[dependencies]
+# Los repositorios y casos de uso de cada contexto, ya construidos (`generado/bootstrap.rs`).
+cableado = { workspace = true }
+# El servidor, las sondas de salud, la configuración y el cuerpo de error (`main.rs`,
+# `generado/bootstrap.rs`).
+puerto-web = { workspace = true }
+poem = { workspace = true }
+poem-openapi = { workspace = true }
+tokio = { workspace = true }
+migrador = { workspace = true }
+puerto-sqlx = { workspace = true }
+puerto-auth = { workspace = true, features = ["local"] }
+puerto-nucleo = { workspace = true }
+dominio_usuario = { workspace = true }
+infra_usuario = { workspace = true }
+rest_usuario = { workspace = true }
+aplicacion_usuario = { workspace = true }
+rest_cliente = { workspace = true }
+
+[dev-dependencies]
+# El test que exporta la spec construye cada API con los dobles de los casos de uso.
+aplicacion_usuario = { workspace = true, features = ["pruebas"] }
+aplicacion_cliente = { workspace = true, features = ["pruebas"] }

@@ -1,0 +1,70 @@
+use crate::modelo::Pedido;
+use crate::modelo::PropsPedido;
+use crate::valores::Estado;
+use crate::valores::Importe;
+
+pub struct MadrePedido {
+    importe: Option<Importe>,
+    estado: Option<Estado>,
+    nota: Option<String>,
+}
+
+impl MadrePedido {
+    pub fn new() -> Self {
+        Self {
+            importe: None,
+            estado: None,
+            nota: None,
+        }
+    }
+
+    pub fn con_importe(mut self, importe: Importe) -> Self {
+        self.importe = Some(importe);
+        self
+    }
+
+    pub fn con_estado(mut self, estado: Estado) -> Self {
+        self.estado = Some(estado);
+        self
+    }
+
+    pub fn con_nota(mut self, nota: &str) -> Self {
+        self.nota = Some(nota.to_string());
+        self
+    }
+
+    pub fn construir(self) -> Pedido {
+        Pedido::new(PropsPedido {
+            importe: self.importe.unwrap_or_else(|| {
+                Importe::new(1.5).expect("Importe::new rechazó el valor de ejemplo")
+            }),
+            estado: self.estado.unwrap_or(Estado::Pendiente),
+            nota: self.nota,
+        })
+        .expect("MadrePedido: Pedido::new rechazó los props")
+    }
+
+    pub fn construir_props(self) -> PropsPedido {
+        PropsPedido {
+            importe: self.importe.unwrap_or_else(|| {
+                Importe::new(1.5).expect("Importe::new rechazó el valor de ejemplo")
+            }),
+            estado: self.estado.unwrap_or(Estado::Pendiente),
+            nota: self.nota,
+        }
+    }
+
+    pub fn aleatorio() -> Pedido {
+        Self::new().construir()
+    }
+
+    pub fn aleatorios(n: usize) -> Vec<Pedido> {
+        (0..n).map(|_| Self::aleatorio()).collect()
+    }
+}
+
+impl Default for MadrePedido {
+    fn default() -> Self {
+        Self::new()
+    }
+}

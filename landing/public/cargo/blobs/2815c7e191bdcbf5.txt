@@ -1,0 +1,32 @@
+import type { ClienteDraft } from "./model";
+
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ClienteProblem {
+  field: keyof ClienteDraft | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "cliente.email_invalido": "Email is not valid",
+  "cliente.validacion.nombre_vacio": "Nombre is required",
+  "cliente.etiqueta_invalido": "Etiquetas are not valid",
+  "cliente.duplicado": "A cliente with these values already exists",
+  "cliente.no_encontrado": "This cliente no longer exists",
+  "cliente.repositorio": "The cliente could not be saved, try again later",
+  "cliente.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, keyof ClienteDraft> = {
+  "cliente.email_invalido": "email",
+  "cliente.validacion.nombre_vacio": "nombre",
+  "cliente.etiqueta_invalido": "etiquetas",
+};
+
+export function toProblem(code: string): ClienteProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}

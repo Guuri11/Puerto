@@ -1,0 +1,13 @@
+-- Migración de Puerto: crear_tabla_pedido
+-- Ejecuta `make sqlx/prepare` después de editar este fichero.
+
+CREATE TABLE pedidos (
+    id UUID PRIMARY KEY,
+    importe DOUBLE PRECISION NOT NULL,
+    estado TEXT NOT NULL,
+    nota TEXT,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    borrado BOOLEAN NOT NULL DEFAULT FALSE,
+    borrado_en TIMESTAMPTZ
+);

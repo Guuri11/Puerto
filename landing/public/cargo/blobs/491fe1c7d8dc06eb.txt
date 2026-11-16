@@ -1,0 +1,84 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ClienteError } from "../../../../domain/cliente/errors";
+import { CurrentUserMother } from "../../../../test-support/auth";
+import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
+import { renderScreen } from "../../../../test-support/render";
+import { ClienteDetailContainer } from "./cliente-detail-container";
+
+describe("ClienteDetailContainer", () => {
+  test("should show the cliente when it exists", async () => {
+    // Arrange
+    const seeded = ClienteMother.random();
+    const clienteRepository = fakeClienteRepository([seeded]);
+
+    // Act
+    renderScreen(<ClienteDetailContainer id={seeded.id} />, { clienteRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the cliente does not exist", async () => {
+    // Arrange
+    const clienteRepository = fakeClienteRepository();
+
+    // Act
+    renderScreen(<ClienteDetailContainer id={crypto.randomUUID()} />, {
+      clienteRepository,
+    });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("cliente.no_encontrado");
+  });
+
+  test("should delete the cliente only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = ClienteMother.random();
+    const fake = fakeClienteRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<ClienteDetailContainer id={seeded.id} />, {
+      clienteRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/clientes"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+
+  test("should not offer Delete to a user without its role", async () => {
+    // Arrange
+    const seeded = ClienteMother.random();
+    const clienteRepository = fakeClienteRepository([seeded]);
+    const user = CurrentUserMother.random();
+
+    // Act
+    renderScreen(<ClienteDetailContainer id={seeded.id} />, { clienteRepository }, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("Email", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("Delete", { selector: ".card-actions *" })).toBeNull();
+  });
+
+  test("should show auth.prohibido when the API refuses the deletion", async () => {
+    // Arrange
+    const seeded = ClienteMother.random();
+    const clienteRepository = {
+      ...fakeClienteRepository([seeded]),
+      remove: () => Promise.reject(new ClienteError("auth.prohibido")),
+    };
+    renderScreen(<ClienteDetailContainer id={seeded.id} />, { clienteRepository });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.prohibido");
+  });
+});

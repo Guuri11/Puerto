@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/cliente/messages";
+import type { Cliente } from "../../../../domain/cliente/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
+import { ClienteFormView, toClienteDraft, toClienteForm } from "../views/cliente-form-view";
+
+/** Creates a cliente, or edits the one with `id`. */
+export function ClienteFormContainer({ id }: { id?: string }) {
+  const { clienteRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : clienteRepository.get(id)),
+    [clienteRepository, id],
+  );
+  const title = id === undefined ? "New cliente" : "Edit cliente";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <ClienteForm existing={existing.data} />}
+      <Link href={id === undefined ? "/clientes" : `/clientes/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function ClienteForm({ existing }: { existing: Cliente | null }) {
+  const { clienteRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toClienteForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toClienteDraft(values);
+      const saved =
+        existing === null
+          ? await clienteRepository.create(draft)
+          : await clienteRepository.update(existing.id, draft);
+      navigate(`/clientes/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <ClienteFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,41 @@
+use puerto_nucleo::ErrorRepositorio;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ErrorUsuario {
+    #[error("usuario.no_encontrado")]
+    NoEncontrado,
+    #[error("usuario.duplicado")]
+    Duplicado,
+    #[error("usuario.repositorio")]
+    Repositorio,
+}
+
+impl From<ErrorRepositorio> for ErrorUsuario {
+    /// `ErrorRepositorio` es `#[non_exhaustive]`: una variante que añada una versión posterior es
+    /// problema del almacén (500) hasta que tenga un significado aquí.
+    fn from(err: ErrorRepositorio) -> Self {
+        match err {
+            ErrorRepositorio::Duplicado => Self::Duplicado,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
+            _ => Self::Repositorio,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_convertir_un_duplicado_en_el_duplicado_de_usuario() {
+        let err = ErrorUsuario::from(ErrorRepositorio::Duplicado);
+        assert_eq!(err.to_string(), "usuario.duplicado");
+    }
+
+    #[test]
+    fn deberia_convertir_un_almacen_no_disponible_en_un_error_de_repositorio() {
+        let err = ErrorUsuario::from(ErrorRepositorio::NoDisponible);
+        assert_eq!(err.to_string(), "usuario.repositorio");
+    }
+}

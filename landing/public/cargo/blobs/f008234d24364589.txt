@@ -1,0 +1,12 @@
+# GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+[package]
+name = "cableado"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aplicacion_producto = { workspace = true }
+dominio_producto = { workspace = true }
+infra_producto = { workspace = true }
+sqlx = { workspace = true }
+

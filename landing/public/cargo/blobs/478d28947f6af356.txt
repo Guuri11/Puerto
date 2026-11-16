@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { toProblem } from "../../../../domain/producto/messages";
+import type { Producto } from "../../../../domain/producto/model";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
+import { ProductoFormView, toProductoDraft, toProductoForm } from "../views/producto-form-view";
+
+/** Creates a producto, or edits the one with `id`. */
+export function ProductoFormContainer({ id }: { id?: string }) {
+  const { productoRepository } = useDependencies();
+  const existing = useAsync(
+    () => (id === undefined ? Promise.resolve(null) : productoRepository.get(id)),
+    [productoRepository, id],
+  );
+  const title = id === undefined ? "New producto" : "Edit producto";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      {existing.status === "loading" && <span className="loading loading-spinner" />}
+      {existing.status === "error" && <ErrorAlert error={existing.error} />}
+      {existing.status === "ok" && <ProductoForm existing={existing.data} />}
+      <Link href={id === undefined ? "/productos" : `/productos/${id}`} className="link">
+        Cancel
+      </Link>
+    </section>
+  );
+}
+
+function ProductoForm({ existing }: { existing: Producto | null }) {
+  const { productoRepository } = useDependencies();
+  const [, navigate] = useLocation();
+  const [values, setValues] = useState(toProductoForm(existing));
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+  const problem = failure === null ? null : toProblem(errorCode(failure));
+
+  const save = async () => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      const draft = toProductoDraft(values);
+      const saved =
+        existing === null
+          ? await productoRepository.create(draft)
+          : await productoRepository.update(existing.id, draft);
+      navigate(`/productos/${saved.id}`);
+    } catch (error) {
+      setFailure(error);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        <ProductoFormView
+          values={values}
+          saving={saving}
+          problem={problem}
+          onChange={setValues}
+          onSubmit={save}
+        />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,75 @@
+use dominio_producto::errores::ErrorProducto;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::RespuestaError;
+
+/// Un error de producto como su estado HTTP y su cuerpo (ADR-0007 de Puerto): los fallos de
+/// validación y los objetos valor inválidos son 422 — la petición estaba bien formada (poem
+/// responde 400 a una que no lo está), pero incumple una regla del dominio. Exhaustivo a propósito:
+/// una variante de error nueva no compila hasta que tiene un estado.
+pub fn a_respuesta_error(err: ErrorProducto) -> (StatusCode, Json<RespuestaError>) {
+    let status = match &err {
+        ErrorProducto::Validacion(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorProducto::NoEncontrado => StatusCode::NOT_FOUND,
+        ErrorProducto::Duplicado => StatusCode::CONFLICT,
+        ErrorProducto::Repositorio => StatusCode::INTERNAL_SERVER_ERROR,
+        ErrorProducto::Desconocido => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (status, Json(RespuestaError::from_codigo(err.to_string())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_mapear_validacion_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) =
+            a_respuesta_error(ErrorProducto::Validacion("nombre_vacio".into()));
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "producto.validacion.nombre_vacio");
+    }
+
+    #[test]
+    fn deberia_mapear_no_encontrado_a_404_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorProducto::NoEncontrado);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(cuerpo.codigo, "producto.no_encontrado");
+    }
+
+    #[test]
+    fn deberia_mapear_duplicado_a_409_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorProducto::Duplicado);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(cuerpo.codigo, "producto.duplicado");
+    }
+
+    #[test]
+    fn deberia_mapear_repositorio_a_500_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorProducto::Repositorio);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(cuerpo.codigo, "producto.repositorio");
+    }
+
+    #[test]
+    fn deberia_mapear_desconocido_a_500_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorProducto::Desconocido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(cuerpo.codigo, "producto.desconocido");
+    }
+}

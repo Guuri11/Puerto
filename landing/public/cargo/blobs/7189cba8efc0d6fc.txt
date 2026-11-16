@@ -1,0 +1,83 @@
+{
+  "Puerto — Crear tabla": {
+    "prefix": "migration-create-table",
+    "scope": "sql",
+    "body": [
+      "CREATE TABLE ${1:entidades} (",
+      "    id UUID PRIMARY KEY,",
+      "    nombre TEXT NOT NULL,",
+      "    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),",
+      "    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),",
+      "    borrado BOOLEAN NOT NULL DEFAULT FALSE,",
+      "    borrado_en TIMESTAMPTZ",
+      ");",
+      "$0"
+    ],
+    "description": "CREATE TABLE con las columnas estándar de Puerto (id, nombre, fechas, borrado lógico)."
+  },
+  "Puerto — Añadir columna": {
+    "prefix": "migration-add-column",
+    "scope": "sql",
+    "body": [
+      "ALTER TABLE ${1:entidades} ADD COLUMN ${2:nombre_columna} ${3:TEXT} NOT NULL${4: DEFAULT ''};",
+      "$0"
+    ],
+    "description": "ALTER TABLE ADD COLUMN."
+  },
+  "Puerto — Índice único (parcial)": {
+    "prefix": "migration-unique-index",
+    "scope": "sql",
+    "body": [
+      "-- Parcial: una fila borrada no debe seguir ocupando su valor (ADR-0003).",
+      "CREATE UNIQUE INDEX ${1:entidades}_${2:columna}_key ON ${1:entidades} (${2:columna}) WHERE borrado = false;",
+      "$0"
+    ],
+    "description": "Índice único parcial con nombre, que ignora las filas borradas."
+  },
+  "Puerto — Insertar": {
+    "prefix": "sql-insert",
+    "scope": "sql",
+    "body": [
+      "INSERT INTO ${1:entidades} (id, nombre, creado_en, actualizado_en, borrado, borrado_en)",
+      "VALUES (\\$1, \\$2, \\$3, \\$4, \\$5, \\$6)",
+      "ON CONFLICT (id) DO UPDATE",
+      "    SET nombre = \\$2, actualizado_en = \\$4;",
+      "$0"
+    ],
+    "description": "INSERT con las columnas estándar de Puerto + upsert."
+  },
+  "Puerto — Seleccionar filas vivas": {
+    "prefix": "sql-select-active",
+    "scope": "sql",
+    "body": [
+      "SELECT id, creado_en, actualizado_en, borrado, borrado_en, ${2:nombre}",
+      "FROM ${1:entidades}",
+      "WHERE borrado = false",
+      "ORDER BY creado_en DESC;",
+      "$0"
+    ],
+    "description": "Selecciona las filas vivas (no borradas)."
+  },
+  "Puerto — Actualizar": {
+    "prefix": "sql-update",
+    "scope": "sql",
+    "body": [
+      "UPDATE ${1:entidades}",
+      "SET ${2:nombre} = \\$2, actualizado_en = NOW()",
+      "WHERE id = \\$1 AND borrado = false;",
+      "$0"
+    ],
+    "description": "UPDATE con la guarda de borrado lógico de Puerto."
+  },
+  "Puerto — Borrado lógico": {
+    "prefix": "sql-soft-delete",
+    "scope": "sql",
+    "body": [
+      "UPDATE ${1:entidades}",
+      "SET borrado = true, borrado_en = NOW(), actualizado_en = NOW()",
+      "WHERE id = \\$1 AND borrado = false;",
+      "$0"
+    ],
+    "description": "Borrado lógico por id: pone borrado = true y borrado_en."
+  }
+}

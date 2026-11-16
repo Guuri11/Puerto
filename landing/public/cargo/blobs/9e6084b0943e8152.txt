@@ -1,0 +1,15 @@
+-- Migración de Puerto: crear_tabla_cliente
+-- Ejecuta `make sqlx/prepare` después de editar este fichero.
+
+CREATE TABLE clientes (
+    id UUID PRIMARY KEY,
+    email TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    etiquetas TEXT[] NOT NULL DEFAULT '{}',
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    borrado BOOLEAN NOT NULL DEFAULT FALSE,
+    borrado_en TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX clientes_email_key ON clientes (email) WHERE borrado = false;

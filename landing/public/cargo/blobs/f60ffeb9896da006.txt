@@ -1,0 +1,70 @@
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::RespuestaError;
+
+use crate::auth::dto::DtoSesion;
+use crate::me::dto::DtoMe;
+
+#[derive(ApiResponse)]
+pub enum RespuestaRegistro {
+    #[oai(status = 201)]
+    Creado(Json<DtoMe>),
+    #[oai(status = 422)]
+    NoProcesable(Json<RespuestaError>),
+    #[oai(status = 409)]
+    Conflicto(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaRegistro {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaLogin {
+    #[oai(status = 200)]
+    Ok(Json<DtoSesion>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaLogin {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaLogout {
+    #[oai(status = 204)]
+    SinContenido,
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    /// No se pudo comprobar la sesión: la base de datos no responde (`BearerAuth`).
+    #[oai(status = 503)]
+    NoDisponible(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaLogout {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}

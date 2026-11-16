@@ -1,0 +1,51 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fakeProductoRepository, ProductoMother } from "../../../../test-support/producto";
+import { renderScreen } from "../../../../test-support/render";
+import { ProductoDetailContainer } from "./producto-detail-container";
+
+describe("ProductoDetailContainer", () => {
+  test("should show the producto when it exists", async () => {
+    // Arrange
+    const seeded = ProductoMother.random();
+    const productoRepository = fakeProductoRepository([seeded]);
+
+    // Act
+    renderScreen(<ProductoDetailContainer id={seeded.id} />, { productoRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the producto does not exist", async () => {
+    // Arrange
+    const productoRepository = fakeProductoRepository();
+
+    // Act
+    renderScreen(<ProductoDetailContainer id={crypto.randomUUID()} />, {
+      productoRepository,
+    });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("producto.no_encontrado");
+  });
+
+  test("should delete the producto only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = ProductoMother.random();
+    const fake = fakeProductoRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<ProductoDetailContainer id={seeded.id} />, {
+      productoRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/productos"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});

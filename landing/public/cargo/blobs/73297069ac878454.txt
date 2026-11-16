@@ -1,0 +1,420 @@
+use std::sync::Arc;
+
+use aplicacion_producto::{
+    actualizar_producto::{ActualizarProducto, ParamsActualizarProducto},
+    borrar_producto::{BorrarProducto, ParamsBorrarProducto},
+    crear_producto::{CrearProducto, ParamsCrearProducto},
+    listar_productos::{ListarProductos, ParamsListarProductos},
+    obtener_producto::{ObtenerProducto, ParamsObtenerProducto},
+};
+use dominio_producto::modelo::IdProducto;
+use poem_openapi::{
+    OpenApi, Tags,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_nucleo::PeticionPagina;
+use uuid::Uuid;
+
+use crate::dto::{
+    DtoPaginaProducto, DtoProducto, PeticionActualizarProducto, PeticionCrearProducto,
+};
+use crate::errores::a_respuesta_error;
+use crate::respuestas::{
+    RespuestaActualizarProducto, RespuestaBorrarProducto, RespuestaCrearProducto,
+    RespuestaListarProductos, RespuestaObtenerProducto,
+};
+
+#[derive(Tags)]
+enum ApiTags {
+    Producto,
+}
+
+/// Guarda los puertos de los casos de uso; `generado/bootstrap.rs` conecta las implementaciones.
+pub struct ApiProducto {
+    pub crear_producto: Arc<dyn CrearProducto>,
+    pub obtener_producto: Arc<dyn ObtenerProducto>,
+    pub listar_productos: Arc<dyn ListarProductos>,
+    pub actualizar_producto: Arc<dyn ActualizarProducto>,
+    pub borrar_producto: Arc<dyn BorrarProducto>,
+}
+
+#[OpenApi]
+impl ApiProducto {
+    /// Crea: Producto
+    #[oai(path = "/productos", method = "post", tag = "ApiTags::Producto")]
+    async fn crear(&self, cuerpo: Json<PeticionCrearProducto>) -> RespuestaCrearProducto {
+        match self
+            .crear_producto
+            .ejecutar(ParamsCrearProducto {
+                nombre: cuerpo.nombre.clone(),
+                precio: cuerpo.precio,
+                sku: cuerpo.sku.clone(),
+            })
+            .await
+        {
+            Ok(entidad) => {
+                RespuestaCrearProducto::Creado(Json(DtoProducto::from_dominio(&entidad)))
+            }
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "crear_producto falló");
+                RespuestaCrearProducto::from_status(status, error)
+            }
+        }
+    }
+
+    /// Obtiene: Producto por id
+    #[oai(path = "/productos/:id", method = "get", tag = "ApiTags::Producto")]
+    async fn obtener(&self, id: Path<Uuid>) -> RespuestaObtenerProducto {
+        match self
+            .obtener_producto
+            .ejecutar(ParamsObtenerProducto {
+                id: IdProducto::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaObtenerProducto::Ok(Json(DtoProducto::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "obtener_producto falló");
+                RespuestaObtenerProducto::from_status(status, error)
+            }
+        }
+    }
+
+    /// Lista Productos, página a página (el dominio acota `limite`)
+    #[oai(path = "/productos", method = "get", tag = "ApiTags::Producto")]
+    async fn listar(
+        &self,
+        limite: Query<Option<u32>>,
+        desplazamiento: Query<Option<u32>>,
+    ) -> RespuestaListarProductos {
+        match self
+            .listar_productos
+            .ejecutar(ParamsListarProductos {
+                pagina: PeticionPagina::new(limite.0, desplazamiento.0),
+            })
+            .await
+        {
+            Ok(pagina) => {
+                RespuestaListarProductos::Ok(Json(DtoPaginaProducto::from_dominio(&pagina)))
+            }
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::error!(codigo = %error.0.codigo, "listar_productos falló");
+                RespuestaListarProductos::from_status(status, error)
+            }
+        }
+    }
+
+    /// Actualiza: Producto
+    #[oai(path = "/productos/:id", method = "put", tag = "ApiTags::Producto")]
+    async fn actualizar(
+        &self,
+        id: Path<Uuid>,
+        cuerpo: Json<PeticionActualizarProducto>,
+    ) -> RespuestaActualizarProducto {
+        match self
+            .actualizar_producto
+            .ejecutar(ParamsActualizarProducto {
+                id: IdProducto::from_uuid(id.0),
+                nombre: cuerpo.nombre.clone(),
+                precio: cuerpo.precio,
+                sku: cuerpo.sku.clone(),
+            })
+            .await
+        {
+            Ok(entidad) => {
+                RespuestaActualizarProducto::Ok(Json(DtoProducto::from_dominio(&entidad)))
+            }
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "actualizar_producto falló");
+                RespuestaActualizarProducto::from_status(status, error)
+            }
+        }
+    }
+
+    /// Borra: Producto
+    #[oai(path = "/productos/:id", method = "delete", tag = "ApiTags::Producto")]
+    async fn borrar(&self, id: Path<Uuid>) -> RespuestaBorrarProducto {
+        match self
+            .borrar_producto
+            .ejecutar(ParamsBorrarProducto {
+                id: IdProducto::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => RespuestaBorrarProducto::SinContenido,
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "borrar_producto falló");
+                RespuestaBorrarProducto::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_producto::{
+        actualizar_producto::dobles::MockActualizarProducto,
+        borrar_producto::dobles::MockBorrarProducto, crear_producto::dobles::MockCrearProducto,
+        listar_productos::dobles::MockListarProductos,
+        obtener_producto::dobles::MockObtenerProducto,
+    };
+    use dominio_producto::errores::ErrorProducto;
+    use dominio_producto::pruebas::madres::MadreProducto;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_nucleo::Pagina;
+
+    use super::*;
+
+    /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
+    /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
+    #[derive(Default)]
+    struct Dobles {
+        crear: MockCrearProducto,
+        obtener: MockObtenerProducto,
+        listar: MockListarProductos,
+        actualizar: MockActualizarProducto,
+        borrar: MockBorrarProducto,
+    }
+
+    impl Dobles {
+        fn cliente(self) -> TestClient<Route> {
+            let api = ApiProducto {
+                crear_producto: Arc::new(self.crear),
+                obtener_producto: Arc::new(self.obtener),
+                listar_productos: Arc::new(self.listar),
+                actualizar_producto: Arc::new(self.actualizar),
+                borrar_producto: Arc::new(self.borrar),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn peticion_crear() -> PeticionCrearProducto {
+        PeticionCrearProducto {
+            nombre: "example".to_string(),
+            precio: 42,
+            sku: "example".to_string(),
+        }
+    }
+
+    fn peticion_actualizar() -> PeticionActualizarProducto {
+        PeticionActualizarProducto {
+            nombre: "example".to_string(),
+            precio: 42,
+            sku: "example".to_string(),
+        }
+    }
+
+    fn ruta_elemento() -> String {
+        format!("/productos/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_201_cuando_se_crea_producto() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreProducto::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/productos")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_producto_no_supera_la_validacion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorProducto::Validacion("invalid".to_string())));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/productos")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_producto_existe() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreProducto::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_producto_no_existe() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorProducto::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_con_una_pagina_de_productos_cuando_se_listan() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .returning(|params| Ok(Pagina::new(MadreProducto::aleatorios(2), 7, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/productos").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let json = respuesta.json().await;
+        let cuerpo = json.value().object();
+        cuerpo.get("elementos").array().assert_len(2);
+        cuerpo.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .withf(|params| params.pagina == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .get("/productos?limite=5&desplazamiento=10")
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorProducto::Repositorio));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/productos").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_se_actualiza_producto() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .actualizar
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreProducto::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_se_actualiza_producto_inexistente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .actualizar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorProducto::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_204_cuando_se_borra_producto() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
+
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_se_borra_producto_inexistente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .borrar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorProducto::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+}

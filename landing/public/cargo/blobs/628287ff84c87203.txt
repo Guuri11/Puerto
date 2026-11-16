@@ -1,0 +1,131 @@
+// GENERADO por puerto desde puerto.toml — no lo edites a mano. El snapshot sigue los campos de la
+// entidad; añade un evento con `puerto generar evento Pedido <nombre>`.
+use puerto_nucleo::EventoDominio;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::modelo::Pedido;
+
+pub const PEDIDO_CREADO: &str = "pedido_creado";
+pub const PEDIDO_ACTUALIZADO: &str = "pedido_actualizado";
+pub const PEDIDO_BORRADO: &str = "pedido_borrado";
+
+/// Lo que lleva cada evento de pedido: sus datos tal como los muestra la API — primitivos, con
+/// los objetos valor desenvueltos. Un contrato público: los consumidores lo decodifican con
+/// `evento.decodificar::<SnapshotPedido>()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotPedido {
+    pub id: Uuid,
+    pub importe: f64,
+    pub estado: String,
+    pub nota: Option<String>,
+}
+
+impl SnapshotPedido {
+    pub fn from_entidad(entidad: &Pedido) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            importe: entidad.importe.valor(),
+            estado: entidad.estado.as_str().to_string(),
+            nota: entidad.nota.clone(),
+        }
+    }
+}
+
+/// Lo que le pasa a cada pedido. Sus casos de uso de escritura registran uno con su unidad de
+/// trabajo.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EventoPedido {
+    Creado(SnapshotPedido),
+    Actualizado(SnapshotPedido),
+    Borrado(SnapshotPedido),
+}
+
+impl EventoPedido {
+    pub fn snapshot(&self) -> &SnapshotPedido {
+        match self {
+            Self::Creado(snapshot) | Self::Actualizado(snapshot) | Self::Borrado(snapshot) => {
+                snapshot
+            }
+        }
+    }
+}
+
+impl EventoDominio for EventoPedido {
+    fn tipo_evento(&self) -> &'static str {
+        match self {
+            Self::Creado(_) => PEDIDO_CREADO,
+            Self::Actualizado(_) => PEDIDO_ACTUALIZADO,
+            Self::Borrado(_) => PEDIDO_BORRADO,
+        }
+    }
+
+    fn tipo_agregado(&self) -> &'static str {
+        "pedido"
+    }
+
+    fn id_agregado(&self) -> Uuid {
+        self.snapshot().id
+    }
+
+    fn version_esquema(&self) -> u16 {
+        1
+    }
+
+    fn payload(&self) -> serde_json::Value {
+        // Un snapshot solo tiene primitivos: serializarlo no puede fallar.
+        serde_json::to_value(self.snapshot()).unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pruebas::madres::MadrePedido;
+
+    #[test]
+    fn deberia_describir_cada_evento_cuando_se_registra() {
+        // Preparar
+        let entidad = MadrePedido::aleatorio();
+        let snapshot = SnapshotPedido::from_entidad(&entidad);
+        let eventos = [
+            (EventoPedido::Creado(snapshot.clone()), "pedido_creado"),
+            (
+                EventoPedido::Actualizado(snapshot.clone()),
+                "pedido_actualizado",
+            ),
+            (EventoPedido::Borrado(snapshot.clone()), "pedido_borrado"),
+        ];
+
+        for (evento, tipo_evento) in eventos {
+            // Actuar y comprobar
+            assert_eq!(evento.tipo_evento(), tipo_evento);
+            assert_eq!(evento.tipo_agregado(), "pedido");
+            assert_eq!(evento.id_agregado(), entidad.id.valor());
+            assert_eq!(evento.version_esquema(), 1);
+            assert_eq!(evento.snapshot(), &snapshot);
+        }
+    }
+
+    #[test]
+    fn deberia_mantener_el_contrato_json_cuando_se_serializa_el_snapshot() {
+        // Preparar
+        let snapshot = SnapshotPedido::from_entidad(&MadrePedido::aleatorio());
+
+        // Actuar
+        let payload = EventoPedido::Creado(snapshot.clone()).payload();
+
+        // Comprobar — una clave renombrada o quitada rompe a cada consumidor de estos eventos.
+        let mut claves: Vec<&str> = payload
+            .as_object()
+            .map(|object| object.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        claves.sort_unstable();
+        assert_eq!(claves, ["estado", "id", "importe", "nota"]);
+        assert_eq!(
+            serde_json::from_value::<SnapshotPedido>(payload).ok(),
+            Some(snapshot)
+        );
+    }
+}

@@ -1,0 +1,50 @@
+import { ProductoError } from "../domain/producto/errors";
+import type { Producto, ProductoDraft } from "../domain/producto/model";
+import type { ProductoRepository } from "../domain/producto/repository";
+
+/** Valid productos for tests; pass `overrides` for the fields a test is about. */
+export const ProductoMother = {
+  draft(overrides: Partial<ProductoDraft> = {}): ProductoDraft {
+    return {
+      nombre: "example",
+      precio: 42,
+      sku: "example",
+      ...overrides,
+    };
+  },
+
+  random(overrides: Partial<Producto> = {}): Producto {
+    return { id: crypto.randomUUID(), ...ProductoMother.draft(), ...overrides };
+  },
+};
+
+/** An in-memory `ProductoRepository`. Override a method to make it fail. */
+export function fakeProductoRepository(seed: Producto[] = []): ProductoRepository {
+  const store = new Map(seed.map((item) => [item.id, item]));
+  const find = (id: string) => {
+    const found = store.get(id);
+    if (found === undefined) throw new ProductoError("producto.no_encontrado");
+    return found;
+  };
+  return {
+    list: async ({ limit, offset }) => {
+      const all = [...store.values()];
+      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+    },
+    get: async (id) => find(id),
+    create: async (draft) => {
+      const created = { id: crypto.randomUUID(), ...draft };
+      store.set(created.id, created);
+      return created;
+    },
+    update: async (id, draft) => {
+      const updated = { ...find(id), ...draft };
+      store.set(id, updated);
+      return updated;
+    },
+    remove: async (id) => {
+      find(id);
+      store.delete(id);
+    },
+  };
+}

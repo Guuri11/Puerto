@@ -1,0 +1,51 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fakePedidoRepository, PedidoMother } from "../../../../test-support/pedido";
+import { renderScreen } from "../../../../test-support/render";
+import { PedidoDetailContainer } from "./pedido-detail-container";
+
+describe("PedidoDetailContainer", () => {
+  test("should show the pedido when it exists", async () => {
+    // Arrange
+    const seeded = PedidoMother.random();
+    const pedidoRepository = fakePedidoRepository([seeded]);
+
+    // Act
+    renderScreen(<PedidoDetailContainer id={seeded.id} />, { pedidoRepository });
+
+    // Assert
+    expect(await screen.findByText("Edit")).toBeTruthy();
+  });
+
+  test("should show the not-found code when the pedido does not exist", async () => {
+    // Arrange
+    const pedidoRepository = fakePedidoRepository();
+
+    // Act
+    renderScreen(<PedidoDetailContainer id={crypto.randomUUID()} />, {
+      pedidoRepository,
+    });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("pedido.no_encontrado");
+  });
+
+  test("should delete the pedido only once the deletion is confirmed", async () => {
+    // Arrange
+    const seeded = PedidoMother.random();
+    const fake = fakePedidoRepository([seeded]);
+    const remove = mock(fake.remove);
+    const { history } = renderScreen(<PedidoDetailContainer id={seeded.id} />, {
+      pedidoRepository: { ...fake, remove },
+    });
+    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    // Act
+    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+
+    // Assert
+    await waitFor(() => expect(history.at(-1)).toBe("/pedidos"));
+    expect(remove).toHaveBeenCalledWith(seeded.id);
+  });
+});

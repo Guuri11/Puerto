@@ -1,0 +1,30 @@
+[proyecto]
+nombre = "tienda"
+db = true
+eventos = "kafka"
+
+[[entidad]]
+nombre = "Cliente"
+casos_de_uso = [
+    "crear_cliente",
+    "obtener_cliente",
+    "listar_clientes",
+    "actualizar_cliente",
+    "borrar_cliente",
+]
+db = true
+
+[[entidad.campos]]
+nombre = "email"
+tipo = "String"
+unico = true
+objeto_valor = "Email"
+
+[[entidad.campos]]
+nombre = "nombre"
+tipo = "String"
+
+[[entidad.campos]]
+nombre = "etiquetas"
+tipo = "Vec<String>"
+objeto_valor = "Etiqueta"

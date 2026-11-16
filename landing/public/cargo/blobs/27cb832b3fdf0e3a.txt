@@ -1,0 +1,34 @@
+-- Migración de Puerto: outbox
+-- Ejecuta `make sqlx/prepare` después de editar este fichero.
+
+-- Eventos de dominio (ADR-0018): lo escribe puerto. Las unidades de trabajo insertan en `outbox`
+-- en la misma transacción que la entidad; el worker lo releva y registra lo que no pudo entregar.
+
+CREATE TABLE outbox (
+    id              UUID        PRIMARY KEY,
+    secuencia       BIGSERIAL   NOT NULL,          -- orden del relay
+    tipo_agregado   TEXT        NOT NULL,
+    id_agregado     UUID        NOT NULL,
+    tipo_evento     TEXT        NOT NULL,
+    version_esquema INT         NOT NULL,
+    payload         JSONB       NOT NULL,
+    cabeceras       JSONB       NOT NULL DEFAULT '{}',
+    ocurrido_en     TIMESTAMPTZ NOT NULL,
+    publicado_en    TIMESTAMPTZ
+);
+CREATE INDEX outbox_sin_publicar ON outbox (secuencia) WHERE publicado_en IS NULL;
+
+CREATE TABLE descartados (                       -- todos los transportes
+    id            UUID        PRIMARY KEY,
+    id_evento     UUID,
+    consumidor    TEXT        NOT NULL,
+    tipo_evento   TEXT,
+    intentos      INT         NOT NULL,
+    motivo        TEXT        NOT NULL,
+    detalle       TEXT        NOT NULL,
+    payload       TEXT        NOT NULL,           -- recortado a 4000 caracteres
+    registrado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Un descartado por evento y consumidor, para que un fallo que se reentrega no se registre dos
+-- veces. Un mensaje que no era un sobre no tiene id_evento: los NULL nunca chocan.
+CREATE UNIQUE INDEX descartados_evento_consumidor ON descartados (id_evento, consumidor);

@@ -1,0 +1,55 @@
+use chrono::{DateTime, Utc};
+use dominio_pedido::valores::Estado;
+use dominio_pedido::valores::Importe;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use dominio_pedido::{
+    errores::ErrorPedido,
+    modelo::{IdPedido, Pedido},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct FilaPedido {
+    pub id: Uuid,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    pub importe: f64,
+    pub estado: String,
+    pub nota: Option<String>,
+}
+
+impl TryFrom<FilaPedido> for Pedido {
+    type Error = ErrorPedido;
+
+    fn try_from(fila: FilaPedido) -> Result<Self, Self::Error> {
+        Ok(Self::from_repositorio(Pedido {
+            id: IdPedido::from_uuid(fila.id),
+            creado_en: fila.creado_en,
+            actualizado_en: fila.actualizado_en,
+            borrado: fila.borrado,
+            borrado_en: fila.borrado_en,
+            importe: Importe::new(fila.importe)?,
+            estado: fila.estado.parse::<Estado>()?,
+            nota: fila.nota,
+        }))
+    }
+}
+
+impl From<&Pedido> for FilaPedido {
+    fn from(entidad: &Pedido) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            creado_en: entidad.creado_en,
+            actualizado_en: entidad.actualizado_en,
+            borrado: entidad.borrado,
+            borrado_en: entidad.borrado_en,
+            importe: entidad.importe.valor(),
+            estado: entidad.estado.as_str().to_string(),
+            nota: entidad.nota.clone(),
+        }
+    }
+}

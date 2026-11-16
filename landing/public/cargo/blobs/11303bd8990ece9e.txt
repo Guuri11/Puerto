@@ -1,0 +1,305 @@
+//! Lo escribe una vez `puerto nuevo --auth local`; desde entonces es tuyo.
+
+use std::sync::Arc;
+
+use aplicacion_usuario::{
+    login::{Login, ParamsLogin},
+    logout::{Logout, ParamsLogout},
+    registrar_usuario::{ParamsRegistrarUsuario, RegistrarUsuario},
+};
+use dominio_usuario::modelo::Usuario;
+use poem::Request;
+use poem_openapi::{OpenApi, Tags, payload::Json};
+use puerto_web::auth::{BearerAuth, bearer_token};
+
+use crate::auth::dto::{DtoSesion, PeticionLogin, PeticionRegistro};
+use crate::auth::errores::a_respuesta_error;
+use crate::auth::respuestas::{RespuestaLogin, RespuestaLogout, RespuestaRegistro};
+use crate::me::dto::DtoMe;
+
+#[derive(Tags)]
+enum ApiTags {
+    Auth,
+}
+
+/// `/auth/*`: las cuentas que guarda la propia API (ADR-0021 § 2 de Puerto). El token de sesión
+/// vuelve como `Authorization: Bearer <token>`; `GET /me` dice de quién es.
+pub struct ApiAuth {
+    pub registrar_usuario: Arc<dyn RegistrarUsuario>,
+    pub login: Arc<dyn Login>,
+    pub logout: Arc<dyn Logout>,
+}
+
+fn me(usuario: &Usuario) -> DtoMe {
+    DtoMe {
+        id: usuario.id.valor(),
+        email: usuario.email.clone(),
+        nombre: usuario.nombre.clone(),
+        roles: usuario.roles.clone(),
+    }
+}
+
+#[OpenApi]
+impl ApiAuth {
+    /// Crea una cuenta: un email sin otra cuenta y una contraseña de al menos 12 caracteres
+    #[oai(path = "/auth/registro", method = "post", tag = "ApiTags::Auth")]
+    async fn registrar(&self, cuerpo: Json<PeticionRegistro>) -> RespuestaRegistro {
+        let Json(cuerpo) = cuerpo;
+        let params = ParamsRegistrarUsuario {
+            email: cuerpo.email,
+            contrasena: cuerpo.contrasena,
+            nombre: cuerpo.nombre,
+        };
+        match self.registrar_usuario.ejecutar(params).await {
+            Ok(usuario) => RespuestaRegistro::Creado(Json(me(&usuario))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                RespuestaRegistro::from_status(status, error)
+            }
+        }
+    }
+
+    /// Abre una sesión. Un email desconocido y una contraseña equivocada reciben el mismo 401
+    #[oai(path = "/auth/login", method = "post", tag = "ApiTags::Auth")]
+    async fn login(&self, cuerpo: Json<PeticionLogin>) -> RespuestaLogin {
+        let Json(cuerpo) = cuerpo;
+        let params = ParamsLogin {
+            email: cuerpo.email,
+            contrasena: cuerpo.contrasena,
+        };
+        match self.login.ejecutar(params).await {
+            Ok(sesion) => RespuestaLogin::Ok(Json(DtoSesion::from_sesion(sesion))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                RespuestaLogin::from_status(status, error)
+            }
+        }
+    }
+
+    /// Revoca la sesión con la que va firmada esta petición
+    #[oai(path = "/auth/logout", method = "post", tag = "ApiTags::Auth")]
+    async fn logout(&self, _auth: BearerAuth, peticion: &Request) -> RespuestaLogout {
+        // `BearerAuth` aceptó el token, así que la petición lleva uno.
+        let token = bearer_token(peticion).unwrap_or_default().to_string();
+        match self.logout.ejecutar(ParamsLogout { token }).await {
+            Ok(()) => RespuestaLogout::SinContenido,
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                RespuestaLogout::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_usuario::{
+        login::dobles::MockLogin, logout::dobles::MockLogout,
+        registrar_usuario::dobles::MockRegistrarUsuario,
+    };
+    use chrono::Utc;
+    use dominio_usuario::errores::ErrorUsuario;
+    use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
+    use std::collections::BTreeMap;
+
+    use poem_openapi::OpenApiService;
+    use puerto_nucleo::auth::dobles::MockAutenticador;
+    use puerto_nucleo::auth::{Autenticador, ErrorAuth, Principal, Sesion};
+    use uuid::Uuid;
+
+    use super::*;
+
+    /// Un caso de uso programado y los demás sin llamar; el token `ada` es una sesión viva.
+    fn cliente(
+        registrar_usuario: MockRegistrarUsuario,
+        login: MockLogin,
+        logout: MockLogout,
+    ) -> TestClient<impl poem::Endpoint> {
+        let mut autenticador = MockAutenticador::new();
+        autenticador
+            .expect_autenticar()
+            .returning(|token| match token {
+                "ada" => Ok(Principal::new(Uuid::new_v4(), "ada@example.com")),
+                _ => Err(ErrorAuth::Invalido),
+            });
+        let autenticador: Arc<dyn Autenticador> = Arc::new(autenticador);
+        let api = ApiAuth {
+            registrar_usuario: Arc::new(registrar_usuario),
+            login: Arc::new(login),
+            logout: Arc::new(logout),
+        };
+        TestClient::new(
+            Route::new()
+                .nest("/", OpenApiService::new(api, "test", "1.0"))
+                .data(autenticador),
+        )
+    }
+
+    /// El cuerpo de un registro o de un login: como mapa, porque el `to_json` de los DTO deja fuera
+    /// la contraseña `write_only`.
+    fn credenciales(contrasena: &str) -> BTreeMap<&'static str, String> {
+        BTreeMap::from([
+            ("email", "ada@example.com".to_string()),
+            ("contrasena", contrasena.to_string()),
+        ])
+    }
+
+    async fn comprobar_codigo(respuesta: poem::test::TestResponse, code: &str) {
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string(code);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_201_con_la_cuenta_cuando_se_registra() {
+        // Preparar
+        let mut registrar_usuario = MockRegistrarUsuario::new();
+        registrar_usuario.expect_ejecutar().returning(|params| {
+            Ok(Usuario::registrar(&params.email, params.nombre).expect("cuenta válida"))
+        });
+        let cliente = cliente(registrar_usuario, MockLogin::new(), MockLogout::new());
+
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/registro")
+            .body_json(&credenciales("correct horse battery"))
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::CREATED);
+        let json = respuesta.json().await;
+        let cuenta = json.value().object();
+        cuenta.get("email").assert_string("ada@example.com");
+        assert!(cuenta.get_opt("contrasena").is_none());
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_409_cuando_el_email_esta_ocupado() {
+        // Preparar
+        let mut registrar_usuario = MockRegistrarUsuario::new();
+        registrar_usuario
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorUsuario::Duplicado));
+        let cliente = cliente(registrar_usuario, MockLogin::new(), MockLogout::new());
+
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/registro")
+            .body_json(&credenciales("correct horse battery"))
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::CONFLICT);
+        comprobar_codigo(respuesta, "usuario.duplicado").await;
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_la_contrasena_es_demasiado_corta() {
+        // Preparar
+        let mut registrar_usuario = MockRegistrarUsuario::new();
+        registrar_usuario.expect_ejecutar().returning(|_| {
+            Err(ErrorUsuario::Validacion(
+                "contrasena_demasiado_corta".into(),
+            ))
+        });
+        let cliente = cliente(registrar_usuario, MockLogin::new(), MockLogout::new());
+
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/registro")
+            .body_json(&credenciales("short"))
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        comprobar_codigo(respuesta, "usuario.validacion.contrasena_demasiado_corta").await;
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_con_la_sesion_cuando_la_contrasena_coincide() {
+        // Preparar
+        let mut login = MockLogin::new();
+        login
+            .expect_ejecutar()
+            .returning(|_| Ok(Sesion::new("opaque", Utc::now())));
+        let cliente = cliente(MockRegistrarUsuario::new(), login, MockLogout::new());
+
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/login")
+            .body_json(&credenciales("correct horse battery"))
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status_is_ok();
+        let json = respuesta.json().await;
+        let sesion = json.value().object();
+        sesion.get("token").assert_string("opaque");
+        assert!(!sesion.get("expiraEn").string().is_empty());
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_401_credenciales_invalidas_cuando_se_rechaza_el_login() {
+        // Preparar
+        let mut login = MockLogin::new();
+        login
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorUsuario::CredencialesInvalidas));
+        let cliente = cliente(MockRegistrarUsuario::new(), login, MockLogout::new());
+
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/login")
+            .body_json(&credenciales("wrong password!"))
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
+        comprobar_codigo(respuesta, "auth.credenciales_invalidas").await;
+    }
+
+    #[tokio::test]
+    async fn deberia_revocar_el_token_con_el_que_va_firmada_la_peticion() {
+        // Preparar
+        let mut logout = MockLogout::new();
+        logout
+            .expect_ejecutar()
+            .withf(|params| params.token == "ada")
+            .times(1)
+            .returning(|_| Ok(()));
+        let cliente = cliente(MockRegistrarUsuario::new(), MockLogin::new(), logout);
+
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/logout")
+            .header("Authorization", "Bearer ada")
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_401_a_un_logout_sin_sesion() {
+        // Preparar
+        let mut logout = MockLogout::new();
+        logout.expect_ejecutar().never();
+        let cliente = cliente(MockRegistrarUsuario::new(), MockLogin::new(), logout);
+
+        // Actuar
+        let respuesta = cliente.post("/auth/logout").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
+    }
+}

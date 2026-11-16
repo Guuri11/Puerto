@@ -1,0 +1,42 @@
+//! Lo escribe una vez `puerto nuevo --auth local`; desde entonces es tuyo.
+//!
+//! Las peticiones no derivan `Debug`: llevan una contraseña, y un `{:?}` en una línea de log no
+//! debe imprimirla.
+
+use chrono::{DateTime, Utc};
+use poem_openapi::Object;
+use puerto_nucleo::auth::Sesion;
+
+#[derive(Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionRegistro {
+    pub email: String,
+    #[oai(write_only)]
+    pub contrasena: String,
+    pub nombre: Option<String>,
+}
+
+#[derive(Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionLogin {
+    pub email: String,
+    #[oai(write_only)]
+    pub contrasena: String,
+}
+
+/// Una sesión iniciada: envía `token` como `Authorization: Bearer <token>` hasta `expiraEn`.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoSesion {
+    pub token: String,
+    pub expira_en: DateTime<Utc>,
+}
+
+impl DtoSesion {
+    pub fn from_sesion(sesion: Sesion) -> Self {
+        Self {
+            token: sesion.token,
+            expira_en: sesion.expira_en,
+        }
+    }
+}

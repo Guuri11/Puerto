@@ -1,0 +1,25 @@
+[package]
+name = "aplicacion_cliente"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_cliente = { workspace = true }
+puerto-nucleo = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+mockall = { workspace = true, optional = true }
+
+[features]
+# Los dobles de los casos de uso (`mock!`), para los tests de otros crates (ADR-0023 § 5 de
+# Puerto).
+pruebas = ["dep:mockall", "dominio_cliente/pruebas"]
+
+[dev-dependencies]
+# Quien llama en los tests: `MadrePrincipal`, y el `MockAutenticador` de las rutas.
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
+dominio_cliente = { workspace = true, features = ["pruebas"] }
+mockall = { workspace = true }
+tokio = { workspace = true }

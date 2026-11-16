@@ -1,5 +1,0 @@
-pub mod auth;
-pub mod customer;
-pub mod error;
-pub mod me;
-pub mod tags;

@@ -1,0 +1,215 @@
+use async_trait::async_trait;
+use dominio_cliente::errores::ErrorCliente;
+use dominio_cliente::modelo::{Cliente, IdCliente};
+use dominio_cliente::repositorio::RepositorioCliente;
+use dominio_cliente::valores::{Email, Etiqueta};
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsActualizarCliente {
+    pub id: IdCliente,
+    pub email: String,
+    pub nombre: String,
+    pub etiquetas: Vec<String>,
+}
+
+#[async_trait]
+pub trait ActualizarCliente: Send + Sync {
+    async fn ejecutar(&self, params: ParamsActualizarCliente) -> Result<Cliente, ErrorCliente>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ActualizarCliente {}
+
+        #[async_trait]
+        impl ActualizarCliente for ActualizarCliente {
+            async fn ejecutar(&self, params: ParamsActualizarCliente) -> Result<Cliente, ErrorCliente>;
+        }
+    }
+}
+
+pub struct ActualizarClienteImpl {
+    pub repositorio: Arc<dyn RepositorioCliente>,
+}
+
+#[async_trait]
+impl ActualizarCliente for ActualizarClienteImpl {
+    async fn ejecutar(&self, params: ParamsActualizarCliente) -> Result<Cliente, ErrorCliente> {
+        tracing::info!(id = %params.id, "actualizar_cliente: inicio");
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await
+            .inspect_err(
+                |e| tracing::error!(error = %e, "actualizar_cliente: fallo del repositorio"),
+            )?
+            .ok_or_else(|| {
+                let err = ErrorCliente::NoEncontrado;
+                tracing::warn!(error = %err, "actualizar_cliente: rechazado");
+                err
+            })?;
+        if params.nombre.trim().is_empty() {
+            let err = ErrorCliente::Validacion("nombre_vacio".into());
+            tracing::warn!(error = %err, "actualizar_cliente: rechazado");
+            return Err(err);
+        }
+        let email = Email::new(params.email)?;
+        let etiquetas: Vec<Etiqueta> = params
+            .etiquetas
+            .into_iter()
+            .map(Etiqueta::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        entidad.email = email;
+        entidad.nombre = params.nombre;
+        entidad.etiquetas = etiquetas;
+        entidad.actualizado_en = chrono::Utc::now();
+        self.repositorio.guardar(&entidad).await.inspect_err(
+            |e| tracing::error!(error = %e, "actualizar_cliente: fallo del repositorio"),
+        )?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_cliente::valores::Email;
+    use dominio_cliente::{
+        modelo::{Cliente, IdCliente, PropsCliente},
+        repositorio::dobles::MockRepositorioCliente,
+    };
+
+    #[tokio::test]
+    async fn deberia_actualizar_cliente_cuando_los_parametros_son_validos() {
+        // Preparar
+        let entidad = Cliente::new(PropsCliente {
+            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
+            nombre: "original".to_string(),
+            etiquetas: vec![],
+        })
+        .unwrap();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = ActualizarClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarCliente {
+                id: id_entidad,
+                email: "updated".to_string(),
+                nombre: "updated".to_string(),
+                etiquetas: vec![],
+            })
+            .await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap().nombre, "updated");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_cliente_no_existe() {
+        // Preparar
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Ok(None));
+        let caso_de_uso = ActualizarClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarCliente {
+                id: IdCliente::generar(),
+                email: "new".to_string(),
+                nombre: "new".to_string(),
+                etiquetas: vec![],
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "cliente.no_encontrado");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_nombre_es_una_cadena_vacia() {
+        // Preparar
+        let entidad = Cliente::new(PropsCliente {
+            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
+            nombre: "original".to_string(),
+            etiquetas: vec![],
+        })
+        .unwrap();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarCliente {
+                id: id_entidad,
+                email: "updated".to_string(),
+                nombre: "".to_string(),
+                etiquetas: vec![],
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "cliente.validacion.nombre_vacio"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
+        // Preparar
+        let entidad = Cliente::new(PropsCliente {
+            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
+            nombre: "original".to_string(),
+            etiquetas: vec![],
+        })
+        .unwrap();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarCliente {
+                id: id_entidad,
+                email: "".to_string(),
+                nombre: "updated".to_string(),
+                etiquetas: vec![],
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "cliente.email_invalido");
+    }
+}

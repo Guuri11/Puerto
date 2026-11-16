@@ -1,0 +1,39 @@
+use async_trait::async_trait;
+use puerto_nucleo::ErrorRepositorio;
+
+use crate::modelo::{IdUsuario, Usuario};
+
+#[async_trait]
+pub trait RepositorioUsuario: Send + Sync {
+    /// El usuario al que el proveedor `emisor` llama `sujeto`.
+    async fn buscar_por_sujeto(
+        &self,
+        emisor: &str,
+        sujeto: &str,
+    ) -> Result<Option<Usuario>, ErrorRepositorio>;
+    async fn buscar_por_id(&self, id: IdUsuario) -> Result<Option<Usuario>, ErrorRepositorio>;
+    /// Inserta o actualiza por id; otro usuario con el mismo `(emisor, sujeto)` es `Duplicado`.
+    async fn guardar(&self, usuario: &Usuario) -> Result<(), ErrorRepositorio>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub RepositorioUsuario {}
+
+        #[async_trait]
+        impl RepositorioUsuario for RepositorioUsuario {
+            async fn buscar_por_sujeto(
+                &self,
+                emisor: &str,
+                sujeto: &str,
+            ) -> Result<Option<Usuario>, ErrorRepositorio>;
+            async fn buscar_por_id(&self, id: IdUsuario) -> Result<Option<Usuario>, ErrorRepositorio>;
+            async fn guardar(&self, usuario: &Usuario) -> Result<(), ErrorRepositorio>;
+        }
+    }
+}

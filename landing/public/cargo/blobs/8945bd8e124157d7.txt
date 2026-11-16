@@ -1,0 +1,191 @@
+use std::collections::HashMap;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use async_trait::async_trait;
+use dominio_producto::{
+    modelo::{IdProducto, Producto},
+    repositorio::RepositorioProducto,
+};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
+
+/// Guarda productos en la memoria del proceso: se pierden cuando el proceso se para.
+/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes;
+/// un valor único que ya tiene otra fila viva es `Duplicado`.
+/// Cubre el hueco hasta que haya base de datos (`puerto nuevo --db` genera repositorios Postgres).
+#[derive(Default)]
+pub struct RepositorioProductoEnMemoria {
+    filas: RwLock<HashMap<IdProducto, Producto>>,
+}
+
+impl RepositorioProductoEnMemoria {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
+    // insert, así que el mapa sigue entero y se usa tal cual.
+    fn leer(&self) -> RwLockReadGuard<'_, HashMap<IdProducto, Producto>> {
+        self.filas.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn escribir(&self) -> RwLockWriteGuard<'_, HashMap<IdProducto, Producto>> {
+        self.filas.write().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+#[async_trait]
+impl RepositorioProducto for RepositorioProductoEnMemoria {
+    async fn buscar_todos(
+        &self,
+        pagina: PeticionPagina,
+    ) -> Result<Pagina<Producto>, ErrorRepositorio> {
+        tracing::debug!(
+            limite = pagina.limite(),
+            desplazamiento = pagina.desplazamiento(),
+            "buscar_todos"
+        );
+        let filas = self.leer();
+        let mut vivos: Vec<&Producto> = filas.values().filter(|fila| !fila.borrado).collect();
+        vivos.sort_by(|a, b| {
+            b.creado_en
+                .cmp(&a.creado_en)
+                .then_with(|| a.id.valor().cmp(&b.id.valor()))
+        });
+        let total = vivos.len() as u64;
+        let elementos = vivos
+            .into_iter()
+            .skip(pagina.desplazamiento() as usize)
+            .take(pagina.limite() as usize)
+            .cloned()
+            .collect();
+        Ok(Pagina::new(elementos, total, pagina))
+    }
+
+    async fn buscar_por_id(&self, id: IdProducto) -> Result<Option<Producto>, ErrorRepositorio> {
+        tracing::debug!(%id, "buscar_por_id");
+        Ok(self.leer().get(&id).filter(|fila| !fila.borrado).cloned())
+    }
+
+    async fn guardar(&self, entidad: &Producto) -> Result<(), ErrorRepositorio> {
+        tracing::debug!(id = %entidad.id, "guardar");
+        let mut filas = self.escribir();
+        // Como los índices únicos parciales: solo las filas vivas ocupan sus valores.
+        let ocupado = !entidad.borrado
+            && filas
+                .values()
+                .any(|fila| fila.id != entidad.id && !fila.borrado && fila.sku == entidad.sku);
+        if ocupado {
+            tracing::warn!(id = %entidad.id, "guardar rechazado: un valor único ya está ocupado");
+            return Err(ErrorRepositorio::Duplicado);
+        }
+        filas.insert(entidad.id, entidad.clone());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_producto::modelo::PropsProducto;
+    use uuid::Uuid;
+
+    fn nuevo_producto() -> Producto {
+        Producto::new(PropsProducto {
+            nombre: "example".to_string(),
+            precio: 42,
+            sku: Uuid::new_v4().to_string(),
+        })
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn deberia_encontrar_producto_por_id_tras_guardar() {
+        // Preparar
+        let repositorio = RepositorioProductoEnMemoria::new();
+        let entidad = nuevo_producto();
+        repositorio.guardar(&entidad).await.unwrap();
+
+        // Actuar
+        let encontrado = repositorio.buscar_por_id(entidad.id).await.unwrap();
+
+        // Comprobar
+        assert_eq!(encontrado.map(|fila| fila.id), Some(entidad.id));
+    }
+
+    #[tokio::test]
+    async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
+        // Preparar
+        let repositorio = RepositorioProductoEnMemoria::new();
+        let mut entidad = nuevo_producto();
+        repositorio.guardar(&entidad).await.unwrap();
+        entidad.actualizado_en = chrono::Utc::now();
+
+        // Actuar
+        repositorio.guardar(&entidad).await.unwrap();
+
+        // Comprobar
+        let pagina = repositorio
+            .buscar_todos(PeticionPagina::default())
+            .await
+            .unwrap();
+        assert_eq!(pagina.total, 1);
+        assert_eq!(pagina.elementos[0].actualizado_en, entidad.actualizado_en);
+    }
+
+    #[tokio::test]
+    async fn no_deberia_encontrar_producto_tras_su_borrado() {
+        // Preparar
+        let repositorio = RepositorioProductoEnMemoria::new();
+        let mut entidad = nuevo_producto();
+        entidad.borrado = true;
+        entidad.borrado_en = Some(entidad.actualizado_en);
+        repositorio.guardar(&entidad).await.unwrap();
+
+        // Actuar
+        let encontrado = repositorio.buscar_por_id(entidad.id).await.unwrap();
+        let pagina = repositorio
+            .buscar_todos(PeticionPagina::default())
+            .await
+            .unwrap();
+
+        // Comprobar
+        assert!(encontrado.is_none());
+        assert_eq!(pagina.total, 0);
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_la_pagina_pedida_de_una_lista_mayor() {
+        // Preparar
+        let repositorio = RepositorioProductoEnMemoria::new();
+        for _ in 0..3 {
+            repositorio.guardar(&nuevo_producto()).await.unwrap();
+        }
+
+        // Actuar
+        let pagina = repositorio
+            .buscar_todos(PeticionPagina::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Comprobar
+        assert_eq!(pagina.elementos.len(), 1);
+        assert_eq!(pagina.total, 3);
+        assert_eq!((pagina.limite, pagina.desplazamiento), (2, 2));
+    }
+
+    #[tokio::test]
+    async fn deberia_rechazar_un_duplicado_de_sku() {
+        // Preparar
+        let repositorio = RepositorioProductoEnMemoria::new();
+        let primero = nuevo_producto();
+        repositorio.guardar(&primero).await.unwrap();
+        let mut segundo = nuevo_producto();
+        segundo.sku = primero.sku.clone();
+
+        // Actuar
+        let resultado = repositorio.guardar(&segundo).await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
+    }
+}

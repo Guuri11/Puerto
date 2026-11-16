@@ -1,0 +1,29 @@
+/** What a sign-in or sign-up form shows for an API error: under the input it is about, or in the alert. */
+export interface AccountProblem {
+  field: "email" | "password" | "name" | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of `/auth/*` (the backend's `UserError`). English: this file is the
+ * place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "usuario.validacion.email_invalido": "This is not an email address",
+  "usuario.validacion.contrasena_demasiado_corta": "Use at least 12 characters",
+  "usuario.duplicado": "An account with this email already exists",
+  "auth.credenciales_invalidas": "Wrong email or password",
+  "usuario.repositorio": "The account could not be saved, try again later",
+  "usuario.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, AccountProblem["field"]> = {
+  "usuario.validacion.email_invalido": "email",
+  "usuario.validacion.contrasena_demasiado_corta": "password",
+  "usuario.duplicado": "email",
+};
+
+export function toAccountProblem(code: string): AccountProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}

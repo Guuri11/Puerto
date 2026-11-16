@@ -1,0 +1,66 @@
+use dominio_pedido::modelo::Pedido;
+use poem_openapi::Object;
+use puerto_nucleo::Pagina;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoPedido {
+    pub id: Uuid,
+    pub importe: f64,
+    pub estado: String,
+    pub nota: Option<String>,
+}
+
+impl DtoPedido {
+    pub fn from_dominio(entidad: &Pedido) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            importe: entidad.importe.valor(),
+            estado: entidad.estado.as_str().to_string(),
+            nota: entidad.nota.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionCrearPedido {
+    pub importe: f64,
+    pub estado: String,
+    pub nota: Option<String>,
+}
+
+/// Una página de Pedidos: `total` es el recuento completo y `limite`, el que aplicó
+/// la API.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoPaginaPedido {
+    pub elementos: Vec<DtoPedido>,
+    pub total: u64,
+    pub limite: u32,
+    pub desplazamiento: u32,
+}
+
+impl DtoPaginaPedido {
+    pub fn from_dominio(pagina: &Pagina<Pedido>) -> Self {
+        Self {
+            elementos: pagina
+                .elementos
+                .iter()
+                .map(DtoPedido::from_dominio)
+                .collect(),
+            total: pagina.total,
+            limite: pagina.limite,
+            desplazamiento: pagina.desplazamiento,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionActualizarPedido {
+    pub importe: f64,
+    pub estado: String,
+    pub nota: Option<String>,
+}

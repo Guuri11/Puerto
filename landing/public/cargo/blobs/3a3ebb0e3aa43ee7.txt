@@ -1,0 +1,30 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`; añade un
+// consumidor con `puerto generar consumidor <nombre> --tras <tipo_evento>`.
+use puerto_eventos::{Bucles, ConfigWorker};
+use puerto_kafka::{ConfigKafka, PublicadorKafka};
+use puerto_sqlx::eventos::OutboxPostgres;
+
+/// El relay y un consumidor por cada `[[consumidor]]`, sobre el transporte `kafka`: el relay
+/// publica cada evento en el topic de su agregado, `<KAFKA_TOPIC_PREFIX>.<agregado>`, y cada
+/// consumidor es un grupo de consumidores sobre los topics de sus eventos. Los descartados se
+/// quedan en Postgres.
+pub async fn construir_worker(config: ConfigWorker) -> Result<Bucles, String> {
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        "DATABASE_URL no está definida — defínela en .env (.env.example trae una)".to_string()
+    })?;
+    let pool = puerto_sqlx::crear_pool_postgres(&database_url)
+        .await
+        .map_err(|e| format!("{e} — ¿está arrancada la base de datos? `make docker-compose/up`"))?;
+    puerto_sqlx::ejecutar_migraciones(&pool, &migrador::MIGRADOR)
+        .await
+        .map_err(|e| e.to_string())?;
+    let kafka = ConfigKafka::from_env("tienda").map_err(|e| e.to_string())?;
+    kafka
+        .asegurar_topics(&["cliente"])
+        .await
+        .map_err(|e| format!("no se pueden crear los topics de Kafka: {e} — ¿está arrancado el broker? `make docker-compose/up`"))?;
+    let publicador = PublicadorKafka::new(&kafka)
+        .map_err(|e| format!("no se puede crear el productor de Kafka: {e}"))?;
+
+    Ok(Bucles::new(&config).relay(OutboxPostgres::new(pool), publicador))
+}

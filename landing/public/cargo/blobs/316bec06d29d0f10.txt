@@ -1,0 +1,97 @@
+use dominio_pedido::errores::ErrorPedido;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::RespuestaError;
+
+/// Un error de pedido como su estado HTTP y su cuerpo (ADR-0007 de Puerto): los fallos de
+/// validación y los objetos valor inválidos son 422 — la petición estaba bien formada (poem
+/// responde 400 a una que no lo está), pero incumple una regla del dominio. Exhaustivo a propósito:
+/// una variante de error nueva no compila hasta que tiene un estado.
+pub fn a_respuesta_error(err: ErrorPedido) -> (StatusCode, Json<RespuestaError>) {
+    let status = match &err {
+        ErrorPedido::Validacion(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorPedido::NoEncontrado => StatusCode::NOT_FOUND,
+        ErrorPedido::Duplicado => StatusCode::CONFLICT,
+        ErrorPedido::Repositorio => StatusCode::INTERNAL_SERVER_ERROR,
+        ErrorPedido::Desconocido => StatusCode::INTERNAL_SERVER_ERROR,
+        ErrorPedido::ImporteInvalido => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorPedido::EstadoInvalido => StatusCode::UNPROCESSABLE_ENTITY,
+    };
+    (status, Json(RespuestaError::from_codigo(err.to_string())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_mapear_validacion_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) =
+            a_respuesta_error(ErrorPedido::Validacion("nombre_vacio".into()));
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "pedido.validacion.nombre_vacio");
+    }
+
+    #[test]
+    fn deberia_mapear_no_encontrado_a_404_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorPedido::NoEncontrado);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(cuerpo.codigo, "pedido.no_encontrado");
+    }
+
+    #[test]
+    fn deberia_mapear_duplicado_a_409_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorPedido::Duplicado);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(cuerpo.codigo, "pedido.duplicado");
+    }
+
+    #[test]
+    fn deberia_mapear_repositorio_a_500_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorPedido::Repositorio);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(cuerpo.codigo, "pedido.repositorio");
+    }
+
+    #[test]
+    fn deberia_mapear_desconocido_a_500_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorPedido::Desconocido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(cuerpo.codigo, "pedido.desconocido");
+    }
+
+    #[test]
+    fn deberia_mapear_importe_invalido_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorPedido::ImporteInvalido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "pedido.importe_invalido");
+    }
+
+    #[test]
+    fn deberia_mapear_estado_invalido_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorPedido::EstadoInvalido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "pedido.estado_invalido");
+    }
+}

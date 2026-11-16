@@ -1,0 +1,62 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "../../../core/auth";
+import { useDependencies } from "../../../core/dependencies";
+import { useAsync } from "../../../core/hooks/use-async";
+import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
+import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { ProductoDetailView } from "../views/producto-detail-view";
+
+export function ProductoDetailContainer({ id }: { id: string }) {
+  const { productoRepository } = useDependencies();
+  const { can } = useAuth();
+  const producto = useAsync(() => productoRepository.get(id), [productoRepository, id]);
+  const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<unknown>(null);
+
+  const remove = async () => {
+    setConfirming(false);
+    try {
+      await productoRepository.remove(id);
+      navigate("/productos");
+    } catch (error) {
+      setFailure(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Producto</h1>
+      {failure !== null && <ErrorAlert error={failure} />}
+      {producto.status === "loading" && <span className="loading loading-spinner" />}
+      {producto.status === "error" && <ErrorAlert error={producto.error} />}
+      {producto.status === "ok" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <ProductoDetailView producto={producto.data} />
+            <div className="card-actions justify-end">
+              <Link href={`/productos/${id}/edit`} className="btn">
+                Edit
+              </Link>
+              {can("admin") && (
+                <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/productos" className="link">
+        Back to productos
+      </Link>
+      <ConfirmDialog
+        open={confirming}
+        message="Delete this producto?"
+        onConfirm={remove}
+        onCancel={() => setConfirming(false)}
+      />
+    </section>
+  );
+}

@@ -1,0 +1,70 @@
+use dominio_cliente::modelo::Cliente;
+use poem_openapi::Object;
+use puerto_nucleo::Pagina;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoCliente {
+    pub id: Uuid,
+    pub email: String,
+    pub nombre: String,
+    pub etiquetas: Vec<String>,
+}
+
+impl DtoCliente {
+    pub fn from_dominio(entidad: &Cliente) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            email: entidad.email.valor().to_string(),
+            nombre: entidad.nombre.clone(),
+            etiquetas: entidad
+                .etiquetas
+                .iter()
+                .map(|v| v.valor().to_string())
+                .collect::<Vec<_>>(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionCrearCliente {
+    pub email: String,
+    pub nombre: String,
+    pub etiquetas: Vec<String>,
+}
+
+/// Una página de Clientes: `total` es el recuento completo y `limite`, el que aplicó
+/// la API.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoPaginaCliente {
+    pub elementos: Vec<DtoCliente>,
+    pub total: u64,
+    pub limite: u32,
+    pub desplazamiento: u32,
+}
+
+impl DtoPaginaCliente {
+    pub fn from_dominio(pagina: &Pagina<Cliente>) -> Self {
+        Self {
+            elementos: pagina
+                .elementos
+                .iter()
+                .map(DtoCliente::from_dominio)
+                .collect(),
+            total: pagina.total,
+            limite: pagina.limite,
+            desplazamiento: pagina.desplazamiento,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionActualizarCliente {
+    pub email: String,
+    pub nombre: String,
+    pub etiquetas: Vec<String>,
+}

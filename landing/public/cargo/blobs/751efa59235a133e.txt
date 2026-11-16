@@ -1,0 +1,71 @@
+import { PedidoError } from "../../domain/pedido/errors";
+import { type Pedido, type PedidoDraft, parseEstado } from "../../domain/pedido/model";
+import type { PedidoRepository } from "../../domain/pedido/repository";
+import { type ApiClient, apiErrorCode } from "../http/client";
+import type { components } from "../http/schema";
+
+type PedidoDto = components["schemas"]["DtoPedido"];
+type PedidoRequest = components["schemas"]["PeticionCrearPedido"];
+
+function toPedido(dto: PedidoDto): Pedido {
+  return {
+    id: dto.id,
+    importe: dto.importe,
+    estado: parseEstado(dto.estado),
+    nota: dto.nota ?? null,
+  };
+}
+
+function toRequest(draft: PedidoDraft): PedidoRequest {
+  return {
+    importe: draft.importe,
+    estado: draft.estado,
+    nota: draft.nota ?? undefined,
+  };
+}
+
+/** `PedidoRepository` over the REST API (`/pedidos`). */
+export function pedidoRepositoryHttp(api: ApiClient): PedidoRepository {
+  return {
+    async list(page) {
+      const { data, error, response } = await api.GET("/pedidos", {
+        params: { query: { limite: page.limit, desplazamiento: page.offset } },
+      });
+      if (data === undefined) throw new PedidoError(apiErrorCode(error, response));
+      return {
+        items: data.elementos.map(toPedido),
+        total: data.total,
+        limit: data.limite,
+        offset: data.desplazamiento,
+      };
+    },
+    async get(id) {
+      const { data, error, response } = await api.GET("/pedidos/{id}", {
+        params: { path: { id } },
+      });
+      if (data === undefined) throw new PedidoError(apiErrorCode(error, response));
+      return toPedido(data);
+    },
+    async create(draft) {
+      const { data, error, response } = await api.POST("/pedidos", {
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new PedidoError(apiErrorCode(error, response));
+      return toPedido(data);
+    },
+    async update(id, draft) {
+      const { data, error, response } = await api.PUT("/pedidos/{id}", {
+        params: { path: { id } },
+        body: toRequest(draft),
+      });
+      if (data === undefined) throw new PedidoError(apiErrorCode(error, response));
+      return toPedido(data);
+    },
+    async remove(id) {
+      const { error, response } = await api.DELETE("/pedidos/{id}", {
+        params: { path: { id } },
+      });
+      if (!response.ok) throw new PedidoError(apiErrorCode(error, response));
+    },
+  };
+}

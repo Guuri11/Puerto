@@ -1,0 +1,53 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+//! Los repositorios, unidades de trabajo y casos de uso de cada contexto, construidos para los
+//! binarios (ADR-0023 § 7 de Puerto). Aquí no hay HTTP: `api` monta sus rutas sobre estos casos de
+//! uso.
+
+pub mod pedido {
+    use std::sync::Arc;
+
+    use aplicacion_pedido::actualizar_pedido::{ActualizarPedido, ActualizarPedidoImpl};
+    use aplicacion_pedido::borrar_pedido::{BorrarPedido, BorrarPedidoImpl};
+    use aplicacion_pedido::crear_pedido::{CrearPedido, CrearPedidoImpl};
+    use aplicacion_pedido::listar_pedidos::{ListarPedidos, ListarPedidosImpl};
+    use aplicacion_pedido::obtener_pedido::{ObtenerPedido, ObtenerPedidoImpl};
+    use dominio_pedido::repositorio::RepositorioPedido;
+    use dominio_pedido::unit_of_work::UnitOfWorkFactoryPedido;
+    use infra_pedido::repositorio::RepositorioPedidoPostgres;
+    use infra_pedido::unit_of_work::UnitOfWorkFactoryPedidoPostgres;
+
+    /// Los casos de uso de `pedido`, sobre sus adaptadores.
+    pub struct CasosDeUso {
+        pub crear_pedido: Arc<dyn CrearPedido>,
+        pub obtener_pedido: Arc<dyn ObtenerPedido>,
+        pub listar_pedidos: Arc<dyn ListarPedidos>,
+        pub actualizar_pedido: Arc<dyn ActualizarPedido>,
+        pub borrar_pedido: Arc<dyn BorrarPedido>,
+    }
+
+    pub fn construir(pool: &sqlx::PgPool) -> CasosDeUso {
+        let repositorio: Arc<dyn RepositorioPedido> =
+            Arc::new(RepositorioPedidoPostgres::new(pool.clone()));
+        let uow_factory: Arc<dyn UnitOfWorkFactoryPedido> =
+            Arc::new(UnitOfWorkFactoryPedidoPostgres::new(pool.clone()));
+        CasosDeUso {
+            crear_pedido: Arc::new(CrearPedidoImpl {
+                uow_factory: Arc::clone(&uow_factory),
+            }),
+            obtener_pedido: Arc::new(ObtenerPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            listar_pedidos: Arc::new(ListarPedidosImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            actualizar_pedido: Arc::new(ActualizarPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+                uow_factory: Arc::clone(&uow_factory),
+            }),
+            borrar_pedido: Arc::new(BorrarPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+                uow_factory: Arc::clone(&uow_factory),
+            }),
+        }
+    }
+}

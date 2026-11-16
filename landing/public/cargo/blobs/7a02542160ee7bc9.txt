@@ -1,0 +1,413 @@
+use std::sync::Arc;
+
+use aplicacion_cliente::{
+    actualizar_cliente::{ActualizarCliente, ParamsActualizarCliente},
+    borrar_cliente::{BorrarCliente, ParamsBorrarCliente},
+    crear_cliente::{CrearCliente, ParamsCrearCliente},
+    listar_clientes::{ListarClientes, ParamsListarClientes},
+    obtener_cliente::{ObtenerCliente, ParamsObtenerCliente},
+};
+use dominio_cliente::modelo::IdCliente;
+use poem_openapi::{
+    OpenApi, Tags,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_nucleo::PeticionPagina;
+use uuid::Uuid;
+
+use crate::dto::{DtoCliente, DtoPaginaCliente, PeticionActualizarCliente, PeticionCrearCliente};
+use crate::errores::a_respuesta_error;
+use crate::respuestas::{
+    RespuestaActualizarCliente, RespuestaBorrarCliente, RespuestaCrearCliente,
+    RespuestaListarClientes, RespuestaObtenerCliente,
+};
+
+#[derive(Tags)]
+enum ApiTags {
+    Cliente,
+}
+
+/// Guarda los puertos de los casos de uso; `generado/bootstrap.rs` conecta las implementaciones.
+pub struct ApiCliente {
+    pub crear_cliente: Arc<dyn CrearCliente>,
+    pub obtener_cliente: Arc<dyn ObtenerCliente>,
+    pub listar_clientes: Arc<dyn ListarClientes>,
+    pub actualizar_cliente: Arc<dyn ActualizarCliente>,
+    pub borrar_cliente: Arc<dyn BorrarCliente>,
+}
+
+#[OpenApi]
+impl ApiCliente {
+    /// Crea: Cliente
+    #[oai(path = "/clientes", method = "post", tag = "ApiTags::Cliente")]
+    async fn crear(&self, cuerpo: Json<PeticionCrearCliente>) -> RespuestaCrearCliente {
+        match self
+            .crear_cliente
+            .ejecutar(ParamsCrearCliente {
+                email: cuerpo.email.clone(),
+                nombre: cuerpo.nombre.clone(),
+                etiquetas: cuerpo.etiquetas.clone(),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaCrearCliente::Creado(Json(DtoCliente::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "crear_cliente falló");
+                RespuestaCrearCliente::from_status(status, error)
+            }
+        }
+    }
+
+    /// Obtiene: Cliente por id
+    #[oai(path = "/clientes/:id", method = "get", tag = "ApiTags::Cliente")]
+    async fn obtener(&self, id: Path<Uuid>) -> RespuestaObtenerCliente {
+        match self
+            .obtener_cliente
+            .ejecutar(ParamsObtenerCliente {
+                id: IdCliente::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaObtenerCliente::Ok(Json(DtoCliente::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "obtener_cliente falló");
+                RespuestaObtenerCliente::from_status(status, error)
+            }
+        }
+    }
+
+    /// Lista Clientes, página a página (el dominio acota `limite`)
+    #[oai(path = "/clientes", method = "get", tag = "ApiTags::Cliente")]
+    async fn listar(
+        &self,
+        limite: Query<Option<u32>>,
+        desplazamiento: Query<Option<u32>>,
+    ) -> RespuestaListarClientes {
+        match self
+            .listar_clientes
+            .ejecutar(ParamsListarClientes {
+                pagina: PeticionPagina::new(limite.0, desplazamiento.0),
+            })
+            .await
+        {
+            Ok(pagina) => {
+                RespuestaListarClientes::Ok(Json(DtoPaginaCliente::from_dominio(&pagina)))
+            }
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::error!(codigo = %error.0.codigo, "listar_clientes falló");
+                RespuestaListarClientes::from_status(status, error)
+            }
+        }
+    }
+
+    /// Actualiza: Cliente
+    #[oai(path = "/clientes/:id", method = "put", tag = "ApiTags::Cliente")]
+    async fn actualizar(
+        &self,
+        id: Path<Uuid>,
+        cuerpo: Json<PeticionActualizarCliente>,
+    ) -> RespuestaActualizarCliente {
+        match self
+            .actualizar_cliente
+            .ejecutar(ParamsActualizarCliente {
+                id: IdCliente::from_uuid(id.0),
+                email: cuerpo.email.clone(),
+                nombre: cuerpo.nombre.clone(),
+                etiquetas: cuerpo.etiquetas.clone(),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaActualizarCliente::Ok(Json(DtoCliente::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "actualizar_cliente falló");
+                RespuestaActualizarCliente::from_status(status, error)
+            }
+        }
+    }
+
+    /// Borra: Cliente
+    #[oai(path = "/clientes/:id", method = "delete", tag = "ApiTags::Cliente")]
+    async fn borrar(&self, id: Path<Uuid>) -> RespuestaBorrarCliente {
+        match self
+            .borrar_cliente
+            .ejecutar(ParamsBorrarCliente {
+                id: IdCliente::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => RespuestaBorrarCliente::SinContenido,
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "borrar_cliente falló");
+                RespuestaBorrarCliente::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_cliente::{
+        actualizar_cliente::dobles::MockActualizarCliente,
+        borrar_cliente::dobles::MockBorrarCliente, crear_cliente::dobles::MockCrearCliente,
+        listar_clientes::dobles::MockListarClientes, obtener_cliente::dobles::MockObtenerCliente,
+    };
+    use dominio_cliente::errores::ErrorCliente;
+    use dominio_cliente::pruebas::madres::MadreCliente;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_nucleo::Pagina;
+
+    use super::*;
+
+    /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
+    /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
+    #[derive(Default)]
+    struct Dobles {
+        crear: MockCrearCliente,
+        obtener: MockObtenerCliente,
+        listar: MockListarClientes,
+        actualizar: MockActualizarCliente,
+        borrar: MockBorrarCliente,
+    }
+
+    impl Dobles {
+        fn cliente(self) -> TestClient<Route> {
+            let api = ApiCliente {
+                crear_cliente: Arc::new(self.crear),
+                obtener_cliente: Arc::new(self.obtener),
+                listar_clientes: Arc::new(self.listar),
+                actualizar_cliente: Arc::new(self.actualizar),
+                borrar_cliente: Arc::new(self.borrar),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn peticion_crear() -> PeticionCrearCliente {
+        PeticionCrearCliente {
+            email: "example".to_string(),
+            nombre: "example".to_string(),
+            etiquetas: vec![],
+        }
+    }
+
+    fn peticion_actualizar() -> PeticionActualizarCliente {
+        PeticionActualizarCliente {
+            email: "example".to_string(),
+            nombre: "example".to_string(),
+            etiquetas: vec![],
+        }
+    }
+
+    fn ruta_elemento() -> String {
+        format!("/clientes/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_201_cuando_se_crea_cliente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreCliente::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/clientes")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_cliente_no_supera_la_validacion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorCliente::Validacion("invalid".to_string())));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/clientes")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_cliente_existe() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreCliente::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_cliente_no_existe() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorCliente::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_con_una_pagina_de_clientes_cuando_se_listan() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .returning(|params| Ok(Pagina::new(MadreCliente::aleatorios(2), 7, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/clientes").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let json = respuesta.json().await;
+        let cuerpo = json.value().object();
+        cuerpo.get("elementos").array().assert_len(2);
+        cuerpo.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .withf(|params| params.pagina == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .get("/clientes?limite=5&desplazamiento=10")
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorCliente::Repositorio));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/clientes").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_se_actualiza_cliente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .actualizar
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreCliente::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_se_actualiza_cliente_inexistente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .actualizar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorCliente::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_204_cuando_se_borra_cliente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
+
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_se_borra_cliente_inexistente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .borrar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorCliente::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+}

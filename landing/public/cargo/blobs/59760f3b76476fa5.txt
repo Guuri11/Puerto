@@ -1,0 +1,21 @@
+[package]
+name = "infra_usuario"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_usuario = { workspace = true }
+puerto-nucleo = { workspace = true }
+puerto-sqlx = { workspace = true }
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+dominio_usuario = { workspace = true, features = ["pruebas"] }
+# Los tests de `aprovisionamiento.rs`, sobre `MockAutenticador`.
+puerto-nucleo = { workspace = true, features = ["pruebas"] }
+migrador = { workspace = true }
+tokio = { workspace = true }

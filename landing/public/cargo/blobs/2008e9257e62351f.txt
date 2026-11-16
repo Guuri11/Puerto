@@ -1,0 +1,25 @@
+use poem_openapi::Object;
+use puerto_nucleo::auth::Principal;
+use uuid::Uuid;
+
+/// Quien llama, según lo resuelve la API: el id de su fila `Usuario` y los roles que la API comprueba.
+/// El frontend lee esto, nunca los claims del proveedor.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoMe {
+    pub id: Uuid,
+    pub email: Option<String>,
+    pub nombre: Option<String>,
+    pub roles: Vec<String>,
+}
+
+impl DtoMe {
+    pub fn from_principal(principal: &Principal) -> Self {
+        Self {
+            id: principal.id_usuario,
+            email: principal.email.clone(),
+            nombre: principal.nombre.clone(),
+            roles: principal.roles.clone(),
+        }
+    }
+}

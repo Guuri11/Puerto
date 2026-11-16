@@ -1,0 +1,66 @@
+use dominio_producto::modelo::Producto;
+use poem_openapi::Object;
+use puerto_nucleo::Pagina;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoProducto {
+    pub id: Uuid,
+    pub nombre: String,
+    pub precio: i64,
+    pub sku: String,
+}
+
+impl DtoProducto {
+    pub fn from_dominio(entidad: &Producto) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            nombre: entidad.nombre.clone(),
+            precio: entidad.precio,
+            sku: entidad.sku.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionCrearProducto {
+    pub nombre: String,
+    pub precio: i64,
+    pub sku: String,
+}
+
+/// Una página de Productos: `total` es el recuento completo y `limite`, el que aplicó
+/// la API.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoPaginaProducto {
+    pub elementos: Vec<DtoProducto>,
+    pub total: u64,
+    pub limite: u32,
+    pub desplazamiento: u32,
+}
+
+impl DtoPaginaProducto {
+    pub fn from_dominio(pagina: &Pagina<Producto>) -> Self {
+        Self {
+            elementos: pagina
+                .elementos
+                .iter()
+                .map(DtoProducto::from_dominio)
+                .collect(),
+            total: pagina.total,
+            limite: pagina.limite,
+            desplazamiento: pagina.desplazamiento,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionActualizarProducto {
+    pub nombre: String,
+    pub precio: i64,
+    pub sku: String,
+}

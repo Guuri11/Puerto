@@ -1,0 +1,59 @@
+use puerto_nucleo::ErrorRepositorio;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ErrorPedido {
+    #[error("pedido.validacion.{0}")]
+    Validacion(String),
+    #[error("pedido.no_encontrado")]
+    NoEncontrado,
+    #[error("pedido.duplicado")]
+    Duplicado,
+    #[error("pedido.repositorio")]
+    Repositorio,
+    #[error("pedido.desconocido")]
+    Desconocido,
+    /// Quien llama no puede hacer esto con estos datos: regla del caso de uso, sobre su `actor`.
+    #[error("pedido.prohibido")]
+    Prohibido,
+    #[error("pedido.importe_invalido")]
+    ImporteInvalido,
+    #[error("pedido.estado_invalido")]
+    EstadoInvalido,
+}
+
+impl From<ErrorRepositorio> for ErrorPedido {
+    /// Cada fallo que nombra `puerto-nucleo` tiene su brazo. `ErrorRepositorio` es
+    /// `#[non_exhaustive]`: uno que añada una versión posterior es un problema del almacén (500)
+    /// hasta que tenga aquí un significado.
+    fn from(err: ErrorRepositorio) -> Self {
+        match err {
+            ErrorRepositorio::Duplicado => Self::Duplicado,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
+            _ => Self::Repositorio,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_convertir_un_duplicado_en_el_duplicado_de_la_entidad() {
+        let err = ErrorPedido::from(ErrorRepositorio::Duplicado);
+        assert_eq!(err.to_string(), "pedido.duplicado");
+    }
+
+    #[test]
+    fn deberia_convertir_datos_invalidos_en_un_error_de_repositorio() {
+        let err = ErrorPedido::from(ErrorRepositorio::DatosInvalidos);
+        assert_eq!(err.to_string(), "pedido.repositorio");
+    }
+
+    #[test]
+    fn deberia_convertir_un_almacen_no_disponible_en_un_error_de_repositorio() {
+        let err = ErrorPedido::from(ErrorRepositorio::NoDisponible);
+        assert_eq!(err.to_string(), "pedido.repositorio");
+    }
+}

@@ -1,0 +1,11 @@
+import type { Page, PageRequest } from "../shared/page";
+import type { Pedido, PedidoDraft } from "./model";
+
+/** The port the screens call. Every method rejects with the `PedidoError` the API answered. */
+export interface PedidoRepository {
+  list(page: PageRequest): Promise<Page<Pedido>>;
+  get(id: string): Promise<Pedido>;
+  create(draft: PedidoDraft): Promise<Pedido>;
+  update(id: string, draft: PedidoDraft): Promise<Pedido>;
+  remove(id: string): Promise<void>;
+}

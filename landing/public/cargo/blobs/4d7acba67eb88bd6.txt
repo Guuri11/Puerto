@@ -1,0 +1,134 @@
+// GENERADO por puerto desde puerto.toml — no lo edites a mano. El snapshot sigue los campos de la
+// entidad; añade un evento con `puerto generar evento Producto <nombre>`.
+use puerto_nucleo::EventoDominio;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::modelo::Producto;
+
+pub const PRODUCTO_CREADO: &str = "producto_creado";
+pub const PRODUCTO_ACTUALIZADO: &str = "producto_actualizado";
+pub const PRODUCTO_BORRADO: &str = "producto_borrado";
+
+/// Lo que lleva cada evento de producto: sus datos tal como los muestra la API — primitivos, con
+/// los objetos valor desenvueltos. Un contrato público: los consumidores lo decodifican con
+/// `evento.decodificar::<SnapshotProducto>()`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotProducto {
+    pub id: Uuid,
+    pub nombre: String,
+    pub precio: i64,
+    pub sku: String,
+}
+
+impl SnapshotProducto {
+    pub fn from_entidad(entidad: &Producto) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            nombre: entidad.nombre.clone(),
+            precio: entidad.precio,
+            sku: entidad.sku.clone(),
+        }
+    }
+}
+
+/// Lo que le pasa a cada producto. Sus casos de uso de escritura registran uno con su unidad de
+/// trabajo.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EventoProducto {
+    Creado(SnapshotProducto),
+    Actualizado(SnapshotProducto),
+    Borrado(SnapshotProducto),
+}
+
+impl EventoProducto {
+    pub fn snapshot(&self) -> &SnapshotProducto {
+        match self {
+            Self::Creado(snapshot) | Self::Actualizado(snapshot) | Self::Borrado(snapshot) => {
+                snapshot
+            }
+        }
+    }
+}
+
+impl EventoDominio for EventoProducto {
+    fn tipo_evento(&self) -> &'static str {
+        match self {
+            Self::Creado(_) => PRODUCTO_CREADO,
+            Self::Actualizado(_) => PRODUCTO_ACTUALIZADO,
+            Self::Borrado(_) => PRODUCTO_BORRADO,
+        }
+    }
+
+    fn tipo_agregado(&self) -> &'static str {
+        "producto"
+    }
+
+    fn id_agregado(&self) -> Uuid {
+        self.snapshot().id
+    }
+
+    fn version_esquema(&self) -> u16 {
+        1
+    }
+
+    fn payload(&self) -> serde_json::Value {
+        // Un snapshot solo tiene primitivos: serializarlo no puede fallar.
+        serde_json::to_value(self.snapshot()).unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pruebas::madres::MadreProducto;
+
+    #[test]
+    fn deberia_describir_cada_evento_cuando_se_registra() {
+        // Preparar
+        let entidad = MadreProducto::aleatorio();
+        let snapshot = SnapshotProducto::from_entidad(&entidad);
+        let eventos = [
+            (EventoProducto::Creado(snapshot.clone()), "producto_creado"),
+            (
+                EventoProducto::Actualizado(snapshot.clone()),
+                "producto_actualizado",
+            ),
+            (
+                EventoProducto::Borrado(snapshot.clone()),
+                "producto_borrado",
+            ),
+        ];
+
+        for (evento, tipo_evento) in eventos {
+            // Actuar y comprobar
+            assert_eq!(evento.tipo_evento(), tipo_evento);
+            assert_eq!(evento.tipo_agregado(), "producto");
+            assert_eq!(evento.id_agregado(), entidad.id.valor());
+            assert_eq!(evento.version_esquema(), 1);
+            assert_eq!(evento.snapshot(), &snapshot);
+        }
+    }
+
+    #[test]
+    fn deberia_mantener_el_contrato_json_cuando_se_serializa_el_snapshot() {
+        // Preparar
+        let snapshot = SnapshotProducto::from_entidad(&MadreProducto::aleatorio());
+
+        // Actuar
+        let payload = EventoProducto::Creado(snapshot.clone()).payload();
+
+        // Comprobar — una clave renombrada o quitada rompe a cada consumidor de estos eventos.
+        let mut claves: Vec<&str> = payload
+            .as_object()
+            .map(|object| object.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        claves.sort_unstable();
+        assert_eq!(claves, ["id", "nombre", "precio", "sku"]);
+        assert_eq!(
+            serde_json::from_value::<SnapshotProducto>(payload).ok(),
+            Some(snapshot)
+        );
+    }
+}

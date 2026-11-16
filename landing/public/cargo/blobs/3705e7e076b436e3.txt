@@ -1,0 +1,32 @@
+use async_trait::async_trait;
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
+
+use crate::modelo::{IdPedido, Pedido};
+
+#[async_trait]
+pub trait RepositorioPedido: Send + Sync {
+    async fn buscar_todos(
+        &self,
+        pagina: PeticionPagina,
+    ) -> Result<Pagina<Pedido>, ErrorRepositorio>;
+    async fn buscar_por_id(&self, id: IdPedido) -> Result<Option<Pedido>, ErrorRepositorio>;
+    async fn guardar(&self, entidad: &Pedido) -> Result<(), ErrorRepositorio>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub RepositorioPedido {}
+
+        #[async_trait]
+        impl RepositorioPedido for RepositorioPedido {
+            async fn buscar_todos(&self, pagina: PeticionPagina) -> Result<Pagina<Pedido>, ErrorRepositorio>;
+            async fn buscar_por_id(&self, id: IdPedido) -> Result<Option<Pedido>, ErrorRepositorio>;
+            async fn guardar(&self, entidad: &Pedido) -> Result<(), ErrorRepositorio>;
+        }
+    }
+}

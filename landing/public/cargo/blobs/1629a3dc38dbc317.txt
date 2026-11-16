@@ -1,0 +1,23 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`; añade un
+// consumidor con `puerto generar consumidor <nombre> --tras <tipo_evento>`.
+use puerto_eventos::{Bucles, ConfigWorker};
+use puerto_sqlx::eventos::{EntregasPostgres, OutboxPostgres};
+
+/// El relay y un consumidor por cada `[[consumidor]]`, sobre el transporte `db`: el relay pasa cada
+/// evento a `entregas_eventos`, una fila por cada consumidor suscrito a su tipo.
+pub async fn construir_worker(config: ConfigWorker) -> Result<Bucles, String> {
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        "DATABASE_URL no está definida — defínela en .env (.env.example trae una)".to_string()
+    })?;
+    let pool = puerto_sqlx::crear_pool_postgres(&database_url)
+        .await
+        .map_err(|e| format!("{e} — ¿está arrancada la base de datos? `make docker-compose/up`"))?;
+    puerto_sqlx::ejecutar_migraciones(&pool, &migrador::MIGRADOR)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(Bucles::new(&config).relay(
+        OutboxPostgres::new(pool.clone()),
+        EntregasPostgres::new(pool),
+    ))
+}

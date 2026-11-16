@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.21.0] - 2026-11-16
 
 One crate per context and layer, and everything Puerto generates in Spanish (PLAN Phase 19,
 [ADR-0023](docs/adr/0023-crates-por-contexto-y-capa.md),

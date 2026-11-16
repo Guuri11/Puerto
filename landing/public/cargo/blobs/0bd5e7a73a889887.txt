@@ -1,0 +1,26 @@
+[proyecto]
+nombre = "tienda"
+web = true
+
+[[entidad]]
+nombre = "Producto"
+casos_de_uso = [
+    "crear_producto",
+    "obtener_producto",
+    "listar_productos",
+    "actualizar_producto",
+    "borrar_producto",
+]
+
+[[entidad.campos]]
+nombre = "nombre"
+tipo = "String"
+
+[[entidad.campos]]
+nombre = "precio"
+tipo = "i64"
+
+[[entidad.campos]]
+nombre = "sku"
+tipo = "String"
+unico = true

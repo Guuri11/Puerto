@@ -1,0 +1,63 @@
+use chrono::{DateTime, Utc};
+use dominio_cliente::valores::Email;
+use dominio_cliente::valores::Etiqueta;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use dominio_cliente::{
+    errores::ErrorCliente,
+    modelo::{Cliente, IdCliente},
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct FilaCliente {
+    pub id: Uuid,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    pub email: String,
+    pub nombre: String,
+    pub etiquetas: Vec<String>,
+}
+
+impl TryFrom<FilaCliente> for Cliente {
+    type Error = ErrorCliente;
+
+    fn try_from(fila: FilaCliente) -> Result<Self, Self::Error> {
+        Ok(Self::from_repositorio(Cliente {
+            id: IdCliente::from_uuid(fila.id),
+            creado_en: fila.creado_en,
+            actualizado_en: fila.actualizado_en,
+            borrado: fila.borrado,
+            borrado_en: fila.borrado_en,
+            email: Email::new(fila.email)?,
+            nombre: fila.nombre,
+            etiquetas: fila
+                .etiquetas
+                .into_iter()
+                .map(Etiqueta::new)
+                .collect::<Result<Vec<_>, _>>()?,
+        }))
+    }
+}
+
+impl From<&Cliente> for FilaCliente {
+    fn from(entidad: &Cliente) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            creado_en: entidad.creado_en,
+            actualizado_en: entidad.actualizado_en,
+            borrado: entidad.borrado,
+            borrado_en: entidad.borrado_en,
+            email: entidad.email.valor().to_string(),
+            nombre: entidad.nombre.clone(),
+            etiquetas: entidad
+                .etiquetas
+                .iter()
+                .map(|v| v.valor().to_string())
+                .collect::<Vec<_>>(),
+        }
+    }
+}

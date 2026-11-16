@@ -1,0 +1,15 @@
+-- Migración de Puerto: crear_tabla_producto
+-- Ejecuta `make sqlx/prepare` después de editar este fichero.
+
+CREATE TABLE productos (
+    id UUID PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    precio BIGINT NOT NULL,
+    sku TEXT NOT NULL,
+    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    borrado BOOLEAN NOT NULL DEFAULT FALSE,
+    borrado_en TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX productos_sku_key ON productos (sku) WHERE borrado = false;

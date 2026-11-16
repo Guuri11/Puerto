@@ -1,0 +1,44 @@
+use crate::errores::ErrorPedido;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Importe(f64);
+
+impl Importe {
+    pub fn new(valor: f64) -> Result<Self, ErrorPedido> {
+        Ok(Self(valor))
+    }
+
+    pub fn valor(&self) -> f64 {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Estado {
+    Pendiente,
+    Confirmado,
+    Cancelado,
+}
+
+impl std::str::FromStr for Estado {
+    type Err = ErrorPedido;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Pendiente" => Ok(Self::Pendiente),
+            "Confirmado" => Ok(Self::Confirmado),
+            "Cancelado" => Ok(Self::Cancelado),
+            _ => Err(ErrorPedido::EstadoInvalido),
+        }
+    }
+}
+
+impl Estado {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pendiente => "Pendiente",
+            Self::Confirmado => "Confirmado",
+            Self::Cancelado => "Cancelado",
+        }
+    }
+}

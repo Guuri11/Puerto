@@ -1,0 +1,143 @@
+use async_trait::async_trait;
+use dominio_cliente::errores::ErrorCliente;
+use dominio_cliente::modelo::Cliente;
+use dominio_cliente::repositorio::RepositorioCliente;
+use puerto_nucleo::{Pagina, PeticionPagina};
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsListarClientes {
+    pub pagina: PeticionPagina,
+}
+
+#[async_trait]
+pub trait ListarClientes: Send + Sync {
+    async fn ejecutar(&self, params: ParamsListarClientes)
+    -> Result<Pagina<Cliente>, ErrorCliente>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListarClientes {}
+
+        #[async_trait]
+        impl ListarClientes for ListarClientes {
+            async fn ejecutar(&self, params: ParamsListarClientes) -> Result<Pagina<Cliente>, ErrorCliente>;
+        }
+    }
+}
+
+pub struct ListarClientesImpl {
+    pub repositorio: Arc<dyn RepositorioCliente>,
+}
+
+#[async_trait]
+impl ListarClientes for ListarClientesImpl {
+    async fn ejecutar(
+        &self,
+        params: ParamsListarClientes,
+    ) -> Result<Pagina<Cliente>, ErrorCliente> {
+        tracing::info!(
+            limite = params.pagina.limite(),
+            desplazamiento = params.pagina.desplazamiento(),
+            "listar_clientes: inicio"
+        );
+        self.repositorio
+            .buscar_todos(params.pagina)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "listar_clientes: fallo del repositorio"))
+            .map_err(ErrorCliente::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_cliente::valores::Email;
+    use dominio_cliente::{
+        modelo::{Cliente, PropsCliente},
+        repositorio::dobles::MockRepositorioCliente,
+    };
+    use puerto_nucleo::PeticionPagina;
+
+    #[tokio::test]
+    async fn deberia_devolver_la_pagina_de_clientes() {
+        let entidades = vec![
+            Cliente::new(PropsCliente {
+                email: Email::new("first".to_string()).expect("el literal de Email es válido"),
+                nombre: "first".to_string(),
+                etiquetas: vec![],
+            })
+            .unwrap(),
+            Cliente::new(PropsCliente {
+                email: Email::new("second".to_string()).expect("el literal de Email es válido"),
+                nombre: "second".to_string(),
+                etiquetas: vec![],
+            })
+            .unwrap(),
+        ];
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .returning(move |pagina| Ok(Pagina::new(entidades.clone(), 2, pagina)));
+        let caso_de_uso = ListarClientesImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarClientes {
+                pagina: PeticionPagina::default(),
+            })
+            .await;
+
+        let pagina = resultado.unwrap();
+        assert_eq!(pagina.elementos.len(), 2);
+        assert_eq!(pagina.total, 2);
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_una_pagina_vacia_cuando_no_hay_clientes() {
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .returning(|pagina| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = ListarClientesImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarClientes {
+                pagina: PeticionPagina::default(),
+            })
+            .await;
+
+        let pagina = resultado.unwrap();
+        assert!(pagina.elementos.is_empty());
+        assert_eq!(pagina.total, 0);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_al_repositorio_la_pagina_pedida() {
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .withf(|pagina| pagina.limite() == 5 && pagina.desplazamiento() == 10)
+            .returning(|pagina| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = ListarClientesImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarClientes {
+                pagina: PeticionPagina::new(Some(5), Some(10)),
+            })
+            .await;
+
+        assert_eq!(resultado.unwrap().desplazamiento, 10);
+    }
+}

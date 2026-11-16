@@ -1,0 +1,31 @@
+//! Las filas que necesitan los tests de Postgres —una entidad cliente válida y otra guardada—,
+//! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
+//! Puerto).
+use dominio_cliente::modelo::{Cliente, PropsCliente};
+use dominio_cliente::repositorio::RepositorioCliente;
+use dominio_cliente::valores::Email;
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::repositorio::RepositorioClientePostgres;
+
+/// Una entidad cliente válida, sin guardar.
+pub fn construir() -> Cliente {
+    Cliente::new(PropsCliente {
+        email: Email::new(Uuid::new_v4().to_string())
+            .expect("Email::new rechazó el valor de ejemplo"),
+        nombre: "example".to_string(),
+        etiquetas: vec![],
+    })
+    .unwrap()
+}
+
+/// Una entidad cliente guardada.
+pub async fn sembrar(pool: &PgPool) -> Cliente {
+    let entidad = construir();
+    RepositorioClientePostgres::new(pool.clone())
+        .guardar(&entidad)
+        .await
+        .unwrap();
+    entidad
+}

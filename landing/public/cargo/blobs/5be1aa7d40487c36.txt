@@ -1,0 +1,39 @@
+use crate::errores::ErrorCliente;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Email {
+    valor: String,
+}
+
+impl Email {
+    pub fn new(valor: String) -> Result<Self, ErrorCliente> {
+        let recortado = valor.trim().to_string();
+        if recortado.is_empty() {
+            return Err(ErrorCliente::EmailInvalido);
+        }
+        Ok(Self { valor: recortado })
+    }
+
+    pub fn valor(&self) -> &str {
+        &self.valor
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Etiqueta {
+    valor: String,
+}
+
+impl Etiqueta {
+    pub fn new(valor: String) -> Result<Self, ErrorCliente> {
+        let recortado = valor.trim().to_string();
+        if recortado.is_empty() {
+            return Err(ErrorCliente::EtiquetaInvalido);
+        }
+        Ok(Self { valor: recortado })
+    }
+
+    pub fn valor(&self) -> &str {
+        &self.valor
+    }
+}

@@ -1,0 +1,47 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+//! Los repositorios, unidades de trabajo y casos de uso de cada contexto, construidos para los
+//! binarios (ADR-0023 § 7 de Puerto). Aquí no hay HTTP: `api` monta sus rutas sobre estos casos de
+//! uso.
+
+pub mod cliente {
+    use std::sync::Arc;
+
+    use aplicacion_cliente::actualizar_cliente::{ActualizarCliente, ActualizarClienteImpl};
+    use aplicacion_cliente::borrar_cliente::{BorrarCliente, BorrarClienteImpl};
+    use aplicacion_cliente::crear_cliente::{CrearCliente, CrearClienteImpl};
+    use aplicacion_cliente::listar_clientes::{ListarClientes, ListarClientesImpl};
+    use aplicacion_cliente::obtener_cliente::{ObtenerCliente, ObtenerClienteImpl};
+    use dominio_cliente::repositorio::RepositorioCliente;
+    use infra_cliente::repositorio::RepositorioClientePostgres;
+
+    /// Los casos de uso de `cliente`, sobre sus adaptadores.
+    pub struct CasosDeUso {
+        pub crear_cliente: Arc<dyn CrearCliente>,
+        pub obtener_cliente: Arc<dyn ObtenerCliente>,
+        pub listar_clientes: Arc<dyn ListarClientes>,
+        pub actualizar_cliente: Arc<dyn ActualizarCliente>,
+        pub borrar_cliente: Arc<dyn BorrarCliente>,
+    }
+
+    pub fn construir(pool: &sqlx::PgPool) -> CasosDeUso {
+        let repositorio: Arc<dyn RepositorioCliente> =
+            Arc::new(RepositorioClientePostgres::new(pool.clone()));
+        CasosDeUso {
+            crear_cliente: Arc::new(CrearClienteImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            obtener_cliente: Arc::new(ObtenerClienteImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            listar_clientes: Arc::new(ListarClientesImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            actualizar_cliente: Arc::new(ActualizarClienteImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            borrar_cliente: Arc::new(BorrarClienteImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+        }
+    }
+}

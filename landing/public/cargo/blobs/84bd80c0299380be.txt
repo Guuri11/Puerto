@@ -1,0 +1,90 @@
+use dominio_usuario::errores::ErrorUsuario;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::RespuestaError;
+
+/// Un error de usuario como su estado HTTP y su cuerpo (ADR-0007 de Puerto). Exhaustivo a
+/// propósito: una variante de error nueva no compila hasta que tiene un estado.
+pub fn a_respuesta_error(err: ErrorUsuario) -> (StatusCode, Json<RespuestaError>) {
+    let status = match &err {
+        ErrorUsuario::Validacion(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorUsuario::CredencialesInvalidas => StatusCode::UNAUTHORIZED,
+        ErrorUsuario::NoEncontrado => StatusCode::NOT_FOUND,
+        ErrorUsuario::Duplicado => StatusCode::CONFLICT,
+        ErrorUsuario::Repositorio => StatusCode::INTERNAL_SERVER_ERROR,
+        ErrorUsuario::Desconocido => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (status, Json(RespuestaError::from_codigo(err.to_string())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mapear(err: ErrorUsuario) -> (StatusCode, String) {
+        let (status, Json(cuerpo)) = a_respuesta_error(err);
+        (status, cuerpo.codigo)
+    }
+
+    #[test]
+    fn deberia_mapear_validacion_a_422_con_su_codigo() {
+        assert_eq!(
+            mapear(ErrorUsuario::Validacion(
+                "contrasena_demasiado_corta".into()
+            )),
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "usuario.validacion.contrasena_demasiado_corta".into()
+            )
+        );
+    }
+
+    #[test]
+    fn deberia_mapear_credenciales_invalidas_a_401_con_su_codigo() {
+        assert_eq!(
+            mapear(ErrorUsuario::CredencialesInvalidas),
+            (
+                StatusCode::UNAUTHORIZED,
+                "auth.credenciales_invalidas".into()
+            )
+        );
+    }
+
+    #[test]
+    fn deberia_mapear_no_encontrado_a_404_con_su_codigo() {
+        assert_eq!(
+            mapear(ErrorUsuario::NoEncontrado),
+            (StatusCode::NOT_FOUND, "usuario.no_encontrado".into())
+        );
+    }
+
+    #[test]
+    fn deberia_mapear_duplicado_a_409_con_su_codigo() {
+        assert_eq!(
+            mapear(ErrorUsuario::Duplicado),
+            (StatusCode::CONFLICT, "usuario.duplicado".into())
+        );
+    }
+
+    #[test]
+    fn deberia_mapear_repositorio_a_500_con_su_codigo() {
+        assert_eq!(
+            mapear(ErrorUsuario::Repositorio),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "usuario.repositorio".into()
+            )
+        );
+    }
+
+    #[test]
+    fn deberia_mapear_desconocido_a_500_con_su_codigo() {
+        assert_eq!(
+            mapear(ErrorUsuario::Desconocido),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "usuario.desconocido".into()
+            )
+        );
+    }
+}
