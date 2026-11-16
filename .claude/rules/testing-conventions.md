@@ -1,234 +1,245 @@
-# Testing Conventions & Patterns
+# Convenciones y patrones de tests
 
-> Complements `testing.md` with concrete patterns for test data, helpers, and mocks.
+> Complementa `testing.md` con patrones concretos para los datos de prueba, las madres y los
+> dobles de los proyectos generados.
 
 ---
 
-## Object Mother Pattern
+## Object Mother (madres)
 
-Object Mothers are factory structs that create domain test objects with sensible random defaults. They eliminate boilerplate and keep tests readable and focused on the scenario, not the data setup.
+Las madres son factorías que crean objetos de dominio de prueba con valores por defecto válidos.
+Quitan repetición y dejan los tests centrados en el escenario, no en preparar datos.
 
-### Location (in generated projects)
+### Dónde van (en los proyectos generados)
+
+En el crate de dominio dueño del tipo, tras la feature `pruebas` (ADR-0023 § 5):
 
 ```
-business/src/tests/
-├── mod.rs
-└── mothers/
-    ├── mod.rs
-    └── greeting_mother.rs
+contextos/producto/dominio/src/
+├── lib.rs              # #[cfg(any(test, feature = "pruebas"))] pub mod pruebas { pub mod madres; }
+└── pruebas/
+    └── madres.rs       # MadreProducto
 ```
 
-### API conventions
+Se importan por su ruta: `dominio_producto::pruebas::madres::MadreProducto`. La madre de
+`Principal` es del runtime: `puerto_nucleo::auth::dobles::MadrePrincipal` (feature `pruebas` de
+`puerto-nucleo`).
+
+### API
 
 ```rust
-// Most common — random valid entity
-let greeting = GreetingMother::random();
+// Lo más habitual — una entidad válida
+let producto = MadreProducto::aleatorio();
 
-// Specific field — builder chain
-let greeting = GreetingMother::new()
-    .with_name("Alice")
-    .build();
+// Un campo concreto — cadena de constructor
+let producto = MadreProducto::new()
+    .con_nombre("Ana")
+    .construir();
 
-// Props only — for testing constructors
-let props = GreetingMother::new()
-    .with_empty_name()
-    .build_props();
+// Solo los props — para probar el constructor
+let props = MadreProducto::new()
+    .con_nombre_vacio()
+    .construir_props();
 
-// Collection
-let greetings = GreetingMother::random_vec(5);
+// Una colección
+let productos = MadreProducto::aleatorios(5);
 ```
 
-### Implementation template
+### Lo que se genera
 
 ```rust
-pub struct GreetingMother {
-    name: Option<String>,
+pub struct MadreProducto {
+    nombre: Option<String>,
 }
 
-impl GreetingMother {
+impl MadreProducto {
     pub fn new() -> Self {
-        Self { name: None }
+        Self { nombre: None }
     }
 
-    // Builder methods
-    pub fn with_name(mut self, name: &str) -> Self {
-        self.name = Some(name.to_string());
+    // Constructores por campo
+    pub fn con_nombre(mut self, nombre: &str) -> Self {
+        self.nombre = Some(nombre.to_string());
         self
     }
 
-    pub fn with_empty_name(mut self) -> Self {
-        self.name = Some("".to_string());
+    pub fn con_nombre_vacio(mut self) -> Self {
+        self.nombre = Some(String::new());
         self
     }
 
-    // Build methods
-    pub fn build(self) -> Greeting {
-        Greeting::new(&self.name.unwrap_or_else(|| "World".to_string()))
-            .expect("GreetingMother: failed to create valid Greeting")
+    // Construcción
+    pub fn construir(self) -> Producto {
+        Producto::new(PropsProducto {
+            nombre: self.nombre.unwrap_or_else(|| "example".to_string()),
+        })
+        .expect("MadreProducto: Producto::new rechazó los props")
     }
 
-    pub fn build_props(self) -> GreetingProps {
-        // Return props without constructing the entity — useful for testing new()
+    pub fn construir_props(self) -> PropsProducto {
+        // Devuelve los props sin construir la entidad — útil para probar new()
         ...
     }
 
-    // Convenience static methods
-    pub fn random() -> Greeting {
-        Self::new().build()
+    // Atajos
+    pub fn aleatorio() -> Producto {
+        Self::new().construir()
     }
 
-    pub fn random_vec(n:usize) -> Vec<Greeting> {
-        (0..n).map(|_| Self::random()).collect()
+    pub fn aleatorios(n: usize) -> Vec<Producto> {
+        (0..n).map(|_| Self::aleatorio()).collect()
     }
 }
+
+impl Default for MadreProducto { /* Self::new() */ }
 ```
 
-### Typed Fields (puerto.toml entity.fields)
+### Campos con tipo (`[[entidad.campos]]`)
 
-When `entity.fields` is defined in `puerto.toml`, the Object Mother generates builder methods for **each custom field** automatically:
+La madre genera un constructor por **cada campo propio**:
 
 ```rust
-pub struct ProductMother {
-    name: Option<String>,
-    price: Option<i64>,
-    sku: Option<String>,
-    description: Option<Option<String>>,
-    tags: Option<Vec<String>>,
+pub struct MadreProducto {
+    nombre: Option<String>,
+    precio: Option<i64>,
+    descripcion: Option<String>,     // un Option<String>: sin fijar, None
+    etiquetas: Option<Vec<String>>,
+    cliente_id: Option<IdCliente>,
 }
 
-impl ProductMother {
-    pub fn new() -> Self {
-        Self { name: None, price: None, sku: None, description: None, tags: None }
-    }
-
-    pub fn with_name(mut self, name: &str) -> Self { self.name = Some(name.to_string()); self }
-    pub fn with_price(mut self, price: i64) -> Self { self.price = Some(price); self }
-    pub fn with_sku(mut self, sku: &str) -> Self { self.sku = Some(sku.to_string()); self }
-    pub fn with_empty_name(mut self) -> Self { self.name = Some("".to_string()); self }
+impl MadreProducto {
+    pub fn con_nombre(mut self, nombre: &str) -> Self { self.nombre = Some(nombre.to_string()); self }
+    pub fn con_precio(mut self, precio: i64) -> Self { self.precio = Some(precio); self }
+    pub fn con_nombre_vacio(mut self) -> Self { self.nombre = Some(String::new()); self }
     // ...
 }
 ```
 
-- `String` fields get `.with_<field>(value)` and `.with_empty_<field>()`
-- `Option<T>` fields get `.with_<field>(value)` only (no empty variant)
-- Numeric/bool/Uuid/DateTime fields get `.with_<field>(value)`
-- `Vec<T>` fields get `.with_<field>(values)`
-- Default values come from the type registry (e.g., `i64` defaults to `42`, `String` to `"example"`)
+- Todo campo tiene `.con_<campo>(valor)` (los `String` y `Option<String>`, con `&str`)
+- Los `String` obligatorios tienen además `.con_<campo>_vacio()`
+- Los valores por defecto salen del registro de tipos (`i64` → `42`, `String` → `"example"`); una
+  referencia, `Id<Objetivo>::generar()`
+- Un campo con objeto valor guarda el objeto valor (ver `value_objects.md`)
 
 ---
 
-## Naming Conventions
+## Nombres
 
-| Prefix/Method | Returns | Purpose |
-|---------------|---------|---------|
-| `random()` | `Entity` | Valid entity with random data |
-| `random_props()` | `EntityProps` | Valid props with random data |
-| `random_vec(n)` | `Vec<Entity>` | Multiple valid entities |
-| `.with_<field>(value)` | `Self` | Builder: set specific field |
-| `.with_<field>_str(s)` | `Self` | Builder: set field from string |
-| `.with_empty_<field>()` | `Self` | Builder: set field to empty (error scenarios) |
-| `.with_invalid_<field>()` | `Self` | Builder: set field to invalid value |
-| `.build()` | `Entity` | Create entity (panics on invalid — intentional in tests) |
-| `.build_props()` | `EntityProps` | Create props without entity construction |
+| Método | Devuelve | Para qué |
+|--------|----------|----------|
+| `aleatorio()` | `Entidad` | Entidad válida |
+| `aleatorios(n)` | `Vec<Entidad>` | Varias entidades válidas |
+| `.con_<campo>(valor)` | `Self` | Constructor: fija un campo |
+| `.con_<campo>_vacio()` | `Self` | Constructor: campo vacío (escenarios de error) |
+| `.construir()` | `Entidad` | Crea la entidad (hace panic si es inválida — a propósito en tests) |
+| `.construir_props()` | `PropsEntidad` | Crea los props sin construir la entidad |
 
 ---
 
-## Mock Setup
+## Dobles
 
-### `business/Cargo.toml` pattern
+### El `Cargo.toml` de un crate con dobles
 
-`mockall` must appear in **both** `[dependencies]` (optional) and `[dev-dependencies]`:
+`mockall` va **a la vez** en `[dependencies]` (opcional) y en `[dev-dependencies]`:
 
 ```toml
+# contextos/producto/dominio/Cargo.toml
 [dependencies]
-mockall = { version = "0.13", optional = true }
+mockall = { workspace = true, optional = true }
 
 [features]
-test-utils = ["mockall"]  # for external crates (e.g. infrastructure tests)
+# Los dobles (`mock!`) y la madre, para los tests de otros crates (ADR-0023 § 5 de Puerto).
+pruebas = ["dep:mockall"]
 
 [dev-dependencies]
-mockall = "0.13"  # for tests inside business itself
+mockall = { workspace = true }   # para los tests del propio crate
 ```
 
-### Mock gate in `repository.rs`
+`aplicacion_<c>` hace lo mismo (`pruebas = ["dep:mockall", "dominio_<c>/pruebas"]`). Quien usa los
+dobles de otro crate solo en tests lo declara en `[dev-dependencies]` con
+`features = ["pruebas"]`: `rest_<c>` los de `aplicacion_<c>` y `dominio_<c>`; `api` los de cada
+`aplicacion_*` (el test que exporta la especificación OpenAPI).
+
+### La puerta del doble, junto a su trait
 
 ```rust
-#[cfg(any(test, feature = "test-utils"))]
-pub mod mocks {
+// contextos/producto/dominio/src/repositorio.rs
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
     use mockall::mock;
-    use async_trait::async_trait;
     use super::*;
 
     mock! {
-        pub GreetingRepository {}
+        pub RepositorioProducto {}
 
         #[async_trait]
-        impl GreetingRepositoryTrait for GreetingRepository {
-            async fn find_by_name(&self, name: &str) -> Result<Option<Greeting>, GreetingError>;
+        impl RepositorioProducto for RepositorioProducto {
+            async fn buscar_por_id(&self, id: IdProducto) -> Result<Option<Producto>, ErrorRepositorio>;
         }
     }
 }
 ```
 
-`#[cfg(any(test, feature = "test-utils"))]` means:
-- Available for all tests inside `business` (via `#[cfg(test)]`)
-- Available for external crates (infrastructure, presentation) via `features = ["test-utils"]`
+`#[cfg(any(test, feature = "pruebas"))]` significa:
+- Disponible en todos los tests del propio crate (por `#[cfg(test)]`)
+- Disponible para otros crates con `features = ["pruebas"]`
+
+Cada caso de uso lleva el suyo en su fichero (`aplicacion_producto::crear_producto::dobles::MockCrearProducto`).
+En proyectos con eventos, `unit_of_work.rs` trae un doble escrito a mano:
+`dobles::UnitOfWorkFactoryGrabadora` (`fallando_en(FallarEn::…, …)`, `grabado()`).
 
 ---
 
-## Full Test Example
+## Ejemplo completo
 
 ```rust
-// business/src/application/greeting/get_greeting.rs
+// contextos/saludo/aplicacion/src/obtener_saludo.rs
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::greeting::repository::mocks::MockGreetingRepository;
-    use std::sync::Arc;
+    use dominio_saludo::repositorio::dobles::MockRepositorioSaludo;
 
     #[tokio::test]
-    async fn should_return_greeting_when_name_is_valid() {
-        // Arrange
-        let mut mock_repo = MockGreetingRepository::new();
-        mock_repo
-            .expect_find_by_name()
-            .returning(|_| Ok(None));
+    async fn deberia_devolver_el_saludo_cuando_el_nombre_es_valido() {
+        // Preparar
+        let mut repositorio_doble = MockRepositorioSaludo::new();
+        repositorio_doble.expect_buscar_por_nombre().returning(|_| Ok(None));
 
-        let use_case = GetGreetingUseCaseImpl {
-            repository: Arc::new(mock_repo),
+        let caso_de_uso = ObtenerSaludoImpl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        // Act
-        let result = use_case
-            .execute(GetGreetingParams { name: "Alice".into() })
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerSaludo { nombre: "Mundo".into() })
             .await;
 
-        // Assert
-        assert!(result.is_ok());
-        let greeting = result.unwrap();
-        assert_eq!(greeting.name, "Alice");
-        assert!(greeting.message.contains("Alice"));
+        // Comprobar
+        assert!(resultado.is_ok());
+        let saludo = resultado.unwrap();
+        assert_eq!(saludo.nombre, "Mundo");
+        assert!(saludo.mensaje.contains("Mundo"));
     }
 
     #[tokio::test]
-    async fn should_return_error_when_name_is_empty() {
-        // Arrange
-        let mock_repo = MockGreetingRepository::new(); // no expectations set
-        let use_case = GetGreetingUseCaseImpl {
-            repository: Arc::new(mock_repo),
+    async fn deberia_devolver_error_cuando_el_nombre_esta_vacio() {
+        // Preparar
+        let repositorio_doble = MockRepositorioSaludo::new(); // sin expectativas
+        let caso_de_uso = ObtenerSaludoImpl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        // Act
-        let result = use_case
-            .execute(GetGreetingParams { name: "".into() })
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerSaludo { nombre: "".into() })
             .await;
 
-        // Assert
-        assert!(result.is_err());
+        // Comprobar
+        assert!(resultado.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
-            "greeting.validation_error.name_empty"
+            resultado.unwrap_err().to_string(),
+            "saludo.validacion.nombre_vacio"
         );
     }
 }
@@ -236,101 +247,84 @@ mod tests {
 
 ---
 
-## Test File Structure
+## Dónde está cada test
 
 ```
-business/src/
-├── domain/
-│   └── greeting/
-│       ├── model.rs              # Unit tests for model constructors + business rules
-│       └── use_cases/
-│           └── get_greeting.rs   # (trait only — tests live in application layer)
-└── application/
-    └── greeting/
-        └── get_greeting.rs       # Use case tests (mocks + AAA)
+contextos/producto/
+├── dominio/src/
+│   ├── modelo.rs            # tests del constructor y las reglas de negocio
+│   ├── errores.rs           # tests de la conversión desde ErrorRepositorio
+│   └── pruebas/madres.rs    # la madre (sin tests propios)
+├── aplicacion/src/
+│   └── crear_producto.rs    # tests del caso de uso (dobles + AAA)
+├── infraestructura/src/
+│   ├── repositorio.rs       # en memoria: tests; Postgres: #[sqlx::test(migrator = "migrador::MIGRADOR")]
+│   └── pruebas/siembra.rs   # construir / sembrar (--db)
+└── rest/src/
+    ├── errores.rs           # un test por rama de a_respuesta_error
+    └── rutas.rs             # tests de rutas: TestClient + un caso de uso doblado por test
 ```
 
-Integration tests (full project clippy + compile + test) live in `crates/cli/src/tests/compile_matrix.rs` as `#[ignore]` tests run via `make test/full` (and `make test/db` for the Postgres scenario).
+Los tests de integración (clippy + compilación + tests de un proyecto entero) viven en
+`crates/cli/src/tests/compile_matrix.rs` como tests `#[ignore]` que ejecuta `make test/full` (y
+`make test/db` para el escenario de Postgres).
 
 ---
 
-## Mocks vs Fakes vs Stubs
+## Dobles, falsos y stubs
 
-| Concept | Definition | When to use |
-|---------|------------|-------------|
-| **Stub** | Returns a hardcoded response; no assertions on calls | Isolating a happy-path test where the collaborator's response is irrelevant |
-| **Mock** | Records calls; has programmable expectations (`mockall`) | Verifying a collaborator was called with specific args, or testing error paths returned by a dependency |
-| **Fake** | Lightweight working implementation (e.g. `InMemoryRepository`) | Integration tests across layers where you want real behaviour without a DB |
+| Concepto | Qué es | Cuándo |
+|----------|--------|--------|
+| **Stub** | Devuelve una respuesta fija; no comprueba las llamadas | Un camino feliz donde la respuesta del colaborador da igual |
+| **Mock** | Registra llamadas; tiene expectativas programables (`mockall`) | Comprobar que se llamó a un colaborador con ciertos argumentos, o probar los errores que devuelve |
+| **Falso** | Una implementación ligera que funciona (`RepositorioProductoEnMemoria`, `UnitOfWorkFactoryGrabadora`) | Tests entre capas donde quieres comportamiento real sin base de datos |
 
-**Rule of thumb:** stubs for happy paths, mocks for error paths and interaction assertions, fakes for integration tests. Never mock what you own (domain models).
+**Regla:** stubs para caminos felices, mocks para caminos de error y aserciones de interacción,
+falsos para tests de integración. Nunca dobles lo que es tuyo (los modelos de dominio).
 
 ---
 
-## `fake` Crate for Random Test Data
+## Datos aleatorios con el crate `fake` (opcional)
 
-Add to `business/Cargo.toml`:
+Puerto no lo añade; si quieres datos realistas en una madre, en el `Cargo.toml` de su dominio:
 
 ```toml
 [dev-dependencies]
 fake = "2"
 ```
 
-Use in Object Mothers to generate realistic random data instead of hardcoded strings:
-
 ```rust
-use fake::{Fake, faker::name::en::Name as FakeName, faker::lorem::en::Word};
+use fake::{Fake, faker::name::en::Name as NombreFalso, faker::lorem::en::Word};
 
-impl ProductMother {
-    pub fn random() -> Product {
+impl MadreProducto {
+    pub fn aleatorio() -> Producto {
         Self::new()
-            .with_name(&FakeName().fake::<String>())
-            .with_sku(&Word().fake::<String>())
-            .build()
+            .con_nombre(&NombreFalso().fake::<String>())
+            .con_sku(&Word().fake::<String>())
+            .construir()
     }
 }
 ```
 
-Random data catches bugs that hardcoded `"test"` strings hide — trimming edge cases, length constraints, encoding issues.
+Los datos aleatorios encuentran errores que esconden las cadenas fijas como `"test"`: recortes,
+límites de longitud, codificación. Una madre usada por otros crates fuera de `cfg(test)` necesita
+`fake` en `[dependencies]` tras la feature `pruebas`.
 
 ---
 
-## Custom Fakers for Value Objects
+## Constantes de test
 
-Implement `fake::Dummy` on value objects to integrate them into the fake ecosystem:
-
-```rust
-use fake::{Dummy, Faker, faker::name::en::Name as FakeName};
-use rand::Rng;
-
-impl Dummy<Faker> for Name {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &Faker, rng: &mut R) -> Self {
-        let value: String = FakeName().fake_with_rng(rng);
-        Name::new(value).expect("fake Name must be valid")
-    }
-}
-
-// Usage in Object Mother
-let name: Name = Faker.fake();
-```
-
----
-
-## Test Constants
-
-Name important boundary values as constants rather than scattering magic literals:
+Nombra los valores límite importantes como constantes en lugar de repetir literales:
 
 ```rust
 #[cfg(test)]
-pub mod constants {
-    pub const VALID_NAME: &str = "Alice";
-    pub const EMPTY: &str = "";
-    pub const VALID_UUID_STR: &str = "550e8400-e29b-41d4-a716-446655440000";
+mod tests {
+    const NOMBRE_VALIDO: &str = "Ana";
+    const VACIO: &str = "";
+    const UUID_VALIDO: &str = "550e8400-e29b-41d4-a716-446655440000";
+
+    // ...
+    let resultado = caso_de_uso.ejecutar(ParamsCrearProducto { nombre: VACIO.into() }).await;
+    assert!(resultado.is_err());
 }
-```
-
-```rust
-use crate::tests::constants::{VALID_NAME, EMPTY};
-
-let result = use_case.execute(Params { name: EMPTY.into() }).await;
-assert!(result.is_err());
 ```

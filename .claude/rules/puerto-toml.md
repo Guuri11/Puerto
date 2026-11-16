@@ -1,98 +1,109 @@
-# puerto.toml — Schema & Identifier Derivation
+# puerto.toml — Esquema y derivación de identificadores
 
-## Schema
+## Esquema
 
 ```toml
-[project]
-name = "my-app"          # project name (hyphen-separated, matches Cargo binary name)
-web = true               # web/ frontend present — set by `puerto new`, absent with --no-web
-db = true                # SQLx/Postgres — set by `puerto new --db`
-events = "db"            # domain events: "db" | "kafka"; absent = none. Requires db = true
-auth = "oidc"            # auth (ADR-0021): "oidc" | "local"; absent = none. "local" requires db = true
+[proyecto]
+nombre = "mi-app"        # nombre del proyecto (con guiones; es el nombre del binario)
+web = true               # hay frontend web/ — lo pone `puerto nuevo`, ausente con --sin-web
+db = true                # SQLx/Postgres — lo pone `puerto nuevo --db`
+eventos = "db"           # eventos de dominio: "db" | "kafka"; ausente = ninguno. Exige db = true
+auth = "oidc"            # auth (ADR-0021): "oidc" | "local"; ausente = ninguna. "local" exige db = true
 
-[[entity]]
-name = "Product"         # PascalCase entity name
-use_cases = ["create_product", "list_products"]   # snake_case action names
-db = true                # optional — omit for InMemory, set true for SQLx/Postgres
-events = ["product_published"]   # optional, `events` projects: custom events beyond the CRUD
-                                 # created/updated/deleted — snake_case, unique, not a CRUD name
-public = ["list_products"]       # optional, `auth` projects: routes without BearerAuth
-roles = { create_product = ["admin"] }   # optional, `auth` projects: #[require_role] per route.
-                                 # Keys are the entity's use cases, never also public; roles
-                                 # match [a-z][a-z0-9_:-]*; two roles on one use case: both
-                                 # are required. What scaffold wrote: routes.rs is
-                                 # the user's after it (`puerto validate` checks it textually)
+[[entidad]]
+nombre = "Producto"      # nombre de la entidad en PascalCase
+casos_de_uso = ["crear_producto", "listar_productos"]   # acciones en snake_case
+db = true                # opcional — omitido: en memoria; true: SQLx/Postgres
+eventos = ["producto_publicado"]   # opcional, proyectos con eventos: eventos propios además de los
+                                   # CRUD creado/actualizado/borrado — snake_case, únicos, no CRUD
+publicos = ["listar_productos"]    # opcional, proyectos con auth: rutas sin BearerAuth
+roles = { crear_producto = ["admin"] }   # opcional, proyectos con auth: #[requiere_rol] por ruta.
+                                 # Las claves son casos de uso de la entidad, nunca también
+                                 # publicos; los roles casan con [a-z][a-z0-9_:-]*; dos roles en un
+                                 # caso de uso: se exigen los dos. Es lo que escribió scaffold:
+                                 # rutas.rs es del usuario desde entonces (`puerto validar` lo
+                                 # comprueba de forma textual)
 
-[[consumer]]                     # `events` projects: a worker consumer (ADR-0018 § 5)
-name = "notify_new_product"      # snake_case, unique → worker/src/consumers/notify_new_product.rs
-events = ["product_created", "product_published"]   # each declared by some entity (CRUD or custom)
+[[consumidor]]                   # proyectos con eventos: un consumidor del worker (ADR-0018 § 5)
+nombre = "avisar_producto_nuevo" # snake_case, único → presentacion/worker/src/consumidores/avisar_producto_nuevo.rs
+eventos = ["producto_creado", "producto_publicado"]   # cada uno declarado por alguna entidad (CRUD o propio)
 
-[[mail]]                         # a mail (ADR-0020) — wiring only, its content is in its files
-name = "welcome"                 # snake_case, unique → domain/mail/welcome.rs, mail/welcome/
-on = ["customer_created"]        # optional, `events` projects: the worker sends it on these
+[[correo]]                       # un correo (ADR-0020) — solo el cableado, su contenido está en sus ficheros
+nombre = "bienvenida"            # snake_case, único → contextos/correo/{dominio,infraestructura}/src/bienvenida.rs
+tras = ["cliente_creado"]        # opcional, proyectos con eventos: el worker lo envía tras estos eventos
 
-[[entity.fields]]
-name = "name"            # snake_case field name
-type = "String"          # Rust type from the type registry
+[[entidad.campos]]
+nombre = "nombre"        # nombre del campo en snake_case
+tipo = "String"          # tipo Rust del registro de tipos
 
-[[entity.fields]]
-name = "price"
-type = "i64"
+[[entidad.campos]]
+nombre = "precio"
+tipo = "i64"
 
-[[entity.fields]]
-name = "sku"
-type = "String"
-unique = true            # generates unique DB constraint
+[[entidad.campos]]
+nombre = "sku"
+tipo = "String"
+unico = true             # índice único en la base de datos
 
-[[entity.fields]]
-name = "description"
-type = "Option<String>"  # nullable field
+[[entidad.campos]]
+nombre = "descripcion"
+tipo = "Option<String>"  # campo nullable
 
-[[entity.fields]]
-name = "tags"
-type = "Vec<String>"     # array field
+[[entidad.campos]]
+nombre = "etiquetas"
+tipo = "Vec<String>"     # campo array
 
-[[entity.fields]]
-name = "customer_id"
-type = "Uuid"            # "Option<Uuid>" for an optional reference
-references = "Customer"  # ADR-0022: another declared CRUD entity, never this one (nor User/Me/Auth
-                         # in auth projects), not with value_object; CLI customer_id:ref:Customer,
-                         # reviewer_id:ref:opt:Customer. scaffold refuses it until the target has code
+[[entidad.campos]]
+nombre = "cliente_id"
+tipo = "Uuid"            # "Option<Uuid>" para una referencia opcional
+referencia = "Cliente"   # ADR-0022: otra entidad CRUD declarada, nunca esta (ni Usuario/Me/Auth en
+                         # proyectos con auth), sin objeto_valor; en la CLI cliente_id:ref:Cliente,
+                         # revisor_id:ref:opt:Cliente. scaffold la rechaza hasta que el objetivo tiene
+                         # código, y si cierra un ciclo entre contextos
 ```
 
-- One `[[entity]]` block per DDD entity
-- `name` is canonical PascalCase — all other identifiers derived from it
-- `use_cases` entries are snake_case action names — match the file/module name exactly
-- `db = true` → generates `PgEntityRepository` + `entity.rs`; absent/false → `InMemoryEntityRepository`
-- `[[entity.fields]]` is an optional list of typed fields. If absent or empty, entities default to `name: String` (backward compatible)
-- Field `name` must be valid snake_case (lowercase letters, digits, underscores; cannot start with a digit)
-- Field `type` must match the type registry — run `puerto validate` to check
-- Field `unique = true` generates a **partial** unique index (`… WHERE deleted = false`, SQL only):
-  rows are soft-deleted, so a deleted row does not keep its value taken. Cannot be combined with
-  `Option<T>` (warned by `puerto validate`)
-- Field names that are PostgreSQL reserved words (`desc`, `order`, `user`, `select`, …) are rejected
-  in `--db` projects — they become unquoted column names. Duplicate field names are rejected
-- `HashMap<String, String>` is a `JSONB` column; the `{Entity}Db` row field is
-  `sqlx::types::Json<HashMap<String, String>>` and the repository's `SELECT` overrides its type
-- Managed by Puerto CLI — do not add entities manually unless also running `puerto generate bootstrap`
+Los objetos valor (`objeto_valor`, `clase_objeto_valor`, `variantes`, `[[objeto_valor]]`), en
+`value_objects.md`.
 
-### CLI Field Syntax
+- Un bloque `[[entidad]]` por entidad DDD; en la v1, cada una es un contexto (`contextos/<snake>/`)
+- `nombre` es el PascalCase canónico — todos los demás identificadores salen de él
+- Las entradas de `casos_de_uso` son acciones en snake_case — coinciden con el nombre del fichero y
+  del módulo
+- `db = true` → `RepositorioProductoPostgres` + `fila.rs`; ausente/false →
+  `RepositorioProductoEnMemoria`
+- `[[entidad.campos]]` es una lista opcional de campos con tipo. Si falta o está vacía, la entidad
+  lleva por defecto `nombre: String`
+- El `nombre` de un campo es snake_case válido (minúsculas, dígitos y guiones bajos; no empieza por
+  dígito)
+- El `tipo` de un campo tiene que estar en el registro de tipos — `puerto validar` lo comprueba
+- `unico = true` genera un índice único **parcial** (`… WHERE borrado = false`, solo SQL): las
+  filas se borran de forma lógica, así que una fila borrada no retiene su valor. No se combina con
+  `Option<T>` (`puerto validar` avisa)
+- En proyectos `--db` se rechazan los nombres de campo que son palabras reservadas de PostgreSQL
+  (`desc`, `order`, `user`, `select`, …): son nombres de columna sin comillas. También los nombres
+  de campo duplicados
+- `HashMap<String, String>` es una columna `JSONB`; el campo de `Fila<Entidad>` es
+  `sqlx::types::Json<HashMap<String, String>>` y el `SELECT` del repositorio sobrescribe su tipo
+- Lo gestiona la CLI de Puerto — no añadas entidades a mano salvo que luego ejecutes
+  `puerto generar bootstrap`
+
+### Sintaxis de los campos en la CLI
 
 ```bash
-puerto generate scaffold Product name:String price:i64! sku:String
+puerto generar scaffold Producto -- nombre:String precio:i64! sku:String
 ```
 
-- Fields are passed as trailing arguments in `name:Type` format
-- Append `!` after the type to mark the field as `unique = true` (e.g., `sku:String!`)
-- Parsed by `parse_field_arg()` in `puerto_toml.rs`
-- Validated against the type registry before scaffold proceeds
+- Los campos van como argumentos tras `--`, en formato `nombre:Tipo`
+- Un `!` tras el tipo marca el campo como `unico = true` (p. ej. `sku:String!`)
+- Los analiza `parse_field_arg()` en `puerto_toml.rs`
+- Se validan contra el registro de tipos antes de que scaffold siga
 
 ---
 
-## Type Registry
+## Registro de tipos
 
-| Rust Type | SQL Type | OpenAPI | Default (tests) |
-|-----------|----------|---------|------------------|
+| Tipo Rust | Tipo SQL | OpenAPI | Por defecto (tests) |
+|-----------|----------|---------|---------------------|
 | `String` | `TEXT` | `string` | `"example"` |
 | `i64` | `BIGINT` | `integer(int64)` | `42` |
 | `bool` | `BOOLEAN` | `boolean` | `true` |
@@ -109,146 +120,156 @@ puerto generate scaffold Product name:String price:i64! sku:String
 | `Vec<i64>` | `BIGINT[]` | `array[integer]` | `vec![]` |
 | `HashMap<String, String>` | `JSONB` | `object` | `HashMap::new()` |
 
-### System Fields (always present)
+### Campos de sistema (siempre presentes)
 
-Every entity automatically includes these fields — do **not** add them to `entity.fields`:
+Toda entidad los lleva — **no** se añaden a `campos`:
 
 ```rust
-pub id: ProductId,        // the entity's own id newtype over a Uuid — see architecture.md § Typed ids
-pub created_at: DateTime<Utc>,
-pub updated_at: DateTime<Utc>,
-pub deleted: bool,
-pub deleted_at: Option<DateTime<Utc>>,
+pub id: IdProducto,        // el newtype del id de la entidad sobre un Uuid — ver architecture.md § Ids tipados
+pub creado_en: DateTime<Utc>,
+pub actualizado_en: DateTime<Utc>,
+pub borrado: bool,
+pub borrado_en: Option<DateTime<Utc>>,
 ```
 
-### Type Resolution
+En el JSON, `creadoEn`, `actualizadoEn`…
 
-`resolve_type(field_type: &str) -> Result<&TypeMapping, Error>` in `generators/types.rs`:
-- Looks up the type string in the registry
-- Returns `TypeMapping` with `rust_type`, `sql_type`, `sql_nullable`, `openapi_type`, `openapi_format`, `default_expr`, `needs_import`
-- Unknown types produce a descriptive error listing all valid types
+### Resolución de tipos
 
-`validate_fields(fields: &[Field]) -> Result<(), Vec<String>>` validates all fields at once.
+`resolve_type(field_type: &str) -> Result<&TypeMapping, Error>` en `generators/types.rs`:
+- Busca el tipo en el registro
+- Devuelve un `TypeMapping` con `rust_type`, `sql_type`, `sql_nullable`, `openapi_type`,
+  `openapi_format`, `default_expr`, `needs_import`
+- Un tipo desconocido da un error que lista todos los tipos válidos
 
-`literal_import(field) -> Option<&'static str>` returns the import a value *literal* of the field
-needs (`chrono::Utc` for `Utc::now()`), as opposed to `TypeMapping::needs_import`, which is what
-naming the field's *type* needs.
+`validate_fields(fields: &[Field]) -> Result<(), Vec<String>>` valida todos los campos de una vez.
+
+`literal_import(field) -> Option<&'static str>` devuelve el import que necesita un *literal* del
+campo (`chrono::Utc` para `Utc::now()`), a diferencia de `TypeMapping::needs_import`, que es lo que
+necesita nombrar el *tipo* del campo.
 
 ---
 
-## Derivation Table
+## Tabla de derivación
 
-Given `name = "OrderItem"` and `use_cases = ["create_order_item"]`:
+Con `nombre = "LineaPedido"` y `casos_de_uso = ["crear_linea_pedido", "listar_lineas_pedido"]`:
 
-| Identifier        | Value                         | Used in                                  |
-| ----------------- | ----------------------------- | ---------------------------------------- |
-| `pascal`          | `OrderItem`                   | Struct names, impl names                 |
-| `snake`           | `order_item`                  | File names, module names, variable names |
-| `plural`          | `order_items`                 | SQL table, REST paths (`/order_items`)    |
-| `plural_pascal`   | `OrderItems`                  | Doc comments, `ListOrderItems…` types    |
-| `uc`              | `create_order_item`           | Use case field name, file name           |
-| `uc_pascal`       | `CreateOrderItem`             | Use case type prefix                     |
-| `UseCaseTrait`    | `CreateOrderItemUseCaseTrait` | Domain trait                             |
-| `UseCaseImpl`     | `CreateOrderItemUseCaseImpl`  | Application impl struct                  |
-| `UseCaseParams`   | `CreateOrderItemParams`       | Input params struct                      |
-| `RepositoryTrait` | `OrderItemRepositoryTrait`    | Domain repository trait                  |
-| `InMemoryRepo`    | `InMemoryOrderItemRepository` | Infrastructure impl                      |
-| `ApiStruct`       | `OrderItemApi`                | Presentation routes struct               |
+| Identificador     | Valor                               | Dónde se usa                               |
+| ----------------- | ----------------------------------- | ------------------------------------------ |
+| `pascal`          | `LineaPedido`                       | Nombres de structs                         |
+| `snake`           | `linea_pedido`                      | Contexto, ficheros, módulos, variables     |
+| `plural`          | `lineas_pedido`                     | Tabla SQL, rutas REST (`/lineas_pedido`)   |
+| `plural_pascal`   | `LineasPedido`                      | Comentarios, tipos `ListarLineasPedido…`   |
+| contexto          | `contextos/linea_pedido/`           | Los cuatro crates del contexto             |
+| crates            | `dominio_linea_pedido`, `aplicacion_linea_pedido`, `infra_linea_pedido`, `rest_linea_pedido` | `[workspace.dependencies]`, `use` |
+| `uc`              | `crear_linea_pedido`                | Campo del caso de uso, nombre del fichero  |
+| `uc_pascal`       | `CrearLineaPedido`                  | El trait del caso de uso                   |
+| impl              | `CrearLineaPedidoImpl`              | Implementación (aplicación)                |
+| params            | `ParamsCrearLineaPedido`            | Struct de entrada                          |
+| doble             | `MockCrearLineaPedido`              | `aplicacion_<c>::<uc>::dobles`             |
+| id                | `IdLineaPedido`                     | El id tipado                               |
+| props / error     | `PropsLineaPedido`, `ErrorLineaPedido` | Modelo, errores                         |
+| repositorio       | `RepositorioLineaPedido`            | Puerto del dominio                         |
+| adaptadores       | `RepositorioLineaPedidoEnMemoria`, `RepositorioLineaPedidoPostgres` | Infraestructura |
+| fila              | `FilaLineaPedido`                   | `infra_<c>/src/fila.rs`                    |
+| madre             | `MadreLineaPedido`                  | `dominio_<c>::pruebas::madres`             |
+| api / dto         | `ApiLineaPedido`, `DtoLineaPedido`, `DtoPaginaLineaPedido` | REST              |
+| petición / respuesta | `PeticionCrearLineaPedido`, `RespuestaCrearLineaPedido` | REST              |
+| eventos           | `EventoLineaPedido`, `SnapshotLineaPedido`, `linea_pedido_creado`, `LINEA_PEDIDO_CREADO` | Proyectos con eventos |
 
-### Derivation rules
+### Reglas de derivación
 
 ```
-pascal  = PascalCase(name)                         // "OrderItem"
-snake   = pascal_to_snake(pascal)                  // "order_item"
-plural  = pluralize(snake)                         // "order_items"
-uc      = use_cases[i]                             // "create_order_item"
-uc_pascal = PascalCase(uc)                         // "CreateOrderItem"
+pascal    = PascalCase(nombre)                     // "LineaPedido"
+snake     = pascal_to_snake(pascal)                // "linea_pedido"
+plural    = pluralize(snake)                       // "lineas_pedido"
+uc        = casos_de_uso[i]                        // "crear_linea_pedido"
+uc_pascal = PascalCase(uc)                         // "CrearLineaPedido"
 ```
 
-`PascalCase` splits on `_` and `-`, capitalises each word, joins:
+`PascalCase` parte por `_` y `-`, pone en mayúscula cada palabra y las une:
 
-- `"order_item"` → `"OrderItem"`
-- `"create-product"` → `"CreateProduct"`
+- `"linea_pedido"` → `"LineaPedido"`
+- `"crear-producto"` → `"CrearProducto"`
 
-`pluralize` (`generators/naming.rs`) inflects only the last word: consonant + `y` → `ies`
-(`categories`), `s`/`x`/`z`/`ch`/`sh` → `es` (`statuses`, `boxes`), a few irregulars (`people`,
-`children`) and uncountables (`data`, `series`); otherwise `s`. `naming::crud_use_case` names the scaffolded use cases — `list` after the plural
-(`list_order_items`), the rest after the entity (`create_order_item`). `naming::entity_ctx` puts
-`pascal`, `snake`, `plural` and `plural_pascal` in every template context.
+`pluralize` (`generators/naming.rs`) pluraliza en castellano y flexiona la **primera** palabra, el
+núcleo de un nombre castellano (`linea_pedido` → `lineas_pedido`): vocal → `s` (`productos`), `z` →
+`ces` (`lapices`), cualquier otra consonante, `y` incluida → `es` (`ciudades`, `leyes`, `paises`);
+una tabla de invariables (`analisis`, `crisis`, `lunes`…). `naming::crud_use_case` da nombre a los
+casos de uso del scaffold — `listar` con el plural (`listar_lineas_pedido`), el resto con la entidad
+(`crear_`, `obtener_`, `actualizar_`, `borrar_linea_pedido`). `naming::entity_ctx` pone `pascal`,
+`snake`, `plural` y `plural_pascal` en el contexto de cada plantilla.
 
-`pascal_to_snake` inserts `_` before each uppercase letter (except first), lowercases all:
+`pascal_to_snake` inserta `_` antes de cada mayúscula (salvo la primera) y lo pasa todo a minúsculas:
 
-- `"OrderItem"` → `"order_item"`
-- `"Product"` → `"product"`
+- `"LineaPedido"` → `"linea_pedido"`
+- `"Producto"` → `"producto"`
 
 ---
 
-## File Paths Derived from Entity
+## Rutas que salen de una entidad
 
-Given `name = "Product"`, `use_cases = ["create_product"]`:
+Con `nombre = "Producto"` y los casos de uso CRUD (las rutas se piden a `generators/layout.rs`):
 
 ```
-business/src/domain/product/model.rs
-business/src/domain/product/errors.rs
-business/src/domain/product/repository.rs
-business/src/domain/product/use_cases/create_product.rs
-# use_cases modules declared inline in business/src/lib.rs — no use_cases.rs file
-
-business/src/application/product/create_product.rs
-
-infrastructure/src/product/repository.rs
-
-presentation/src/api/product.rs
-presentation/src/api/product/dto.rs
-presentation/src/api/product/routes.rs
-presentation/src/api/product/responses.rs
-presentation/src/api/product/error_mapper.rs
+contextos/producto/dominio/Cargo.toml
+contextos/producto/dominio/src/{lib,modelo,errores,repositorio}.rs   (+ valores.rs, eventos.rs, unit_of_work.rs)
+contextos/producto/dominio/src/pruebas/madres.rs
+contextos/producto/aplicacion/src/{crear_producto,obtener_producto,listar_productos,actualizar_producto,borrar_producto}.rs
+contextos/producto/infraestructura/src/repositorio.rs                (+ fila.rs, unit_of_work.rs, pruebas/siembra.rs con --db)
+contextos/producto/rest/src/{rutas,dto,respuestas,errores}.rs
+migraciones/<versión>_<nombre>.sql                                   (--db)
 ```
+
+Cada crate tiene su `Cargo.toml` y su `lib.rs` plano; no hay `mod.rs`.
 
 ---
 
-## bootstrap.rs Generation Logic
+## Lógica de generación de `cableado` y `bootstrap.rs`
 
-`generated/bootstrap.rs` is generated from the full entity list. For each entity:
+`presentacion/cableado/` y `presentacion/api/src/generado/bootstrap.rs` se generan desde la lista
+entera de entidades:
 
-1. Import use case impls: `use business::application::{snake}::{uc}::{uc_pascal}UseCaseImpl;`
-2. Import repo:
-   - `db = false` → `use infrastructure::{snake}::repository::InMemory{pascal}Repository;`
-   - `db = true` → `use infrastructure::{snake}::repository::Pg{pascal}Repository;`
-3. Import API struct: `use crate::api::{snake}::routes::{pascal}Api;`
-4. Function signature:
-   - **No db entities** → `pub fn build_app() -> Route` (sync)
-   - **Any db entity** → `pub async fn build_app() -> Route` (reads `DATABASE_URL`, creates pool internally)
-5. Wire in `build_app()`:
-   - **Single use case**: inline repo
-   - **Multiple use cases**: bind repo once, clone for each — `Arc::clone(&{snake}_repo)`
-6. `openapi_service(...)` argument — the one place `OpenApiService::new` is called:
-   - **Single entity**: `greeting_api`
-   - **Multiple entities**: `(greeting_api, product_api, ...)`
-7. **`[project] web = true`** → a `#[cfg(test)]` test `openapi_spec_matches_docs_api_openapi_json`
-   builds every `{Entity}Api` from `Mock{Uc}UseCase`s (every use case trait must ship one) and
-   compares `openapi_service(...).spec()` with `docs/api/openapi.json`: missing → written,
-   `UPDATE_OPENAPI=1` → rewritten, different → fails (`make web/sync`). No server, no database.
+1. `cableado/Cargo.toml` depende de `dominio_<c>`, `aplicacion_<c>` e `infra_<c>` de cada contexto
+2. `cableado/src/lib.rs`, un módulo por contexto: `pub struct CasosDeUso { pub <uc>: Arc<dyn
+   <UcPascal>>, … }` y `pub fn construir(…) -> CasosDeUso`, que construye el repositorio una vez
+   (`Arc::clone` para cada caso de uso):
+   - `db = false` → `RepositorioProductoEnMemoria::new()`, `construir()` sin argumentos
+   - `db = true` → `RepositorioProductoPostgres::new(pool.clone())`, `construir(&pool)`
+   - proyectos con eventos → además, `UnitOfWorkFactoryProductoPostgres`
+3. `bootstrap.rs` importa `rest_<c>::rutas::Api<Entidad>` y monta cada una con
+   `cableado::<c>::construir(…)`. `construir_app(config)` es siempre `async` y devuelve
+   `Result<impl Endpoint, String>`; con `--db` lee `DATABASE_URL`, crea el pool y ejecuta las
+   migraciones de `migrador::MIGRADOR`
+4. El argumento de `servicio_openapi(...)` — el único sitio donde se llama a `OpenApiService::new`:
+   - **Una entidad**: `saludo_api`
+   - **Varias**: `(saludo_api, producto_api, ...)`
+5. **`[proyecto] web = true`** → un test `#[cfg(test)]` `openapi_spec_matches_docs_api_openapi_json`
+   construye cada `Api<Entidad>` con los `Mock<Caso>` (todo caso de uso trae uno; `api` declara los
+   `aplicacion_*` con `features = ["pruebas"]` en `[dev-dependencies]`) y compara
+   `servicio_openapi(...).spec()` con `docs/api/openapi.json`: si falta → se escribe;
+   `UPDATE_OPENAPI=1` → se reescribe; distinto → falla (`make web/sync`). Sin servidor ni base de
+   datos.
 
 ---
 
-## CLI Commands That Touch puerto.toml
+## Comandos de la CLI que tocan puerto.toml
 
-| Command                                         | Effect                                                                            |
+| Comando                                         | Efecto                                                                            |
 | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| `puerto new [--name] [--db\|--no-db] [--events db\|kafka] [--auth oidc\|local] [--no-demo] [--no-web]` | Creates puerto.toml from template with initial Greeting entity; `--events` (needs `--db`) writes `[project] events` and the outbox migration; `--auth` writes `[project] auth` and lists the Greeting's use case in `public` (`local` needs `--db`) |
-| `puerto generate scaffold <Name>`               | Upserts the `[[entity]]` block, regenerates bootstrap.rs. Auth projects: `--public <uc>[,…]` and `--role <uc>=<role>[,…]` set `public` / `roles` (checked before writing; a re-scaffold without them keeps the block's) |
-| `puerto generate scaffold <Name> -- name:Type`  | Same, with `[[entity.fields]]` from the trailing arguments                        |
-| `puerto generate domain <Name> -- name:Type`    | Registers the entity **with its fields** so the later layered commands see them   |
-| `puerto generate bootstrap [--allow-missing]`   | Regenerates bootstrap.rs (and `web/…/core/generated/*`); refuses when a declared entity has no code on disk |
-| `puerto generate use-case <Entity> <action>`    | Appends action to `use_cases`, adds the field to `{Entity}Api`, regenerates bootstrap.rs. Refuses an action that already exists |
-| `puerto generate value-object <Name> <type>`    | Appends a `[[value_object]]` block. Refuses invalid names/types and duplicates    |
-| `puerto generate event <Entity> <name>`         | `events` projects, CRUD entities: appends to `[[entity]] events`, regenerates `events.rs`. Refuses a CRUD name, a duplicate (also by variant: `published` = `product_published`) or a non-snake_case name. Touches no use case |
-| `puerto generate web <Name> [--force]`          | Web projects: the entity's frontend slice + `core/generated/*`. Does not touch puerto.toml; refuses an undeclared or non-CRUD entity |
-| `puerto generate migration <name>`              | Creates a migration file (`--db` projects only) — does not touch puerto.toml. The version is unique even within one second |
-| `puerto generate consumer <name> --on <type>[,…]` | `events` projects (`db` or `kafka`): appends `[[consumer]]`, writes `worker/src/consumers/<name>.rs` (never overwritten), adds `pub mod` to `consumers.rs` (sorted), regenerates `worker/src/generated/registry.rs`. Refuses an existing name, an undeclared event type, a non-snake_case name or one whose type the worker already uses (`loops`, `product_event`) |
-| `puerto generate mail <name> [-- field:Type …]` | Any project: appends `[[mail]]`, writes the domain port, the template mailer and the three templates (never overwritten), adds `pub mod` to both `lib.rs`. The first mail adds `puerto-mail`, Mailpit, `SMTP_URL` / `MAIL_FROM`, `make mail/ui`. Fields: primitives and `opt:` only, not `to` (always there), none → `name:String`. Refuses an existing name, a non-snake_case name or keyword, a VO, `!`, `vec:`/`map`. `--on <type>[,…] --to <field>` (events projects): writes `[[mail]] on` and `worker/src/consumers/mail_<name>.rs`, regenerates `registry.rs`, adds the `sent_mails` migration once; `--to` must be a `String` field of every event's snapshot, fields named after `--` must be in every snapshot with the same type (none → the snapshot's printable fields but `--to`) |
-| `puerto validate`                               | Validates names, types, duplicates, and that every declared entity exists on disk; `events` is `db`/`kafka` and needs `db = true`; custom events follow `generate event`'s rules; consumers are snake_case, unique, name declared events and have their file on disk; mails are snake_case, unique, have their files on disk, and `on` (events projects only) names declared events; `auth` is `oidc`/`local` (`local` needs `db`); `public`/`roles` only in auth projects, naming the entity's use cases, not both for one; `User`, `Me`, `Auth` are reserved entity names in auth projects; a `references` names another declared CRUD entity and is a `Uuid` / `Option<Uuid>`; drift: a `public` handler takes no `BearerAuth`, every other one does, and every role has its `#[require_role("<role>")]` |
+| `puerto nuevo [--nombre] [--db\|--sin-db] [--eventos db\|kafka] [--auth oidc\|local] [--sin-demo] [--sin-web] [--destino]` | Crea puerto.toml desde la plantilla con la entidad Saludo; `--eventos` (necesita `--db`) escribe `[proyecto] eventos` y la migración del outbox; `--auth` escribe `[proyecto] auth` y lista el caso de uso del Saludo en `publicos` (`local` necesita `--db`) |
+| `puerto generar scaffold <Nombre>`              | Inserta o actualiza el bloque `[[entidad]]`, regenera `cableado` y `bootstrap.rs`. En proyectos con auth, `--publico <uc>[,…]` y `--rol <uc>=<rol>[,…]` fijan `publicos` / `roles` (se comprueban antes de escribir; un re-scaffold sin ellos conserva los del bloque) |
+| `puerto generar scaffold <Nombre> -- nombre:Tipo` | Igual, con `[[entidad.campos]]` sacados de los argumentos finales               |
+| `puerto generar dominio <Nombre> -- nombre:Tipo` | Registra la entidad **con sus campos**, para que los comandos por capa posteriores los vean |
+| `puerto generar bootstrap [--permitir-faltantes]` | Regenera `cableado`, `bootstrap.rs` (y `web/…/core/generated/*`); se niega si una entidad declarada no tiene código en disco |
+| `puerto generar caso-de-uso <Entidad> <accion>` | Añade la acción a `casos_de_uso`, escribe su fichero en `aplicacion_<c>` con su `pub mod`, añade el campo a `Api<Entidad>`, regenera el cableado. Rechaza una acción que ya existe |
+| `puerto generar objeto-valor <Nombre> <tipo>`   | Añade un bloque `[[objeto_valor]]`. Rechaza nombres o tipos inválidos y duplicados |
+| `puerto generar evento <Entidad> <nombre>`      | Proyectos con eventos, entidades CRUD: añade a `[[entidad]] eventos`, regenera `eventos.rs`. Rechaza un nombre CRUD, un duplicado (también por variante: `publicado` = `producto_publicado`) o un nombre que no es snake_case. No toca ningún caso de uso |
+| `puerto generar web <Nombre> [--forzar]`        | Proyectos con web: el slice del frontend de la entidad + `core/generated/*`. No toca puerto.toml; rechaza una entidad no declarada o no CRUD |
+| `puerto generar migracion <nombre>`             | Crea una migración en `migraciones/` (solo proyectos `--db`) — no toca puerto.toml. La versión es única aunque sea en el mismo segundo |
+| `puerto generar consumidor <nombre> --tras <tipo>[,…]` | Proyectos con eventos (`db` o `kafka`): añade `[[consumidor]]`, escribe `presentacion/worker/src/consumidores/<nombre>.rs` (nunca lo sobrescribe), añade su `pub mod` a `consumidores.rs` (ordenado), regenera `generado/registro.rs`. Rechaza un nombre existente, un tipo de evento no declarado, un nombre que no es snake_case o uno cuyo tipo ya usa el worker |
+| `puerto generar correo <nombre> [-- campo:Tipo …]` | Cualquier proyecto: añade `[[correo]]`, escribe el puerto en `dominio_correo`, el enviador con plantillas en `infra_correo` y las tres plantillas (`asunto.txt`, `cuerpo.html`, `cuerpo.txt`; nunca las sobrescribe) y sus `pub mod`. El primero añade `puerto-correo`, Mailpit, `SMTP_URL` / `MAIL_FROM`, `make correo/ui`. Campos: solo primitivos y `opt:`, nunca el destinatario (siempre está); sin campos → `nombre:String`. Rechaza un nombre existente, uno que no es snake_case o es palabra clave, un objeto valor, `!`, `vec:`/`map`. `--tras <tipo>[,…] --para <campo>` (proyectos con eventos): escribe `[[correo]] tras` y `presentacion/worker/src/consumidores/correo_<nombre>.rs`, regenera `registro.rs`, añade una vez la migración de `correos_enviados`; `--para` tiene que ser un campo `String` del snapshot de cada evento, y los campos tras `--` tienen que estar en cada snapshot con el mismo tipo (sin ellos → los campos imprimibles del snapshot salvo `--para`) |
+| `puerto validar`                                | Valida nombres, tipos, duplicados, y que cada entidad declarada existe en disco; `eventos` es `db`/`kafka` y necesita `db = true`; los eventos propios siguen las reglas de `generar evento`; los consumidores son snake_case, únicos, nombran eventos declarados y tienen su fichero en disco; los correos son snake_case, únicos, tienen sus ficheros en disco, y `tras` (solo proyectos con eventos) nombra eventos declarados; `auth` es `oidc`/`local` (`local` necesita `db`); `publicos`/`roles` solo en proyectos con auth, con casos de uso de la entidad, nunca los dos para uno; `Correo` es un nombre de entidad reservado, y `Usuario`, `Me`, `Auth` en proyectos con auth; una `referencia` nombra otra entidad CRUD declarada, es un `Uuid` / `Option<Uuid>` y no cierra un ciclo; deriva: un handler `publicos` no recibe `BearerAuth`, todos los demás sí, y cada rol tiene su `#[requiere_rol("<rol>")]` |
 
-`db` is a **project-level** setting (`[project] db`), chosen once by `puerto new --db`. There is
-no `--db` flag on `generate scaffold`: it reads the project setting from puerto.toml.
+`db` es un ajuste **del proyecto** (`[proyecto] db`) que se elige una vez con `puerto nuevo --db`.
+`generar scaffold` no tiene `--db`: lee el ajuste del proyecto en puerto.toml.

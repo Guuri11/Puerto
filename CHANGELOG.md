@@ -1,3 +1,48 @@
+## [Unreleased]
+
+One crate per context and layer, and everything Puerto generates in Spanish (PLAN Phase 19,
+[ADR-0023](docs/adr/0023-crates-por-contexto-y-capa.md),
+[ADR-0024](docs/adr/0024-lo-generado-en-castellano.md); the vocabulary is
+[docs/glosario.md](docs/glosario.md)). Puerto's own source code, its website, README and CLI
+messages stay in English; the frontend (`web/`) keeps its internal vocabulary until its own phase,
+and follows the API's contract (JSON fields, routes, error codes).
+
+### Breaking
+
+- **Layout**: `business/`, `infrastructure/`, `presentation/` are gone. Each entity is a context,
+  `contextos/<c>/{dominio,aplicacion,infraestructura,rest}` with the crates `dominio_<c>`,
+  `aplicacion_<c>`, `infra_<c>`, `rest_<c>`; `nucleo` holds the shared value objects;
+  `presentacion/{cableado,api,worker}` the wiring and the binaries; `migraciones/` + `migrador`
+  every migration and the one `MIGRADOR` the Postgres tests run on. A use case is one file
+  (contract + implementation); doubles live next to their trait (`dobles`, feature `pruebas`)
+- **`puerto.toml`** in Spanish: `[proyecto] nombre`, `[[entidad]] nombre casos_de_uso publicos
+  roles eventos`, `[[entidad.campos]] nombre tipo unico objeto_valor clase_objeto_valor variantes
+  referencia`, `[[objeto_valor]]`, `[[consumidor]]`, `[[correo]] tras`
+- **The CLI** in Spanish: `puerto nuevo`, `puerto validar`, `puerto listar`, `puerto generar
+  scaffold|dominio|aplicacion|repositorio|presentacion|caso-de-uso|objeto-valor|migracion|evento|consumidor|correo|bootstrap|web|snippets`;
+  `--nombre`, `--destino`, `--forzar`, `--permitir-faltantes`, `--sin-db`, `--sin-web`,
+  `--sin-demo`, `--eventos`, `--publico`, `--rol`, `--tras`, `--para`
+- **The runtime crates**: `puerto-core` → `puerto-nucleo`, `puerto-events` → `puerto-eventos`,
+  `puerto-mail` → `puerto-correo`, and every crate's API, tables and messages in Spanish
+  (`ErrorRepositorio`, `PeticionPagina`, `Pagina { elementos, total, limite, desplazamiento }`,
+  `RespuestaError { codigo, mensaje }`, `ManejadorEvento`, `EnviadorCorreo`, `Autenticador`,
+  `#[requiere_rol]`, `ConfigKafka::asegurar_topics`…)
+- **Generated code** in Spanish: types (`RepositorioProducto`, `CrearProductoImpl`,
+  `MadreProducto`, `DtoProducto`, `RespuestaCrearProducto`), methods (`ejecutar`, `guardar`,
+  `buscar_por_id`, `construir`, `aleatorio`, `con_<campo>`), system fields (`creado_en`,
+  `actualizado_en`, `borrado`, `borrado_en`), error variants and codes
+  (`producto.validacion.nombre_vacio`, `producto.no_encontrado`), events (`producto_creado`),
+  tables and routes with Spanish plurals (`/productos`, `?limite=&desplazamiento=`), tests
+  (`deberia_…_cuando_…`, `// Preparar // Actuar // Comprobar`), logs, comments and the `AGENTS.md`
+  of every project. The demo entity is `Saludo` (`GET /saludos/:nombre`); auth's is `Usuario`
+  (`POST /auth/registro`); mail templates are `asunto.txt`, `cuerpo.html`, `cuerpo.txt`; the
+  generated Makefile's targets are `test/dominio`, `generar/entidad`, `db/reiniciar`,
+  `eventos/descartados`, `correo/ui`, `auth/conceder`…
+- An entity declared without fields gets `nombre: String` (was `name: String`)
+
+No migration guide: there are no generated projects to migrate (the exception to `release.md`
+decided on 2026-11-14 for this release).
+
 ## [0.20.0] - 2026-10-14
 
 References between entities (PLAN Phase 18,

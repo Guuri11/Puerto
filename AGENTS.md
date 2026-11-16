@@ -1,397 +1,471 @@
-# Puerto — AI Agent Instructions
+# Puerto — Instrucciones para agentes
 
-Puerto is a Rust CLI tool that scaffolds full-stack DDD projects. It uses `cargo-generate` to create 3-crate workspaces following Clean Architecture (Hexagonal / Ports & Adapters).
+Puerto es una CLI en Rust que genera proyectos full-stack DDD. Usa `cargo-generate` para crear
+workspaces con un crate por contexto y capa (ADR-0023), siguiendo Clean Architecture (hexagonal,
+puertos y adaptadores). Todo lo que genera va en castellano (ADR-0024, `docs/glosario.md`); el
+código fuente de Puerto sigue en inglés.
 
-## Tech Stack
+## Stack
 
 - Rust (edition 2024) · cargo-generate · poem-openapi · tokio
-- mockall (testing) · thiserror (errors) · async-trait
+- mockall (tests) · thiserror (errores) · async-trait
 
-## Puerto's Own Structure
+## La estructura de Puerto
 
 ```
 crates/
-  nucleo/           — `puerto-nucleo`, a runtime crate (ADR-0017): `ErrorRepositorio`, `PeticionPagina`,
-                      `Page<T>`; `events` (ADR-0018): `DomainEvent`, `EventEnvelope`, `EventHandler`,
-                      the delivery policy and the transport ports; `mail` (ADR-0020): `Email`, `Mailer`,
-                      `SentMails`; `auth` (ADR-0021): `Principal`, `Authenticator`, `AuthError`,
-                      `mocks::MockAuthenticator` (`test-utils`). Generated projects depend on it at
-                      the CLI's minor; same workspace version as `cli/`. The compile matrix builds
-                      against this checkout
-                      (`[patch.crates-io]`, added by the test harness only)
-  macros/           — `puerto-macros` (proc-macro, ADR-0021 § 4): `#[require_role("<role>")]`, reached
-                      as `puerto_web::require_role` — a 403 check at the top of a handler that takes
-                      `auth: BearerAuth`; on a misuse it emits the method unchanged next to the error
-  web/              — `puerto-web`, the presentation runtime: `App` (tracing, CORS, graceful
-                      shutdown), `Config::from_env`, the health probes, `ErrorResponse`; `auth`:
-                      `BearerAuth` (asks the `Arc<dyn Authenticator>` the routes carry as data;
-                      401 `auth.unauthenticated`, 503 `auth.unavailable`), `forbidden()`
-  sqlx/             — `puerto-sqlx`, the Postgres runtime (`--db` projects): the pool,
-                      `run_migrations(pool, &MIGRATOR)`, `ping`, `map_sqlx_error` (`_with` an entity's
-                      `ForeignKey`s: `23503` → `MissingReference(field)`, ADR-0022); for events projects
-                      `uow::PgTransaction`, `events::{PgOutbox, PgDeliveries, PgSubscription,
-                      PgDeadLetters}` and `migrations/outbox.sql` (the CLI's
-                      `templates/infrastructure/outbox.sql` must match it byte for byte — tested);
-                      for mail (ADR-0020) `mail::PgSentMails` and `migrations/sent_mails.sql` (same
-                      byte-for-byte rule with `templates/infrastructure/sent_mails.sql`); for local
-                      accounts (ADR-0021) `auth::{PgSessions, PgCredentials}`, the session token
-                      (256 bits, the row keeps its SHA-256), `session_ttl_from_env` and
-                      `migrations/{users,auth}.sql` (byte for byte with `templates/auth/users.sql`
-                      and `templates/auth/local/auth.sql`)
-  eventos/          — `puerto-eventos`, the worker runtime (`--events` projects, ADR-0018): `Relay`
-                      (outbox → `EventPublisher`), `Consumer` (subscription → `EventHandler`, `decide`,
-                      dead letter before retiring), `Worker` + `Bucles` (health on `WORKER_PORT`,
-                      SIGTERM drain), `ConfigWorker::from_env`
-  kafka/            — `puerto-kafka`, the Kafka transport (`--events kafka`, ADR-0018): `ConfigKafka`
-                      (`KAFKA_BROKERS`, `KAFKA_TOPIC_PREFIX`, `ensure_topics`), `PublicadorKafka`,
-                      `SuscripcionKafka` (one record per batch, in-process retry, commit after
-                      the outcome). `make test/kafka` runs it against Redpanda. Building it needs
-                      `cmake` and the libcurl headers (librdkafka 2.12 includes `curl/curl.h`
-                      even without curl support)
-  correo/           — `puerto-correo`, mail (ADR-0020): `ConfigCorreo` (`SMTP_URL`, `MAIL_FROM`),
-                      `EnviadorCorreoSmtp` (lettre, rustls; 5xx → `Permanent`, the rest → `Transient`),
-                      `Templates` (minijinja, strict, the subject on one line), `enviar_una_vez` (the
-                      sent log, then the send, then the mark) and, behind `test-utils`,
-                      `EnviadorCorreoGrabador` / `CorreosEnviadosEnMemoria`. The ports (`Email`, `Mailer`,
-                      `SentMails`) are `puerto-nucleo`'s. `make test/mail` runs it against Mailpit
-  auth/             — `puerto-auth`, auth adapters (ADR-0021). Feature `oidc`: `ConfigOidc`
-                      (`AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_ROLES_CLAIM`), `ClaimRoles` (a top-level
-                      name as is, else a dotted path), `AutenticadorOidc::discover` (RS256/ES256
-                      only, `iss`/`aud`/`exp`/`nbf` ± 60 s, an unknown `kid` refetches the JWKS at
-                      most once a minute; the `Principal`'s `user_id` is nil). Its tests enable the
-                      feature through a dev-dependency on itself. `make test/auth` runs it against
-                      Keycloak
-  cli/              — The puerto binary
-    src/main.rs     — CLI definition + dispatch
-    src/commands/   — Command handlers (new, list, validate)
-    src/generators/ — Per-layer generators + bootstrap, conflict (overwrite guard), consistency (drift,
-                      incl. the textual auth drift of routes.rs), auth (`new --auth`: User, provisioning,
-                      `GET /me`, Keycloak),
-                      web (the frontend slice + web/src/presentation/core/generated/*),
-                      events (events.rs, the unit of work ports, `generate event`),
-                      worker (the `worker/` crate, registry.rs, `generate consumer`),
-                      layout (where each piece of a generated project lives: every project path is
-                      asked from it, never spelled — Phase 19 moves the structure there)
-    src/templates/  — .tera templates the generators render (embedded via include_dir)
-    src/patchers/   — lib.rs / api.rs / routes.rs patchers
-    src/runtime.rs  — Which runtime crates a project depends on, at which version (rendered from
-                      the CLI's own; `puerto validate` warns on a minor mismatch)
-    src/puerto_toml.rs — puerto.toml serde structs + read/write/add_entity + field parser
-    src/validation.rs  — Name predicates shared by the field parser and `puerto validate`
-    src/tests.rs    — Test root: shared helpers + one module per area in src/tests/
-    src/tests/      — Structural tests + `#[ignore]` compile matrix (`make test/full`)
-    template/       — The "basic" DDD template (edit directly here)
-      Cargo.toml          — Workspace manifest (workspace only, no [package]; edition 2024, resolver 3)
-      cargo-generate.toml — Template config (controls which files get substitution)
-      rust-toolchain.toml — Pins the toolchain the matrix lints with (ADR-0009)
-      AGENTS.md, CLAUDE.md — Agent rules shipped to every project (ADR-0010; tested)
-      web/                — React + daisyUI frontend on Bun (ADR-0013); `--no-web` removes it.
-                            Never `bun install` here: the template is embedded (tested)
-      puerto.toml         — Source of truth for entities ({{project-name}} substituted)
-      business/           — Domain + Application crate
-      infrastructure/     — Adapters crate
-      presentation/       — REST API crate
-        src/
-          main.rs.liquid        — Entry point: `puerto_web::Config::from_env()` + `App::new(config).try_serve(…)`
-          app.rs                — The project's hook: `configure(routes)`, written once, never regenerated
-          generated.rs          — pub mod bootstrap; (static, never changes)
-          generated/
-            bootstrap.rs        — AUTO-GENERATED, full DI wiring (the template copy is tested to
-                                  match the generator byte for byte)
-docs/adr/           — Architecture Decision Records: the *why* behind conventions (start here)
+  nucleo/           — `puerto-nucleo`, crate del runtime (ADR-0017): `ErrorRepositorio`, `PeticionPagina`,
+                      `Pagina<T>`; `eventos` (ADR-0018): `EventoDominio`, `SobreEvento`, `ManejadorEvento`,
+                      la política de entrega y los puertos de transporte; `correo` (ADR-0020): `Correo`,
+                      `EnviadorCorreo`, `CorreosEnviados`; `auth` (ADR-0021): `Principal`, `Autenticador`,
+                      `ErrorAuth`, `auth::dobles::{MockAutenticador, MadrePrincipal}` (feature `pruebas`).
+                      Los proyectos generados dependen de él en la minor de la CLI; misma versión de
+                      workspace que `cli/`. El compile matrix compila contra este checkout
+                      (`[patch.crates-io]`, que solo añade el arnés de tests)
+  macros/           — `puerto-macros` (proc-macro, ADR-0021 § 4): `#[requiere_rol("<rol>")]`, usado como
+                      `puerto_web::requiere_rol` — un 403 al principio de un handler que recibe
+                      `auth: BearerAuth`; si se usa mal, emite el método sin tocar junto al error
+  web/              — `puerto-web`, el runtime de presentación: `App` (tracing, CORS, apagado ordenado),
+                      `Config::from_env`, las sondas de salud, `RespuestaError { codigo, mensaje }`;
+                      `auth`: `BearerAuth` (pregunta al `Arc<dyn Autenticador>` que las rutas llevan
+                      como data; 401 `auth.no_autenticado`, 503 `auth.no_disponible`), `prohibido()`
+  sqlx/             — `puerto-sqlx`, el runtime de Postgres (proyectos `--db`): `crear_pool_postgres`,
+                      `ejecutar_migraciones(pool, &MIGRADOR)`, `ping`, `mapear_error_sqlx` (`_con` las
+                      `ClaveForanea` de una entidad: `23503` → `ReferenciaInexistente(campo)`, ADR-0022);
+                      para proyectos con eventos, `uow::TransaccionPostgres`,
+                      `eventos::{OutboxPostgres, EntregasPostgres, SuscripcionPostgres, DescartadosPostgres}`
+                      y `migrations/outbox.sql` (el `templates/infrastructure/outbox.sql` de la CLI debe
+                      coincidir byte a byte — hay test); para correo (ADR-0020)
+                      `correo::CorreosEnviadosPostgres` y `migrations/sent_mails.sql` (misma regla con
+                      `templates/infrastructure/sent_mails.sql`); para cuentas locales (ADR-0021)
+                      `auth::{SesionesPostgres, CredencialesPostgres}`, el token de sesión (256 bits; la
+                      fila guarda su SHA-256), `ttl_sesion_from_env` y `migrations/{users,auth}.sql`
+                      (byte a byte con `templates/auth/users.sql` y `templates/auth/local/auth.sql`)
+  eventos/          — `puerto-eventos`, el runtime del worker (proyectos `--eventos`, ADR-0018): `Relay`
+                      (outbox → `PublicadorEventos`), `Consumidor` (suscripción → `ManejadorEvento`,
+                      `decidir`, descarte antes de retirar), `Worker` + `Bucles` (salud en `WORKER_PORT`,
+                      drenaje con SIGTERM), `ConfigWorker::from_env`
+  kafka/            — `puerto-kafka`, el transporte Kafka (`--eventos kafka`, ADR-0018): `ConfigKafka`
+                      (`KAFKA_BROKERS`, `KAFKA_TOPIC_PREFIX`, `asegurar_topics`), `PublicadorKafka`,
+                      `SuscripcionKafka` (un registro por lote, reintento en proceso, commit tras el
+                      resultado). `make test/kafka` lo prueba contra Redpanda. Compilarlo pide `cmake` y
+                      las cabeceras de libcurl (librdkafka 2.12 incluye `curl/curl.h` aunque no use curl)
+  correo/           — `puerto-correo`, el correo (ADR-0020): `ConfigCorreo` (`SMTP_URL`, `MAIL_FROM`),
+                      `EnviadorCorreoSmtp` (lettre, rustls; 5xx → `Permanente`, el resto → `Transitorio`),
+                      `Plantillas` (minijinja, estricto, el asunto en una línea), `enviar_una_vez` (el
+                      registro de enviados, luego el envío, luego la marca) y, tras la feature `pruebas`,
+                      `EnviadorCorreoGrabador` / `CorreosEnviadosEnMemoria`. Los puertos (`Correo`,
+                      `EnviadorCorreo`, `CorreosEnviados`) son de `puerto-nucleo`. `make test/mail` lo
+                      prueba contra Mailpit
+  auth/             — `puerto-auth`, adaptadores de auth (ADR-0021). Feature `oidc`: `ConfigOidc`
+                      (`AUTH_ISSUER`, `AUTH_AUDIENCE`, `AUTH_ROLES_CLAIM`), `ClaimRoles` (un nombre de
+                      primer nivel tal cual; si no, una ruta con puntos), `AutenticadorOidc::descubrir`
+                      (solo RS256/ES256, `iss`/`aud`/`exp`/`nbf` ± 60 s, un `kid` desconocido vuelve a
+                      pedir el JWKS como mucho una vez por minuto; el `id_usuario` del `Principal` es
+                      nil). Feature `local`: `HasherArgon2`. Sus tests activan la feature con una
+                      dev-dependency sobre sí mismo. `make test/auth` lo prueba contra Keycloak
+  cli/              — El binario `puerto`
+    src/main.rs     — Definición de la CLI y despacho
+    src/commands/   — Handlers de comandos (new, list, validate)
+    src/generators/ — Generadores por capa + bootstrap (`cableado` y `bootstrap.rs`), crates (el
+                      `Cargo.toml` y el `lib.rs` plano de cada crate de un contexto), merge (contrato e
+                      implementación de un caso de uso en un fichero), conflict (guarda de
+                      sobrescritura), consistency (deriva, incluida la deriva textual de auth en
+                      `rutas.rs`), auth (`nuevo --auth`: el contexto `usuario`, aprovisionamiento,
+                      `GET /me`, Keycloak), web (el slice del frontend +
+                      web/src/presentation/core/generated/*), events (`eventos.rs`, los puertos de
+                      unidad de trabajo, `generar evento`), worker (`presentacion/worker`,
+                      `registro.rs`, `generar consumidor`), mail (el contexto `correo`, `generar correo`),
+                      naming (pascal/snake, el plural en castellano, los verbos CRUD), layout (dónde va
+                      cada pieza de un proyecto generado: toda ruta del proyecto se le pide, nunca se
+                      escribe a mano)
+    src/templates/  — Las plantillas .tera que renderizan los generadores (embebidas con include_dir)
+    src/patchers/   — `routes_rs.rs`: añade a `Api<Entidad>` el campo de cada caso de uso nuevo
+    src/runtime.rs  — De qué crates del runtime depende un proyecto y en qué versión (se renderiza con
+                      la de la CLI; `puerto validar` avisa si la minor no coincide)
+    src/puerto_toml.rs — Structs serde de puerto.toml + read/write/add_entity + parser de campos
+    src/validation.rs  — Predicados de nombres que comparten el parser de campos y `puerto validar`
+    src/tests.rs    — Raíz de los tests: helpers compartidos + un módulo por área en src/tests/
+    src/tests/      — Tests estructurales + compile matrix `#[ignore]` (`make test/full`) + snapshots
+    template/       — La plantilla base (se edita aquí directamente)
+      Cargo.toml.liquid   — Manifiesto del workspace (solo workspace, sin [package]; edition 2024,
+                            resolver 3; `members` por glob; los crates internos en
+                            `[workspace.dependencies]`)
+      cargo-generate.toml — Configuración de la plantilla (qué ficheros llevan sustitución)
+      rust-toolchain.toml — Fija la toolchain con la que lintea el matrix (ADR-0009)
+      AGENTS.md, CLAUDE.md, contextos/AGENTS.md, presentacion/AGENTS.md
+                          — Reglas para agentes que lleva cada proyecto (ADR-0010; con tests)
+      web/                — Frontend React + daisyUI sobre Bun (ADR-0013); `--sin-web` lo quita.
+                            Nunca `bun install` aquí: la plantilla va embebida (hay test)
+      puerto.toml         — Fuente de verdad de las entidades ({{project-name}} sustituido)
+      nucleo/             — Crate `nucleo`: los objetos valor compartidos
+      contextos/<c>/{dominio,aplicacion,infraestructura,rest}/ — El demo `Saludo`
+      presentacion/
+        cableado/         — GENERADO entero, `Cargo.toml.liquid` incluido
+        api/src/
+          main.rs         — Punto de entrada: `puerto_web::Config::from_env()` +
+                            `App::new(config).intentar_servir(…)`
+          lib.rs          — `mod app; pub mod generado { pub mod bootstrap; }`
+          app.rs          — El hook del proyecto: `configurar(rutas)`, se escribe una vez, nunca se
+                            regenera
+          generado/bootstrap.rs — GENERADO, monta las `Api*` sobre `cableado`
+        (la copia de `bootstrap.rs` y de `cableado/` de la plantilla debe coincidir byte a byte con
+        el generador — hay test)
+docs/adr/           — Architecture Decision Records: el *porqué* de las convenciones (empieza aquí)
+docs/glosario.md    — Los nombres de todo lo generado. Una palabra nueva se pregunta y se añade antes
 ```
 
-## puerto.toml — Source of Truth
+## puerto.toml — Fuente de verdad
 
-Every generated project has a `puerto.toml` at the root:
+Cada proyecto generado tiene un `puerto.toml` en la raíz:
 
 ```toml
-[project]
-name = "my-app"
+[proyecto]
+nombre = "mi-app"
 
-[[entity]]
-name = "Greeting"             # PascalCase
-use_cases = ["get_greeting"]   # snake_case action names
+[[entidad]]
+nombre = "Saludo"                    # PascalCase
+casos_de_uso = ["obtener_saludo"]    # acciones en snake_case
 
-[[entity]]
-name = "Product"
-use_cases = ["create_product", "list_products"]
+[[entidad]]
+nombre = "Producto"
+casos_de_uso = ["crear_producto", "listar_productos"]
 
-[[entity.fields]]
-name = "name"                  # snake_case field name
-type = "String"                # Rust type from the type registry
+[[entidad.campos]]
+nombre = "nombre"                    # nombre del campo en snake_case
+tipo = "String"                      # tipo Rust del registro de tipos
 
-[[entity.fields]]
-name = "price"
-type = "i64"
+[[entidad.campos]]
+nombre = "precio"
+tipo = "i64"
 
-[[entity.fields]]
-name = "sku"
-type = "String"
-unique = true                  # CREATE UNIQUE INDEX products_sku_key … WHERE deleted = false (SQL only)
+[[entidad.campos]]
+nombre = "sku"
+tipo = "String"
+unico = true                         # CREATE UNIQUE INDEX productos_sku_key … WHERE borrado = false (solo SQL)
 
-[[entity.fields]]
-name = "description"
-type = "Option<String>"        # nullable field
+[[entidad.campos]]
+nombre = "descripcion"
+tipo = "Option<String>"              # campo nullable
 
-[[entity.fields]]
-name = "tags"
-type = "Vec<String>"           # array field
+[[entidad.campos]]
+nombre = "etiquetas"
+tipo = "Vec<String>"                 # campo array
 ```
 
-**Rules:**
+**Reglas:**
 
-- `puerto generate scaffold <Name>` appends a new `[[entity]]` block automatically
-- Re-scaffolding an entity that already has generated files is **refused** unless `--force`
-  (interactively it asks). With `--force`, the `[[entity]]` block is updated in place so the
-  manifest keeps describing the code on disk — use cases added via `generate use-case` survive
-- `presentation/src/generated/bootstrap.rs` is regenerated from puerto.toml on every scaffold run
-- **Never hand-edit `generated/bootstrap.rs`** — run `puerto generate bootstrap` instead
-- All derived identifiers come from `name` (PascalCase) and `use_cases` entries (snake_case)
-- If `entity.fields` is empty or absent, entities default to `name: String` (backward compatible)
-- Field types must match the type registry — run `puerto validate` to check
-- **Reserved names** (rejected by both the CLI and `puerto validate`): the system fields `id`,
-  `created_at`, `updated_at`, `deleted`, `deleted_at`; Rust keywords (`type`, `match`, `move`, …);
-  entity names that collide with generated code (`Error`, `String`, `Tracing`, `Db`, `Type`, …); in
-  `--db` projects, PostgreSQL reserved words as field names (`desc`, `order`, `user`, …)
-- Duplicate field names are rejected; use case actions must be snake_case
-- `generate use-case` refuses an action that already exists (including the scaffolded CRUD ones)
-  and adds the use case's field to `{Entity}Api` in `routes.rs`, so `bootstrap.rs` keeps compiling
-- `generate value-object` validates the name (PascalCase), the inner type and duplicates before
-  writing puerto.toml
-- `puerto new --name` must be lowercase letters, digits, `-`, `_`, starting with a letter
-- `puerto validate` also checks that every declared `[[entity]]` has code on disk — a declared but
-  unscaffolded entity makes `bootstrap.rs` import modules that do not exist
+- `puerto generar scaffold <Nombre>` añade el bloque `[[entidad]]` automáticamente
+- Volver a hacer scaffold de una entidad que ya tiene ficheros generados se **rechaza** salvo con
+  `--forzar` (en modo interactivo, pregunta). Con `--forzar`, el bloque `[[entidad]]` se actualiza
+  en su sitio para que el manifiesto siga describiendo el código en disco — los casos de uso
+  añadidos con `generar caso-de-uso` se conservan
+- `presentacion/cableado/` y `presentacion/api/src/generado/bootstrap.rs` se regeneran desde
+  puerto.toml en cada scaffold
+- **Nunca edites a mano `cableado/` ni `generado/bootstrap.rs`** — ejecuta `puerto generar bootstrap`
+- Todos los identificadores derivados salen de `nombre` (PascalCase) y de las entradas de
+  `casos_de_uso` (snake_case)
+- Si `campos` está vacío o no existe, la entidad lleva por defecto `nombre: String` (también un
+  correo sin campos)
+- Los tipos de los campos deben estar en el registro de tipos — `puerto validar` lo comprueba
+- **Nombres reservados** (los rechazan la CLI y `puerto validar`): los campos de sistema `id`,
+  `creado_en`, `actualizado_en`, `borrado`, `borrado_en`; las palabras clave de Rust (`type`,
+  `match`, `move`, …); nombres de entidad que chocan con el código generado (`Error`, `String`,
+  `Option`, `Uuid`, …) o con un contexto que ya existe (`Correo`; `Usuario`, `Me`, `Auth` en
+  proyectos con auth); en proyectos `--db`, palabras reservadas de PostgreSQL como nombre de campo
+  (`desc`, `order`, `user`, …)
+- Se rechazan los nombres de campo duplicados; las acciones de los casos de uso van en snake_case
+- `generar caso-de-uso` rechaza una acción que ya existe (incluidas las CRUD del scaffold), escribe
+  un solo fichero en `aplicacion_<c>` con su `pub mod`, y añade el campo del caso de uso a
+  `Api<Entidad>` en `rutas.rs`, para que `bootstrap.rs` siga compilando
+- `generar objeto-valor` valida el nombre (PascalCase), el tipo interno y los duplicados antes de
+  escribir puerto.toml
+- `puerto nuevo --nombre` admite minúsculas, dígitos, `-` y `_`, y empieza por letra
+- `puerto validar` también comprueba que cada `[[entidad]]` declarada tiene código en disco — una
+  entidad declarada sin scaffold hace que `cableado` y `bootstrap.rs` importen crates que no
+  existen — y que ninguna referencia cierra un ciclo entre contextos
 
-### Type Registry
+### Registro de tipos
 
-| Rust Type | SQL Type | OpenAPI | Default (tests) |
-|-----------|----------|---------|------------------|
+| Tipo Rust | Tipo SQL | OpenAPI | Valor por defecto (tests) |
+|-----------|----------|---------|---------------------------|
 | `String` | `TEXT` | `string` | `"example"` |
 | `i64` | `BIGINT` | `integer(int64)` | `42` |
 | `bool` | `BOOLEAN` | `boolean` | `true` |
 | `f64` | `DOUBLE` | `number(double)` | `1.5` |
 | `Uuid` | `UUID` | `string(uuid)` | `Uuid::new_v4()` |
 | `DateTime<Utc>` | `TIMESTAMPTZ` | `string(date-time)` | `Utc::now()` |
-| `Option<T>` (`T` = `String`, `i64`, `bool`, `f64`, `Uuid`, `DateTime<Utc>`) | nullable SQL | `T?` | `None` |
+| `Option<T>` (`T` = `String`, `i64`, `bool`, `f64`, `Uuid`, `DateTime<Utc>`) | SQL nullable | `T?` | `None` |
 | `Vec<String>` | `TEXT[]` | `array[string]` | `vec![]` |
 | `Vec<i64>` | `BIGINT[]` | `array[integer]` | `vec![]` |
-| `HashMap<String, String>` | `JSONB` (row field `sqlx::types::Json<…>`) | `object` | `HashMap::new()` |
+| `HashMap<String, String>` | `JSONB` (campo de la fila `sqlx::types::Json<…>`) | `object` | `HashMap::new()` |
 
-See `.claude/rules/puerto-toml.md` for the full derivation table and field rules.
+La tabla completa de derivación y las reglas de los campos, en `.claude/rules/puerto-toml.md`.
 
-## Generated Project Architecture
+## Arquitectura del proyecto generado
 
-Every generated project is a Cargo workspace. Dependency rule (inward only):
+Cada proyecto generado es un workspace de Cargo con un crate por contexto y capa (ADR-0023); en la
+v1, cada entidad es un contexto. La regla de dependencias (solo hacia dentro) la impone Cargo:
 
 ```
-Presentation → Infrastructure → Application → Domain
+rest_<c> → aplicacion_<c> → dominio_<c> → nucleo, puerto-nucleo
+infra_<c> → dominio_<c>                    (solo cableado y los binarios dependen de infra_*)
 ```
 
-- **Domain** — pure Rust, no external crates beyond std/async-trait/thiserror and `puerto-nucleo`
-- **Application** — implements use case traits; imports domain only
-- **Infrastructure** — adapters (DB, HTTP); imports domain + application
-- **Presentation** — poem-openapi REST API; imports all layers
+- **Dominio** (`dominio_<c>`) — Rust puro, sin más crates externos que std, async-trait, thiserror
+  y `puerto-nucleo`
+- **Aplicación** (`aplicacion_<c>`) — un fichero por caso de uso: params, trait, doble,
+  implementación y tests; importa solo el dominio
+- **Infraestructura** (`infra_<c>`) — adaptadores (en memoria, Postgres); importa el dominio
+- **REST** (`rest_<c>`) — API REST con poem-openapi; importa aplicación y dominio
+- **Presentación** (`presentacion/`) — `cableado` (la raíz de composición), `api` y `worker` (los
+  binarios)
 
-## Critical Rules
+Una referencia `cliente_id:ref:Cliente` hace que `dominio_pedido` dependa de `dominio_cliente`;
+Cargo no admite ciclos, así que el mapa de contextos lo vigila el compilador.
 
-- **Template variables**: use `{{project-name}}` in `.toml` files (regex substitution), use `{{crate_name}}` in `.liquid` files (Liquid templating). Never mix them.
-- **cargo-generate.toml include list**: must list every file that needs variable substitution. Files NOT listed are copied verbatim.
-- **`no_workspace: true`** must be set in `GenerateArgs` — prevents cargo-generate from trying to add the generated project as a member of Puerto's own workspace.
-- **Template `.liquid` files**: cargo-generate strips the `.liquid` extension and processes Liquid syntax. Use for `main.rs.liquid` → `main.rs`.
-- **Never add `[package]` to the template root `Cargo.toml`** — it is a workspace manifest only.
-- **`generated/bootstrap.rs` is auto-generated** — never edit manually, never commit hand-edits to it in generated projects.
+## Reglas críticas
 
-## CLI Commands
+- **Variables de la plantilla**: `{{project-name}}`, solo en los ficheros que lista el `include` de
+  `cargo-generate.toml` (`puerto.toml`, `presentacion/api/Cargo.toml`, `Makefile`,
+  `web/index.html`). Los ficheros que no están en la lista se copian tal cual.
+- **Los `Cargo.toml` de la plantilla se llaman `Cargo.toml.liquid`**: cargo-generate les quita la
+  extensión. El raíz lleva `PUERTO_RUNTIME_VERSION`, que `commands/new.rs` sustituye por la versión
+  de la CLI (`runtime::render_manifest`).
+- **`no_workspace: true`** tiene que ir en `GenerateArgs` — evita que cargo-generate intente añadir
+  el proyecto generado como miembro del workspace de Puerto.
+- **Nunca añadas `[package]` al `Cargo.toml.liquid` raíz de la plantilla** — es solo un manifiesto
+  de workspace.
+- **`members` va por glob** (`contextos/*/*`, `presentacion/*`): un glob que no casa con nada,
+  Cargo lo lee como una ruta y no carga el workspace. Un proyecto `--sin-demo` no lista
+  `contextos/*/*` hasta el primer contexto; `migrador` solo aparece en los proyectos `--db`.
+- **Toda ruta de un proyecto generado se pide a `generators/layout.rs`**, nunca se escribe literal.
+- **`cableado/` y `generado/bootstrap.rs` son generados** — nunca se editan a mano ni se commitean
+  ediciones a mano en los proyectos generados.
+
+## Comandos de la CLI
 
 ```bash
-puerto new                                 # Interactive: prompts for name + db support
-puerto new --name <name>                   # Skip name prompt
-puerto new --db                            # Skip db prompt (enables SQLx/Postgres)
-puerto new --name <name> --db              # Fully non-interactive, with database
-puerto new --name <name> --no-db           # Fully non-interactive, no database
-puerto new --name <name> --no-db --destination /tmp/projects  # Control output directory
-puerto new --no-web                        # Skip the web frontend (web/ is included by default)
-puerto new --db --events db                # Domain events (ADR-0018): units of work + outbox (db | kafka)
-puerto new --auth oidc                     # Auth (ADR-0021): an OIDC provider's tokens (Auth0, Keycloak); Keycloak in compose
-puerto new --db --auth local               # Auth: accounts and sessions in this database; /auth/register|login|logout, /login + /register screens
+puerto nuevo                                   # Interactivo: pide el nombre y si lleva base de datos
+puerto nuevo --nombre <nombre>                 # Sin preguntar el nombre
+puerto nuevo --db                              # Sin preguntar por la base de datos (SQLx/Postgres)
+puerto nuevo --nombre <nombre> --db            # Sin preguntas, con base de datos
+puerto nuevo --nombre <nombre> --sin-db        # Sin preguntas, sin base de datos
+puerto nuevo --nombre <nombre> --sin-db --destino /tmp/proyectos  # Elige el directorio de salida
+puerto nuevo --sin-web                         # Sin frontend (web/ se incluye por defecto)
+puerto nuevo --sin-demo                        # Sin el demo Saludo (proyecto vacío)
+puerto nuevo --db --eventos db                 # Eventos de dominio (ADR-0018): unidades de trabajo + outbox (db | kafka)
+puerto nuevo --auth oidc                       # Auth (ADR-0021): tokens de un proveedor OIDC (Auth0, Keycloak); Keycloak en compose
+puerto nuevo --db --auth local                 # Auth: cuentas y sesiones en esta base de datos; /auth/registro|login|logout, pantallas /login y /register
 
-puerto generate scaffold <Name>                                          # Add a new DDD entity — all layers at once (infers db from puerto.toml)
-puerto generate scaffold <Name> --force                                  # Re-generate an existing entity, overwriting hand-written changes
-puerto generate scaffold <Name> -- name:String price:i64!               # Primitive fields (! = unique)
-puerto generate scaffold <Name> -- desc:opt:String tags:vec:String       # Option / Vec primitives
-puerto generate scaffold <Name> -- name:Name:String age:Age:i64         # VO fields
-puerto generate scaffold <Name> --public list_products --role delete_product=admin   # Auth projects: open routes, required roles
-puerto generate scaffold <Name> -- status:Status:enum:Active/Inactive   # Enum VO
-puerto generate scaffold <Name> -- mid:MiddleName:opt:String            # Option VO
-puerto generate scaffold <Name> -- tags:Tag:vec:String                  # Vec VO
-puerto generate scaffold Order -- customer_id:ref:Customer reviewer_id:ref:opt:Customer   # References (ADR-0022): the target's id, a foreign key
-puerto generate value-object <Name> <type>                    # Declare a shared VO in puerto.toml (e.g. Email String; DateTime shorthand ok)
-puerto generate event <Entity> <name>      # events projects: a custom event (product_published) + regenerates events.rs
-puerto generate consumer <name> --on product_created,product_published   # events projects: a worker consumer + regenerates registry.rs
-puerto generate mail <name> [-- name:String seats:i64 plan:opt:String]  # a mail: port, template mailer, templates; the first adds Mailpit
-puerto generate mail <name> --on customer_created --to email   # events projects: + the worker consumer mail_<name> that sends it once per event
-puerto generate domain <Name>              # Domain layer only: model, errors, repo trait, use cases, Object Mother
-puerto generate domain <Name> -- price:i64 status:Status:enum:Draft/Paid   # Same field syntax as scaffold — fields land in puerto.toml
-puerto generate application <Name>         # Application layer only: use case impls
-puerto generate repository <Name>          # Infrastructure layer only: InMemory or Pg repo (inferred from puerto.toml)
-puerto generate presentation <Name>        # Presentation layer only: routes, dto, responses + regenerates bootstrap
-puerto generate web <Name>                 # Web projects: the entity's frontend slice only (+ core/generated/*); --force overwrites
-puerto generate use-case <Entity> <action> # Add a use case (refuses existing actions; adds the field to {Entity}Api)
-puerto generate migration <name>           # Create a new SQLx migration file (--db projects only; versions never collide)
-puerto generate bootstrap                  # Regenerate bootstrap.rs from puerto.toml (refuses on manifest/filesystem drift)
-puerto generate bootstrap --allow-missing  # Write it anyway, even if a declared entity has no code
-puerto generate snippets                   # Write IDE snippet files (Zed + VS Code)
-puerto generate snippets --ide zed         # Zed only  (.zed/snippets/rust.json)
-puerto generate snippets --ide vscode      # VS Code only (.vscode/puerto.code-snippets)
-puerto validate                            # Validate puerto.toml (field types, names, reserved names, manifest/filesystem drift)
+puerto generar scaffold <Nombre>                                            # Entidad DDD nueva — todas las capas (db, deducida de puerto.toml)
+puerto generar scaffold <Nombre> --forzar                                   # Regenera una entidad existente, pisando los cambios a mano
+puerto generar scaffold <Nombre> -- nombre:String precio:i64!              # Campos primitivos (! = único)
+puerto generar scaffold <Nombre> -- descripcion:opt:String etiquetas:vec:String   # Primitivos Option / Vec
+puerto generar scaffold <Nombre> -- nombre:Nombre:String edad:Edad:i64     # Campos con objeto valor
+puerto generar scaffold Producto --publico listar_productos --rol borrar_producto=admin   # Proyectos con auth: rutas abiertas, roles exigidos
+puerto generar scaffold <Nombre> -- estado:Estado:enum:Activo/Inactivo     # Objeto valor enum
+puerto generar scaffold <Nombre> -- segundo_nombre:SegundoNombre:opt:String   # Objeto valor Option
+puerto generar scaffold <Nombre> -- etiquetas:Etiqueta:vec:String          # Objeto valor Vec
+puerto generar scaffold Pedido -- cliente_id:ref:Cliente revisor_id:ref:opt:Cliente   # Referencias (ADR-0022): el id del objetivo, una clave foránea
+puerto generar objeto-valor <Nombre> <tipo>         # Declara un objeto valor compartido en puerto.toml (p. ej. Email String; vale DateTime)
+puerto generar evento <Entidad> <nombre>            # Proyectos con eventos: un evento propio (producto_publicado) + regenera eventos.rs
+puerto generar consumidor <nombre> --tras producto_creado,producto_publicado   # Proyectos con eventos: un consumidor del worker + regenera registro.rs
+puerto generar correo <nombre> [-- nombre:String plazas:i64 plan:opt:String]  # Un correo: puerto, enviador con plantillas, plantillas; el primero añade Mailpit
+puerto generar correo <nombre> --tras cliente_creado --para email   # Proyectos con eventos: + el consumidor correo_<nombre> que lo envía una vez por evento
+puerto generar dominio <Nombre>                     # Solo el crate de dominio: modelo, errores, repositorio, madre
+puerto generar dominio <Nombre> -- precio:i64 estado:Estado:enum:Borrador/Pagado   # Misma sintaxis que scaffold — los campos van a puerto.toml
+puerto generar aplicacion <Nombre>                  # Solo el crate de aplicación: los casos de uso
+puerto generar repositorio <Nombre>                 # Solo el crate de infraestructura: en memoria o Postgres (deducido de puerto.toml)
+puerto generar presentacion <Nombre>                # Solo el crate REST + regenera el cableado; se niega hasta que existe la aplicación
+puerto generar web <Nombre>                         # Proyectos con web: solo el slice del frontend (+ core/generated/*); --forzar sobrescribe
+puerto generar caso-de-uso <Entidad> <accion>       # Añade un caso de uso (rechaza acciones existentes; añade el campo a Api<Entidad>)
+puerto generar migracion <nombre>                   # Nueva migración SQLx en migraciones/ (solo proyectos --db; las versiones nunca chocan)
+puerto generar bootstrap                            # Regenera cableado y bootstrap.rs desde puerto.toml (se niega si hay deriva manifiesto/disco)
+puerto generar bootstrap --permitir-faltantes       # Los escribe igualmente, aunque una entidad declarada no tenga código
+puerto generar snippets                             # Ficheros de snippets para el IDE (Zed + VS Code)
+puerto generar snippets --ide zed                   # Solo Zed  (.zed/snippets/rust.json)
+puerto generar snippets --ide vscode                # Solo VS Code (.vscode/puerto.code-snippets)
+puerto validar                                      # Valida puerto.toml (tipos, nombres, reservados, ciclos, deriva manifiesto/disco)
+puerto listar                                       # Lista las entidades y casos de uso de puerto.toml
 ```
 
-## Make Commands
+## Comandos de make
 
 ```bash
-make run           # Run puerto CLI (prompts for project name)
-make test          # Fast structural tests (verifies generated file structure)
-make test/full     # Slow: generates real projects, runs their `clippy --all-targets -D warnings` + tests
-                   #       and the generated frontend's checks (needs `bun` on PATH)
-make test/db       # Slow: a generated --db project against a throwaway Postgres + Mailpit (Docker + sqlx-cli);
-                   #       also the e2e of a local-auth project's API (register → login → /me → logout)
-make test/kafka    # Slow: the Kafka transport against a throwaway Redpanda (+ Postgres, Mailpit; Docker, cmake)
-make test/mail     # Slow: the SMTP adapter against a throwaway Mailpit (Docker)
-make test/auth     # Slow: the OIDC adapter + a generated OIDC project's API against a throwaway Keycloak 26.8
-                   #       and Postgres (Docker + sqlx-cli)
-make test/mutation # Slow: cargo-mutants on validation / migrations / types / patchers
-make test/snapshots # Re-record generated-output snapshots after an intended output change
+make run           # Ejecuta la CLI puerto (pide el nombre del proyecto)
+make test          # Tests estructurales rápidos (estructura de lo generado y snapshots)
+make test/full     # Lento: genera proyectos reales, ejecuta su `clippy --all-targets -D warnings` y sus tests
+                   #        y los checks del frontend generado (necesita `bun` en el PATH)
+make test/db       # Lento: un proyecto --db generado contra un Postgres + Mailpit desechables (Docker + sqlx-cli);
+                   #        también el e2e de la API de un proyecto con auth local (registro → login → /me → logout)
+make test/kafka    # Lento: el transporte Kafka contra un Redpanda desechable (+ Postgres, Mailpit; Docker, cmake)
+make test/mail     # Lento: el adaptador SMTP contra un Mailpit desechable (Docker)
+make test/auth     # Lento: el adaptador OIDC + la API de un proyecto OIDC generado contra un Keycloak 26.8
+                   #        y un Postgres desechables (Docker + sqlx-cli)
+make test/mutation # Lento: cargo-mutants sobre validation / migrations / types / patchers
+make test/snapshots # Regraba los snapshots de lo generado tras un cambio de salida intencionado
 make lint          # cargo clippy --workspace --all-targets -- -D warnings
 make check         # cargo check --workspace
 make format        # cargo fmt --all -- --check
 make format/fix    # cargo fmt --all
 ```
 
-## Completion Checklist
+## Lista de comprobación al terminar
 
-- [ ] `make test` passes (structural tests — fast)
-- [ ] `make test/full` passes (generated projects lint clean + internal tests pass — slow; needs
-      `bun` on `PATH` for the web scenarios)
-- [ ] `make test/db` passes when the change touches `--db` generation (Pg repository, migrations, SQL)
-- [ ] Tier 1 change (templates, schema, bootstrap, migrations, patchers): diff read in full —
-      see `.claude/rules/workflow.md` § Risk tiers
-- [ ] One commit for this piece; a design decision with no trace in the code gets an ADR
-- [ ] `make lint` clean (zero warnings)
-- [ ] `make format/fix` run
+- [ ] `make test` pasa (tests estructurales — rápidos)
+- [ ] `make test/full` pasa (los proyectos generados lintean limpios y pasan sus tests — lento;
+      necesita `bun` en el `PATH` para los escenarios web)
+- [ ] `make test/db` pasa cuando el cambio toca la generación `--db` (repositorio Postgres,
+      migraciones, SQL)
+- [ ] Cambio de Tier 1 (plantillas, esquema, bootstrap, migraciones, patchers): diff leído entero —
+      ver `.claude/rules/workflow.md` § Niveles de riesgo
+- [ ] Un commit por pieza; una decisión de diseño sin rastro en el código lleva una ADR
+- [ ] `make lint` limpio (cero warnings)
+- [ ] `make format/fix` ejecutado
 
-## Generated project contract (what every project gets)
+## El contrato del proyecto generado (lo que recibe cada proyecto)
 
-- Runtime crates instead of copies (ADR-0017): `puerto-nucleo = "<cli minor>"` in the root
-  `[workspace.dependencies]`, `{ workspace = true }` in each member; the domain imports
-  `puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina}`. `presentation` also depends on `puerto-web`:
-  `main.rs` is `Config::from_env()` + `App::new(config).try_serve(build_app)`, `bootstrap.rs` hands its
-  API and readiness check to `puerto_web::routes`, then to the user's `app::configure`. A `--db`
-  project's `infrastructure` depends on `puerto-sqlx`: `db.rs` is `pub use puerto_sqlx::*;` plus
-  the project's `MIGRATOR`
-- Formatted: every command that writes Rust ends with `cargo fmt --all` in the project, so its
-  `make format` passes; a failed format only warns (ADR-0019)
-- A startup failure is a message, not a panic: `build_app` / `build_worker` return
-  `Result<_, String>` (`?`, a hint per cause: `.env`, `make docker-compose/up`), `main` hands them
-  to `try_serve` / `try_run`, which log the error and exit 1. `puerto_sqlx::DatabaseError` says
-  `host:port/database` and the driver's cause, never the password
-- Logging through `tracing` directly — no logger port (ADR-0006)
-- Errors: `ErrorResponse { name, message }` with the code in `name`; validation → 422; one test per
-  mapper arm (ADR-0007)
-- `/health`, `/health/ready`, graceful shutdown on SIGTERM (ADR-0008)
-- Pinned toolchain + edition 2024 (ADR-0009); root `AGENTS.md` + `CLAUDE.md` (ADR-0010)
-- `web/` frontend unless `--no-web`: `[project] web = true`, `make web/*` targets (ADR-0013);
-  `scaffold` writes a CRUD entity's screens (domain, HTTP repository, list/detail/form, tests) and
-  regenerates `web/src/presentation/core/generated/{dependencies.ts,routes.tsx}`;
-  `bootstrap.rs` exports the OpenAPI spec to `docs/api/openapi.json` from mocked use cases, and
-  `make web/sync` turns it into the frontend's wire types
-- Web forms say what went wrong next to the field: `domain/<entity>/messages.ts` (generated from
-  the same codes as `errors.rs`) maps a code to a message and a field; `FieldError` shows it under
-  that input, other codes go to the alert, unknown ones show as they are
-- `--events db|kafka` (needs `--db`, ADR-0018): `[project] events`, the outbox migration (the
-  CLI's `templates/infrastructure/outbox.sql`), per CRUD entity `events.rs` (AUTO-GENERATED) and
-  `unit_of_work.rs`, a read-only repository port, writes through `Pg{Entity}UnitOfWorkFactory`,
-  and a root `AGENTS.md` section saying `events.rs` is never hand-edited
-- `--events` also writes the `worker/` member (ADR-0018 § 5): `main.rs` is
-  `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(build_worker)` (`puerto-eventos`),
-  `generated/registry.rs` (AUTO-GENERATED from `[[consumer]]`), `consumers/<name>.rs` (the
-  user's), `make worker`, `make events/dead-letters`, `WORKER_PORT`. On `db` the registry relays
-  `PgOutbox` → `PgDeliveries`, one `PgSubscription` per consumer. On `kafka` it relays to
-  `PublicadorKafka` (topics created at startup), one `SuscripcionKafka` per consumer
-  (`puerto-kafka`); the outbox migration has no `event_deliveries`, `docker-compose.yml` gains
-  Redpanda and `.env` `KAFKA_BROKERS`
-- `--auth oidc` (ADR-0021): `[project] auth`, written once: the `User` entity
-  (`business/src/domain/user/`, in-memory or `PgUserRepository` over runtime-checked queries, the
-  `users` migration with `UNIQUE (issuer, subject)`), `infrastructure/src/user/provisioning.rs`
-  (`ProvisioningAuthenticator`: the provider, then find-or-create the user, a 60 s cache) and
-  `GET /me` (`presentation/src/api/me/`). `bootstrap.rs` discovers the provider
-  (`puerto_auth::AutenticadorOidc`, a startup error with a hint when it is down) and hands the
-  routes `.data(Arc<dyn Authenticator>)`. Keycloak 26.8 in `docker-compose.yml` with
-  `infrastructure/keycloak/realm.json` (client `web`, audience mapper `api`, user
-  `admin@<project>.localhost`; a dev-only client `dev-cli` with the password grant and a user
-  `user@<project>.localhost` without roles), `AUTH_*` in `.env`, `make auth/ui`, `make -s auth/token
-  [EMAIL=…]` (an access token from `dev-cli`), a root `AGENTS.md` section.
-  The Greeting demo is `public`. `scaffold` in an auth
-  project: every CRUD handler takes `auth: BearerAuth` except `--public` ones, `--role` adds
-  `#[require_role]` (both recorded in `[[entity]] public` / `roles`); protected params carry
-  `actor: Principal`, their responses a 503 `Unavailable`; `{Entity}Error::Forbidden` (403) with
-  its mapper test; route tests sign in through a `MockAuthenticator` (`caller` holds every role,
-  `nobody` none) and add a 401 per protected route and a 403 per role-protected one
-- `--auth local` (16.6; needs `--db`): the same `User` (a local one is
-  issuer `local`, subject its lowercased email) in `PgUserRepository`, no provisioning and no
-  Keycloak; `register_user` / `login` / `logout` (`business/src/{domain,application}/user/`, over
-  `puerto-nucleo`'s `PasswordHasher`, `CredentialStore`, `SessionStore`) and `POST /auth/{register,
-  login,logout}` (`presentation/src/api/auth/`, `UserError` → 422/401/409/500, route tests).
-  `bootstrap.rs` builds `HasherArgon2`, `PgCredentials` and `PgSessions` — the authenticator. The
-  `users` then `auth` migrations, `AUTH_SESSION_TTL=30d` in `.env`, `make auth/grant EMAIL= ROLE=`,
-  its own root `AGENTS.md` Auth section
-- `--auth local` with `web/` (16.7): the same shared files as OIDC (`session.ts`, the bearer
-  middleware, `auth.tsx`, the user menu, `renderScreen`), plus `domain/auth/{accounts,messages}.ts`
-  (the `Accounts` port, the API's codes as form messages), `infrastructure/auth/local-auth-gateway.ts`
-  (the token in `localStorage`; `login(returnTo)` drops it and goes to `/login?next=`) and the
-  `/login` and `/register` pages. `dependencies.ts` builds one `localAuthGateway()` as both `auth`
-  and `accounts`; `routes.tsx` has `/login` and `/register` instead of `/auth/callback`. No
-  `oidc-client-ts`, no `web/.env`
-- `--auth oidc` with `web/` (16.5): written once — `domain/auth/session.ts` (`AuthGateway`,
-  `CurrentUser`), `infrastructure/auth/{oidc-auth-gateway,bearer-middleware}.ts`
-  (`oidc-client-ts`, pinned, in memory; dependency-cruiser keeps it there),
-  `presentation/core/auth.tsx` (`AuthProvider`, `useAuth`, `RequireAuth`), `/auth/callback`, a
-  user menu in the layout, `test-support/auth.ts` and a `renderScreen` that signs in a caller
-  holding every role; `VITE_AUTH_*` in `web/.env`. Regenerated: `dependencies.ts` builds the
-  gateway and signs the client, `routes.tsx` wraps every screen whose use case is protected in
-  `<RequireAuth>`, `roles.ts` lists the roles. Scaffolded screens hide New/Edit/Delete behind
-  `can(role)` when the use case has a role, with a test each, and a 403 test on a protected delete
-- References (ADR-0022): `customer_id:ref:Customer` (`[[entity.fields]] references`) — the
-  domain, Params and Mother hold `CustomerId` (`CustomerId::generate()` in tests), rows and DTOs a
-  `Uuid`; `--db`: `CONSTRAINT orders_customer_id_fkey REFERENCES customers (id)` + an index, the
-  Pg repository (unit of work in `events` projects) maps `23503` through its `REFERENCES` table to
-  `RepositoryError::MissingReference(field)`, which `errors.rs` turns into
-  `ValidationError("customer_id_not_found")` (422). Pg tests seed targets through the target's
-  `integration_tests::seed` (every Pg repository's test module is `pub(crate)`). The list filters
-  by each reference: `GET /orders?customerId=` → `ListOrdersParams { customer_id }` →
-  `find_all(page, OrderFilter)` (Pg: `$3::uuid IS NULL OR customer_id = $3`). Web: a `<select>`
-  of the target's first `MAX_PAGE_LIMIT` items (`referenceOptions`, labelled by its first required
-  `String` field, else its id), `<ReferenceLink>` on the detail, `customer_id_not_found` under the
-  select (`messages.ts`). `scaffold` refuses
-  a target with no code yet; no self references, `vec:ref:` or `ref:User` yet
-- `puerto generate mail <name>` (any project, ADR-0020): `business/src/domain/mail/<name>.rs`
-  (`{Name}Mail` + the port `{Name}Mailer` + its mock), `infrastructure/src/mail/<name>.rs`
-  (`Template{Name}Mailer` over `puerto-correo`, with render tests) and
-  `infrastructure/mail/<name>/{subject.txt,body.html,body.txt}` — written once, the user's. The
-  first mail adds `puerto-correo`, Mailpit to `docker-compose.yml` (created without `--db`),
-  `SMTP_URL` / `MAIL_FROM`, `make mail/ui` and a root `AGENTS.md` section. An entity cannot be
-  named `Mail`: mails own the `mail` modules. With `--on <event_type> --to <field>` (events
-  projects) also `worker/src/consumers/mail_<name>.rs` (`Send{Name}Mail`: snapshot → mail →
-  `puerto_correo::enviar_una_vez`), `[[mail]] on`, the consumer `mail_<name>` in `registry.rs` (one
-  `EnviadorCorreoSmtp` + one `PgSentMails`) and, the first time, the `sent_mails` migration (the CLI's
-  `templates/infrastructure/sent_mails.sql`) and `puerto-correo` in `worker`
+- Un crate por contexto y capa (ADR-0023): `contextos/<c>/{dominio,aplicacion,infraestructura,rest}`
+  → `dominio_<c>`, `aplicacion_<c>`, `infra_<c>`, `rest_<c>`; `nucleo` (objetos valor compartidos,
+  sin E/S); `presentacion/{cableado,api}` (+ `worker` con eventos); con `--db`, `migraciones/` (el
+  SQL de toda la base de datos) y `migrador` (`MIGRADOR` + `build.rs` con `rerun-if-changed`).
+  El `lib.rs` de cada crate es plano y sin `mod.rs`. Los crates internos van en
+  `[workspace.dependencies]` y cada miembro los usa con `{ workspace = true }`
+- Crates del runtime en vez de copias (ADR-0017): `puerto-nucleo = "<minor de la cli>"` en el
+  `[workspace.dependencies]` raíz; el dominio importa
+  `puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina}`. Los `rest_*` y `api` dependen de
+  `puerto-web`: `main.rs` es `Config::from_env()` + `App::new(config).intentar_servir(construir_app)`,
+  y `bootstrap.rs` entrega su API y su sonda de disponibilidad a `puerto_web::rutas`, y luego al
+  `app::configurar` del usuario. En un proyecto `--db`, los `infra_*` y `api` dependen de
+  `puerto-sqlx`; `api` arranca con `crear_pool_postgres` + `ejecutar_migraciones(&pool,
+  &migrador::MIGRADOR)`
+- `cableado` (GENERADO, `Cargo.toml` incluido) construye, a partir del pool, los repositorios, las
+  unidades de trabajo y los casos de uso de cada contexto: `cableado::<c>::construir(…)` devuelve
+  sus `CasosDeUso`. No conoce poem. Lo que pide configuración propia (el proveedor OIDC, la
+  duración de las sesiones, el SMTP) se queda en el binario que lo usa
+- Formateado: todo comando que escribe Rust termina con `cargo fmt --all` en el proyecto, así que
+  su `make format` pasa; si el formateo falla, solo avisa (ADR-0019)
+- Un fallo de arranque es un mensaje, no un panic: `construir_app` / `construir_worker` devuelven
+  `Result<_, String>` (`?`, una pista por causa: `.env`, `make docker-compose/up`), y `main` los
+  pasa a `intentar_servir` / `intentar_ejecutar`, que registran el error y salen con 1.
+  `puerto_sqlx::ErrorBaseDatos` dice `host:puerto/base` y la causa del driver, nunca la contraseña
+- Logs con `tracing` directamente — sin puerto de logger (ADR-0006)
+- Errores: `RespuestaError { codigo, mensaje }` con el código en `codigo`; validación → 422; cada
+  `rest_<c>/errores.rs` exporta la función libre `a_respuesta_error(err)`, con un test por rama
+  (ADR-0007, ADR-0023 § 8)
+- `/health`, `/health/ready`, apagado ordenado con SIGTERM (ADR-0008)
+- Toolchain fijada + edition 2024 (ADR-0009); `AGENTS.md` + `CLAUDE.md` en la raíz, y
+  `contextos/AGENTS.md`, `presentacion/AGENTS.md` (ADR-0010)
+- Targets de make: `test/dominio`, `test/aplicacion`, `test/infraestructura` (un glob de paquetes
+  cada uno), `generar/entidad`, `generar/caso-de-uso`, `generar/bootstrap`, `clean/incremental`;
+  con `--db`, `db/arrancar`, `db/parar`, `db/reiniciar`, `sqlx/*`, `generar/migracion`
+- `web/` salvo con `--sin-web`: `[proyecto] web = true`, targets `make web/*` (ADR-0013);
+  `scaffold` escribe las pantallas de una entidad CRUD (dominio, repositorio HTTP,
+  lista/detalle/formulario, tests) y regenera
+  `web/src/presentation/core/generated/{dependencies.ts,routes.tsx}`; `bootstrap.rs` exporta la
+  especificación OpenAPI a `docs/api/openapi.json` desde los dobles de los casos de uso, y
+  `make web/sync` la convierte en los tipos del frontend. El frontend sigue en inglés (su
+  traducción es una fase aparte)
+- Los formularios web dicen qué falló junto al campo: `domain/<entity>/messages.ts` (generado de
+  los mismos códigos que `errores.rs`) asocia un código a un mensaje y un campo; `FieldError` lo
+  muestra bajo ese input, los demás códigos van a la alerta, los desconocidos se muestran tal cual
+- `--eventos db|kafka` (necesita `--db`, ADR-0018): `[proyecto] eventos`, la migración del outbox
+  (el `templates/infrastructure/outbox.sql` de la CLI), por cada entidad CRUD `eventos.rs`
+  (GENERADO) y `unit_of_work.rs` en `dominio_<c>`, un puerto de repositorio de solo lectura,
+  escrituras por `UnitOfWorkFactory<Entidad>Postgres` (`infra_<c>/src/unit_of_work.rs`), y una
+  sección del `AGENTS.md` raíz que dice que `eventos.rs` nunca se edita a mano
+- `--eventos` también escribe `presentacion/worker` (ADR-0018 § 5): `main.rs` es
+  `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(construir_worker)`
+  (`puerto-eventos`), `generado/registro.rs` (GENERADO desde `[[consumidor]]`; todavía no usa
+  `cableado`: los consumidores no reciben casos de uso), `consumidores/<nombre>.rs` (del usuario),
+  `make worker`, `make eventos/descartados`, `WORKER_PORT`. Con `db`, el registro pasa
+  `OutboxPostgres` → `EntregasPostgres`, con una `SuscripcionPostgres` por consumidor. Con `kafka`,
+  pasa a `PublicadorKafka` (los topics se crean al arrancar), con una `SuscripcionKafka` por
+  consumidor (`puerto-kafka`); la migración del outbox no tiene `entregas_eventos`,
+  `docker-compose.yml` gana Redpanda y `.env`, `KAFKA_BROKERS`
+- `--auth oidc` (ADR-0021): `[proyecto] auth`, escrito una vez: el contexto `usuario` con la
+  entidad `Usuario` (`contextos/usuario/`, en memoria o en Postgres con consultas comprobadas en
+  ejecución, la migración de `usuarios` con `UNIQUE (emisor, sujeto)`),
+  `contextos/usuario/infraestructura/src/aprovisionamiento.rs` (el autenticador del proyecto:
+  pregunta al proveedor y busca o crea el usuario, con una caché de 60 s) y `GET /me`
+  (`contextos/usuario/rest/src/me/`). `bootstrap.rs` descubre el proveedor
+  (`puerto_auth::AutenticadorOidc::descubrir`; si está caído, un error de arranque con pista) y da
+  a las rutas `.data(Arc<dyn Autenticador>)`. Keycloak 26.8 en `docker-compose.yml` con
+  `keycloak/realm.json` (cliente `web`, mapper de audiencia `api`, usuario
+  `admin@<proyecto>.localhost`; un cliente solo de desarrollo `dev-cli` con password grant y un
+  usuario `user@<proyecto>.localhost` sin roles), `AUTH_*` en `.env`, `make auth/ui`,
+  `make -s auth/token [EMAIL=…]` (un access token de `dev-cli`), una sección del `AGENTS.md` raíz.
+  El demo Saludo es público. `scaffold` en un proyecto con auth: cada handler CRUD recibe
+  `auth: BearerAuth` salvo los `--publico`, `--rol` añade `#[requiere_rol]` (los dos quedan en
+  `[[entidad]] publicos` / `roles`); los params protegidos llevan `actor: Principal` y sus
+  respuestas un 503 `NoDisponible`; `Error<Entidad>::Prohibido` (403, `<entidad>.prohibido`) con
+  su test; los tests de rutas inician sesión con un `MockAutenticador` (un llamante con todos los
+  roles y otro sin ninguno) y añaden un 401 por ruta protegida y un 403 por ruta con rol. Los tests
+  construyen el actor con `puerto_nucleo::auth::dobles::MadrePrincipal`
+- `--auth local` (necesita `--db`): el mismo `Usuario` (uno local tiene emisor `local` y como
+  sujeto su email en minúsculas) en Postgres, sin aprovisionamiento ni Keycloak; `registrar_usuario`
+  / `login` / `logout` (`contextos/usuario/aplicacion/`, sobre `HasherContrasena`,
+  `AlmacenCredenciales` y `AlmacenSesiones` de `puerto-nucleo`) y
+  `POST /auth/{registro,login,logout}` (`contextos/usuario/rest/src/auth/`, 422/401/409/500, tests
+  de rutas). `bootstrap.rs` construye `HasherArgon2`, `CredencialesPostgres` y `SesionesPostgres` —
+  el autenticador. Las migraciones de `usuarios` y de `auth`, `AUTH_SESSION_TTL=30d` en `.env`,
+  `make auth/conceder EMAIL= ROL=`, su propia sección Auth en el `AGENTS.md` raíz
+- `--auth local` con `web/`: los mismos ficheros compartidos que OIDC (`session.ts`, el middleware
+  bearer, `auth.tsx`, el menú de usuario, `renderScreen`), más `domain/auth/{accounts,messages}.ts`
+  (el puerto `Accounts`, los códigos de la API como mensajes de formulario),
+  `infrastructure/auth/local-auth-gateway.ts` (el token en `localStorage`; `login(returnTo)` lo
+  borra y va a `/login?next=`) y las páginas `/login` y `/register`. `dependencies.ts` construye un
+  solo `localAuthGateway()` como `auth` y `accounts`; `routes.tsx` tiene `/login` y `/register` en
+  vez de `/auth/callback`. Sin `oidc-client-ts`, sin `web/.env`
+- `--auth oidc` con `web/`: escrito una vez — `domain/auth/session.ts` (`AuthGateway`,
+  `CurrentUser`), `infrastructure/auth/{oidc-auth-gateway,bearer-middleware}.ts` (`oidc-client-ts`,
+  fijado, en memoria; dependency-cruiser lo mantiene ahí), `presentation/core/auth.tsx`
+  (`AuthProvider`, `useAuth`, `RequireAuth`), `/auth/callback`, un menú de usuario en el layout,
+  `test-support/auth.ts` y un `renderScreen` que inicia sesión con un llamante con todos los roles;
+  `VITE_AUTH_*` en `web/.env`. Regenerados: `dependencies.ts` construye el gateway y firma el
+  cliente, `routes.tsx` envuelve en `<RequireAuth>` cada pantalla cuyo caso de uso está protegido,
+  `roles.ts` lista los roles. Las pantallas del scaffold ocultan Nuevo/Editar/Borrar tras
+  `can(role)` cuando el caso de uso tiene rol, con un test cada uno, y un test de 403 en un borrado
+  protegido
+- Referencias (ADR-0022): `cliente_id:ref:Cliente` (`[[entidad.campos]] referencia`) — el dominio,
+  los Params y la madre guardan `IdCliente` (`IdCliente::generar()` en los tests), las filas y los
+  DTO un `Uuid`; `dominio_pedido` depende de `dominio_cliente`. `--db`:
+  `CONSTRAINT pedidos_cliente_id_fkey REFERENCES clientes (id)` + un índice; el repositorio
+  Postgres (la unidad de trabajo en proyectos con eventos) traduce `23503` con sus `REFERENCES` a
+  `ErrorRepositorio::ReferenciaInexistente(campo)`, que `errores.rs` convierte en
+  `Validacion("cliente_id_no_encontrado")` (422). Los tests de Postgres siembran el objetivo con
+  `infra_cliente::pruebas::siembra::sembrar` (dependencia opcional activada por la feature
+  `pruebas`). La lista filtra por cada referencia: `GET /pedidos?clienteId=` →
+  `ParamsListarPedidos { cliente_id }` → `buscar_todos(pagina, FiltroPedido)` (Postgres:
+  `$3::uuid IS NULL OR cliente_id = $3`). Web: un `<select>` con los primeros `MAX_PAGE_LIMIT`
+  elementos del objetivo (`referenceOptions`, etiquetados por su primer campo `String` obligatorio
+  o, si no, por su id), `<ReferenceLink>` en el detalle, `cliente_id_no_encontrado` bajo el select
+  (`messages.ts`). `scaffold` rechaza un objetivo que aún no tiene código, y `scaffold` y `validar`,
+  una referencia que cierra un ciclo; todavía no hay autorreferencias, `vec:ref:` ni `ref:Usuario`
+- `puerto generar correo <nombre>` (cualquier proyecto, ADR-0020): el contexto `correo`
+  (`contextos/correo/{dominio,infraestructura}`, sin aplicación): `dominio_correo::<nombre>`
+  (`Correo<Nombre>` + el puerto `EnviadorCorreo<Nombre>` + su doble),
+  `infra_correo::<nombre>` (`EnviadorCorreo<Nombre>Plantilla` sobre `puerto-correo`, con tests de
+  renderizado) y `contextos/correo/infraestructura/plantillas/<nombre>/{asunto.txt,cuerpo.html,
+  cuerpo.txt}` — escritos una vez, del usuario. El primer correo añade `puerto-correo`, Mailpit a
+  `docker-compose.yml` (que se crea si no hay `--db`), `SMTP_URL` / `MAIL_FROM`, `make correo/ui` y
+  una sección del `AGENTS.md` raíz. Una entidad no puede llamarse `Correo`. Con
+  `--tras <tipo_evento> --para <campo>` (proyectos con eventos), también
+  `presentacion/worker/src/consumidores/correo_<nombre>.rs` (`EnviarCorreo<Nombre>`: snapshot →
+  correo → `puerto_correo::enviar_una_vez`), `[[correo]] tras`, el consumidor `correo_<nombre>` en
+  `registro.rs` (un `EnviadorCorreoSmtp` + un `CorreosEnviadosPostgres`) y, la primera vez, la
+  migración de `correos_enviados` (el `templates/infrastructure/sent_mails.sql` de la CLI) y
+  `puerto-correo` en `worker`
 
-## Detailed Rules
+## Reglas detalladas
 
-- `.claude/rules/architecture.md` — Layer rules, naming conventions, error patterns
-- `.claude/rules/puerto-toml.md` — puerto.toml schema + identifier derivation table
-- `.claude/rules/testing.md` — TDD cycle, test naming, AAA pattern, DO/DON'T
-- `.claude/rules/testing-conventions.md` — Object Mother pattern, mock setup, naming table
-- `.claude/rules/workflow.md` — Puerto development workflow (Spec-Driven) + generated project TDD workflow
-- `.claude/rules/release.md` — Versioning, changelog, release process, breaking changes policy, crates.io checklist
+- `.claude/rules/architecture.md` — Reglas de capas, convenciones de nombres, patrones de error
+- `.claude/rules/puerto-toml.md` — Esquema de puerto.toml + tabla de derivación de identificadores
+- `.claude/rules/testing.md` — Ciclo TDD, nombres de tests, patrón AAA, qué sí y qué no
+- `.claude/rules/testing-conventions.md` — Object Mother, dobles, tabla de nombres
+- `.claude/rules/workflow.md` — Flujo de desarrollo de Puerto (Spec-Driven) + TDD del proyecto generado
+- `.claude/rules/value_objects.md` — Objetos valor: sintaxis, esquema y su paso por las capas
+- `.claude/rules/release.md` — Versionado, changelog, proceso de release, cambios incompatibles, crates.io
 - `docs/adr/` — Architecture Decision Records
+- `docs/glosario.md` — El vocabulario de lo generado

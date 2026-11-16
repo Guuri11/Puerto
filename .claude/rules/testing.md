@@ -1,168 +1,190 @@
-# Testing Guidelines (TDD)
+# Guía de tests (TDD)
 
-## Core Principle
+## Principio
 
-**Write tests FIRST, before any implementation. Always.**
+**Los tests se escriben PRIMERO, antes de cualquier implementación. Siempre.**
 
-TDD is not optional. It is the workflow. Tests define the contract; implementation fulfills it.
-
----
-
-## The Cycle
-
-```
-RED   → Write a failing test that describes a business requirement
-GREEN → Write the minimal code that makes it pass
-REFACTOR → Improve quality without changing behavior (run tests after every change)
-```
-
-Repeat. Never skip RED.
+El TDD no es opcional. Es el flujo de trabajo. Los tests definen el contrato; la implementación lo
+cumple.
 
 ---
 
-## Test Naming
+## El ciclo
 
-**Pattern:** `should_<BUSINESS_EXPECTATION>_when_<BUSINESS_SCENARIO>`
+```
+ROJO      → Escribe un test que falla y describe un requisito de negocio
+VERDE     → Escribe el código mínimo que lo hace pasar
+REFACTOR  → Mejora la calidad sin cambiar el comportamiento (ejecuta los tests tras cada cambio)
+```
 
-Names describe **business behavior**, not implementation details.
+Repite. Nunca te saltes el ROJO.
+
+---
+
+## Nombres de los tests
+
+**Patrón (código generado):** `deberia_<EXPECTATIVA_DE_NEGOCIO>_cuando_<ESCENARIO_DE_NEGOCIO>`
+
+Los nombres describen **comportamiento de negocio**, no detalles de implementación.
 
 ```rust
-// Good — business-focused
-should_create_greeting_when_name_is_valid
-should_reject_greeting_when_name_is_empty
-should_return_cached_greeting_when_found_in_repository
+// Bien — centrado en el negocio
+deberia_crear_saludo_cuando_el_nombre_es_valido
+deberia_rechazar_saludo_cuando_el_nombre_esta_vacio
+deberia_devolver_el_saludo_guardado_cuando_esta_en_el_repositorio
 
-// Bad — implementation-focused
-should_return_ok_result
-should_call_repository_once
-should_set_message_field
+// Mal — centrado en la implementación
+deberia_devolver_ok
+deberia_llamar_al_repositorio_una_vez
+deberia_rellenar_el_campo_mensaje
 ```
+
+Los tests de Puerto (`crates/cli/src/tests/`, en inglés como el resto de su código) siguen nombrando
+por comportamiento: `use_case_generator_creates_trait_file`.
 
 ---
 
-## Test Location
+## Dónde van los tests
 
-Tests live **inside the file being tested** in a `#[cfg(test)]` module:
+Los tests viven **dentro del fichero que prueban**, en un módulo `#[cfg(test)]`:
 
 ```rust
-// business/src/application/greeting/get_greeting.rs
+// contextos/saludo/aplicacion/src/obtener_saludo.rs
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn should_create_greeting_when_name_is_valid() {
+    async fn deberia_crear_saludo_cuando_el_nombre_es_valido() {
         // ...
     }
 }
 ```
 
+Las excepciones, también por crate: las madres en `dominio_<c>::pruebas::madres` y la siembra de
+los tests de Postgres en `infra_<c>::pruebas::siembra`, públicas tras la feature `pruebas` para
+los tests de otros crates.
+
 ---
 
-## AAA Pattern (Arrange-Act-Assert)
+## Patrón AAA (Preparar–Actuar–Comprobar)
 
-Always use explicit comments. They communicate intent to humans and AI agents alike.
+Siempre con comentarios explícitos. Comunican la intención a personas y agentes.
 
 ```rust
 #[tokio::test]
-async fn should_return_error_when_name_is_empty() {
-    // Arrange
-    let mut mock_repo = MockGreetingRepository::new();
-    mock_repo.expect_find_by_name().times(0);
+async fn deberia_devolver_error_cuando_el_nombre_esta_vacio() {
+    // Preparar
+    let mut repositorio_doble = MockRepositorioSaludo::new();
+    repositorio_doble.expect_buscar_por_nombre().times(0);
 
-    let use_case = GetGreetingUseCaseImpl {
-        repository: Arc::new(mock_repo),
+    let caso_de_uso = ObtenerSaludoImpl {
+        repositorio: Arc::new(repositorio_doble),
     };
 
-    // Act
-    let result = use_case
-        .execute(GetGreetingParams { name: "".into() })
+    // Actuar
+    let resultado = caso_de_uso
+        .ejecutar(ParamsObtenerSaludo { nombre: "".into() })
         .await;
 
-    // Assert
-    assert!(result.is_err());
+    // Comprobar
+    assert!(resultado.is_err());
     assert_eq!(
-        result.unwrap_err().to_string(),
-        "greeting.validation_error.name_empty"
+        resultado.unwrap_err().to_string(),
+        "saludo.validacion.nombre_vacio"
     );
 }
 ```
 
 ---
 
-## Mocking
+## Dobles
 
-Mocks live in the `repository.rs` of each domain entity, behind a feature flag:
+El doble de un trait va **junto al trait**, en el mismo fichero, tras una feature (ADR-0023 § 5):
 
 ```rust
-#[cfg(any(test, feature = "test-utils"))]
-pub mod mocks {
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
     use mockall::mock;
     use super::*;
 
     mock! {
-        pub GreetingRepository {}
+        pub RepositorioSaludo {}
         #[async_trait]
-        impl GreetingRepositoryTrait for GreetingRepository {
-            async fn find_by_name(&self, name: &str) -> Result<Option<Greeting>, GreetingError>;
+        impl RepositorioSaludo for RepositorioSaludo {
+            async fn buscar_por_nombre(&self, nombre: &str) -> Result<Option<Saludo>, ErrorRepositorio>;
         }
     }
 }
 ```
 
-Import in tests:
+Se importa por su ruta, sin reexports:
 
 ```rust
-use crate::domain::greeting::repository::mocks::MockGreetingRepository;
+use dominio_saludo::repositorio::dobles::MockRepositorioSaludo;   // el repositorio, en el dominio
+use aplicacion_saludo::obtener_saludo::dobles::MockObtenerSaludo; // un caso de uso, en la aplicación
 ```
 
-The `business/Cargo.toml` has `mockall` both as an optional dependency (feature `test-utils`) **and** as a dev-dependency — so tests inside `business` itself work without the feature flag.
+Cada crate que tiene dobles declara `mockall` como dependencia opcional (feature `pruebas`) **y**
+como dev-dependency — así sus propios tests funcionan sin la feature. Quien los usa solo en tests
+los declara en `[dev-dependencies]` con `features = ["pruebas"]`.
 
 ---
 
-## Test Categories (by priority)
+## Categorías de tests (por prioridad)
 
-| Priority | Category | Description |
-|----------|----------|-------------|
-| CRITICAL | Business Rule | Core domain invariants — always write these |
-| HIGH | Edge Case | Boundary conditions: empty strings, limits, status transitions |
-| HIGH | Regression | One test per bug fix — prevents regressions |
-| MEDIUM | Integration | Compilation + full stack (see `make test/full`) |
-
----
-
-## DO and DON'T
-
-### DO
-- Write tests before implementation (RED first)
-- Test business behavior, not internal state
-- Use realistic data (`"Alice"`, not `"test"`)
-- Assert on error code strings (`"greeting.not_found"`)
-- Cover happy path AND edge cases
-- Use `#[tokio::test]` for all async tests
-
-### DON'T
-- Test implementation details (private methods, mock call counts unless semantically meaningful)
-- Write tests just for coverage metrics
-- Mock everything — prefer real domain objects when possible
-- Make tests depend on execution order
-- Use `unwrap()` in test assertions — use `assert!` / `assert_eq!` / `match` explicitly
+| Prioridad | Categoría | Descripción |
+|-----------|-----------|-------------|
+| CRÍTICA | Regla de negocio | Invariantes del dominio — escríbelos siempre |
+| ALTA | Caso límite | Condiciones de borde: cadenas vacías, límites, transiciones de estado |
+| ALTA | Regresión | Un test por bug corregido — evita que vuelva |
+| MEDIA | Integración | Compilación + pila completa (ver `make test/full`) |
 
 ---
 
-## Running Tests
+## Qué sí y qué no
+
+### Sí
+- Escribe los tests antes que la implementación (ROJO primero)
+- Prueba comportamiento de negocio, no estado interno
+- Usa datos realistas (`"Ana"`, no `"test"`)
+- Compara con el código de error (`"saludo.no_encontrado"`)
+- Cubre el camino feliz Y los casos límite
+- Usa `#[tokio::test]` en todos los tests asíncronos
+
+### No
+- Probar detalles de implementación (métodos privados, cuántas veces se llama a un doble salvo que
+  tenga significado)
+- Escribir tests solo por la cobertura
+- Doblarlo todo — mejor objetos de dominio reales cuando se pueda
+- Hacer que los tests dependan del orden de ejecución
+- Usar `unwrap()` en las aserciones — usa `assert!` / `assert_eq!` / `match` explícitos
+
+---
+
+## Ejecutar los tests
+
+En Puerto:
 
 ```bash
-make test        # Fast — structural tests (file layout, cargo-generate output)
-make test/full   # Slow — generates real projects, runs their clippy (-D warnings) and tests, and the
-                 #        generated frontend's checks (needs `bun` on PATH)
-make test/db     # Slow — a generated --db project against a throwaway Postgres + Mailpit (Docker)
-make test/auth   # Slow — the OIDC adapter + a generated OIDC project against a throwaway Keycloak + Postgres
-make test/mutation  # Slow — cargo-mutants on Puerto's pure logic (validation, migrations, types, patchers)
+make test        # Rápido — tests estructurales (estructura de lo generado, salida de cargo-generate, snapshots)
+make test/full   # Lento — genera proyectos reales, ejecuta su clippy (-D warnings) y sus tests, y los
+                 #         checks del frontend generado (necesita `bun` en el PATH)
+make test/db     # Lento — un proyecto --db generado contra un Postgres + Mailpit desechables (Docker)
+make test/auth   # Lento — el adaptador OIDC + un proyecto OIDC generado contra Keycloak + Postgres
+make test/mutation  # Lento — cargo-mutants sobre la lógica pura de Puerto (validation, migrations, types, patchers)
 ```
 
-Single test with output:
+En un proyecto generado, por capa (un glob de paquetes cada uno):
 
 ```bash
-cargo test should_create_greeting_when_name_is_valid -- --nocapture
+make test/dominio          # dominio_*
+make test/aplicacion       # aplicacion_*
+make test/infraestructura  # infra_* (con --db, arranca la base de datos)
+```
+
+Un solo test con su salida:
+
+```bash
+cargo test deberia_crear_saludo_cuando_el_nombre_es_valido -- --nocapture
 ```

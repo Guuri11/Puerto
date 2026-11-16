@@ -1,600 +1,633 @@
-# Architecture Guidelines
+# Guía de arquitectura
 
-## Dependency Rule (NEVER break this)
+Lo que Puerto genera: un crate por contexto y capa (ADR-0023), todo en castellano (ADR-0024). Los
+nombres salen de `docs/glosario.md`; los ejemplos usan la entidad `Producto` y el caso de uso
+`crear_producto`.
+
+## Regla de dependencias (NUNCA romperla)
 
 ```
-Presentation → Infrastructure → Application → Domain
+rest_<c> → aplicacion_<c> → dominio_<c> → nucleo, puerto-nucleo
+infra_<c> → dominio_<c>
+cableado, api, worker → todo lo anterior (solo ellos dependen de infra_*)
 ```
 
-- **Domain** depends on NOTHING — pure Rust, only `std`, `async-trait`, `thiserror` and the
-  Puerto runtime core `puerto-core` (no driver, no runtime, no I/O: `thiserror`, `async-trait`,
+- **Dominio** no depende de NADA más que `std`, `async-trait`, `thiserror`, `nucleo` y el núcleo
+  del runtime `puerto-nucleo` (sin driver, sin runtime, sin E/S: `thiserror`, `async-trait`,
   `serde_json`, `uuid`, `chrono` — ADR-0017, ADR-0018)
-- **Application** depends on Domain only — use case implementations (plus `tracing` for logs)
-- **Infrastructure** depends on Domain — adapters (DB, HTTP, etc.)
-- **Presentation** depends on all layers via manual dependency injection
+- **Aplicación** depende solo de su dominio — los casos de uso (más `tracing` para los logs)
+- **Infraestructura** depende de su dominio — adaptadores (en memoria, Postgres)
+- **REST** depende de su aplicación y su dominio — rutas, DTO, respuestas, errores
+- **Presentación** (`cableado`, `api`, `worker`) depende de todo, por inyección manual
+- Ningún crate de dominio depende de un crate de aplicación. **Las referencias son
+  dependencias**: `cliente_id:ref:Cliente` hace que `dominio_pedido` dependa de `dominio_cliente`
+  (por `IdCliente`, que vive con su dueño). Cargo no admite ciclos: `scaffold` y `validar` rechazan
+  la referencia que cerraría uno, nombrándolo
+
+Cargo impone la regla: el `Cargo.toml` de cada crate solo nombra lo que la ADR-0023 § 3 permite
+(hay un test por regla).
 
 ---
 
-## Domain Layer (`business/src/domain/<entity>/`)
+## Estructura del proyecto
 
-**Pure business logic. No infrastructure or presentation dependencies.**
+```
+Cargo.toml                members = ["nucleo", "migrador", "contextos/*/*", "presentacion/*"]
+puerto.toml
+nucleo/                   → nucleo            objetos valor compartidos (valores.rs, errores.rs). Sin E/S
+migraciones/              el SQL de toda la base de datos                  (proyectos --db)
+migrador/                 → migrador          MIGRADOR + build.rs              (proyectos --db)
+contextos/<c>/
+  dominio/                → dominio_<c>       modelo, valores, errores, repositorio, unit_of_work,
+                                              eventos; pruebas/madres.rs
+  aplicacion/             → aplicacion_<c>    un fichero por caso de uso
+  infraestructura/        → infra_<c>         en memoria o Postgres: fila, repositorio, unit_of_work;
+                                              pruebas/siembra.rs
+  rest/                   → rest_<c>          rutas, dto, respuestas, errores
+presentacion/
+  cableado/               → cableado          GENERADO entero, Cargo.toml incluido
+  api/                    → api               el binario: main.rs + lib.rs, app.rs, generado/bootstrap.rs
+  worker/                 → worker            (proyectos con eventos) generado/registro.rs, consumidores/
+web/                      el frontend (sigue en inglés: su traducción es otra fase)
+```
 
-### Module declaration pattern
+- En la v1 **una entidad es un contexto**: `[[entidad]] nombre = "LineaPedido"` →
+  `contextos/linea_pedido/`, crates `dominio_linea_pedido`, … Sus módulos van en la raíz de cada
+  crate (`dominio_producto::modelo`).
+- `members` va por glob: un contexto nuevo no toca la lista. Los crates internos se declaran en
+  `[workspace.dependencies]` y cada `Cargo.toml` los usa con `{ workspace = true }`.
+- Los correos son el contexto `correo` (dominio e infraestructura, sin aplicación); el usuario de
+  auth, el contexto `usuario`.
 
-No `mod.rs` files. Module hierarchy is declared **inline in `lib.rs`**:
+### `lib.rs` plano, sin `mod.rs`
+
+El `lib.rs` de cada crate se escribe entero: una línea `pub mod` por fichero. Un módulo con hijos
+se declara en línea:
 
 ```rust
-// business/src/lib.rs
-pub mod domain {
-    pub mod greeting {
-        pub mod errors;
-        pub mod model;
-        pub mod repository;
-        pub mod use_cases;
-    }
-}
-pub mod application {
-    pub mod greeting {
-        pub mod get_greeting;
-    }
-}
-```
+// contextos/producto/dominio/src/lib.rs
+pub mod errores;
+pub mod modelo;
+pub mod repositorio;
 
-Only leaf files and directories with their own subdirectory need a sibling `.rs` file. `use_cases.rs` exists as a sibling to `use_cases/` and declares its children:
-
-```rust
-// business/src/domain/greeting/use_cases.rs
-pub mod get_greeting;
-```
-
-### File structure per entity
-
-```
-domain/<entity>/
-  model.rs          # Entity struct + Props struct + constructors
-  errors.rs         # Domain error enum (thiserror)
-  repository.rs     # Repository trait (port) + mockall mock
-  use_cases/
-    <action>.rs     # Params struct + Trait
-```
-
-No `use_cases.rs` sibling file. Use case modules are declared inline in `business/src/lib.rs`:
-
-```rust
-pub mod domain {
-    pub mod product {
-        pub mod use_cases {
-            pub mod create_product;
-            pub mod delete_product;
-        }
-    }
+#[cfg(any(test, feature = "pruebas"))]
+pub mod pruebas {
+    pub mod madres;
 }
 ```
 
-`puerto generate use-case` patches lib.rs automatically.
+`puerto generar caso-de-uso` solo añade una línea `pub mod <caso>;` al `lib.rs` de `aplicacion_<c>`.
 
-### Model constructor pattern
+---
 
-Every domain model has two constructors:
+## Dominio (`contextos/<c>/dominio/` → `dominio_<c>`)
+
+**Lógica de negocio pura. Sin dependencias de infraestructura ni de presentación.**
+
+```
+dominio/src/
+  modelo.rs          # la entidad, su id, PropsProducto, constructores
+  errores.rs         # ErrorProducto (thiserror) + From<ErrorRepositorio>
+  repositorio.rs     # el puerto RepositorioProducto + su doble (dobles::MockRepositorioProducto)
+  valores.rs         # objetos valor locales (si la entidad los tiene)
+  eventos.rs         # proyectos con eventos, entidades CRUD (GENERADO)
+  unit_of_work.rs    # proyectos con eventos, entidades CRUD
+  pruebas/madres.rs  # MadreProducto, tras la feature `pruebas`
+```
+
+El dominio no tiene `use_cases/`: la entrada y la salida de un caso de uso son de la aplicación.
+
+### Constructores del modelo
+
+Todo modelo de dominio tiene dos:
 
 ```rust
-impl Entity {
-    /// Creates a new entity — validates all fields. Use for new entities.
-    pub fn new(props: EntityProps) -> Result<Self, EntityError> { ... }
+impl Producto {
+    /// Crea una entidad nueva — valida todos los campos.
+    pub fn new(props: PropsProducto) -> Result<Self, ErrorProducto> { ... }
 
-    /// Reconstructs from persistence — bypasses validation. ONLY infrastructure uses this.
-    pub fn from_repository(data: Entity) -> Self { ... }
+    /// La reconstruye desde la persistencia — sin validar. SOLO la usa la infraestructura.
+    pub fn from_repositorio(data: Producto) -> Self { ... }
 }
 ```
 
-When `entity.fields` is defined in `puerto.toml`, the generated structs include custom fields:
+Con `[[entidad.campos]]` en `puerto.toml`, los structs llevan los campos propios:
 
 ```rust
 #[derive(Debug, Clone)]
-pub struct ProductProps {
-    pub name: String,
-    pub price: i64,
+pub struct PropsProducto {
+    pub nombre: String,
+    pub precio: i64,
     pub sku: String,
-    pub description: Option<String>,
-    pub tags: Vec<String>,
+    pub descripcion: Option<String>,
+    pub etiquetas: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Product {
-    pub id: ProductId,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub deleted: bool,
-    pub deleted_at: Option<DateTime<Utc>>,
-    // Custom fields from puerto.toml
-    pub name: String,
-    pub price: i64,
+pub struct Producto {
+    pub id: IdProducto,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    // Campos propios de puerto.toml
+    pub nombre: String,
+    pub precio: i64,
     pub sku: String,
-    pub description: Option<String>,
-    pub tags: Vec<String>,
+    pub descripcion: Option<String>,
+    pub etiquetas: Vec<String>,
 }
 ```
 
-When `entity.fields` is empty or absent (backward compatible), entities default to a single `name: String` field.
+Sin `campos` (o vacíos), la entidad lleva un único campo `nombre: String`.
 
-### Typed ids
+### Ids tipados
 
-Every entity's id is its own newtype, declared in `model.rs` above the entity — passing a
-`CustomerId` where a `ProductId` is expected does not compile:
+El id de cada entidad es su propio newtype, declarado en `modelo.rs` encima de la entidad — pasar
+un `IdCliente` donde se espera un `IdProducto` no compila:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ProductId(Uuid);
+pub struct IdProducto(Uuid);
 
-impl ProductId {
-    pub fn generate() -> Self { Self(Uuid::new_v4()) }   // Product::new
-    pub fn from_uuid(value: Uuid) -> Self { Self(value) } // a path parameter, a row
-    pub fn value(&self) -> Uuid { self.0 }                 // a DTO, a bind
+impl IdProducto {
+    pub fn generar() -> Self { Self(Uuid::new_v4()) }       // Producto::new
+    pub fn from_uuid(value: Uuid) -> Self { Self(value) }   // un parámetro de ruta, una fila
+    pub fn valor(&self) -> Uuid { self.0 }                  // un DTO, un bind
 }
-// + Display, so `tracing::info!(id = %entity.id, …)` works
+// + Display, para que `tracing::info!(id = %entidad.id, …)` funcione
 ```
 
-The id is a `Uuid` only at the edges: `Path<Uuid>` in routes (wrapped with `from_uuid`), `id: Uuid`
-in DTOs and `{Entity}Db` rows (`.value()`). Params, the repository port and tests use the newtype.
+El id es un `Uuid` solo en los bordes: `Path<Uuid>` en las rutas (envuelto con `from_uuid`),
+`id: Uuid` en los DTO y en las filas `Fila<Entidad>` (`.valor()`). Los Params, el puerto del
+repositorio y los tests usan el newtype.
 
-### Validation in `new()`
+### Validación en `new()`
 
-- `String` fields are validated with `.trim().is_empty()` → `ValidationError("{field}_empty")`
-- `Option<String>` fields are not validated (may be `None`)
-- Numeric and other types pass through without domain validation
+- Los campos `String` se validan con `.trim().is_empty()` → `Validacion("<campo>_vacio")`
+- Los `Option<String>` no se validan (pueden ser `None`)
+- Los numéricos y demás tipos pasan sin validación de dominio
 
-### Use case file structure
-
-Each file in `domain/<entity>/use_cases/` contains **exactly** three things:
-
-```rust
-// 1. Input params
-pub struct CreateEntityParams {
-    pub name: String,
-}
-
-// 2. Use case trait (contract)
-#[async_trait]
-pub trait CreateEntityUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: CreateEntityParams) -> Result<Entity, EntityError>;
-}
-```
-
-The `Impl` struct lives in the **application layer**, not here.
-
-When `entity.fields` is defined in `puerto.toml`, `CreateEntityParams` includes all custom fields (minus system fields like `id`, `created_at`, etc.):
-
-```rust
-pub struct CreateProductParams {
-    pub name: String,
-    pub price: i64,
-    pub sku: String,
-    pub description: Option<String>,
-    pub tags: Vec<String>,
-}
-
-pub struct UpdateProductParams {
-    pub id: ProductId,
-    pub name: String,
-    pub price: i64,
-    pub sku: String,
-    pub description: Option<String>,
-    pub tags: Vec<String>,
-}
-```
-
-Custom use cases (added via `puerto generate use-case`) also support typed fields — their Params are defined manually when creating the use case.
-
-### Repository trait (port)
+### Puerto del repositorio
 
 ```rust
 #[async_trait]
-pub trait EntityRepositoryTrait: Send + Sync {
-    async fn find_by_id(&self, id: EntityId) -> Result<Option<Entity>, RepositoryError>;
-    async fn save(&self, entity: &Entity) -> Result<(), RepositoryError>;
+pub trait RepositorioProducto: Send + Sync {
+    async fn buscar_todos(&self, pagina: PeticionPagina) -> Result<Pagina<Producto>, ErrorRepositorio>;
+    async fn buscar_por_id(&self, id: IdProducto) -> Result<Option<Producto>, ErrorRepositorio>;
+    async fn guardar(&self, entidad: &Producto) -> Result<(), ErrorRepositorio>;
 }
 
-#[cfg(any(test, feature = "test-utils"))]
-pub mod mocks {
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
     use mockall::mock;
     use super::*;
 
     mock! {
-        pub EntityRepository {}
+        pub RepositorioProducto {}
         #[async_trait]
-        impl EntityRepositoryTrait for EntityRepository {
-            async fn find_by_id(&self, id: EntityId) -> Result<Option<Entity>, RepositoryError>;
-            async fn save(&self, entity: &Entity) -> Result<(), RepositoryError>;
+        impl RepositorioProducto for RepositorioProducto {
+            async fn buscar_todos(&self, pagina: PeticionPagina) -> Result<Pagina<Producto>, ErrorRepositorio>;
+            async fn buscar_por_id(&self, id: IdProducto) -> Result<Option<Producto>, ErrorRepositorio>;
+            async fn guardar(&self, entidad: &Producto) -> Result<(), ErrorRepositorio>;
         }
     }
 }
 ```
 
-### Error pattern
+El doble va **junto a su trait**, en el mismo fichero, tras la feature `pruebas`. El trait lleva el
+nombre del concepto; la implementación dice cómo lo hace (`RepositorioProductoEnMemoria`,
+`RepositorioProductoPostgres`). Sin sufijo `Trait`.
+
+### Patrón de error
 
 ```rust
 #[derive(Debug, thiserror::Error)]
-pub enum EntityError {
-    #[error("entity.validation_error.{0}")]
-    ValidationError(String),   // "name_empty", "email_invalid", etc.
-    #[error("entity.not_found")]
-    NotFound,
-    #[error("entity.duplicate")]
-    Duplicate,
-    #[error("entity.repository_error")]
-    RepositoryError,
-    #[error("entity.unknown")]
-    Unknown,
+pub enum ErrorProducto {
+    #[error("producto.validacion.{0}")]
+    Validacion(String),   // "nombre_vacio", "cliente_id_no_encontrado"…
+    #[error("producto.no_encontrado")]
+    NoEncontrado,
+    #[error("producto.duplicado")]
+    Duplicado,
+    #[error("producto.repositorio")]
+    Repositorio,
+    #[error("producto.desconocido")]
+    Desconocido,
+    // un objeto valor inválido: <Vo>Invalido → "producto.<vo>_invalido"
+    // proyectos con auth: Prohibido → "producto.prohibido" (403)
 }
 ```
 
-Error codes are **machine-readable identifiers**, never human-readable messages.
+Los códigos de error son **identificadores legibles por máquina**, nunca mensajes para personas.
 
-### Repository error
+### Error de repositorio
 
-Repository ports return one shared error, whatever the entity and the adapter (ADR-0015):
+Los puertos de repositorio devuelven un único error compartido, sea cual sea la entidad y el
+adaptador (ADR-0015):
 
 ```rust
-// puerto_core::RepositoryError — crates/core in Puerto's workspace (ADR-0017), #[non_exhaustive]
-pub enum RepositoryError {
-    Duplicate,    // "repository.duplicate"    — a unique constraint rejected the write
-    InvalidData,  // "repository.invalid_data" — a stored row fails the domain's rules
-    Unavailable,  // "repository.unavailable"  — the store failed or is unreachable
+// puerto_nucleo::ErrorRepositorio — crates/nucleo en el workspace de Puerto (ADR-0017), #[non_exhaustive]
+pub enum ErrorRepositorio {
+    Duplicado,                           // una restricción única rechazó la escritura
+    DatosInvalidos,                      // una fila guardada incumple las reglas del dominio
+    NoDisponible,                        // el almacén falló o no se alcanza
+    ReferenciaInexistente(&'static str), // una clave foránea rechazó la escritura (ADR-0022)
 }
 ```
 
-Each entity error converts it — `impl From<RepositoryError> for EntityError` (`Duplicate →
-Duplicate`, the rest → `RepositoryError`, plus a `_` arm because the enum is `#[non_exhaustive]`)
-— so use cases propagate it with `?` and the API keeps answering the entity's codes.
-`domain/shared.rs` exists only once a shared value object does: it declares `errors` /
-`value_objects`; there is no `shared/mod.rs`.
+Cada error de entidad lo convierte — `impl From<ErrorRepositorio> for ErrorProducto` (`Duplicado →
+Duplicado`, el resto → `Repositorio`, más un brazo `_` porque el enum es `#[non_exhaustive]`;
+con referencias, `ReferenciaInexistente(campo) → Validacion("<campo>_no_encontrado")`) — para que
+los casos de uso lo propaguen con `?` y la API siga respondiendo con los códigos de la entidad.
 
-### Paged lists
+### Listas paginadas
 
-`puerto_core::{PageRequest, Page}` (ADR-0016, moved to the runtime by ADR-0017): `PageRequest::new(limit, offset)` — private
-fields, limit defaults to 20 and is clamped to `1..=100` — and `Page<T> { items, total, limit,
-offset }`. The CRUD port reads `find_all(&self, page: PageRequest) -> Result<Page<Entity>,
-RepositoryError>`, `ListEntitiesParams { page }` returns a `Page`, and `GET /entities?limit=&offset=`
-answers `EntityPageDto`. Pg: `ORDER BY created_at DESC, id LIMIT $1 OFFSET $2` + `COUNT(*)`.
+`puerto_nucleo::{PeticionPagina, Pagina}` (ADR-0016): `PeticionPagina::new(limite, desplazamiento)`
+— campos privados; `limite` vale 20 por defecto (`LIMITE_PAGINA_POR_DEFECTO`) y se acota a
+`1..=100` (`LIMITE_PAGINA_MAXIMO`) — y `Pagina<T> { elementos, total, limite, desplazamiento }`. El
+puerto CRUD lee `buscar_todos(&self, pagina: PeticionPagina) -> Result<Pagina<Producto>,
+ErrorRepositorio>`, `ParamsListarProductos { pagina }` devuelve una `Pagina` y
+`GET /productos?limite=&desplazamiento=` responde un `DtoPaginaProducto`
+(`{ elementos, total, limite, desplazamiento }`). Postgres:
+`ORDER BY creado_en DESC, id LIMIT $1 OFFSET $2` + `COUNT(*)`.
 
-### References (ADR-0022)
+### Referencias (ADR-0022)
 
-`customer_id:ref:Customer` — an aggregate holds another's **id**, never the aggregate: no
-navigation, no lazy loading; a use case that needs the customer asks its repository.
+`cliente_id:ref:Cliente` — un agregado guarda el **id** de otro, nunca el agregado: sin
+navegación ni carga perezosa; un caso de uso que necesita el cliente se lo pide a su repositorio.
 
-- Domain, Params, repository port, Mother and tests: `CustomerId` (imported from
-  `crate::domain::customer::model`). Rows, DTOs and the events snapshot: `Uuid` (`from_uuid` /
-  `.value()` at the edges, like the entity's own id)
-- The database checks existence, not the use case: `CONSTRAINT orders_customer_id_fkey REFERENCES
-  customers (id)` + `orders_customer_id_idx`. The write that breaks it maps, through the
-  repository's (or unit of work's) `REFERENCES: &[ForeignKey]`, to
-  `RepositoryError::MissingReference("customer_id")` → `OrderError::ValidationError("customer_id_not_found")` → 422
-- Soft deletes leave references pointing at the deleted row; in-memory projects check nothing
-- The list filters by each reference (18.4): `ListOrdersParams { page, customer_id:
-  Option<CustomerId>, … }` → `find_all(page, OrderFilter { customer_id, … })` — `OrderFilter` is
-  declared next to the port, only for an entity with references. Pg: one static query, `AND
-  ($3::uuid IS NULL OR customer_id = $3)` on the page and its `COUNT`. `GET
-  /orders?customerId=&limit=&offset=`
-- Web (18.5): the form's `<select>` lists the target's first `MAX_PAGE_LIMIT` items, loaded by the
-  inner form once per target entity (`referenceOptions(loaded, label)` in `shared/forms.ts`); the
-  detail shows `<ReferenceLink path="/customers" id={…} />`; `messages.ts` maps
-  `customer_id_not_found` to `customerId`
+- Dominio, Params, puerto del repositorio, madre y tests: `IdCliente` (importado de
+  `dominio_cliente::modelo`). Filas, DTO y el snapshot de eventos: `Uuid` (`from_uuid` /
+  `.valor()` en los bordes, como el id propio de la entidad)
+- La existencia la comprueba la base de datos, no el caso de uso:
+  `CONSTRAINT pedidos_cliente_id_fkey REFERENCES clientes (id)` + `pedidos_cliente_id_idx`. La
+  escritura que la incumple se traduce, con las `REFERENCES: &[ClaveForanea]` del repositorio (o de
+  la unidad de trabajo), en `ErrorRepositorio::ReferenciaInexistente("cliente_id")` →
+  `ErrorPedido::Validacion("cliente_id_no_encontrado")` → 422
+- El borrado lógico deja las referencias apuntando a la fila borrada; los proyectos en memoria no
+  comprueban nada
+- La lista filtra por cada referencia: `ParamsListarPedidos { pagina, cliente_id:
+  Option<IdCliente>, … }` → `buscar_todos(pagina, FiltroPedido { cliente_id, … })` —
+  `FiltroPedido` se declara junto al puerto, solo para una entidad con referencias. Postgres: una
+  sola consulta estática, `AND ($3::uuid IS NULL OR cliente_id = $3)` en la página y en su
+  `COUNT`. `GET /pedidos?clienteId=&limite=&desplazamiento=`
+- Web: el `<select>` del formulario lista los primeros `MAX_PAGE_LIMIT` elementos del objetivo,
+  cargados una vez por entidad objetivo (`referenceOptions(loaded, label)` en `shared/forms.ts`);
+  el detalle muestra `<ReferenceLink path="/clientes" id={…} />`; `messages.ts` asocia
+  `cliente_id_no_encontrado` a `clienteId`
 
-### Domain events (`[project] events` — ADR-0018)
+### Eventos de dominio (`[proyecto] eventos` — ADR-0018)
 
-A project created with `puerto new --db --events db|kafka`. Each **CRUD** entity gets two more
-domain files; simple entities (the Greeting demo) are unchanged:
-
-```
-domain/<entity>/
-  events.rs         # AUTO-GENERATED from puerto.toml, never hand-edited: {Entity}Snapshot
-                    #   (DTO-shaped primitives, serde camelCase, from_entity), {Entity}Event
-                    #   (Created/Updated/Deleted + custom), impl puerto_core::DomainEvent,
-                    #   pub const {ENTITY}_CREATED…
-  unit_of_work.rs   # {Entity}UnitOfWork (save / record / commit(self: Box<Self>)) and
-                    #   {Entity}UnitOfWorkFactory (begin); mocks::RecordingUnitOfWorkFactory
-```
-
-- The repository port **has no `save`**: it only reads. Writes go `uow_factory.begin()` → `save`
-  → `record({Entity}Event::X({Entity}Snapshot::from_entity(&e)))` → `commit`. Dropping the UoW
-  without `commit` rolls back — an early `?` is the rollback
-- `create` holds `uow_factory` only; `get`/`list` `repository` only; `update`/`delete` and every
-  custom use case both. `bootstrap.rs` builds `{snake}_repo` and `{snake}_uow` once per entity
-- Infrastructure: `unit_of_work.rs` — `Pg{Entity}UnitOfWorkFactory { pool }` over
-  `puerto_sqlx::uow::PgTransaction`; the upsert lives there, not in the Pg repository. Its
-  `#[sqlx::test]`s check the row and its outbox event commit (and roll back) together
-- `events.rs` is rewritten by scaffold, `generate bootstrap` and `generate event`; domain models
-  and value objects stay serde-free. The snapshot is a public contract: consumers decode it
-- Tests use `RecordingUnitOfWorkFactory` (`failing_at(FailAt::Save, RepositoryError::Duplicate)`,
-  `recorded()` → `saved`, `events`, `committed`)
-
-### The worker (`[project] events` — ADR-0018 § 5)
-
-A second binary next to `presentation`, and a composition root like it:
+Un proyecto creado con `puerto nuevo --db --eventos db|kafka`. Cada entidad **CRUD** gana dos
+ficheros de dominio; las entidades simples (el demo Saludo) no cambian:
 
 ```
-worker/src/
-  main.rs                 # WorkerConfig::from_env() + Worker::new(config).try_run(build_worker) — never changes
-  generated/registry.rs   # AUTO-GENERATED from [[consumer]]: relay + one consumer each — never hand-edit
-  consumers.rs            # pub mod <consumer>; (sorted)
-  consumers/<consumer>.rs # the user's EventHandler, written once by `puerto generate consumer`
+dominio/src/
+  eventos.rs        # GENERADO desde puerto.toml, nunca a mano: SnapshotProducto (primitivos con la
+                    #   forma del DTO, serde camelCase, from_entidad), EventoProducto
+                    #   (Creado/Actualizado/Borrado + propios), impl puerto_nucleo::EventoDominio,
+                    #   pub const PRODUCTO_CREADO = "producto_creado"…
+  unit_of_work.rs   # UnitOfWorkProducto (guardar / registrar / commit(self: Box<Self>)) y
+                    #   UnitOfWorkFactoryProducto (begin); dobles::UnitOfWorkFactoryGrabadora
 ```
 
-- A consumer matches `event.event_type` against the entity's `{ENTITY}_{VERB}` constants,
-  decodes `{Entity}Snapshot` (a decode error → `dead_letter(REASON_PAYLOAD_INVALID, …)`) and
-  calls a use case. It must be idempotent: delivery is at-least-once, keyed on `event.id`
-- `Ack` / `Retry` (redelivered with the policy's backoff until `MAX_DELIVERIES`) /
-  `DeadLetter` — nothing is retired without a `dead_letters` row
-- The loops, `/health` + `/health/ready` on `WORKER_PORT` and the SIGTERM drain are
-  `puerto-events`'; the `db` transport adapters are `puerto_sqlx::events`, reached through
-  `infrastructure::db`
-- `kafka` (`puerto-kafka`): the relay still reads `PgOutbox` and dead letters stay in
-  `PgDeadLetters`; events go to `<KAFKA_TOPIC_PREFIX>.<aggregate>` keyed by the aggregate id, and
-  a consumer is the group `<prefix>.<consumer>`. It hands out one record at a time
-  (`EventSubscription::max_batch`): a `Retry` is retried in process and holds back its partition,
-  never reordered. A record that is not an envelope is dead-lettered (`event_id` NULL)
+- El puerto del repositorio **no tiene `guardar`**: solo lee. Las escrituras van `begin()` →
+  `guardar` → `registrar(EventoProducto::X(SnapshotProducto::from_entidad(&e)))` → `commit`.
+  Soltar la unidad de trabajo sin `commit` deshace — un `?` temprano es el rollback
+- `crear` usa solo la factoría de unidades de trabajo; `obtener`/`listar`, solo el repositorio;
+  `actualizar`/`borrar` y cada caso de uso propio, los dos. `cableado` construye el repositorio y
+  la factoría una vez por contexto
+- Infraestructura: `unit_of_work.rs` — `UnitOfWorkFactoryProductoPostgres { pool }` sobre
+  `puerto_sqlx::uow::TransaccionPostgres`; el upsert vive ahí, no en el repositorio Postgres. Sus
+  `#[sqlx::test]` comprueban que la fila y su evento del outbox se confirman (y se deshacen) juntos
+- `eventos.rs` lo reescriben `scaffold`, `generar bootstrap` y `generar evento`; los modelos de
+  dominio y los objetos valor siguen sin serde. El snapshot es un contrato público: los
+  consumidores lo decodifican
+- Los tests usan `UnitOfWorkFactoryGrabadora`
+  (`fallando_en(FallarEn::Guardar, ErrorRepositorio::Duplicado)`, `grabado()` → `guardados`,
+  `eventos`, `confirmado`)
 
-### Mail (ADR-0020)
+### El worker (`[proyecto] eventos` — ADR-0018 § 5)
 
-`puerto generate mail <name>` writes three pieces, once — the user's from then on:
+Un segundo binario junto a `api`, y una raíz de composición como él:
 
 ```
-business/src/domain/mail/<name>.rs      # {Name}Mail (to + primitive fields) + port {Name}Mailer
-                                        #   + mocks::Mock{Name}Mailer — no template engine, no SMTP
-infrastructure/src/mail/<name>.rs       # Template{Name}Mailer { mailer: Arc<dyn Mailer> }: renders
-                                        #   the templates (puerto_mail::Templates), sends the Email
-infrastructure/mail/<name>/             # subject.txt, body.html, body.txt — minijinja, strict,
-                                        #   embedded with include_str!; render tests in the file above
+presentacion/worker/src/
+  main.rs                    # ConfigWorker::from_env() + Worker::new(config).intentar_ejecutar(construir_worker) — no cambia
+  generado/registro.rs       # GENERADO desde [[consumidor]]: el relay + un consumidor cada uno — nunca a mano
+  consumidores.rs            # pub mod <consumidor>; (ordenados)
+  consumidores/<nombre>.rs   # el ManejadorEvento del usuario, escrito una vez por `puerto generar consumidor`
 ```
 
-- The module is `mail` in both crates (`domain { mail { <name> } }`, `mail { <name> }`), so no
-  entity may be named `Mail`
-- Code that sends a mail depends on `{Name}Mailer`; in v1 that is a worker consumer (`--on`,
-  `events` projects): `worker/src/consumers/mail_<name>.rs` decodes the snapshot, builds
-  `{Name}Mail` and calls `puerto_mail::send_once(sent_mails, event.id, "<name>", …)` — check the
-  `sent_mails` log, send, mark. The registry wires it as the consumer `mail_<name>` with one
-  `SmtpMailer` (`SMTP_URL`, `MAIL_FROM`) and one `PgSentMails` shared by every mail
+- Un consumidor compara `event.tipo_evento` con las constantes `<ENTIDAD>_<VERBO>` de la entidad,
+  decodifica `SnapshotProducto` (un error de decodificación →
+  `ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, …)`) y actúa. Tiene que ser idempotente: la
+  entrega es al menos una vez, con `event.id` como clave
+- `Ack` / `Reintentar` (se reentrega con la espera de la política hasta las entregas máximas) /
+  `Descartar` — nada se retira sin una fila en `descartados`
+- Los bucles, `/health` + `/health/ready` en `WORKER_PORT` y el drenaje con SIGTERM son de
+  `puerto-eventos`; los adaptadores del transporte `db`, de `puerto_sqlx::eventos`
+- `registro.rs` todavía no usa `cableado`: los consumidores no reciben casos de uso
+- `kafka` (`puerto-kafka`): el relay sigue leyendo `OutboxPostgres` y los descartados siguen en
+  `DescartadosPostgres`; los eventos van a `<KAFKA_TOPIC_PREFIX>.<agregado>` con el id del agregado
+  como clave, y un consumidor es el grupo `<prefijo>.<consumidor>`. Reparte un registro cada vez:
+  un `Reintentar` se reintenta en proceso y retiene su partición, nunca se reordena. Un registro que
+  no es un sobre se descarta (`id_evento` NULL)
+
+### Correo (ADR-0020)
+
+`puerto generar correo <nombre>` escribe, una vez, en el contexto `correo` — del usuario desde
+entonces:
+
+```
+contextos/correo/dominio/src/<nombre>.rs          # Correo<Nombre> (destinatario + campos primitivos) + el
+                                                  #   puerto EnviadorCorreo<Nombre> + dobles::MockEnviadorCorreo<Nombre>
+                                                  #   — sin motor de plantillas, sin SMTP
+contextos/correo/infraestructura/src/<nombre>.rs  # EnviadorCorreo<Nombre>Plantilla: renderiza las plantillas
+                                                  #   (puerto_correo::Plantillas) y envía el Correo
+contextos/correo/infraestructura/plantillas/<nombre>/
+                                                  # asunto.txt, cuerpo.html, cuerpo.txt — minijinja, estricto,
+                                                  #   embebidas con include_str!; tests de renderizado en el fichero de arriba
+```
+
+- Ninguna entidad puede llamarse `Correo`: el contexto es de los correos
+- El código que envía un correo depende de `EnviadorCorreo<Nombre>`; en la v1, un consumidor del
+  worker (`--tras`, proyectos con eventos): `presentacion/worker/src/consumidores/correo_<nombre>.rs`
+  (`EnviarCorreo<Nombre>`) decodifica el snapshot, construye `Correo<Nombre>` y llama a
+  `puerto_correo::enviar_una_vez` — mira el registro `correos_enviados`, envía, marca. El registro
+  lo monta como el consumidor `correo_<nombre>` con un `EnviadorCorreoSmtp` (`SMTP_URL`,
+  `MAIL_FROM`) y un `CorreosEnviadosPostgres` que comparten todos los correos
 
 ---
 
-## Application Layer (`business/src/application/<entity>/`)
+## Aplicación (`contextos/<c>/aplicacion/` → `aplicacion_<c>`)
 
-**Orchestrates domain logic. Implements use case traits.**
-
-- One file per use case: `application/<entity>/<action>.rs`
-- Implements the trait defined in `domain/<entity>/use_cases/<action>.rs`
-- Dependencies injected as `Arc<dyn Trait>` — never concrete types
-- **Logging with `tracing` directly** — no injected logger, no `Logger` port (ADR-0006).
-  `tracing` is already a facade: the subscriber is set up once, by `puerto_web::App::serve`. A use case logs
-  `<use_case>: start` and `<use_case>: done` (plus the id when there is one); it never logs the
-  request payload, which is user data
+**Orquesta la lógica de dominio. Un fichero por caso de uso, con todo lo suyo** (ADR-0023 § 4):
 
 ```rust
-pub struct CreateEntityUseCaseImpl {
-    pub repository: Arc<dyn EntityRepositoryTrait>,
+// contextos/producto/aplicacion/src/crear_producto.rs
+pub struct ParamsCrearProducto { pub nombre: String }          // 1. la entrada
+
+#[async_trait]
+pub trait CrearProducto: Send + Sync {                         // 2. el contrato
+    async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles { /* mock! { pub CrearProducto {} … } → MockCrearProducto */ }   // 3. su doble
+
+pub struct CrearProductoImpl {                                 // 4. la implementación
+    pub repositorio: Arc<dyn RepositorioProducto>,
 }
 
 #[async_trait]
-impl CreateEntityUseCaseTrait for CreateEntityUseCaseImpl {
-    async fn execute(&self, params: CreateEntityParams) -> Result<Entity, EntityError> {
-        tracing::info!("create_entity: start");
-        let entity = Entity::new(EntityProps { name: params.name })
-            .inspect_err(|e| tracing::warn!(error = %e, "create_entity: rejected"))?;
-        self.repository
-            .save(&entity)
+impl CrearProducto for CrearProductoImpl {
+    async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto> {
+        tracing::info!("crear_producto: inicio");
+        let entidad = Producto::new(PropsProducto { nombre: params.nombre })
+            .inspect_err(|e| tracing::warn!(error = %e, "crear_producto: rechazado"))?;
+        self.repositorio
+            .guardar(&entidad)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "create_entity: repository failed"))?;
-        tracing::info!(id = %entity.id, "create_entity: done");
-        Ok(entity)
+            .inspect_err(|e| tracing::error!(error = %e, "crear_producto: fallo del repositorio"))?;
+        tracing::info!(id = %entidad.id, "crear_producto: fin");
+        Ok(entidad)
     }
 }
+
+#[cfg(test)]
+mod tests { /* 5. sus tests */ }
 ```
 
-Tests live inside each file in `#[cfg(test)] mod tests { ... }`.
+- El trait lleva el nombre del caso de uso (`CrearProducto`), la implementación `…Impl`. Se
+  mantiene el trait en todos: las rutas guardan `Arc<dyn CrearProducto>` y se prueban con dobles
+- Los casos de uso CRUD: `crear_<e>`, `obtener_<e>`, `listar_<plural>`, `actualizar_<e>`,
+  `borrar_<e>`
+- `ParamsCrearProducto` lleva todos los campos propios (sin los de sistema);
+  `ParamsActualizarProducto`, además, `id: IdProducto`. Los Params usan tipos primitivos; la
+  implementación construye los objetos valor antes de `Producto::new()`
+- Las dependencias se inyectan como `Arc<dyn Trait>` — nunca tipos concretos
+- **Logs con `tracing` directamente** — sin logger inyectado ni puerto `Logger` (ADR-0006).
+  `tracing` ya es una fachada: el subscriber lo instala una vez `puerto_web::App`. Un caso de uso
+  registra `<caso>: inicio` y `<caso>: fin` (más el id cuando lo hay); nunca registra los datos de
+  la petición, que son del usuario
+- El caso de uso se renderiza con dos plantillas (contrato e implementación) que el generador une
+  bajo un solo bloque de `use` (`generators/merge.rs`): dos `use` del mismo nombre son E0252
 
 ---
 
-## Infrastructure Layer (`infrastructure/src/<entity>/`)
+## Infraestructura (`contextos/<c>/infraestructura/` → `infra_<c>`)
 
-**Adapters for external systems. No business logic.**
+**Adaptadores de sistemas externos. Sin lógica de negocio.**
 
-Which of the two is generated is inferred from `[project] db` in puerto.toml — set once by
-`puerto new --db`. `generate scaffold` has no `--db` flag of its own.
+Cuál se genera se deduce de `[proyecto] db` en puerto.toml — se fija una vez con
+`puerto nuevo --db`. `generar scaffold` no tiene `--db` propio.
 
-### InMemory (default — `db` absent or false)
+### En memoria (por defecto — `db` ausente o false)
 
 ```
-infrastructure/src/<entity>/
-  repository.rs    # InMemory<Entity>Repository — implements domain repository trait
+infraestructura/src/
+  repositorio.rs   # RepositorioProductoEnMemoria — implementa el puerto del dominio
 ```
 
 ### SQLx/Postgres (`db = true`)
 
 ```
-infrastructure/src/<entity>/
-  entity.rs        # <Entity>Db struct (#[derive(FromRow)]) + TryFrom + From conversions
-  repository.rs    # Pg<Entity>Repository { pool: PgPool } — implements domain repository trait
-infrastructure/src/
-  db.rs            # pub use puerto_sqlx::* + the project's MIGRATOR — created once by puerto new --db
-infrastructure/migrations/
-  <ts>_<name>.sql  # created by puerto generate migration <name>
+infraestructura/src/
+  fila.rs              # FilaProducto (#[derive(FromRow)]) + TryFrom + From
+  repositorio.rs       # RepositorioProductoPostgres { pool: PgPool } — implementa el puerto
+  unit_of_work.rs      # proyectos con eventos
+  pruebas/siembra.rs   # construir / sembrar, para los tests de Postgres (feature `pruebas`)
+migraciones/           # en la raíz: el SQL de todos los contextos
+migrador/              # en la raíz: pub static MIGRADOR = sqlx::migrate!("../migraciones")
 ```
 
-**Rules:**
+**Reglas:**
 
-- `from_repository()` is the **only** entry point from persistence to domain — never call `Entity::new()` inside a repository
-- `TryFrom<EntityDb> for Entity` handles row → domain conversion (can fail)
-- `From<&Entity> for EntityDb` handles domain → row conversion (infallible)
-- `db.rs` is shared across all entities — never duplicated per entity. The pool, `run_migrations`,
-  `ping` and `map_sqlx_error` are `puerto-sqlx`'s (ADR-0017), re-exported there; the project keeps
-  only `MIGRATOR` (`sqlx::migrate!` embeds the project's own `migrations/` at compile time)
-- `entity.rs` and `db.rs` are only present when `db = true` in puerto.toml
-- A `HashMap<String, String>` field is a `JSONB` column: the row field is
-  `sqlx::types::Json<HashMap<String, String>>`, the `SELECT` overrides the column type
-  (`meta as "meta: Json<HashMap<String, String>>"`) and the bind uses `db.meta as _`
-- `unique` fields get a partial unique index (`WHERE deleted = false`) — rows are soft-deleted
-- Repositories return `RepositoryError`: they log the driver error with their context and convert
-  it with `infrastructure::db::map_sqlx_error` (the only place that knows Postgres codes —
-  `23505` → `Duplicate`); `to_domain(row)` turns a row `TryFrom` rejects into `InvalidData`
-- Never a `map_err` that returns its input unchanged (clippy `manual_inspect` under the generated
-  project's `make lint`)
+- `from_repositorio()` es la **única** entrada desde la persistencia al dominio — nunca se llama a
+  `Producto::new()` dentro de un repositorio
+- `TryFrom<FilaProducto> for Producto` convierte fila → dominio (puede fallar)
+- `From<&Producto> for FilaProducto` convierte dominio → fila (no falla)
+- No hay `db.rs`: el pool, `ejecutar_migraciones`, `ping` y `mapear_error_sqlx` son de
+  `puerto-sqlx` (ADR-0017) y se importan de ahí; el proyecto solo aporta `migrador::MIGRADOR`
+  (`sqlx::migrate!` embebe `migraciones/` al compilar; el `build.rs` de `migrador`, con
+  `cargo:rerun-if-changed`, hace que vea una migración nueva aunque no cambie ningún `.rs`)
+- Los tests de Postgres usan `#[sqlx::test(migrator = "migrador::MIGRADOR")]`: ningún test lleva
+  su propia copia de las migraciones (ADR-0023 § 6)
+- Los helpers de siembra (`construir`, `sembrar`) van en `infra_<c>::pruebas::siembra`, públicos
+  tras `pruebas`, y van en cadena por las referencias: `infra_pedido` declara `infra_cliente` como
+  dependencia opcional (`pruebas = ["dominio_pedido/pruebas", "dep:infra_cliente",
+  "infra_cliente/pruebas"]`). Dentro del módulo de los `#[sqlx::test]` quedarían helpers sin usar,
+  y el `make lint` (`-D warnings`) los rechaza
+- Un campo `HashMap<String, String>` es una columna `JSONB`: el campo de la fila es
+  `sqlx::types::Json<HashMap<String, String>>`, el `SELECT` sobrescribe el tipo de la columna
+  (`meta as "meta: Json<HashMap<String, String>>"`) y el bind lo envuelve en `Json(…)`
+- Los campos `unico` tienen un índice único parcial (`productos_sku_key … WHERE borrado = false`):
+  las filas se borran de forma lógica
+- Los repositorios devuelven `ErrorRepositorio`: registran el error del driver con su contexto y lo
+  convierten con `puerto_sqlx::mapear_error_sqlx` (`_con(err, REFERENCES)` si la entidad tiene
+  referencias) — el único sitio que conoce los códigos de Postgres (`23505` → `Duplicado`, `23503`
+  → `ReferenciaInexistente`); `to_dominio(fila)` convierte una fila que `TryFrom` rechaza en
+  `DatosInvalidos`
+- Nunca un `map_err` que devuelve su entrada sin cambiarla (clippy `manual_inspect` en el
+  `make lint` del proyecto generado)
 
-**When `entity.fields` is defined**, `<Entity>Db` includes all custom columns alongside system columns:
+**Con `[[entidad.campos]]`**, `FilaProducto` lleva las columnas propias junto a las de sistema:
 
 ```rust
-#[derive(Debug, sqlx::FromRow)]
-pub struct ProductDb {
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct FilaProducto {
     pub id: Uuid,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub deleted: bool,
-    pub deleted_at: Option<DateTime<Utc>>,
-    // Custom columns from puerto.toml
-    pub name: String,
-    pub price: i64,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    // Columnas propias de puerto.toml
+    pub nombre: String,
+    pub precio: i64,
     pub sku: String,
-    pub description: Option<String>,
-    pub tags: Vec<String>,
+    pub descripcion: Option<String>,
+    pub etiquetas: Vec<String>,
 }
 ```
 
-SQL type mappings come from the type registry (see `puerto-toml.md`).
+Los tipos SQL salen del registro de tipos (ver `puerto-toml.md`). La tabla es el plural de la
+entidad (`productos`).
 
 ---
 
-## Presentation Layer
+## REST (`contextos/<c>/rest/` → `rest_<c>`)
 
-**Entry points only. No business logic.**
-
-### Module layout
+**Solo puntos de entrada. Sin lógica de negocio.**
 
 ```
-presentation/src/
-  main.rs                  # puerto_web::Config::from_env() + App::new(config).try_serve(…) — never changes
-  app.rs                   # the user's hook: configure(routes) — written once by `new`, never regenerated
-  generated.rs             # pub mod bootstrap; — static, never changes
-  generated/
-    bootstrap.rs           # AUTO-GENERATED from puerto.toml — never hand-edit
-  api.rs                   # pub mod error; pub mod <entity>; ...
-  api/
-    error.rs               # IntoErrorResponse trait (local: the orphan rule) — the body is puerto_web::ErrorResponse
-    <entity>.rs            # pub mod dto; pub mod routes; pub mod responses; pub mod error_mapper;
-    <entity>/
-      routes.rs            # OpenApi impl — endpoints, auth, param parsing
-      dto.rs               # Request/Response structs (#[derive(Object)])
-      responses.rs         # #[derive(ApiResponse)] enums
-      error_mapper.rs      # impl IntoErrorResponse for EntityError
+rest/src/
+  lib.rs           # pub mod dto; pub mod errores; pub mod respuestas; pub mod rutas;
+  rutas.rs         # ApiProducto: endpoints, auth, lectura de parámetros, tests de rutas
+  dto.rs           # DtoProducto, DtoPaginaProducto, PeticionCrearProducto… (#[derive(Object)])
+  respuestas.rs    # RespuestaCrearProducto… (#[derive(ApiResponse)])
+  errores.rs       # a_respuesta_error(ErrorProducto) -> (StatusCode, Json<RespuestaError>)
 ```
 
-### `presentation/src/api/<entity>.rs`
+### Los errores, con una función libre
 
-Every entity API module **must** have this sibling declaration file:
+Un `rest_<c>` no puede escribir `impl IntoRespuestaError for ErrorProducto`: ni el trait
+(`puerto-web`) ni el tipo (`dominio_producto`) son suyos (la orphan rule). `errores.rs` exporta la
+función libre `a_respuesta_error(err)`, exhaustiva (sin brazo `_`) y con un test por rama
+(ADR-0023 § 8).
+
+### DTO
+
+Los DTO derivan el `Object` de poem-openapi (no serde) y el contrato JSON es **camelCase**: un campo
+`publicado_en` es `publicadoEn` en el JSON.
 
 ```rust
-// presentation/src/api/product.rs
-pub mod dto;
-pub mod error_mapper;
-pub mod responses;
-pub mod routes;
-```
-
-`puerto generate scaffold` creates this file automatically. Do not omit it — without it Rust cannot resolve the sub-modules.
-
-### `presentation/src/generated/bootstrap.rs`
-
-**Never edit by hand.** Regenerated from `puerto.toml` by:
-
-- `puerto generate scaffold <Name>` (automatic)
-- `puerto generate bootstrap` (manual)
-
-Contains all DI wiring: repo instantiation, use case wiring, `OpenApiService` setup, route registration.
-
-### DTOs with typed fields
-
-When `entity.fields` is defined, `dto.rs` generates typed request/response structs that map to the entity's custom fields:
-
-```rust
-// CreateProductRequest maps to CreateProductParams
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct CreateProductRequest {
-    pub name: String,
-    pub unit_price: i64,          // JSON: "unitPrice"
-    pub sku: String,
-    pub description: Option<String>,
-    pub tags: Vec<String>,
+pub struct PeticionCrearProducto {
+    pub nombre: String,
+    pub precio_unidad: i64,       // JSON: "precioUnidad"
+    pub descripcion: Option<String>,
 }
 
-// ProductDto maps from the domain model for responses
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct ProductDto {
+pub struct DtoProducto {
     pub id: Uuid,
-    pub name: String,
-    pub unit_price: i64,
+    pub nombre: String,
     // ...
 }
 ```
 
-DTOs derive poem-openapi's `Object` (not serde) and the JSON contract is **camelCase**: a
-`published_at` field is `publishedAt` on the wire.
+Cada tipo OpenAPI sale del registro de tipos (`i64` → `integer(int64)`, `Uuid` → `string(uuid)`).
 
-Each OpenAPI type derives from the type registry mapping (e.g., `i64` → `integer(int64)`, `Uuid` → `string(uuid)`).
+### Reglas
 
-### Rules
-
-- **API First**: update `routes.rs` + `dto.rs` before any implementation
-- Domain models are **never** exposed in responses — always map via `EntityDto::from_domain(&entity)`
-- Every `ApiResponse` enum has a `from_status(StatusCode, Json<ErrorResponse>) -> Self` helper
-- All errors use the shared `puerto_web::ErrorResponse { name, message }` (ADR-0017), built with
-  `ErrorResponse::from_code(err.to_string())`: **`name` is the machine-readable code**
-  (`product.not_found`) — ADR-0007
-- Status mapping: domain validation and invalid value objects → **422**; not found → 404;
-  duplicate → 409; repository / unknown → 500. `400` is left to poem for malformed bodies
-- Error mappers are exhaustive (no `_` arm) and generated with **one unit test per arm**
-- `/health` is liveness only; `/health/ready` probes the dependencies (`infrastructure::db::ping`
-  in `--db` projects, handed to `puerto_web::health::probe`) and answers 503 when one is down.
-  SIGTERM drains in-flight requests for `SHUTDOWN_DEADLINE` (ADR-0008) — all served by `puerto-web`
-- `Config::from_env()` (`puerto-web`) reads `SERVICE_PORT`, `CORS_ALLOWED_ORIGINS`, `PUERTO_BANNER`
-  after `.env`; a set but invalid value is a startup error
-- DI wiring lives in `generated/bootstrap.rs` — never in `main.rs`; it ends with
-  `crate::app::configure(puerto_web::routes(openapi_service(…), &config, ready))`. `app.rs` is the
-  user's: no generator writes it
-- `{Entity}Api` holds **ports**: `Arc<dyn {Uc}UseCaseTrait>`. Only `bootstrap.rs` (the
-  composition root) names `business::application::*`; its `Arc<{Uc}UseCaseImpl>` coerces at the
-  struct literal
-- Every use case trait ships `mocks::Mock{Uc}UseCase` (same gate as the repository mocks), and the
-  CRUD `routes.rs` is generated with route tests: `poem::test::TestClient` over the real
-  `OpenApiService`, one mocked use case per test, one test per status path (ADR-0012)
+- **API primero**: `rutas.rs` + `dto.rs` antes que cualquier implementación
+- Los modelos de dominio **nunca** salen en una respuesta — siempre por
+  `DtoProducto::from_dominio(&entidad)`
+- Todo enum `ApiResponse` tiene un `from_status(StatusCode, Json<RespuestaError>) -> Self`. Sus
+  variantes: `Ok`, `Creado`, `SinContenido`, `NoProcesable`, `NoAutorizado`, `Prohibido`,
+  `NoEncontrado`, `Conflicto`, `NoDisponible`, `ErrorInterno`
+- Todos los errores usan `puerto_web::RespuestaError { codigo, mensaje }` (ADR-0017), construido con
+  `RespuestaError::from_codigo(err.to_string())`: **`codigo` es el código legible por máquina**
+  (`producto.no_encontrado`) — ADR-0007
+- Estados: validación de dominio y objetos valor inválidos → **422**; no encontrado → 404;
+  duplicado → 409; prohibido → 403; repositorio / desconocido → 500. El `400` se deja a poem para
+  los cuerpos mal formados
+- Los handlers CRUD son `crear`, `obtener`, `listar`, `actualizar`, `borrar`; las rutas,
+  `/productos` y `/productos/:id`
+- `Api<Entidad>` guarda **puertos**: `Arc<dyn CrearProducto>`. Solo `cableado` (la raíz de
+  composición) nombra las `…Impl`
+- Cada caso de uso trae `dobles::Mock<Caso>` (misma puerta que los dobles del repositorio), y el
+  `rutas.rs` CRUD se genera con tests de rutas: `poem::test::TestClient` sobre el
+  `OpenApiService` real, un caso de uso doblado por test, un test por camino de estado (ADR-0012).
+  `rest_<c>` declara `aplicacion_<c>` con `features = ["pruebas"]` en `[dev-dependencies]`
 
 ```rust
-pub struct EntityApi {
-    pub create_entity: Arc<dyn CreateEntityUseCaseTrait>,
+pub struct ApiProducto {
+    pub crear_producto: Arc<dyn CrearProducto>,
 }
 
 #[OpenApi]
-impl EntityApi {
-    #[oai(path = "/entities", method = "post")]
-    async fn create(&self, body: Json<CreateEntityRequest>) -> CreateEntityResponse {
-        match self.create_entity.execute(CreateEntityParams { name: body.name.clone() }).await {
-            Ok(entity) => CreateEntityResponse::Ok(Json(EntityDto::from_domain(&entity))),
+impl ApiProducto {
+    #[oai(path = "/productos", method = "post")]
+    async fn crear(&self, cuerpo: Json<PeticionCrearProducto>) -> RespuestaCrearProducto {
+        match self.crear_producto.ejecutar(ParamsCrearProducto { nombre: cuerpo.nombre.clone() }).await {
+            Ok(entidad) => RespuestaCrearProducto::Creado(Json(DtoProducto::from_dominio(&entidad))),
             Err(err) => {
-                let (status, error) = err.into_error_response();
-                CreateEntityResponse::from_status(status, error)
+                let (status, error) = a_respuesta_error(err);
+                RespuestaCrearProducto::from_status(status, error)
             }
         }
     }
 }
 ```
 
-`EntityApi` fields are wired automatically by `puerto generate scaffold` into `generated/bootstrap.rs`.
+---
+
+## Presentación (`presentacion/`)
+
+```
+presentacion/
+  cableado/src/lib.rs           # GENERADO: pub mod <c> { pub struct CasosDeUso { … } pub fn construir(…) }
+  api/src/
+    main.rs                     # puerto_web::Config::from_env() + App::new(config).intentar_servir(…) — no cambia
+    lib.rs                      # mod app; pub mod generado { pub mod bootstrap; }
+    app.rs                      # el hook del usuario: configurar(rutas) — lo escribe `nuevo` una vez, nunca se regenera
+    generado/bootstrap.rs       # GENERADO desde puerto.toml — nunca a mano
+  worker/                       # proyectos con eventos (ver § El worker)
+```
+
+- **`cableado`** construye, a partir del pool, los repositorios, las unidades de trabajo y los
+  casos de uso de cada contexto: `cableado::producto::construir(&pool)` devuelve sus `CasosDeUso`.
+  No conoce poem. Su `Cargo.toml` también se genera, así que ningún fichero del usuario se parchea
+  para añadir un `infra_*`
+- **`generado/bootstrap.rs`** monta las `Api*` sobre `cableado`, el autenticador, el OpenAPI y las
+  rutas, y termina en `crate::app::configurar(puerto_web::rutas(servicio_openapi(…), &config, …))`. El `Cargo.toml` de `api` recibe los `rest_*`. El cableado de auth se queda aquí: pide
+  configuración (el proveedor OIDC, la duración de las sesiones)
+- Los regeneran `puerto generar scaffold <Nombre>` (automático) y `puerto generar bootstrap`
+  (manual). **Nunca se editan a mano**
+- `app.rs` es del usuario: ningún generador lo escribe
+- `api` tiene `lib.rs`: `main.rs` solo lo arranca (un binario sin `lib.rs` compila más lento)
+- `/health` es solo vida; `/health/ready` sondea las dependencias (`puerto_sqlx::ping` en proyectos
+  `--db`, entregado a `puerto_web::health::sondear`) y responde 503 si una está caída. SIGTERM
+  drena las peticiones en curso durante `PLAZO_APAGADO` (ADR-0008) — todo lo sirve `puerto-web`
+- `Config::from_env()` (`puerto-web`) lee `SERVICE_PORT`, `CORS_ALLOWED_ORIGINS` y `PUERTO_BANNER`
+  después de `.env`; un valor puesto pero inválido es un error de arranque
 
 ---
 
-## Rust Conventions
+## Convenciones de Rust
 
-- **`snake_case`** — files, modules, variables, functions
+- **`snake_case`** — ficheros, módulos, variables, funciones
 - **`PascalCase`** — structs, enums, traits
-- **`SCREAMING_SNAKE_CASE`** — constants
-- **Never** `unwrap()` or `expect()` outside of tests
-- Trait naming: `*RepositoryTrait`, `*UseCaseTrait`
+- **`SCREAMING_SNAKE_CASE`** — constantes
+- Identificadores generados en castellano y sin tildes ni ñ (`anio`, `Autorizacion`); el concepto
+  delante de la entidad (`RepositorioProducto`, `IdProducto`, `ErrorProducto`). En inglés solo lo
+  que impone el lenguaje o una librería (`new`, `from_`, `as_`, el prefijo `Mock`), la jerga
+  asentada (`id`, `Dto`, `Api`, `Params`, `Props`, `Impl`, `Snapshot`, `UnitOfWork`…) y las
+  variables de entorno (ADR-0024). Una palabra que no está en `docs/glosario.md` se pregunta antes
+- **Nunca** `unwrap()` ni `expect()` fuera de los tests
+- Sin sufijo `Trait`: el trait es el concepto (`RepositorioProducto`, `CrearProducto`)
