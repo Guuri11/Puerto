@@ -168,12 +168,12 @@ fn keycloak_oidc_project_refuses_without_token_or_role_and_provisions_each_calle
     let (api, port) = start_api(&project, OIDC_PROJECT, "api.log", &[]);
 
     // No token: a public route answers, a protected one is 401.
-    let (status, _) = http(port, "GET", "/api/products", "").unwrap();
+    let (status, _) = http(port, "GET", "/api/productos", "").unwrap();
     assert_eq!(status, 200, "a public route needs no token");
-    let (status, body) = http(port, "GET", "/api/orders", "").unwrap();
+    let (status, body) = http(port, "GET", "/api/pedidos", "").unwrap();
     assert_eq!(status, 401, "{body}");
     assert!(is_error(&body, "auth.no_autenticado"), "{body}");
-    let (status, body) = http_as(port, "GET", "/api/orders", "", Some("not.a.token")).unwrap();
+    let (status, body) = http_as(port, "GET", "/api/pedidos", "", Some("not.a.token")).unwrap();
     assert_eq!(status, 401, "{body}");
     assert_eq!(users(&project), 0, "nobody signed in yet");
 
@@ -189,18 +189,18 @@ fn keycloak_oidc_project_refuses_without_token_or_role_and_provisions_each_calle
         "the role from the token: {body}"
     );
     assert_eq!(users(&project), 1);
-    let (status, body) = http_as(port, "POST", "/api/products", PRODUCT, Some(&admin)).unwrap();
+    let (status, body) = http_as(port, "POST", "/api/productos", PRODUCT, Some(&admin)).unwrap();
     assert_eq!(status, 201, "admin holds `admin`: {body}");
     assert_eq!(users(&project), 1);
 
     // The role: `user@` holds none — 403 on a role-guarded route, 200 on a public one and on a
     // protected one that asks no role.
-    let (status, body) = http_as(port, "POST", "/api/products", PRODUCT, Some(&user)).unwrap();
+    let (status, body) = http_as(port, "POST", "/api/productos", PRODUCT, Some(&user)).unwrap();
     assert_eq!(status, 403, "{body}");
     assert!(is_error(&body, "auth.prohibido"), "{body}");
-    let (status, _) = http_as(port, "GET", "/api/products", "", Some(&user)).unwrap();
+    let (status, _) = http_as(port, "GET", "/api/productos", "", Some(&user)).unwrap();
     assert_eq!(status, 200);
-    let (status, body) = http_as(port, "GET", "/api/orders", "", Some(&user)).unwrap();
+    let (status, body) = http_as(port, "GET", "/api/pedidos", "", Some(&user)).unwrap();
     assert_eq!(status, 200, "{body}");
     assert_eq!(users(&project), 2, "user@ provisioned on its first call");
 
@@ -245,23 +245,24 @@ fn postgres_local_auth_project_registers_signs_in_and_revokes_on_logout() {
     let (api, port) = start_api(&project, LOCAL_PROJECT, "api.log", &[]);
 
     // No token: a public route answers, a protected one is 401.
-    let (status, _) = http(port, "GET", "/api/products", "").unwrap();
+    let (status, _) = http(port, "GET", "/api/productos", "").unwrap();
     assert_eq!(status, 200);
-    let (status, body) = http(port, "GET", "/api/orders", "").unwrap();
+    let (status, body) = http(port, "GET", "/api/pedidos", "").unwrap();
     assert_eq!(status, 401, "{body}");
     assert!(is_error(&body, "auth.no_autenticado"), "{body}");
 
     // Register, then sign in.
-    let account = r#"{"email":"Ada@Example.com","password":"correct horse battery","name":"Ada"}"#;
-    let (status, body) = http(port, "POST", "/api/auth/register", account).unwrap();
+    let account =
+        r#"{"email":"Ada@Example.com","contrasena":"correct horse battery","nombre":"Ada"}"#;
+    let (status, body) = http(port, "POST", "/api/auth/registro", account).unwrap();
     assert_eq!(status, 201, "{body}");
-    let (status, body) = http(port, "POST", "/api/auth/register", account).unwrap();
+    let (status, body) = http(port, "POST", "/api/auth/registro", account).unwrap();
     assert_eq!(status, 409, "the email is taken: {body}");
-    let wrong = r#"{"email":"ada@example.com","password":"not the password"}"#;
+    let wrong = r#"{"email":"ada@example.com","contrasena":"not the password"}"#;
     let (status, body) = http(port, "POST", "/api/auth/login", wrong).unwrap();
     assert_eq!(status, 401, "{body}");
-    assert!(is_error(&body, "auth.invalid_credentials"), "{body}");
-    let login = r#"{"email":"ada@example.com","password":"correct horse battery"}"#;
+    assert!(is_error(&body, "auth.credenciales_invalidas"), "{body}");
+    let login = r#"{"email":"ada@example.com","contrasena":"correct horse battery"}"#;
     let (status, body) = http(port, "POST", "/api/auth/login", login).unwrap();
     assert_eq!(status, 200, "{body}");
     let token = field(&body, "token");
@@ -270,9 +271,9 @@ fn postgres_local_auth_project_registers_signs_in_and_revokes_on_logout() {
     let (status, body) = http_as(port, "GET", "/api/me", "", Some(&token)).unwrap();
     assert_eq!(status, 200, "{body}");
     assert_eq!(field(&body, "email"), "ada@example.com");
-    let (status, body) = http_as(port, "GET", "/api/orders", "", Some(&token)).unwrap();
+    let (status, body) = http_as(port, "GET", "/api/pedidos", "", Some(&token)).unwrap();
     assert_eq!(status, 200, "{body}");
-    let (status, body) = http_as(port, "POST", "/api/products", PRODUCT, Some(&token)).unwrap();
+    let (status, body) = http_as(port, "POST", "/api/productos", PRODUCT, Some(&token)).unwrap();
     assert_eq!(status, 403, "{body}");
     assert!(is_error(&body, "auth.prohibido"), "{body}");
     assert_eq!(users(&project), 1);

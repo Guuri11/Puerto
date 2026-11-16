@@ -39,12 +39,12 @@ pub fn run(
     crate::generators::bootstrap::regenerate_bootstrap(base)?;
 
     let repo_name = if db {
-        format!("Pg{pascal}Repository")
+        format!("Repositorio{pascal}Postgres")
     } else {
-        format!("InMemory{pascal}Repository")
+        format!("Repositorio{pascal}EnMemoria")
     };
     let dir = layout::context_dir(&snake);
-    println!("✓ {dir}/dominio/         — model, errors, repository port, {pascal}Mother");
+    println!("✓ {dir}/dominio/         — model, errors, repository port, Madre{pascal}");
     println!("✓ {dir}/aplicacion/      — create, get, list, update, delete");
     println!("✓ {dir}/infraestructura/ — {repo_name}");
     println!("✓ {dir}/rest/            — routes, dto, responses, errors");
@@ -79,7 +79,7 @@ impl ScaffoldAccess {
         for arg in roles {
             let (use_case, role) = arg.split_once('=').ok_or_else(|| {
                 format!(
-                    "invalid --rol '{arg}'. Expected <use_case>=<role>, e.g. delete_product=admin"
+                    "invalid --rol '{arg}'. Expected <use_case>=<role>, e.g. borrar_product=admin"
                 )
             })?;
             let roles = access.roles.entry(use_case.to_string()).or_default();

@@ -1,111 +1,112 @@
-//! Yours: `puerto nuevo --auth` writes this file once. Every authenticated caller is a `User` row
-//! (ADR-0021 § 3 of Puerto): what other entities point at (`owner: UserId`), whichever provider
-//! signed the caller in.
+//! Lo escribe una vez `puerto nuevo --auth`; desde entonces es tuyo. Todo el que llama con sesión
+//! iniciada es una fila `Usuario` (ADR-0021 § 3 de Puerto): lo que referencian otras entidades
+//! (`owner: IdUsuario`), sea cual sea el proveedor con el que inició sesión.
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 {%- if local %}
 
-use crate::errores::UserError;
+use crate::errores::ErrorUsuario;
 
-/// The issuer of the accounts this API keeps itself (`POST /auth/register`).
-pub const LOCAL_ISSUER: &str = "local";
+/// El emisor de las cuentas que guarda la propia API (`POST /auth/registro`).
+pub const EMISOR_LOCAL: &str = "local";
 {%- endif %}
 
-/// The id of every `User`: a `Uuid` that cannot be passed where another entity's id is expected.
+/// El id de cada `Usuario`: un `Uuid` que no se puede pasar donde se espera el id de otra entidad.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct UserId(Uuid);
+pub struct IdUsuario(Uuid);
 
-impl UserId {
-    /// A new, random id — for a user being created.
-    pub fn generate() -> Self {
+impl IdUsuario {
+    /// Un id nuevo y aleatorio, para un usuario que se está creando.
+    pub fn generar() -> Self {
         Self(Uuid::new_v4())
     }
 
-    /// An id read from the outside (a path parameter, a row) — no validation: any `Uuid` is an id.
-    pub fn from_uuid(value: Uuid) -> Self {
-        Self(value)
+    /// Un id leído de fuera (un parámetro de ruta, una fila), sin validar: todo `Uuid` es un id.
+    pub fn from_uuid(valor: Uuid) -> Self {
+        Self(valor)
     }
 
-    pub fn value(&self) -> Uuid {
+    pub fn valor(&self) -> Uuid {
         self.0
     }
 }
 
-impl std::fmt::Display for UserId {
+impl std::fmt::Display for IdUsuario {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-/// Who signed in, as this project knows them. `(issuer, subject)` is the provider's name for the
-/// person and is unique; `email` and `name` are what the provider said the first time.
+/// Quien inició sesión, tal como lo conoce este proyecto. `(emisor, sujeto)` es el nombre que da
+/// el proveedor a la persona y es único; `email` y `name` son lo que dijo el proveedor la primera
+/// vez.
 #[derive(Debug, Clone, PartialEq)]
-pub struct User {
-    pub id: UserId,
-    pub issuer: String,
-    pub subject: String,
+pub struct Usuario {
+    pub id: IdUsuario,
+    pub emisor: String,
+    pub sujeto: String,
     pub email: Option<String>,
-    pub name: Option<String>,
-    /// Not read in an OIDC project: there the roles come from the token only, so one place
-    /// decides.
+    pub nombre: Option<String>,
+    /// No se lee en un proyecto OIDC: allí los roles vienen solo del token, para que decida un
+    /// único sitio.
     pub roles: Vec<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
 }
 
-impl User {
-    /// The user a first request from `(issuer, subject)` creates (just-in-time provisioning).
-    pub fn provision(
-        issuer: impl Into<String>,
-        subject: impl Into<String>,
+impl Usuario {
+    /// El usuario que crea la primera petición de `(emisor, sujeto)` (alta just-in-time).
+    pub fn aprovisionar(
+        emisor: impl Into<String>,
+        sujeto: impl Into<String>,
         email: Option<String>,
-        name: Option<String>,
+        nombre: Option<String>,
     ) -> Self {
-        let now = Utc::now();
+        let ahora = Utc::now();
         Self {
-            id: UserId::generate(),
-            issuer: issuer.into(),
-            subject: subject.into(),
+            id: IdUsuario::generar(),
+            emisor: emisor.into(),
+            sujeto: sujeto.into(),
             email,
-            name,
+            nombre,
             roles: vec![],
-            created_at: now,
-            updated_at: now,
+            creado_en: ahora,
+            actualizado_en: ahora,
         }
     }
 
-{% if local %}    /// A new local account (`register_user`). Its subject is the email as [`User::local_subject`]
-    /// spells it, so `UNIQUE (issuer, subject)` makes the email unique.
-    pub fn register(email: &str, name: Option<String>) -> Result<Self, UserError> {
-        let email = Self::local_subject(email);
-        if !is_email(&email) {
-            return Err(UserError::ValidationError("email_invalid".into()));
+{% if local %}    /// Una cuenta local nueva (`registrar_usuario`). Su sujeto es el email tal como lo escribe
+    /// [`Usuario::sujeto_local`], así que `UNIQUE (emisor, sujeto)` hace único el email.
+    pub fn registrar(email: &str, nombre: Option<String>) -> Result<Self, ErrorUsuario> {
+        let email = Self::sujeto_local(email);
+        if !es_email(&email) {
+            return Err(ErrorUsuario::Validacion("email_invalido".into()));
         }
-        let name = name
+        let nombre = nombre
             .map(|n| n.trim().to_string())
             .filter(|n| !n.is_empty());
-        Ok(Self::provision(LOCAL_ISSUER, email.clone(), Some(email), name))
+        Ok(Self::aprovisionar(EMISOR_LOCAL, email.clone(), Some(email), nombre))
     }
 
-    /// How a local account's email is compared: trimmed and lowercased.
-    pub fn local_subject(email: &str) -> String {
+    /// Cómo se compara el email de una cuenta local: sin espacios alrededor y en minúsculas.
+    pub fn sujeto_local(email: &str) -> String {
         email.trim().to_lowercase()
     }
 
-{% endif %}    /// Reconstructs from persistence — no validation. ONLY infrastructure uses this.
-    pub fn from_repository(data: User) -> Self {
-        data
+{% endif %}    /// Reconstruye desde la persistencia, sin validar. SOLO lo usa la infraestructura.
+    pub fn from_repositorio(datos: Usuario) -> Self {
+        datos
     }
 }
 
-{% if local %}/// One `@` between a non-empty name and a dotted domain, no spaces. Whether the address exists is
-/// for a confirmation mail to find out, not for this check.
-fn is_email(email: &str) -> bool {
-    let Some((name, domain)) = email.split_once('@') else {
+{% if local %}/// Una `@` entre un nombre no vacío y un dominio con punto, sin espacios. Si la dirección existe lo
+/// averiguará un correo de confirmación, no esta comprobación.
+fn es_email(email: &str) -> bool {
+    let Some((nombre, domain)) = email.split_once('@') else {
         return false;
     };
-    !name.is_empty()
+    !nombre.is_empty()
         && !domain.contains('@')
         && domain.contains('.')
         && !domain.starts_with('.')
@@ -118,59 +119,59 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_hold_what_the_provider_said_when_provisioned() {
-        // Act
-        let user = User::provision(
+    fn deberia_guardar_lo_que_dijo_el_proveedor_cuando_se_da_de_alta() {
+        // Actuar
+        let usuario = Usuario::aprovisionar(
             "http://localhost:8180/realms/shop",
             "f81d4fae",
             Some("ada@example.com".into()),
             Some("Ada Lovelace".into()),
         );
 
-        // Assert
-        assert_eq!(user.issuer, "http://localhost:8180/realms/shop");
-        assert_eq!(user.subject, "f81d4fae");
-        assert_eq!(user.email.as_deref(), Some("ada@example.com"));
-        assert_eq!(user.name.as_deref(), Some("Ada Lovelace"));
-        assert!(user.roles.is_empty());
-        assert_eq!(user.created_at, user.updated_at);
+        // Comprobar
+        assert_eq!(usuario.emisor, "http://localhost:8180/realms/shop");
+        assert_eq!(usuario.sujeto, "f81d4fae");
+        assert_eq!(usuario.email.as_deref(), Some("ada@example.com"));
+        assert_eq!(usuario.nombre.as_deref(), Some("Ada Lovelace"));
+        assert!(usuario.roles.is_empty());
+        assert_eq!(usuario.creado_en, usuario.actualizado_en);
     }
 
     #[test]
-    fn should_get_a_new_id_when_two_users_are_provisioned() {
-        // Act
-        let ada = User::provision("issuer", "ada", None, None);
-        let bob = User::provision("issuer", "bob", None, None);
+    fn deberia_recibir_un_id_nuevo_cuando_se_dan_de_alta_dos_usuarios() {
+        // Actuar
+        let ada = Usuario::aprovisionar("issuer", "ada", None, None);
+        let bob = Usuario::aprovisionar("issuer", "bob", None, None);
 
-        // Assert
+        // Comprobar
         assert_ne!(ada.id, bob.id);
     }
 {%- if local %}
 
     #[test]
-    fn should_register_a_local_account_under_its_lowercased_email() {
-        // Act
-        let user = User::register("  Ada@Example.COM ", Some(" Ada ".into())).expect("valid");
+    fn deberia_registrar_una_cuenta_local_con_su_email_en_minusculas() {
+        // Actuar
+        let usuario = Usuario::registrar("  Ada@Example.COM ", Some(" Ada ".into())).expect("cuenta válida");
 
-        // Assert
-        assert_eq!(user.issuer, LOCAL_ISSUER);
-        assert_eq!(user.subject, "ada@example.com");
-        assert_eq!(user.email.as_deref(), Some("ada@example.com"));
-        assert_eq!(user.name.as_deref(), Some("Ada"));
-        assert!(user.roles.is_empty());
+        // Comprobar
+        assert_eq!(usuario.emisor, EMISOR_LOCAL);
+        assert_eq!(usuario.sujeto, "ada@example.com");
+        assert_eq!(usuario.email.as_deref(), Some("ada@example.com"));
+        assert_eq!(usuario.nombre.as_deref(), Some("Ada"));
+        assert!(usuario.roles.is_empty());
     }
 
     #[test]
-    fn should_keep_no_name_when_it_is_blank() {
-        let user = User::register("ada@example.com", Some("  ".into())).expect("valid");
-        assert_eq!(user.name, None);
+    fn no_deberia_guardar_nombre_cuando_esta_en_blanco() {
+        let usuario = Usuario::registrar("ada@example.com", Some("  ".into())).expect("cuenta válida");
+        assert_eq!(usuario.nombre, None);
     }
 
     #[test]
-    fn should_reject_an_account_when_the_email_is_not_one() {
+    fn deberia_rechazar_una_cuenta_cuando_el_email_no_es_valido() {
         for email in ["", "ada", "ada@", "@example.com", "ada@example", "a da@example.com", "a@b@c.com", "ada@.com"] {
-            let err = User::register(email, None).expect_err(email);
-            assert_eq!(err.to_string(), "user.validation_error.email_invalid", "{email}");
+            let err = Usuario::registrar(email, None).expect_err(email);
+            assert_eq!(err.to_string(), "usuario.validacion.email_invalido", "{email}");
         }
     }
 {%- endif %}

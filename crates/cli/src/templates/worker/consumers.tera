@@ -1,1 +1,1 @@
-//! One module per `[[consumidor]]` of puerto.toml — `puerto generar consumidor` adds them.
+//! Un módulo por cada `[[consumidor]]` de puerto.toml: los añade `puerto generar consumidor`.

@@ -1,49 +1,49 @@
 use crate::modelo::{{ pascal }};
-use crate::modelo::{{ pascal }}Props;{% for import in imports %}
+use crate::modelo::Props{{ pascal }};{% for import in imports %}
 use {{ import }};{% endfor %}
 
-pub struct {{ pascal }}Mother {
+pub struct Madre{{ pascal }} {
 {% for f in fields %}    {{ f.name }}: Option<{{ f.mother_storage }}>,
 {% endfor %}}
 
-impl {{ pascal }}Mother {
+impl Madre{{ pascal }} {
     pub fn new() -> Self {
         Self { {% for f in fields %}{{ f.name }}: None{% if not loop.last %}, {% endif %}{% endfor %} }
     }
 {% for f in fields %}
-    pub fn with_{{ f.name }}(mut self, {{ f.name }}: {{ f.mother_param }}) -> Self {
+    pub fn con_{{ f.name }}(mut self, {{ f.name }}: {{ f.mother_param }}) -> Self {
         self.{{ f.name }} = Some({{ f.name }}{% if f.mother_param == "&str" %}.to_string(){% endif %});
         self
     }
 {% endfor %}{% for f in fields | filter(attribute="required_string", value=true) %}
-    pub fn with_empty_{{ f.name }}(mut self) -> Self {
+    pub fn con_{{ f.name }}_vacio(mut self) -> Self {
         self.{{ f.name }} = Some(String::new());
         self
     }
 {% endfor %}
-    pub fn build(self) -> {{ pascal }} {
-        {{ pascal }}::new({{ pascal }}Props {
+    pub fn construir(self) -> {{ pascal }} {
+        {{ pascal }}::new(Props{{ pascal }} {
 {% for f in fields %}            {{ f.name }}: {{ f.mother_build }},
 {% endfor %}        })
-        .expect("{{ pascal }}Mother: failed to build valid {{ pascal }}")
+        .expect("Madre{{ pascal }}: {{ pascal }}::new rechazó los props")
     }
 
-    pub fn build_props(self) -> {{ pascal }}Props {
-        {{ pascal }}Props {
+    pub fn construir_props(self) -> Props{{ pascal }} {
+        Props{{ pascal }} {
 {% for f in fields %}            {{ f.name }}: {{ f.mother_build }},
 {% endfor %}        }
     }
 
-    pub fn random() -> {{ pascal }} {
-        Self::new().build()
+    pub fn aleatorio() -> {{ pascal }} {
+        Self::new().construir()
     }
 
-    pub fn random_vec(n: usize) -> Vec<{{ pascal }}> {
-        (0..n).map(|_| Self::random()).collect()
+    pub fn aleatorios(n: usize) -> Vec<{{ pascal }}> {
+        (0..n).map(|_| Self::aleatorio()).collect()
     }
 }
 
-impl Default for {{ pascal }}Mother {
+impl Default for Madre{{ pascal }} {
     fn default() -> Self {
         Self::new()
     }

@@ -1,6 +1,7 @@
 
-/// The foreign keys a write goes through (ADR-0022 of Puerto): the database rejects a reference to
-/// a row that does not exist, and the field it names is the caller's error.
+/// Las claves foráneas por las que pasa una escritura (ADR-0022 de Puerto): la base de datos
+/// rechaza una referencia a una fila que no existe, y quien llama recibe como error el campo que la
+/// nombra.
 const REFERENCES: &[ClaveForanea] = &[
 {% for r in references %}    ClaveForanea {
         restriccion: "{{ r.constraint }}",

@@ -3,36 +3,36 @@ use async_trait::async_trait;
 {% endif %}{% for imp in extra_imports %}use {{ imp }};
 {% endfor %}
 use dominio_{{ snake }}::{
-    errores::{{ pascal }}Error,
-    modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
+    errores::Error{{ pascal }},
+    modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}},
 };
 
 #[derive(Debug, Clone)]
-pub struct Update{{ pascal }}Params {
-{% if actor %}    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
-    /// it here and answers `Forbidden`.
+pub struct ParamsActualizar{{ pascal }} {
+{% if actor %}    /// Quien lo pide (ADR-0021). Una regla que depende de los datos ("solo edita el propietario")
+    /// se decide aquí, sobre él, y responde `Prohibido`.
     pub actor: Principal,
-{% endif %}    pub id: {{ pascal }}Id,
+{% endif %}    pub id: Id{{ pascal }},
 {% for f in params_fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 
 #[async_trait]
-pub trait Update{{ pascal }}UseCaseTrait: Send + Sync {
-    async fn execute(&self, params: Update{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
+pub trait Actualizar{{ pascal }}: Send + Sync {
+    async fn ejecutar(&self, params: ParamsActualizar{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}>;
 }
 
 #[cfg(any(test, feature = "pruebas"))]
-pub mod mocks {
+pub mod dobles {
     use mockall::mock;
 
     use super::*;
 
     mock! {
-        pub Update{{ pascal }}UseCase {}
+        pub Actualizar{{ pascal }} {}
 
         #[async_trait]
-        impl Update{{ pascal }}UseCaseTrait for Update{{ pascal }}UseCase {
-            async fn execute(&self, params: Update{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
+        impl Actualizar{{ pascal }} for Actualizar{{ pascal }} {
+            async fn ejecutar(&self, params: ParamsActualizar{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}>;
         }
     }
 }

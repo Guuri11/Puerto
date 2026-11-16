@@ -207,7 +207,7 @@ pub fn reference_id(field: &Field) -> Option<String> {
     field
         .references
         .as_deref()
-        .map(|target| format!("{target}Id"))
+        .map(|target| format!("Id{target}"))
 }
 
 /// The path of a reference's id type, which lives in its owner's domain crate (ADR-0023 § 3):
@@ -215,7 +215,7 @@ pub fn reference_id(field: &Field) -> Option<String> {
 pub fn reference_import(field: &Field) -> Option<String> {
     let target = field.references.as_deref()?;
     let snake = crate::generators::naming::pascal_to_snake(target);
-    Some(format!("dominio_{snake}::modelo::{target}Id"))
+    Some(format!("dominio_{snake}::modelo::Id{target}"))
 }
 
 /// What naming the field's **domain** type needs from the registry: nothing for a reference,
@@ -388,11 +388,13 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         },
         from_body: match reference_id(field) {
             Some(id) if field.field_type.starts_with("Option<") => {
-                format!("body.{}.map({id}::from_uuid)", field.name)
+                format!("cuerpo.{}.map({id}::from_uuid)", field.name)
             }
-            Some(id) => format!("{id}::from_uuid(body.{})", field.name),
-            None if field_needs_clone(&field.field_type) => format!("body.{}.clone()", field.name),
-            None => format!("body.{}", field.name),
+            Some(id) => format!("{id}::from_uuid(cuerpo.{})", field.name),
+            None if field_needs_clone(&field.field_type) => {
+                format!("cuerpo.{}.clone()", field.name)
+            }
+            None => format!("cuerpo.{}", field.name),
         },
         is_ref: is_reference(field),
         ref_target_snake: crate::generators::naming::pascal_to_snake(&ref_target),
@@ -402,7 +404,7 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         field_type: field.field_type.clone(),
         is_map,
         is_array: field.field_type.starts_with("Vec<"),
-        accessor: field_value_accessor(field, "entity"),
+        accessor: field_value_accessor(field, "entidad"),
         needs_clone: field_needs_clone(&field.field_type),
         from_params: field_vo_conversion(field, "params.", pascal, shared_vos),
         default_literal,
@@ -413,15 +415,15 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
             .cloned()
             .unwrap_or_default(),
         from_row: if is_map {
-            format!("row.{}.0", field.name)
+            format!("fila.{}.0", field.name)
         } else if let Some(id) = reference_id(field) {
             if field.field_type.starts_with("Option<") {
-                format!("row.{}.map({id}::from_uuid)", field.name)
+                format!("fila.{}.map({id}::from_uuid)", field.name)
             } else {
-                format!("{id}::from_uuid(row.{})", field.name)
+                format!("{id}::from_uuid(fila.{})", field.name)
             }
         } else {
-            field_vo_conversion(field, "row.", pascal, shared_vos)
+            field_vo_conversion(field, "fila.", pascal, shared_vos)
         },
         name: field.name.clone(),
         rust_type: field_rust_type(field),
@@ -467,7 +469,7 @@ fn mother_build(field: &Field) -> String {
         return format!("{slot}.unwrap_or_default()");
     }
     if let Some(id) = reference_id(field) {
-        return format!("{slot}.unwrap_or_else({id}::generate)");
+        return format!("{slot}.unwrap_or_else({id}::generar)");
     }
     if is_value_object(field) {
         return if is_enum_vo(field) {
@@ -528,7 +530,7 @@ fn literal_with(field: &Field, value: impl Fn(&str) -> String) -> String {
         if field.field_type.starts_with("Option<") {
             "None".to_string()
         } else {
-            format!("{id}::generate()")
+            format!("{id}::generar()")
         }
     } else if is_option_vo(field) {
         "None".to_string()
@@ -565,29 +567,29 @@ pub fn field_value_accessor(field: &Field, owner: &str) -> String {
     let string_inner = vo_inner_type(field) == "String";
     if is_reference(field) {
         if field.field_type.starts_with("Option<") {
-            format!("{access}.map(|v| v.value())")
+            format!("{access}.map(|v| v.valor())")
         } else {
-            format!("{access}.value()")
+            format!("{access}.valor()")
         }
     } else if is_enum_vo(field) {
         format!("{access}.as_str().to_string()")
     } else if is_option_vo(field) {
         if string_inner {
-            format!("{access}.as_ref().map(|v| v.value().to_string())")
+            format!("{access}.as_ref().map(|v| v.valor().to_string())")
         } else {
-            format!("{access}.map(|v| v.value())")
+            format!("{access}.map(|v| v.valor())")
         }
     } else if is_vec_vo(field) {
         if string_inner {
-            format!("{access}.iter().map(|v| v.value().to_string()).collect::<Vec<_>>()")
+            format!("{access}.iter().map(|v| v.valor().to_string()).collect::<Vec<_>>()")
         } else {
-            format!("{access}.iter().map(|v| v.value()).collect::<Vec<_>>()")
+            format!("{access}.iter().map(|v| v.valor()).collect::<Vec<_>>()")
         }
     } else if is_value_object(field) {
         if string_inner {
-            format!("{access}.value().to_string()")
+            format!("{access}.valor().to_string()")
         } else {
-            format!("{access}.value()")
+            format!("{access}.valor()")
         }
     } else if field_needs_clone(&field.field_type) {
         format!("{access}.clone()")
@@ -620,7 +622,7 @@ pub fn field_vo_conversion(
         format!("{vo}::new({value})")
     };
     if is_shared_vo(field, shared_vos) {
-        format!("{conversion}.map_err(|_| {pascal}Error::Invalid{vo})?")
+        format!("{conversion}.map_err(|_| Error{pascal}::{vo}Invalido)?")
     } else {
         format!("{conversion}?")
     }
@@ -703,7 +705,7 @@ pub fn web_enum_ctx(field: &Field, entity_snake: &str) -> Option<WebEnumCtx> {
             crate::generators::naming::snake_to_camel(&vo_snake)
         ),
         variants: field.enum_variants.clone().unwrap_or_default(),
-        invalid_code: format!("{entity_snake}.invalid_{vo_snake}"),
+        invalid_code: format!("{entity_snake}.{vo_snake}_invalido"),
         name,
     })
 }
@@ -1151,63 +1153,66 @@ mod tests {
         // {plain VO, Option<VO>, Vec<VO>, primitive} × {String, i64, Uuid, DateTime}: the one place
         // that decides how a domain field becomes a primitive (entity.rs `From`, dto.rs `from_domain`).
         let cases: &[(&str, Option<&str>, &str)] = &[
-            ("String", Some("V"), "entity.x.value().to_string()"),
-            ("i64", Some("V"), "entity.x.value()"),
-            ("Uuid", Some("V"), "entity.x.value()"),
-            ("DateTime<Utc>", Some("V"), "entity.x.value()"),
+            ("String", Some("V"), "entidad.x.valor().to_string()"),
+            ("i64", Some("V"), "entidad.x.valor()"),
+            ("Uuid", Some("V"), "entidad.x.valor()"),
+            ("DateTime<Utc>", Some("V"), "entidad.x.valor()"),
             (
                 "Option<String>",
                 Some("V"),
-                "entity.x.as_ref().map(|v| v.value().to_string())",
+                "entidad.x.as_ref().map(|v| v.valor().to_string())",
             ),
-            ("Option<i64>", Some("V"), "entity.x.map(|v| v.value())"),
-            ("Option<Uuid>", Some("V"), "entity.x.map(|v| v.value())"),
+            ("Option<i64>", Some("V"), "entidad.x.map(|v| v.valor())"),
+            ("Option<Uuid>", Some("V"), "entidad.x.map(|v| v.valor())"),
             (
                 "Option<DateTime<Utc>>",
                 Some("V"),
-                "entity.x.map(|v| v.value())",
+                "entidad.x.map(|v| v.valor())",
             ),
             (
                 "Vec<String>",
                 Some("V"),
-                "entity.x.iter().map(|v| v.value().to_string()).collect::<Vec<_>>()",
+                "entidad.x.iter().map(|v| v.valor().to_string()).collect::<Vec<_>>()",
             ),
             (
                 "Vec<i64>",
                 Some("V"),
-                "entity.x.iter().map(|v| v.value()).collect::<Vec<_>>()",
+                "entidad.x.iter().map(|v| v.valor()).collect::<Vec<_>>()",
             ),
             (
                 "Vec<Uuid>",
                 Some("V"),
-                "entity.x.iter().map(|v| v.value()).collect::<Vec<_>>()",
+                "entidad.x.iter().map(|v| v.valor()).collect::<Vec<_>>()",
             ),
             (
                 "Vec<DateTime<Utc>>",
                 Some("V"),
-                "entity.x.iter().map(|v| v.value()).collect::<Vec<_>>()",
+                "entidad.x.iter().map(|v| v.valor()).collect::<Vec<_>>()",
             ),
-            ("String", None, "entity.x.clone()"),
-            ("i64", None, "entity.x"),
-            ("Uuid", None, "entity.x"),
-            ("DateTime<Utc>", None, "entity.x"),
-            ("Option<String>", None, "entity.x.clone()"),
-            ("Option<i64>", None, "entity.x"),
-            ("Vec<String>", None, "entity.x.clone()"),
-            ("HashMap<String, String>", None, "entity.x.clone()"),
+            ("String", None, "entidad.x.clone()"),
+            ("i64", None, "entidad.x"),
+            ("Uuid", None, "entidad.x"),
+            ("DateTime<Utc>", None, "entidad.x"),
+            ("Option<String>", None, "entidad.x.clone()"),
+            ("Option<i64>", None, "entidad.x"),
+            ("Vec<String>", None, "entidad.x.clone()"),
+            ("HashMap<String, String>", None, "entidad.x.clone()"),
         ];
         for (ty, vo, expected) in cases {
             assert_eq!(
-                field_value_accessor(&field(ty, *vo), "entity"),
+                field_value_accessor(&field(ty, *vo), "entidad"),
                 *expected,
                 "{ty} / {vo:?}"
             );
         }
         assert_eq!(
-            field_value_accessor(&enum_field(), "entity"),
-            "entity.x.as_str().to_string()"
+            field_value_accessor(&enum_field(), "entidad"),
+            "entidad.x.as_str().to_string()"
         );
-        assert_eq!(field_value_accessor(&field("i64", None), "body"), "body.x");
+        assert_eq!(
+            field_value_accessor(&field("i64", None), "cuerpo"),
+            "cuerpo.x"
+        );
     }
 
     #[test]
@@ -1338,30 +1343,30 @@ mod tests {
             name: "V".into(),
             inner_type: "String".into(),
         }];
-        let local = |ty: &str| field_vo_conversion(&field(ty, Some("V")), "row.", "P", &[]);
-        let shared_ = |ty: &str| field_vo_conversion(&field(ty, Some("V")), "row.", "P", &shared);
+        let local = |ty: &str| field_vo_conversion(&field(ty, Some("V")), "fila.", "P", &[]);
+        let shared_ = |ty: &str| field_vo_conversion(&field(ty, Some("V")), "fila.", "P", &shared);
 
-        assert_eq!(local("String"), "V::new(row.x)?");
-        assert_eq!(local("Option<String>"), "row.x.map(V::new).transpose()?");
+        assert_eq!(local("String"), "V::new(fila.x)?");
+        assert_eq!(local("Option<String>"), "fila.x.map(V::new).transpose()?");
         assert_eq!(
             local("Vec<String>"),
-            "row.x.into_iter().map(V::new).collect::<Result<Vec<_>,_>>()?"
+            "fila.x.into_iter().map(V::new).collect::<Result<Vec<_>,_>>()?"
         );
         assert_eq!(
-            field_vo_conversion(&enum_field(), "row.", "P", &[]),
-            "row.x.parse::<Status>()?"
+            field_vo_conversion(&enum_field(), "fila.", "P", &[]),
+            "fila.x.parse::<Status>()?"
         );
         assert_eq!(
             shared_("String"),
-            "V::new(row.x).map_err(|_| PError::InvalidV)?"
+            "V::new(fila.x).map_err(|_| ErrorP::VInvalido)?"
         );
         assert_eq!(
             shared_("Option<String>"),
-            "row.x.map(V::new).transpose().map_err(|_| PError::InvalidV)?"
+            "fila.x.map(V::new).transpose().map_err(|_| ErrorP::VInvalido)?"
         );
         assert_eq!(
-            field_vo_conversion(&field("i64", None), "row.", "P", &[]),
-            "row.x"
+            field_vo_conversion(&field("i64", None), "fila.", "P", &[]),
+            "fila.x"
         );
     }
 
@@ -1571,7 +1576,7 @@ mod tests {
 
         let declared = web_enum_ctx(&status, "order_item").unwrap();
         assert_eq!(declared.values_const, "statusValues");
-        assert_eq!(declared.invalid_code, "order_item.invalid_status");
+        assert_eq!(declared.invalid_code, "order_item.status_invalido");
         assert!(web_enum_ctx(&field("String", Some("Name")), "x").is_none());
     }
 }

@@ -36,7 +36,7 @@ describe("RegisterPage", () => {
     // Arrange
     const accounts = {
       ...fakeAccounts(),
-      register: () => Promise.reject(new AuthError("user.duplicate")),
+      register: () => Promise.reject(new AuthError("usuario.duplicado")),
     };
     renderScreen(<RegisterPage />, { accounts }, "/register", { user: null });
     await fillIn();
@@ -54,7 +54,8 @@ describe("RegisterPage", () => {
     // Arrange
     const accounts = {
       ...fakeAccounts(),
-      register: () => Promise.reject(new AuthError("user.validation_error.password_too_short")),
+      register: () =>
+        Promise.reject(new AuthError("usuario.validacion.contrasena_demasiado_corta")),
     };
     renderScreen(<RegisterPage />, { accounts }, "/register", { user: null });
     await fillIn();

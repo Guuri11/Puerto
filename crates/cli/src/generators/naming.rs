@@ -60,57 +60,50 @@ pub fn capitalize(s: &str) -> String {
     }
 }
 
-/// Words whose plural is the word itself.
-const UNCOUNTABLE: &[&str] = &[
-    "data",
-    "metadata",
-    "information",
-    "equipment",
-    "news",
-    "series",
-    "species",
+/// Words whose plural is the word itself: they end in an unstressed `-is` / `-es` (or `-x`), which
+/// no suffix rule can tell from a stressed one (`pais` → `paises`).
+const INVARIABLE: &[&str] = &[
+    "analisis",
+    "crisis",
+    "tesis",
+    "sintesis",
+    "hipotesis",
+    "dosis",
+    "lunes",
+    "martes",
+    "miercoles",
+    "jueves",
+    "viernes",
+    "virus",
+    "torax",
+    "fenix",
 ];
 
 const VOWELS: [char; 5] = ['a', 'e', 'i', 'o', 'u'];
 
-/// Plurals no suffix rule produces.
-const IRREGULAR: &[(&str, &str)] = &[
-    ("person", "people"),
-    ("child", "children"),
-    ("man", "men"),
-    ("woman", "women"),
-    ("mouse", "mice"),
-    ("goose", "geese"),
-    ("foot", "feet"),
-    ("tooth", "teeth"),
-];
-
-/// English plural of a snake_case name, inflecting only its last word: `category` → `categories`,
-/// `order_item` → `order_items`, `person` → `people`, `box` → `boxes`.
-///
-/// Deliberately small — table names and REST paths, not prose. Words ending in `f`/`fe`/`o`
-/// take the regular `s` (`roofs`, `photos`): their irregular forms are not predictable.
+/// Spanish plural of a snake_case name (docs/glosario.md), inflecting its first word — the head of
+/// a Spanish name: `linea_pedido` → `lineas_pedido`. A vowel takes `s` (`productos`), `z` becomes
+/// `ces` (`lapices`), any other consonant, `y` included, takes `es` (`ciudades`, `leyes`); a few
+/// words are invariable (`analisis`).
 pub fn pluralize(snake: &str) -> String {
-    let (head, word) = match snake.rfind('_') {
-        Some(i) => snake.split_at(i + 1),
-        None => ("", snake),
+    let (word, tail) = match snake.find('_') {
+        Some(i) => snake.split_at(i),
+        None => (snake, ""),
     };
-    let plural = if UNCOUNTABLE.contains(&word) {
+    let plural = if INVARIABLE.contains(&word) {
         word.to_string()
-    } else if let Some((_, p)) = IRREGULAR.iter().find(|(s, _)| *s == word) {
-        p.to_string()
-    } else if word.len() > 1 && word.ends_with('y') && !word[..word.len() - 1].ends_with(VOWELS) {
-        format!("{}ies", &word[..word.len() - 1])
-    } else if word.ends_with(['s', 'x', 'z']) || word.ends_with("ch") || word.ends_with("sh") {
-        format!("{word}es")
-    } else {
+    } else if word.ends_with(VOWELS) {
         format!("{word}s")
+    } else if let Some(stem) = word.strip_suffix('z') {
+        format!("{stem}ces")
+    } else {
+        format!("{word}es")
     };
-    format!("{head}{plural}")
+    format!("{plural}{tail}")
 }
 
-/// The names every entity template starts from: `pascal` (`OrderItem`), `snake` (`order_item`),
-/// `plural` (`order_items` — tables and REST paths) and `plural_pascal` (`OrderItems`).
+/// The names every entity template starts from: `pascal` (`LineaPedido`), `snake` (`linea_pedido`),
+/// `plural` (`lineas_pedido` — tables and REST paths) and `plural_pascal` (`LineasPedido`).
 pub fn entity_ctx(pascal: &str, snake: &str) -> tera::Context {
     let plural = pluralize(snake);
     let mut ctx = tera::Context::new();
@@ -121,13 +114,26 @@ pub fn entity_ctx(pascal: &str, snake: &str) -> tera::Context {
     ctx
 }
 
+/// The verb a CRUD action is named with in the generated code (docs/glosario.md).
+pub fn crud_verb(action: &str) -> &'static str {
+    match action {
+        "create" => "crear",
+        "get" => "obtener",
+        "list" => "listar",
+        "update" => "actualizar",
+        "delete" => "borrar",
+        _ => unreachable!("unknown CRUD action {action}"),
+    }
+}
+
 /// The module name of one scaffolded use case: `list` is named after the plural
-/// (`list_products`), the others after the entity (`create_product`).
+/// (`listar_productos`), the others after the entity (`crear_producto`). `action` is Puerto's own
+/// key (`create`, `get`, `list`, `update`, `delete`).
 pub fn crud_use_case(action: &str, snake: &str) -> String {
     if action == "list" {
-        format!("list_{}", pluralize(snake))
+        format!("{}_{}", crud_verb(action), pluralize(snake))
     } else {
-        format!("{action}_{snake}")
+        format!("{}_{snake}", crud_verb(action))
     }
 }
 
@@ -140,7 +146,7 @@ pub fn crud_use_cases(snake: &str) -> Vec<String> {
 }
 
 /// Whether an entity has the five scaffolded use cases — the ones that get a unit of work, an
-/// `events.rs` and a frontend slice. A simple entity (`get_greeting`) has none of them.
+/// `events.rs` and a frontend slice. A simple entity (`obtener_saludo`) has none of them.
 pub fn is_crud_entity(snake: &str, use_cases: &[String]) -> bool {
     crud_use_cases(snake)
         .iter()
@@ -149,7 +155,7 @@ pub fn is_crud_entity(snake: &str, use_cases: &[String]) -> bool {
 
 /// The events every CRUD write records (ADR-0018 § 3): `(variant, event_type)`, past tense.
 pub fn crud_events(snake: &str) -> Vec<(String, String)> {
-    ["created", "updated", "deleted"]
+    ["creado", "actualizado", "borrado"]
         .iter()
         .map(|verb| (to_pascal_case(verb), format!("{snake}_{verb}")))
         .collect()

@@ -64,12 +64,12 @@ fn creates_project_structure() {
     for layer in ["dominio", "aplicacion", "infraestructura", "rest"] {
         assert!(
             output
-                .join(format!("contextos/greeting/{layer}/src/lib.rs"))
+                .join(format!("contextos/saludo/{layer}/src/lib.rs"))
                 .exists()
         );
         assert!(
             output
-                .join(format!("contextos/greeting/{layer}/Cargo.toml"))
+                .join(format!("contextos/saludo/{layer}/Cargo.toml"))
                 .exists()
         );
     }
@@ -103,7 +103,7 @@ fn main_rs_is_minimal_entry_point() {
     let output = generate_project("cool-project", &dir).unwrap();
 
     let content = fs::read_to_string(output.join("presentacion/api/src/main.rs")).unwrap();
-    assert!(content.contains("api::generado::bootstrap::build_app"));
+    assert!(content.contains("api::generado::bootstrap::construir_app"));
     assert!(!content.contains("{{project-name}}"));
     let lib = fs::read_to_string(output.join("presentacion/api/src/lib.rs")).unwrap();
     assert!(lib.contains("pub mod generado"), "{lib}");
@@ -120,9 +120,9 @@ fn bootstrap_rs_wires_ddd_layers() {
     let output = generate_project("api-test", &dir).unwrap();
 
     let content = wiring(&output);
-    assert!(content.contains("GetGreetingUseCaseImpl"));
-    assert!(content.contains("InMemoryGreetingRepository"));
-    assert!(content.contains("GreetingApi"));
+    assert!(content.contains("ObtenerSaludoImpl"));
+    assert!(content.contains("RepositorioSaludoEnMemoria"));
+    assert!(content.contains("ApiSaludo"));
     assert!(content.contains("OpenApiService"));
     assert!(content.contains("puerto_web::rutas("));
 
@@ -139,44 +139,40 @@ fn ddd_layers_exist() {
 
     assert!(
         output
-            .join("contextos/greeting/dominio/src/modelo.rs")
+            .join("contextos/saludo/dominio/src/modelo.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/greeting/dominio/src/errores.rs")
+            .join("contextos/saludo/dominio/src/errores.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/greeting/dominio/src/repositorio.rs")
+            .join("contextos/saludo/dominio/src/repositorio.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/greeting/aplicacion/src/get_greeting.rs")
+            .join("contextos/saludo/aplicacion/src/obtener_saludo.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/greeting/aplicacion/src/get_greeting.rs")
+            .join("contextos/saludo/aplicacion/src/obtener_saludo.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/greeting/infraestructura/src/repositorio.rs")
+            .join("contextos/saludo/infraestructura/src/repositorio.rs")
             .exists()
     );
-    assert!(output.join("contextos/greeting/rest/src/rutas.rs").exists());
-    assert!(output.join("contextos/greeting/rest/src/dto.rs").exists());
+    assert!(output.join("contextos/saludo/rest/src/rutas.rs").exists());
+    assert!(output.join("contextos/saludo/rest/src/dto.rs").exists());
+    assert!(output.join("contextos/saludo/rest/src/errores.rs").exists());
     assert!(
         output
-            .join("contextos/greeting/rest/src/errores.rs")
-            .exists()
-    );
-    assert!(
-        output
-            .join("contextos/greeting/rest/src/respuestas.rs")
+            .join("contextos/saludo/rest/src/respuestas.rs")
             .exists()
     );
     assert!(output.join("puerto.toml").exists());
@@ -200,8 +196,8 @@ fn puerto_toml_has_project_name_and_greeting_entity() {
 
     let content = fs::read_to_string(output.join("puerto.toml")).unwrap();
     assert!(content.contains("nombre = \"my-app\""));
-    assert!(content.contains("nombre = \"Greeting\""));
-    assert!(content.contains("get_greeting"));
+    assert!(content.contains("nombre = \"Saludo\""));
+    assert!(content.contains("obtener_saludo"));
 
     cleanup(&dir);
 }
@@ -333,8 +329,8 @@ fn db_project_makefile_has_docker_and_sqlx_targets() {
     assert!(content.contains("sqlx/check"));
     assert!(content.contains("sqlx/online"));
     assert!(content.contains("sqlx/offline"));
-    assert!(content.contains("reset-db"));
-    assert!(content.contains("test/infrastructure"));
+    assert!(content.contains("db/reiniciar"));
+    assert!(content.contains("test/infraestructura"));
     cleanup(&dir);
 }
 
@@ -355,7 +351,7 @@ fn make(output: &Path, args: &[&str]) -> (bool, String) {
 
 #[test]
 fn should_define_each_db_make_target_once_when_the_project_has_a_database() {
-    // `test/infrastructure` had a recipe in the template and another in the db targets: every
+    // `test/infraestructura` had a recipe in the template and another in the db targets: every
     // `make` call of a --db project printed "warning: overriding recipe".
     let dir = temp_dir("db_makefile_once");
     cleanup(&dir);
@@ -381,7 +377,7 @@ fn should_start_postgres_and_wait_for_it_when_running_a_db_project() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_db_project("db-wait", &dir).unwrap();
 
-    for target in ["sqlx/migrate", "run", "test/infrastructure"] {
+    for target in ["sqlx/migrate", "run", "test/infraestructura"] {
         // Act
         let (ok, text) = make(&output, &["-n", target]);
 
@@ -550,7 +546,7 @@ fn no_demo_has_no_greeting_files() {
     let output = new_project_non_interactive(Some("no-demo-app".into()), false, &dir).unwrap();
     scaffold::apply_no_demo(&output).unwrap();
 
-    assert!(!output.join("contextos/greeting").exists());
+    assert!(!output.join("contextos/saludo").exists());
 
     cleanup(&dir);
 }
@@ -570,8 +566,8 @@ fn no_demo_puerto_toml_has_no_entity_block() {
         "puerto.toml should have no entity blocks"
     );
     assert!(
-        !content.contains("Greeting"),
-        "puerto.toml should not mention Greeting"
+        !content.contains("Saludo"),
+        "puerto.toml should not mention Saludo"
     );
     assert!(
         content.contains("[proyecto]"),
@@ -597,8 +593,8 @@ fn no_demo_lib_files_have_no_greeting_modules() {
     ] {
         let content = fs::read_to_string(output.join(manifest)).unwrap();
         assert!(
-            !content.contains("_greeting"),
-            "{manifest} should not name a greeting crate:\n{content}"
+            !content.contains("_saludo"),
+            "{manifest} should not name a saludo crate:\n{content}"
         );
     }
 
@@ -606,7 +602,7 @@ fn no_demo_lib_files_have_no_greeting_modules() {
 }
 
 #[test]
-fn no_demo_bootstrap_has_no_greeting() {
+fn no_demo_bootstrap_has_no_saludo() {
     let dir = temp_dir("no_demo_bootstrap");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -616,12 +612,12 @@ fn no_demo_bootstrap_has_no_greeting() {
 
     let content = wiring(&output);
     assert!(
-        !content.contains("Greeting"),
-        "bootstrap.rs should have no Greeting reference"
+        !content.contains("Saludo"),
+        "bootstrap.rs should have no Saludo reference"
     );
     assert!(
-        !content.contains("greeting"),
-        "bootstrap.rs should have no greeting reference"
+        !content.contains("saludo"),
+        "bootstrap.rs should have no saludo reference"
     );
 
     cleanup(&dir);
@@ -629,7 +625,7 @@ fn no_demo_bootstrap_has_no_greeting() {
 
 #[test]
 fn default_project_still_has_greeting_files() {
-    let dir = temp_dir("with_demo");
+    let dir = temp_dir("con_demo");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
 
@@ -637,10 +633,10 @@ fn default_project_still_has_greeting_files() {
 
     assert!(
         output
-            .join("contextos/greeting/dominio/src/modelo.rs")
+            .join("contextos/saludo/dominio/src/modelo.rs")
             .exists()
     );
-    assert!(output.join("contextos/greeting/rest/src/rutas.rs").exists());
+    assert!(output.join("contextos/saludo/rest/src/rutas.rs").exists());
 
     cleanup(&dir);
 }
@@ -661,7 +657,7 @@ fn no_demo_then_scaffold_generates_new_entity() {
             .exists()
     );
     assert!(output.join("contextos/player/rest/src/rutas.rs").exists());
-    assert!(!output.join("contextos/greeting").exists());
+    assert!(!output.join("contextos/saludo").exists());
 
     cleanup(&dir);
 }
@@ -726,7 +722,7 @@ fn new_project_with_no_web_has_no_frontend_and_does_not_mention_one() {
     let agents = fs::read_to_string(output.join("AGENTS.md")).unwrap();
     assert!(!agents.contains("web/"), "{agents}");
     // Only the frontend section goes: what follows it stays.
-    assert!(agents.contains("## Conventions"), "{agents}");
+    assert!(agents.contains("## Convenciones"), "{agents}");
     cleanup(&dir);
 }
 
@@ -816,7 +812,7 @@ fn web_only_agent_rules_stay_in_a_web_project_without_their_markers() {
 
     let agents = fs::read_to_string(output.join("AGENTS.md")).unwrap();
     assert!(!agents.contains("<!--"), "{agents}");
-    assert!(agents.contains("puerto generar web <Name>"), "{agents}");
+    assert!(agents.contains("puerto generar web <Nombre>"), "{agents}");
     assert!(agents.contains("make web/sync"), "{agents}");
     cleanup(&dir);
 }

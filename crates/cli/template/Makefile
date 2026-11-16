@@ -1,133 +1,133 @@
 .PHONY: help setup run \
-        test test/domain test/application test/infrastructure \
+        test test/dominio test/aplicacion test/infraestructura \
         lint format format/fix check clean clean/incremental \
         audit audit/fix \
-        generate/entity generate/use-case generate/bootstrap \
+        generar/entidad generar/caso-de-uso generar/bootstrap \
         web/install web/require-install web/dev web/test web/lint web/sync
 
 CARGO := cargo
 BUN   := bun
 
-# The escape byte itself, not `\033`: `echo` does not interpret escapes where `sh` is bash.
+# El byte de escape en sí, no `\033`: `echo` no interpreta escapes donde `sh` es bash.
 GREEN  := $(shell printf '\033[1;32m')
 YELLOW := $(shell printf '\033[1;33m')
 CYAN   := $(shell printf '\033[1;36m')
 RED    := $(shell printf '\033[1;31m')
 NC     := $(shell printf '\033[0m')
 
-help: ## Show available commands
+help: ## Muestra los comandos disponibles
 	@echo ""
-	@echo "${CYAN}Available targets:${NC}"
+	@echo "${CYAN}Comandos disponibles:${NC}"
 	@echo ""
 	@grep -E '^[a-zA-Z/_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  ${YELLOW}%-32s${NC} %s\n", $$1, $$2}'
 	@echo ""
 
-setup: ## Install required dev tools (run once after cloning)
-	@echo "${CYAN}Setting up development environment...${NC}"
+setup: ## Instala las herramientas de desarrollo (una vez, tras clonar)
+	@echo "${CYAN}Preparando el entorno de desarrollo...${NC}"
 	$(CARGO) install cargo-nextest --locked
 	$(CARGO) install cargo-audit --locked
 
-run: ## Run the API server (http://localhost:8080)
-	@echo "${GREEN}Starting API server (in memory: data is lost on restart)...${NC}"
+run: ## Arranca el servidor de la API (http://localhost:8080)
+	@echo "${GREEN}Arrancando el servidor de la API (en memoria: los datos se pierden al reiniciar)...${NC}"
 	$(CARGO) run -p api
 
-test: ## Run all tests
-	@echo "${YELLOW}Running all tests...${NC}"
+test: ## Ejecuta todos los tests
+	@echo "${YELLOW}Ejecutando todos los tests...${NC}"
 	$(CARGO) nextest run --workspace
 	@if [ -d web ]; then $(MAKE) web/test; fi
 
-test/domain: ## Run the tests of every domain crate (dominio_*)
-	@echo "${YELLOW}Running domain tests...${NC}"
+test/dominio: ## Ejecuta los tests de cada crate de dominio (dominio_*)
+	@echo "${YELLOW}Ejecutando los tests de dominio...${NC}"
 	$(CARGO) nextest run --workspace -E 'package(dominio_*)' --no-tests=warn
 
-test/application: ## Run the tests of every application crate (aplicacion_*)
-	@echo "${YELLOW}Running application tests...${NC}"
+test/aplicacion: ## Ejecuta los tests de cada crate de aplicación (aplicacion_*)
+	@echo "${YELLOW}Ejecutando los tests de aplicación...${NC}"
 	$(CARGO) nextest run --workspace -E 'package(aplicacion_*)' --no-tests=warn
 
-test/infrastructure: ## Run the tests of every infrastructure crate (infra_*; requires DB with --db)
-	@echo "${YELLOW}Running infrastructure tests...${NC}"
+test/infraestructura: ## Ejecuta los tests de cada crate de infraestructura (infra_*; con --db, necesita la base de datos)
+	@echo "${YELLOW}Ejecutando los tests de infraestructura...${NC}"
 	$(CARGO) nextest run --workspace -E 'package(infra_*)' --no-tests=warn
 
-lint: ## Clippy with -D warnings
-	@echo "${CYAN}Linting code...${NC}"
+lint: ## Clippy con -D warnings
+	@echo "${CYAN}Pasando el lint...${NC}"
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	@if [ -d web ]; then $(MAKE) web/lint; fi
 
-format: ## Check code formatting
-	@echo "${CYAN}Checking code formatting...${NC}"
+format: ## Comprueba el formato del código
+	@echo "${CYAN}Comprobando el formato...${NC}"
 	$(CARGO) fmt --all -- --check
 
-format/fix: ## Fix code formatting
-	@echo "${CYAN}Fixing code formatting...${NC}"
+format/fix: ## Corrige el formato del código
+	@echo "${CYAN}Corrigiendo el formato...${NC}"
 	$(CARGO) fmt --all
 
-check: ## Fast compile check (no binary)
-	@echo "${CYAN}Checking code...${NC}"
+check: ## Comprobación rápida de compilación (sin binario)
+	@echo "${CYAN}Comprobando el código...${NC}"
 	$(CARGO) check --workspace
 
-clean: ## Remove build artifacts
-	@echo "${RED}Cleaning build artifacts...${NC}"
+clean: ## Borra lo compilado
+	@echo "${RED}Borrando lo compilado...${NC}"
 	$(CARGO) clean
 
-clean/incremental: ## Remove the incremental caches (they grow fast with one crate per context)
-	@echo "${RED}Removing incremental caches...${NC}"
+clean/incremental: ## Borra las cachés incrementales (crecen deprisa con un crate por contexto)
+	@echo "${RED}Borrando las cachés incrementales...${NC}"
 	rm -rf target/debug/incremental target/release/incremental
 
-audit: ## Run security audit on dependencies
-	@echo "${CYAN}Running security audit...${NC}"
+audit: ## Audita la seguridad de las dependencias
+	@echo "${CYAN}Auditando la seguridad...${NC}"
 	$(CARGO) audit
 
-audit/fix: ## Preview security fixes (dry-run)
-	@echo "${CYAN}Previewing security fixes (dry-run)...${NC}"
+audit/fix: ## Muestra los arreglos de seguridad sin aplicarlos (dry-run)
+	@echo "${CYAN}Arreglos de seguridad (dry-run)...${NC}"
 	$(CARGO) audit fix --dry-run
 
-generate/entity: ## Scaffold a new DDD entity — make generate/entity NAME=Product
-	@if [ -z "$$NAME" ]; then \
-		echo "${RED}Error: provide entity name — make generate/entity NAME=Product${NC}"; \
+generar/entidad: ## Genera una entidad DDD nueva — make generar/entidad NOMBRE=Producto
+	@if [ -z "$$NOMBRE" ]; then \
+		echo "${RED}Error: falta el nombre de la entidad — make generar/entidad NOMBRE=Producto${NC}"; \
 		exit 1; \
 	fi
-	@echo "${GREEN}Scaffolding entity '$$NAME'...${NC}"
-	puerto generar scaffold $$NAME
+	@echo "${GREEN}Generando la entidad '$$NOMBRE'...${NC}"
+	puerto generar scaffold $$NOMBRE
 
-generate/use-case: ## Add a use case to an entity — make generate/use-case ENTITY=Product ACTION=delete_product
-	@if [ -z "$$ENTITY" ] || [ -z "$$ACTION" ]; then \
-		echo "${RED}Error: provide entity and action — make generate/use-case ENTITY=Product ACTION=delete_product${NC}"; \
+generar/caso-de-uso: ## Añade un caso de uso a una entidad — make generar/caso-de-uso ENTIDAD=Producto ACCION=publicar_producto
+	@if [ -z "$$ENTIDAD" ] || [ -z "$$ACCION" ]; then \
+		echo "${RED}Error: faltan la entidad y la acción — make generar/caso-de-uso ENTIDAD=Producto ACCION=publicar_producto${NC}"; \
 		exit 1; \
 	fi
-	@echo "${GREEN}Adding use case '$$ACTION' to '$$ENTITY'...${NC}"
-	puerto generar caso-de-uso $$ENTITY $$ACTION
+	@echo "${GREEN}Añadiendo el caso de uso '$$ACCION' a '$$ENTIDAD'...${NC}"
+	puerto generar caso-de-uso $$ENTIDAD $$ACCION
 
-generate/bootstrap: ## Regenerate the wiring (cableado, bootstrap.rs) from puerto.toml
-	@echo "${GREEN}Regenerating bootstrap.rs...${NC}"
+generar/bootstrap: ## Regenera el cableado (cableado, bootstrap.rs) desde puerto.toml
+	@echo "${GREEN}Regenerando bootstrap.rs...${NC}"
 	puerto generar bootstrap
 
-web/install: ## Install the frontend dependencies (needs Bun)
-	@echo "${CYAN}Installing frontend dependencies...${NC}"
+web/install: ## Instala las dependencias del frontend (necesita Bun)
+	@echo "${CYAN}Instalando las dependencias del frontend...${NC}"
 	cd web && $(BUN) install
 
-# Not in `make help`: the prerequisite of every target that runs the frontend's tools.
+# Fuera de `make help`: el requisito de cada target que usa las herramientas del frontend.
 web/require-install:
 	@if [ ! -d web/node_modules ]; then \
-		echo "${RED}web/node_modules is missing — run: make web/install${NC}"; \
+		echo "${RED}Falta web/node_modules — ejecuta: make web/install${NC}"; \
 		exit 1; \
 	fi
 
-web/dev: web/require-install ## Run the frontend dev server (http://localhost:5173, /api proxied to :8080)
-	@echo "${GREEN}Starting frontend dev server...${NC}"
+web/dev: web/require-install ## Arranca el servidor de desarrollo del frontend (http://localhost:5173, /api va a :8080)
+	@echo "${GREEN}Arrancando el servidor de desarrollo del frontend...${NC}"
 	cd web && $(BUN) run dev
 
-web/test: web/require-install ## Run the frontend tests
-	@echo "${YELLOW}Running frontend tests...${NC}"
+web/test: web/require-install ## Ejecuta los tests del frontend
+	@echo "${YELLOW}Ejecutando los tests del frontend...${NC}"
 	cd web && $(BUN) test
 
-web/lint: web/require-install ## Typecheck, lint and check the frontend Dependency Rule
-	@echo "${CYAN}Linting frontend...${NC}"
+web/lint: web/require-install ## Comprueba tipos, lint y la regla de dependencias del frontend
+	@echo "${CYAN}Pasando el lint del frontend...${NC}"
 	cd web && $(BUN) run typecheck && $(BUN) run lint && $(BUN) run lint:arch
 
-web/sync: web/require-install ## After a scaffold or a DTO change: export the OpenAPI spec, regenerate the web types
-	@echo "${CYAN}Exporting docs/api/openapi.json...${NC}"
+web/sync: web/require-install ## Tras un scaffold o un cambio de DTO: exporta la spec OpenAPI y regenera los tipos del frontend
+	@echo "${CYAN}Exportando docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
-	@echo "${CYAN}Generating web/src/infrastructure/http/schema.d.ts...${NC}"
+	@echo "${CYAN}Generando web/src/infrastructure/http/schema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
-	@echo "${CYAN}Formatting web/ (Biome, no lint fixes)...${NC}"
+	@echo "${CYAN}Formateando web/ (Biome, sin arreglos de lint)...${NC}"
 	cd web && $(BUN) run format

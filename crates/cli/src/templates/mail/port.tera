@@ -1,7 +1,7 @@
-//! The `{{ name }}` mail: what it carries and the port that sends it. Written once by
-//! `puerto generar correo`; it is yours now — add a field, rename one, compute the recipient.
-//! Its text is in `contextos/correo/infraestructura/plantillas/{{ name }}/`, rendered by
-//! `Template{{ pascal }}Mailer`.
+//! El correo `{{ name }}`: lo que lleva y el puerto que lo envía. Lo escribe una vez
+//! `puerto generar correo`; desde entonces es tuyo: añade un campo, renombra otro, calcula el
+//! destinatario. Su texto está en `contextos/correo/infraestructura/plantillas/{{ name }}/`, y lo
+//! renderiza `EnviadorCorreo{{ pascal }}Plantilla`.
 
 use async_trait::async_trait;
 use puerto_nucleo::correo::ErrorCorreo;
@@ -9,33 +9,33 @@ use puerto_nucleo::correo::ErrorCorreo;
 use {{ import }};
 {%- endfor %}
 
-/// What the `{{ name }}` mail says: who it goes to and the values its templates show.
+/// Lo que dice el correo `{{ name }}`: a quién va y los valores que muestran sus plantillas.
 #[derive(Debug, Clone, PartialEq)]
-pub struct {{ pascal }}Mail {
-    pub to: String,
+pub struct Correo{{ pascal }} {
+    pub para: String,
 {%- for f in fields %}
     pub {{ f.name }}: {{ f.rust_type }},
 {%- endfor %}
 }
 
-/// Sends the `{{ name }}` mail. `Template{{ pascal }}Mailer` (infrastructure) renders and sends it;
-/// tests use `mocks::Mock{{ pascal }}Mailer`.
+/// Envía el correo `{{ name }}`. `EnviadorCorreo{{ pascal }}Plantilla` (infraestructura) lo
+/// renderiza y lo envía; los tests usan `dobles::MockEnviadorCorreo{{ pascal }}`.
 #[async_trait]
-pub trait {{ pascal }}Mailer: Send + Sync {
-    async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), ErrorCorreo>;
+pub trait EnviadorCorreo{{ pascal }}: Send + Sync {
+    async fn enviar(&self, correo: &Correo{{ pascal }}) -> Result<(), ErrorCorreo>;
 }
 
 #[cfg(any(test, feature = "pruebas"))]
-pub mod mocks {
+pub mod dobles {
     use super::*;
     use mockall::mock;
 
     mock! {
-        pub {{ pascal }}Mailer {}
+        pub EnviadorCorreo{{ pascal }} {}
 
         #[async_trait]
-        impl {{ pascal }}Mailer for {{ pascal }}Mailer {
-            async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), ErrorCorreo>;
+        impl EnviadorCorreo{{ pascal }} for EnviadorCorreo{{ pascal }} {
+            async fn enviar(&self, correo: &Correo{{ pascal }}) -> Result<(), ErrorCorreo>;
         }
     }
 }

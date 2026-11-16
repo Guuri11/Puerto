@@ -42,7 +42,7 @@ enum Commands {
         /// Explicitly skip database support without prompting
         #[arg(long = "sin-db", conflicts_with = "db")]
         no_db: bool,
-        /// Skip the Greeting demo entity (creates an empty project)
+        /// Skip the Saludo demo entity (creates an empty project)
         #[arg(long = "sin-demo")]
         no_demo: bool,
         /// Skip the web frontend (`web/`: React + daisyUI on Bun)
@@ -144,7 +144,7 @@ enum GenerateAction {
         #[arg(long = "para")]
         to: Option<String>,
         /// The values its text shows, after --: name:String seats:i64 plan:opt:String.
-        /// Primitives and opt:<type> only; the recipient `to` is always there. None: name:String
+        /// Primitives and opt:<type> only; the recipient `para` is always there. None: nombre:String
         #[arg(raw = true)]
         fields: Vec<String>,
     },

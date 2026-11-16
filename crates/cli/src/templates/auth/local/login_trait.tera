@@ -1,31 +1,31 @@
 use async_trait::async_trait;
 use puerto_nucleo::auth::Sesion;
 
-use dominio_usuario::errores::UserError;
+use dominio_usuario::errores::ErrorUsuario;
 
-pub struct LoginParams {
+pub struct ParamsLogin {
     pub email: String,
-    pub password: String,
+    pub contrasena: String,
 }
 
-/// Opens a session for the account `email`, when `password` is its password.
+/// Abre una sesión para la cuenta `email` cuando `password` es su contraseña.
 #[async_trait]
-pub trait LoginUseCaseTrait: Send + Sync {
-    async fn execute(&self, params: LoginParams) -> Result<Sesion, UserError>;
+pub trait Login: Send + Sync {
+    async fn ejecutar(&self, params: ParamsLogin) -> Result<Sesion, ErrorUsuario>;
 }
 
 #[cfg(any(test, feature = "pruebas"))]
-pub mod mocks {
+pub mod dobles {
     use mockall::mock;
 
     use super::*;
 
     mock! {
-        pub LoginUseCase {}
+        pub Login {}
 
         #[async_trait]
-        impl LoginUseCaseTrait for LoginUseCase {
-            async fn execute(&self, params: LoginParams) -> Result<Sesion, UserError>;
+        impl Login for Login {
+            async fn ejecutar(&self, params: ParamsLogin) -> Result<Sesion, ErrorUsuario>;
         }
     }
 }

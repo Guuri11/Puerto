@@ -5,12 +5,12 @@ use super::*;
 pub(super) fn setup_use_case_stubs(base: &Path) {
     super::scaffolding::setup_workspace_stubs(
         base,
-        "[proyecto]\nnombre = \"test-app\"\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\n",
+        "[proyecto]\nnombre = \"test-app\"\n\n[[entidad]]\nnombre = \"Producto\"\ncasos_de_uso = [\"crear_producto\"]\n",
     );
-    fs::create_dir_all(base.join("contextos/product/aplicacion/src")).unwrap();
+    fs::create_dir_all(base.join("contextos/producto/aplicacion/src")).unwrap();
     fs::write(
-        base.join("contextos/product/aplicacion/src/lib.rs"),
-        "pub mod create_product;\n",
+        base.join("contextos/producto/aplicacion/src/lib.rs"),
+        "pub mod crear_producto;\n",
     )
     .unwrap();
 }
@@ -21,10 +21,10 @@ fn use_case_creates_trait_file() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
 
     assert!(
-        dir.join("contextos/product/aplicacion/src/delete_product.rs")
+        dir.join("contextos/producto/aplicacion/src/borrar_producto.rs")
             .exists()
     );
 
@@ -37,10 +37,10 @@ fn use_case_creates_impl_file() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
 
     assert!(
-        dir.join("contextos/product/aplicacion/src/delete_product.rs")
+        dir.join("contextos/producto/aplicacion/src/borrar_producto.rs")
             .exists()
     );
 
@@ -53,12 +53,13 @@ fn use_case_trait_file_has_correct_content() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
 
     let content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/delete_product.rs")).unwrap();
-    assert!(content.contains("DeleteProductParams"));
-    assert!(content.contains("DeleteProductUseCaseTrait"));
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/borrar_producto.rs"))
+            .unwrap();
+    assert!(content.contains("ParamsBorrarProducto"));
+    assert!(content.contains("BorrarProducto"));
 
     cleanup(&dir);
 }
@@ -69,13 +70,14 @@ fn use_case_impl_file_has_correct_content() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
 
     let content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/delete_product.rs")).unwrap();
-    assert!(content.contains("DeleteProductUseCaseImpl"));
-    assert!(content.contains("ProductRepositoryTrait"));
-    assert!(content.contains("DeleteProductUseCaseTrait"));
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/borrar_producto.rs"))
+            .unwrap();
+    assert!(content.contains("BorrarProductoImpl"));
+    assert!(content.contains("RepositorioProducto"));
+    assert!(content.contains("BorrarProducto"));
 
     cleanup(&dir);
 }
@@ -86,12 +88,12 @@ fn use_case_adds_one_line_to_the_application_lib_rs() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
 
-    let content = fs::read_to_string(dir.join("contextos/product/aplicacion/src/lib.rs")).unwrap();
+    let content = fs::read_to_string(dir.join("contextos/producto/aplicacion/src/lib.rs")).unwrap();
     assert_eq!(
         content,
-        "pub mod create_product;\npub mod delete_product;\n"
+        "pub mod crear_producto;\npub mod borrar_producto;\n"
     );
 
     cleanup(&dir);
@@ -103,11 +105,11 @@ fn use_case_updates_puerto_toml() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
 
     let content = fs::read_to_string(dir.join("puerto.toml")).unwrap();
-    assert!(content.contains("delete_product"));
-    assert!(content.contains("create_product")); // existing preserved
+    assert!(content.contains("borrar_producto"));
+    assert!(content.contains("crear_producto")); // existing preserved
 
     cleanup(&dir);
 }
@@ -118,11 +120,11 @@ fn use_case_regenerates_bootstrap() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
 
     let content = wiring(&dir);
-    assert!(content.contains("DeleteProductUseCaseImpl"));
-    assert!(content.contains("CreateProductUseCaseImpl"));
+    assert!(content.contains("BorrarProductoImpl"));
+    assert!(content.contains("CrearProductoImpl"));
 
     cleanup(&dir);
 }
@@ -133,10 +135,10 @@ fn use_case_normalizes_entity_casing() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("producto", "borrar_producto", &dir).unwrap();
 
     assert!(
-        dir.join("contextos/product/aplicacion/src/delete_product.rs")
+        dir.join("contextos/producto/aplicacion/src/borrar_producto.rs")
             .exists()
     );
 
@@ -164,11 +166,11 @@ fn use_case_rerun_is_refused_and_leaves_files_untouched() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
-    let impl_path = dir.join("contextos/product/aplicacion/src/delete_product.rs");
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
+    let impl_path = dir.join("contextos/producto/aplicacion/src/borrar_producto.rs");
     fs::write(&impl_path, "// implemented by hand\n").unwrap();
 
-    let result = scaffold::run_use_case("Product", "delete_product", &dir);
+    let result = scaffold::run_use_case("Producto", "borrar_producto", &dir);
 
     assert!(result.is_err(), "a second run must be refused");
     assert!(result.unwrap_err().to_string().contains("already exists"));
@@ -177,7 +179,7 @@ fn use_case_rerun_is_refused_and_leaves_files_untouched() {
         "// implemented by hand\n"
     );
     let toml = fs::read_to_string(dir.join("puerto.toml")).unwrap();
-    assert_eq!(toml.matches("delete_product").count(), 1);
+    assert_eq!(toml.matches("borrar_producto").count(), 1);
 
     cleanup(&dir);
 }
@@ -191,18 +193,18 @@ fn use_case_rejects_an_action_that_is_not_snake_case() {
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
 
-    let result = scaffold::run_use_case("Product", "ArchiveProduct", &dir);
+    let result = scaffold::run_use_case("Producto", "ArchiveProducto", &dir);
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("snake_case"));
     assert!(
-        !dir.join("contextos/product/aplicacion/src/ArchiveProduct.rs")
+        !dir.join("contextos/producto/aplicacion/src/ArchiveProducto.rs")
             .exists()
     );
     assert!(
         !fs::read_to_string(dir.join("puerto.toml"))
             .unwrap()
-            .contains("ArchiveProduct")
+            .contains("ArchiveProducto")
     );
 
     cleanup(&dir);
@@ -216,16 +218,16 @@ fn use_case_refuses_to_replace_a_scaffolded_crud_use_case() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("uc-crud-clash", &dir).unwrap();
     scaffold::run_scaffold(
-        "Product",
+        "Producto",
         &output,
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Ask,
     )
     .unwrap();
-    let impl_path = output.join("contextos/product/aplicacion/src/create_product.rs");
+    let impl_path = output.join("contextos/producto/aplicacion/src/crear_producto.rs");
     let before = fs::read_to_string(&impl_path).unwrap();
 
-    let result = scaffold::run_use_case("Product", "create_product", &output);
+    let result = scaffold::run_use_case("Producto", "crear_producto", &output);
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("already exists"));
@@ -241,21 +243,19 @@ fn use_case_adds_its_field_to_the_entity_api_struct() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("uc-routes-field", &dir).unwrap();
     scaffold::run_scaffold(
-        "Product",
+        "Producto",
         &output,
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Ask,
     )
     .unwrap();
 
-    scaffold::run_use_case("Product", "archive_product", &output).unwrap();
+    scaffold::run_use_case("Producto", "archive_producto", &output).unwrap();
 
-    let routes = fs::read_to_string(output.join("contextos/product/rest/src/rutas.rs")).unwrap();
-    assert!(routes.contains("pub archive_product: Arc<dyn ArchiveProductUseCaseTrait>,"));
-    assert!(
-        routes.contains("use aplicacion_product::archive_product::ArchiveProductUseCaseTrait;")
-    );
-    assert!(!routes.contains("UseCaseImpl"), "{routes}");
+    let routes = fs::read_to_string(output.join("contextos/producto/rest/src/rutas.rs")).unwrap();
+    assert!(routes.contains("pub archive_producto: Arc<dyn ArchiveProducto>,"));
+    assert!(routes.contains("use aplicacion_producto::archive_producto::ArchiveProducto;"));
+    assert!(!routes.contains("Impl {"), "{routes}");
 
     cleanup(&dir);
 }
@@ -269,15 +269,15 @@ fn rescaffold_with_force_keeps_custom_use_case_in_the_api_struct() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("uc-routes-force", &dir).unwrap();
     let fields = [scaffold_test_field("title", "String")];
-    scaffold::run_scaffold("Product", &output, &fields, OverwritePolicy::Ask).unwrap();
-    scaffold::run_use_case("Product", "archive_product", &output).unwrap();
+    scaffold::run_scaffold("Producto", &output, &fields, OverwritePolicy::Ask).unwrap();
+    scaffold::run_use_case("Producto", "archive_producto", &output).unwrap();
 
-    scaffold::run_scaffold("Product", &output, &fields, OverwritePolicy::Force).unwrap();
+    scaffold::run_scaffold("Producto", &output, &fields, OverwritePolicy::Force).unwrap();
 
-    let routes = fs::read_to_string(output.join("contextos/product/rest/src/rutas.rs")).unwrap();
+    let routes = fs::read_to_string(output.join("contextos/producto/rest/src/rutas.rs")).unwrap();
     assert_eq!(
         routes
-            .matches("pub archive_product: Arc<dyn ArchiveProductUseCaseTrait>,")
+            .matches("pub archive_producto: Arc<dyn ArchiveProducto>,")
             .count(),
         1
     );

@@ -2,69 +2,69 @@ use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 use puerto_web::RespuestaError;
 
-use crate::auth::dto::SessionDto;
-use crate::me::dto::MeDto;
+use crate::auth::dto::DtoSesion;
+use crate::me::dto::DtoMe;
 
 #[derive(ApiResponse)]
-pub enum RegisterResponse {
+pub enum RespuestaRegistro {
     #[oai(status = 201)]
-    Created(Json<MeDto>),
+    Creado(Json<DtoMe>),
     #[oai(status = 422)]
-    UnprocessableEntity(Json<RespuestaError>),
+    NoProcesable(Json<RespuestaError>),
     #[oai(status = 409)]
-    Conflict(Json<RespuestaError>),
+    Conflicto(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<RespuestaError>),
+    ErrorInterno(Json<RespuestaError>),
 }
 
-impl RegisterResponse {
+impl RespuestaRegistro {
     pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
-            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
-            StatusCode::CONFLICT => Self::Conflict(error),
-            _ => Self::InternalError(error),
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+            _ => Self::ErrorInterno(error),
         }
     }
 }
 
 #[derive(ApiResponse)]
-pub enum LoginResponse {
+pub enum RespuestaLogin {
     #[oai(status = 200)]
-    Ok(Json<SessionDto>),
+    Ok(Json<DtoSesion>),
     #[oai(status = 401)]
-    Unauthorized(Json<RespuestaError>),
+    NoAutorizado(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<RespuestaError>),
+    ErrorInterno(Json<RespuestaError>),
 }
 
-impl LoginResponse {
+impl RespuestaLogin {
     pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
-            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
-            _ => Self::InternalError(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            _ => Self::ErrorInterno(error),
         }
     }
 }
 
 #[derive(ApiResponse)]
-pub enum LogoutResponse {
+pub enum RespuestaLogout {
     #[oai(status = 204)]
-    NoContent,
+    SinContenido,
     #[oai(status = 401)]
-    Unauthorized(Json<RespuestaError>),
-    /// The session could not be checked: the database is down (`BearerAuth`).
+    NoAutorizado(Json<RespuestaError>),
+    /// No se pudo comprobar la sesión: la base de datos no responde (`BearerAuth`).
     #[oai(status = 503)]
-    Unavailable(Json<RespuestaError>),
+    NoDisponible(Json<RespuestaError>),
     #[oai(status = 500)]
-    InternalError(Json<RespuestaError>),
+    ErrorInterno(Json<RespuestaError>),
 }
 
-impl LogoutResponse {
+impl RespuestaLogout {
     pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
-            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
-            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
-            _ => Self::InternalError(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+            _ => Self::ErrorInterno(error),
         }
     }
 }

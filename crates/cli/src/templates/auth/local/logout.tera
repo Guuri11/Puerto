@@ -1,4 +1,4 @@
-//! Yours: `puerto nuevo --auth local` writes this file once.
+//! Lo escribe una vez `puerto nuevo --auth local`; desde entonces es tuyo.
 
 use std::sync::Arc;
 
@@ -6,19 +6,19 @@ use async_trait::async_trait;
 use puerto_nucleo::auth::AlmacenSesiones;
 
 use dominio_usuario::{
-    errores::UserError,
+    errores::ErrorUsuario,
 };
 
-pub struct LogoutUseCaseImpl {
-    pub sessions: Arc<dyn AlmacenSesiones>,
+pub struct LogoutImpl {
+    pub sesiones: Arc<dyn AlmacenSesiones>,
 }
 
 #[async_trait]
-impl LogoutUseCaseTrait for LogoutUseCaseImpl {
-    async fn execute(&self, params: LogoutParams) -> Result<(), UserError> {
-        tracing::info!("logout: start");
-        self.sessions.revocar(&params.token).await?;
-        tracing::info!("logout: done");
+impl Logout for LogoutImpl {
+    async fn ejecutar(&self, params: ParamsLogout) -> Result<(), ErrorUsuario> {
+        tracing::info!("logout: inicio");
+        self.sesiones.revocar(&params.token).await?;
+        tracing::info!("logout: fin");
         Ok(())
     }
 }
@@ -31,48 +31,48 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn should_revoke_the_session_the_caller_signed_in_with() {
-        // Arrange
-        let mut sessions = MockAlmacenSesiones::new();
-        sessions
+    async fn deberia_revocar_la_sesion_de_quien_llama() {
+        // Preparar
+        let mut sesiones = MockAlmacenSesiones::new();
+        sesiones
             .expect_revocar()
             .withf(|token| token == "opaque")
             .times(1)
             .returning(|_| Ok(()));
-        let use_case = LogoutUseCaseImpl {
-            sessions: Arc::new(sessions),
+        let caso_de_uso = LogoutImpl {
+            sesiones: Arc::new(sesiones),
         };
 
-        // Act
-        let result = use_case
-            .execute(LogoutParams {
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsLogout {
                 token: "opaque".into(),
             })
             .await;
 
-        // Assert
-        assert!(result.is_ok());
+        // Comprobar
+        assert!(resultado.is_ok());
     }
 
     #[tokio::test]
-    async fn should_report_a_repository_error_when_the_store_is_down() {
-        // Arrange
-        let mut sessions = MockAlmacenSesiones::new();
-        sessions
+    async fn deberia_informar_de_un_error_de_repositorio_cuando_el_almacen_no_responde() {
+        // Preparar
+        let mut sesiones = MockAlmacenSesiones::new();
+        sesiones
             .expect_revocar()
             .returning(|_| Err(ErrorRepositorio::NoDisponible));
-        let use_case = LogoutUseCaseImpl {
-            sessions: Arc::new(sessions),
+        let caso_de_uso = LogoutImpl {
+            sesiones: Arc::new(sesiones),
         };
 
-        // Act
-        let result = use_case
-            .execute(LogoutParams {
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsLogout {
                 token: "opaque".into(),
             })
             .await;
 
-        // Assert
-        assert_eq!(result.unwrap_err().to_string(), "user.repository_error");
+        // Comprobar
+        assert_eq!(resultado.unwrap_err().to_string(), "usuario.repositorio");
     }
 }

@@ -4,30 +4,30 @@ use async_trait::async_trait;
 use puerto_nucleo::Pagina;
 
 use dominio_{{ snake }}::{
-    errores::{{ pascal }}Error,
+    errores::Error{{ pascal }},
     modelo::{{ pascal }},
-    repositorio::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
+    repositorio::{% if refs %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
 };
 
-pub struct List{{ plural_pascal }}UseCaseImpl {
-    pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
+pub struct Listar{{ plural_pascal }}Impl {
+    pub repositorio: Arc<dyn Repositorio{{ pascal }}>,
 }
 
 #[async_trait]
-impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCaseImpl {
-    async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Pagina<{{ pascal }}>, {{ pascal }}Error> {
-        tracing::info!(limit = params.page.limite(), offset = params.page.desplazamiento(), "list_{{ plural }}: start");
-        self.repository
-{% if refs %}            .find_all(
-                params.page,
-                {{ pascal }}Filter {
+impl Listar{{ plural_pascal }} for Listar{{ plural_pascal }}Impl {
+    async fn ejecutar(&self, params: ParamsListar{{ plural_pascal }}) -> Result<Pagina<{{ pascal }}>, Error{{ pascal }}> {
+        tracing::info!(limite = params.pagina.limite(), desplazamiento = params.pagina.desplazamiento(), "listar_{{ plural }}: inicio");
+        self.repositorio
+{% if refs %}            .buscar_todos(
+                params.pagina,
+                Filtro{{ pascal }} {
 {% for r in refs %}                    {{ r.name }}: params.{{ r.name }},
 {% endfor %}                },
             )
-{% else %}            .find_all(params.page)
+{% else %}            .buscar_todos(params.pagina)
 {% endif %}            .await
-            .inspect_err(|e| tracing::error!(error = %e, "list_{{ plural }}: repository failed"))
-            .map_err({{ pascal }}Error::from)
+            .inspect_err(|e| tracing::error!(error = %e, "listar_{{ plural }}: fallo del repositorio"))
+            .map_err(Error{{ pascal }}::from)
     }
 }
 
@@ -37,97 +37,97 @@ mod tests {
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use puerto_nucleo::PeticionPagina;
     use dominio_{{ snake }}::{
-        modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Props},
-        repositorio::mocks::Mock{{ pascal }}Repository,
+        modelo::{{ "{" }}{{ pascal }}, Props{{ pascal }}},
+        repositorio::dobles::MockRepositorio{{ pascal }},
     };
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}{% for import in reference_imports %}{% if import not in test_imports %}    use {{ import }};
 {% endif %}{% endfor %}
 
     #[tokio::test]
-    async fn should_return_the_page_of_{{ plural }}() {
-        let entities = vec![
-            {{ pascal }}::new({{ pascal }}Props {
+    async fn deberia_devolver_la_pagina_de_{{ plural }}() {
+        let entidades = vec![
+            {{ pascal }}::new(Props{{ pascal }} {
 {{ macros::props(fields=fields, word="first") }}        }).unwrap(),
-            {{ pascal }}::new({{ pascal }}Props {
+            {{ pascal }}::new(Props{{ pascal }} {
 {{ macros::props(fields=fields, word="second") }}        }).unwrap(),
         ];
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo
-            .expect_find_all()
-            .returning(move |page{% if refs %}, _{% endif %}| Ok(Pagina::new(entities.clone(), 2, page)));
-        let use_case = List{{ plural_pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .returning(move |pagina{% if refs %}, _{% endif %}| Ok(Pagina::new(entidades.clone(), 2, pagina)));
+        let caso_de_uso = Listar{{ plural_pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}page: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListar{{ plural_pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}pagina: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
-        let page = result.unwrap();
-        assert_eq!(page.elementos.len(), 2);
-        assert_eq!(page.total, 2);
+        let pagina = resultado.unwrap();
+        assert_eq!(pagina.elementos.len(), 2);
+        assert_eq!(pagina.total, 2);
     }
 
     #[tokio::test]
-    async fn should_return_an_empty_page_when_no_{{ plural }}_exist() {
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo
-            .expect_find_all()
-            .returning(|page{% if refs %}, _{% endif %}| Ok(Pagina::new(vec![], 0, page)));
-        let use_case = List{{ plural_pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+    async fn deberia_devolver_una_pagina_vacia_cuando_no_hay_{{ plural }}() {
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .returning(|pagina{% if refs %}, _{% endif %}| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = Listar{{ plural_pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}page: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListar{{ plural_pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}pagina: PeticionPagina::default(){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
-        let page = result.unwrap();
-        assert!(page.elementos.is_empty());
-        assert_eq!(page.total, 0);
+        let pagina = resultado.unwrap();
+        assert!(pagina.elementos.is_empty());
+        assert_eq!(pagina.total, 0);
     }
 
     #[tokio::test]
-    async fn should_pass_the_requested_page_to_the_repository() {
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo
-            .expect_find_all()
-            .withf(|page{% if refs %}, _{% endif %}| page.limite() == 5 && page.desplazamiento() == 10)
-            .returning(|page{% if refs %}, _{% endif %}| Ok(Pagina::new(vec![], 0, page)));
-        let use_case = List{{ plural_pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+    async fn deberia_pasar_al_repositorio_la_pagina_pedida() {
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .withf(|pagina{% if refs %}, _{% endif %}| pagina.limite() == 5 && pagina.desplazamiento() == 10)
+            .returning(|pagina{% if refs %}, _{% endif %}| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = Listar{{ plural_pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case
-            .execute(List{{ plural_pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}page: PeticionPagina::new(Some(5), Some(10)){% for r in refs %}, {{ r.name }}: None{% endfor %} })
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListar{{ plural_pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}pagina: PeticionPagina::new(Some(5), Some(10)){% for r in refs %}, {{ r.name }}: None{% endfor %} })
             .await;
 
-        assert_eq!(result.unwrap().desplazamiento, 10);
+        assert_eq!(resultado.unwrap().desplazamiento, 10);
     }
 {% if refs %}
     #[tokio::test]
-    async fn should_pass_the_filter_to_the_repository() {
-        let filter = {{ pascal }}Filter {
-{% for r in refs %}            {{ r.name }}: Some({{ r.ref_target }}Id::generate()),
+    async fn deberia_pasar_el_filtro_al_repositorio() {
+        let filtro = Filtro{{ pascal }} {
+{% for r in refs %}            {{ r.name }}: Some(Id{{ r.ref_target }}::generar()),
 {% endfor %}        };
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo
-            .expect_find_all()
-            .withf(move |_, f| *f == filter)
-            .returning(|page, _| Ok(Pagina::new(vec![], 0, page)));
-        let use_case = List{{ plural_pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .withf(move |_, f| *f == filtro)
+            .returning(|pagina, _| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = Listar{{ plural_pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case
-            .execute(List{{ plural_pascal }}Params {
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListar{{ plural_pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}                page: PeticionPagina::default(),
-{% for r in refs %}                {{ r.name }}: filter.{{ r.name }},
+{% endif %}                pagina: PeticionPagina::default(),
+{% for r in refs %}                {{ r.name }}: filtro.{{ r.name }},
 {% endfor %}            })
             .await;
 
-        assert!(result.is_ok());
+        assert!(resultado.is_ok());
     }
 {% endif %}}

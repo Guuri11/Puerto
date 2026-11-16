@@ -34,9 +34,9 @@ struct MailField {
 /// Checks a field a mail can carry: a primitive or its `Option` — what a template prints.
 fn mail_field(field: &Field) -> Result<MailField, String> {
     let name = &field.name;
-    if name == "to" {
+    if name == "para" {
         return Err(
-            "field 'to' is the recipient every mail already has — pick another name".to_string(),
+            "field 'para' is the recipient every mail already has — pick another name".to_string(),
         );
     }
     if field.value_object.is_some() {
@@ -73,11 +73,11 @@ fn mail_field(field: &Field) -> Result<MailField, String> {
     })
 }
 
-/// The fields of a mail from its CLI arguments; none given → `name: String`.
+/// The fields of a mail from its CLI arguments; none given → `nombre: String`.
 fn mail_fields(args: &[String]) -> Result<Vec<MailField>, String> {
     let fields: Vec<Field> = if args.is_empty() {
         vec![Field {
-            name: "name".into(),
+            name: "nombre".into(),
             field_type: "String".into(),
             ..Field::default()
         }]
@@ -218,7 +218,7 @@ fn add_mail_env(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Er
     // A host name has no `_`: `MAIL_FROM` has to parse as an address.
     let host = project.replace('_', "-");
     let vars = format!(
-        "\n# Mail — Mailpit (docker-compose.yml) catches every mail in development: `make mail/ui`\n\
+        "\n# Correo — Mailpit (docker-compose.yml) recoge cada correo en desarrollo: `make correo/ui`\n\
          SMTP_URL=smtp://localhost:1025\nMAIL_FROM=no-reply@{host}.localhost\n"
     );
     for file in [".env", ".env.example"] {
@@ -242,19 +242,19 @@ const COMPOSE_MAKEFILE_TARGETS: &str = r#"
 
 DOCKER_COMPOSE := docker compose
 
-docker-compose/up: ## Start the containers (Mailpit)
-	@echo "${CYAN}Starting containers...${NC}"
+docker-compose/up: ## Arranca los contenedores (Mailpit)
+	@echo "${CYAN}Arrancando los contenedores...${NC}"
 	$(DOCKER_COMPOSE) up -d --wait
 
-docker-compose/down: ## Stop the containers
-	@echo "${CYAN}Stopping containers...${NC}"
+docker-compose/down: ## Para los contenedores
+	@echo "${CYAN}Parando los contenedores...${NC}"
 	$(DOCKER_COMPOSE) down
 "#;
 
 const MAIL_MAKEFILE_TARGETS: &str = r#"
-.PHONY: mail/ui
+.PHONY: correo/ui
 
-mail/ui: docker-compose/up ## Where the mails sent in development land (Mailpit)
+correo/ui: docker-compose/up ## Dónde llegan los correos enviados en desarrollo (Mailpit)
 	@echo "${GREEN}Mailpit: http://localhost:8025${NC}"
 "#;
 
@@ -264,7 +264,7 @@ fn add_mail_makefile_targets(base: &Path) -> Result<(), Box<dyn std::error::Erro
         return Ok(());
     }
     let mut src = fs::read_to_string(&path)?;
-    if src.contains("mail/ui:") {
+    if src.contains("correo/ui:") {
         return Ok(());
     }
     if !src.ends_with('\n') {
@@ -280,30 +280,32 @@ fn add_mail_makefile_targets(base: &Path) -> Result<(), Box<dyn std::error::Erro
 
 /// The root `AGENTS.md` section a project gets with its first mail (ADR-0010: tested).
 const AGENTS_MAIL_SECTION: &str = r#"
-## Mail
+## Correo
 
-A mail is three pieces, written once by `puerto generar correo <name> [-- field:Type …]` and yours
-from then on (ADR-0020 of Puerto):
+Un correo son tres piezas, que escribe una vez `puerto generar correo <nombre> [-- campo:Tipo …]`
+y que desde entonces son tuyas (ADR-0020 de Puerto):
 
-- `contextos/correo/dominio/src/<name>.rs` — `{Name}Mail` (the recipient `to` and the values its
-  text shows) and the port `{Name}Mailer`. Code that sends it depends on the port; tests use
-  `mocks::Mock{Name}Mailer`.
-- `contextos/correo/infraestructura/src/<name>.rs` — `Template{Name}Mailer`: renders the templates
-  and hands the message to the `puerto_correo::EnviadorCorreo` (SMTP). Its tests render every
-  template, so a typo in one fails `make test`.
-- `contextos/correo/infraestructura/plantillas/<name>/` — `subject.txt`, `body.html`, `body.txt`:
-  minijinja, strict (an unknown variable is an error). Wrap an optional field in
-  `{% if x is not none %}`.
+- `contextos/correo/dominio/src/<nombre>.rs`: `Correo<Nombre>` (el destinatario y los valores que
+  muestra su texto) y el puerto `EnviadorCorreo<Nombre>`. El código que lo envía depende del
+  puerto; los tests usan `dobles::MockEnviadorCorreo<Nombre>`.
+- `contextos/correo/infraestructura/src/<nombre>.rs`: `EnviadorCorreo<Nombre>Plantilla`, que
+  renderiza las plantillas y entrega el mensaje al `EnviadorCorreo` (SMTP). Sus tests renderizan
+  todas las plantillas, así que una errata en una hace fallar `make test`.
+- `contextos/correo/infraestructura/plantillas/<nombre>/`: `asunto.txt`, `cuerpo.html`,
+  `cuerpo.txt`; minijinja, estricto (una variable desconocida es un error). Envuelve un campo
+  opcional en `{% if x is not none %}`.
 
-`SMTP_URL` and `MAIL_FROM` are in `.env`. In development Mailpit (`make docker-compose/up`)
-catches every mail — `make mail/ui` — and nothing reaches a real inbox until `SMTP_URL` points at
-a provider.
+`SMTP_URL` y `MAIL_FROM` están en `.env`. En desarrollo Mailpit (`make docker-compose/up`) recoge
+todos los correos (`make correo/ui`), y ninguno llega a un buzón real hasta que `SMTP_URL` apunta a
+un proveedor.
 
-**Who sends it.** In a project with domain events, `puerto generar correo <name> --tras
-<event_type> --para <field>` also writes `presentacion/worker/src/consumidores/mail_<name>.rs` (yours) and wires it
-in the worker's registry: the worker builds the mail from the event's snapshot and sends it once
-per event (`puerto_correo::enviar_una_vez` keeps a `correos_enviados` row — a crash between the send and that
-row sends it twice, never zero times). Sending from a use case is not wired by Puerto yet.
+**Quién lo envía.** En un proyecto con eventos de dominio, `puerto generar correo <nombre> --tras
+<tipo_evento> --para <campo>` también escribe
+`presentacion/worker/src/consumidores/correo_<nombre>.rs` (tuyo) y lo cablea en el registro del
+worker: el worker construye el correo a partir del snapshot del evento y lo envía una vez por
+evento (`puerto_correo::enviar_una_vez` guarda una fila en `correos_enviados`; una caída entre el
+envío y esa fila lo envía dos veces, nunca ninguna). Puerto aún no cablea el envío desde un caso
+de uso.
 "#;
 
 fn add_agents_section(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -311,7 +313,7 @@ fn add_agents_section(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let Ok(mut src) = fs::read_to_string(&path) else {
         return Ok(());
     };
-    if src.contains("\n## Mail\n") {
+    if src.contains("\n## Correo\n") {
         return Ok(());
     }
     if !src.ends_with('\n') {
@@ -485,7 +487,7 @@ fn trigger_fields(
     Ok(fields)
 }
 
-/// `presentacion/worker/src/consumidores/mail_<name>.rs`: decodes each event's snapshot, builds the mail and
+/// `presentacion/worker/src/consumidores/correo_<name>.rs`: decodes each event's snapshot, builds the mail and
 /// sends it through `enviar_una_vez` — with its tests.
 fn render_handler(
     name: &str,
@@ -499,7 +501,7 @@ fn render_handler(
             None => {
                 by_entity.push((
                     event.entity_snake.clone(),
-                    vec![format!("{}Snapshot", event.entity_pascal)],
+                    vec![format!("Snapshot{}", event.entity_pascal)],
                 ));
                 &mut by_entity.last_mut().ok_or("no entity")?.1
             }
@@ -541,8 +543,8 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
         src = src.replacen(
             events,
             &format!(
-                "{events}# Mail (ADR-0020): the SMTP client and `enviar_una_vez`, for the mails sent on \
-                 events.\npuerto-correo = {{ workspace = true }}\n"
+                "{events}# Correo (ADR-0020): el cliente SMTP y `enviar_una_vez`, para los correos que se envían \
+                 tras un evento.\npuerto-correo = {{ workspace = true }}\n"
             ),
             1,
         );
@@ -577,7 +579,7 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// Refuses a mail already declared or already on disk (its files are never overwritten), an
 /// invalid name and a field a mail cannot carry. With `--tras` (an `events` project) the worker
-/// sends it: its consumer `mail_<name>` is written and wired, and the fields come from the
+/// sends it: its consumer `correo_<name>` is written and wired, and the fields come from the
 /// events' snapshots.
 pub fn run_generate_mail_on(
     name: &str,
@@ -591,7 +593,7 @@ pub fn run_generate_mail_on(
     if config.mail.iter().any(|m| m.name == name) {
         return Err(format!("mail '{name}' is already declared in puerto.toml").into());
     }
-    let consumer_name = format!("mail_{name}");
+    let consumer_name = format!("correo_{name}");
     if config.consumer.iter().any(|c| c.name == consumer_name) {
         return Err(format!(
             "the worker runs mail '{name}' as the consumer '{consumer_name}', which a \
@@ -642,9 +644,9 @@ pub fn run_generate_mail_on(
     )?;
     write_file(&domain, &port)?;
     write_file(&infra, &template_mailer)?;
-    write_file(&templates.join("subject.txt"), &subject)?;
-    write_file(&templates.join("body.html"), &html)?;
-    write_file(&templates.join("body.txt"), &text)?;
+    write_file(&templates.join("asunto.txt"), &subject)?;
+    write_file(&templates.join("cuerpo.html"), &html)?;
+    write_file(&templates.join("cuerpo.txt"), &text)?;
     write_mail_crates(base)?;
     if first {
         set_up_mail(base, &config)?;
@@ -663,15 +665,15 @@ pub fn run_generate_mail_on(
     let pascal = to_pascal_case(name);
     println!("✓ Mail '{name}' added — yours from here on:");
     println!(
-        "  {}  {pascal}Mail + the port {pascal}Mailer",
+        "  {}  Correo{pascal} + the port EnviadorCorreo{pascal}",
         layout::mail_port(name)
     );
     println!(
-        "  {}  Template{pascal}Mailer, with its tests",
+        "  {}  EnviadorCorreo{pascal}Plantilla, with its tests",
         layout::mail_adapter(name)
     );
     println!(
-        "  {}/  subject.txt, body.html, body.txt",
+        "  {}/  asunto.txt, cuerpo.html, cuerpo.txt",
         layout::mail_templates_dir(name)
     );
     if let Some(trigger) = &trigger {
@@ -690,7 +692,7 @@ pub fn run_generate_mail_on(
     if first {
         println!(
             "  Mailpit added to docker-compose.yml; SMTP_URL and MAIL_FROM to .env. \
-             See the mails with `make mail/ui`."
+             See the mails with `make correo/ui`."
         );
     }
     Ok(())
@@ -761,7 +763,7 @@ mod tests {
         add_mail_env(&dir, "shop").unwrap();
 
         let env = fs::read_to_string(dir.join(".env")).unwrap();
-        assert!(env.starts_with("RUST_LOG=info\n\n# Mail"), "{env}");
+        assert!(env.starts_with("RUST_LOG=info\n\n# Correo"), "{env}");
         assert!(
             env.ends_with("MAIL_FROM=no-reply@shop.localhost\n"),
             "{env}"

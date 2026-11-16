@@ -13,12 +13,13 @@ chrono = { workspace = true }
 mockall = { workspace = true, optional = true }
 
 [features]
-# The use cases' doubles (`mock!`), for the tests of other crates (ADR-0023 § 5 of Puerto).
+# Los dobles de los casos de uso (`mock!`), para los tests de otros crates (ADR-0023 § 5 de
+# Puerto).
 pruebas = ["dep:mockall", "dominio_usuario/pruebas"]
 
 [dev-dependencies]
 dominio_usuario = { workspace = true, features = ["pruebas"] }
-# The auth ports' doubles (`MockHasherContrasena`, …).
+# Los dobles de los puertos de auth (`MockHasherContrasena`, …).
 puerto-nucleo = { workspace = true, features = ["pruebas"] }
 mockall = { workspace = true }
 tokio = { workspace = true }

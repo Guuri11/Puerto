@@ -14,7 +14,7 @@
 //!
 //! ```ignore
 //! let kafka = ConfigKafka::from_env("shop")?;
-//! kafka.ensure_topics(&["product"]).await?;
+//! kafka.asegurar_topics(&["product"]).await?;
 //! Loops::new(&config)
 //!     .relay(PgOutbox::new(pool.clone()), PublicadorKafka::new(&kafka)?)
 //!     .consumer(

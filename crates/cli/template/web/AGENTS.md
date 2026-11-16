@@ -1,92 +1,99 @@
-# Frontend (`web/`) — Agent Instructions
+# Frontend (`web/`) — instrucciones para agentes
 
-React 19 + daisyUI 5 (Tailwind v4) on Bun. Routing with wouter, server state with `useAsync`,
-native `<form>` and `<dialog>`. The backend's OpenAPI spec is the contract between the two halves.
+React 19 + daisyUI 5 (Tailwind v4) sobre Bun. Enrutado con wouter, estado del servidor con
+`useAsync`, `<form>` y `<dialog>` nativos. La spec OpenAPI del backend es el contrato entre las dos
+mitades.
 
-## Layers
+## Capas
 
 ```
 presentation → infrastructure → application → domain
 ```
 
-| Directory | Holds | Never |
+| Directorio | Contiene | Nunca |
 |---|---|---|
-| `src/domain/<entity>/` | types, the error (`code` = the API's `RespuestaError.codigo`), the messages for those codes, the repository port | imports an npm package or another layer |
-| `src/application/` | use cases — **only when there is logic** (see its README) | imports an adapter or a screen |
-| `src/infrastructure/` | adapters implementing the domain ports (HTTP) | imports a screen or a use case |
-| `src/presentation/` | pages, containers (state + calls), views (props only), shared UI | imports `infrastructure/` (only `core/generated/dependencies.ts` does) |
+| `src/domain/<entity>/` | los tipos, el error (`code` = el `RespuestaError.codigo` de la API), los mensajes de esos códigos, el puerto del repositorio | importa un paquete de npm u otra capa |
+| `src/application/` | casos de uso, **solo cuando hay lógica** (ver su README) | importa un adaptador o una pantalla |
+| `src/infrastructure/` | los adaptadores que implementan los puertos del dominio (HTTP) | importa una pantalla o un caso de uso |
+| `src/presentation/` | páginas, contenedores (estado + llamadas), vistas (solo props), UI compartida | importa `infrastructure/` (solo lo hace `core/generated/dependencies.ts`) |
 
-`bun run lint:arch` (dependency-cruiser) fails on any import that breaks this.
+`bun run lint:arch` (dependency-cruiser) falla con cualquier import que rompa esto.
 
-Screens reach adapters through `useDependencies()`, never by importing them: a test renders a
-screen with `renderScreen(<Screen />, { productRepository: fake })` (`src/test-support/render.tsx`)
-and needs no network.
+Las pantallas llegan a los adaptadores con `useDependencies()`, nunca importándolos: un test
+renderiza una pantalla con `renderScreen(<Screen />, { productRepository: fake })`
+(`src/test-support/render.tsx`) y no necesita red.
 
-## An entity's slice
+## Las pantallas de una entidad
 
-`puerto generar scaffold <Name>` writes, next to the Rust layers, the screens of a CRUD entity
-(`puerto generar web <Name>` writes them alone, for an entity already in `puerto.toml`):
+`puerto generar scaffold <Nombre>` escribe, junto a las capas de Rust, las pantallas de una entidad
+CRUD (`puerto generar web <Nombre>` las escribe solas, para una entidad que ya está en
+`puerto.toml`):
 
 ```
-src/domain/<entity>/            model.ts · errors.ts · messages.ts · repository.ts (the port)
-src/infrastructure/<entity>/    <entity>-repository-http.ts (+ test): DTO ↔ model, RespuestaError → error
+src/domain/<entity>/            model.ts · errors.ts · messages.ts · repository.ts (el puerto)
+src/infrastructure/<entity>/    <entity>-repository-http.ts (+ test): DTO ↔ modelo, RespuestaError → error
 src/presentation/features/<entity>/
-  containers/                   list · detail · form (create + edit): state and repository calls (+ tests)
-  views/                        list · detail · form: props only
-src/test-support/<entity>.ts    <Entity>Mother + fake<Entity>Repository (in memory)
+  containers/                   list · detail · form (crear + editar): estado y llamadas al repositorio (+ tests)
+  views/                        list · detail · form: solo props
+src/test-support/<entity>.ts    <Entity>Mother + fake<Entity>Repository (en memoria)
 ```
 
-Form inputs hold text; `src/presentation/shared/forms.ts` converts it to the model and back
-(`null` for an empty optional input, comma-separated lists, `key=value` lines, `datetime-local`
-in local time). An enum value object is a union type with a `parse…` function in `model.ts`.
+Los campos del formulario guardan texto; `src/presentation/shared/forms.ts` lo convierte al modelo
+y de vuelta (`null` para un campo opcional vacío, listas separadas por comas, líneas `clave=valor`,
+`datetime-local` en hora local). Un objeto valor enum es un tipo unión con una función `parse…` en
+`model.ts`.
 
-Lists are paged: the port's `list(page)` answers a `Page<T>` (`src/domain/shared/page.ts` —
-`items`, `total`, the `limit` the API applied, `offset`); the list container keeps the offset and
-renders `shared/ui/pagination.tsx`. The API caps `limit` at 100 whatever the screen asks.
+Las listas van paginadas: el `list(page)` del puerto responde un `Page<T>`
+(`src/domain/shared/page.ts`: `items`, `total`, el `limit` que aplicó la API, `offset`); el
+contenedor de la lista guarda el `offset` y renderiza `shared/ui/pagination.tsx`. La API limita el
+tamaño de página a 100, pida lo que pida la pantalla.
 
-Routes: `/<plural>`, `/<plural>/new`, `/<plural>/:id`, `/<plural>/:id/edit`. Containers call the
-repository port directly; write a use case in `src/application/` once there is logic to hold.
-`src/test-support/` is for tests: it never reaches an adapter, and only test files import it.
+Rutas: `/<plural>`, `/<plural>/new`, `/<plural>/:id`, `/<plural>/:id/edit`. Los contenedores llaman
+directamente al puerto del repositorio; escribe un caso de uso en `src/application/` cuando haya
+lógica que guardar. `src/test-support/` es para los tests: nunca llega a un adaptador, y solo lo
+importan ficheros de test.
 
-## Generated files
+## Ficheros generados
 
-- **Error messages** live in `src/domain/<entity>/messages.ts`, generated from the backend's error
-  list: `toProblem(code)` answers the text and the form field it is about. The form shows it under
-  that input (`FieldError`, `aria-invalid`), anything else in the alert; an unknown code shows as
-  it is. English — that file is where to translate (a forced re-scaffold rewrites it).
-- **References** (`customer_id:ref:Customer`): the form's input is a `<select>` of the target's
-  first 100 items (`MAX_PAGE_LIMIT`), loaded by the form container through the target's
-  repository and labelled by its first required text field; the detail links to the target's page
-  (`shared/ui/reference-link.tsx`). A target that does not exist answers
-  `order.validation_error.customer_id_not_found`, shown under the select.
-- **Never hand-edit `src/presentation/core/generated/`** — `dependencies.ts` (the composition
-  root) and `routes.tsx` (the route table) are rewritten from `puerto.toml` by
-  `puerto generar scaffold`, `puerto generar web` and `puerto generar bootstrap`. A screen of
-  your own gets its route in **`src/presentation/core/routes.tsx`** (`customRoutes`, each
-  `<Route>` with a `key`): yours, matched before the generated routes, never rewritten.
-- **Never hand-edit `src/infrastructure/http/schema.d.ts`** — the wire types, generated by
-  `openapi-typescript` from `../docs/api/openapi.json`. **`make web/sync`** (project root)
-  re-exports the spec from the Rust code, regenerates them and formats `web/` with Biome; run it
-  after a scaffold and after any DTO or route change. Until then `bun run typecheck` fails where
-  the frontend no longer matches the API.
-- Everything else is yours once written — `src/infrastructure/http/client.ts` included, written
-  with the first entity.
+- **Los mensajes de error** viven en `src/domain/<entity>/messages.ts`, generado a partir de la
+  lista de errores del backend: `toProblem(code)` responde el texto y el campo del formulario al que
+  se refiere. El formulario lo muestra bajo ese campo (`FieldError`, `aria-invalid`), y cualquier
+  otro en la alerta; un código desconocido se muestra tal cual. Están en inglés: ese fichero es el
+  sitio donde traducirlos (un re-scaffold forzado lo reescribe).
+- **Referencias** (`cliente_id:ref:Cliente`): el campo del formulario es un `<select>` con los 100
+  primeros elementos del destino (`MAX_PAGE_LIMIT`), que carga el contenedor del formulario a través
+  del repositorio del destino y que se etiquetan con su primer campo de texto obligatorio; el
+  detalle enlaza con la página del destino (`shared/ui/reference-link.tsx`). Un destino que no
+  existe responde `pedido.validacion.cliente_id_no_encontrado`, que se muestra bajo el select.
+- **No edites nunca a mano `src/presentation/core/generated/`**: `dependencies.ts` (la raíz de
+  composición) y `routes.tsx` (la tabla de rutas) se reescriben a partir de `puerto.toml` con
+  `puerto generar scaffold`, `puerto generar web` y `puerto generar bootstrap`. Una pantalla propia
+  lleva su ruta en **`src/presentation/core/routes.tsx`** (`customRoutes`, cada `<Route>` con su
+  `key`): es tuyo, se comprueba antes que las rutas generadas y nunca se reescribe.
+- **No edites nunca a mano `src/infrastructure/http/schema.d.ts`**: son los tipos de red, generados
+  por `openapi-typescript` a partir de `../docs/api/openapi.json`. **`make web/sync`** (en la raíz
+  del proyecto) vuelve a exportar la spec desde el código Rust, los regenera y formatea `web/` con
+  Biome; ejecútalo tras un scaffold y tras cualquier cambio de DTO o de ruta. Hasta entonces
+  `bun run typecheck` falla donde el frontend ya no coincide con la API.
+- Todo lo demás es tuyo una vez escrito, incluido `src/infrastructure/http/client.ts`, que se
+  escribe con la primera entidad.
 
-## Conventions
+## Convenciones
 
-- **No client-side copy of domain validation.** The server is the authority: show the error code
-  it answers (`product.validation_error.name_empty`) with `ErrorAlert`. HTML `required` / `type`
-  only.
-- **TDD with `bun test`** (happy-dom + Testing Library). Test names say what the user sees:
-  `should show the error code when the error carries one`, with `// Arrange` / `// Act` /
+- **Nada de copiar en el cliente la validación del dominio.** La autoridad es el servidor: muestra
+  el código de error que responde (`producto.validacion.nombre_vacio`) con `ErrorAlert`. En HTML,
+  solo `required` / `type`.
+- **TDD con `bun test`** (happy-dom + Testing Library). Los nombres de test dicen lo que ve el
+  usuario y, como el resto del frontend, siguen en inglés:
+  `should show the error code when the error carries one`, con `// Arrange` / `// Act` /
   `// Assert`.
-- Styling is daisyUI classes (`btn`, `card`, `alert`, `modal`); no component library.
+- Los estilos son clases de daisyUI (`btn`, `card`, `alert`, `modal`); sin librería de componentes.
 
-## Check before you are done
+## Comprueba antes de terminar
 
 ```bash
 make web/test   # bun test
 make web/lint   # tsc + Biome + dependency-cruiser
 ```
 
-`make test` and `make lint` at the project root run these too.
+`make test` y `make lint` en la raíz del proyecto también los ejecutan.

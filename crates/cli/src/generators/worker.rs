@@ -161,11 +161,11 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
             aggregates,
         });
     }
-    // Each mail sent on events is one more consumer, `mail_<name>` (ADR-0020 § 3).
+    // Each mail sent on events is one more consumer, `correo_<name>` (ADR-0020 § 3).
     let mut template_mailers: Vec<String> = vec![];
     for mail in config.mail.iter().filter(|m| !m.on.is_empty()) {
         let consumer = Consumer {
-            name: format!("mail_{}", mail.name),
+            name: format!("correo_{}", mail.name),
             events: mail.on.clone(),
         };
         let events =
@@ -181,14 +181,14 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         aggregates.dedup();
         let mail_pascal = to_pascal_case(&mail.name);
         template_mailers.push(format!(
-            "infra_correo::{}::Template{mail_pascal}Mailer",
+            "infra_correo::{}::EnviadorCorreo{mail_pascal}Plantilla",
             mail.name
         ));
-        let pascal = format!("Send{mail_pascal}Mail");
+        let pascal = format!("EnviarCorreo{mail_pascal}");
         consumers.push(RegistryConsumer {
             handler: format!(
-                "{pascal} {{ mailer: Arc::new(Template{mail_pascal}Mailer::new(mailer.clone())), \
-                 sent_mails: sent_mails.clone() }}"
+                "{pascal} {{ enviador: Arc::new(EnviadorCorreo{mail_pascal}Plantilla::new(enviador.clone())), \
+                 correos_enviados: correos_enviados.clone() }}"
             ),
             name: consumer.name,
             pascal,
@@ -283,8 +283,8 @@ pub fn generate_consumer(
             .entry(&event.entity_snake)
             .or_insert((vec![], &event.entity_pascal));
         names.push(event.constant.clone());
-        if !names.contains(&format!("{pascal}Snapshot")) {
-            names.push(format!("{pascal}Snapshot"));
+        if !names.contains(&format!("Snapshot{pascal}")) {
+            names.push(format!("Snapshot{pascal}"));
         }
     }
     let imports: Vec<String> = by_entity
@@ -339,7 +339,7 @@ fn add_worker_dependencies(
                     .iter()
                     .filter(|m| !m.on.is_empty())
                     .map(|m| Consumer {
-                        name: format!("mail_{}", m.name),
+                        name: format!("correo_{}", m.name),
                         events: m.on.clone(),
                     }),
             );
@@ -412,13 +412,13 @@ pub(crate) fn with_module(src: &str, name: &str) -> String {
 fn makefile_targets(db_name: &str) -> String {
     format!(
         r#"
-.PHONY: worker events/dead-letters
+.PHONY: worker eventos/descartados
 
-worker: docker-compose/up ## Run the worker: relays the outbox and runs the consumers (health on :8081)
-	@echo "${{GREEN}}Starting worker...${{NC}}"
+worker: docker-compose/up ## Arranca el worker: hace de relay del outbox y ejecuta los consumidores (health en :8081)
+	@echo "${{GREEN}}Arrancando el worker...${{NC}}"
 	$(CARGO) run -p worker
 
-events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
+eventos/descartados: docker-compose/up ## Lista los 20 eventos descartados más recientes
 	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d {db_name} -c \
 		"SELECT registrado_en, consumidor, tipo_evento, intentos, motivo, detalle FROM descartados ORDER BY registrado_en DESC LIMIT 20"
 "#
@@ -426,7 +426,7 @@ events/dead-letters: docker-compose/up ## List the 20 most recent dead letters
 }
 
 /// The `worker/` crate of a fresh `events` project: the member, its runtime dependencies, the
-/// files, `make worker` / `make events/dead-letters` and `WORKER_PORT` — and on the `kafka`
+/// files, `make worker` / `make eventos/descartados` and `WORKER_PORT` — and on the `kafka`
 /// transport `puerto-kafka`, Redpanda in `docker-compose.yml` and `KAFKA_BROKERS`.
 pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
@@ -465,7 +465,7 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
     let makefile = base.join("Makefile");
     if makefile.exists() {
         let mut src = fs::read_to_string(&makefile)?;
-        if !src.contains("events/dead-letters") {
+        if !src.contains("eventos/descartados") {
             let db_name = config.project.name.replace('-', "_");
             src.push_str(&makefile_targets(&db_name));
             fs::write(&makefile, src)?;
@@ -481,7 +481,7 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
         if kafka && !content.contains("KAFKA_BROKERS") {
             // KAFKA_TOPIC_PREFIX defaults to the project name.
             content.push_str(
-                "\n# Kafka (Redpanda in docker-compose.yml)\nKAFKA_BROKERS=localhost:9092\n",
+                "\n# Kafka (Redpanda, en docker-compose.yml)\nKAFKA_BROKERS=localhost:9092\n",
             );
         }
         fs::write(&path, content)?;
@@ -568,9 +568,9 @@ pub fn run_generate_consumer(
     let taken = RESERVED_CONSUMER_TYPES.contains(&pascal.as_str())
         || config.entity.iter().any(|e| {
             [
-                format!("{}Event", e.name),
-                format!("{}Snapshot", e.name),
-                format!("{}Mother", e.name),
+                format!("Evento{}", e.name),
+                format!("Snapshot{}", e.name),
+                format!("Madre{}", e.name),
             ]
             .contains(&pascal)
         });
@@ -584,12 +584,12 @@ pub fn run_generate_consumer(
         return Err(format!("consumer '{name}' is already declared").into());
     }
     if let Some(mail) = name
-        .strip_prefix("mail_")
+        .strip_prefix("correo_")
         .filter(|mail| config.mail.iter().any(|m| m.name == *mail))
     {
         return Err(format!(
             "consumer name '{name}' is reserved: the worker runs mail '{mail}' as the consumer \
-             'mail_{mail}'. Pick another name"
+             'correo_{mail}'. Pick another name"
         )
         .into());
     }

@@ -4,53 +4,55 @@ use sqlx::PgPool;
 use std::collections::HashMap;
 {% endif %}
 {% set refs = fields | filter(attribute="is_ref", value=true) %}use dominio_{{ snake }}::{
-    modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
-    repositorio::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
+    modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}},
+    repositorio::{% if refs %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
 };
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 {% if references and not events %}use puerto_sqlx::{ClaveForanea, mapear_error_sqlx, mapear_error_sqlx_con};
 {% else %}use puerto_sqlx::mapear_error_sqlx;
 {% endif %}
-use crate::fila::{{ pascal }}Db;
+use crate::fila::Fila{{ pascal }};
 
-pub struct Pg{{ pascal }}Repository {
+pub struct Repositorio{{ pascal }}Postgres {
     pub pool: PgPool,
 }
 
-impl Pg{{ pascal }}Repository {
+impl Repositorio{{ pascal }}Postgres {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 }
 {% if references and not events %}{% include "infrastructure/references.tera" %}{% endif %}
-/// A row as the domain's entity. A row the domain rejects is stored data gone bad, not the
-/// caller's fault: it is logged with the domain's reason and reported as `InvalidData`.
-fn to_domain(row: {{ pascal }}Db) -> Result<{{ pascal }}, ErrorRepositorio> {
-    {{ pascal }}::try_from(row).map_err(|e| {
-        tracing::error!(error = %e, "stored row is not a valid {{ snake }}");
+/// Una fila como entidad del dominio. Una fila que el dominio rechaza es un dato guardado que se ha
+/// estropeado, no culpa de quien llama: va al log con el motivo del dominio y se devuelve como
+/// `DatosInvalidos`.
+fn to_dominio(fila: Fila{{ pascal }}) -> Result<{{ pascal }}, ErrorRepositorio> {
+    {{ pascal }}::try_from(fila).map_err(|e| {
+        tracing::error!(error = %e, "la fila guardada no es una entidad {{ snake }} válida");
         ErrorRepositorio::DatosInvalidos
     })
 }
 
 #[async_trait]
-impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
-    async fn find_all(&self, page: PeticionPagina{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
-        tracing::debug!(limit = page.limite(), offset = page.desplazamiento(), "find_all");
-{% if refs %}        // One static query whatever the filter: an unset id is NULL and matches every row.
-{% for r in refs %}        let {{ r.name }} = filter.{{ r.name }}.map(|id| id.value());
-{% endfor %}{% endif %}        let rows = sqlx::query_as!(
-            {{ pascal }}Db,
+impl Repositorio{{ pascal }} for Repositorio{{ pascal }}Postgres {
+    async fn buscar_todos(&self, pagina: PeticionPagina{% if refs %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
+        tracing::debug!(limite = pagina.limite(), desplazamiento = pagina.desplazamiento(), "buscar_todos");
+{% if refs %}        // Una sola consulta estática sea cual sea el filtro: un id sin valor es NULL y casa con
+        // todas las filas.
+{% for r in refs %}        let {{ r.name }} = filtro.{{ r.name }}.map(|id| id.valor());
+{% endfor %}{% endif %}        let filas = sqlx::query_as!(
+            Fila{{ pascal }},
             "SELECT {{ select_cols }}
              FROM {{ plural }} WHERE {{ page_where }}
-             ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            i64::from(page.limite()),
-            i64::from(page.desplazamiento()){% for r in refs %},
+             ORDER BY creado_en DESC, id LIMIT $1 OFFSET $2",
+            i64::from(pagina.limite()),
+            i64::from(pagina.desplazamiento()){% for r in refs %},
             {{ r.name }}{% endfor %}
         )
         .fetch_all(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "find_all failed");
+            tracing::error!(error = %e, "buscar_todos falló");
             mapear_error_sqlx(&e)
         })?;
         let total = sqlx::query_scalar!(
@@ -60,53 +62,53 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
         .fetch_one(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "find_all count failed");
+            tracing::error!(error = %e, "falló el COUNT de buscar_todos");
             mapear_error_sqlx(&e)
         })?;
 
-        let items = rows.into_iter().map(to_domain).collect::<Result<Vec<_>, _>>()?;
-        // COUNT(*) is never negative.
+        let elementos = filas.into_iter().map(to_dominio).collect::<Result<Vec<_>, _>>()?;
+        // COUNT(*) nunca es negativo.
         let total = u64::try_from(total).unwrap_or_default();
-        Ok(Pagina::new(items, total, page))
+        Ok(Pagina::new(elementos, total, pagina))
     }
 
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
-        tracing::debug!(%id, "find_by_id");
-        let row = sqlx::query_as!(
-            {{ pascal }}Db,
+    async fn buscar_por_id(&self, id: Id{{ pascal }}) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
+        tracing::debug!(%id, "buscar_por_id");
+        let fila = sqlx::query_as!(
+            Fila{{ pascal }},
             "SELECT {{ select_cols }}
-             FROM {{ plural }} WHERE id = $1 AND deleted = false",
-            id.value()
+             FROM {{ plural }} WHERE id = $1 AND borrado = false",
+            id.valor()
         )
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "find_by_id failed");
+            tracing::error!(error = %e, "buscar_por_id falló");
             mapear_error_sqlx(&e)
         })?;
 
-        row.map(to_domain).transpose()
+        fila.map(to_dominio).transpose()
     }
 {% if not events %}
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
-        tracing::debug!(id = %entity.id, "save");
-        let db = {{ pascal }}Db::from(entity);
+    async fn guardar(&self, entidad: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
+        tracing::debug!(id = %entidad.id, "guardar");
+        let db = Fila{{ pascal }}::from(entidad);
         sqlx::query!(
             "INSERT INTO {{ plural }} ({{ all_cols }})
              VALUES ({{ all_params }})
              ON CONFLICT (id) DO UPDATE
              SET {{ all_updates }}",
             db.id,
-            db.created_at,
-            db.updated_at,
-            db.deleted,
-            db.deleted_at,
+            db.creado_en,
+            db.actualizado_en,
+            db.borrado,
+            db.borrado_en,
 {% for f in fields %}            {% if f.is_array %}&db.{{ f.name }}{% elif f.is_map %}db.{{ f.name }} as _{% else %}db.{{ f.name }}{% endif %},
 {% endfor %}        )
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "save failed");
+            tracing::error!(error = %e, "guardar falló");
             {% if references %}mapear_error_sqlx_con(&e, REFERENCES){% else %}mapear_error_sqlx(&e){% endif %}
         })?;
         Ok(())
@@ -116,148 +118,148 @@ impl {{ pascal }}RepositoryTrait for Pg{{ pascal }}Repository {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-{% set uniques = fields | filter(attribute="unique", value=true) %}    use crate::pruebas::siembra::{{ "{" }}{% if refs or (uniques and not events) %}build, {% endif %}seed{% if events %}, store{% endif %}};
+{% set uniques = fields | filter(attribute="unique", value=true) %}    use crate::pruebas::siembra::{{ "{" }}{% if refs or (uniques and not events) %}construir, {% endif %}sembrar{% if events %}, guardar{% endif %}};
 {% if not events %}{% if update_vo_import %}    use {{ update_vo_import }};
 {% endif %}{% for import in reference_imports %}    use {{ import }};
 {% endfor %}{% endif %}
-    fn test_repo(pool: PgPool) -> Pg{{ pascal }}Repository {
-        Pg{{ pascal }}Repository::new(pool)
+    fn repositorio_de_prueba(pool: PgPool) -> Repositorio{{ pascal }}Postgres {
+        Repositorio{{ pascal }}Postgres::new(pool)
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_persist_and_retrieve_by_id(pool: PgPool) {
-        // Arrange
-        let entity = seed(&pool).await;
+    async fn deberia_guardar_y_recuperar_por_id(pool: PgPool) {
+        // Preparar
+        let entidad = sembrar(&pool).await;
 
-        // Act
-        let found = test_repo(pool).find_by_id(entity.id).await.unwrap().unwrap();
+        // Actuar
+        let encontrado = repositorio_de_prueba(pool).buscar_por_id(entidad.id).await.unwrap().unwrap();
 
-        // Assert
-        assert_eq!(found.id, entity.id);
-{% for f in fields %}        assert_eq!(found.{{ f.name }}, entity.{{ f.name }});
-{% endfor %}        assert!(!found.deleted);
+        // Comprobar
+        assert_eq!(encontrado.id, entidad.id);
+{% for f in fields %}        assert_eq!(encontrado.{{ f.name }}, entidad.{{ f.name }});
+{% endfor %}        assert!(!encontrado.borrado);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_return_none_for_nonexistent_id(pool: PgPool) {
-        // Act
-        let result = test_repo(pool).find_by_id({{ pascal }}Id::generate()).await.unwrap();
+    async fn deberia_devolver_none_cuando_el_id_no_existe(pool: PgPool) {
+        // Actuar
+        let resultado = repositorio_de_prueba(pool).buscar_por_id(Id{{ pascal }}::generar()).await.unwrap();
 
-        // Assert
-        assert!(result.is_none());
+        // Comprobar
+        assert!(resultado.is_none());
     }
 
 {% if not events %}    #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_update_entity_on_save_conflict(pool: PgPool) {
-        // Arrange
-{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entity = seed(&pool).await;
-        entity.{{ f.name }} = {% if f.is_vo %}{{ f.vo }}::new("updated".to_string()).unwrap(){% else %}"updated".to_string(){% endif %};
-        entity.updated_at = chrono::Utc::now();
+    async fn deberia_actualizar_la_entidad_al_guardar_un_id_existente(pool: PgPool) {
+        // Preparar
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entidad = sembrar(&pool).await;
+        entidad.{{ f.name }} = {% if f.is_vo %}{{ f.vo }}::new("updated".to_string()).unwrap(){% else %}"updated".to_string(){% endif %};
+        entidad.actualizado_en = chrono::Utc::now();
 
-        // Act
-        test_repo(pool.clone()).save(&entity).await.unwrap();
+        // Actuar
+        repositorio_de_prueba(pool.clone()).guardar(&entidad).await.unwrap();
 
-        // Assert
-        let found = test_repo(pool).find_by_id(entity.id).await.unwrap().unwrap();
-        assert_eq!(found.{{ f.name }}{% if f.is_vo %}.value(){% endif %}, "updated");
-{% else %}        let entity = seed(&pool).await;
+        // Comprobar
+        let encontrado = repositorio_de_prueba(pool).buscar_por_id(entidad.id).await.unwrap().unwrap();
+        assert_eq!(encontrado.{{ f.name }}{% if f.is_vo %}.valor(){% endif %}, "updated");
+{% else %}        let entidad = sembrar(&pool).await;
 
-        // Act
-        test_repo(pool.clone()).save(&entity).await.unwrap();
+        // Actuar
+        repositorio_de_prueba(pool.clone()).guardar(&entidad).await.unwrap();
 
-        // Assert
-        let found = test_repo(pool).find_by_id(entity.id).await.unwrap();
-        assert!(found.is_some());
+        // Comprobar
+        let encontrado = repositorio_de_prueba(pool).buscar_por_id(entidad.id).await.unwrap();
+        assert!(encontrado.is_some());
 {% endif %}    }
 
 {% endif %}    #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_list_all_{{ plural }}_excluding_deleted(pool: PgPool) {
-        // Arrange
-        seed(&pool).await;
-        let mut deleted = seed(&pool).await;
-        deleted.deleted = true;
-        deleted.deleted_at = Some(deleted.updated_at);
-        {% if events %}store(&pool, &deleted).await;{% else %}test_repo(pool.clone()).save(&deleted).await.unwrap();{% endif %}
+    async fn deberia_listar_{{ plural }}_sin_las_filas_borradas(pool: PgPool) {
+        // Preparar
+        sembrar(&pool).await;
+        let mut borrado = sembrar(&pool).await;
+        borrado.borrado = true;
+        borrado.borrado_en = Some(borrado.actualizado_en);
+        {% if events %}guardar(&pool, &borrado).await;{% else %}repositorio_de_prueba(pool.clone()).guardar(&borrado).await.unwrap();{% endif %}
 
-        // Act
-        let page = test_repo(pool).find_all(PeticionPagina::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
+        // Actuar
+        let pagina = repositorio_de_prueba(pool).buscar_todos(PeticionPagina::default(){% if refs %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
 
-        // Assert
-        assert_eq!(page.elementos.len(), 1);
-        assert_eq!(page.total, 1);
+        // Comprobar
+        assert_eq!(pagina.elementos.len(), 1);
+        assert_eq!(pagina.total, 1);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_return_the_requested_page_of_a_larger_list(pool: PgPool) {
-        // Arrange
+    async fn deberia_devolver_la_pagina_pedida_de_una_lista_mayor(pool: PgPool) {
+        // Preparar
         for _ in 0..3 {
-            seed(&pool).await;
+            sembrar(&pool).await;
         }
 
-        // Act
-        let page = test_repo(pool)
-            .find_all(PeticionPagina::new(Some(2), Some(2)){% if refs %}, {{ pascal }}Filter::default(){% endif %})
+        // Actuar
+        let pagina = repositorio_de_prueba(pool)
+            .buscar_todos(PeticionPagina::new(Some(2), Some(2)){% if refs %}, Filtro{{ pascal }}::default(){% endif %})
             .await
             .unwrap();
 
-        // Assert
-        assert_eq!(page.elementos.len(), 1);
-        assert_eq!(page.total, 3);
-        assert_eq!((page.limite, page.desplazamiento), (2, 2));
+        // Comprobar
+        assert_eq!(pagina.elementos.len(), 1);
+        assert_eq!(pagina.total, 3);
+        assert_eq!((pagina.limite, pagina.desplazamiento), (2, 2));
     }
 {% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques and not events %}{% set u = uniques.0 %}
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_reject_a_duplicate_{{ u.name }}(pool: PgPool) {
-        // Arrange
-        let first = seed(&pool).await;
-        let mut second = build({% if seeds_references %}&pool).await{% else %}){% endif %};
-        second.{{ u.name }} = first.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
+    async fn deberia_rechazar_un_duplicado_de_{{ u.name }}(pool: PgPool) {
+        // Preparar
+        let primero = sembrar(&pool).await;
+        let mut segundo = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        segundo.{{ u.name }} = primero.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
 
-        // Act
-        let result = test_repo(pool).save(&second).await;
+        // Actuar
+        let resultado = repositorio_de_prueba(pool).guardar(&segundo).await;
 
-        // Assert
-        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
     }
 {% endif %}{% if not events %}{% for r in references %}
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_reject_a_missing_{{ r.field }}(pool: PgPool) {
-        // Arrange: a {{ r.field }} no row has.
-        let mut entity = build({% if seeds_references %}&pool).await{% else %}){% endif %};
-        entity.{{ r.field }} = {% if r.optional %}Some({{ r.id }}::generate()){% else %}{{ r.id }}::generate(){% endif %};
+    async fn deberia_rechazar_{{ r.field }}_inexistente(pool: PgPool) {
+        // Preparar: un valor de {{ r.field }} que no tiene ninguna fila.
+        let mut entidad = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        entidad.{{ r.field }} = {% if r.optional %}Some({{ r.id }}::generar()){% else %}{{ r.id }}::generar(){% endif %};
 
-        // Act
-        let result = test_repo(pool).save(&entity).await;
+        // Actuar
+        let resultado = repositorio_de_prueba(pool).guardar(&entidad).await;
 
-        // Assert
-        assert_eq!(result.unwrap_err(), ErrorRepositorio::ReferenciaInexistente("{{ r.field }}"));
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::ReferenciaInexistente("{{ r.field }}"));
     }
 {% endfor %}{% endif %}{% for r in refs %}
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_list_only_the_{{ plural }}_of_the_requested_{{ r.name }}(pool: PgPool) {
-        // Arrange: one {{ snake }} with this {{ r.name }}, one without.
-        let target = infra_{{ r.ref_target_snake }}::pruebas::siembra::seed(&pool).await;
-        let mut wanted = build({% if seeds_references %}&pool).await{% else %}){% endif %};
-        wanted.{{ r.name }} = {% if r.field_type is starting_with("Option<") %}Some(target.id){% else %}target.id{% endif %};
-        {% if events %}store(&pool, &wanted).await;{% else %}test_repo(pool.clone()).save(&wanted).await.unwrap();{% endif %}
-        seed(&pool).await;
+    async fn deberia_listar_solo_{{ plural }}_con_ese_valor_de_{{ r.name }}(pool: PgPool) {
+        // Preparar: una entidad {{ snake }} con este valor de {{ r.name }} y otra sin él.
+        let destino = infra_{{ r.ref_target_snake }}::pruebas::siembra::sembrar(&pool).await;
+        let mut esperado = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        esperado.{{ r.name }} = {% if r.field_type is starting_with("Option<") %}Some(destino.id){% else %}destino.id{% endif %};
+        {% if events %}guardar(&pool, &esperado).await;{% else %}repositorio_de_prueba(pool.clone()).guardar(&esperado).await.unwrap();{% endif %}
+        sembrar(&pool).await;
 
-        // Act
-        let page = test_repo(pool)
-            .find_all(
+        // Actuar
+        let pagina = repositorio_de_prueba(pool)
+            .buscar_todos(
                 PeticionPagina::default(),
-                {{ pascal }}Filter {
-{% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some(target.id){% else %}None{% endif %},
+                Filtro{{ pascal }} {
+{% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some(destino.id){% else %}None{% endif %},
 {% endfor %}                },
             )
             .await
             .unwrap();
 
-        // Assert
-        assert_eq!(page.elementos.iter().map(|row| row.id).collect::<Vec<_>>(), vec![wanted.id]);
-        assert_eq!(page.total, 1);
+        // Comprobar
+        assert_eq!(pagina.elementos.iter().map(|fila| fila.id).collect::<Vec<_>>(), vec![esperado.id]);
+        assert_eq!(pagina.total, 1);
     }
 {% endfor %}}

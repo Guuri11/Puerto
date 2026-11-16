@@ -149,7 +149,7 @@ pub fn new_project(
         true
     } else if dialoguer::console::user_attended() {
         !dialoguer::Confirm::new()
-            .with_prompt("Include Greeting demo entity?")
+            .with_prompt("Include the Saludo demo entity?")
             .default(true)
             .interact()?
     } else {

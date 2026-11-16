@@ -14,8 +14,8 @@ fn parse_puerto_toml_with_fields() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad.campos]]
 nombre = "name"
@@ -39,18 +39,18 @@ tipo = "Option<String>"
 
     let config = puerto_toml::read(&dir).unwrap();
     assert_eq!(config.entity.len(), 1);
-    let product = &config.entity[0];
-    assert_eq!(product.name, "Product");
-    assert_eq!(product.fields.len(), 4);
-    assert_eq!(product.fields[0].name, "name");
-    assert_eq!(product.fields[0].field_type, "String");
-    assert!(!product.fields[0].unique);
-    assert_eq!(product.fields[1].name, "price");
-    assert_eq!(product.fields[1].field_type, "i64");
-    assert_eq!(product.fields[2].name, "sku");
-    assert!(product.fields[2].unique);
-    assert_eq!(product.fields[3].name, "description");
-    assert_eq!(product.fields[3].field_type, "Option<String>");
+    let producto = &config.entity[0];
+    assert_eq!(producto.name, "Producto");
+    assert_eq!(producto.fields.len(), 4);
+    assert_eq!(producto.fields[0].name, "name");
+    assert_eq!(producto.fields[0].field_type, "String");
+    assert!(!producto.fields[0].unique);
+    assert_eq!(producto.fields[1].name, "price");
+    assert_eq!(producto.fields[1].field_type, "i64");
+    assert_eq!(producto.fields[2].name, "sku");
+    assert!(producto.fields[2].unique);
+    assert_eq!(producto.fields[3].name, "description");
+    assert_eq!(producto.fields[3].field_type, "Option<String>");
 
     cleanup(&dir);
 }
@@ -67,17 +67,17 @@ fn parse_puerto_toml_without_fields_backwards_compat() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Greeting"
-casos_de_uso = ["get_greeting"]
+nombre = "Saludo"
+casos_de_uso = ["obtener_saludo"]
 "#,
     )
     .unwrap();
 
     let config = puerto_toml::read(&dir).unwrap();
     assert_eq!(config.entity.len(), 1);
-    let greeting = &config.entity[0];
-    assert_eq!(greeting.name, "Greeting");
-    assert!(greeting.fields.is_empty());
+    let saludo = &config.entity[0];
+    assert_eq!(saludo.name, "Saludo");
+    assert!(saludo.fields.is_empty());
 
     cleanup(&dir);
 }
@@ -112,8 +112,8 @@ nombre = "my-app"
     ];
     puerto_toml::add_entity(
         &dir,
-        "Product",
-        vec!["create_product".into()],
+        "Producto",
+        vec!["crear_producto".into()],
         false,
         fields,
     )
@@ -166,17 +166,17 @@ fn type_registry_rejects_unknown() {
 fn generate_model_backward_compat_no_fields() {
     use crate::generators::domain::generate_model;
 
-    let result = generate_model("Product", "product", &[], &[]).unwrap();
-    assert!(result.contains("pub struct ProductProps"));
-    assert!(result.contains("pub name: String,"));
-    assert!(result.contains("pub struct Product"));
-    assert!(result.contains("pub id: ProductId,"));
-    assert!(result.contains("pub name: String,"));
-    assert!(result.contains("if props.name.trim().is_empty()"));
-    assert!(result.contains("ProductError::ValidationError(\"name_empty\""));
-    assert!(result.contains("should_create_product_when_name_is_valid"));
-    assert!(result.contains("should_reject_product_when_name_is_empty"));
-    assert!(result.contains("should_reject_product_when_name_is_only_whitespace"));
+    let result = generate_model("Producto", "producto", &[], &[]).unwrap();
+    assert!(result.contains("pub struct PropsProducto"));
+    assert!(result.contains("pub nombre: String,"));
+    assert!(result.contains("pub struct Producto"));
+    assert!(result.contains("pub id: IdProducto,"));
+    assert!(result.contains("pub nombre: String,"));
+    assert!(result.contains("if props.nombre.trim().is_empty()"));
+    assert!(result.contains("ErrorProducto::Validacion(\"nombre_vacio\""));
+    assert!(result.contains("deberia_crear_producto_cuando_el_nombre_es_valido"));
+    assert!(result.contains("deberia_rechazar_producto_cuando_nombre_es_una_cadena_vacia"));
+    assert!(result.contains("deberia_rechazar_producto_cuando_nombre_solo_tiene_espacios"));
 }
 
 #[test]
@@ -204,22 +204,22 @@ fn generate_model_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_model("Product", "product", &fields, &[]).unwrap();
+    let result = generate_model("Producto", "producto", &fields, &[]).unwrap();
 
-    assert!(result.contains("pub struct ProductProps"));
+    assert!(result.contains("pub struct PropsProducto"));
     assert!(result.contains("pub title: String,"));
     assert!(result.contains("pub price: i64,"));
     assert!(result.contains("pub description: Option<String>,"));
-    assert!(result.contains("pub struct Product"));
-    assert!(result.contains("pub id: ProductId,"));
+    assert!(result.contains("pub struct Producto"));
+    assert!(result.contains("pub id: IdProducto,"));
     assert!(result.contains("pub title: String,"));
     assert!(result.contains("pub price: i64,"));
     assert!(result.contains("pub description: Option<String>,"));
     assert!(result.contains("if props.title.trim().is_empty()"));
-    assert!(result.contains("title_empty"));
-    assert!(result.contains("should_create_product_when_fields_are_valid"));
-    assert!(result.contains("should_reject_product_when_title_is_empty"));
-    assert!(result.contains("should_reject_product_when_title_is_only_whitespace"));
+    assert!(result.contains("title_vacio"));
+    assert!(result.contains("deberia_crear_producto_cuando_los_campos_son_validos"));
+    assert!(result.contains("deberia_rechazar_producto_cuando_title_es_una_cadena_vacia"));
+    assert!(result.contains("deberia_rechazar_producto_cuando_title_solo_tiene_espacios"));
     assert!(
         !result.contains("if props.price.trim().is_empty()"),
         "non-String types should not have empty checks"
@@ -236,7 +236,7 @@ fn generate_model_with_uuid_field() {
     use crate::puerto_toml::Field;
 
     let fields = vec![Field {
-        name: "category_id".into(),
+        name: "categoria_id".into(),
         field_type: "Uuid".into(),
         unique: false,
         ..Default::default()
@@ -244,8 +244,8 @@ fn generate_model_with_uuid_field() {
     let result = generate_model("Item", "item", &fields, &[]).unwrap();
 
     assert!(result.contains("use uuid::Uuid;"));
-    assert!(result.contains("pub category_id: Uuid,"));
-    assert!(result.contains("should_create_item_when_fields_are_valid"));
+    assert!(result.contains("pub categoria_id: Uuid,"));
+    assert!(result.contains("deberia_crear_item_cuando_los_campos_son_validos"));
 }
 
 #[test]
@@ -290,14 +290,14 @@ fn generate_model_multiple_string_fields_has_validations() {
             ..Default::default()
         },
     ];
-    let result = generate_model("Product", "product", &fields, &[]).unwrap();
+    let result = generate_model("Producto", "producto", &fields, &[]).unwrap();
 
     assert!(result.contains("if props.name.trim().is_empty()"));
-    assert!(result.contains("name_empty"));
+    assert!(result.contains("name_vacio"));
     assert!(result.contains("if props.sku.trim().is_empty()"));
-    assert!(result.contains("sku_empty"));
-    assert!(result.contains("should_reject_product_when_name_is_empty"));
-    assert!(result.contains("should_reject_product_when_sku_is_empty"));
+    assert!(result.contains("sku_vacio"));
+    assert!(result.contains("deberia_rechazar_producto_cuando_name_es_una_cadena_vacia"));
+    assert!(result.contains("deberia_rechazar_producto_cuando_sku_es_una_cadena_vacia"));
     assert!(
         !result.contains("if props.price.trim().is_empty()"),
         "non-String types should not have empty checks"
@@ -308,15 +308,15 @@ fn generate_model_multiple_string_fields_has_validations() {
 fn generate_mother_backward_compat_no_fields() {
     use crate::generators::domain::generate_mother;
 
-    let result = generate_mother("Product", "product", &[], &[]).unwrap();
-    assert!(result.contains("pub struct ProductMother"));
-    assert!(result.contains("name: Option<String>,"));
-    assert!(result.contains("pub fn with_name(mut self, name: &str) -> Self"));
-    assert!(result.contains("pub fn with_empty_name(mut self) -> Self"));
-    assert!(result.contains("Product::new(ProductProps"));
-    assert!(result.contains("self.name.unwrap_or_else(|| \"example\".to_string())"));
-    assert!(result.contains("pub fn random()"));
-    assert!(result.contains("pub fn random_vec"));
+    let result = generate_mother("Producto", "producto", &[], &[]).unwrap();
+    assert!(result.contains("pub struct MadreProducto"));
+    assert!(result.contains("nombre: Option<String>,"));
+    assert!(result.contains("pub fn con_nombre(mut self, nombre: &str) -> Self"));
+    assert!(result.contains("pub fn con_nombre_vacio(mut self) -> Self"));
+    assert!(result.contains("Producto::new(PropsProducto"));
+    assert!(result.contains("self.nombre.unwrap_or_else(|| \"example\".to_string())"));
+    assert!(result.contains("pub fn aleatorio()"));
+    assert!(result.contains("pub fn aleatorios"));
 }
 
 #[test]
@@ -344,23 +344,23 @@ fn generate_mother_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_mother("Product", "product", &fields, &[]).unwrap();
+    let result = generate_mother("Producto", "producto", &fields, &[]).unwrap();
 
     assert!(result.contains("title: Option<String>,"));
     assert!(result.contains("price: Option<i64>,"));
     assert!(result.contains("description: Option<String>,"));
-    assert!(result.contains("pub fn with_title(mut self, title: &str) -> Self"));
+    assert!(result.contains("pub fn con_title(mut self, title: &str) -> Self"));
     assert!(result.contains("self.title = Some(title.to_string())"));
-    assert!(result.contains("pub fn with_price(mut self, price: i64) -> Self"));
+    assert!(result.contains("pub fn con_price(mut self, price: i64) -> Self"));
     assert!(result.contains("self.price = Some(price)"));
-    assert!(result.contains("pub fn with_description(mut self, description: &str) -> Self"));
+    assert!(result.contains("pub fn con_description(mut self, description: &str) -> Self"));
     assert!(result.contains("self.description = Some(description.to_string())"));
-    assert!(result.contains("pub fn with_empty_title(mut self) -> Self"));
+    assert!(result.contains("pub fn con_title_vacio(mut self) -> Self"));
     assert!(result.contains("self.title = Some(String::new())"));
     assert!(result.contains("self.price.unwrap_or(42)"));
     assert!(result.contains("self.description"));
-    assert!(result.contains("pub fn random()"));
-    assert!(result.contains("pub fn random_vec"));
+    assert!(result.contains("pub fn aleatorio()"));
+    assert!(result.contains("pub fn aleatorios"));
 }
 
 #[test]
@@ -368,19 +368,19 @@ fn scaffold_with_empty_fields_produces_backward_compat_model() {
     let dir = temp_dir("scaffold_empty_fields");
     cleanup(&dir);
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
+    scaffold::run("Producto", &dir, false, &[], &[]).unwrap();
 
-    let content = fs::read_to_string(dir.join("contextos/product/dominio/src/modelo.rs")).unwrap();
-    assert!(content.contains("pub struct ProductProps"));
-    assert!(content.contains("pub name: String,"));
-    assert!(content.contains("pub struct Product"));
-    assert!(content.contains("ProductError::ValidationError(\"name_empty\""));
-    assert!(content.contains("should_create_product_when_name_is_valid"));
+    let content = fs::read_to_string(dir.join("contextos/producto/dominio/src/modelo.rs")).unwrap();
+    assert!(content.contains("pub struct PropsProducto"));
+    assert!(content.contains("pub nombre: String,"));
+    assert!(content.contains("pub struct Producto"));
+    assert!(content.contains("ErrorProducto::Validacion(\"nombre_vacio\""));
+    assert!(content.contains("deberia_crear_producto_cuando_el_nombre_es_valido"));
 
     let mother =
-        fs::read_to_string(dir.join("contextos/product/dominio/src/pruebas/madres.rs")).unwrap();
-    assert!(mother.contains("pub struct ProductMother"));
-    assert!(mother.contains("with_name"));
+        fs::read_to_string(dir.join("contextos/producto/dominio/src/pruebas/madres.rs")).unwrap();
+    assert!(mother.contains("pub struct MadreProducto"));
+    assert!(mother.contains("con_nombre"));
 
     cleanup(&dir);
 }
@@ -391,16 +391,16 @@ fn scaffold_crud_with_empty_fields_produces_backward_compat_model() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
+    scaffold::run("Producto", &dir, false, &[], &[]).unwrap();
 
-    let content = fs::read_to_string(dir.join("contextos/product/dominio/src/modelo.rs")).unwrap();
-    assert!(content.contains("pub struct ProductProps"));
-    assert!(content.contains("pub name: String,"));
+    let content = fs::read_to_string(dir.join("contextos/producto/dominio/src/modelo.rs")).unwrap();
+    assert!(content.contains("pub struct PropsProducto"));
+    assert!(content.contains("pub nombre: String,"));
 
     let mother =
-        fs::read_to_string(dir.join("contextos/product/dominio/src/pruebas/madres.rs")).unwrap();
-    assert!(mother.contains("ProductMother"));
-    assert!(mother.contains("with_name"));
+        fs::read_to_string(dir.join("contextos/producto/dominio/src/pruebas/madres.rs")).unwrap();
+    assert!(mother.contains("MadreProducto"));
+    assert!(mother.contains("con_nombre"));
 
     cleanup(&dir);
 }
@@ -432,13 +432,13 @@ fn generate_create_use_case_trait_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_create_use_case_trait("Product", "product", &fields).unwrap();
+    let result = generate_create_use_case_trait("Producto", "producto", &fields).unwrap();
 
-    assert!(result.contains("pub struct CreateProductParams"));
+    assert!(result.contains("pub struct ParamsCrearProducto"));
     assert!(result.contains("pub title: String,"));
     assert!(result.contains("pub price: i64,"));
     assert!(result.contains("pub description: Option<String>,"));
-    assert!(result.contains("pub trait CreateProductUseCaseTrait"));
+    assert!(result.contains("pub trait CrearProducto"));
     assert!(
         !result.contains("pub name: String,"),
         "should not contain hardcoded 'name' field"
@@ -449,11 +449,11 @@ fn generate_create_use_case_trait_with_custom_fields() {
 fn generate_create_use_case_trait_backward_compat_no_fields() {
     use crate::generators::domain::generate_create_use_case_trait;
 
-    let result = generate_create_use_case_trait("Product", "product", &[]).unwrap();
+    let result = generate_create_use_case_trait("Producto", "producto", &[]).unwrap();
 
-    assert!(result.contains("pub struct CreateProductParams"));
-    assert!(result.contains("pub name: String,"));
-    assert!(result.contains("pub trait CreateProductUseCaseTrait"));
+    assert!(result.contains("pub struct ParamsCrearProducto"));
+    assert!(result.contains("pub nombre: String,"));
+    assert!(result.contains("pub trait CrearProducto"));
 }
 
 #[test]
@@ -475,18 +475,18 @@ fn generate_update_use_case_trait_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_update_use_case_trait("Product", "product", &fields).unwrap();
+    let result = generate_update_use_case_trait("Producto", "producto", &fields).unwrap();
 
-    assert!(result.contains("pub struct UpdateProductParams"));
-    assert!(result.contains("pub id: ProductId,"));
+    assert!(result.contains("pub struct ParamsActualizarProducto"));
+    assert!(result.contains("pub id: IdProducto,"));
     assert!(result.contains("pub title: String,"));
     assert!(result.contains("pub price: i64,"));
-    assert!(result.contains("pub trait UpdateProductUseCaseTrait"));
+    assert!(result.contains("pub trait ActualizarProducto"));
 }
 
 /// A `Uuid` field is an ordinary field — `model.tera` puts it in `EntityProps`, so every params
 /// struct that feeds `Entity::new` must carry it too. Dropping it (as the generators used to)
-/// produced `missing field 'category_id' in initializer of ItemProps` (E0063).
+/// produced `missing field 'categoria_id' in initializer of ItemProps` (E0063).
 #[test]
 fn generate_update_use_case_trait_includes_uuid_fields() {
     use crate::generators::domain::generate_update_use_case_trait;
@@ -494,7 +494,7 @@ fn generate_update_use_case_trait_includes_uuid_fields() {
 
     let fields = vec![
         Field {
-            name: "category_id".into(),
+            name: "categoria_id".into(),
             field_type: "Uuid".into(),
             unique: false,
             ..Default::default()
@@ -509,8 +509,8 @@ fn generate_update_use_case_trait_includes_uuid_fields() {
     let result = generate_update_use_case_trait("Item", "item", &fields).unwrap();
 
     assert!(result.contains("pub name: String,"));
-    assert!(result.contains("pub id: ItemId,"));
-    assert!(result.contains("pub category_id: Uuid,"));
+    assert!(result.contains("pub id: IdItem,"));
+    assert!(result.contains("pub categoria_id: Uuid,"));
     // The id is `ItemId`; the `Uuid` field brings the one `use uuid::Uuid;` (no duplicate: E0252).
     assert_eq!(result.matches("use uuid::Uuid;").count(), 1);
 }
@@ -522,7 +522,7 @@ fn generate_create_use_case_trait_includes_uuid_fields() {
 
     let fields = vec![
         Field {
-            name: "category_id".into(),
+            name: "categoria_id".into(),
             field_type: "Uuid".into(),
             unique: false,
             ..Default::default()
@@ -537,7 +537,7 @@ fn generate_create_use_case_trait_includes_uuid_fields() {
     let result = generate_create_use_case_trait("Item", "item", &fields).unwrap();
 
     assert!(result.contains("pub name: String,"));
-    assert!(result.contains("pub category_id: Uuid,"));
+    assert!(result.contains("pub categoria_id: Uuid,"));
     assert!(
         !result.contains("pub id: "),
         "Create params must not carry the system id"
@@ -564,14 +564,14 @@ fn generate_create_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_create_use_case_impl("Product", "product", &fields, &[]).unwrap();
+    let result = generate_create_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
-    assert!(result.contains("CreateProductUseCaseImpl"));
-    assert!(result.contains("CreateProductParams"));
+    assert!(result.contains("CrearProductoImpl"));
+    assert!(result.contains("ParamsCrearProducto"));
     assert!(result.contains("title: params.title,"));
     assert!(result.contains("price: params.price,"));
-    assert!(result.contains("Product::new(ProductProps"));
-    assert!(result.contains("tracing::info!(\"create_product: start\");"));
+    assert!(result.contains("Producto::new(PropsProducto"));
+    assert!(result.contains("tracing::info!(\"crear_producto: inicio\");"));
 }
 
 #[test]
@@ -593,18 +593,18 @@ fn generate_update_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_update_use_case_impl("Product", "product", &fields, &[]).unwrap();
+    let result = generate_update_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
-    assert!(result.contains("UpdateProductUseCaseImpl"));
-    assert!(result.contains("UpdateProductParams"));
-    assert!(result.contains("entity.title = params.title;"));
-    assert!(result.contains("entity.price = params.price;"));
+    assert!(result.contains("ActualizarProductoImpl"));
+    assert!(result.contains("ParamsActualizarProducto"));
+    assert!(result.contains("entidad.title = params.title;"));
+    assert!(result.contains("entidad.price = params.price;"));
     assert!(result.contains("if params.title.trim().is_empty()"));
     assert!(
         !result.contains("if params.price.trim().is_empty()"),
         "non-String types should not have empty validation"
     );
-    assert!(result.contains("ProductError::ValidationError(\"title_empty\""));
+    assert!(result.contains("ErrorProducto::Validacion(\"title_vacio\""));
 }
 
 #[test]
@@ -614,7 +614,7 @@ fn generate_update_use_case_impl_assigns_uuid_fields() {
 
     let fields = vec![
         Field {
-            name: "category_id".into(),
+            name: "categoria_id".into(),
             field_type: "Uuid".into(),
             unique: false,
             ..Default::default()
@@ -628,8 +628,8 @@ fn generate_update_use_case_impl_assigns_uuid_fields() {
     ];
     let result = generate_update_use_case_impl("Item", "item", &fields, &[]).unwrap();
 
-    assert!(result.contains("entity.name = params.name;"));
-    assert!(result.contains("entity.category_id = params.category_id;"));
+    assert!(result.contains("entidad.name = params.name;"));
+    assert!(result.contains("entidad.categoria_id = params.categoria_id;"));
     // `Uuid` belongs to the test module (the impl names no primitive type); at file level it would
     // be an unused import in a non-test build, which `-D warnings` rejects.
     assert!(result.contains("    use uuid::Uuid;"));
@@ -647,7 +647,7 @@ fn generate_create_use_case_impl_passes_uuid_fields_to_props() {
 
     let fields = vec![
         Field {
-            name: "category_id".into(),
+            name: "categoria_id".into(),
             field_type: "Uuid".into(),
             unique: false,
             ..Default::default()
@@ -661,10 +661,10 @@ fn generate_create_use_case_impl_passes_uuid_fields_to_props() {
     ];
     let result = generate_create_use_case_impl("Item", "item", &fields, &[]).unwrap();
 
-    assert!(result.contains("category_id: params.category_id,"));
+    assert!(result.contains("categoria_id: params.categoria_id,"));
     assert!(result.contains("name: params.name,"));
     // The generated test builds the params, so it needs `Uuid` — inside `mod tests`, once.
-    assert!(result.contains("            category_id: Uuid::new_v4(),"));
+    assert!(result.contains("            categoria_id: Uuid::new_v4(),"));
     assert!(result.contains("    use uuid::Uuid;"));
     assert!(
         !result.contains("\nuse uuid::Uuid;"),
@@ -684,8 +684,8 @@ fn scaffold_crud_writes_dynamic_use_case_params() {
 nombre = "test-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product", "get_product", "list_products", "update_product", "delete_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto", "obtener_producto", "listar_productos", "actualizar_producto", "borrar_producto"]
 
 [[entidad.campos]]
 nombre = "name"
@@ -701,8 +701,8 @@ tipo = "i64"
     let config = puerto_toml::read(&dir).unwrap();
     let fields = config.entity[0].fields.clone();
 
-    let pascal = "Product";
-    let snake = "product";
+    let pascal = "Producto";
+    let snake = "producto";
 
     let create_trait =
         crate::generators::domain::generate_create_use_case_trait(pascal, snake, &fields).unwrap();
@@ -715,7 +715,7 @@ tipo = "i64"
 
     let update_trait =
         crate::generators::domain::generate_update_use_case_trait(pascal, snake, &fields).unwrap();
-    assert!(update_trait.contains("pub id: ProductId,"));
+    assert!(update_trait.contains("pub id: IdProducto,"));
     assert!(update_trait.contains("pub name: String,"));
     assert!(update_trait.contains("pub price: i64,"));
 
@@ -728,7 +728,7 @@ fn write_application_files_with_fields_generates_dynamic_impls() {
     cleanup(&dir);
     setup_puerto_stubs(&dir);
 
-    fs::create_dir_all(dir.join("business/src/application/product")).unwrap();
+    fs::create_dir_all(dir.join("business/src/application/producto")).unwrap();
 
     let fields = vec![
         crate::puerto_toml::Field {
@@ -745,8 +745,8 @@ fn write_application_files_with_fields_generates_dynamic_impls() {
         },
     ];
     crate::generators::application::write_application_files(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &dir,
         &fields,
         &[],
@@ -754,15 +754,17 @@ fn write_application_files_with_fields_generates_dynamic_impls() {
     .unwrap();
 
     let create_content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/create_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/crear_producto.rs"))
+            .unwrap();
     assert!(create_content.contains("title: params.title,"));
     assert!(create_content.contains("price: params.price,"));
-    assert!(create_content.contains("Product::new(ProductProps"));
+    assert!(create_content.contains("Producto::new(PropsProducto"));
 
     let update_content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/update_product.rs")).unwrap();
-    assert!(update_content.contains("entity.title = params.title;"));
-    assert!(update_content.contains("entity.price = params.price;"));
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/actualizar_producto.rs"))
+            .unwrap();
+    assert!(update_content.contains("entidad.title = params.title;"));
+    assert!(update_content.contains("entidad.price = params.price;"));
     assert!(update_content.contains("if params.title.trim().is_empty()"));
 
     cleanup(&dir);
@@ -787,13 +789,13 @@ fn generate_get_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_get_use_case_impl("Product", "product", &fields, &[]).unwrap();
+    let result = generate_get_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
-    assert!(result.contains("GetProductUseCaseImpl"));
-    assert!(result.contains("GetProductParams"));
-    assert!(result.contains("should_return_product_when_id_exists"));
-    assert!(result.contains("should_return_not_found_when_id_does_not_exist"));
-    assert!(result.contains("Product::new(ProductProps"));
+    assert!(result.contains("ObtenerProductoImpl"));
+    assert!(result.contains("ParamsObtenerProducto"));
+    assert!(result.contains("deberia_devolver_producto_cuando_el_id_existe"));
+    assert!(result.contains("deberia_devolver_no_encontrado_cuando_el_id_no_existe"));
+    assert!(result.contains("Producto::new(PropsProducto"));
     assert!(result.contains("title: \"example\".to_string(),"));
     assert!(result.contains("price: 42,"));
     assert!(!result.contains("logger"));
@@ -803,12 +805,12 @@ fn generate_get_use_case_impl_with_custom_fields() {
 fn generate_get_use_case_impl_backward_compat_no_fields() {
     use crate::generators::application::generate_get_use_case_impl;
 
-    let result = generate_get_use_case_impl("Product", "product", &[], &[]).unwrap();
+    let result = generate_get_use_case_impl("Producto", "producto", &[], &[]).unwrap();
 
-    assert!(result.contains("GetProductUseCaseImpl"));
-    assert!(result.contains("Product::new(ProductProps"));
-    assert!(result.contains("name: \"example\".to_string(),"));
-    assert!(result.contains("should_return_product_when_id_exists"));
+    assert!(result.contains("ObtenerProductoImpl"));
+    assert!(result.contains("Producto::new(PropsProducto"));
+    assert!(result.contains("nombre: \"example\".to_string(),"));
+    assert!(result.contains("deberia_devolver_producto_cuando_el_id_existe"));
 }
 
 #[test]
@@ -830,12 +832,12 @@ fn generate_list_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_list_use_case_impl("Product", "product", &fields, &[]).unwrap();
+    let result = generate_list_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
-    assert!(result.contains("ListProductsUseCaseImpl"));
-    assert!(result.contains("Product::new(ProductProps"));
-    assert!(result.contains("should_return_the_page_of_products"));
-    assert!(result.contains("should_return_an_empty_page_when_no_products_exist"));
+    assert!(result.contains("ListarProductosImpl"));
+    assert!(result.contains("Producto::new(PropsProducto"));
+    assert!(result.contains("deberia_devolver_la_pagina_de_productos"));
+    assert!(result.contains("deberia_devolver_una_pagina_vacia_cuando_no_hay_productos"));
     assert!(result.contains("title: \"first\".to_string(),"));
     assert!(result.contains("title: \"second\".to_string(),"));
     assert!(result.contains("price: 42,"));
@@ -861,12 +863,12 @@ fn generate_delete_use_case_impl_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_delete_use_case_impl("Product", "product", &fields, &[]).unwrap();
+    let result = generate_delete_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
-    assert!(result.contains("DeleteProductUseCaseImpl"));
-    assert!(result.contains("Product::new(ProductProps"));
-    assert!(result.contains("should_soft_delete_product_when_id_exists"));
-    assert!(result.contains("should_return_not_found_when_product_does_not_exist"));
+    assert!(result.contains("BorrarProductoImpl"));
+    assert!(result.contains("Producto::new(PropsProducto"));
+    assert!(result.contains("deberia_hacer_borrado_logico_de_producto_cuando_el_id_existe"));
+    assert!(result.contains("deberia_devolver_no_encontrado_cuando_producto_no_existe"));
     assert!(result.contains("title: \"example\".to_string(),"));
     assert!(result.contains("price: 42,"));
     assert!(!result.contains("logger"));
@@ -891,13 +893,13 @@ fn generate_create_use_case_impl_with_custom_fields_has_tests() {
             ..Default::default()
         },
     ];
-    let result = generate_create_use_case_impl("Product", "product", &fields, &[]).unwrap();
+    let result = generate_create_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
     assert!(result.contains("#[cfg(test)]"));
-    assert!(result.contains("should_create_product_when_fields_are_valid"));
-    assert!(result.contains("should_return_error_when_title_is_empty"));
+    assert!(result.contains("deberia_crear_producto_cuando_los_campos_son_validos"));
+    assert!(result.contains("deberia_devolver_error_cuando_title_es_una_cadena_vacia"));
     assert!(!result.contains("logger"));
-    assert!(result.contains("MockProductRepository"));
+    assert!(result.contains("MockRepositorioProducto"));
     assert!(result.contains("title: \"example\".to_string(),"));
     assert!(result.contains("price: 42,"));
 }
@@ -921,13 +923,13 @@ fn generate_update_use_case_impl_with_custom_fields_has_tests() {
             ..Default::default()
         },
     ];
-    let result = generate_update_use_case_impl("Product", "product", &fields, &[]).unwrap();
+    let result = generate_update_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
     assert!(result.contains("#[cfg(test)]"));
-    assert!(result.contains("should_update_product_when_params_are_valid"));
-    assert!(result.contains("should_return_not_found_when_product_does_not_exist"));
-    assert!(result.contains("should_return_error_when_title_is_empty"));
-    assert!(result.contains("Product::new(ProductProps"));
+    assert!(result.contains("deberia_actualizar_producto_cuando_los_parametros_son_validos"));
+    assert!(result.contains("deberia_devolver_no_encontrado_cuando_producto_no_existe"));
+    assert!(result.contains("deberia_devolver_error_cuando_title_es_una_cadena_vacia"));
+    assert!(result.contains("Producto::new(PropsProducto"));
     assert!(!result.contains("logger"));
     assert!(result.contains("title: \"original\".to_string(),"));
     assert!(result.contains("title: \"updated\".to_string(),"));
@@ -940,7 +942,7 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
     cleanup(&dir);
     setup_puerto_stubs(&dir);
 
-    fs::create_dir_all(dir.join("business/src/application/product")).unwrap();
+    fs::create_dir_all(dir.join("business/src/application/producto")).unwrap();
 
     let fields = vec![
         crate::puerto_toml::Field {
@@ -957,8 +959,8 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
         },
     ];
     crate::generators::application::write_application_files(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &dir,
         &fields,
         &[],
@@ -966,23 +968,28 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
     .unwrap();
 
     let get_content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/get_product.rs")).unwrap();
-    assert!(get_content.contains("GetProductUseCaseImpl"));
-    assert!(get_content.contains("should_return_product_when_id_exists"));
-    assert!(get_content.contains("Product::new(ProductProps"));
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/obtener_producto.rs"))
+            .unwrap();
+    assert!(get_content.contains("ObtenerProductoImpl"));
+    assert!(get_content.contains("deberia_devolver_producto_cuando_el_id_existe"));
+    assert!(get_content.contains("Producto::new(PropsProducto"));
     assert!(get_content.contains("title: \"example\".to_string(),"));
 
     let list_content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/list_products.rs")).unwrap();
-    assert!(list_content.contains("ListProductsUseCaseImpl"));
-    assert!(list_content.contains("should_return_the_page_of_products"));
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/listar_productos.rs"))
+            .unwrap();
+    assert!(list_content.contains("ListarProductosImpl"));
+    assert!(list_content.contains("deberia_devolver_la_pagina_de_productos"));
     assert!(list_content.contains("title: \"first\".to_string(),"));
 
     let delete_content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/delete_product.rs")).unwrap();
-    assert!(delete_content.contains("DeleteProductUseCaseImpl"));
-    assert!(delete_content.contains("should_soft_delete_product_when_id_exists"));
-    assert!(delete_content.contains("Product::new(ProductProps"));
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/borrar_producto.rs"))
+            .unwrap();
+    assert!(delete_content.contains("BorrarProductoImpl"));
+    assert!(
+        delete_content.contains("deberia_hacer_borrado_logico_de_producto_cuando_el_id_existe")
+    );
+    assert!(delete_content.contains("Producto::new(PropsProducto"));
 
     cleanup(&dir);
 }
@@ -993,15 +1000,15 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
 fn generate_infra_entity_backward_compat() {
     use crate::generators::infrastructure::generate_infra_entity;
 
-    let result = generate_infra_entity("Product", "product", &[], &[]).unwrap();
+    let result = generate_infra_entity("Producto", "producto", &[], &[]).unwrap();
 
-    assert!(result.contains("pub struct ProductDb"));
+    assert!(result.contains("pub struct FilaProducto"));
     assert!(result.contains("pub id: Uuid"));
-    assert!(result.contains("pub name: String"));
-    assert!(result.contains("impl TryFrom<ProductDb> for Product"));
-    assert!(result.contains("impl From<&Product> for ProductDb"));
-    assert!(result.contains("name: row.name"));
-    assert!(result.contains("name: entity.name.clone()"));
+    assert!(result.contains("pub nombre: String"));
+    assert!(result.contains("impl TryFrom<FilaProducto> for Producto"));
+    assert!(result.contains("impl From<&Producto> for FilaProducto"));
+    assert!(result.contains("nombre: fila.nombre"));
+    assert!(result.contains("nombre: entidad.nombre.clone()"));
 }
 
 #[test]
@@ -1029,31 +1036,31 @@ fn generate_infra_entity_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_infra_entity("Product", "product", &fields, &[]).unwrap();
+    let result = generate_infra_entity("Producto", "producto", &fields, &[]).unwrap();
 
-    assert!(result.contains("pub struct ProductDb"));
+    assert!(result.contains("pub struct FilaProducto"));
     assert!(result.contains("pub title: String"));
     assert!(result.contains("pub price: i64"));
     assert!(result.contains("pub active: Option<bool>"));
     assert!(!result.contains("pub name: String"));
-    assert!(result.contains("title: row.title"));
-    assert!(result.contains("price: row.price"));
-    assert!(result.contains("title: entity.title.clone()"));
-    assert!(result.contains("price: entity.price,"));
+    assert!(result.contains("title: fila.title"));
+    assert!(result.contains("price: fila.price"));
+    assert!(result.contains("title: entidad.title.clone()"));
+    assert!(result.contains("price: entidad.price,"));
 }
 
 #[test]
 fn create_table_sql_backward_compat() {
     use crate::generators::infrastructure::create_table_sql;
 
-    let result = create_table_sql("product", &[]);
+    let result = create_table_sql("producto", &[]);
 
-    assert!(result.contains("CREATE TABLE products"));
+    assert!(result.contains("CREATE TABLE productos"));
     assert!(result.contains("id UUID PRIMARY KEY"));
-    assert!(result.contains("name TEXT NOT NULL"));
-    assert!(result.contains("created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"));
-    assert!(result.contains("deleted BOOLEAN NOT NULL DEFAULT FALSE"));
-    assert!(result.contains("deleted_at TIMESTAMPTZ"));
+    assert!(result.contains("nombre TEXT NOT NULL"));
+    assert!(result.contains("creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()"));
+    assert!(result.contains("borrado BOOLEAN NOT NULL DEFAULT FALSE"));
+    assert!(result.contains("borrado_en TIMESTAMPTZ"));
 }
 
 #[test]
@@ -1087,9 +1094,9 @@ fn create_table_sql_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = create_table_sql("product", &fields);
+    let result = create_table_sql("producto", &fields);
 
-    assert!(result.contains("CREATE TABLE products"));
+    assert!(result.contains("CREATE TABLE productos"));
     assert!(result.contains("title TEXT NOT NULL"));
     assert!(result.contains("price BIGINT NOT NULL"));
     assert!(result.contains("description TEXT,"));
@@ -1117,14 +1124,14 @@ fn create_table_sql_emits_unique_index_for_unique_fields() {
             ..Default::default()
         },
     ];
-    let result = create_table_sql("product", &fields);
+    let result = create_table_sql("producto", &fields);
 
     // The column definition stays uniform; the constraint is a named index so later migrations
     // can drop or replace it by name.
     assert!(result.contains("sku TEXT NOT NULL"));
     assert!(
         result.contains(
-            "CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;"
+            "CREATE UNIQUE INDEX productos_sku_key ON productos (sku) WHERE borrado = false;"
         ),
         "unique field must produce a unique index, got:\n{result}"
     );
@@ -1144,18 +1151,18 @@ fn create_table_sql_emits_unique_index_for_unique_value_object_field() {
         value_object: Some("Sku".into()),
         ..Default::default()
     }];
-    let result = create_table_sql("item", &fields);
+    let result = create_table_sql("articulo", &fields);
 
-    assert!(
-        result.contains("CREATE UNIQUE INDEX items_sku_key ON items (sku) WHERE deleted = false;")
-    );
+    assert!(result.contains(
+        "CREATE UNIQUE INDEX articulos_sku_key ON articulos (sku) WHERE borrado = false;"
+    ));
 }
 
 #[test]
 fn create_table_sql_omits_unique_index_when_no_field_is_unique() {
     use crate::generators::infrastructure::create_table_sql;
 
-    let result = create_table_sql("product", &[]);
+    let result = create_table_sql("producto", &[]);
 
     assert!(!result.contains("CREATE UNIQUE INDEX"));
 }
@@ -1164,20 +1171,26 @@ fn create_table_sql_omits_unique_index_when_no_field_is_unique() {
 fn generate_crud_infra_db_repository_backward_compat() {
     use crate::generators::infrastructure::generate_crud_infra_db_repository;
 
-    let result = generate_crud_infra_db_repository("Product", "product", &[], &[], false).unwrap();
+    let result =
+        generate_crud_infra_db_repository("Producto", "producto", &[], &[], false).unwrap();
 
-    assert!(result.contains("pub struct PgProductRepository"));
-    assert!(result.contains("async fn find_all"));
-    assert!(result.contains("async fn find_by_id"));
-    assert!(result.contains("async fn save"));
-    assert!(result.contains("id, created_at, updated_at, deleted, deleted_at, name"));
-    assert!(result.contains("should_persist_and_retrieve_by_id"));
-    assert!(result.contains("should_list_all_products_excluding_deleted"));
-    let seed =
-        crate::generators::infrastructure::generate_pg_seed("Product", "product", &[], &[], false)
-            .unwrap();
-    assert!(seed.contains("ProductProps"), "{seed}");
-    assert!(seed.contains("name: \"example\".to_string()"), "{seed}");
+    assert!(result.contains("pub struct RepositorioProductoPostgres"));
+    assert!(result.contains("async fn buscar_todos"));
+    assert!(result.contains("async fn buscar_por_id"));
+    assert!(result.contains("async fn guardar"));
+    assert!(result.contains("id, creado_en, actualizado_en, borrado, borrado_en, nombre"));
+    assert!(result.contains("deberia_guardar_y_recuperar_por_id"));
+    assert!(result.contains("deberia_listar_productos_sin_las_filas_borradas"));
+    let seed = crate::generators::infrastructure::generate_pg_seed(
+        "Producto",
+        "producto",
+        &[],
+        &[],
+        false,
+    )
+    .unwrap();
+    assert!(seed.contains("PropsProducto"), "{seed}");
+    assert!(seed.contains("nombre: \"example\".to_string()"), "{seed}");
 }
 
 #[test]
@@ -1200,16 +1213,16 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
         },
     ];
     let result =
-        generate_crud_infra_db_repository("Product", "product", &fields, &[], false).unwrap();
+        generate_crud_infra_db_repository("Producto", "producto", &fields, &[], false).unwrap();
 
-    assert!(result.contains("id, created_at, updated_at, deleted, deleted_at, title, price"));
+    assert!(result.contains("id, creado_en, actualizado_en, borrado, borrado_en, title, price"));
     assert!(result.contains("$1, $2, $3, $4, $5, $6, $7"));
     assert!(result.contains("title = $6, price = $7"));
     assert!(result.contains("db.title"));
     assert!(result.contains("db.price"));
     let seed = crate::generators::infrastructure::generate_pg_seed(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &fields,
         &[],
         false,
@@ -1217,9 +1230,9 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
     .unwrap();
     assert!(seed.contains("title: \"example\".to_string()"), "{seed}");
     assert!(seed.contains("price: 42"), "{seed}");
-    assert!(result.contains("assert_eq!(found.title, entity.title)"));
-    assert!(result.contains("assert_eq!(found.price, entity.price)"));
-    assert!(result.contains("entity.title = \"updated\".to_string()"));
+    assert!(result.contains("assert_eq!(encontrado.title, entidad.title)"));
+    assert!(result.contains("assert_eq!(encontrado.price, entidad.price)"));
+    assert!(result.contains("entidad.title = \"updated\".to_string()"));
 }
 
 // ── Presentation generators ────────────────────────────────────────────────────
@@ -1228,15 +1241,15 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
 fn generate_crud_dto_backward_compat() {
     use crate::generators::presentation::generate_crud_dto;
 
-    let result = generate_crud_dto("Product", "product", &[]).unwrap();
+    let result = generate_crud_dto("Producto", "producto", &[]).unwrap();
 
-    assert!(result.contains("pub struct ProductDto"));
+    assert!(result.contains("pub struct DtoProducto"));
     assert!(result.contains("pub id: Uuid"));
-    assert!(result.contains("pub name: String"));
-    assert!(result.contains("pub fn from_domain"));
-    assert!(result.contains("name: entity.name.clone()"));
-    assert!(result.contains("pub struct CreateProductRequest"));
-    assert!(result.contains("pub struct UpdateProductRequest"));
+    assert!(result.contains("pub nombre: String"));
+    assert!(result.contains("pub fn from_dominio"));
+    assert!(result.contains("nombre: entidad.nombre.clone()"));
+    assert!(result.contains("pub struct PeticionCrearProducto"));
+    assert!(result.contains("pub struct PeticionActualizarProducto"));
 }
 
 #[test]
@@ -1264,18 +1277,18 @@ fn generate_crud_dto_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_crud_dto("Product", "product", &fields).unwrap();
+    let result = generate_crud_dto("Producto", "producto", &fields).unwrap();
 
-    assert!(result.contains("pub struct ProductDto"));
+    assert!(result.contains("pub struct DtoProducto"));
     assert!(result.contains("pub id: Uuid"));
     assert!(result.contains("pub title: String"));
     assert!(result.contains("pub price: i64"));
     assert!(result.contains("pub description: Option<String>"));
     assert!(!result.contains("pub name: String"));
-    assert!(result.contains("title: entity.title.clone()"));
-    assert!(result.contains("price: entity.price,"));
-    assert!(result.contains("pub struct CreateProductRequest"));
-    assert!(result.contains("pub struct UpdateProductRequest"));
+    assert!(result.contains("title: entidad.title.clone()"));
+    assert!(result.contains("price: entidad.price,"));
+    assert!(result.contains("pub struct PeticionCrearProducto"));
+    assert!(result.contains("pub struct PeticionActualizarProducto"));
 }
 
 /// The request DTOs feed the use case params, which feed `EntityProps` — a `Uuid` field has to
@@ -1293,30 +1306,30 @@ fn generate_crud_dto_and_routes_carry_uuid_fields() {
             ..Default::default()
         },
         Field {
-            name: "category_id".into(),
+            name: "categoria_id".into(),
             field_type: "Uuid".into(),
             unique: false,
             ..Default::default()
         },
     ];
 
-    let dto = generate_crud_dto("Product", "product", &fields).unwrap();
-    assert!(dto.contains("pub category_id: Uuid"));
-    assert!(dto.contains("category_id: entity.category_id,"));
+    let dto = generate_crud_dto("Producto", "producto", &fields).unwrap();
+    assert!(dto.contains("pub categoria_id: Uuid"));
+    assert!(dto.contains("categoria_id: entidad.categoria_id,"));
     let create_request = dto
-        .split("pub struct CreateProductRequest")
+        .split("pub struct PeticionCrearProducto")
         .nth(1)
-        .expect("CreateProductRequest missing");
+        .expect("PeticionCrearProducto missing");
     assert!(
-        create_request.contains("pub category_id: Uuid"),
-        "CreateProductRequest must carry the Uuid field"
+        create_request.contains("pub categoria_id: Uuid"),
+        "PeticionCrearProducto must carry the Uuid field"
     );
 
-    let routes = generate_crud_routes("Product", "product", &fields).unwrap();
+    let routes = generate_crud_routes("Producto", "producto", &fields).unwrap();
     assert_eq!(
-        routes.matches("category_id: body.category_id,").count(),
+        routes.matches("categoria_id: cuerpo.categoria_id,").count(),
         2,
-        "both the create and the update handler must pass the Uuid field through"
+        "both the crear and the actualizar manejador must pass the Uuid field through"
     );
 }
 
@@ -1339,16 +1352,16 @@ fn generate_crud_routes_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_crud_routes("Product", "product", &fields).unwrap();
+    let result = generate_crud_routes("Producto", "producto", &fields).unwrap();
 
     assert!(result.contains("method = \"post\""));
     assert!(result.contains("method = \"get\""));
     assert!(result.contains("method = \"put\""));
     assert!(result.contains("method = \"delete\""));
-    assert!(result.contains("pub struct ProductApi"));
-    assert!(result.contains("title: body.title.clone()"));
-    assert!(result.contains("price: body.price,"));
-    assert!(result.contains("id: ProductId::from_uuid(id.0),"));
+    assert!(result.contains("pub struct ApiProducto"));
+    assert!(result.contains("title: cuerpo.title.clone()"));
+    assert!(result.contains("price: cuerpo.price,"));
+    assert!(result.contains("id: IdProducto::from_uuid(id.0),"));
 }
 
 #[test]
@@ -1372,8 +1385,8 @@ fn write_repository_files_with_fields_generates_dynamic_entity_and_repo() {
         },
     ];
     crate::generators::infrastructure::write_repository_files(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &dir,
         true,
         &fields,
@@ -1382,15 +1395,16 @@ fn write_repository_files_with_fields_generates_dynamic_entity_and_repo() {
     .unwrap();
 
     let entity =
-        fs::read_to_string(dir.join("contextos/product/infraestructura/src/fila.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/producto/infraestructura/src/fila.rs")).unwrap();
     assert!(entity.contains("pub title: String"));
     assert!(entity.contains("pub price: i64"));
     assert!(!entity.contains("pub name: String"));
 
-    let repo = fs::read_to_string(dir.join("contextos/product/infraestructura/src/repositorio.rs"))
-        .unwrap();
+    let repo =
+        fs::read_to_string(dir.join("contextos/producto/infraestructura/src/repositorio.rs"))
+            .unwrap();
     assert!(repo.contains("title, price"));
-    assert!(repo.contains("PgProductRepository"));
+    assert!(repo.contains("RepositorioProductoPostgres"));
 
     cleanup(&dir);
 }
@@ -1415,17 +1429,19 @@ fn write_presentation_files_with_fields_generates_dynamic_dto_and_routes() {
             ..Default::default()
         },
     ];
-    crate::generators::presentation::write_presentation_files("Product", "product", &dir, &fields)
-        .unwrap();
+    crate::generators::presentation::write_presentation_files(
+        "Producto", "producto", &dir, &fields,
+    )
+    .unwrap();
 
-    let dto = fs::read_to_string(dir.join("contextos/product/rest/src/dto.rs")).unwrap();
+    let dto = fs::read_to_string(dir.join("contextos/producto/rest/src/dto.rs")).unwrap();
     assert!(dto.contains("pub title: String"));
     assert!(dto.contains("pub price: i64"));
     assert!(!dto.contains("pub name: String"));
 
-    let routes = fs::read_to_string(dir.join("contextos/product/rest/src/rutas.rs")).unwrap();
-    assert!(routes.contains("title: body.title.clone()"));
-    assert!(routes.contains("price: body.price,"));
+    let routes = fs::read_to_string(dir.join("contextos/producto/rest/src/rutas.rs")).unwrap();
+    assert!(routes.contains("title: cuerpo.title.clone()"));
+    assert!(routes.contains("price: cuerpo.price,"));
 
     cleanup(&dir);
 }
@@ -1437,20 +1453,20 @@ fn create_impl_logs_start_and_done_without_the_payload() {
     let fields = [scaffold_test_field("title", "String")];
 
     let content = crate::generators::application::generate_create_use_case_impl(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &fields,
         &[],
     )
     .unwrap();
 
     assert!(
-        content.contains("tracing::info!(\"create_product: start\");"),
+        content.contains("tracing::info!(\"crear_producto: inicio\");"),
         "{content}"
     );
-    assert!(content.contains("tracing::info!(id = %entity.id, \"create_product: done\");"));
+    assert!(content.contains("tracing::info!(id = %entidad.id, \"crear_producto: fin\");"));
     // The payload is not logged: a field value is user data (and often personal data).
-    assert!(!content.contains("Creating product"), "{content}");
+    assert!(!content.contains("Creating producto"), "{content}");
 }
 
 #[test]
@@ -1458,14 +1474,14 @@ fn create_test_asserts_an_enum_vo_with_as_str() {
     let fields = [puerto_toml::parse_field_arg("state:State:enum:Open/Closed").unwrap()];
 
     let content = crate::generators::application::generate_create_use_case_impl(
-        "Ticket",
-        "ticket",
+        "Billete",
+        "billete",
         &fields,
         &[],
     )
     .unwrap();
 
-    assert!(!content.contains("state.value()"), "{content}");
+    assert!(!content.contains("state.valor()"), "{content}");
 }
 
 #[test]
@@ -1474,13 +1490,11 @@ fn unique_index_ignores_soft_deleted_rows() {
     let mut sku = scaffold_test_field("sku", "String");
     sku.unique = true;
 
-    let sql = crate::generators::infrastructure::create_table_sql("product", &[sku]);
+    let sql = crate::generators::infrastructure::create_table_sql("producto", &[sku]);
 
-    assert!(
-        sql.contains(
-            "CREATE UNIQUE INDEX products_sku_key ON products (sku) WHERE deleted = false;"
-        )
-    );
+    assert!(sql.contains(
+        "CREATE UNIQUE INDEX productos_sku_key ON productos (sku) WHERE borrado = false;"
+    ));
 }
 
 #[test]
@@ -1488,15 +1502,15 @@ fn db_entity_maps_hashmap_columns_through_sqlx_json() {
     let fields = [scaffold_test_field("meta", "HashMap<String, String>")];
 
     let entity = crate::generators::infrastructure::generate_infra_entity(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &fields,
         &[],
     )
     .unwrap();
     let repo = crate::generators::infrastructure::generate_crud_infra_db_repository(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &fields,
         &[],
         false,
@@ -1538,8 +1552,8 @@ fn pg_repository_tests_import_what_their_seed_names() {
     ];
 
     let repo = crate::generators::infrastructure::generate_pg_seed(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &fields,
         &[],
         false,
@@ -1547,7 +1561,7 @@ fn pg_repository_tests_import_what_their_seed_names() {
     .unwrap();
 
     assert!(
-        repo.contains("use dominio_product::valores::Status;"),
+        repo.contains("use dominio_producto::valores::Status;"),
         "{repo}"
     );
     assert!(
@@ -1562,8 +1576,8 @@ fn pg_repository_seed_varies_unique_fields() {
     sku.unique = true;
 
     let repo = crate::generators::infrastructure::generate_pg_seed(
-        "Product",
-        "product",
+        "Producto",
+        "producto",
         &[sku],
         &[],
         false,

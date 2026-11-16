@@ -109,12 +109,12 @@ pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
         let mut paths = vec![
             layout::mail_port(name),
             layout::mail_adapter(name),
-            format!("{}/subject.txt", layout::mail_templates_dir(name)),
-            format!("{}/body.html", layout::mail_templates_dir(name)),
+            format!("{}/asunto.txt", layout::mail_templates_dir(name)),
+            format!("{}/cuerpo.html", layout::mail_templates_dir(name)),
         ];
         // Sent on events: the worker's registry imports its consumer.
         if !mail.on.is_empty() {
-            paths.push(layout::consumer(&format!("mail_{name}")));
+            paths.push(layout::consumer(&format!("correo_{name}")));
         }
         for path in paths {
             if !base.join(&path).exists() {
@@ -251,7 +251,7 @@ impl Handler<'_> {
     /// rustfmt (`self\n.{uc}\n.execute(`).
     fn calls(&self, uc: &str) -> bool {
         let joined: String = self.body.iter().map(|line| line.trim()).collect();
-        joined.contains(&format!(".{uc}.execute("))
+        joined.contains(&format!(".{uc}.ejecutar("))
     }
 
     fn takes_bearer_auth(&self) -> bool {
@@ -321,7 +321,7 @@ mod tests {
     fn required_files_cover_every_use_case() {
         let entity = Entity {
             name: "OrderItem".into(),
-            use_cases: vec!["create_order_item".into(), "list_order_item".into()],
+            use_cases: vec!["crear_order_item".into(), "listar_order_item".into()],
             db: false,
             fields: vec![],
             ..Default::default()
@@ -329,10 +329,10 @@ mod tests {
         let files = bootstrap_required_files(&entity);
 
         assert!(files.contains(&PathBuf::from(
-            "contextos/order_item/aplicacion/src/create_order_item.rs"
+            "contextos/order_item/aplicacion/src/crear_order_item.rs"
         )));
         assert!(files.contains(&PathBuf::from(
-            "contextos/order_item/aplicacion/src/list_order_item.rs"
+            "contextos/order_item/aplicacion/src/listar_order_item.rs"
         )));
         assert!(files.contains(&PathBuf::from("contextos/order_item/rest/src/rutas.rs")));
     }
@@ -350,7 +350,7 @@ mod tests {
 
         // Domain already written (not in the missing list) — the domain-first flow's next step.
         let mid_flow = vec![
-            PathBuf::from("contextos/invoice/aplicacion/src/create_invoice.rs"),
+            PathBuf::from("contextos/invoice/aplicacion/src/crear_invoice.rs"),
             PathBuf::from("contextos/invoice/infraestructura/src/repositorio.rs"),
         ];
         assert_eq!(
@@ -398,18 +398,18 @@ mod tests {
     const ROUTES: &str = r#"use std::sync::Arc;
 
 #[OpenApi]
-impl ProductApi {
+impl ApiProduct {
     /// Create a new Product
     #[oai(path = "/products", method = "post", tag = "ApiTags::Product")]
     #[requiere_rol("admin")]
     async fn create(
         &self,
         auth: BearerAuth,
-        body: Json<CreateProductRequest>,
-    ) -> CreateProductResponse {
+        body: Json<PeticionCrearProduct>,
+    ) -> RespuestaCrearProduct {
         match self
-            .create_product
-            .execute(CreateProductParams {
+            .crear_product
+            .ejecutar(ParamsCrearProduct {
                 actor: auth.0,
             })
             .await
@@ -421,7 +421,7 @@ impl ProductApi {
     /// List Products
     #[oai(path = "/products", method = "get", tag = "ApiTags::Product")]
     async fn list(&self, limit: Query<Option<u32>>) -> ListProductsResponse {
-        match self.list_products.execute(ListProductsParams { page }).await {
+        match self.listar_products.ejecutar(ListProductsParams { page }).await {
             Ok(page) => todo!(),
         }
     }
@@ -431,7 +431,7 @@ impl ProductApi {
 mod tests {
     #[tokio::test]
     async fn should_create() {
-        let response = api.create_product.execute(params).await;
+        let response = api.crear_product.ejecutar(params).await;
     }
 }
 "#;
@@ -441,12 +441,12 @@ mod tests {
         let handlers = handlers(ROUTES);
 
         assert_eq!(handlers.len(), 2);
-        assert!(handlers[0].calls("create_product"));
+        assert!(handlers[0].calls("crear_product"));
         assert!(handlers[0].takes_bearer_auth());
         assert!(handlers[0].requires_role("admin"));
         assert!(!handlers[0].requires_role("editor"));
-        assert!(handlers[1].calls("list_products"));
-        assert!(!handlers[1].calls("create_product"));
+        assert!(handlers[1].calls("listar_products"));
+        assert!(!handlers[1].calls("crear_product"));
         assert!(!handlers[1].takes_bearer_auth());
     }
 
@@ -469,7 +469,7 @@ mod tests {
     fn product(public: &[&str], roles: &[(&str, &str)]) -> Entity {
         Entity {
             name: "Product".into(),
-            use_cases: vec!["create_product".into(), "list_products".into()],
+            use_cases: vec!["crear_product".into(), "listar_products".into()],
             public: public.iter().map(|s| s.to_string()).collect(),
             roles: roles
                 .iter()
@@ -484,7 +484,7 @@ mod tests {
         let dir = std::env::temp_dir().join("puerto_auth_drift_ok");
         let config = auth_project(
             &dir,
-            product(&["list_products"], &[("create_product", "admin")]),
+            product(&["listar_products"], &[("crear_product", "admin")]),
         );
 
         assert_eq!(auth_drift(&dir, &config), Vec::<String>::new());
@@ -498,18 +498,18 @@ mod tests {
         // none), and a role the handler does not require.
         let config = auth_project(
             &dir,
-            product(&["create_product"], &[("list_products", "editor")]),
+            product(&["crear_product"], &[("listar_products", "editor")]),
         );
 
         let lines = auth_drift(&dir, &config);
 
         assert_eq!(lines.len(), 3, "{lines:?}");
         assert!(
-            lines[0].contains("'create_product' is public in puerto.toml"),
+            lines[0].contains("'crear_product' is public in puerto.toml"),
             "{lines:?}"
         );
         assert!(
-            lines[1].contains("'list_products' is protected"),
+            lines[1].contains("'listar_products' is protected"),
             "{lines:?}"
         );
         assert!(
@@ -522,7 +522,7 @@ mod tests {
     #[test]
     fn should_not_check_auth_drift_when_the_project_has_no_auth() {
         let dir = std::env::temp_dir().join("puerto_auth_drift_off");
-        let mut config = auth_project(&dir, product(&["create_product"], &[]));
+        let mut config = auth_project(&dir, product(&["crear_product"], &[]));
         config.project.auth = None;
 
         assert_eq!(auth_drift(&dir, &config), Vec::<String>::new());

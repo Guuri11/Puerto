@@ -3153,7 +3153,14 @@ Escenarios de test: los estructurales de hoy, con las rutas nuevas; uno por regl
 rechazado; el compile matrix entero (`make test/full`, `test/db`, `test/auth`); snapshots
 regrabados, y su diff leído entero (Tier 1).
 
-### 19.7 — El vocabulario generado en castellano (ADR-0024)
+### 19.7 — El vocabulario generado en castellano (ADR-0024) ✅
+
+Hecho por concepto y no por capa (un nombre cruza capas): identificadores; campos de sistema,
+errores, códigos y eventos; plural y paginación; nombres locales, prosa (tests, logs, comentarios) y
+los `AGENTS.md` generados; `Saludo`, `Usuario`, correo y Makefile. Las decisiones que el glosario no
+tenía, en su sección «Lo que la Fase 19.7 decidió por el camino». El campo por defecto de una
+entidad sin campos pasa a `nombre: String`.
+
 
 Tipos, funciones, campos de sistema, errores y sus códigos, eventos, verbos CRUD, rutas,
 paginación, `RespuestaError { codigo, mensaje }`, tests (`deberia_…_cuando_…`, `// Preparar`…),
@@ -3166,7 +3173,7 @@ Escenarios de test: los de hoy, traducidos; la pluralización (vocal, `z`, conso
 e invariables); el compile matrix entero; snapshots regrabados y leídos (Tier 1);
 `make test/mutation` sobre `naming.rs`.
 
-### 19.8 — Las reglas de Puerto y el changelog
+### 19.8 — Las reglas de Puerto y el changelog ✅
 
 `AGENTS.md` y `.claude/rules/` de Puerto, sobre la estructura y los nombres nuevos y en
 castellano. `CHANGELOG.md` con `### Breaking`, sin guía de migración: no hay proyectos que migrar

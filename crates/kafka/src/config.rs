@@ -81,7 +81,7 @@ impl ConfigKafka {
 
     /// Creates the topic of each aggregate that does not exist yet, with the broker's default
     /// partitions and replication. Run once at startup, before the relay publishes.
-    pub async fn ensure_topics(&self, aggregate_types: &[&str]) -> Result<(), KafkaError> {
+    pub async fn asegurar_topics(&self, aggregate_types: &[&str]) -> Result<(), KafkaError> {
         let admin: AdminClient<DefaultClientContext> = self.client().create()?;
         let nombres: Vec<String> = aggregate_types.iter().map(|a| self.topic(a)).collect();
         let topics: Vec<NewTopic<'_>> = nombres

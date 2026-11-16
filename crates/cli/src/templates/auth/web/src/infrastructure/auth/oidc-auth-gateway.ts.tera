@@ -52,7 +52,7 @@ export function oidcAuthGateway(settings: OidcSettings): AuthGateway {
 interface MeBody {
   id: string;
   email?: string | null;
-  name?: string | null;
+  nombre?: string | null;
   roles: string[];
 }
 
@@ -84,7 +84,7 @@ export function oidcAuthGatewayOver(client: OidcClient, fetchMe: FetchMe): AuthG
       const response = await fetchMe("/api/me", { headers: { Authorization: `Bearer ${token}` } });
       if (!response.ok) throw new AuthError(await errorCode(response));
       const me = (await response.json()) as MeBody;
-      return { id: me.id, email: me.email ?? null, name: me.name ?? null, roles: me.roles };
+      return { id: me.id, email: me.email ?? null, name: me.nombre ?? null, roles: me.roles };
     },
     login: (returnTo) => client.signinRedirect({ state: returnTo }),
     async completeLogin() {

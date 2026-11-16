@@ -1,0 +1,20 @@
+[package]
+name = "aplicacion_saludo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_saludo = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+mockall = { workspace = true, optional = true }
+
+[features]
+# Los dobles de los casos de uso (`mock!`), para los tests de otros crates (ADR-0023 § 5 de
+# Puerto).
+pruebas = ["dep:mockall", "dominio_saludo/pruebas"]
+
+[dev-dependencies]
+dominio_saludo = { workspace = true, features = ["pruebas"] }
+mockall = { workspace = true }
+tokio = { workspace = true }

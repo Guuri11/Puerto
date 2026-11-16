@@ -6,15 +6,15 @@ use {{ import }};{% endfor %}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct {{ pascal }}Dto {
+pub struct Dto{{ pascal }} {
     pub id: Uuid,
 {% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 
-impl {{ pascal }}Dto {
-    pub fn from_domain(entity: &{{ pascal }}) -> Self {
+impl Dto{{ pascal }} {
+    pub fn from_dominio(entidad: &{{ pascal }}) -> Self {
         Self {
-            id: entity.id.value(),
+            id: entidad.id.valor(),
 {% for f in fields %}            {{ f.name }}: {{ f.accessor }},
 {% endfor %}        }
     }
@@ -22,35 +22,36 @@ impl {{ pascal }}Dto {
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct Create{{ pascal }}Request {
+pub struct PeticionCrear{{ pascal }} {
 {% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 {% if is_crud %}
 
-/// One page of {{ plural_pascal }}: `total` counts them all, `limit` is the one the API applied.
+/// Una página de {{ plural_pascal }}: `total` es el recuento completo y `limite`, el que aplicó
+/// la API.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct {{ pascal }}PageDto {
-    pub items: Vec<{{ pascal }}Dto>,
+pub struct DtoPagina{{ pascal }} {
+    pub elementos: Vec<Dto{{ pascal }}>,
     pub total: u64,
-    pub limit: u32,
-    pub offset: u32,
+    pub limite: u32,
+    pub desplazamiento: u32,
 }
 
-impl {{ pascal }}PageDto {
-    pub fn from_domain(page: &Pagina<{{ pascal }}>) -> Self {
+impl DtoPagina{{ pascal }} {
+    pub fn from_dominio(pagina: &Pagina<{{ pascal }}>) -> Self {
         Self {
-            items: page.elementos.iter().map({{ pascal }}Dto::from_domain).collect(),
-            total: page.total,
-            limit: page.limite,
-            offset: page.desplazamiento,
+            elementos: pagina.elementos.iter().map(Dto{{ pascal }}::from_dominio).collect(),
+            total: pagina.total,
+            limite: pagina.limite,
+            desplazamiento: pagina.desplazamiento,
         }
     }
 }
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct Update{{ pascal }}Request {
+pub struct PeticionActualizar{{ pascal }} {
 {% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 {% endif %}

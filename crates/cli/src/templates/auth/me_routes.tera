@@ -1,25 +1,26 @@
-//! Yours: `puerto nuevo --auth` writes this file once.
+//! Lo escribe una vez `puerto nuevo --auth`; desde entonces es tuyo.
 
 use poem_openapi::{OpenApi, Tags, payload::Json};
 use puerto_web::auth::BearerAuth;
 
-use crate::me::dto::MeDto;
+use crate::me::dto::DtoMe;
 
 #[derive(Tags)]
 enum ApiTags {
     Me,
 }
 
-/// `GET /me`: what the frontend asks after sign-in. No or a bad token is answered by `BearerAuth`
-/// before the handler runs (401 `auth.no_autenticado`, 503 `auth.no_disponible`).
-pub struct MeApi;
+/// `GET /me`: lo que pregunta el frontend tras iniciar sesión. A una petición sin token, o con uno
+/// malo, responde `BearerAuth` antes de que corra el handler (401 `auth.no_autenticado`, 503
+/// `auth.no_disponible`).
+pub struct ApiMe;
 
 #[OpenApi]
-impl MeApi {
-    /// The signed-in caller: their user id, profile and roles
+impl ApiMe {
+    /// Quien llama, con sesión iniciada: su id de usuario, su perfil y sus roles
     #[oai(path = "/me", method = "get", tag = "ApiTags::Me")]
-    async fn me(&self, auth: BearerAuth) -> Json<MeDto> {
-        Json(MeDto::from_principal(&auth.0))
+    async fn me(&self, auth: BearerAuth) -> Json<DtoMe> {
+        Json(DtoMe::from_principal(&auth.0))
     }
 }
 
@@ -35,55 +36,55 @@ mod tests {
 
     use super::*;
 
-    const USER_ID: Uuid = Uuid::from_u128(0x6b1f_0c2e_8d4a_4e51_9a3b_2f0d_7c6e_1a42);
+    const ID_USUARIO: Uuid = Uuid::from_u128(0x6b1f_0c2e_8d4a_4e51_9a3b_2f0d_7c6e_1a42);
 
-    /// Accepts the token `ada`, rejects anything else.
-    fn client() -> TestClient<impl poem::Endpoint> {
-        let mut authenticator = MockAutenticador::new();
-        authenticator
+    /// Acepta el token `ada` y rechaza cualquier otro.
+    fn cliente() -> TestClient<impl poem::Endpoint> {
+        let mut autenticador = MockAutenticador::new();
+        autenticador
             .expect_autenticar()
             .returning(|token| match token {
-                "ada" => Ok(Principal::new(USER_ID, "ada-subject")
+                "ada" => Ok(Principal::new(ID_USUARIO, "ada-subject")
                     .con_email("ada@example.com")
                     .con_nombre("Ada Lovelace")
                     .con_roles(["admin"])),
                 _ => Err(ErrorAuth::Invalido),
             });
-        let authenticator: Arc<dyn Autenticador> = Arc::new(authenticator);
+        let autenticador: Arc<dyn Autenticador> = Arc::new(autenticador);
         TestClient::new(
             Route::new()
-                .nest("/", OpenApiService::new(MeApi, "test", "1.0"))
-                .data(authenticator),
+                .nest("/", OpenApiService::new(ApiMe, "test", "1.0"))
+                .data(autenticador),
         )
     }
 
     #[tokio::test]
-    async fn should_answer_the_caller_when_the_token_is_accepted() {
-        // Act
-        let response = client()
+    async fn deberia_responder_con_quien_llama_cuando_se_acepta_el_token() {
+        // Actuar
+        let respuesta = cliente()
             .get("/me")
             .header("Authorization", "Bearer ada")
             .send()
             .await;
 
-        // Assert
-        response.assert_status_is_ok();
-        let body = response.json().await;
-        let me = body.value().object();
-        me.get("id").assert_string(&USER_ID.to_string());
+        // Comprobar
+        respuesta.assert_status_is_ok();
+        let cuerpo = respuesta.json().await;
+        let me = cuerpo.value().object();
+        me.get("id").assert_string(&ID_USUARIO.to_string());
         me.get("email").assert_string("ada@example.com");
-        me.get("name").assert_string("Ada Lovelace");
+        me.get("nombre").assert_string("Ada Lovelace");
         me.get("roles").assert_string_array(&["admin"]);
     }
 
     #[tokio::test]
-    async fn should_answer_401_when_there_is_no_token() {
-        // Act
-        let response = client().get("/me").send().await;
+    async fn deberia_responder_401_cuando_no_hay_token() {
+        // Actuar
+        let respuesta = cliente().get("/me").send().await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
-        response
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
+        respuesta
             .json()
             .await
             .value()
@@ -93,15 +94,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_answer_401_when_the_token_is_rejected() {
-        // Act
-        let response = client()
+    async fn deberia_responder_401_cuando_se_rechaza_el_token() {
+        // Actuar
+        let respuesta = cliente()
             .get("/me")
             .header("Authorization", "Bearer forged")
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
     }
 }

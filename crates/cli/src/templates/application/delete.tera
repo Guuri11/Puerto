@@ -3,33 +3,33 @@
 use async_trait::async_trait;
 
 use dominio_{{ snake }}::{
-    errores::{{ pascal }}Error,
-    repositorio::{{ pascal }}RepositoryTrait,
+    errores::Error{{ pascal }},
+    repositorio::Repositorio{{ pascal }},
 };
 
-pub struct Delete{{ pascal }}UseCaseImpl {
-    pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
+pub struct Borrar{{ pascal }}Impl {
+    pub repositorio: Arc<dyn Repositorio{{ pascal }}>,
 }
 
 #[async_trait]
-impl Delete{{ pascal }}UseCaseTrait for Delete{{ pascal }}UseCaseImpl {
-    async fn execute(&self, params: Delete{{ pascal }}Params) -> Result<(), {{ pascal }}Error> {
-        tracing::info!(id = %params.id, "delete_{{ snake }}: start");
-        let mut entity = self
-            .repository
-            .find_by_id(params.id)
+impl Borrar{{ pascal }} for Borrar{{ pascal }}Impl {
+    async fn ejecutar(&self, params: ParamsBorrar{{ pascal }}) -> Result<(), Error{{ pascal }}> {
+        tracing::info!(id = %params.id, "borrar_{{ snake }}: inicio");
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "delete_{{ snake }}: repository failed"))?
+            .inspect_err(|e| tracing::error!(error = %e, "borrar_{{ snake }}: fallo del repositorio"))?
             .ok_or_else(|| {
-                let err = {{ pascal }}Error::NotFound;
-                tracing::warn!(error = %err, "delete_{{ snake }}: rejected");
+                let err = Error{{ pascal }}::NoEncontrado;
+                tracing::warn!(error = %err, "borrar_{{ snake }}: rechazado");
                 err
             })?;
-        let now = chrono::Utc::now();
-        entity.deleted = true;
-        entity.deleted_at = Some(now);
-        entity.updated_at = now;
-        self.repository.save(&entity).await.inspect_err(|e| tracing::error!(error = %e, "delete_{{ snake }}: repository failed"))?;
+        let ahora = chrono::Utc::now();
+        entidad.borrado = true;
+        entidad.borrado_en = Some(ahora);
+        entidad.actualizado_en = ahora;
+        self.repositorio.guardar(&entidad).await.inspect_err(|e| tracing::error!(error = %e, "borrar_{{ snake }}: fallo del repositorio"))?;
         Ok(())
     }
 }
@@ -39,46 +39,46 @@ mod tests {
     use super::*;
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use dominio_{{ snake }}::{
-        modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
-        repositorio::mocks::Mock{{ pascal }}Repository,
+        modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}, Props{{ pascal }}},
+        repositorio::dobles::MockRepositorio{{ pascal }},
     };
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
     #[tokio::test]
-    async fn should_soft_delete_{{ snake }}_when_id_exists() {
-        let entity = {{ pascal }}::new({{ pascal }}Props {
+    async fn deberia_hacer_borrado_logico_de_{{ snake }}_cuando_el_id_existe() {
+        let entidad = {{ pascal }}::new(Props{{ pascal }} {
 {{ macros::props(fields=fields, word="example") }}        }).unwrap();
-        let entity_id = entity.id;
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo
-            .expect_find_by_id()
-            .returning(move |_| Ok(Some(entity.clone())));
-        mock_repo.expect_save().returning(|_| Ok(()));
-        let use_case = Delete{{ pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = Borrar{{ pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case
-            .execute(Delete{{ pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: entity_id })
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: id_entidad })
             .await;
 
-        assert!(result.is_ok());
+        assert!(resultado.is_ok());
     }
 
     #[tokio::test]
-    async fn should_return_not_found_when_{{ snake }}_does_not_exist() {
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo.expect_find_by_id().returning(|_| Ok(None));
-        let use_case = Delete{{ pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+    async fn deberia_devolver_no_encontrado_cuando_{{ snake }}_no_existe() {
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble.expect_buscar_por_id().returning(|_| Ok(None));
+        let caso_de_uso = Borrar{{ pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case
-            .execute(Delete{{ pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: {{ pascal }}Id::generate() })
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: Id{{ pascal }}::generar() })
             .await;
 
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.not_found");
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "{{ snake }}.no_encontrado");
     }
 }

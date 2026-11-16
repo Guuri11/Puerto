@@ -3,24 +3,24 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use dominio_{{ snake }}::{
-    errores::{{ pascal }}Error,
+    errores::Error{{ pascal }},
     modelo::{{ pascal }},
-    repositorio::{{ pascal }}RepositoryTrait,
-{% if uow %}    unit_of_work::{{ pascal }}UnitOfWorkFactory,
+    repositorio::Repositorio{{ pascal }},
+{% if uow %}    unit_of_work::UnitOfWorkFactory{{ pascal }},
 {% endif %}};
 
-pub struct {{ uc_pascal }}UseCaseImpl {
-    pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
-{% if uow %}    /// Writes go through the unit of work: `begin`, `save`, `record` an event, `commit`. The
-    /// repository only reads.
-    pub uow_factory: Arc<dyn {{ pascal }}UnitOfWorkFactory>,
+pub struct {{ uc_pascal }}Impl {
+    pub repositorio: Arc<dyn Repositorio{{ pascal }}>,
+{% if uow %}    /// Las escrituras pasan por la unidad de trabajo: `begin`, `guardar`, `registrar` un evento,
+    /// `commit`. El repositorio solo lee.
+    pub uow_factory: Arc<dyn UnitOfWorkFactory{{ pascal }}>,
 {% endif %}}
 
 #[async_trait]
-impl {{ uc_pascal }}UseCaseTrait for {{ uc_pascal }}UseCaseImpl {
-    async fn execute(&self, _params: {{ uc_pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
-        // Log what identifies the work, never the params themselves: they are user data.
-        tracing::info!("{{ uc }}: start");
+impl {{ uc_pascal }} for {{ uc_pascal }}Impl {
+    async fn ejecutar(&self, _params: Params{{ uc_pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
+        // Al log va lo que identifica el trabajo, nunca los parámetros: son datos del usuario.
+        tracing::info!("{{ uc }}: inicio");
         todo!()
     }
 }
@@ -28,24 +28,24 @@ impl {{ uc_pascal }}UseCaseTrait for {{ uc_pascal }}UseCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_{{ snake }}::repositorio::mocks::Mock{{ pascal }}Repository;
-{% if uow %}    use dominio_{{ snake }}::unit_of_work::mocks::RecordingUnitOfWorkFactory;
+    use dominio_{{ snake }}::repositorio::dobles::MockRepositorio{{ pascal }};
+{% if uow %}    use dominio_{{ snake }}::unit_of_work::dobles::UnitOfWorkFactoryGrabadora;
 {% endif %}
 
     #[tokio::test]
-    #[ignore = "write this test"]
-    async fn should_{{ uc }}_when_valid() {
-        // Arrange
-        let mock_repo = Mock{{ pascal }}Repository::new();
-        let use_case = {{ uc_pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
-{% if uow %}            uow_factory: Arc::new(RecordingUnitOfWorkFactory::new()),
+    #[ignore = "escribe este test"]
+    async fn deberia_{{ uc }}_cuando_los_parametros_son_validos() {
+        // Preparar
+        let repositorio_doble = MockRepositorio{{ pascal }}::new();
+        let caso_de_uso = {{ uc_pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
+{% if uow %}            uow_factory: Arc::new(UnitOfWorkFactoryGrabadora::new()),
 {% endif %}        };
 
-        // Act
-        let _ = &use_case;
+        // Actuar
+        let _ = &caso_de_uso;
 
-        // Assert
-        todo!("call use_case.execute(…) and assert on the outcome")
+        // Comprobar
+        todo!("llama a caso_de_uso.ejecutar(…) y comprueba el resultado")
     }
 }

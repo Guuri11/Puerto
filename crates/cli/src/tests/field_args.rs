@@ -153,8 +153,8 @@ fn parse_field_arg_rejects_lowercase_vo_name() {
 
 #[test]
 fn parse_field_arg_uuid() {
-    let field = puerto_toml::parse_field_arg("category_id:Uuid").unwrap();
-    assert_eq!(field.name, "category_id");
+    let field = puerto_toml::parse_field_arg("categoria_id:Uuid").unwrap();
+    assert_eq!(field.name, "categoria_id");
     assert_eq!(field.field_type, "Uuid");
 }
 

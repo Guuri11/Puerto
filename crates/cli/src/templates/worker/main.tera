@@ -1,14 +1,14 @@
 mod consumidores;
 mod generado;
 
-/// The second process of this project (ADR-0018 of Puerto): it relays the outbox the API writes
-/// and runs the consumers. The loops, health probes and graceful shutdown come from the Puerto
-/// runtime, `puerto-eventos`; the wiring is in `generado/registro.rs`, the consumers in
-/// `consumidores/`.
+/// El segundo proceso de este proyecto (ADR-0018 de Puerto): hace de relay del outbox que escribe
+/// la API y ejecuta los consumidores. Los bucles, las sondas de salud y el apagado ordenado vienen
+/// del runtime de Puerto, `puerto-eventos`; el cableado está en `generado/registro.rs`, y los
+/// consumidores, en `consumidores/`.
 #[tokio::main]
 async fn main() -> Result<(), puerto_eventos::Error> {
     let config = puerto_eventos::ConfigWorker::from_env()?;
     puerto_eventos::Worker::new(config)
-        .intentar_ejecutar(generado::registro::build_worker)
+        .intentar_ejecutar(generado::registro::construir_worker)
         .await
 }

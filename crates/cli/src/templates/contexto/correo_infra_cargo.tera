@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 dominio_correo = { workspace = true }
 puerto-nucleo = { workspace = true }
-# Templates (minijinja) and the SMTP mailer (ADR-0020 of Puerto).
+# Plantillas (minijinja) y el enviador SMTP (ADR-0020 de Puerto).
 puerto-correo = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }

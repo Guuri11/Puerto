@@ -11,7 +11,8 @@ chrono = { workspace = true }
 mockall = { workspace = true, optional = true }
 
 [features]
-# The mailers' doubles (`mock!`), for the tests of the code that sends them (ADR-0023 § 5 of Puerto).
+# Los dobles de los enviadores (`mock!`), para los tests del código que envía los correos
+# (ADR-0023 § 5 de Puerto).
 pruebas = ["dep:mockall"]
 
 [dev-dependencies]

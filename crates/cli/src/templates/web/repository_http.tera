@@ -4,8 +4,8 @@ import type { {{ pascal }}Repository } from "../../domain/{{ kebab }}/repository
 import { type ApiClient, apiErrorCode } from "../http/client";
 import type { components } from "../http/schema";
 
-type {{ pascal }}Dto = components["schemas"]["{{ pascal }}Dto"];
-type {{ pascal }}Request = components["schemas"]["Create{{ pascal }}Request"];
+type {{ pascal }}Dto = components["schemas"]["Dto{{ pascal }}"];
+type {{ pascal }}Request = components["schemas"]["PeticionCrear{{ pascal }}"];
 
 function to{{ pascal }}(dto: {{ pascal }}Dto): {{ pascal }} {
   return {
@@ -29,10 +29,15 @@ export function {{ camel }}RepositoryHttp(api: ApiClient): {{ pascal }}Repositor
   return {
     async list(page) {
       const { data, error, response } = await api.GET("/{{ plural }}", {
-        params: { query: page },
+        params: { query: { limite: page.limit, desplazamiento: page.offset } },
       });
       if (data === undefined) throw new {{ pascal }}Error(apiErrorCode(error, response));
-      return { ...data, items: data.items.map(to{{ pascal }}) };
+      return {
+        items: data.elementos.map(to{{ pascal }}),
+        total: data.total,
+        limit: data.limite,
+        offset: data.desplazamiento,
+      };
     },
     async get(id) {
       const { data, error, response } = await api.GET("/{{ plural }}/{id}", {
@@ -42,7 +47,9 @@ export function {{ camel }}RepositoryHttp(api: ApiClient): {{ pascal }}Repositor
       return to{{ pascal }}(data);
     },
     async create(draft) {
-      const { data, error, response } = await api.POST("/{{ plural }}", { body: toRequest(draft) });
+      const { data, error, response } = await api.POST("/{{ plural }}", {
+        body: toRequest(draft),
+      });
       if (data === undefined) throw new {{ pascal }}Error(apiErrorCode(error, response));
       return to{{ pascal }}(data);
     },

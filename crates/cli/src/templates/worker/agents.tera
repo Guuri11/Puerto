@@ -1,60 +1,66 @@
-# Worker — AI Agent Notes
+# Worker — notas para agentes de IA
 
-The second process of this project (ADR-0018 of Puerto). The API's units of work write every
-event to the `outbox` table in the entity's own transaction; this process **relays** the outbox
-to the transport and **runs the consumers**. It is a composition root, like `presentacion/api`: no
-business logic lives here — a consumer decodes the event and calls a use case.
+El segundo proceso de este proyecto (ADR-0018 de Puerto). Las unidades de trabajo de la API
+escriben cada evento en la tabla `outbox`, en la misma transacción que la entidad; este proceso
+**hace de relay** del outbox al transporte y **ejecuta los consumidores**. Es una raíz de
+composición, como `presentacion/api`: aquí no vive lógica de negocio; un consumidor decodifica el
+evento y llama a un caso de uso.
 
-## Layer Structure
+## Estructura
 
 ```
 presentacion/worker/src/
-├── main.rs                  # `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(…)` (never changes)
+├── main.rs                  # `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(…)` (no cambia nunca)
 ├── generado.rs              # `pub mod registro;`
-├── generado/registro.rs     # AUTO-GENERATED: the relay and every `[[consumidor]]` — never hand-edit
-├── consumidores.rs          # `pub mod <consumer>;` — no `mod.rs`
+├── generado/registro.rs     # GENERADO: el relay y cada `[[consumidor]]`; no lo edites a mano
+├── consumidores.rs          # `pub mod <consumidor>;`, sin `mod.rs`
 └── consumidores/
-    └── <consumer>.rs        # Yours: a `ManejadorEvento`, written once by `puerto generar consumidor`
+    └── <consumidor>.rs      # Tuyo: un `ManejadorEvento`, lo escribe una vez `puerto generar consumidor`
 ```
 
-## Critical Rules
+## Reglas críticas
 
-- **Add a consumer with `puerto generar consumidor <name> --tras <event_type>[,…]`** — it declares
-  `[[consumidor]]` in `puerto.toml`, writes the handler and its tests, and regenerates
-  `generado/registro.rs`. Never wire one by hand.
-- **Handlers must be idempotent.** Delivery is at-least-once: the same `event.id` can arrive
-  twice. Check whether the work was already done (keyed on `event.id`) before doing it again.
-- **Answer honestly**: `Ack` when done; `Retry` for a failure that may pass (redelivered with a
-  1 s → 300 s backoff, `MAX_DELIVERIES` times); `ResultadoManejo::descartar(motivo, detalle)` for
-  one that never will. A payload that does not decode is `MOTIVO_PAYLOAD_INVALIDO`. Nothing is
-  dropped without a row in `descartados` (`make events/dead-letters`).
-- **Decode the snapshot, never the domain model**: `event.decodificar::<ProductSnapshot>()`. The
-  snapshot is the event's public contract.
+- **Añade un consumidor con `puerto generar consumidor <nombre> --tras <tipo_evento>[,…]`**:
+  declara `[[consumidor]]` en `puerto.toml`, escribe el handler y sus tests, y regenera
+  `generado/registro.rs`. No cablees nunca uno a mano.
+- **Los handlers deben ser idempotentes.** La entrega es al menos una vez: el mismo `evento.id`
+  puede llegar dos veces. Comprueba si el trabajo ya se hizo (por `evento.id`) antes de volver a
+  hacerlo.
+- **Responde con honestidad**: `Ack` cuando termina; `Reintentar` para un fallo que puede pasar (se
+  vuelve a entregar con una espera creciente de 1 s → 300 s, `MAX_DELIVERIES` veces);
+  `ResultadoManejo::descartar(motivo, detalle)` para uno que no pasará nunca. Un payload que no se
+  decodifica es `MOTIVO_PAYLOAD_INVALIDO`. Nada se tira sin una fila en `descartados`
+  (`make eventos/descartados`).
+- **Decodifica el snapshot, nunca el modelo de dominio**:
+  `evento.decodificar::<SnapshotProducto>()`. El snapshot es el contrato público del evento.
 
 {% if kafka -%}
-## Kafka transport
+## Transporte Kafka
 
-- The relay publishes each event to its aggregate's topic, `<KAFKA_TOPIC_PREFIX>.<aggregate>`,
-  keyed by the aggregate id: the events of one aggregate are consumed in the order they happened.
-- A consumer is the consumer group `<KAFKA_TOPIC_PREFIX>.<consumer>`. Its offset is committed
-  once the outcome is settled. A `Retry` holds back the records behind it in its partition until
-  it is acked or dead-lettered; after a restart its attempts start over.
-- `make docker-compose/up` starts Redpanda next to Postgres; the topics are created when the
-  worker starts. Dead letters stay in Postgres.
+- El relay publica cada evento en el topic de su agregado, `<KAFKA_TOPIC_PREFIX>.<agregado>`, con
+  el id del agregado como clave: los eventos de un agregado se consumen en el orden en que
+  ocurrieron.
+- Un consumidor es el grupo de consumidores `<KAFKA_TOPIC_PREFIX>.<consumidor>`. Su offset se
+  confirma cuando el resultado está resuelto. Un `Reintentar` retiene los registros que vienen
+  detrás en su partición hasta que se confirma o se descarta; tras un reinicio, sus intentos vuelven
+  a empezar.
+- `make docker-compose/up` arranca Redpanda junto a Postgres; los topics se crean cuando arranca el
+  worker. Los descartados se quedan en Postgres.
 
 {% endif -%}
-## Health and shutdown
+## Salud y apagado
 
-Served by the Puerto runtime, `puerto-eventos`, on `WORKER_PORT` (8081).
+Lo sirve el runtime de Puerto, `puerto-eventos`, en `WORKER_PORT` (8081).
 
-- `GET /health` — liveness: the process answers.
-- `GET /health/ready` — readiness: `503` until the relay and every consumer have finished a pass
-  that did not fail recently (a database that is down shows up here).
-- On SIGTERM / Ctrl-C each loop finishes the batch it is handling, for up to 8 s.
+- `GET /health`: vida; el proceso responde.
+- `GET /health/ready`: disponibilidad; `503` hasta que el relay y cada consumidor terminan una
+  pasada sin fallos recientes (una base de datos caída se ve aquí).
+- Con SIGTERM / Ctrl-C cada bucle termina el lote que está procesando, durante 8 s como mucho.
 
-## Configuration
+## Configuración
 
 `WORKER_PORT` (8081), `RELAY_BATCH_SIZE` (100), `RELAY_POLL_INTERVAL_MS` (500),
-`CONSUMER_POLL_INTERVAL_MS` (500), `MAX_DELIVERIES` (5), `RETRY_MAX_DELAY_MS` (unset: the backoff
-above), plus `DATABASE_URL`. A value that is set but invalid stops the worker at startup.{% if kafka %}
-Kafka: `KAFKA_BROKERS` (`localhost:9092`) and `KAFKA_TOPIC_PREFIX` (the project name).{% endif %}
+`CONSUMER_POLL_INTERVAL_MS` (500), `MAX_DELIVERIES` (5), `RETRY_MAX_DELAY_MS` (sin valor: la espera
+creciente de arriba), además de `DATABASE_URL`. Un valor presente pero inválido detiene el worker
+en el arranque.{% if kafka %}
+Kafka: `KAFKA_BROKERS` (`localhost:9092`) y `KAFKA_TOPIC_PREFIX` (el nombre del proyecto).{% endif %}

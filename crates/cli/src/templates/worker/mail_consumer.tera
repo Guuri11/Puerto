@@ -1,14 +1,15 @@
-//! `mail_{{ name }}`: sends the `{{ name }}` mail on {% for e in events %}`{{ e.event_type }}`{% if not loop.last %}, {% endif %}{% endfor %}. Written once by
-//! `puerto generar correo --tras`; it is yours now — change who it goes to, skip some events, add
-//! values the snapshot does not carry.
+//! `correo_{{ name }}`: envía el correo `{{ name }}` tras {% for e in events %}`{{ e.event_type }}`{% if not loop.last %}, {% endif %}{% endfor %}. Lo escribe una vez
+//! `puerto generar correo --tras`; desde entonces es tuyo: cambia a quién va, sáltate algunos
+//! eventos, añade valores que el snapshot no lleva.
 //!
-//! Delivery is at-least-once: `enviar_una_vez` keeps a `correos_enviados` row per event, so a redelivered
-//! event does not send the mail again. Keep `MAIL` as it is: renaming it sends every mail again.
+//! La entrega es al menos una vez: `enviar_una_vez` guarda una fila en `correos_enviados` por
+//! evento, así que un evento que se vuelve a entregar no envía el correo otra vez. Deja `MAIL` como
+//! está: renombrarlo vuelve a enviar todos los correos.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use dominio_correo::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
+use dominio_correo::{{ name }}::{ {{- "Correo" ~ pascal }}, EnviadorCorreo{{ pascal }}};
 {%- for import in imports %}
 use {{ import }};
 {%- endfor %}
@@ -16,22 +17,22 @@ use puerto_nucleo::eventos::{SobreEvento, ManejadorEvento, ResultadoManejo, MOTI
 use puerto_nucleo::correo::CorreosEnviados;
 use puerto_correo::enviar_una_vez;
 
-/// The key of this mail in `correos_enviados`.
+/// La clave de este correo en `correos_enviados`.
 const MAIL: &str = "{{ name }}";
 
-pub struct Send{{ pascal }}Mail {
-    pub mailer: Arc<dyn {{ pascal }}Mailer>,
-    pub sent_mails: Arc<dyn CorreosEnviados>,
+pub struct EnviarCorreo{{ pascal }} {
+    pub enviador: Arc<dyn EnviadorCorreo{{ pascal }}>,
+    pub correos_enviados: Arc<dyn CorreosEnviados>,
 }
 
 #[async_trait]
-impl ManejadorEvento for Send{{ pascal }}Mail {
-    async fn manejar(&self, event: &SobreEvento) -> ResultadoManejo {
-        let mail = match event.tipo_evento.as_str() {
+impl ManejadorEvento for EnviarCorreo{{ pascal }} {
+    async fn manejar(&self, evento: &SobreEvento) -> ResultadoManejo {
+        let correo = match evento.tipo_evento.as_str() {
 {%- for e in events %}
-            {{ e.constant }} => match event.decodificar::<{{ e.entity_pascal }}Snapshot>() {
-                Ok({{ e.entity_snake }}) => {{ pascal }}Mail {
-                    to: {{ e.entity_snake }}.{{ to }}.clone(),
+            {{ e.constant }} => match evento.decodificar::<Snapshot{{ e.entity_pascal }}>() {
+                Ok({{ e.entity_snake }}) => Correo{{ pascal }} {
+                    para: {{ e.entity_snake }}.{{ to }}.clone(),
 {%- for f in fields %}
                     {{ f.name }}: {{ e.entity_snake }}.{{ f.name }},
 {%- endfor %}
@@ -39,135 +40,135 @@ impl ManejadorEvento for Send{{ pascal }}Mail {
                 Err(err) => return ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle),
             },
 {%- endfor %}
-            // Not one of its events (puerto.toml `[[correo]] tras`): nothing to send.
+            // No es uno de sus eventos (puerto.toml `[[correo]] tras`): nada que enviar.
             _ => return ResultadoManejo::Ack,
         };
-        if mail.to.trim().is_empty() {
-            tracing::warn!(event_id = %event.id, "mail_{{ name }}: no recipient, not sent");
+        if correo.para.trim().is_empty() {
+            tracing::warn!(id_evento = %evento.id, "correo_{{ name }}: sin destinatario, no se envía");
             return ResultadoManejo::Ack;
         }
-        enviar_una_vez(self.sent_mails.as_ref(), event.id, MAIL, self.mailer.send(&mail)).await
+        enviar_una_vez(self.correos_enviados.as_ref(), evento.id, MAIL, self.enviador.enviar(&correo)).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_correo::{{ name }}::mocks::Mock{{ pascal }}Mailer;
-    use dominio_{{ first.entity_snake }}::eventos::{{ first.entity_pascal }}Event;
-    use dominio_{{ first.entity_snake }}::pruebas::madres::{{ first.entity_pascal }}Mother;
+    use dominio_correo::{{ name }}::dobles::MockEnviadorCorreo{{ pascal }};
+    use dominio_{{ first.entity_snake }}::eventos::Evento{{ first.entity_pascal }};
+    use dominio_{{ first.entity_snake }}::pruebas::madres::Madre{{ first.entity_pascal }};
     use puerto_nucleo::eventos::MOTIVO_ERROR_PERMANENTE;
     use puerto_nucleo::correo::ErrorCorreo;
     use puerto_correo::pruebas::CorreosEnviadosEnMemoria;
 
-    fn {{ first.const_lower }}() -> ({{ first.entity_pascal }}Snapshot, SobreEvento) {
-        let snapshot = {{ first.entity_pascal }}Snapshot::from_entity(&{{ first.entity_pascal }}Mother::random());
-        let event = SobreEvento::new(&{{ first.entity_pascal }}Event::{{ first.variant }}(snapshot.clone()));
-        (snapshot, event)
+    fn {{ first.const_lower }}() -> (Snapshot{{ first.entity_pascal }}, SobreEvento) {
+        let snapshot = Snapshot{{ first.entity_pascal }}::from_entidad(&Madre{{ first.entity_pascal }}::aleatorio());
+        let evento = SobreEvento::new(&Evento{{ first.entity_pascal }}::{{ first.variant }}(snapshot.clone()));
+        (snapshot, evento)
     }
 
-    /// A mailer expected to send `times` mails, each answering `result`.
-    fn mailer(times: usize, result: Result<(), ErrorCorreo>) -> Mock{{ pascal }}Mailer {
-        let mut mailer = Mock{{ pascal }}Mailer::new();
-        mailer
-            .expect_send()
+    /// Un enviador que espera enviar `times` correos, y cada uno responde `resultado`.
+    fn enviador(times: usize, resultado: Result<(), ErrorCorreo>) -> MockEnviadorCorreo{{ pascal }} {
+        let mut enviador = MockEnviadorCorreo{{ pascal }}::new();
+        enviador
+            .expect_enviar()
             .times(times)
-            .returning(move |_| result.clone());
-        mailer
+            .returning(move |_| resultado.clone());
+        enviador
     }
 
-    fn handler(mailer: Mock{{ pascal }}Mailer) -> Send{{ pascal }}Mail {
-        Send{{ pascal }}Mail {
-            mailer: Arc::new(mailer),
-            sent_mails: Arc::new(CorreosEnviadosEnMemoria::new()),
+    fn manejador(enviador: MockEnviadorCorreo{{ pascal }}) -> EnviarCorreo{{ pascal }} {
+        EnviarCorreo{{ pascal }} {
+            enviador: Arc::new(enviador),
+            correos_enviados: Arc::new(CorreosEnviadosEnMemoria::new()),
         }
     }
 
     #[tokio::test]
-    async fn should_send_the_mail_to_the_{{ to }}_when_a_{{ first.event_type }}_event_arrives() {
-        // Arrange
-        let (snapshot, event) = {{ first.const_lower }}();
-        let mut mock = Mock{{ pascal }}Mailer::new();
-        mock.expect_send()
-            .withf(move |mail| mail.to == snapshot.{{ to }})
+    async fn deberia_enviar_el_correo_a_{{ to }}_cuando_llega_un_evento_{{ first.event_type }}() {
+        // Preparar
+        let (snapshot, evento) = {{ first.const_lower }}();
+        let mut doble = MockEnviadorCorreo{{ pascal }}::new();
+        doble.expect_enviar()
+            .withf(move |correo| correo.para == snapshot.{{ to }})
             .times(1)
             .returning(|_| Ok(()));
 
-        // Act
-        let outcome = handler(mock).manejar(&event).await;
+        // Actuar
+        let resultado = manejador(doble).manejar(&evento).await;
 
-        // Assert
-        assert_eq!(outcome, ResultadoManejo::Ack);
+        // Comprobar
+        assert_eq!(resultado, ResultadoManejo::Ack);
     }
 
     #[tokio::test]
-    async fn should_send_it_once_when_the_same_event_is_delivered_twice() {
-        // Arrange
-        let (_, event) = {{ first.const_lower }}();
-        let handler = handler(mailer(1, Ok(())));
+    async fn deberia_enviarlo_una_vez_cuando_el_mismo_evento_llega_dos_veces() {
+        // Preparar
+        let (_, evento) = {{ first.const_lower }}();
+        let manejador = manejador(enviador(1, Ok(())));
 
-        // Act
-        let first = handler.manejar(&event).await;
-        let second = handler.manejar(&event).await;
+        // Actuar
+        let primero = manejador.manejar(&evento).await;
+        let segundo = manejador.manejar(&evento).await;
 
-        // Assert
-        assert_eq!((first, second), (ResultadoManejo::Ack, ResultadoManejo::Ack));
+        // Comprobar
+        assert_eq!((primero, segundo), (ResultadoManejo::Ack, ResultadoManejo::Ack));
     }
 
     #[tokio::test]
-    async fn should_dead_letter_without_sending_when_the_payload_is_malformed() {
-        // Arrange
-        let (_, mut event) = {{ first.const_lower }}();
-        event.payload = serde_json::json!({ "unexpected": true });
+    async fn deberia_descartar_sin_enviar_cuando_el_payload_esta_mal_formado() {
+        // Preparar
+        let (_, mut evento) = {{ first.const_lower }}();
+        evento.payload = serde_json::json!({ "unexpected": true });
 
-        // Act
-        let outcome = handler(mailer(0, Ok(()))).manejar(&event).await;
+        // Actuar
+        let resultado = manejador(enviador(0, Ok(()))).manejar(&evento).await;
 
-        // Assert
+        // Comprobar
         assert!(
             matches!(
-                outcome,
+                resultado,
                 ResultadoManejo::Descartar {
                     motivo: MOTIVO_PAYLOAD_INVALIDO,
                     ..
                 }
             ),
-            "{outcome:?}"
+            "{resultado:?}"
         );
     }
 
     #[tokio::test]
-    async fn should_retry_when_the_mail_server_is_unavailable() {
-        // Arrange
-        let (_, event) = {{ first.const_lower }}();
-        let refused = Err(ErrorCorreo::Transitorio("connection refused".to_string()));
+    async fn deberia_reintentar_cuando_el_servidor_de_correo_no_esta_disponible() {
+        // Preparar
+        let (_, evento) = {{ first.const_lower }}();
+        let rechazado = Err(ErrorCorreo::Transitorio("connection refused".to_string()));
 
-        // Act
-        let outcome = handler(mailer(1, refused)).manejar(&event).await;
+        // Actuar
+        let resultado = manejador(enviador(1, rechazado)).manejar(&evento).await;
 
-        // Assert
-        assert_eq!(outcome, ResultadoManejo::Reintentar);
+        // Comprobar
+        assert_eq!(resultado, ResultadoManejo::Reintentar);
     }
 
     #[tokio::test]
-    async fn should_dead_letter_when_the_mail_is_rejected() {
-        // Arrange
-        let (_, event) = {{ first.const_lower }}();
-        let rejected = Err(ErrorCorreo::Permanente("550 no such user".to_string()));
+    async fn deberia_descartar_cuando_el_servidor_rechaza_el_correo() {
+        // Preparar
+        let (_, evento) = {{ first.const_lower }}();
+        let rechazado = Err(ErrorCorreo::Permanente("550 no such user".to_string()));
 
-        // Act
-        let outcome = handler(mailer(1, rejected)).manejar(&event).await;
+        // Actuar
+        let resultado = manejador(enviador(1, rechazado)).manejar(&evento).await;
 
-        // Assert
+        // Comprobar
         assert!(
             matches!(
-                outcome,
+                resultado,
                 ResultadoManejo::Descartar {
                     motivo: MOTIVO_ERROR_PERMANENTE,
                     ..
                 }
             ),
-            "{outcome:?}"
+            "{resultado:?}"
         );
     }
 }

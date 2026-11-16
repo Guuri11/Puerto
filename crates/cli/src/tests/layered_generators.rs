@@ -9,37 +9,37 @@ fn generate_domain_creates_domain_files_and_mother() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
 
-    scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
+    scaffold::run_generate_domain("Artilugio", &output, &[]).unwrap();
 
     assert!(
         output
-            .join("contextos/widget/dominio/src/modelo.rs")
+            .join("contextos/artilugio/dominio/src/modelo.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/widget/dominio/src/errores.rs")
+            .join("contextos/artilugio/dominio/src/errores.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/widget/dominio/src/repositorio.rs")
+            .join("contextos/artilugio/dominio/src/repositorio.rs")
             .exists()
     );
     // The use cases — contract and implementation — are the application crate's.
-    assert!(!output.join("contextos/widget/aplicacion").exists());
+    assert!(!output.join("contextos/artilugio/aplicacion").exists());
     assert!(
         output
-            .join("contextos/widget/dominio/src/pruebas/madres.rs")
+            .join("contextos/artilugio/dominio/src/pruebas/madres.rs")
             .exists()
     );
 
-    let lib = fs::read_to_string(output.join("contextos/widget/dominio/src/lib.rs")).unwrap();
+    let lib = fs::read_to_string(output.join("contextos/artilugio/dominio/src/lib.rs")).unwrap();
     assert!(lib.contains("pub mod modelo;"), "{lib}");
     assert!(lib.contains("pub mod madres;"), "{lib}");
 
     let toml = fs::read_to_string(output.join("puerto.toml")).unwrap();
-    assert!(toml.contains("Widget"));
+    assert!(toml.contains("Artilugio"));
 
     cleanup(&dir);
 }
@@ -57,20 +57,20 @@ fn generate_domain_writes_cli_fields_into_model_and_manifest() {
         puerto_toml::parse_field_arg("amount:i64").unwrap(),
         puerto_toml::parse_field_arg("status:Status:enum:Draft/Paid").unwrap(),
     ];
-    scaffold::run_generate_domain("Invoice", &output, &fields).unwrap();
+    scaffold::run_generate_domain("Factura", &output, &fields).unwrap();
 
-    let model = fs::read_to_string(output.join("contextos/invoice/dominio/src/modelo.rs")).unwrap();
+    let model = fs::read_to_string(output.join("contextos/factura/dominio/src/modelo.rs")).unwrap();
     assert!(model.contains("pub amount: i64"), "got:\n{model}");
     assert!(model.contains("pub status: Status"), "got:\n{model}");
 
     // The manifest is what makes the *later* layered commands field-aware.
     let config = puerto_toml::read(&output).unwrap();
-    let invoice = config
+    let factura = config
         .entity
         .iter()
-        .find(|e| e.name == "Invoice")
-        .expect("Invoice in puerto.toml");
-    let names: Vec<&str> = invoice.fields.iter().map(|f| f.name.as_str()).collect();
+        .find(|e| e.name == "Factura")
+        .expect("Factura in puerto.toml");
+    let names: Vec<&str> = factura.fields.iter().map(|f| f.name.as_str()).collect();
     assert_eq!(names, vec!["amount", "status"]);
 
     cleanup(&dir);
@@ -87,17 +87,17 @@ fn generate_domain_fields_reach_the_later_layers() {
     let output = generate_project("myapp", &dir).unwrap();
 
     let fields = vec![puerto_toml::parse_field_arg("amount:i64").unwrap()];
-    scaffold::run_generate_domain("Invoice", &output, &fields).unwrap();
-    scaffold::run_generate_application("Invoice", &output).unwrap();
-    scaffold::run_generate_repository("Invoice", &output).unwrap();
-    scaffold::run_generate_presentation("Invoice", &output).unwrap();
+    scaffold::run_generate_domain("Factura", &output, &fields).unwrap();
+    scaffold::run_generate_application("Factura", &output).unwrap();
+    scaffold::run_generate_repository("Factura", &output).unwrap();
+    scaffold::run_generate_presentation("Factura", &output).unwrap();
 
     let impl_rs =
-        fs::read_to_string(output.join("contextos/invoice/aplicacion/src/create_invoice.rs"))
+        fs::read_to_string(output.join("contextos/factura/aplicacion/src/crear_factura.rs"))
             .unwrap();
     assert!(impl_rs.contains("amount"), "got:\n{impl_rs}");
 
-    let dto = fs::read_to_string(output.join("contextos/invoice/rest/src/dto.rs")).unwrap();
+    let dto = fs::read_to_string(output.join("contextos/factura/rest/src/dto.rs")).unwrap();
     assert!(dto.contains("pub amount: i64"), "got:\n{dto}");
 
     cleanup(&dir);
@@ -114,7 +114,7 @@ fn generate_domain_rejects_conflicting_value_object_types() {
         puerto_toml::parse_field_arg("a:Code:String").unwrap(),
         puerto_toml::parse_field_arg("b:Code:i64").unwrap(),
     ];
-    let result = scaffold::run_generate_domain("Invoice", &output, &fields);
+    let result = scaffold::run_generate_domain("Factura", &output, &fields);
 
     assert!(result.is_err());
     assert!(
@@ -132,37 +132,37 @@ fn generate_application_creates_use_case_impls() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
 
-    scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
-    scaffold::run_generate_application("Widget", &output).unwrap();
+    scaffold::run_generate_domain("Artilugio", &output, &[]).unwrap();
+    scaffold::run_generate_application("Artilugio", &output).unwrap();
 
     assert!(
         output
-            .join("contextos/widget/aplicacion/src/create_widget.rs")
+            .join("contextos/artilugio/aplicacion/src/crear_artilugio.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/widget/aplicacion/src/get_widget.rs")
+            .join("contextos/artilugio/aplicacion/src/obtener_artilugio.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/widget/aplicacion/src/list_widgets.rs")
+            .join("contextos/artilugio/aplicacion/src/listar_artilugios.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/widget/aplicacion/src/update_widget.rs")
+            .join("contextos/artilugio/aplicacion/src/actualizar_artilugio.rs")
             .exists()
     );
     assert!(
         output
-            .join("contextos/widget/aplicacion/src/delete_widget.rs")
+            .join("contextos/artilugio/aplicacion/src/borrar_artilugio.rs")
             .exists()
     );
 
-    let lib = fs::read_to_string(output.join("contextos/widget/aplicacion/src/lib.rs")).unwrap();
-    assert!(lib.contains("pub mod create_widget;"), "{lib}");
+    let lib = fs::read_to_string(output.join("contextos/artilugio/aplicacion/src/lib.rs")).unwrap();
+    assert!(lib.contains("pub mod crear_artilugio;"), "{lib}");
 
     cleanup(&dir);
 }
@@ -193,18 +193,18 @@ fn generate_repository_creates_infra_files() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
 
-    scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
-    scaffold::run_generate_repository("Widget", &output).unwrap();
+    scaffold::run_generate_domain("Artilugio", &output, &[]).unwrap();
+    scaffold::run_generate_repository("Artilugio", &output).unwrap();
 
     assert!(
         output
-            .join("contextos/widget/infraestructura/src/repositorio.rs")
+            .join("contextos/artilugio/infraestructura/src/repositorio.rs")
             .exists()
     );
     let repo =
-        fs::read_to_string(output.join("contextos/widget/infraestructura/src/repositorio.rs"))
+        fs::read_to_string(output.join("contextos/artilugio/infraestructura/src/repositorio.rs"))
             .unwrap();
-    assert!(repo.contains("InMemoryWidgetRepository"));
+    assert!(repo.contains("RepositorioArtilugioEnMemoria"));
 
     cleanup(&dir);
 }
@@ -216,23 +216,31 @@ fn generate_presentation_creates_all_files_and_regenerates_bootstrap() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
 
-    scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
-    scaffold::run_generate_application("Widget", &output).unwrap();
-    scaffold::run_generate_repository("Widget", &output).unwrap();
-    scaffold::run_generate_presentation("Widget", &output).unwrap();
+    scaffold::run_generate_domain("Artilugio", &output, &[]).unwrap();
+    scaffold::run_generate_application("Artilugio", &output).unwrap();
+    scaffold::run_generate_repository("Artilugio", &output).unwrap();
+    scaffold::run_generate_presentation("Artilugio", &output).unwrap();
 
-    assert!(output.join("contextos/widget/rest/src/lib.rs").exists());
-    assert!(output.join("contextos/widget/rest/src/rutas.rs").exists());
-    assert!(output.join("contextos/widget/rest/src/dto.rs").exists());
+    assert!(output.join("contextos/artilugio/rest/src/lib.rs").exists());
     assert!(
         output
-            .join("contextos/widget/rest/src/respuestas.rs")
+            .join("contextos/artilugio/rest/src/rutas.rs")
             .exists()
     );
-    assert!(output.join("contextos/widget/rest/src/errores.rs").exists());
+    assert!(output.join("contextos/artilugio/rest/src/dto.rs").exists());
+    assert!(
+        output
+            .join("contextos/artilugio/rest/src/respuestas.rs")
+            .exists()
+    );
+    assert!(
+        output
+            .join("contextos/artilugio/rest/src/errores.rs")
+            .exists()
+    );
 
     let bootstrap = wiring(&output);
-    assert!(bootstrap.contains("WidgetApi"));
+    assert!(bootstrap.contains("ApiArtilugio"));
 
     cleanup(&dir);
 }
@@ -246,16 +254,16 @@ fn should_refuse_the_api_until_the_application_crate_exists() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
-    scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
+    scaffold::run_generate_domain("Artilugio", &output, &[]).unwrap();
 
     // Act
-    let err = scaffold::run_generate_presentation("Widget", &output)
+    let err = scaffold::run_generate_presentation("Artilugio", &output)
         .unwrap_err()
         .to_string();
 
     // Assert
-    assert!(err.contains("puerto generar aplicacion Widget"), "{err}");
-    assert!(!output.join("contextos/widget/rest").exists());
+    assert!(err.contains("puerto generar aplicacion Artilugio"), "{err}");
+    assert!(!output.join("contextos/artilugio/rest").exists());
 
     cleanup(&dir);
 }
@@ -268,15 +276,19 @@ fn should_write_the_api_but_not_the_wiring_before_the_repository() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
-    scaffold::run_generate_domain("Widget", &output, &[]).unwrap();
-    scaffold::run_generate_application("Widget", &output).unwrap();
+    scaffold::run_generate_domain("Artilugio", &output, &[]).unwrap();
+    scaffold::run_generate_application("Artilugio", &output).unwrap();
     let before = wiring(&output);
 
     // Act
-    scaffold::run_generate_presentation("Widget", &output).unwrap();
+    scaffold::run_generate_presentation("Artilugio", &output).unwrap();
 
     // Assert
-    assert!(output.join("contextos/widget/rest/src/rutas.rs").exists());
+    assert!(
+        output
+            .join("contextos/artilugio/rest/src/rutas.rs")
+            .exists()
+    );
     assert_eq!(
         wiring(&output),
         before,
@@ -312,17 +324,18 @@ fn generate_scaffold_includes_object_mother() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("myapp", &dir).unwrap();
 
-    scaffold::run("Widget", &output, false, &[], &[]).unwrap();
+    scaffold::run("Artilugio", &output, false, &[], &[]).unwrap();
 
     assert!(
         output
-            .join("contextos/widget/dominio/src/pruebas/madres.rs")
+            .join("contextos/artilugio/dominio/src/pruebas/madres.rs")
             .exists()
     );
     let mother =
-        fs::read_to_string(output.join("contextos/widget/dominio/src/pruebas/madres.rs")).unwrap();
-    assert!(mother.contains("WidgetMother"));
-    assert!(mother.contains("pub fn random()"));
+        fs::read_to_string(output.join("contextos/artilugio/dominio/src/pruebas/madres.rs"))
+            .unwrap();
+    assert!(mother.contains("MadreArtilugio"));
+    assert!(mother.contains("pub fn aleatorio()"));
 
     cleanup(&dir);
 }

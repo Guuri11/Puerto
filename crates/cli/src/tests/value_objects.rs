@@ -47,10 +47,10 @@ fn generate_shared_value_objects_string() {
 
     let result = generate_shared_value_objects(&vos).unwrap();
     assert!(result.contains("pub struct Email"));
-    assert!(result.contains("fn new(value: String)"));
-    assert!(result.contains("fn value(&self) -> &str"));
-    assert!(result.contains("EmailError::Invalid"));
-    assert!(result.contains("trimmed.is_empty()"));
+    assert!(result.contains("fn new(valor: String)"));
+    assert!(result.contains("fn valor(&self) -> &str"));
+    assert!(result.contains("ErrorEmail::Invalido"));
+    assert!(result.contains("recortado.is_empty()"));
 }
 
 #[test]
@@ -65,8 +65,8 @@ fn generate_shared_value_objects_numeric() {
 
     let result = generate_shared_value_objects(&vos).unwrap();
     assert!(result.contains("pub struct Amount(i64)"));
-    assert!(result.contains("fn new(value: i64)"));
-    assert!(result.contains("fn value(&self) -> i64"));
+    assert!(result.contains("fn new(valor: i64)"));
+    assert!(result.contains("fn valor(&self) -> i64"));
 }
 
 #[test]
@@ -86,10 +86,10 @@ fn generate_shared_errors_combined_output() {
     ];
 
     let result = generate_shared_errors_combined(&vos).unwrap();
-    assert!(result.contains("pub enum EmailError"));
-    assert!(result.contains("pub enum MoneyError"));
-    assert!(result.contains("shared.value_object.email.invalid"));
-    assert!(result.contains("shared.value_object.money.invalid"));
+    assert!(result.contains("pub enum ErrorEmail"));
+    assert!(result.contains("pub enum ErrorMoney"));
+    assert!(result.contains("nucleo.email_invalido"));
+    assert!(result.contains("nucleo.money_invalido"));
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn generate_create_use_case_shared_vo() {
 
     let result = generate_create_use_case_impl("User", "user", &fields, &shared_vos).unwrap();
     assert!(result.contains("use nucleo::valores::Email"));
-    assert!(result.contains(".map_err(|_| UserError::InvalidEmail)?"));
+    assert!(result.contains(".map_err(|_| ErrorUser::EmailInvalido)?"));
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn generate_infra_entity_shared_vo_try_from_map_err() {
     }];
 
     let result = generate_infra_entity("User", "user", &fields, &shared_vos).unwrap();
-    assert!(result.contains(".map_err(|_| UserError::InvalidEmail)?"));
+    assert!(result.contains(".map_err(|_| ErrorUser::EmailInvalido)?"));
 }
 
 #[test]
@@ -215,8 +215,8 @@ fn generate_infra_entity_local_vo_uses_plain_question_mark() {
         ..Default::default()
     }];
 
-    let result = generate_infra_entity("Product", "product", &fields, &shared_vos).unwrap();
-    assert!(result.contains("Name::new(row.name)?"));
+    let result = generate_infra_entity("Producto", "producto", &fields, &shared_vos).unwrap();
+    assert!(result.contains("Name::new(fila.name)?"));
     assert!(!result.contains(".map_err"));
 }
 
@@ -273,7 +273,7 @@ fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
     fs::write(dir.join("puerto.toml"), "[proyecto]\nnombre = \"my-app\"\n").unwrap();
 
     scaffold::run(
-        "Customer",
+        "Cliente",
         &dir,
         false,
         &[puerto_toml::Field {
@@ -291,7 +291,7 @@ fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
 
     // No local value_objects.rs should exist — all VOs are shared
     assert!(
-        !dir.join("contextos/customer/dominio/src/valores.rs")
+        !dir.join("contextos/cliente/dominio/src/valores.rs")
             .exists(),
         "local value_objects.rs must not be created when all VOs are shared"
     );
@@ -563,6 +563,6 @@ fn should_import_uuid_and_chrono_per_shared_value_object_that_wraps_them() {
 
     assert_eq!(
         out,
-        "use crate::errores::RefError;\nuse uuid::Uuid;\n\n#[derive(Debug, Clone, Copy, PartialEq)]\npub struct Ref(Uuid);\n\nimpl Ref {\n    pub fn new(value: Uuid) -> Result<Self, RefError> {\n        Ok(Self(value))\n    }\n\n    pub fn value(&self) -> Uuid {\n        self.0\n    }\n}\n\nuse crate::errores::SinceError;\nuse chrono::{DateTime, Utc};\n\n#[derive(Debug, Clone, PartialEq)]\npub struct Since(DateTime<Utc>);\n\nimpl Since {\n    pub fn new(value: DateTime<Utc>) -> Result<Self, SinceError> {\n        Ok(Self(value))\n    }\n\n    pub fn value(&self) -> DateTime<Utc> {\n        self.0\n    }\n}\n"
+        "use crate::errores::ErrorRef;\nuse uuid::Uuid;\n\n#[derive(Debug, Clone, Copy, PartialEq)]\npub struct Ref(Uuid);\n\nimpl Ref {\n    pub fn new(valor: Uuid) -> Result<Self, ErrorRef> {\n        Ok(Self(valor))\n    }\n\n    pub fn valor(&self) -> Uuid {\n        self.0\n    }\n}\n\nuse crate::errores::ErrorSince;\nuse chrono::{DateTime, Utc};\n\n#[derive(Debug, Clone, PartialEq)]\npub struct Since(DateTime<Utc>);\n\nimpl Since {\n    pub fn new(valor: DateTime<Utc>) -> Result<Self, ErrorSince> {\n        Ok(Self(valor))\n    }\n\n    pub fn valor(&self) -> DateTime<Utc> {\n        self.0\n    }\n}\n"
     );
 }

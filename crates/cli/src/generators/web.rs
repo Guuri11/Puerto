@@ -67,7 +67,7 @@ pub fn web_required_files(snake: &str) -> Vec<PathBuf> {
 }
 
 /// Whether `entity` gets a frontend slice: it has the five CRUD use cases, the endpoints the
-/// screens call. The Greeting demo and custom-only entities have none.
+/// screens call. The Saludo demo and custom-only entities have none.
 pub fn has_web_slice(entity: &Entity) -> bool {
     web_slice_refusal(entity).is_none()
 }
@@ -386,8 +386,8 @@ struct WebProblemCtx {
     text: String,
 }
 
-/// The codes `errors.rs` declares, in its order: a required `String` field's `<field>_empty`, a
-/// value object's `invalid_<vo>`, then the entity-wide ones.
+/// The codes `errors.rs` declares, in its order: a required `String` field's `<field>_vacio`, a
+/// value object's `<vo>_invalido`, then the entity-wide ones.
 fn web_problems(
     entity: &WebEntityCtx,
     eff: &[Field],
@@ -410,13 +410,13 @@ fn web_problems(
         };
         if f.field_type == "String" && f.value_object.is_none() {
             add(
-                format!("{snake}.validation_error.{}_empty", f.name),
+                format!("{snake}.validacion.{}_vacio", f.name),
                 format!("{} is required", web.label),
             );
         }
         if f.references.is_some() {
             add(
-                format!("{snake}.validation_error.{}_not_found", f.name),
+                format!("{snake}.validacion.{}_no_encontrado", f.name),
                 format!("{} does not exist", web.label),
             );
         }
@@ -428,7 +428,7 @@ fn web_problems(
                 "is"
             };
             add(
-                format!("{snake}.invalid_{}", pascal_to_snake(vo)),
+                format!("{snake}.{}_invalido", pascal_to_snake(vo)),
                 format!("{} {verb} not valid", web.label),
             );
         }
@@ -436,18 +436,18 @@ fn web_problems(
     let words = &entity.words;
     for (code, text) in [
         (
-            "duplicate",
+            "duplicado",
             format!(
                 "{} with these values already exists",
                 capitalize(&entity.a_words)
             ),
         ),
-        ("not_found", format!("This {words} no longer exists")),
+        ("no_encontrado", format!("This {words} no longer exists")),
         (
-            "repository_error",
+            "repositorio",
             format!("The {words} could not be saved, try again later"),
         ),
-        ("unknown", "Something went wrong".to_string()),
+        ("desconocido", "Something went wrong".to_string()),
     ] {
         problems.push(WebProblemCtx {
             code: format!("{snake}.{code}"),
@@ -934,19 +934,19 @@ mod tests {
             ("caseItem", "cases")
         );
 
-        let series = web_entity_ctx("Series");
+        let analisis = web_entity_ctx("Analisis");
         assert_eq!(
-            (series.ident.as_str(), series.plural_ident.as_str()),
-            ("series", "seriesList")
+            (analisis.ident.as_str(), analisis.plural_ident.as_str()),
+            ("analisis", "analisisList")
         );
 
         assert_eq!(web_entity_ctx("OrderItem").a_words, "an order item");
         assert_eq!(web_entity_ctx("Product").a_words, "a product");
 
-        let item = web_entity_ctx("OrderItem");
+        let linea = web_entity_ctx("LineaPedido");
         assert_eq!(
-            (item.ident.as_str(), item.plural_ident.as_str()),
-            ("orderItem", "orderItems")
+            (linea.ident.as_str(), linea.plural_ident.as_str()),
+            ("lineaPedido", "lineasPedido")
         );
     }
 
@@ -955,8 +955,8 @@ mod tests {
         let crud = crud_use_cases("order_item");
         assert!(has_web_slice(&entity("OrderItem", crud.clone(), vec![])));
         assert!(!has_web_slice(&entity(
-            "Greeting",
-            vec!["get_greeting".into()],
+            "Saludo",
+            vec!["obtener_saludo".into()],
             vec![]
         )));
         let date = Field {
@@ -966,8 +966,8 @@ mod tests {
         };
         assert!(has_web_slice(&entity("OrderItem", crud, vec![date])));
         assert!(
-            web_slice_refusal(&entity("Greeting", vec!["get_greeting".into()], vec![]))
-                .is_some_and(|r| r.contains("create_greeting"))
+            web_slice_refusal(&entity("Saludo", vec!["obtener_saludo".into()], vec![]))
+                .is_some_and(|r| r.contains("crear_saludo"))
         );
     }
 }

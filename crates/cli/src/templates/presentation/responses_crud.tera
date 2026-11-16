@@ -1,161 +1,161 @@
-// A success variant carries the whole DTO, so it outgrows the error variants as the entity gains
-// fields. A response is built once per request and returned: boxing the DTO would only add an
-// allocation.
+// La variante de éxito lleva el DTO entero, así que crece más que las de error a medida que la
+// entidad gana campos. Una respuesta se construye una vez por petición y se devuelve: meter el DTO
+// en un `Box` solo añadiría una reserva de memoria.
 #![allow(clippy::large_enum_variant)]
 
 use poem::http::StatusCode;
 use poem_openapi::{ApiResponse, payload::Json};
 use puerto_web::RespuestaError;
 
-use crate::dto::{{ "{" }}{{ pascal }}Dto, {{ pascal }}PageDto};
+use crate::dto::{{ "{" }}Dto{{ pascal }}, DtoPagina{{ pascal }}};
 
 #[derive(ApiResponse)]
-pub enum Create{{ pascal }}Response {
+pub enum RespuestaCrear{{ pascal }} {
     #[oai(status = 201)]
-    Created(Json<{{ pascal }}Dto>),
+    Creado(Json<Dto{{ pascal }}>),
     #[oai(status = 422)]
-    UnprocessableEntity(Json<RespuestaError>),
+    NoProcesable(Json<RespuestaError>),
     #[oai(status = 401)]
-    Unauthorized(Json<RespuestaError>),
+    NoAutorizado(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<RespuestaError>),
+    Prohibido(Json<RespuestaError>),
     #[oai(status = 409)]
-    Conflict(Json<RespuestaError>),
-{% if access.create.protected %}    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    Conflicto(Json<RespuestaError>),
+{% if access.create.protected %}    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
     #[oai(status = 503)]
-    Unavailable(Json<RespuestaError>),
+    NoDisponible(Json<RespuestaError>),
 {% endif %}    #[oai(status = 500)]
-    InternalError(Json<RespuestaError>),
+    ErrorInterno(Json<RespuestaError>),
 }
 
-impl Create{{ pascal }}Response {
+impl RespuestaCrear{{ pascal }} {
     pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
-            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
-            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
-            StatusCode::FORBIDDEN => Self::Forbidden(error),
-            StatusCode::CONFLICT => Self::Conflict(error),
-{% if access.create.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
-{% endif %}            _ => Self::InternalError(error),
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+{% if access.create.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+{% endif %}            _ => Self::ErrorInterno(error),
         }
     }
 }
 
 #[derive(ApiResponse)]
-pub enum Get{{ pascal }}Response {
+pub enum RespuestaObtener{{ pascal }} {
     #[oai(status = 200)]
-    Ok(Json<{{ pascal }}Dto>),
+    Ok(Json<Dto{{ pascal }}>),
     #[oai(status = 401)]
-    Unauthorized(Json<RespuestaError>),
+    NoAutorizado(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<RespuestaError>),
+    Prohibido(Json<RespuestaError>),
     #[oai(status = 404)]
-    NotFound(Json<RespuestaError>),
-{% if access.get.protected %}    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    NoEncontrado(Json<RespuestaError>),
+{% if access.get.protected %}    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
     #[oai(status = 503)]
-    Unavailable(Json<RespuestaError>),
+    NoDisponible(Json<RespuestaError>),
 {% endif %}    #[oai(status = 500)]
-    InternalError(Json<RespuestaError>),
+    ErrorInterno(Json<RespuestaError>),
 }
 
-impl Get{{ pascal }}Response {
+impl RespuestaObtener{{ pascal }} {
     pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
-            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
-            StatusCode::FORBIDDEN => Self::Forbidden(error),
-            StatusCode::NOT_FOUND => Self::NotFound(error),
-{% if access.get.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
-{% endif %}            _ => Self::InternalError(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+{% if access.get.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+{% endif %}            _ => Self::ErrorInterno(error),
         }
     }
 }
 
 #[derive(ApiResponse)]
-pub enum List{{ plural_pascal }}Response {
+pub enum RespuestaListar{{ plural_pascal }} {
     #[oai(status = 200)]
-    Ok(Json<{{ pascal }}PageDto>),
+    Ok(Json<DtoPagina{{ pascal }}>),
     #[oai(status = 401)]
-    Unauthorized(Json<RespuestaError>),
+    NoAutorizado(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<RespuestaError>),
-{% if access.list.protected %}    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    Prohibido(Json<RespuestaError>),
+{% if access.list.protected %}    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
     #[oai(status = 503)]
-    Unavailable(Json<RespuestaError>),
+    NoDisponible(Json<RespuestaError>),
 {% endif %}    #[oai(status = 500)]
-    InternalError(Json<RespuestaError>),
+    ErrorInterno(Json<RespuestaError>),
 }
 
-impl List{{ plural_pascal }}Response {
+impl RespuestaListar{{ plural_pascal }} {
     pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
-            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
-            StatusCode::FORBIDDEN => Self::Forbidden(error),
-{% if access.list.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
-{% endif %}            _ => Self::InternalError(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+{% if access.list.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+{% endif %}            _ => Self::ErrorInterno(error),
         }
     }
 }
 
 #[derive(ApiResponse)]
-pub enum Update{{ pascal }}Response {
+pub enum RespuestaActualizar{{ pascal }} {
     #[oai(status = 200)]
-    Ok(Json<{{ pascal }}Dto>),
+    Ok(Json<Dto{{ pascal }}>),
     #[oai(status = 422)]
-    UnprocessableEntity(Json<RespuestaError>),
+    NoProcesable(Json<RespuestaError>),
     #[oai(status = 401)]
-    Unauthorized(Json<RespuestaError>),
+    NoAutorizado(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<RespuestaError>),
+    Prohibido(Json<RespuestaError>),
     #[oai(status = 404)]
-    NotFound(Json<RespuestaError>),
+    NoEncontrado(Json<RespuestaError>),
     #[oai(status = 409)]
-    Conflict(Json<RespuestaError>),
-{% if access.update.protected %}    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    Conflicto(Json<RespuestaError>),
+{% if access.update.protected %}    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
     #[oai(status = 503)]
-    Unavailable(Json<RespuestaError>),
+    NoDisponible(Json<RespuestaError>),
 {% endif %}    #[oai(status = 500)]
-    InternalError(Json<RespuestaError>),
+    ErrorInterno(Json<RespuestaError>),
 }
 
-impl Update{{ pascal }}Response {
+impl RespuestaActualizar{{ pascal }} {
     pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
-            StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error),
-            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
-            StatusCode::FORBIDDEN => Self::Forbidden(error),
-            StatusCode::NOT_FOUND => Self::NotFound(error),
-            StatusCode::CONFLICT => Self::Conflict(error),
-{% if access.update.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
-{% endif %}            _ => Self::InternalError(error),
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+{% if access.update.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+{% endif %}            _ => Self::ErrorInterno(error),
         }
     }
 }
 
 #[derive(ApiResponse)]
-pub enum Delete{{ pascal }}Response {
+pub enum RespuestaBorrar{{ pascal }} {
     #[oai(status = 204)]
-    NoContent,
+    SinContenido,
     #[oai(status = 401)]
-    Unauthorized(Json<RespuestaError>),
+    NoAutorizado(Json<RespuestaError>),
     #[oai(status = 403)]
-    Forbidden(Json<RespuestaError>),
+    Prohibido(Json<RespuestaError>),
     #[oai(status = 404)]
-    NotFound(Json<RespuestaError>),
-{% if access.delete.protected %}    /// The token could not be checked: the provider or the database is down (`BearerAuth`).
+    NoEncontrado(Json<RespuestaError>),
+{% if access.delete.protected %}    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
     #[oai(status = 503)]
-    Unavailable(Json<RespuestaError>),
+    NoDisponible(Json<RespuestaError>),
 {% endif %}    #[oai(status = 500)]
-    InternalError(Json<RespuestaError>),
+    ErrorInterno(Json<RespuestaError>),
 }
 
-impl Delete{{ pascal }}Response {
+impl RespuestaBorrar{{ pascal }} {
     pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
         match status {
-            StatusCode::UNAUTHORIZED => Self::Unauthorized(error),
-            StatusCode::FORBIDDEN => Self::Forbidden(error),
-            StatusCode::NOT_FOUND => Self::NotFound(error),
-{% if access.delete.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::Unavailable(error),
-{% endif %}            _ => Self::InternalError(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+{% if access.delete.protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+{% endif %}            _ => Self::ErrorInterno(error),
         }
     }
 }

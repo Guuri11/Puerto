@@ -1,5 +1,5 @@
-//! The API: `main.rs` starts it. The wiring is generated (`generado/bootstrap.rs`); your own
-//! middleware and routes go in `app.rs`.
+//! La API: la arranca `main.rs`. El cableado se genera (`generado/bootstrap.rs`); tu middleware y
+//! tus rutas van en `app.rs`.
 
 mod app;
 pub mod generado {

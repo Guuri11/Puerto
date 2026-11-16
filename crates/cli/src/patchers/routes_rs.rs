@@ -38,7 +38,7 @@ pub fn patch_routes_use_cases(
 }
 
 fn add_api_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pascal: &str) {
-    let struct_open = format!("pub struct {pascal}Api {{\n");
+    let struct_open = format!("pub struct Api{pascal} {{\n");
     let Some(struct_start) = src.find(&struct_open) else {
         return;
     };
@@ -51,12 +51,12 @@ fn add_api_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pasca
     }
 
     let field = format!(
-        "    /// Wired by bootstrap.rs. Call it from an endpoint in the `#[OpenApi]` impl below.\n    #[allow(dead_code)]\n    pub {uc}: Arc<dyn {uc_pascal}UseCaseTrait>,\n"
+        "    /// Lo cablea bootstrap.rs. Llámalo desde un endpoint en el impl `#[OpenApi]` de abajo.\n    #[allow(dead_code)]\n    pub {uc}: Arc<dyn {uc_pascal}>,\n"
     );
     // Appended as the last field, right before the struct's closing brace.
     src.insert_str(body_start + body_len + 1, &field);
 
-    let import = format!("use aplicacion_{snake}::{uc}::{uc_pascal}UseCaseTrait;\n");
+    let import = format!("use aplicacion_{snake}::{uc}::{uc_pascal};\n");
     if !src.contains(&import) {
         src.insert_str(0, &import);
     }
@@ -70,7 +70,7 @@ fn add_api_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pasca
 /// When the tests hold their mocks in `struct Mocks` (the CRUD template), the mock becomes a
 /// field there too, so a test of the use case's endpoint can set `mocks.{uc}.expect_execute()`.
 fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pascal: &str) {
-    let literal_open = format!("let api = {pascal}Api {{\n");
+    let literal_open = format!("let api = Api{pascal} {{\n");
     let Some(open) = src.find(&literal_open) else {
         return;
     };
@@ -86,7 +86,7 @@ fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str,
         return;
     }
 
-    let mock = format!("aplicacion_{snake}::{uc}::mocks::Mock{uc_pascal}UseCase");
+    let mock = format!("aplicacion_{snake}::{uc}::dobles::Mock{uc_pascal}");
     // Read before `struct Mocks` grows: it precedes the literal, so `close` would move.
     let in_mocks = src.contains(MOCKS_OPEN);
     let line_start = src[..close].rfind('\n').map_or(0, |i| i + 1);

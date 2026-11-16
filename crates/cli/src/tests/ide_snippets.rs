@@ -210,28 +210,28 @@ fn expand_snippet(body: &str, values: &[(&str, &str)]) -> String {
     out + "\n"
 }
 
-/// Placeholder values for an entity `Gadget` with a use case `create_gadget`.
+/// Placeholder values for an entity `Aparato` with a use case `create_aparato`.
 const GADGET: &[(&str, &str)] = &[
-    ("entity", "gadget"),
-    ("Entity", "Gadget"),
-    ("action", "create_gadget"),
-    ("create", "create_gadget"),
-    ("Action", "Create"),
-    ("description", "Create a Gadget"),
+    ("entidad", "aparato"),
+    ("Entidad", "Aparato"),
+    ("accion", "crear_aparato"),
+    ("create", "crear_aparato"),
+    ("Accion", "Crear"),
+    ("descripcion", "Create a Aparato"),
 ];
 
 fn expand(snippets: &std::collections::HashMap<String, String>, prefix: &str) -> String {
     expand_snippet(&snippets[prefix], GADGET)
 }
 
-/// Writes the domain, application and REST crates of `Gadget` from snippets alone, plus its
+/// Writes the domain, application and REST crates of `Aparato` from snippets alone, plus its
 /// manifest entry. Their `Cargo.toml` and `lib.rs` are Puerto's (`crates::finish`): a snippet is
 /// code, not a manifest. The repository is the caller's: in-memory or Postgres, then
-/// [`finish_gadget`].
-fn compose_gadget_from_snippets(output: &Path, db: bool) {
+/// [`finish_aparato`].
+fn compose_aparato_from_snippets(output: &Path, db: bool) {
     let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
     let write = |rel: &str, content: String| {
-        let path = output.join("contextos/gadget").join(rel);
+        let path = output.join("contextos/aparato").join(rel);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, content).unwrap();
     };
@@ -240,17 +240,17 @@ fn compose_gadget_from_snippets(output: &Path, db: bool) {
     write(
         "dominio/src/errores.rs",
         expand(&s, "domain-errors").replace(
-            "    Unknown,\n",
-            "    Unknown,\n    #[error(\"gadget.invalid_label\")]\n    InvalidLabel,\n    #[error(\"gadget.invalid_weight\")]\n    InvalidWeight,\n    #[error(\"gadget.invalid_status\")]\n    InvalidStatus,\n",
+            "    Desconocido,\n",
+            "    Desconocido,\n    #[error(\"aparato.label_invalido\")]\n    LabelInvalido,\n    #[error(\"aparato.weight_invalido\")]\n    WeightInvalido,\n    #[error(\"aparato.status_invalido\")]\n    StatusInvalido,\n",
         ),
     );
     // The test skeleton, filled in the way its tab stops invite.
     let filled_test = expand(&s, "should-do-test")
         .replace(
-            "// Act",
-            "// Act\n    let result = Gadget::new(GadgetProps { name: \"Lamp\".into() });",
+            "// Actuar",
+            "// Actuar\n    let resultado = Aparato::new(PropsAparato { nombre: \"Lamp\".into() });",
         )
-        .replace("// Assert", "// Assert\n    assert!(result.is_ok());");
+        .replace("// Comprobar", "// Comprobar\n    assert!(resultado.is_ok());");
     let model_tests = expand(&s, "cfg-test").replace(
         "    use super::*;\n",
         &format!("    use super::*;\n{filled_test}"),
@@ -262,19 +262,22 @@ fn compose_gadget_from_snippets(output: &Path, db: bool) {
     write(
         "dominio/src/valores.rs",
         format!(
-            "use crate::errores::GadgetError;\n\n{}\n{}\n{}",
-            expand_snippet(&s["vo-string"], &[("Name", "Label"), ("Entity", "Gadget")]),
+            "use crate::errores::ErrorAparato;\n\n{}\n{}\n{}",
+            expand_snippet(
+                &s["vo-string"],
+                &[("Nombre", "Label"), ("Entidad", "Aparato")]
+            ),
             expand_snippet(
                 &s["vo-numeric"],
-                &[("Name", "Weight"), ("Entity", "Gadget")]
+                &[("Nombre", "Weight"), ("Entidad", "Aparato")]
             ),
             expand_snippet(
                 &s["vo-enum"],
                 &[
-                    ("Name", "Status"),
-                    ("Variant1", "Active"),
-                    ("Variant2", "Archived"),
-                    ("Entity", "Gadget")
+                    ("Nombre", "Status"),
+                    ("Variante1", "Active"),
+                    ("Variante2", "Archived"),
+                    ("Entidad", "Aparato")
                 ],
             ),
         ),
@@ -288,7 +291,7 @@ fn compose_gadget_from_snippets(output: &Path, db: bool) {
     let error_test = expand(&s, "app-use-case-error-test");
     let close = use_case.rfind("}\n").unwrap();
     write(
-        "aplicacion/src/create_gadget.rs",
+        "aplicacion/src/crear_aparato.rs",
         crate::generators::merge::merge_use_case(
             &expand(&s, "domain-use-case"),
             &format!("{}\n{error_test}}}\n", &use_case[..close]),
@@ -307,32 +310,32 @@ fn compose_gadget_from_snippets(output: &Path, db: bool) {
     write("rest/src/respuestas.rs", expand(&s, "poem-response-enum"));
     let mapper_test = expand_snippet(
         &s["poem-error-mapper-test"],
-        &[("Entity", "Gadget"), ("entity", "gadget")],
+        &[("Entidad", "Aparato"), ("entidad", "aparato")],
     );
     write(
         "rest/src/errores.rs",
         format!(
             "{}\n#[cfg(test)]\nmod tests {{\n    use super::*;\n\n{mapper_test}}}\n",
             expand(&s, "poem-error-mapper").replace(
-                "        GadgetError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,\n",
-                "        GadgetError::Unknown => StatusCode::INTERNAL_SERVER_ERROR,\n        GadgetError::InvalidLabel | GadgetError::InvalidWeight | GadgetError::InvalidStatus => StatusCode::UNPROCESSABLE_ENTITY,\n",
+                "        ErrorAparato::Desconocido => StatusCode::INTERNAL_SERVER_ERROR,\n",
+                "        ErrorAparato::Desconocido => StatusCode::INTERNAL_SERVER_ERROR,\n        ErrorAparato::LabelInvalido | ErrorAparato::WeightInvalido | ErrorAparato::StatusInvalido => StatusCode::UNPROCESSABLE_ENTITY,\n",
             )
         ),
     );
     write("rest/src/rutas.rs", expand(&s, "poem-api-struct"));
 
-    puerto_toml::add_entity(output, "Gadget", vec!["create_gadget".into()], db, vec![]).unwrap();
+    puerto_toml::add_entity(output, "Aparato", vec!["crear_aparato".into()], db, vec![]).unwrap();
 }
 
-/// Gadget's crates — its infrastructure written by the caller — declared, then the wiring.
-fn finish_gadget(output: &Path, db: bool) {
+/// Aparato's crates — its infrastructure written by the caller — declared, then the wiring.
+fn finish_aparato(output: &Path, db: bool) {
     use crate::generators::layout::Layer;
     let deps = crate::generators::crates::ContextDeps {
         db,
         ..Default::default()
     };
     for layer in Layer::ALL {
-        crate::generators::crates::finish(output, "gadget", layer, &deps).unwrap();
+        crate::generators::crates::finish(output, "aparato", layer, &deps).unwrap();
     }
     crate::generators::bootstrap::regenerate_bootstrap(output).unwrap();
 }
@@ -347,24 +350,24 @@ fn use_case_snippet_ships_the_mock_every_use_case_trait_has() {
     let body = expand_snippet(
         &s["domain-use-case"],
         &[
-            ("entity", "gadget"),
-            ("Entity", "Gadget"),
-            ("Action", "Create"),
+            ("entidad", "aparato"),
+            ("Entidad", "Aparato"),
+            ("Accion", "Crear"),
         ],
     );
 
-    assert!(body.contains("pub mod mocks {"), "{body}");
-    assert!(body.contains("pub CreateGadgetUseCase {}"), "{body}");
+    assert!(body.contains("pub mod dobles {"), "{body}");
+    assert!(body.contains("pub CrearAparato {}"), "{body}");
 }
 
 #[test]
 fn snippet_expansion_resolves_tab_stops_like_an_ide() {
     assert_eq!(
         expand_snippet(
-            "pub struct ${1:Entity}Api { $0 } \\$1",
-            &[("Entity", "Gadget")]
+            "pub struct ${1:Entidad}Api { $0 } \\$1",
+            &[("Entidad", "Aparato")]
         ),
-        "pub struct GadgetApi {  } $1\n"
+        "pub struct AparatoApi {  } $1\n"
     );
 }
 
@@ -377,29 +380,29 @@ fn snippets_compose_an_entity_that_compiles_lints_and_passes_its_tests() {
     let output = generate_project("compile-snippets", &dir).unwrap();
     scaffold::apply_no_demo(&output).unwrap();
     // A scaffolded entity to drop the standalone endpoint snippets into.
-    scaffold::run_scaffold("Widget", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Artilugio", &output, &[], OverwritePolicy::Ask).unwrap();
 
     let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
-    compose_gadget_from_snippets(&output, false);
-    let infra = output.join("contextos/gadget/infraestructura/src");
+    compose_aparato_from_snippets(&output, false);
+    let infra = output.join("contextos/aparato/infraestructura/src");
     fs::create_dir_all(&infra).unwrap();
     fs::write(infra.join("repositorio.rs"), expand(&s, "inmemory-repo")).unwrap();
-    finish_gadget(&output, false);
+    finish_aparato(&output, false);
 
-    // The standalone endpoints replace the generated ones in Widget's rutas.rs.
-    let routes_path = output.join("contextos/widget/rest/src/rutas.rs");
+    // The standalone endpoints replace the generated ones in Artilugio's rutas.rs.
+    let routes_path = output.join("contextos/artilugio/rest/src/rutas.rs");
     let routes = fs::read_to_string(&routes_path).unwrap();
-    let widget = &[
-        ("entity", "widget"),
-        ("Entity", "Widget"),
-        ("action", "create_widget"),
-        ("Action", "Create"),
-        ("description", "Create a Widget"),
+    let artilugio = &[
+        ("entidad", "artilugio"),
+        ("Entidad", "Artilugio"),
+        ("accion", "crear_artilugio"),
+        ("Accion", "Crear"),
+        ("descripcion", "Create a Artilugio"),
     ];
     let replace_method = |src: &str, doc: &str, snippet: &str| {
         let start = src.find(doc).unwrap();
         let end = start + src[start..].find("\n    }\n").unwrap() + "\n    }\n".len();
-        let indented: String = expand_snippet(snippet, widget)
+        let indented: String = expand_snippet(snippet, artilugio)
             .lines()
             .map(|l| {
                 if l.is_empty() {
@@ -411,8 +414,12 @@ fn snippets_compose_an_entity_that_compiles_lints_and_passes_its_tests() {
             .collect();
         format!("{}{}{}", &src[..start], indented.trim_start(), &src[end..])
     };
-    let routes = replace_method(&routes, "/// Get a Widget by ID", &s["poem-endpoint-get"]);
-    let routes = replace_method(&routes, "/// Create a new Widget", &s["poem-endpoint"]);
+    let routes = replace_method(
+        &routes,
+        "/// Obtiene: Artilugio por id",
+        &s["poem-endpoint-get"],
+    );
+    let routes = replace_method(&routes, "/// Crea: Artilugio", &s["poem-endpoint"]);
     fs::write(&routes_path, routes).unwrap();
 
     // Snippets are expanded by an editor, which formats on save (or `make format/fix`).
@@ -436,8 +443,8 @@ fn postgres_snippets_compose_a_repository_that_passes_its_integration_tests() {
 
     let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
     let sql = snippet_bodies(crate::snippets::SQL_SNIPPETS_JSON);
-    compose_gadget_from_snippets(&output, true);
-    let infra = output.join("contextos/gadget/infraestructura/src");
+    compose_aparato_from_snippets(&output, true);
+    let infra = output.join("contextos/aparato/infraestructura/src");
     fs::create_dir_all(&infra).unwrap();
     fs::write(infra.join("fila.rs"), expand(&s, "persistence-entity")).unwrap();
     fs::write(
@@ -449,10 +456,10 @@ fn postgres_snippets_compose_a_repository_that_passes_its_integration_tests() {
         ),
     )
     .unwrap();
-    finish_gadget(&output, true);
-    let table = &[("entities", "gadgets"), ("column", "name")];
+    finish_aparato(&output, true);
+    let table = &[("entidades", "aparatos"), ("columna", "nombre")];
     fs::write(
-        output.join("migraciones/20260101000000_create_gadgets.sql"),
+        output.join("migraciones/20260101000000_create_aparatos.sql"),
         format!(
             "{}\n{}",
             expand_snippet(&sql["migration-create-table"], table),
@@ -503,7 +510,7 @@ fn snippets_cover_events_projects_and_custom_endpoints() {
     }
     // The use case over the unit of work never calls the repository's `save`: in an events
     // project the port has none.
-    assert!(!s["app-use-case-uow"].contains("repository.save"));
+    assert!(!s["app-use-case-uow"].contains("repository.guardar"));
     assert!(s["app-use-case-uow"].contains("uow.commit()"));
 }
 
@@ -533,8 +540,8 @@ fn indent(text: &str, levels: usize) -> String {
 #[ignore = "slow: needs Postgres — run via `make test/db`"]
 fn postgres_events_snippets_compose_a_custom_action_that_compiles_lints_and_passes_its_tests() {
     use super::compile_matrix::{EVENTS_DB, Scenario, assert_edited_postgres_scenario_is_clean};
-    // `events_db`'s Product, its custom use case `publish_product`, the event `product_published`
-    // and the consumer `notify_new_product` — what the user then writes comes from snippets.
+    // `events_db`'s Producto, its custom use case `publish_producto`, the event `producto_published`
+    // and the consumer `notify_new_producto` — what the user then writes comes from snippets.
     let scenario = Scenario {
         name: "snippets_events",
         no_web: true,
@@ -545,29 +552,29 @@ fn postgres_events_snippets_compose_a_custom_action_that_compiles_lints_and_pass
     });
 }
 
-/// Writes what `generate use-case publish_product` leaves to the user — the use case, its
+/// Writes what `generate use-case publish_producto` leaves to the user — the use case, its
 /// endpoint, response and route test — and a consumer arm, from snippets alone.
 fn compose_publish_from_snippets(output: &Path) {
     let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
     let publish = &[
-        ("entity", "product"),
-        ("Entity", "Product"),
-        ("action", "publish_product"),
-        ("Action", "Publish"),
-        ("Published", "Published"),
-        ("event", "product_published"),
-        ("entities", "products"),
-        ("verb", "publish"),
-        ("done", "published"),
+        ("entidad", "producto"),
+        ("Entidad", "Producto"),
+        ("accion", "publish_producto"),
+        ("Accion", "Publish"),
+        ("Publicado", "Published"),
+        ("evento", "producto_published"),
+        ("entidades", "productos"),
+        ("verbo", "publish"),
+        ("se_publica", "published"),
     ];
 
-    // The use case acts on one product: its params are the id (the step a user does by hand). Its
+    // The use case acts on one producto: its params are the id (the step a user does by hand). Its
     // file is the contract, then the implementation (ADR-0023 § 4).
     let contract = expand_snippet(&s["domain-use-case"], publish)
-        .replace("pub name: String,", "pub id: ProductId,")
-        .replace("modelo::Product}", "modelo::{Product, ProductId}}");
+        .replace("pub nombre: String,", "pub id: IdProducto,")
+        .replace("modelo::Producto}", "modelo::{Producto, IdProducto}}");
     fs::write(
-        output.join("contextos/product/aplicacion/src/publish_product.rs"),
+        output.join("contextos/producto/aplicacion/src/publish_producto.rs"),
         crate::generators::merge::merge_use_case(
             &contract,
             &expand_snippet(&s["app-use-case-uow"], publish),
@@ -575,15 +582,15 @@ fn compose_publish_from_snippets(output: &Path) {
     )
     .unwrap();
 
-    // `uow-write` in place of the generated write block of update_product.
-    let update = "contextos/product/aplicacion/src/update_product.rs";
+    // `uow-write` in place of the generated write block of update_producto.
+    let update = "contextos/producto/aplicacion/src/actualizar_producto.rs";
     let src = fs::read_to_string(output.join(update)).unwrap();
     let start = src.find("        let mut uow = ").unwrap();
-    let end_marker = "uow.commit().await.inspect_err(failed)?;\n";
+    let end_marker = "uow.commit().await.inspect_err(fallido)?;\n";
     let end = start + src[start..].find(end_marker).unwrap() + end_marker.len();
     let write = expand_snippet(
         &s["uow-write"],
-        &[("action", "update_product"), ("Entity", "Product")],
+        &[("accion", "actualizar_producto"), ("Entidad", "Producto")],
     );
     fs::write(
         output.join(update),
@@ -592,34 +599,34 @@ fn compose_publish_from_snippets(output: &Path) {
     .unwrap();
 
     // The endpoint, its response and its route test.
-    let responses = "contextos/product/rest/src/respuestas.rs";
+    let responses = "contextos/producto/rest/src/respuestas.rs";
     let response = expand_snippet(
         &s["poem-response-enum"],
         &[
-            ("entity", "product"),
-            ("Entity", "Product"),
-            ("Action", "Publish"),
+            ("entidad", "producto"),
+            ("Entidad", "Producto"),
+            ("Accion", "Publish"),
             ("201", "200"),
-            ("Created", "Ok"),
+            ("Creado", "Ok"),
         ],
     );
     let enum_only = &response[response.find("#[derive(ApiResponse)]").unwrap()..];
     let src = fs::read_to_string(output.join(responses)).unwrap();
     fs::write(output.join(responses), format!("{src}\n{enum_only}")).unwrap();
 
-    let routes = "contextos/product/rest/src/rutas.rs";
+    let routes = "contextos/producto/rest/src/rutas.rs";
     replace_in(
         output,
         routes,
         "use crate::errores::a_respuesta_error;\n",
-        "use crate::errores::a_respuesta_error;\nuse crate::respuestas::PublishProductResponse;\nuse aplicacion_product::publish_product::PublishProductParams;\n",
+        "use crate::errores::a_respuesta_error;\nuse crate::respuestas::RespuestaPublishProducto;\nuse aplicacion_producto::publish_producto::ParamsPublishProducto;\n",
     );
     replace_in(
         output,
         routes,
-        "impl ProductApi {\n",
+        "impl ApiProducto {\n",
         &format!(
-            "impl ProductApi {{\n{}\n",
+            "impl ApiProducto {{\n{}\n",
             indent(&expand_snippet(&s["poem-endpoint-action"], publish), 1)
         ),
     );
@@ -629,12 +636,12 @@ fn compose_publish_from_snippets(output: &Path) {
         &s["poem-route-test"],
         &[
             ("200", "200"),
-            ("entity", "product"),
-            ("done", "published"),
-            ("action", "publish_product"),
-            ("Entity", "Product"),
-            ("entities", "products"),
-            ("verb", "publish"),
+            ("entidad", "producto"),
+            ("se_publica", "published"),
+            ("accion", "publish_producto"),
+            ("Entidad", "Producto"),
+            ("entidades", "productos"),
+            ("verbo", "publish"),
             ("OK", "OK"),
         ],
     );
@@ -644,21 +651,21 @@ fn compose_publish_from_snippets(output: &Path) {
     )
     .unwrap();
 
-    // The consumer's `product_published` arm, rewritten from `consumer-arm`.
-    let consumer = "presentacion/worker/src/consumidores/notify_new_product.rs";
+    // The consumer's `producto_published` arm, rewritten from `consumer-arm`.
+    let consumer = "presentacion/worker/src/consumidores/notify_new_producto.rs";
     let src = fs::read_to_string(output.join(consumer)).unwrap();
-    let start = src.find("            PRODUCT_PUBLISHED => ").unwrap();
+    let start = src.find("            PRODUCTO_PUBLISHED => ").unwrap();
     let end_marker = "MOTIVO_PAYLOAD_INVALIDO, err.detalle),\n            },\n";
     let end = start + src[start..].find(end_marker).unwrap() + end_marker.len();
     let arm = expand_snippet(
         &s["consumer-arm"],
         &[
-            ("ENTITY", "PRODUCT"),
-            ("VERB", "PUBLISHED"),
-            ("Entity", "Product"),
-            ("entity", "product"),
-            ("consumer", "notify_new_product"),
-            ("event", "product_published"),
+            ("ENTIDAD", "PRODUCTO"),
+            ("VERBO", "PUBLISHED"),
+            ("Entidad", "Producto"),
+            ("entidad", "producto"),
+            ("consumidor", "notify_new_producto"),
+            ("evento", "producto_published"),
         ],
     );
     fs::write(
@@ -727,58 +734,58 @@ fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("compile-snippets-web", &dir).unwrap();
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
     let ts = snippet_bodies(crate::snippets::WEB_TS_SNIPPETS_JSON);
     let tsx = snippet_bodies(crate::snippets::WEB_TSX_SNIPPETS_JSON);
-    let product = &[
-        ("Entity", "Product"),
-        ("entity", "product"),
-        ("entity-name", "product"),
+    let producto = &[
+        ("Entity", "Producto"),
+        ("entity", "producto"),
+        ("entity-name", "producto"),
         ("Summary", "Summary"),
         ("summary", "summary"),
-        ("entity label", "product"),
+        ("entity label", "producto"),
         ("method", "refresh"),
-        ("entities", "products"),
-        ("/entities/:id/summary", "/products/:id/summary"),
+        ("entities", "productos"),
+        ("/entities/:id/summary", "/productos/:id/summary"),
     ];
     let web = "web/src";
 
     // A repository method: on the port, the fake and the HTTP adapter.
     replace_in(
         &output,
-        &format!("{web}/domain/product/repository.ts"),
-        "  get(id: string): Promise<Product>;\n",
-        "  get(id: string): Promise<Product>;\n  refresh(id: string): Promise<Product>;\n",
+        &format!("{web}/domain/producto/repository.ts"),
+        "  get(id: string): Promise<Producto>;\n",
+        "  get(id: string): Promise<Producto>;\n  refresh(id: string): Promise<Producto>;\n",
     );
     replace_in(
         &output,
-        &format!("{web}/test-support/product.ts"),
+        &format!("{web}/test-support/producto.ts"),
         "    get: async (id) => find(id),\n",
         "    get: async (id) => find(id),\n    refresh: async (id) => find(id),\n",
     );
     replace_in(
         &output,
-        &format!("{web}/infrastructure/product/product-repository-http.ts"),
-        "ProductRepository {\n  return {\n",
+        &format!("{web}/infrastructure/producto/producto-repository-http.ts"),
+        "ProductoRepository {\n  return {\n",
         &format!(
-            "ProductRepository {{\n  return {{\n{}",
-            expand_snippet(&ts["web-repo-method"], product)
+            "ProductoRepository {{\n  return {{\n{}",
+            expand_snippet(&ts["web-repo-method"], producto)
         ),
     );
 
     // A screen, its test, and its route.
-    let containers = format!("{web}/presentation/features/product/containers");
+    let containers = format!("{web}/presentation/features/producto/containers");
     fs::write(
-        output.join(format!("{containers}/product-summary-container.tsx")),
-        expand_snippet(&tsx["web-container"], product),
+        output.join(format!("{containers}/producto-summary-container.tsx")),
+        expand_snippet(&tsx["web-container"], producto),
     )
     .unwrap();
     fs::write(
-        output.join(format!("{containers}/product-summary-container.test.tsx")),
-        expand_snippet(&tsx["web-container-test"], product),
+        output.join(format!("{containers}/producto-summary-container.test.tsx")),
+        expand_snippet(&tsx["web-container-test"], producto),
     )
     .unwrap();
-    let route = expand_snippet(&tsx["web-route"], product);
+    let route = expand_snippet(&tsx["web-route"], producto);
     let routes = format!("{web}/presentation/core/routes.tsx");
     replace_in(
         &output,
@@ -790,7 +797,7 @@ fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
         &output,
         &routes,
         "import type { ReactElement } from \"react\";\n",
-        "import type { ReactElement } from \"react\";\nimport { Route } from \"wouter\";\nimport { ProductSummaryContainer } from \"../features/product/containers/product-summary-container\";\n",
+        "import type { ReactElement } from \"react\";\nimport { Route } from \"wouter\";\nimport { ProductoSummaryContainer } from \"../features/producto/containers/producto-summary-container\";\n",
     );
 
     // The route is reached through the generated table: `{customRoutes}` inside its `<Switch>`.
@@ -798,17 +805,17 @@ fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
         output.join(format!("{web}/presentation/core/routes.test.tsx")),
         r#"import { expect, test } from "bun:test";
 import { screen } from "@testing-library/react";
-import { fakeProductRepository, ProductMother } from "../../test-support/product";
+import { fakeProductoRepository, ProductoMother } from "../../test-support/producto";
 import { renderScreen } from "../../test-support/render";
 import { AppRoutes } from "./generated/routes";
 
 test("should reach a custom route through the generated route table", async () => {
   // Arrange
-  const seeded = ProductMother.random();
-  const productRepository = fakeProductRepository([seeded]);
+  const seeded = ProductoMother.random();
+  const productoRepository = fakeProductoRepository([seeded]);
 
   // Act
-  renderScreen(<AppRoutes />, { productRepository }, `/products/${seeded.id}/summary`);
+  renderScreen(<AppRoutes />, { productoRepository }, `/productos/${seeded.id}/summary`);
 
   // Assert
   expect(await screen.findByText(seeded.id)).toBeTruthy();
@@ -817,15 +824,15 @@ test("should reach a custom route through the generated route table", async () =
     )
     .unwrap();
 
-    // The form's `name` input, rewritten from `web-form-field`.
-    let form = format!("{web}/presentation/features/product/views/product-form-view.tsx");
+    // The form's `nombre` input, rewritten from `web-form-field`.
+    let form = format!("{web}/presentation/features/producto/views/producto-form-view.tsx");
     let src = fs::read_to_string(output.join(&form)).unwrap();
-    let start = src.find("      <label className=\"fieldset\">\n        <span className=\"fieldset-legend\">Name</span>").unwrap();
-    let field_error = "<FieldError problem={problem} field=\"name\" />\n";
+    let start = src.find("      <label className=\"fieldset\">\n        <span className=\"fieldset-legend\">Nombre</span>").unwrap();
+    let field_error = "<FieldError problem={problem} field=\"nombre\" />\n";
     let end = start + src[start..].find(field_error).unwrap() + field_error.len();
     let field = expand_snippet(
         &tsx["web-form-field"],
-        &[("Label", "Name"), ("text", "text"), ("field", "name")],
+        &[("Label", "Nombre"), ("text", "text"), ("field", "nombre")],
     );
     fs::write(
         output.join(&form),

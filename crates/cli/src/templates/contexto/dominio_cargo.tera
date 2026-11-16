@@ -16,7 +16,8 @@ serde_json = { workspace = true }
 {% endif %}mockall = { workspace = true, optional = true }
 
 [features]
-# The doubles (`mock!`) and the Object Mother, for the tests of other crates (ADR-0023 § 5 of Puerto).
+# Los dobles (`mock!`) y la madre de objetos, para los tests de otros crates (ADR-0023 § 5 de
+# Puerto).
 pruebas = ["dep:mockall"]
 
 [dev-dependencies]

@@ -3,20 +3,20 @@ nombre = "{{project-name}}"
 web = true
 
 [[entidad]]
-nombre = "Greeting"
-casos_de_uso = ["get_greeting"]
+nombre = "Saludo"
+casos_de_uso = ["obtener_saludo"]
 
-# Define typed fields on your entities:
+# Campos con tipo en una entidad:
 # [[entidad]]
-# nombre = "Product"
-# casos_de_uso = ["create_product", "list_products"]
+# nombre = "Producto"
+# casos_de_uso = ["crear_producto", "listar_productos"]
 #
 # [[entidad.campos]]
-# nombre = "name"
+# nombre = "nombre"
 # tipo = "String"
 #
 # [[entidad.campos]]
-# nombre = "price"
+# nombre = "precio"
 # tipo = "i64"
 #
 # [[entidad.campos]]

@@ -23,7 +23,7 @@ export function fake{{ pascal }}Repository(seed: {{ pascal }}[] = []): {{ pascal
   const store = new Map(seed.map((item) => [item.id, item]));
   const find = (id: string) => {
     const found = store.get(id);
-    if (found === undefined) throw new {{ pascal }}Error("{{ snake }}.not_found");
+    if (found === undefined) throw new {{ pascal }}Error("{{ snake }}.no_encontrado");
     return found;
   };
   return {

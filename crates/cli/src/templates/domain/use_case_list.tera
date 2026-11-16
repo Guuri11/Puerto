@@ -2,36 +2,36 @@ use async_trait::async_trait;
 {% if actor %}use puerto_nucleo::auth::Principal;
 {% endif %}use puerto_nucleo::{Pagina, PeticionPagina};
 
-use dominio_{{ snake }}::{errores::{{ pascal }}Error, modelo::{{ pascal }}};
+use dominio_{{ snake }}::{errores::Error{{ pascal }}, modelo::{{ pascal }}};
 {% for import in reference_imports %}use {{ import }};
 {% endfor %}
 #[derive(Debug, Clone)]
-pub struct List{{ plural_pascal }}Params {
-{% if actor %}    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
-    /// it here and answers `Forbidden`.
+pub struct ParamsListar{{ plural_pascal }} {
+{% if actor %}    /// Quien lo pide (ADR-0021). Una regla que depende de los datos ("solo edita el propietario")
+    /// se decide aquí, sobre él, y responde `Prohibido`.
     pub actor: Principal,
-{% endif %}    pub page: PeticionPagina,
-{% for r in fields | filter(attribute="is_ref", value=true) %}    /// Only the {{ plural }} whose `{{ r.name }}` is this one, when set.
-    pub {{ r.name }}: Option<{{ r.ref_target }}Id>,
+{% endif %}    pub pagina: PeticionPagina,
+{% for r in fields | filter(attribute="is_ref", value=true) %}    /// Si se indica, solo {{ plural }} con este `{{ r.name }}`.
+    pub {{ r.name }}: Option<Id{{ r.ref_target }}>,
 {% endfor %}}
 
 #[async_trait]
-pub trait List{{ plural_pascal }}UseCaseTrait: Send + Sync {
-    async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Pagina<{{ pascal }}>, {{ pascal }}Error>;
+pub trait Listar{{ plural_pascal }}: Send + Sync {
+    async fn ejecutar(&self, params: ParamsListar{{ plural_pascal }}) -> Result<Pagina<{{ pascal }}>, Error{{ pascal }}>;
 }
 
 #[cfg(any(test, feature = "pruebas"))]
-pub mod mocks {
+pub mod dobles {
     use mockall::mock;
 
     use super::*;
 
     mock! {
-        pub List{{ plural_pascal }}UseCase {}
+        pub Listar{{ plural_pascal }} {}
 
         #[async_trait]
-        impl List{{ plural_pascal }}UseCaseTrait for List{{ plural_pascal }}UseCase {
-            async fn execute(&self, params: List{{ plural_pascal }}Params) -> Result<Pagina<{{ pascal }}>, {{ pascal }}Error>;
+        impl Listar{{ plural_pascal }} for Listar{{ plural_pascal }} {
+            async fn ejecutar(&self, params: ParamsListar{{ plural_pascal }}) -> Result<Pagina<{{ pascal }}>, Error{{ pascal }}>;
         }
     }
 }

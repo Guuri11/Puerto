@@ -9,7 +9,7 @@ export interface Registration {
 
 /**
  * The accounts this API keeps itself: signing up and signing in with a password. A refusal rejects
- * with an `AuthError` carrying the API's code (`user.duplicate`, `auth.invalid_credentials`).
+ * with an `AuthError` carrying the API's code (`usuario.duplicado`, `auth.credenciales_invalidas`).
  */
 export interface Accounts {
   register(registration: Registration): Promise<CurrentUser>;

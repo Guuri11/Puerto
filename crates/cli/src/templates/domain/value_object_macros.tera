@@ -1,31 +1,31 @@
-{# A value object wrapping one primitive. `error` is its error type, `invalid` the full error
-   value (`ProductError::InvalidName`, `EmailError::Invalid`). #}
+{# Un objeto valor que envuelve un primitivo. `error` es su tipo de error; `invalid`, el valor de
+   error completo (`ErrorProducto::NombreInvalido`, `ErrorEmail::Invalido`). #}
 {% macro value_object(vo, inner, error, invalid) %}{% if inner == "String" %}#[derive(Debug, Clone, PartialEq)]
 pub struct {{ vo }} {
-    value: String,
+    valor: String,
 }
 
 impl {{ vo }} {
-    pub fn new(value: String) -> Result<Self, {{ error }}> {
-        let trimmed = value.trim().to_string();
-        if trimmed.is_empty() {
+    pub fn new(valor: String) -> Result<Self, {{ error }}> {
+        let recortado = valor.trim().to_string();
+        if recortado.is_empty() {
             return Err({{ invalid }});
         }
-        Ok(Self { value: trimmed })
+        Ok(Self { valor: recortado })
     }
 
-    pub fn value(&self) -> &str {
-        &self.value
+    pub fn valor(&self) -> &str {
+        &self.valor
     }
 }{% else %}#[derive(Debug, Clone{% if inner != "DateTime<Utc>" %}, Copy{% endif %}, PartialEq)]
 pub struct {{ vo }}({{ inner }});
 
 impl {{ vo }} {
-    pub fn new(value: {{ inner }}) -> Result<Self, {{ error }}> {
-        Ok(Self(value))
+    pub fn new(valor: {{ inner }}) -> Result<Self, {{ error }}> {
+        Ok(Self(valor))
     }
 
-    pub fn value(&self) -> {{ inner }} {
+    pub fn valor(&self) -> {{ inner }} {
         self.0
     }
 }{% endif %}{% endmacro value_object %}

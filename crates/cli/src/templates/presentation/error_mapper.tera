@@ -1,21 +1,21 @@
-{% import "presentation/macros.tera" as macros %}use dominio_{{ snake }}::errores::{{ pascal }}Error;
+{% import "presentation/macros.tera" as macros %}use dominio_{{ snake }}::errores::Error{{ pascal }};
 use poem::http::StatusCode;
 use poem_openapi::payload::Json;
 use puerto_web::RespuestaError;
 
-/// A {{ snake }} error as its HTTP status and body (ADR-0007 of Puerto): validation failures and
-/// invalid value objects are 422 — the request was well-formed (poem answers 400 for one that is
-/// not) but breaks a domain rule. Exhaustive on purpose: a new error variant does not compile
-/// until it has a status.
-pub fn a_respuesta_error(err: {{ pascal }}Error) -> (StatusCode, Json<RespuestaError>) {
+/// Un error de {{ snake }} como su estado HTTP y su cuerpo (ADR-0007 de Puerto): los fallos de
+/// validación y los objetos valor inválidos son 422 — la petición estaba bien formada (poem
+/// responde 400 a una que no lo está), pero incumple una regla del dominio. Exhaustivo a propósito:
+/// una variante de error nueva no compila hasta que tiene un estado.
+pub fn a_respuesta_error(err: Error{{ pascal }}) -> (StatusCode, Json<RespuestaError>) {
     let status = match &err {
-        {{ pascal }}Error::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY,
-        {{ pascal }}Error::NotFound => StatusCode::NOT_FOUND,
-        {{ pascal }}Error::Duplicate => StatusCode::CONFLICT,
-        {{ pascal }}Error::RepositoryError => StatusCode::INTERNAL_SERVER_ERROR,
-        {{ pascal }}Error::Unknown => StatusCode::INTERNAL_SERVER_ERROR,{% if auth %}
-        {{ pascal }}Error::Forbidden => StatusCode::FORBIDDEN,{% endif %}{% for v in vos %}
-        {{ pascal }}Error::Invalid{{ v.vo }} => StatusCode::UNPROCESSABLE_ENTITY,{% endfor %}
+        Error{{ pascal }}::Validacion(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        Error{{ pascal }}::NoEncontrado => StatusCode::NOT_FOUND,
+        Error{{ pascal }}::Duplicado => StatusCode::CONFLICT,
+        Error{{ pascal }}::Repositorio => StatusCode::INTERNAL_SERVER_ERROR,
+        Error{{ pascal }}::Desconocido => StatusCode::INTERNAL_SERVER_ERROR,{% if auth %}
+        Error{{ pascal }}::Prohibido => StatusCode::FORBIDDEN,{% endif %}{% for v in vos %}
+        Error{{ pascal }}::{{ v.vo }}Invalido => StatusCode::UNPROCESSABLE_ENTITY,{% endfor %}
     };
     (status, Json(RespuestaError::from_codigo(err.to_string())))
 }
@@ -24,10 +24,10 @@ pub fn a_respuesta_error(err: {{ pascal }}Error) -> (StatusCode, Json<RespuestaE
 mod tests {
     use super::*;
 {# One test per arm, so a status cannot drift unnoticed. -#}
-{{ macros::error_case(name="should_map_validation_error_to_422_with_its_code", error=pascal ~ 'Error::ValidationError("name_empty".into())', status="UNPROCESSABLE_ENTITY", code=snake ~ ".validation_error.name_empty") }}
-{{- macros::error_case(name="should_map_not_found_to_404_with_its_code", error=pascal ~ "Error::NotFound", status="NOT_FOUND", code=snake ~ ".not_found") }}
-{{- macros::error_case(name="should_map_duplicate_to_409_with_its_code", error=pascal ~ "Error::Duplicate", status="CONFLICT", code=snake ~ ".duplicate") }}
-{{- macros::error_case(name="should_map_repository_error_to_500_with_its_code", error=pascal ~ "Error::RepositoryError", status="INTERNAL_SERVER_ERROR", code=snake ~ ".repository_error") }}
-{{- macros::error_case(name="should_map_unknown_to_500_with_its_code", error=pascal ~ "Error::Unknown", status="INTERNAL_SERVER_ERROR", code=snake ~ ".unknown") }}
-{%- if auth %}{{ macros::error_case(name="should_map_forbidden_to_403_with_its_code", error=pascal ~ "Error::Forbidden", status="FORBIDDEN", code=snake ~ ".forbidden") }}{% endif %}
-{%- for v in vos %}{{ macros::error_case(name="should_map_invalid_" ~ v.vo_snake ~ "_to_422_with_its_code", error=pascal ~ "Error::Invalid" ~ v.vo, status="UNPROCESSABLE_ENTITY", code=snake ~ ".invalid_" ~ v.vo_snake) }}{% endfor %}}
+{{ macros::error_case(name="deberia_mapear_validacion_a_422_con_su_codigo", error="Error" ~ pascal ~ '::Validacion("name_vacio".into())', status="UNPROCESSABLE_ENTITY", code=snake ~ ".validacion.name_vacio") }}
+{{- macros::error_case(name="deberia_mapear_no_encontrado_a_404_con_su_codigo", error="Error" ~ pascal ~ "::NoEncontrado", status="NOT_FOUND", code=snake ~ ".no_encontrado") }}
+{{- macros::error_case(name="deberia_mapear_duplicado_a_409_con_su_codigo", error="Error" ~ pascal ~ "::Duplicado", status="CONFLICT", code=snake ~ ".duplicado") }}
+{{- macros::error_case(name="deberia_mapear_repositorio_a_500_con_su_codigo", error="Error" ~ pascal ~ "::Repositorio", status="INTERNAL_SERVER_ERROR", code=snake ~ ".repositorio") }}
+{{- macros::error_case(name="deberia_mapear_desconocido_a_500_con_su_codigo", error="Error" ~ pascal ~ "::Desconocido", status="INTERNAL_SERVER_ERROR", code=snake ~ ".desconocido") }}
+{%- if auth %}{{ macros::error_case(name="deberia_mapear_prohibido_a_403_con_su_codigo", error="Error" ~ pascal ~ "::Prohibido", status="FORBIDDEN", code=snake ~ ".prohibido") }}{% endif %}
+{%- for v in vos %}{{ macros::error_case(name="deberia_mapear_" ~ v.vo_snake ~ "_invalido_a_422_con_su_codigo", error="Error" ~ pascal ~ "::" ~ v.vo ~ "Invalido", status="UNPROCESSABLE_ENTITY", code=snake ~ "." ~ v.vo_snake ~ "_invalido") }}{% endfor %}}

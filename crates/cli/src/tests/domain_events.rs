@@ -20,12 +20,12 @@ fn events_project(name: &str) -> (PathBuf, PathBuf) {
     (dir, output)
 }
 
-fn scaffold_product(output: &Path) {
+fn scaffold_producto(output: &Path) {
     let fields: Vec<puerto_toml::Field> = ["name:Name:String", "sku:String!", "price:i64"]
         .iter()
         .map(|arg| puerto_toml::parse_field_arg(arg).unwrap())
         .collect();
-    scaffold::run_scaffold("Product", output, &fields, OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", output, &fields, OverwritePolicy::Ask).unwrap();
 }
 
 fn write_manifest(name: &str, manifest: &str) -> PathBuf {
@@ -96,7 +96,7 @@ fn new_with_events_writes_the_transport_the_outbox_migration_and_serde() {
 
     // The snapshots derive serde: every domain crate of an events project names it, and the root
     // declares the versions once one does.
-    scaffold_product(&output);
+    scaffold_producto(&output);
     let root = read(&output, "Cargo.toml");
     assert!(
         root.contains("serde = { version = \"1\", features = [\"derive\"] }"),
@@ -104,7 +104,7 @@ fn new_with_events_writes_the_transport_the_outbox_migration_and_serde() {
     );
     assert!(root.contains("serde_json = \"1\""), "{root}");
     assert!(root.contains("features = [\"v4\", \"serde\"]"), "{root}");
-    let domain = read(&output, "contextos/product/dominio/Cargo.toml");
+    let domain = read(&output, "contextos/producto/dominio/Cargo.toml");
     assert!(domain.contains("serde = { workspace = true }"), "{domain}");
     assert!(
         domain.contains("serde_json = { workspace = true }"),
@@ -119,13 +119,13 @@ fn new_with_events_tells_agents_that_events_rs_is_never_hand_edited() {
 
     let agents = read(&output, "AGENTS.md");
     assert!(
-        agents.contains("Never hand-edit `contextos/<c>/dominio/src/eventos.rs`"),
+        agents.contains("No edites nunca a mano `contextos/<c>/dominio/src/eventos.rs`"),
         "{agents}"
     );
     assert!(agents.contains("puerto generar evento"), "{agents}");
     // In front of the conventions, which stay.
-    let events_at = agents.find("## Domain events").unwrap_or(usize::MAX);
-    let conventions_at = agents.find("## Conventions").unwrap_or(0);
+    let events_at = agents.find("## Eventos de dominio").unwrap_or(usize::MAX);
+    let conventions_at = agents.find("## Convenciones").unwrap_or(0);
     assert!(events_at < conventions_at, "{agents}");
     cleanup(&dir);
 }
@@ -149,36 +149,36 @@ fn events_need_a_database_project() {
 fn scaffold_in_an_events_project_writes_events_and_units_of_work() {
     let (dir, output) = events_project("events_scaffold");
 
-    scaffold_product(&output);
+    scaffold_producto(&output);
 
-    let events = read(&output, "contextos/product/dominio/src/eventos.rs");
-    assert!(events.starts_with("// AUTO-GENERATED"));
-    assert!(events.contains("pub struct ProductSnapshot"));
+    let events = read(&output, "contextos/producto/dominio/src/eventos.rs");
+    assert!(events.starts_with("// GENERADO"));
+    assert!(events.contains("pub struct SnapshotProducto"));
     assert!(events.contains("#[serde(rename_all = \"camelCase\")]"));
     assert!(events.contains("pub name: String,"), "VOs are unwrapped");
-    for variant in ["Created", "Updated", "Deleted"] {
-        assert!(events.contains(&format!("    {variant}(ProductSnapshot),")));
+    for variant in ["Creado", "Actualizado", "Borrado"] {
+        assert!(events.contains(&format!("    {variant}(SnapshotProducto),")));
     }
-    assert!(events.contains("pub const PRODUCT_CREATED: &str = \"product_created\";"));
-    assert!(events.contains("impl EventoDominio for ProductEvent"));
+    assert!(events.contains("pub const PRODUCTO_CREADO: &str = \"producto_creado\";"));
+    assert!(events.contains("impl EventoDominio for EventoProducto"));
 
-    let uow = read(&output, "contextos/product/dominio/src/unit_of_work.rs");
-    assert!(uow.contains("pub trait ProductUnitOfWork: Send"));
-    assert!(uow.contains("pub trait ProductUnitOfWorkFactory: Send + Sync"));
-    assert!(uow.contains("pub struct RecordingUnitOfWorkFactory"));
+    let uow = read(&output, "contextos/producto/dominio/src/unit_of_work.rs");
+    assert!(uow.contains("pub trait UnitOfWorkProducto: Send"));
+    assert!(uow.contains("pub trait UnitOfWorkFactoryProducto: Send + Sync"));
+    assert!(uow.contains("pub struct UnitOfWorkFactoryGrabadora"));
 
     let pg_uow = read(
         &output,
-        "contextos/product/infraestructura/src/unit_of_work.rs",
+        "contextos/producto/infraestructura/src/unit_of_work.rs",
     );
-    assert!(pg_uow.contains("pub struct PgProductUnitOfWorkFactory"));
+    assert!(pg_uow.contains("pub struct UnitOfWorkFactoryProductoPostgres"));
     assert!(pg_uow.contains("ON CONFLICT (id) DO UPDATE"));
     assert!(pg_uow.contains("use puerto_sqlx::uow::TransaccionPostgres;"));
 
-    let lib = read(&output, "contextos/product/dominio/src/lib.rs");
+    let lib = read(&output, "contextos/producto/dominio/src/lib.rs");
     assert!(lib.contains("pub mod eventos;"), "{lib}");
     assert!(lib.contains("pub mod unit_of_work;"), "{lib}");
-    let infra_lib = read(&output, "contextos/product/infraestructura/src/lib.rs");
+    let infra_lib = read(&output, "contextos/producto/infraestructura/src/lib.rs");
     assert!(infra_lib.contains("pub mod unit_of_work;\n"), "{infra_lib}");
     cleanup(&dir);
 }
@@ -187,16 +187,16 @@ fn scaffold_in_an_events_project_writes_events_and_units_of_work() {
 fn scaffold_in_an_events_project_leaves_the_repository_read_only() {
     let (dir, output) = events_project("events_read_only");
 
-    scaffold_product(&output);
+    scaffold_producto(&output);
 
-    let port = read(&output, "contextos/product/dominio/src/repositorio.rs");
-    assert!(!port.contains("async fn save"), "{port}");
-    assert!(port.contains("async fn find_by_id"));
+    let port = read(&output, "contextos/producto/dominio/src/repositorio.rs");
+    assert!(!port.contains("async fn guardar"), "{port}");
+    assert!(port.contains("async fn buscar_por_id"));
     let pg = read(
         &output,
-        "contextos/product/infraestructura/src/repositorio.rs",
+        "contextos/producto/infraestructura/src/repositorio.rs",
     );
-    assert!(!pg.contains("async fn save"), "{pg}");
+    assert!(!pg.contains("async fn guardar"), "{pg}");
     assert!(
         !pg.contains("INSERT INTO"),
         "the upsert moved to the unit of work"
@@ -208,45 +208,50 @@ fn scaffold_in_an_events_project_leaves_the_repository_read_only() {
 fn scaffold_in_an_events_project_writes_through_the_unit_of_work() {
     let (dir, output) = events_project("events_writes");
 
-    scaffold_product(&output);
+    scaffold_producto(&output);
 
     for (action, event) in [
-        ("create", "Created"),
-        ("update", "Updated"),
-        ("delete", "Deleted"),
+        ("crear", "Creado"),
+        ("actualizar", "Actualizado"),
+        ("borrar", "Borrado"),
     ] {
         let uc = read(
             &output,
-            &format!("contextos/product/aplicacion/src/{action}_product.rs"),
+            &format!("contextos/producto/aplicacion/src/{action}_producto.rs"),
         );
         assert!(
-            uc.contains("pub uow_factory: Arc<dyn ProductUnitOfWorkFactory>,"),
+            uc.contains("pub uow_factory: Arc<dyn UnitOfWorkFactoryProducto>,"),
             "{action}"
         );
         assert!(uc.contains("self.uow_factory.begin()"), "{action}");
         assert!(
-            uc.contains(&format!("uow.record(ProductEvent::{event}(")),
+            uc.contains(&format!("uow.registrar(EventoProducto::{event}(")),
             "{action}"
         );
         assert!(uc.contains("uow.commit()"), "{action}");
-        assert!(!uc.contains("repository.save"), "{action}");
+        assert!(!uc.contains("repository.guardar"), "{action}");
     }
     let create = read(
         &output,
-        "contextos/product/aplicacion/src/create_product.rs",
+        "contextos/producto/aplicacion/src/crear_producto.rs",
     );
     assert!(!create.contains("pub repository:"), "create only writes");
-    assert!(create.contains("fn should_record_product_created_when_fields_are_valid()"));
-    assert!(create.contains("fn should_not_commit_when_the_store_rejects_a_duplicate()"));
+    assert!(create.contains(
+        "fn deberia_registrar_el_evento_producto_creado_cuando_los_campos_son_validos()"
+    ));
+    assert!(create.contains("fn no_deberia_hacer_commit_cuando_el_almacen_rechaza_un_duplicado()"));
     let update = read(
         &output,
-        "contextos/product/aplicacion/src/update_product.rs",
+        "contextos/producto/aplicacion/src/actualizar_producto.rs",
     );
-    assert!(update.contains("pub repository: Arc<dyn ProductRepositoryTrait>,"));
+    assert!(update.contains("pub repositorio: Arc<dyn RepositorioProducto>,"));
     assert!(update.contains(
-        "fn should_return_not_found_and_record_nothing_when_the_product_does_not_exist()"
+        "fn deberia_devolver_no_encontrado_sin_registrar_nada_cuando_producto_no_existe()"
     ));
-    let get = read(&output, "contextos/product/aplicacion/src/get_product.rs");
+    let get = read(
+        &output,
+        "contextos/producto/aplicacion/src/obtener_producto.rs",
+    );
     assert!(
         !get.contains("uow_factory"),
         "reads do not open a unit of work"
@@ -258,20 +263,20 @@ fn scaffold_in_an_events_project_writes_through_the_unit_of_work() {
 fn scaffold_in_an_events_project_wires_the_unit_of_work_in_bootstrap() {
     let (dir, output) = events_project("events_bootstrap");
 
-    scaffold_product(&output);
+    scaffold_producto(&output);
 
     let bootstrap = wiring(&output);
     assert!(bootstrap.contains(
-        "let uow_factory: Arc<dyn ProductUnitOfWorkFactory> = Arc::new(PgProductUnitOfWorkFactory::new(pool.clone()));"
+        "let uow_factory: Arc<dyn UnitOfWorkFactoryProducto> = Arc::new(UnitOfWorkFactoryProductoPostgres::new(pool.clone()));"
     ), "{bootstrap}");
     assert!(bootstrap.contains(
-        "create_product: Arc::new(CreateProductUseCaseImpl { uow_factory: Arc::clone(&uow_factory) }),"
+        "crear_producto: Arc::new(CrearProductoImpl { uow_factory: Arc::clone(&uow_factory) }),"
     ));
     assert!(bootstrap.contains(
-        "get_product: Arc::new(GetProductUseCaseImpl { repository: Arc::clone(&repository) }),"
+        "obtener_producto: Arc::new(ObtenerProductoImpl { repositorio: Arc::clone(&repositorio) }),"
     ));
     assert!(bootstrap.contains(
-        "update_product: Arc::new(UpdateProductUseCaseImpl { repository: Arc::clone(&repository), uow_factory: Arc::clone(&uow_factory) }),"
+        "actualizar_producto: Arc::new(ActualizarProductoImpl { repositorio: Arc::clone(&repositorio), uow_factory: Arc::clone(&uow_factory) }),"
     ));
     cleanup(&dir);
 }
@@ -284,25 +289,25 @@ fn scaffold_without_events_writes_no_events_files() {
     let output = generate_project("events-absent", &dir).unwrap();
     scaffold::apply_db_to_new_project(&output).unwrap();
 
-    scaffold_product(&output);
+    scaffold_producto(&output);
 
     assert!(
         !output
-            .join("contextos/product/dominio/src/eventos.rs")
+            .join("contextos/producto/dominio/src/eventos.rs")
             .exists()
     );
     assert!(
         !output
-            .join("contextos/product/dominio/src/unit_of_work.rs")
+            .join("contextos/producto/dominio/src/unit_of_work.rs")
             .exists()
     );
     assert!(
         !output
-            .join("contextos/product/infraestructura/src/unit_of_work.rs")
+            .join("contextos/producto/infraestructura/src/unit_of_work.rs")
             .exists()
     );
     assert!(
-        read(&output, "contextos/product/dominio/src/repositorio.rs").contains("async fn save")
+        read(&output, "contextos/producto/dominio/src/repositorio.rs").contains("async fn guardar")
     );
     cleanup(&dir);
 }
@@ -314,7 +319,7 @@ fn the_demo_entity_keeps_its_repository_in_an_events_project() {
 
     assert!(
         !output
-            .join("contextos/greeting/dominio/src/eventos.rs")
+            .join("contextos/saludo/dominio/src/eventos.rs")
             .exists()
     );
     let bootstrap = wiring(&output);
@@ -327,20 +332,20 @@ fn the_demo_entity_keeps_its_repository_in_an_events_project() {
 #[test]
 fn custom_use_case_in_an_events_project_gets_the_repository_and_the_unit_of_work() {
     let (dir, output) = events_project("events_use_case");
-    scaffold_product(&output);
+    scaffold_producto(&output);
 
-    scaffold::run_use_case("Product", "publish_product", &output).unwrap();
+    scaffold::run_use_case("Producto", "publish_producto", &output).unwrap();
 
     let uc = read(
         &output,
-        "contextos/product/aplicacion/src/publish_product.rs",
+        "contextos/producto/aplicacion/src/publish_producto.rs",
     );
-    assert!(uc.contains("pub repository: Arc<dyn ProductRepositoryTrait>,"));
-    assert!(uc.contains("pub uow_factory: Arc<dyn ProductUnitOfWorkFactory>,"));
-    assert!(uc.contains("Writes go through the unit of work"));
+    assert!(uc.contains("pub repositorio: Arc<dyn RepositorioProducto>,"));
+    assert!(uc.contains("pub uow_factory: Arc<dyn UnitOfWorkFactoryProducto>,"));
+    assert!(uc.contains("Las escrituras pasan por la unidad de trabajo"));
     let bootstrap = wiring(&output);
     assert!(bootstrap.contains(
-        "publish_product: Arc::new(PublishProductUseCaseImpl { repository: Arc::clone(&repository), uow_factory: Arc::clone(&uow_factory) }),"
+        "publish_producto: Arc::new(PublishProductoImpl { repositorio: Arc::clone(&repositorio), uow_factory: Arc::clone(&uow_factory) }),"
     ), "{bootstrap}");
     cleanup(&dir);
 }
@@ -348,20 +353,20 @@ fn custom_use_case_in_an_events_project_gets_the_repository_and_the_unit_of_work
 #[test]
 fn generate_event_declares_it_and_regenerates_events_rs() {
     let (dir, output) = events_project("events_generate");
-    scaffold_product(&output);
+    scaffold_producto(&output);
 
-    scaffold::run_generate_event("Product", "product_published", &output).unwrap();
+    scaffold::run_generate_event("Producto", "producto_published", &output).unwrap();
 
     let config = puerto_toml::read(&output).unwrap();
-    let product = config.entity.iter().find(|e| e.name == "Product").unwrap();
-    assert_eq!(product.events, ["product_published"]);
-    let events = read(&output, "contextos/product/dominio/src/eventos.rs");
-    assert!(events.contains("    Published(ProductSnapshot),"));
-    assert!(events.contains("Self::Published(_) => PRODUCT_PUBLISHED,"));
+    let producto = config.entity.iter().find(|e| e.name == "Producto").unwrap();
+    assert_eq!(producto.events, ["producto_published"]);
+    let events = read(&output, "contextos/producto/dominio/src/eventos.rs");
+    assert!(events.contains("    Published(SnapshotProducto),"));
+    assert!(events.contains("Self::Published(_) => PRODUCTO_PUBLISHED,"));
     // No use case records it until one is written to.
     let create = read(
         &output,
-        "contextos/product/aplicacion/src/create_product.rs",
+        "contextos/producto/aplicacion/src/crear_producto.rs",
     );
     assert!(!create.contains("Published"));
     cleanup(&dir);
@@ -370,35 +375,35 @@ fn generate_event_declares_it_and_regenerates_events_rs() {
 #[test]
 fn custom_events_survive_a_forced_rescaffold_and_a_bootstrap() {
     let (dir, output) = events_project("events_survive");
-    scaffold_product(&output);
-    scaffold::run_generate_event("Product", "product_published", &output).unwrap();
+    scaffold_producto(&output);
+    scaffold::run_generate_event("Producto", "producto_published", &output).unwrap();
 
     let fields: Vec<puerto_toml::Field> = ["name:Name:String", "sku:String!", "price:i64"]
         .iter()
         .map(|arg| puerto_toml::parse_field_arg(arg).unwrap())
         .collect();
-    scaffold::run_scaffold("Product", &output, &fields, OverwritePolicy::Force).unwrap();
+    scaffold::run_scaffold("Producto", &output, &fields, OverwritePolicy::Force).unwrap();
     scaffold::run_bootstrap_command(&output, false).unwrap();
 
-    let events = read(&output, "contextos/product/dominio/src/eventos.rs");
-    assert!(events.contains("    Published(ProductSnapshot),"));
+    let events = read(&output, "contextos/producto/dominio/src/eventos.rs");
+    assert!(events.contains("    Published(SnapshotProducto),"));
     cleanup(&dir);
 }
 
 #[test]
 fn generate_event_refuses_a_crud_event_a_duplicate_and_a_bad_name() {
     let (dir, output) = events_project("events_refuse");
-    scaffold_product(&output);
-    scaffold::run_generate_event("Product", "product_published", &output).unwrap();
+    scaffold_producto(&output);
+    scaffold::run_generate_event("Producto", "producto_published", &output).unwrap();
 
     for (event, expected) in [
-        ("product_created", "clashes"),
-        ("deleted", "clashes"),
-        ("product_published", "already declared"),
+        ("producto_creado", "clashes"),
+        ("borrado", "clashes"),
+        ("producto_published", "already declared"),
         ("published", "already declared"),
-        ("ProductPublished", "snake_case"),
+        ("ProductoPublished", "snake_case"),
     ] {
-        let err = scaffold::run_generate_event("Product", event, &output)
+        let err = scaffold::run_generate_event("Producto", event, &output)
             .err()
             .map(|e| e.to_string())
             .unwrap_or_default();
@@ -409,7 +414,7 @@ fn generate_event_refuses_a_crud_event_a_duplicate_and_a_bad_name() {
         config
             .entity
             .iter()
-            .find(|e| e.name == "Product")
+            .find(|e| e.name == "Producto")
             .unwrap()
             .events
             .len(),
@@ -424,9 +429,9 @@ fn generate_event_is_refused_outside_an_events_project() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("plain-project", &dir).unwrap();
-    scaffold_product(&output);
+    scaffold_producto(&output);
 
-    let err = scaffold::run_generate_event("Product", "product_published", &output)
+    let err = scaffold::run_generate_event("Producto", "producto_published", &output)
         .err()
         .map(|e| e.to_string())
         .unwrap_or_default();
@@ -439,7 +444,7 @@ fn generate_event_is_refused_outside_an_events_project() {
 fn generate_event_is_refused_for_an_entity_that_is_not_crud() {
     let (dir, output) = events_project("events_refused_simple");
 
-    let err = scaffold::run_generate_event("Greeting", "greeting_waved", &output)
+    let err = scaffold::run_generate_event("Saludo", "saludo_waved", &output)
         .err()
         .map(|e| e.to_string())
         .unwrap_or_default();
@@ -476,7 +481,7 @@ fn validate_rejects_an_unknown_transport() {
 fn validate_accepts_a_database_project_with_events_and_custom_events() {
     let dir = write_manifest(
         "validate_events_ok",
-        "[proyecto]\nnombre = \"shop\"\ndb = true\neventos = \"kafka\"\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\neventos = [\"product_published\"]\n",
+        "[proyecto]\nnombre = \"shop\"\ndb = true\neventos = \"kafka\"\n\n[[entidad]]\nnombre = \"Producto\"\ncasos_de_uso = [\"crear_producto\"]\neventos = [\"producto_published\"]\n",
     );
 
     assert!(validate::run_validate(&dir).is_ok());
@@ -486,16 +491,16 @@ fn validate_accepts_a_database_project_with_events_and_custom_events() {
 #[test]
 fn validate_rejects_custom_events_that_clash_or_repeat() {
     for (name, events) in [
-        ("validate_events_crud", "[\"product_created\"]"),
+        ("validate_events_crud", "[\"producto_creado\"]"),
         (
             "validate_events_dup",
-            "[\"product_published\", \"published\"]",
+            "[\"producto_published\", \"published\"]",
         ),
     ] {
         let dir = write_manifest(
             name,
             &format!(
-                "[proyecto]\nnombre = \"shop\"\ndb = true\neventos = \"db\"\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\neventos = {events}\n"
+                "[proyecto]\nnombre = \"shop\"\ndb = true\neventos = \"db\"\n\n[[entidad]]\nnombre = \"Producto\"\ncasos_de_uso = [\"crear_producto\"]\neventos = {events}\n"
             ),
         );
         assert!(validate::run_validate(&dir).is_err(), "{events}");
@@ -507,7 +512,7 @@ fn validate_rejects_custom_events_that_clash_or_repeat() {
 fn validate_rejects_entity_events_in_a_project_without_events() {
     let dir = write_manifest(
         "validate_events_undeclared",
-        "[proyecto]\nnombre = \"shop\"\ndb = true\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\neventos = [\"product_published\"]\n",
+        "[proyecto]\nnombre = \"shop\"\ndb = true\n\n[[entidad]]\nnombre = \"Producto\"\ncasos_de_uso = [\"crear_producto\"]\neventos = [\"producto_published\"]\n",
     );
 
     assert!(validate::run_validate(&dir).is_err());
@@ -518,59 +523,68 @@ fn validate_rejects_entity_events_in_a_project_without_events() {
 
 #[test]
 fn event_variants_drop_the_entity_prefix() {
-    assert_eq!(event_variant("product", "product_published"), "Published");
-    assert_eq!(event_variant("product", "price_changed"), "PriceChanged");
-    assert_eq!(event_variant("order_item", "order_item_shipped"), "Shipped");
-    // A prefix that is the whole name, or a longer word, is not stripped.
-    assert_eq!(event_variant("product", "product"), "Product");
+    assert_eq!(event_variant("producto", "producto_published"), "Published");
+    assert_eq!(event_variant("producto", "price_changed"), "PriceChanged");
     assert_eq!(
-        event_variant("product", "products_merged"),
-        "ProductsMerged"
+        event_variant("linea_pedido", "linea_pedido_shipped"),
+        "Shipped"
     );
-    assert_eq!(event_variant("product", "product_"), "Product");
+    // A prefix that is the whole name, or a longer word, is not stripped.
+    assert_eq!(event_variant("producto", "producto"), "Producto");
+    assert_eq!(
+        event_variant("producto", "productos_merged"),
+        "ProductosMerged"
+    );
+    assert_eq!(event_variant("producto", "producto_"), "Producto");
 }
 
 #[test]
 fn crud_events_are_past_tense_and_named_after_the_entity() {
     assert_eq!(
-        crud_events("order_item"),
+        crud_events("linea_pedido"),
         [
-            ("Created".to_string(), "order_item_created".to_string()),
-            ("Updated".to_string(), "order_item_updated".to_string()),
-            ("Deleted".to_string(), "order_item_deleted".to_string()),
+            ("Creado".to_string(), "linea_pedido_creado".to_string()),
+            (
+                "Actualizado".to_string(),
+                "linea_pedido_actualizado".to_string()
+            ),
+            ("Borrado".to_string(), "linea_pedido_borrado".to_string()),
         ]
     );
 }
 
 #[test]
 fn an_entity_is_crud_only_with_all_five_scaffolded_use_cases() {
-    let crud: Vec<String> = crate::generators::naming::crud_use_cases("product");
-    assert!(is_crud_entity("product", &crud));
-    assert!(!is_crud_entity("product", &crud[..4]));
-    assert!(!is_crud_entity("product", &["get_greeting".to_string()]));
+    let crud: Vec<String> = crate::generators::naming::crud_use_cases("producto");
+    assert!(is_crud_entity("producto", &crud));
+    assert!(!is_crud_entity("producto", &crud[..4]));
+    assert!(!is_crud_entity("producto", &["obtener_saludo".to_string()]));
 }
 
 #[test]
 fn event_names_are_checked_against_crud_and_declared_ones() {
-    let declared = ["product_published".to_string()];
+    let declared = ["producto_published".to_string()];
     assert_eq!(
-        validate_event_name("product", "product_archived", &declared),
+        validate_event_name("producto", "producto_archived", &declared),
         Ok(())
     );
-    assert_eq!(validate_event_name("product", "price_changed", &[]), Ok(()));
+    assert_eq!(
+        validate_event_name("producto", "price_changed", &[]),
+        Ok(())
+    );
     for bad in [
-        "product_created",
-        "product_updated",
-        "product_deleted",
-        "created",
-        "product_published",
+        "producto_creado",
+        "producto_actualizado",
+        "producto_borrado",
+        "creado",
+        "producto_published",
         "published",
         "Published",
         "1_published",
         "self",
     ] {
         assert!(
-            validate_event_name("product", bad, &declared).is_err(),
+            validate_event_name("producto", bad, &declared).is_err(),
             "{bad} should be refused"
         );
     }

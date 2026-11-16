@@ -37,7 +37,7 @@ fn sql_ddl_col(name: &str, field_type: &str) -> String {
 
 fn sql_col_list(eff: &[Field]) -> String {
     let custom: String = eff.iter().map(|f| format!(", {}", f.name)).collect();
-    format!("id, created_at, updated_at, deleted, deleted_at{custom}")
+    format!("id, creado_en, actualizado_en, borrado, borrado_en{custom}")
 }
 
 /// `HashMap<String, String>` maps to a JSONB column. sqlx has no `HashMap` codec: the row field is
@@ -57,7 +57,7 @@ fn sql_select_list(eff: &[Field]) -> String {
             }
         })
         .collect();
-    format!("id, created_at, updated_at, deleted, deleted_at{custom}")
+    format!("id, creado_en, actualizado_en, borrado, borrado_en{custom}")
 }
 
 fn sql_params_list(n: usize) -> String {
@@ -77,7 +77,7 @@ fn sql_list_where(eff: &[Field], first: usize) -> String {
             format!(" AND (${n}::uuid IS NULL OR {} = ${n})", f.name)
         })
         .collect();
-    format!("deleted = false{filters}")
+    format!("borrado = false{filters}")
 }
 
 fn sql_conflict_set(eff: &[Field]) -> String {
@@ -86,7 +86,7 @@ fn sql_conflict_set(eff: &[Field]) -> String {
         .enumerate()
         .map(|(i, f)| format!(", {} = ${}", f.name, 6 + i))
         .collect();
-    format!("updated_at = $3, deleted = $4, deleted_at = $5{custom}")
+    format!("actualizado_en = $3, borrado = $4, borrado_en = $5{custom}")
 }
 
 // ── Dynamic generators ────────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ fn pg_crud_ctx(
         .filter(|f| f.is_ref && !f.field_type.starts_with("Option<"))
     {
         f.seed_literal = format!(
-            "infra_{}::pruebas::siembra::seed(pool).await.id",
+            "infra_{}::pruebas::siembra::sembrar(pool).await.id",
             f.ref_target_snake
         );
     }
@@ -305,7 +305,7 @@ pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
         .join("\n");
 
     let mut sql = format!(
-        "CREATE TABLE {table} (\n    id UUID PRIMARY KEY,\n{custom_cols}\n    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    deleted BOOLEAN NOT NULL DEFAULT FALSE,\n    deleted_at TIMESTAMPTZ\n);\n",
+        "CREATE TABLE {table} (\n    id UUID PRIMARY KEY,\n{custom_cols}\n    creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    borrado BOOLEAN NOT NULL DEFAULT FALSE,\n    borrado_en TIMESTAMPTZ\n);\n",
     );
 
     // `unique = true` (the `!` suffix in the CLI) is documented as producing a DB constraint but
@@ -319,7 +319,7 @@ pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
             let name = &f.name;
             // Partial: rows are soft-deleted, and a deleted row must not keep its value taken.
             format!(
-                "\nCREATE UNIQUE INDEX {table}_{name}_key ON {table} ({name}) WHERE deleted = false;\n"
+                "\nCREATE UNIQUE INDEX {table}_{name}_key ON {table} ({name}) WHERE borrado = false;\n"
             )
         })
         .collect();
@@ -420,9 +420,9 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
     }
 
     let repo_label = if db {
-        format!("Pg{pascal}Repository")
+        format!("Repositorio{pascal}Postgres")
     } else {
-        format!("InMemory{pascal}Repository")
+        format!("Repositorio{pascal}EnMemoria")
     };
     println!(
         "✓ {}/ — {repo_label}",

@@ -134,7 +134,7 @@ pub struct SuscripcionKafka {
 
 impl SuscripcionKafka {
     /// Joins the consumer's group and subscribes to the topics of `aggregate_types` (create them
-    /// first: [`ConfigKafka::ensure_topics`]). A new group starts from the earliest record.
+    /// first: [`ConfigKafka::asegurar_topics`]). A new group starts from the earliest record.
     pub fn new(
         config: &ConfigKafka,
         consumer: &str,

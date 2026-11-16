@@ -104,7 +104,7 @@ describe("{{ pascal }}FormContainer", () => {
 
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
-    const code = "{{ snake }}.validation_error.invalid";
+    const code = "{{ snake }}.validacion.invalid";
     const {{ camel }}Repository = {
       ...fake{{ pascal }}Repository(),
       create: () => Promise.reject(new {{ pascal }}Error(code)),
@@ -132,7 +132,7 @@ describe("{{ pascal }}FormContainer", () => {
     // Arrange
     const {{ camel }}Repository = {
       ...fake{{ pascal }}Repository(),
-      create: () => Promise.reject(new {{ pascal }}Error("{{ snake }}.duplicate")),
+      create: () => Promise.reject(new {{ pascal }}Error("{{ snake }}.duplicado")),
     };
 {%- if targets %}
     const draft = {{ pascal }}Mother.draft();

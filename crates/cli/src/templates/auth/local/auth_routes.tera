@@ -1,91 +1,91 @@
-//! Yours: `puerto nuevo --auth local` writes this file once.
+//! Lo escribe una vez `puerto nuevo --auth local`; desde entonces es tuyo.
 
 use std::sync::Arc;
 
-use dominio_usuario::modelo::User;
+use dominio_usuario::modelo::Usuario;
 use aplicacion_usuario::{
-    login::{LoginParams, LoginUseCaseTrait},
-    logout::{LogoutParams, LogoutUseCaseTrait},
-    register_user::{RegisterUserParams, RegisterUserUseCaseTrait},
+    login::{ParamsLogin, Login},
+    logout::{ParamsLogout, Logout},
+    registrar_usuario::{ParamsRegistrarUsuario, RegistrarUsuario},
 };
 use poem::Request;
 use poem_openapi::{OpenApi, Tags, payload::Json};
 use puerto_web::auth::{BearerAuth, bearer_token};
 
-use crate::auth::dto::{LoginRequest, RegisterRequest, SessionDto};
+use crate::auth::dto::{PeticionLogin, PeticionRegistro, DtoSesion};
 use crate::auth::errores::a_respuesta_error;
-use crate::auth::respuestas::{LoginResponse, LogoutResponse, RegisterResponse};
-use crate::me::dto::MeDto;
+use crate::auth::respuestas::{RespuestaLogin, RespuestaLogout, RespuestaRegistro};
+use crate::me::dto::DtoMe;
 
 #[derive(Tags)]
 enum ApiTags {
     Auth,
 }
 
-/// `/auth/*`: the accounts this API keeps itself (ADR-0021 § 2 of Puerto). A session token goes
-/// back as `Authorization: Bearer <token>`; `GET /me` says who it belongs to.
-pub struct AuthApi {
-    pub register_user: Arc<dyn RegisterUserUseCaseTrait>,
-    pub login: Arc<dyn LoginUseCaseTrait>,
-    pub logout: Arc<dyn LogoutUseCaseTrait>,
+/// `/auth/*`: las cuentas que guarda la propia API (ADR-0021 § 2 de Puerto). El token de sesión
+/// vuelve como `Authorization: Bearer <token>`; `GET /me` dice de quién es.
+pub struct ApiAuth {
+    pub registrar_usuario: Arc<dyn RegistrarUsuario>,
+    pub login: Arc<dyn Login>,
+    pub logout: Arc<dyn Logout>,
 }
 
-fn me(user: &User) -> MeDto {
-    MeDto {
-        id: user.id.value(),
-        email: user.email.clone(),
-        name: user.name.clone(),
-        roles: user.roles.clone(),
+fn me(usuario: &Usuario) -> DtoMe {
+    DtoMe {
+        id: usuario.id.valor(),
+        email: usuario.email.clone(),
+        nombre: usuario.nombre.clone(),
+        roles: usuario.roles.clone(),
     }
 }
 
 #[OpenApi]
-impl AuthApi {
-    /// Creates an account: an email no other account has, a password of at least 12 characters
-    #[oai(path = "/auth/register", method = "post", tag = "ApiTags::Auth")]
-    async fn register(&self, body: Json<RegisterRequest>) -> RegisterResponse {
-        let Json(body) = body;
-        let params = RegisterUserParams {
-            email: body.email,
-            password: body.password,
-            name: body.name,
+impl ApiAuth {
+    /// Crea una cuenta: un email sin otra cuenta y una contraseña de al menos 12 caracteres
+    #[oai(path = "/auth/registro", method = "post", tag = "ApiTags::Auth")]
+    async fn registrar(&self, cuerpo: Json<PeticionRegistro>) -> RespuestaRegistro {
+        let Json(cuerpo) = cuerpo;
+        let params = ParamsRegistrarUsuario {
+            email: cuerpo.email,
+            contrasena: cuerpo.contrasena,
+            nombre: cuerpo.nombre,
         };
-        match self.register_user.execute(params).await {
-            Ok(user) => RegisterResponse::Created(Json(me(&user))),
+        match self.registrar_usuario.ejecutar(params).await {
+            Ok(usuario) => RespuestaRegistro::Creado(Json(me(&usuario))),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
-                RegisterResponse::from_status(status, error)
+                RespuestaRegistro::from_status(status, error)
             }
         }
     }
 
-    /// Opens a session. An unknown email and a wrong password get the same 401
+    /// Abre una sesión. Un email desconocido y una contraseña equivocada reciben el mismo 401
     #[oai(path = "/auth/login", method = "post", tag = "ApiTags::Auth")]
-    async fn login(&self, body: Json<LoginRequest>) -> LoginResponse {
-        let Json(body) = body;
-        let params = LoginParams {
-            email: body.email,
-            password: body.password,
+    async fn login(&self, cuerpo: Json<PeticionLogin>) -> RespuestaLogin {
+        let Json(cuerpo) = cuerpo;
+        let params = ParamsLogin {
+            email: cuerpo.email,
+            contrasena: cuerpo.contrasena,
         };
-        match self.login.execute(params).await {
-            Ok(session) => LoginResponse::Ok(Json(SessionDto::from_session(session))),
+        match self.login.ejecutar(params).await {
+            Ok(sesion) => RespuestaLogin::Ok(Json(DtoSesion::from_sesion(sesion))),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
-                LoginResponse::from_status(status, error)
+                RespuestaLogin::from_status(status, error)
             }
         }
     }
 
-    /// Revokes the session this request is signed with
+    /// Revoca la sesión con la que va firmada esta petición
     #[oai(path = "/auth/logout", method = "post", tag = "ApiTags::Auth")]
-    async fn logout(&self, _auth: BearerAuth, request: &Request) -> LogoutResponse {
-        // `BearerAuth` accepted the token, so the request has one.
+    async fn logout(&self, _auth: BearerAuth, request: &Request) -> RespuestaLogout {
+        // `BearerAuth` aceptó el token, así que la petición lleva uno.
         let token = bearer_token(request).unwrap_or_default().to_string();
-        match self.logout.execute(LogoutParams { token }).await {
-            Ok(()) => LogoutResponse::NoContent,
+        match self.logout.ejecutar(ParamsLogout { token }).await {
+            Ok(()) => RespuestaLogout::SinContenido,
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
-                LogoutResponse::from_status(status, error)
+                RespuestaLogout::from_status(status, error)
             }
         }
     }
@@ -93,10 +93,10 @@ impl AuthApi {
 
 #[cfg(test)]
 mod tests {
-    use dominio_usuario::errores::UserError;
+    use dominio_usuario::errores::ErrorUsuario;
     use aplicacion_usuario::{
-        login::mocks::MockLoginUseCase, logout::mocks::MockLogoutUseCase,
-        register_user::mocks::MockRegisterUserUseCase,
+        login::dobles::MockLogin, logout::dobles::MockLogout,
+        registrar_usuario::dobles::MockRegistrarUsuario,
     };
     use chrono::Utc;
     use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
@@ -109,43 +109,43 @@ mod tests {
 
     use super::*;
 
-    /// One use case programmed, the others never called; the token `ada` is a live session.
-    fn client(
-        register_user: MockRegisterUserUseCase,
-        login: MockLoginUseCase,
-        logout: MockLogoutUseCase,
+    /// Un caso de uso programado y los demás sin llamar; el token `ada` es una sesión viva.
+    fn cliente(
+        registrar_usuario: MockRegistrarUsuario,
+        login: MockLogin,
+        logout: MockLogout,
     ) -> TestClient<impl poem::Endpoint> {
-        let mut authenticator = MockAutenticador::new();
-        authenticator
+        let mut autenticador = MockAutenticador::new();
+        autenticador
             .expect_autenticar()
             .returning(|token| match token {
                 "ada" => Ok(Principal::new(Uuid::new_v4(), "ada@example.com")),
                 _ => Err(ErrorAuth::Invalido),
             });
-        let authenticator: Arc<dyn Autenticador> = Arc::new(authenticator);
-        let api = AuthApi {
-            register_user: Arc::new(register_user),
+        let autenticador: Arc<dyn Autenticador> = Arc::new(autenticador);
+        let api = ApiAuth {
+            registrar_usuario: Arc::new(registrar_usuario),
             login: Arc::new(login),
             logout: Arc::new(logout),
         };
         TestClient::new(
             Route::new()
                 .nest("/", OpenApiService::new(api, "test", "1.0"))
-                .data(authenticator),
+                .data(autenticador),
         )
     }
 
-    /// The body of a registration or a login: as a map, because the DTOs' `to_json` leaves the
-    /// `write_only` password out.
-    fn credentials(password: &str) -> BTreeMap<&'static str, String> {
+    /// El cuerpo de un registro o de un login: como mapa, porque el `to_json` de los DTO deja fuera
+    /// la contraseña `write_only`.
+    fn credenciales(contrasena: &str) -> BTreeMap<&'static str, String> {
         BTreeMap::from([
             ("email", "ada@example.com".to_string()),
-            ("password", password.to_string()),
+            ("contrasena", contrasena.to_string()),
         ])
     }
 
-    async fn assert_code(response: poem::test::TestResponse, code: &str) {
-        response
+    async fn comprobar_codigo(respuesta: poem::test::TestResponse, code: &str) {
+        respuesta
             .json()
             .await
             .value()
@@ -155,149 +155,149 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_answer_201_with_the_account_when_registered() {
-        // Arrange
-        let mut register_user = MockRegisterUserUseCase::new();
-        register_user
-            .expect_execute()
-            .returning(|params| Ok(User::register(&params.email, params.name).expect("valid")));
-        let client = client(register_user, MockLoginUseCase::new(), MockLogoutUseCase::new());
+    async fn deberia_responder_201_con_la_cuenta_cuando_se_registra() {
+        // Preparar
+        let mut registrar_usuario = MockRegistrarUsuario::new();
+        registrar_usuario
+            .expect_ejecutar()
+            .returning(|params| Ok(Usuario::registrar(&params.email, params.nombre).expect("cuenta válida")));
+        let cliente = cliente(registrar_usuario, MockLogin::new(), MockLogout::new());
 
-        // Act
-        let response = client
-            .post("/auth/register")
-            .body_json(&credentials("correct horse battery"))
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/registro")
+            .body_json(&credenciales("correct horse battery"))
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::CREATED);
-        let json = response.json().await;
-        let account = json.value().object();
-        account.get("email").assert_string("ada@example.com");
-        assert!(account.get_opt("password").is_none());
+        // Comprobar
+        respuesta.assert_status(StatusCode::CREATED);
+        let json = respuesta.json().await;
+        let cuenta = json.value().object();
+        cuenta.get("email").assert_string("ada@example.com");
+        assert!(cuenta.get_opt("contrasena").is_none());
     }
 
     #[tokio::test]
-    async fn should_answer_409_when_the_email_is_taken() {
-        // Arrange
-        let mut register_user = MockRegisterUserUseCase::new();
-        register_user
-            .expect_execute()
-            .returning(|_| Err(UserError::Duplicate));
-        let client = client(register_user, MockLoginUseCase::new(), MockLogoutUseCase::new());
+    async fn deberia_responder_409_cuando_el_email_esta_ocupado() {
+        // Preparar
+        let mut registrar_usuario = MockRegistrarUsuario::new();
+        registrar_usuario
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorUsuario::Duplicado));
+        let cliente = cliente(registrar_usuario, MockLogin::new(), MockLogout::new());
 
-        // Act
-        let response = client
-            .post("/auth/register")
-            .body_json(&credentials("correct horse battery"))
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/registro")
+            .body_json(&credenciales("correct horse battery"))
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::CONFLICT);
-        assert_code(response, "user.duplicate").await;
+        // Comprobar
+        respuesta.assert_status(StatusCode::CONFLICT);
+        comprobar_codigo(respuesta, "usuario.duplicado").await;
     }
 
     #[tokio::test]
-    async fn should_answer_422_when_the_password_is_too_short() {
-        // Arrange
-        let mut register_user = MockRegisterUserUseCase::new();
-        register_user
-            .expect_execute()
-            .returning(|_| Err(UserError::ValidationError("password_too_short".into())));
-        let client = client(register_user, MockLoginUseCase::new(), MockLogoutUseCase::new());
+    async fn deberia_responder_422_cuando_la_contrasena_es_demasiado_corta() {
+        // Preparar
+        let mut registrar_usuario = MockRegistrarUsuario::new();
+        registrar_usuario
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorUsuario::Validacion("contrasena_demasiado_corta".into())));
+        let cliente = cliente(registrar_usuario, MockLogin::new(), MockLogout::new());
 
-        // Act
-        let response = client
-            .post("/auth/register")
-            .body_json(&credentials("short"))
+        // Actuar
+        let respuesta = cliente
+            .post("/auth/registro")
+            .body_json(&credenciales("short"))
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
-        assert_code(response, "user.validation_error.password_too_short").await;
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        comprobar_codigo(respuesta, "usuario.validacion.contrasena_demasiado_corta").await;
     }
 
     #[tokio::test]
-    async fn should_answer_the_session_when_the_password_matches() {
-        // Arrange
-        let mut login = MockLoginUseCase::new();
+    async fn deberia_responder_con_la_sesion_cuando_la_contrasena_coincide() {
+        // Preparar
+        let mut login = MockLogin::new();
         login
-            .expect_execute()
+            .expect_ejecutar()
             .returning(|_| Ok(Sesion::new("opaque", Utc::now())));
-        let client = client(MockRegisterUserUseCase::new(), login, MockLogoutUseCase::new());
+        let cliente = cliente(MockRegistrarUsuario::new(), login, MockLogout::new());
 
-        // Act
-        let response = client
+        // Actuar
+        let respuesta = cliente
             .post("/auth/login")
-            .body_json(&credentials("correct horse battery"))
+            .body_json(&credenciales("correct horse battery"))
             .send()
             .await;
 
-        // Assert
-        response.assert_status_is_ok();
-        let json = response.json().await;
-        let session = json.value().object();
-        session.get("token").assert_string("opaque");
-        assert!(!session.get("expiresAt").string().is_empty());
+        // Comprobar
+        respuesta.assert_status_is_ok();
+        let json = respuesta.json().await;
+        let sesion = json.value().object();
+        sesion.get("token").assert_string("opaque");
+        assert!(!sesion.get("expiraEn").string().is_empty());
     }
 
     #[tokio::test]
-    async fn should_answer_401_invalid_credentials_when_the_login_is_refused() {
-        // Arrange
-        let mut login = MockLoginUseCase::new();
+    async fn deberia_responder_401_credenciales_invalidas_cuando_se_rechaza_el_login() {
+        // Preparar
+        let mut login = MockLogin::new();
         login
-            .expect_execute()
-            .returning(|_| Err(UserError::InvalidCredentials));
-        let client = client(MockRegisterUserUseCase::new(), login, MockLogoutUseCase::new());
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorUsuario::CredencialesInvalidas));
+        let cliente = cliente(MockRegistrarUsuario::new(), login, MockLogout::new());
 
-        // Act
-        let response = client
+        // Actuar
+        let respuesta = cliente
             .post("/auth/login")
-            .body_json(&credentials("wrong password!"))
+            .body_json(&credenciales("wrong password!"))
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
-        assert_code(response, "auth.invalid_credentials").await;
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
+        comprobar_codigo(respuesta, "auth.credenciales_invalidas").await;
     }
 
     #[tokio::test]
-    async fn should_revoke_the_token_the_request_is_signed_with() {
-        // Arrange
-        let mut logout = MockLogoutUseCase::new();
+    async fn deberia_revocar_el_token_con_el_que_va_firmada_la_peticion() {
+        // Preparar
+        let mut logout = MockLogout::new();
         logout
-            .expect_execute()
+            .expect_ejecutar()
             .withf(|params| params.token == "ada")
             .times(1)
             .returning(|_| Ok(()));
-        let client = client(MockRegisterUserUseCase::new(), MockLoginUseCase::new(), logout);
+        let cliente = cliente(MockRegistrarUsuario::new(), MockLogin::new(), logout);
 
-        // Act
-        let response = client
+        // Actuar
+        let respuesta = cliente
             .post("/auth/logout")
             .header("Authorization", "Bearer ada")
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::NO_CONTENT);
+        // Comprobar
+        respuesta.assert_status(StatusCode::NO_CONTENT);
     }
 
     #[tokio::test]
-    async fn should_answer_401_to_a_logout_without_a_session() {
-        // Arrange
-        let mut logout = MockLogoutUseCase::new();
-        logout.expect_execute().never();
-        let client = client(MockRegisterUserUseCase::new(), MockLoginUseCase::new(), logout);
+    async fn deberia_responder_401_a_un_logout_sin_sesion() {
+        // Preparar
+        let mut logout = MockLogout::new();
+        logout.expect_ejecutar().never();
+        let cliente = cliente(MockRegistrarUsuario::new(), MockLogin::new(), logout);
 
-        // Act
-        let response = client.post("/auth/logout").send().await;
+        // Actuar
+        let respuesta = cliente.post("/auth/logout").send().await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
     }
 }

@@ -69,7 +69,7 @@ pub fn run_use_case(
     );
     println!("  puerto.toml updated + bootstrap.rs regenerated.");
     println!(
-        "  {pascal}Api now holds `{uc}` — call it from an endpoint in {}.",
+        "  Api{pascal} now holds `{uc}` — call it from an endpoint in {}.",
         layout::rest_file(&snake, "rutas")
     );
 

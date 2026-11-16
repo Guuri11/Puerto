@@ -16,7 +16,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
-{% if auth %}# The tests' callers: `MadrePrincipal`, and the routes' `MockAutenticador`.
+{% if auth %}# Quien llama en los tests: `MadrePrincipal`, y el `MockAutenticador` de las rutas.
 puerto-nucleo = { workspace = true, features = ["pruebas"] }
 {% endif %}aplicacion_{{ c }} = { workspace = true, features = ["pruebas"] }
 dominio_{{ c }} = { workspace = true, features = ["pruebas"] }

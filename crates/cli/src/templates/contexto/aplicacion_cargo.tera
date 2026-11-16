@@ -15,11 +15,12 @@ chrono = { workspace = true }
 mockall = { workspace = true, optional = true }
 
 [features]
-# The use cases' doubles (`mock!`), for the tests of other crates (ADR-0023 § 5 of Puerto).
+# Los dobles de los casos de uso (`mock!`), para los tests de otros crates (ADR-0023 § 5 de
+# Puerto).
 pruebas = ["dep:mockall", "dominio_{{ c }}/pruebas"]
 
 [dev-dependencies]
-{% if auth %}# The tests' callers: `MadrePrincipal`, and the routes' `MockAutenticador`.
+{% if auth %}# Quien llama en los tests: `MadrePrincipal`, y el `MockAutenticador` de las rutas.
 puerto-nucleo = { workspace = true, features = ["pruebas"] }
 {% endif %}dominio_{{ c }} = { workspace = true, features = ["pruebas"] }
 mockall = { workspace = true }

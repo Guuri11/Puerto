@@ -27,7 +27,7 @@ use crate::puerto_toml::Field;
 pub fn effective_fields(fields: &[Field]) -> Vec<Field> {
     if fields.is_empty() {
         vec![Field {
-            name: "name".into(),
+            name: "nombre".into(),
             field_type: "String".into(),
             unique: false,
             value_object: None,

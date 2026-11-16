@@ -127,7 +127,7 @@ pub fn generate_value_objects(
         return Ok(String::new());
     }
 
-    let mut imports = vec![format!("crate::errores::{pascal}Error")];
+    let mut imports = vec![format!("crate::errores::Error{pascal}")];
     for f in vo_fields.iter().filter(|f| !is_enum_vo(f)) {
         let Some(import) = resolve_type(&vo_inner_type(f))
             .ok()
@@ -275,8 +275,8 @@ pub fn write_shared_vo_files(
 }
 
 /// The doc comment of `nucleo/src/lib.rs` (the template's).
-pub const NUCLEO_HEADER: &str = "//! What every context shares: the value objects declared with `puerto generar objeto-valor`\n\
-     //! (ADR-0023 of Puerto). No I/O, no dependency on any context.\n";
+pub const NUCLEO_HEADER: &str = "//! Lo que comparten todos los contextos: los objetos valor declarados con\n\
+     //! `puerto generar objeto-valor` (ADR-0023 de Puerto). Sin E/S y sin depender de ningún contexto.\n";
 
 /// The context's domain crate: model, errors, value objects, repository port, events and unit of
 /// work (`events` projects), the Object Mother, then its `Cargo.toml` and `lib.rs`.
@@ -415,11 +415,11 @@ pub fn run_generate_domain(
 
     let dir = layout::crate_dir(&snake, Layer::Domain);
     if has_local_vo {
-        println!("✓ {dir}/ — model, errors, value objects, repository port, {pascal}Mother");
+        println!("✓ {dir}/ — model, errors, value objects, repository port, Madre{pascal}");
     } else if has_vo {
-        println!("✓ {dir}/ — model, errors (shared VOs), repository port, {pascal}Mother");
+        println!("✓ {dir}/ — model, errors (shared VOs), repository port, Madre{pascal}");
     } else {
-        println!("✓ {dir}/ — model, errors, repository port, {pascal}Mother");
+        println!("✓ {dir}/ — model, errors, repository port, Madre{pascal}");
     }
     if !shared_vos.is_empty() {
         println!("✓ {}/ — shared value objects + errors", layout::NUCLEO_DIR);

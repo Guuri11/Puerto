@@ -64,14 +64,14 @@ describe("{{ pascal }}ListContainer", () => {
     // Arrange
     const {{ camel }}Repository = {
       ...fake{{ pascal }}Repository(),
-      list: () => Promise.reject(new {{ pascal }}Error("{{ snake }}.repository_error")),
+      list: () => Promise.reject(new {{ pascal }}Error("{{ snake }}.repositorio")),
     };
 
     // Act
     renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
 
     // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.repository_error");
+    expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.repositorio");
   });
 {%- if access.create_roles %}
 

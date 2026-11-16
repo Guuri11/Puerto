@@ -2,68 +2,69 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use dominio_{{ snake }}::{
-    eventos::{{ pascal }}Event,
+    eventos::Evento{{ pascal }},
     modelo::{{ pascal }},
-    unit_of_work::{{ "{" }}{{ pascal }}UnitOfWork, {{ pascal }}UnitOfWorkFactory},
+    unit_of_work::{{ "{" }}UnitOfWork{{ pascal }}, UnitOfWorkFactory{{ pascal }}},
 };
 use puerto_nucleo::ErrorRepositorio;
 use puerto_sqlx::uow::TransaccionPostgres;
 {% if references %}use puerto_sqlx::{ClaveForanea, mapear_error_sqlx_con};
 {% else %}use puerto_sqlx::mapear_error_sqlx;
 {% endif %}
-use crate::fila::{{ pascal }}Db;
+use crate::fila::Fila{{ pascal }};
 
-/// Opens a Postgres transaction per write: the {{ snake }} row and its outbox event commit together.
-pub struct Pg{{ pascal }}UnitOfWorkFactory {
+/// Abre una transacción de Postgres por escritura: la fila de {{ snake }} y su evento del outbox
+/// hacen commit juntos.
+pub struct UnitOfWorkFactory{{ pascal }}Postgres {
     pub pool: PgPool,
 }
 
-impl Pg{{ pascal }}UnitOfWorkFactory {
+impl UnitOfWorkFactory{{ pascal }}Postgres {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 }
 {% if references %}{% include "infrastructure/references.tera" %}{% endif %}
 #[async_trait]
-impl {{ pascal }}UnitOfWorkFactory for Pg{{ pascal }}UnitOfWorkFactory {
-    async fn begin(&self) -> Result<Box<dyn {{ pascal }}UnitOfWork>, ErrorRepositorio> {
+impl UnitOfWorkFactory{{ pascal }} for UnitOfWorkFactory{{ pascal }}Postgres {
+    async fn begin(&self) -> Result<Box<dyn UnitOfWork{{ pascal }}>, ErrorRepositorio> {
         let tx = TransaccionPostgres::begin(&self.pool).await?;
-        Ok(Box::new(Pg{{ pascal }}UnitOfWork { tx }))
+        Ok(Box::new(UnitOfWork{{ pascal }}Postgres { tx }))
     }
 }
 
-struct Pg{{ pascal }}UnitOfWork {
+struct UnitOfWork{{ pascal }}Postgres {
     tx: TransaccionPostgres,
 }
 
 #[async_trait]
-impl {{ pascal }}UnitOfWork for Pg{{ pascal }}UnitOfWork {
-    async fn save(&mut self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
-        tracing::debug!(id = %entity.id, "save");
-        let db = {{ pascal }}Db::from(entity);
+impl UnitOfWork{{ pascal }} for UnitOfWork{{ pascal }}Postgres {
+    async fn guardar(&mut self, entidad: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
+        tracing::debug!(id = %entidad.id, "guardar");
+        let db = Fila{{ pascal }}::from(entidad);
         sqlx::query!(
             "INSERT INTO {{ plural }} ({{ all_cols }})
              VALUES ({{ all_params }})
              ON CONFLICT (id) DO UPDATE
              SET {{ all_updates }}",
             db.id,
-            db.created_at,
-            db.updated_at,
-            db.deleted,
-            db.deleted_at,
+            db.creado_en,
+            db.actualizado_en,
+            db.borrado,
+            db.borrado_en,
 {% for f in fields %}            {% if f.is_array %}&db.{{ f.name }}{% elif f.is_map %}db.{{ f.name }} as _{% else %}db.{{ f.name }}{% endif %},
 {% endfor %}        )
         .execute(self.tx.tx())
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "save failed");
+            tracing::error!(error = %e, "guardar falló");
             {% if references %}mapear_error_sqlx_con(&e, REFERENCES){% else %}mapear_error_sqlx(&e){% endif %}
         })?;
         Ok(())
     }
 
-    async fn record(&mut self, event: {{ pascal }}Event) -> Result<(), ErrorRepositorio> {
-        self.tx.registrar(&event).await
+    async fn registrar(&mut self, evento: Evento{{ pascal }}) -> Result<(), ErrorRepositorio> {
+        self.tx.registrar(&evento).await
     }
 
     async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
@@ -74,18 +75,18 @@ impl {{ pascal }}UnitOfWork for Pg{{ pascal }}UnitOfWork {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use dominio_{{ snake }}::{eventos::{{ pascal }}Snapshot, repositorio::{{ pascal }}RepositoryTrait};
+    use dominio_{{ snake }}::{eventos::Snapshot{{ pascal }}, repositorio::Repositorio{{ pascal }}};
 
-    use crate::pruebas::siembra::build;
-    use crate::repositorio::Pg{{ pascal }}Repository;
+    use crate::pruebas::siembra::construir;
+    use crate::repositorio::Repositorio{{ pascal }}Postgres;
 {% if update_vo_import %}    use {{ update_vo_import }};
 {% endif %}{% for import in reference_imports %}    use {{ import }};
 {% endfor %}
-    /// What a create use case does: save, record, commit.
-    async fn create(pool: &PgPool, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
-        let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await?;
-        uow.save(entity).await?;
-        uow.record({{ pascal }}Event::Created({{ pascal }}Snapshot::from_entity(entity))).await?;
+    /// Lo que hace un caso de uso de creación: guardar, registrar, commit.
+    async fn crear(pool: &PgPool, entidad: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
+        let mut uow = UnitOfWorkFactory{{ pascal }}Postgres::new(pool.clone()).begin().await?;
+        uow.guardar(entidad).await?;
+        uow.registrar(Evento{{ pascal }}::Creado(Snapshot{{ pascal }}::from_entidad(entidad))).await?;
         uow.commit().await
     }
 
@@ -94,100 +95,100 @@ mod integration_tests {
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_write_the_{{ snake }}_and_its_event_when_committed(pool: PgPool) {
-        // Arrange
-        let entity = build({% if seeds_references %}&pool).await{% else %}){% endif %};
+    async fn deberia_escribir_{{ snake }}_y_su_evento_cuando_hace_commit(pool: PgPool) {
+        // Preparar
+        let entidad = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
 
-        // Act
-        create(&pool, &entity).await.unwrap();
+        // Actuar
+        crear(&pool, &entidad).await.unwrap();
 
-        // Assert
-        let found = Pg{{ pascal }}Repository::new(pool.clone()).find_by_id(entity.id).await.unwrap();
-        assert!(found.is_some());
+        // Comprobar
+        let encontrado = Repositorio{{ pascal }}Postgres::new(pool.clone()).buscar_por_id(entidad.id).await.unwrap();
+        assert!(encontrado.is_some());
         let (event_type, aggregate_id): (String, uuid::Uuid) =
             sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(event_type, "{{ snake }}_created");
-        assert_eq!(aggregate_id, entity.id.value());
+        assert_eq!(event_type, "{{ snake }}_creado");
+        assert_eq!(aggregate_id, entidad.id.valor());
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_write_nothing_when_dropped_without_commit(pool: PgPool) {
-        // Arrange
-        let entity = build({% if seeds_references %}&pool).await{% else %}){% endif %};
+    async fn no_deberia_escribir_nada_cuando_se_libera_sin_commit(pool: PgPool) {
+        // Preparar
+        let entidad = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
 
-        // Act
+        // Actuar
         {
-            let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
-            uow.save(&entity).await.unwrap();
-            uow.record({{ pascal }}Event::Created({{ pascal }}Snapshot::from_entity(&entity))).await.unwrap();
+            let mut uow = UnitOfWorkFactory{{ pascal }}Postgres::new(pool.clone()).begin().await.unwrap();
+            uow.guardar(&entidad).await.unwrap();
+            uow.registrar(Evento{{ pascal }}::Creado(Snapshot{{ pascal }}::from_entidad(&entidad))).await.unwrap();
         }
 
-        // Assert
+        // Comprobar
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 0);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_update_the_{{ snake }}_when_saved_again(pool: PgPool) {
-        // Arrange
-{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entity = build({% if seeds_references %}&pool).await{% else %}){% endif %};
-        create(&pool, &entity).await.unwrap();
-        entity.{{ f.name }} = {% if f.is_vo %}{{ f.vo }}::new("updated".to_string()).unwrap(){% else %}"updated".to_string(){% endif %};
-        entity.updated_at = chrono::Utc::now();
+    async fn deberia_actualizar_{{ snake }}_cuando_se_guarda_de_nuevo(pool: PgPool) {
+        // Preparar
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% if required or string_vos %}{% if required %}{% set f = required.0 %}{% else %}{% set f = string_vos.0 %}{% endif %}        let mut entidad = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        crear(&pool, &entidad).await.unwrap();
+        entidad.{{ f.name }} = {% if f.is_vo %}{{ f.vo }}::new("updated".to_string()).unwrap(){% else %}"updated".to_string(){% endif %};
+        entidad.actualizado_en = chrono::Utc::now();
 
-        // Act
-        let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
-        uow.save(&entity).await.unwrap();
+        // Actuar
+        let mut uow = UnitOfWorkFactory{{ pascal }}Postgres::new(pool.clone()).begin().await.unwrap();
+        uow.guardar(&entidad).await.unwrap();
         uow.commit().await.unwrap();
 
-        // Assert
-        let found = Pg{{ pascal }}Repository::new(pool).find_by_id(entity.id).await.unwrap().unwrap();
-        assert_eq!(found.{{ f.name }}{% if f.is_vo %}.value(){% endif %}, "updated");
-{% else %}        let entity = build({% if seeds_references %}&pool).await{% else %}){% endif %};
-        create(&pool, &entity).await.unwrap();
+        // Comprobar
+        let encontrado = Repositorio{{ pascal }}Postgres::new(pool).buscar_por_id(entidad.id).await.unwrap().unwrap();
+        assert_eq!(encontrado.{{ f.name }}{% if f.is_vo %}.valor(){% endif %}, "updated");
+{% else %}        let entidad = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        crear(&pool, &entidad).await.unwrap();
 
-        // Act
-        let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
-        uow.save(&entity).await.unwrap();
+        // Actuar
+        let mut uow = UnitOfWorkFactory{{ pascal }}Postgres::new(pool.clone()).begin().await.unwrap();
+        uow.guardar(&entidad).await.unwrap();
         uow.commit().await.unwrap();
 
-        // Assert
+        // Comprobar
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
 {% endif %}    }
 {% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %}{% set u = uniques.0 %}
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_write_neither_row_nor_event_when_the_{{ u.name }}_is_taken(pool: PgPool) {
-        // Arrange
-        let first = build({% if seeds_references %}&pool).await{% else %}){% endif %};
-        create(&pool, &first).await.unwrap();
-        let mut second = build({% if seeds_references %}&pool).await{% else %}){% endif %};
-        second.{{ u.name }} = first.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
+    async fn no_deberia_escribir_fila_ni_evento_cuando_{{ u.name }}_ya_esta_en_uso(pool: PgPool) {
+        // Preparar
+        let primero = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        crear(&pool, &primero).await.unwrap();
+        let mut segundo = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        segundo.{{ u.name }} = primero.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
 
-        // Act
-        let result = create(&pool, &second).await;
+        // Actuar
+        let resultado = crear(&pool, &segundo).await;
 
-        // Assert
-        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
 {% endif %}{% for r in references %}
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_reject_a_missing_{{ r.field }}(pool: PgPool) {
-        // Arrange: a {{ r.field }} no row has.
-        let mut entity = build({% if seeds_references %}&pool).await{% else %}){% endif %};
-        entity.{{ r.field }} = {% if r.optional %}Some({{ r.id }}::generate()){% else %}{{ r.id }}::generate(){% endif %};
+    async fn deberia_rechazar_{{ r.field }}_inexistente(pool: PgPool) {
+        // Preparar: un valor de {{ r.field }} que no tiene ninguna fila.
+        let mut entidad = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        entidad.{{ r.field }} = {% if r.optional %}Some({{ r.id }}::generar()){% else %}{{ r.id }}::generar(){% endif %};
 
-        // Act
-        let result = create(&pool, &entity).await;
+        // Actuar
+        let resultado = crear(&pool, &entidad).await;
 
-        // Assert
-        assert_eq!(result.unwrap_err(), ErrorRepositorio::ReferenciaInexistente("{{ r.field }}"));
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::ReferenciaInexistente("{{ r.field }}"));
         assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 {% endfor %}}

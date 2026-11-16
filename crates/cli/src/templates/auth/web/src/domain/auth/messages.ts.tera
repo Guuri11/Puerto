@@ -9,19 +9,19 @@ export interface AccountProblem {
  * place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
-  "user.validation_error.email_invalid": "This is not an email address",
-  "user.validation_error.password_too_short": "Use at least 12 characters",
-  "user.duplicate": "An account with this email already exists",
-  "auth.invalid_credentials": "Wrong email or password",
-  "user.repository_error": "The account could not be saved, try again later",
-  "user.unknown": "Something went wrong",
+  "usuario.validacion.email_invalido": "This is not an email address",
+  "usuario.validacion.contrasena_demasiado_corta": "Use at least 12 characters",
+  "usuario.duplicado": "An account with this email already exists",
+  "auth.credenciales_invalidas": "Wrong email or password",
+  "usuario.repositorio": "The account could not be saved, try again later",
+  "usuario.desconocido": "Something went wrong",
 };
 
 /** The input each field's code is about. */
 const FIELDS: Record<string, AccountProblem["field"]> = {
-  "user.validation_error.email_invalid": "email",
-  "user.validation_error.password_too_short": "password",
-  "user.duplicate": "email",
+  "usuario.validacion.email_invalido": "email",
+  "usuario.validacion.contrasena_demasiado_corta": "password",
+  "usuario.duplicado": "email",
 };
 
 export function toAccountProblem(code: string): AccountProblem {

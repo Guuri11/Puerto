@@ -149,12 +149,12 @@ pub fn run_generate_event(
     regenerate_bootstrap(base)?;
 
     println!(
-        "✓ Event '{event}' added to {pascal}: {pascal}Event::{}",
+        "✓ Event '{event}' added to {pascal}: Evento{pascal}::{}",
         event_variant(&snake, event)
     );
     println!("  {} regenerated.", layout::domain_file(&snake, "eventos"));
     println!(
-        "  Record it from a use case: uow.record({pascal}Event::{}({pascal}Snapshot::from_entity(&entity)))",
+        "  Record it from a use case: uow.registrar(Evento{pascal}::{}(Snapshot{pascal}::from_entidad(&entidad)))",
         event_variant(&snake, event)
     );
     Ok(())

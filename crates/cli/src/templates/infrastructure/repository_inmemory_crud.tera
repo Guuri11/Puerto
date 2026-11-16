@@ -3,81 +3,81 @@ use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 {% set refs = fields | filter(attribute="is_ref", value=true) %}use async_trait::async_trait;
 use dominio_{{ snake }}::{
-    modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id},
-    repositorio::{% if refs %}{{ "{" }}{{ pascal }}Filter, {{ pascal }}RepositoryTrait}{% else %}{{ pascal }}RepositoryTrait{% endif %},
+    modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}},
+    repositorio::{% if refs %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
 };
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
-/// Keeps the {{ plural }} it is given in process memory: they are lost when the process stops.
-/// Like the Postgres adapter, it hides deleted rows and lists newest first{% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %};
-/// a unique value another live row holds is `Duplicate`{% endif %}.
-/// It stands in until there is a database (`puerto nuevo --db` generates Postgres repositories).
+/// Guarda {{ plural }} en la memoria del proceso: se pierden cuando el proceso se para.
+/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes{% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %};
+/// un valor único que ya tiene otra fila viva es `Duplicado`{% endif %}.
+/// Cubre el hueco hasta que haya base de datos (`puerto nuevo --db` genera repositorios Postgres).
 #[derive(Default)]
-pub struct InMemory{{ pascal }}Repository {
-    rows: RwLock<HashMap<{{ pascal }}Id, {{ pascal }}>>,
+pub struct Repositorio{{ pascal }}EnMemoria {
+    filas: RwLock<HashMap<Id{{ pascal }}, {{ pascal }}>>,
 }
 
-impl InMemory{{ pascal }}Repository {
+impl Repositorio{{ pascal }}EnMemoria {
     pub fn new() -> Self {
         Self::default()
     }
 
-    // A poisoned lock means a writer panicked; every write is a single insert, so the map is
-    // still whole and is used as it is.
-    fn read(&self) -> RwLockReadGuard<'_, HashMap<{{ pascal }}Id, {{ pascal }}>> {
-        self.rows.read().unwrap_or_else(PoisonError::into_inner)
+    // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
+    // insert, así que el mapa sigue entero y se usa tal cual.
+    fn read(&self) -> RwLockReadGuard<'_, HashMap<Id{{ pascal }}, {{ pascal }}>> {
+        self.filas.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, HashMap<{{ pascal }}Id, {{ pascal }}>> {
-        self.rows.write().unwrap_or_else(PoisonError::into_inner)
+    fn write(&self) -> RwLockWriteGuard<'_, HashMap<Id{{ pascal }}, {{ pascal }}>> {
+        self.filas.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 #[async_trait]
-impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
-    async fn find_all(&self, page: PeticionPagina{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
-        tracing::debug!(limit = page.limite(), offset = page.desplazamiento(), "find_all");
-        let rows = self.read();
-        let mut live: Vec<&{{ pascal }}> = rows
+impl Repositorio{{ pascal }} for Repositorio{{ pascal }}EnMemoria {
+    async fn buscar_todos(&self, pagina: PeticionPagina{% if refs %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
+        tracing::debug!(limite = pagina.limite(), desplazamiento = pagina.desplazamiento(), "buscar_todos");
+        let filas = self.read();
+        let mut vivos: Vec<&{{ pascal }}> = filas
             .values()
-            .filter(|row| !row.deleted)
-{% for r in refs %}            .filter(|row| filter.{{ r.name }}.is_none_or(|id| row.{{ r.name }} == {% if r.field_type is starting_with("Option<") %}Some(id){% else %}id{% endif %}))
+            .filter(|fila| !fila.borrado)
+{% for r in refs %}            .filter(|fila| filtro.{{ r.name }}.is_none_or(|id| fila.{{ r.name }} == {% if r.field_type is starting_with("Option<") %}Some(id){% else %}id{% endif %}))
 {% endfor %}            .collect();
-        live.sort_by(|a, b| {
-            b.created_at
-                .cmp(&a.created_at)
-                .then_with(|| a.id.value().cmp(&b.id.value()))
+        vivos.sort_by(|a, b| {
+            b.creado_en
+                .cmp(&a.creado_en)
+                .then_with(|| a.id.valor().cmp(&b.id.valor()))
         });
-        let total = live.len() as u64;
-        let items = live
+        let total = vivos.len() as u64;
+        let elementos = vivos
             .into_iter()
-            .skip(page.desplazamiento() as usize)
-            .take(page.limite() as usize)
+            .skip(pagina.desplazamiento() as usize)
+            .take(pagina.limite() as usize)
             .cloned()
             .collect();
-        Ok(Pagina::new(items, total, page))
+        Ok(Pagina::new(elementos, total, pagina))
     }
 
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
-        tracing::debug!(%id, "find_by_id");
-        Ok(self.read().get(&id).filter(|row| !row.deleted).cloned())
+    async fn buscar_por_id(&self, id: Id{{ pascal }}) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
+        tracing::debug!(%id, "buscar_por_id");
+        Ok(self.read().get(&id).filter(|fila| !fila.borrado).cloned())
     }
 
-    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
-        tracing::debug!(id = %entity.id, "save");
-        let mut rows = self.write();
-{% if uniques %}        // Like the partial unique indexes: only live rows hold their values.
-        let taken = !entity.deleted
-            && rows.values().any(|row| {
-                row.id != entity.id
-                    && !row.deleted
-                    && {% if uniques | length > 1 %}({% endif %}{% for u in uniques %}{% if not loop.first %} || {% endif %}row.{{ u.name }} == entity.{{ u.name }}{% endfor %}{% if uniques | length > 1 %}){% endif %}
+    async fn guardar(&self, entidad: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
+        tracing::debug!(id = %entidad.id, "guardar");
+        let mut filas = self.write();
+{% if uniques %}        // Como los índices únicos parciales: solo las filas vivas ocupan sus valores.
+        let ocupado = !entidad.borrado
+            && filas.values().any(|fila| {
+                fila.id != entidad.id
+                    && !fila.borrado
+                    && {% if uniques | length > 1 %}({% endif %}{% for u in uniques %}{% if not loop.first %} || {% endif %}fila.{{ u.name }} == entidad.{{ u.name }}{% endfor %}{% if uniques | length > 1 %}){% endif %}
             });
-        if taken {
-            tracing::warn!(id = %entity.id, "save rejected: a unique value is taken");
+        if ocupado {
+            tracing::warn!(id = %entidad.id, "guardar rechazado: un valor único ya está ocupado");
             return Err(ErrorRepositorio::Duplicado);
         }
-{% endif %}        rows.insert(entity.id, entity.clone());
+{% endif %}        filas.insert(entidad.id, entidad.clone());
         Ok(())
     }
 }
@@ -85,121 +85,121 @@ impl {{ pascal }}RepositoryTrait for InMemory{{ pascal }}Repository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_{{ snake }}::modelo::{{ pascal }}Props;
+    use dominio_{{ snake }}::modelo::Props{{ pascal }};
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
     fn new_{{ snake }}() -> {{ pascal }} {
-        {{ pascal }}::new({{ pascal }}Props {
+        {{ pascal }}::new(Props{{ pascal }} {
 {% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
 {% endfor %}        })
         .unwrap()
     }
 
     #[tokio::test]
-    async fn should_find_a_saved_{{ snake }}_by_id() {
-        // Arrange
-        let repo = InMemory{{ pascal }}Repository::new();
-        let entity = new_{{ snake }}();
-        repo.save(&entity).await.unwrap();
+    async fn deberia_encontrar_{{ snake }}_por_id_tras_guardar() {
+        // Preparar
+        let repositorio = Repositorio{{ pascal }}EnMemoria::new();
+        let entidad = new_{{ snake }}();
+        repositorio.guardar(&entidad).await.unwrap();
 
-        // Act
-        let found = repo.find_by_id(entity.id).await.unwrap();
+        // Actuar
+        let encontrado = repositorio.buscar_por_id(entidad.id).await.unwrap();
 
-        // Assert
-        assert_eq!(found.map(|row| row.id), Some(entity.id));
+        // Comprobar
+        assert_eq!(encontrado.map(|fila| fila.id), Some(entidad.id));
     }
 
     #[tokio::test]
-    async fn should_update_the_row_when_saved_again() {
-        // Arrange
-        let repo = InMemory{{ pascal }}Repository::new();
-        let mut entity = new_{{ snake }}();
-        repo.save(&entity).await.unwrap();
-        entity.updated_at = chrono::Utc::now();
+    async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
+        // Preparar
+        let repositorio = Repositorio{{ pascal }}EnMemoria::new();
+        let mut entidad = new_{{ snake }}();
+        repositorio.guardar(&entidad).await.unwrap();
+        entidad.actualizado_en = chrono::Utc::now();
 
-        // Act
-        repo.save(&entity).await.unwrap();
+        // Actuar
+        repositorio.guardar(&entidad).await.unwrap();
 
-        // Assert
-        let page = repo.find_all(PeticionPagina::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
-        assert_eq!(page.total, 1);
-        assert_eq!(page.elementos[0].updated_at, entity.updated_at);
+        // Comprobar
+        let pagina = repositorio.buscar_todos(PeticionPagina::default(){% if refs %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
+        assert_eq!(pagina.total, 1);
+        assert_eq!(pagina.elementos[0].actualizado_en, entidad.actualizado_en);
     }
 
     #[tokio::test]
-    async fn should_not_find_a_deleted_{{ snake }}() {
-        // Arrange
-        let repo = InMemory{{ pascal }}Repository::new();
-        let mut entity = new_{{ snake }}();
-        entity.deleted = true;
-        entity.deleted_at = Some(entity.updated_at);
-        repo.save(&entity).await.unwrap();
+    async fn no_deberia_encontrar_{{ snake }}_tras_su_borrado() {
+        // Preparar
+        let repositorio = Repositorio{{ pascal }}EnMemoria::new();
+        let mut entidad = new_{{ snake }}();
+        entidad.borrado = true;
+        entidad.borrado_en = Some(entidad.actualizado_en);
+        repositorio.guardar(&entidad).await.unwrap();
 
-        // Act
-        let found = repo.find_by_id(entity.id).await.unwrap();
-        let page = repo.find_all(PeticionPagina::default(){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
+        // Actuar
+        let encontrado = repositorio.buscar_por_id(entidad.id).await.unwrap();
+        let pagina = repositorio.buscar_todos(PeticionPagina::default(){% if refs %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
 
-        // Assert
-        assert!(found.is_none());
-        assert_eq!(page.total, 0);
+        // Comprobar
+        assert!(encontrado.is_none());
+        assert_eq!(pagina.total, 0);
     }
 
     #[tokio::test]
-    async fn should_return_the_requested_page_of_a_larger_list() {
-        // Arrange
-        let repo = InMemory{{ pascal }}Repository::new();
+    async fn deberia_devolver_la_pagina_pedida_de_una_lista_mayor() {
+        // Preparar
+        let repositorio = Repositorio{{ pascal }}EnMemoria::new();
         for _ in 0..3 {
-            repo.save(&new_{{ snake }}()).await.unwrap();
+            repositorio.guardar(&new_{{ snake }}()).await.unwrap();
         }
 
-        // Act
-        let page = repo.find_all(PeticionPagina::new(Some(2), Some(2)){% if refs %}, {{ pascal }}Filter::default(){% endif %}).await.unwrap();
+        // Actuar
+        let pagina = repositorio.buscar_todos(PeticionPagina::new(Some(2), Some(2)){% if refs %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
 
-        // Assert
-        assert_eq!(page.elementos.len(), 1);
-        assert_eq!(page.total, 3);
-        assert_eq!((page.limite, page.desplazamiento), (2, 2));
+        // Comprobar
+        assert_eq!(pagina.elementos.len(), 1);
+        assert_eq!(pagina.total, 3);
+        assert_eq!((pagina.limite, pagina.desplazamiento), (2, 2));
     }
 {% for u in uniques %}
     #[tokio::test]
-    async fn should_reject_a_duplicate_{{ u.name }}() {
-        // Arrange
-        let repo = InMemory{{ pascal }}Repository::new();
-        let first = new_{{ snake }}();
-        repo.save(&first).await.unwrap();
-        let mut second = new_{{ snake }}();
-        second.{{ u.name }} = first.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
+    async fn deberia_rechazar_un_duplicado_de_{{ u.name }}() {
+        // Preparar
+        let repositorio = Repositorio{{ pascal }}EnMemoria::new();
+        let primero = new_{{ snake }}();
+        repositorio.guardar(&primero).await.unwrap();
+        let mut segundo = new_{{ snake }}();
+        segundo.{{ u.name }} = primero.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
 
-        // Act
-        let result = repo.save(&second).await;
+        // Actuar
+        let resultado = repositorio.guardar(&segundo).await;
 
-        // Assert
-        assert_eq!(result.unwrap_err(), ErrorRepositorio::Duplicado);
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
     }
 {% endfor %}{% for r in refs %}
     #[tokio::test]
-    async fn should_list_only_the_{{ plural }}_of_the_requested_{{ r.name }}() {
-        // Arrange: one {{ snake }} with this {{ r.name }}, one without.
-        let repo = InMemory{{ pascal }}Repository::new();
-        let {{ r.name }} = {{ r.ref_target }}Id::generate();
-        let mut wanted = new_{{ snake }}();
-        wanted.{{ r.name }} = {% if r.field_type is starting_with("Option<") %}Some({{ r.name }}){% else %}{{ r.name }}{% endif %};
-        repo.save(&wanted).await.unwrap();
-        repo.save(&new_{{ snake }}()).await.unwrap();
+    async fn deberia_listar_solo_{{ plural }}_con_ese_valor_de_{{ r.name }}() {
+        // Preparar: una entidad {{ snake }} con este valor de {{ r.name }} y otra sin él.
+        let repositorio = Repositorio{{ pascal }}EnMemoria::new();
+        let {{ r.name }} = Id{{ r.ref_target }}::generar();
+        let mut esperado = new_{{ snake }}();
+        esperado.{{ r.name }} = {% if r.field_type is starting_with("Option<") %}Some({{ r.name }}){% else %}{{ r.name }}{% endif %};
+        repositorio.guardar(&esperado).await.unwrap();
+        repositorio.guardar(&new_{{ snake }}()).await.unwrap();
 
-        // Act
-        let page = repo
-            .find_all(
+        // Actuar
+        let pagina = repositorio
+            .buscar_todos(
                 PeticionPagina::default(),
-                {{ pascal }}Filter {
+                Filtro{{ pascal }} {
 {% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some({{ r.name }}){% else %}None{% endif %},
 {% endfor %}                },
             )
             .await
             .unwrap();
 
-        // Assert
-        assert_eq!(page.elementos.iter().map(|row| row.id).collect::<Vec<_>>(), vec![wanted.id]);
-        assert_eq!(page.total, 1);
+        // Comprobar
+        assert_eq!(pagina.elementos.iter().map(|fila| fila.id).collect::<Vec<_>>(), vec![esperado.id]);
+        assert_eq!(pagina.total, 1);
     }
 {% endfor %}}

@@ -1,35 +1,36 @@
-//! The rows the Postgres tests need — a valid {{ snake }} and a stored one — for this crate's tests
-//! and for those of the contexts that reference it (ADR-0023 § 5 of Puerto).
-use dominio_{{ snake }}::modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Props};
-{% if events %}use dominio_{{ snake }}::unit_of_work::{{ pascal }}UnitOfWorkFactory;
-{% else %}use dominio_{{ snake }}::repositorio::{{ pascal }}RepositoryTrait;
+//! Las filas que necesitan los tests de Postgres —una entidad {{ snake }} válida y otra guardada—,
+//! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
+//! Puerto).
+use dominio_{{ snake }}::modelo::{{ "{" }}{{ pascal }}, Props{{ pascal }}};
+{% if events %}use dominio_{{ snake }}::unit_of_work::UnitOfWorkFactory{{ pascal }};
+{% else %}use dominio_{{ snake }}::repositorio::Repositorio{{ pascal }};
 {% endif %}use sqlx::PgPool;
 {% for import in test_imports %}use {{ import }};
 {% endfor %}
-{% if events %}use crate::unit_of_work::Pg{{ pascal }}UnitOfWorkFactory;
-{% else %}use crate::repositorio::Pg{{ pascal }}Repository;
+{% if events %}use crate::unit_of_work::UnitOfWorkFactory{{ pascal }}Postgres;
+{% else %}use crate::repositorio::Repositorio{{ pascal }}Postgres;
 {% endif %}
-/// A valid {{ snake }}, not stored{% if seeds_references %}: the rows it references are seeded first{% endif %}.
-pub {% if seeds_references %}async fn build(pool: &PgPool){% else %}fn build(){% endif %} -> {{ pascal }} {
-    {{ pascal }}::new({{ pascal }}Props {
+/// Una entidad {{ snake }} válida, sin guardar{% if seeds_references %}: antes siembra las filas que referencia{% endif %}.
+pub {% if seeds_references %}async fn construir(pool: &PgPool){% else %}fn construir(){% endif %} -> {{ pascal }} {
+    {{ pascal }}::new(Props{{ pascal }} {
 {% for f in fields %}        {{ f.name }}: {{ f.seed_literal }},
 {% endfor %}    })
     .unwrap()
 }
 {% if events %}
-/// Writes a {{ snake }} through the unit of work: the repository only reads.
-pub async fn store(pool: &PgPool, entity: &{{ pascal }}) {
-    let mut uow = Pg{{ pascal }}UnitOfWorkFactory::new(pool.clone()).begin().await.unwrap();
-    uow.save(entity).await.unwrap();
+/// Guarda la entidad a través de la unidad de trabajo: el repositorio solo lee.
+pub async fn guardar(pool: &PgPool, entidad: &{{ pascal }}) {
+    let mut uow = UnitOfWorkFactory{{ pascal }}Postgres::new(pool.clone()).begin().await.unwrap();
+    uow.guardar(entidad).await.unwrap();
     uow.commit().await.unwrap();
 }
 {% endif %}
-/// A stored {{ snake }}.
-pub async fn seed(pool: &PgPool) -> {{ pascal }} {
-    let entity = build({% if seeds_references %}pool).await{% else %}){% endif %};
-    {% if events %}store(pool, &entity).await;{% else %}Pg{{ pascal }}Repository::new(pool.clone())
-        .save(&entity)
+/// Una entidad {{ snake }} guardada.
+pub async fn sembrar(pool: &PgPool) -> {{ pascal }} {
+    let entidad = construir({% if seeds_references %}pool).await{% else %}){% endif %};
+    {% if events %}guardar(pool, &entidad).await;{% else %}Repositorio{{ pascal }}Postgres::new(pool.clone())
+        .guardar(&entidad)
         .await
         .unwrap();{% endif %}
-    entity
+    entidad
 }

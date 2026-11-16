@@ -2,36 +2,37 @@ use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum {{ pascal }}Error {
-    #[error("{{ snake }}.validation_error.{0}")]
-    ValidationError(String),
-    #[error("{{ snake }}.not_found")]
-    NotFound,
-    #[error("{{ snake }}.duplicate")]
-    Duplicate,
-    #[error("{{ snake }}.repository_error")]
-    RepositoryError,
-    #[error("{{ snake }}.unknown")]
-    Unknown,
-{% if auth %}    /// The caller may not do this with this data: a rule of the use case, on its `actor`.
-    #[error("{{ snake }}.forbidden")]
-    Forbidden,
-{% endif %}{% for f in vo_fields %}    #[error("{{ snake }}.invalid_{{ f.vo_snake }}")]
-    Invalid{{ f.vo_pascal }},
+pub enum Error{{ pascal }} {
+    #[error("{{ snake }}.validacion.{0}")]
+    Validacion(String),
+    #[error("{{ snake }}.no_encontrado")]
+    NoEncontrado,
+    #[error("{{ snake }}.duplicado")]
+    Duplicado,
+    #[error("{{ snake }}.repositorio")]
+    Repositorio,
+    #[error("{{ snake }}.desconocido")]
+    Desconocido,
+{% if auth %}    /// Quien llama no puede hacer esto con estos datos: regla del caso de uso, sobre su `actor`.
+    #[error("{{ snake }}.prohibido")]
+    Prohibido,
+{% endif %}{% for f in vo_fields %}    #[error("{{ snake }}.{{ f.vo_snake }}_invalido")]
+    {{ f.vo_pascal }}Invalido,
 {% endfor %}}
 
-impl From<ErrorRepositorio> for {{ pascal }}Error {
-    /// Every failure `puerto-nucleo` names has its arm. `ErrorRepositorio` is `#[non_exhaustive]`: one
-    /// a later version adds is the store's problem (500) until it gets a meaning here.
+impl From<ErrorRepositorio> for Error{{ pascal }} {
+    /// Cada fallo que nombra `puerto-nucleo` tiene su brazo. `ErrorRepositorio` es
+    /// `#[non_exhaustive]`: uno que añada una versión posterior es un problema del almacén (500)
+    /// hasta que tenga aquí un significado.
     fn from(err: ErrorRepositorio) -> Self {
         match err {
-            ErrorRepositorio::Duplicado => Self::Duplicate,
-{% if references %}            // A reference names a row that does not exist: the caller's input, on that field.
+            ErrorRepositorio::Duplicado => Self::Duplicado,
+{% if references %}            // Una referencia nombra una fila inexistente: la entrada de quien llama, en ese campo.
             ErrorRepositorio::ReferenciaInexistente(field) => {
-                Self::ValidationError(format!("{field}_not_found"))
+                Self::Validacion(format!("{field}_no_encontrado"))
             }
-{% endif %}            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::RepositoryError,
-            _ => Self::RepositoryError,
+{% endif %}            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
+            _ => Self::Repositorio,
         }
     }
 }
@@ -41,26 +42,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_convert_a_duplicate_into_the_entity_duplicate() {
-        let err = {{ pascal }}Error::from(ErrorRepositorio::Duplicado);
-        assert_eq!(err.to_string(), "{{ snake }}.duplicate");
+    fn deberia_convertir_un_duplicado_en_el_duplicado_de_la_entidad() {
+        let err = Error{{ pascal }}::from(ErrorRepositorio::Duplicado);
+        assert_eq!(err.to_string(), "{{ snake }}.duplicado");
     }
 
     #[test]
-    fn should_convert_invalid_data_into_a_repository_error() {
-        let err = {{ pascal }}Error::from(ErrorRepositorio::DatosInvalidos);
-        assert_eq!(err.to_string(), "{{ snake }}.repository_error");
+    fn deberia_convertir_datos_invalidos_en_un_error_de_repositorio() {
+        let err = Error{{ pascal }}::from(ErrorRepositorio::DatosInvalidos);
+        assert_eq!(err.to_string(), "{{ snake }}.repositorio");
     }
 
 {% if references %}    #[test]
-    fn should_convert_a_missing_reference_into_a_validation_error_on_its_field() {
-        let err = {{ pascal }}Error::from(ErrorRepositorio::ReferenciaInexistente("{{ first_reference }}"));
-        assert_eq!(err.to_string(), "{{ snake }}.validation_error.{{ first_reference }}_not_found");
+    fn deberia_convertir_una_referencia_inexistente_en_una_validacion_de_su_campo() {
+        let err = Error{{ pascal }}::from(ErrorRepositorio::ReferenciaInexistente("{{ first_reference }}"));
+        assert_eq!(err.to_string(), "{{ snake }}.validacion.{{ first_reference }}_no_encontrado");
     }
 
 {% endif %}    #[test]
-    fn should_convert_an_unavailable_store_into_a_repository_error() {
-        let err = {{ pascal }}Error::from(ErrorRepositorio::NoDisponible);
-        assert_eq!(err.to_string(), "{{ snake }}.repository_error");
+    fn deberia_convertir_un_almacen_no_disponible_en_un_error_de_repositorio() {
+        let err = Error{{ pascal }}::from(ErrorRepositorio::NoDisponible);
+        assert_eq!(err.to_string(), "{{ snake }}.repositorio");
     }
 }

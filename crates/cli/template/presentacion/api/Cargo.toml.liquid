@@ -8,15 +8,16 @@ name = "{{project-name}}"
 path = "src/main.rs"
 
 [dependencies]
-# The repositories and use cases of every context, built (`generado/bootstrap.rs`).
+# Los repositorios y casos de uso de cada contexto, ya construidos (`generado/bootstrap.rs`).
 cableado = { workspace = true }
-# The server, health probes, configuration and error body (`main.rs`, `generado/bootstrap.rs`).
+# El servidor, las sondas de salud, la configuración y el cuerpo de error (`main.rs`,
+# `generado/bootstrap.rs`).
 puerto-web = { workspace = true }
 poem = { workspace = true }
 poem-openapi = { workspace = true }
 tokio = { workspace = true }
-rest_greeting = { workspace = true }
+rest_saludo = { workspace = true }
 
 [dev-dependencies]
-# The spec export test builds every API from the use cases' doubles.
-aplicacion_greeting = { workspace = true, features = ["pruebas"] }
+# El test que exporta la spec construye cada API con los dobles de los casos de uso.
+aplicacion_saludo = { workspace = true, features = ["pruebas"] }

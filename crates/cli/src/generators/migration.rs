@@ -26,9 +26,9 @@ pub fn run_migration(
     let version = next_version(&migrations_dir, utc_timestamp_now())?;
     let path = migrations_dir.join(format!("{version}_{normalised}.sql"));
     let header = format!(
-        "-- Puerto migration: {normalised}\n-- Run `make sqlx/prepare` after editing this file.\n\n"
+        "-- Migración de Puerto: {normalised}\n-- Ejecuta `make sqlx/prepare` después de editar este fichero.\n\n"
     );
-    let body = content.unwrap_or("-- Add migration script here\n");
+    let body = content.unwrap_or("-- Escribe aquí la migración\n");
     fs::write(&path, format!("{header}{body}"))?;
 
     println!("✓ Migration '{normalised}' created in migraciones/");
@@ -43,7 +43,7 @@ pub fn run_migration(
     Ok(())
 }
 
-/// Writes `create_{snake}_table` unless a migration of that name already exists — a forced
+/// Writes `crear_tabla_{snake}` unless a migration of that name already exists — a forced
 /// re-scaffold or `generate repository` on a scaffolded entity wrote a second `CREATE TABLE`, and
 /// `sqlx migrate run` failed on the existing table. A changed field set is the user's migration
 /// to write: the existing one may already be applied somewhere.
@@ -52,7 +52,7 @@ pub fn run_create_table_migration(
     base: &Path,
     sql: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let name = format!("create_{snake}_table");
+    let name = format!("crear_tabla_{snake}");
     let suffix = format!("_{name}.sql");
     let existing = fs::read_dir(base.join(layout::MIGRATIONS_DIR))
         .into_iter()

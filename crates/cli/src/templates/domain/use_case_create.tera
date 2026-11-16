@@ -2,33 +2,33 @@ use async_trait::async_trait;
 {% if actor %}use puerto_nucleo::auth::Principal;
 {% endif %}{% for imp in extra_imports %}use {{ imp }};
 {% endfor %}
-use dominio_{{ snake }}::{errores::{{ pascal }}Error, modelo::{{ pascal }}};
+use dominio_{{ snake }}::{errores::Error{{ pascal }}, modelo::{{ pascal }}};
 
 #[derive(Debug, Clone)]
-pub struct Create{{ pascal }}Params {
-{% if actor %}    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
-    /// it here and answers `Forbidden`.
+pub struct ParamsCrear{{ pascal }} {
+{% if actor %}    /// Quien lo pide (ADR-0021). Una regla que depende de los datos ("solo edita el propietario")
+    /// se decide aquí, sobre él, y responde `Prohibido`.
     pub actor: Principal,
 {% endif %}{% for f in params_fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 
 #[async_trait]
-pub trait Create{{ pascal }}UseCaseTrait: Send + Sync {
-    async fn execute(&self, params: Create{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
+pub trait Crear{{ pascal }}: Send + Sync {
+    async fn ejecutar(&self, params: ParamsCrear{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}>;
 }
 
 #[cfg(any(test, feature = "pruebas"))]
-pub mod mocks {
+pub mod dobles {
     use mockall::mock;
 
     use super::*;
 
     mock! {
-        pub Create{{ pascal }}UseCase {}
+        pub Crear{{ pascal }} {}
 
         #[async_trait]
-        impl Create{{ pascal }}UseCaseTrait for Create{{ pascal }}UseCase {
-            async fn execute(&self, params: Create{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error>;
+        impl Crear{{ pascal }} for Crear{{ pascal }} {
+            async fn ejecutar(&self, params: ParamsCrear{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}>;
         }
     }
 }

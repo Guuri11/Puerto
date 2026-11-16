@@ -15,55 +15,55 @@ examine_globs = [
     "crates/cli/src/patchers/*.rs",
     "crates/cli/src/runtime.rs",
     # Runtime crates: their code ships in every generated project.
-    "crates/core/src/**/*.rs",
+    "crates/nucleo/src/**/*.rs",
     "crates/web/src/*.rs",
     "crates/sqlx/src/**/*.rs",
-    "crates/events/src/**/*.rs",
+    "crates/eventos/src/**/*.rs",
     "crates/kafka/src/**/*.rs",
-    "crates/mail/src/**/*.rs",
+    "crates/correo/src/**/*.rs",
 ]
 # The process boundary of `puerto-web`: binding a port, waiting for SIGTERM, reading the real
 # environment. A mutant there only shows when a server runs — no unit test can catch it without
-# starting one. Everything they call (`wrap`, `routes`, `Config::from_vars`) is examined.
+# starting one. Everything they call (`wrap`, `rutas`, `Config::from_variables`) is examined.
 exclude_re = [
-    "App::serve",
-    "shutdown_signal",
+    "App::servir",
+    "senal_apagado",
     "Config::from_env",
-    "init_tracing",
-    "load_dotenv",
-    # The same boundary in `puerto-events`: `Worker::run` installs tracing and waits for the
-    # signal; `run_until` (the loops, the probes, the drain) is examined.
-    "Worker::run ->",
-    "WorkerConfig::from_env",
+    "iniciar_tracing",
+    "cargar_dotenv",
+    # The same boundary in `puerto-eventos`: `Worker::ejecutar` installs tracing and waits for the
+    # signal; the loops, the probes and the drain are examined.
+    "Worker::ejecutar ->",
+    "ConfigWorker::from_env",
     # `puerto-sqlx` against a live server: a mutant of these shows only with Postgres running —
-    # `make test/db` runs that (`postgres_*` in crates/sqlx). `map_sqlx_error` is examined.
+    # `make test/db` runs that (`postgres_*` in crates/sqlx). `mapear_error_sqlx` is examined.
     "replace ping ",
-    "run_migrations",
+    "ejecutar_migraciones",
     # The unit of work, the outbox and the db transport: every query is checked by
     # `crates/sqlx/tests/events_postgres.rs` under `make test/db`. Their pure parts (routing,
     # the row → envelope conversion) are examined.
-    "PgTransaction::",
+    "TransaccionPostgres::",
     "OutboxRow::from_pg",
     "replace envelope_from_pg ",
-    "for PgOutbox>::",
-    "for PgDeadLetters>::",
+    "for OutboxPostgres>::",
+    "for DescartadosPostgres>::",
     # The sent-mail log: `crates/sqlx/tests/mail_postgres.rs` under `make test/db`.
-    "for PgSentMails>::",
-    "for PgDeliveries>::publish",
-    "for PgSubscription>::(next_batch|settle)",
+    "for CorreosEnviadosPostgres>::",
+    "for EntregasPostgres>::publicar",
+    "for SuscripcionPostgres>::(siguiente_lote|resolver)",
     # `puerto-kafka` against a live broker: `make test/kafka` (`kafka_*` in crates/kafka). The
     # envelope ↔ record mapping (`wire`), the config and the retry ledger are examined.
-    "KafkaConfig::(from_env|client|ensure_topics)",
-    "KafkaPublisher::new",
-    "for KafkaPublisher>::publish",
-    "KafkaSubscription::",
-    "for KafkaSubscription>::",
+    "ConfigKafka::(from_env|client|asegurar_topics)",
+    "PublicadorKafka::new",
+    "for PublicadorKafka>::publicar",
+    "SuscripcionKafka::",
+    "for SuscripcionKafka>::",
     "Position::of",
-    # `puerto-mail` against a live SMTP server: `make test/mail` (crates/mail/tests/mailpit.rs).
-    # Building the message and `classify` are examined; the config, the templates and
-    # `send_once` are pure.
-    "MailConfig::from_env",
-    "for SmtpMailer>::send",
+    # `puerto-correo` against a live SMTP server: `make test/mail` (crates/correo/tests/mailpit.rs).
+    # Building the message and its classification are examined; the config, the templates and
+    # `enviar_una_vez` are pure.
+    "ConfigCorreo::from_env",
+    "for EnviadorCorreoSmtp>::enviar",
 ]
 # The compile matrix is `#[ignore]`d; a mutant run uses the fast structural suite only.
 test_tool = "nextest"

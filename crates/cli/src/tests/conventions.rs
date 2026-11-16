@@ -25,10 +25,11 @@ fn scaffold_use_case_impl_logs_with_tracing() {
     let dir = temp_dir("logger_scaffold_impl");
     cleanup(&dir);
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
+    scaffold::run("Producto", &dir, false, &[], &[]).unwrap();
 
     let content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/create_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/crear_producto.rs"))
+            .unwrap();
     assert!(content.contains("tracing::info!"), "{content}");
     assert!(!content.contains("logger"), "{content}");
 
@@ -41,10 +42,11 @@ fn use_case_generator_impl_logs_with_tracing() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
-    scaffold::run_use_case("Product", "delete_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "borrar_producto", &dir).unwrap();
 
     let content =
-        fs::read_to_string(dir.join("contextos/product/aplicacion/src/delete_product.rs")).unwrap();
+        fs::read_to_string(dir.join("contextos/producto/aplicacion/src/borrar_producto.rs"))
+            .unwrap();
     assert!(content.contains("tracing::info!"), "{content}");
     assert!(!content.contains("logger"), "{content}");
 
@@ -57,15 +59,17 @@ fn scaffold_bootstrap_wires_use_cases_without_a_logger() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
-    scaffold::run("Product", &dir, false, &[], &[]).unwrap();
+    scaffold::run("Producto", &dir, false, &[], &[]).unwrap();
 
     let content = wiring(&dir);
     assert!(
-        content.contains("create_product: Arc::new(CreateProductUseCaseImpl { repository: Arc::clone(&repository) }),"),
+        content.contains(
+            "crear_producto: Arc::new(CrearProductoImpl { repositorio: Arc::clone(&repositorio) }),"
+        ),
         "{content}"
     );
     assert!(
-        content.contains("let repository: Arc<dyn ProductRepositoryTrait> = Arc::new(InMemoryProductRepository::new());"),
+        content.contains("let repositorio: Arc<dyn RepositorioProducto> = Arc::new(RepositorioProductoEnMemoria::new());"),
         "{content}"
     );
     assert!(!content.contains("logger"), "{content}");
@@ -101,8 +105,8 @@ fn project_files(base: &Path) -> Vec<(String, String)> {
     out
 }
 
-/// A generated project with the Greeting demo plus a scaffolded entity carrying a VO.
-fn project_with_product(name: &str, db: bool) -> (PathBuf, PathBuf) {
+/// A generated project with the Saludo demo plus a scaffolded entity carrying a VO.
+fn project_with_producto(name: &str, db: bool) -> (PathBuf, PathBuf) {
     let dir = temp_dir(name);
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -115,7 +119,7 @@ fn project_with_product(name: &str, db: bool) -> (PathBuf, PathBuf) {
         scaffold_test_field("title", "String"),
         puerto_toml::parse_field_arg("status:Status:enum:Active/Archived").unwrap(),
     ];
-    scaffold::run_scaffold("Product", &output, &fields, OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &fields, OverwritePolicy::Ask).unwrap();
     (dir, output)
 }
 
@@ -123,8 +127,8 @@ fn project_with_product(name: &str, db: bool) -> (PathBuf, PathBuf) {
 fn generated_project_logs_with_tracing_and_has_no_logger_port() {
     // document-api's convention: `tracing` is already a facade, so an injected `LoggerTrait` only
     // added a field to every use case and repository and a mock helper to every test module.
-    let (dir, output) = project_with_product("no_logger_port", true);
-    scaffold::run_use_case("Product", "archive_product", &output).unwrap();
+    let (dir, output) = project_with_producto("no_logger_port", true);
+    scaffold::run_use_case("Producto", "archive_producto", &output).unwrap();
 
     for (path, content) in project_files(&output) {
         if !path.ends_with(".rs") {
@@ -145,20 +149,20 @@ fn generated_project_logs_with_tracing_and_has_no_logger_port() {
     }
     assert!(
         !output
-            .join("contextos/product/dominio/src/logger.rs")
+            .join("contextos/producto/dominio/src/logger.rs")
             .exists()
     );
     assert!(
         !output
-            .join("contextos/product/infraestructura/src/logger.rs")
+            .join("contextos/producto/infraestructura/src/logger.rs")
             .exists()
     );
     let create =
-        fs::read_to_string(output.join("contextos/product/aplicacion/src/create_product.rs"))
+        fs::read_to_string(output.join("contextos/producto/aplicacion/src/crear_producto.rs"))
             .unwrap();
     assert!(create.contains("tracing::info!"), "{create}");
     let application_toml =
-        fs::read_to_string(output.join("contextos/product/aplicacion/Cargo.toml")).unwrap();
+        fs::read_to_string(output.join("contextos/producto/aplicacion/Cargo.toml")).unwrap();
     assert!(application_toml.contains("tracing"), "{application_toml}");
 
     cleanup(&dir);
@@ -188,23 +192,21 @@ fn error_mapper_names_the_code_and_maps_validation_to_422() {
         puerto_toml::parse_field_arg("status:Status:enum:Active/Archived").unwrap(),
     ];
     let ctx =
-        crate::generators::presentation::build_error_mapper_ctx("Product", "product", &fields);
+        crate::generators::presentation::build_error_mapper_ctx("Producto", "producto", &fields);
 
     let mapper = crate::generators::render::render("presentation/error_mapper.tera", &ctx).unwrap();
 
     assert!(mapper.contains("RespuestaError::from_codigo"), "{mapper}");
-    assert!(!mapper.contains("\"product_error\""), "{mapper}");
-    assert!(
-        mapper.contains("ProductError::ValidationError(_) => StatusCode::UNPROCESSABLE_ENTITY")
-    );
-    assert!(mapper.contains("ProductError::InvalidStatus => StatusCode::UNPROCESSABLE_ENTITY"));
+    assert!(!mapper.contains("\"producto_error\""), "{mapper}");
+    assert!(mapper.contains("ErrorProducto::Validacion(_) => StatusCode::UNPROCESSABLE_ENTITY"));
+    assert!(mapper.contains("ErrorProducto::StatusInvalido => StatusCode::UNPROCESSABLE_ENTITY"));
     // One test per arm, so a status can't drift unnoticed.
     for test in [
-        "should_map_validation_error_to_422_with_its_code",
-        "should_map_not_found_to_404_with_its_code",
-        "should_map_duplicate_to_409_with_its_code",
-        "should_map_repository_error_to_500_with_its_code",
-        "should_map_invalid_status_to_422_with_its_code",
+        "deberia_mapear_validacion_a_422_con_su_codigo",
+        "deberia_mapear_no_encontrado_a_404_con_su_codigo",
+        "deberia_mapear_duplicado_a_409_con_su_codigo",
+        "deberia_mapear_repositorio_a_500_con_su_codigo",
+        "deberia_mapear_status_invalido_a_422_con_su_codigo",
     ] {
         assert!(mapper.contains(test), "missing {test}:\n{mapper}");
     }
@@ -212,15 +214,13 @@ fn error_mapper_names_the_code_and_maps_validation_to_422() {
 
 #[test]
 fn responses_offer_422_and_no_longer_map_400() {
-    let ctx = crate::generators::presentation::build_simple_ctx("Product", "product");
+    let ctx = crate::generators::presentation::build_simple_ctx("Producto", "producto");
 
     let responses =
         crate::generators::render::render("presentation/responses_crud.tera", &ctx).unwrap();
 
     assert!(responses.contains("#[oai(status = 422)]"));
-    assert!(
-        responses.contains("StatusCode::UNPROCESSABLE_ENTITY => Self::UnprocessableEntity(error)")
-    );
+    assert!(responses.contains("StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error)"));
     assert!(!responses.contains("BAD_REQUEST"), "{responses}");
 }
 
@@ -230,7 +230,7 @@ fn responses_offer_422_and_no_longer_map_400() {
 
 #[test]
 fn readiness_pings_the_database_in_a_db_project() {
-    let (dir, output) = project_with_product("health_db", true);
+    let (dir, output) = project_with_producto("health_db", true);
 
     let bootstrap = wiring(&output);
     // `ping` is `puerto-sqlx`'s, which the binary names.
@@ -257,10 +257,10 @@ fn generated_project_pins_its_toolchain_and_uses_edition_2024() {
     assert!(toolchain.contains("clippy") && toolchain.contains("rustfmt"));
     for krate in [
         "nucleo",
-        "contextos/greeting/dominio",
-        "contextos/greeting/aplicacion",
-        "contextos/greeting/infraestructura",
-        "contextos/greeting/rest",
+        "contextos/saludo/dominio",
+        "contextos/saludo/aplicacion",
+        "contextos/saludo/infraestructura",
+        "contextos/saludo/rest",
         "presentacion/cableado",
         "presentacion/api",
     ] {
@@ -293,7 +293,7 @@ fn generated_agent_rules_never_describe_mod_rs_files() {
         for line in content.lines() {
             if line.contains("mod.rs") {
                 assert!(
-                    line.to_lowercase().contains("no `mod.rs`"),
+                    line.to_lowercase().contains("sin `mod.rs`"),
                     "{path} describes a mod.rs file: {line}"
                 );
             }
@@ -320,9 +320,9 @@ fn generated_project_has_a_root_entry_point_for_agents() {
     for must in [
         "puerto generar",
         "generado/bootstrap.rs",
-        "Tier 1",
+        "Nivel 1",
         "make lint",
-        "one commit",
+        "un commit",
         "contextos/AGENTS.md",
         "presentacion/AGENTS.md",
         // ADR-0017: an agent must know which code is the project's and which is the runtime's.
@@ -381,13 +381,13 @@ fn template_bootstrap_is_exactly_what_the_generator_writes() {
 
 // ── T-26: presentation holds ports, routes are tested ──────────────────────
 
-fn scaffolded_product(name: &str) -> (PathBuf, PathBuf) {
+fn scaffolded_producto(name: &str) -> (PathBuf, PathBuf) {
     let dir = temp_dir(name);
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project(name, &dir).unwrap();
     scaffold::run_scaffold(
-        "Product",
+        "Producto",
         &output,
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Ask,
@@ -398,22 +398,19 @@ fn scaffolded_product(name: &str) -> (PathBuf, PathBuf) {
 
 #[test]
 fn scaffold_routes_hold_use_case_ports_not_impls() {
-    let (dir, output) = scaffolded_product("t26_routes_ports");
+    let (dir, output) = scaffolded_producto("t26_routes_ports");
 
-    let routes = fs::read_to_string(output.join("contextos/product/rest/src/rutas.rs")).unwrap();
+    let routes = fs::read_to_string(output.join("contextos/producto/rest/src/rutas.rs")).unwrap();
     for uc in [
-        "CreateProduct",
-        "GetProduct",
-        "ListProducts",
-        "UpdateProduct",
-        "DeleteProduct",
+        "CrearProducto",
+        "ObtenerProducto",
+        "ListarProductos",
+        "ActualizarProducto",
+        "BorrarProducto",
     ] {
-        assert!(
-            routes.contains(&format!("Arc<dyn {uc}UseCaseTrait>")),
-            "{routes}"
-        );
+        assert!(routes.contains(&format!("Arc<dyn {uc}>")), "{routes}");
     }
-    assert!(!routes.contains("UseCaseImpl"), "{routes}");
+    assert!(!routes.contains("Impl"), "{routes}");
     assert!(!routes.contains("application::"), "{routes}");
 
     cleanup(&dir);
@@ -421,24 +418,24 @@ fn scaffold_routes_hold_use_case_ports_not_impls() {
 
 #[test]
 fn scaffold_use_case_traits_ship_a_mock() {
-    let (dir, output) = scaffolded_product("t26_trait_mocks");
+    let (dir, output) = scaffolded_producto("t26_trait_mocks");
 
     for (module, uc) in [
-        ("create_product", "CreateProduct"),
-        ("get_product", "GetProduct"),
-        ("list_products", "ListProducts"),
-        ("update_product", "UpdateProduct"),
-        ("delete_product", "DeleteProduct"),
+        ("crear_producto", "CrearProducto"),
+        ("obtener_producto", "ObtenerProducto"),
+        ("listar_productos", "ListarProductos"),
+        ("actualizar_producto", "ActualizarProducto"),
+        ("borrar_producto", "BorrarProducto"),
     ] {
         let src = fs::read_to_string(
-            output.join(format!("contextos/product/aplicacion/src/{module}.rs")),
+            output.join(format!("contextos/producto/aplicacion/src/{module}.rs")),
         )
         .unwrap();
         assert!(
-            src.contains("#[cfg(any(test, feature = \"pruebas\"))]\npub mod mocks {"),
+            src.contains("#[cfg(any(test, feature = \"pruebas\"))]\npub mod dobles {"),
             "{src}"
         );
-        assert!(src.contains(&format!("pub {uc}UseCase {{}}")), "{src}");
+        assert!(src.contains(&format!("pub {uc} {{}}")), "{src}");
     }
 
     cleanup(&dir);
@@ -446,14 +443,15 @@ fn scaffold_use_case_traits_ship_a_mock() {
 
 #[test]
 fn object_mothers_are_available_to_other_crates_tests() {
-    let (dir, output) = scaffolded_product("t26_mothers_feature");
+    let (dir, output) = scaffolded_producto("t26_mothers_feature");
 
-    let lib = fs::read_to_string(output.join("contextos/product/dominio/src/lib.rs")).unwrap();
+    let lib = fs::read_to_string(output.join("contextos/producto/dominio/src/lib.rs")).unwrap();
     assert!(
         lib.contains("#[cfg(any(test, feature = \"pruebas\"))]\npub mod pruebas {"),
         "{lib}"
     );
-    let manifest = fs::read_to_string(output.join("contextos/product/dominio/Cargo.toml")).unwrap();
+    let manifest =
+        fs::read_to_string(output.join("contextos/producto/dominio/Cargo.toml")).unwrap();
     assert!(
         manifest.contains("pruebas = [\"dep:mockall\"]"),
         "{manifest}"
@@ -464,9 +462,9 @@ fn object_mothers_are_available_to_other_crates_tests() {
 
 #[test]
 fn scaffold_routes_test_every_status_path_with_mocked_use_cases() {
-    let (dir, output) = scaffolded_product("t26_routes_tests");
+    let (dir, output) = scaffolded_producto("t26_routes_tests");
 
-    let routes = fs::read_to_string(output.join("contextos/product/rest/src/rutas.rs")).unwrap();
+    let routes = fs::read_to_string(output.join("contextos/producto/rest/src/rutas.rs")).unwrap();
     assert!(routes.contains("#[cfg(test)]\nmod tests {"), "{routes}");
     assert!(routes.contains("poem::test::TestClient") || routes.contains("test::TestClient"));
     for status in [
@@ -482,29 +480,26 @@ fn scaffold_routes_test_every_status_path_with_mocked_use_cases() {
             "{status}: {routes}"
         );
     }
-    assert!(routes.contains("MockCreateProductUseCase"), "{routes}");
-    assert!(routes.contains("ProductMother::random()"), "{routes}");
+    assert!(routes.contains("MockCrearProducto"), "{routes}");
+    assert!(routes.contains("MadreProducto::aleatorio()"), "{routes}");
 
     cleanup(&dir);
 }
 
 #[test]
 fn template_greeting_api_holds_a_port_and_is_tested() {
-    let dir = temp_dir("t26_greeting");
+    let dir = temp_dir("t26_saludo");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
-    let output = generate_project("t26-greeting", &dir).unwrap();
+    let output = generate_project("t26-saludo", &dir).unwrap();
 
-    let routes = fs::read_to_string(output.join("contextos/greeting/rest/src/rutas.rs")).unwrap();
-    assert!(
-        routes.contains("Arc<dyn GetGreetingUseCaseTrait>"),
-        "{routes}"
-    );
-    assert!(!routes.contains("UseCaseImpl"), "{routes}");
-    assert!(routes.contains("MockGetGreetingUseCase"), "{routes}");
-    let uc = fs::read_to_string(output.join("contextos/greeting/aplicacion/src/get_greeting.rs"))
+    let routes = fs::read_to_string(output.join("contextos/saludo/rest/src/rutas.rs")).unwrap();
+    assert!(routes.contains("Arc<dyn ObtenerSaludo>"), "{routes}");
+    assert!(!routes.contains("Impl"), "{routes}");
+    assert!(routes.contains("MockObtenerSaludo"), "{routes}");
+    let uc = fs::read_to_string(output.join("contextos/saludo/aplicacion/src/obtener_saludo.rs"))
         .unwrap();
-    assert!(uc.contains("pub GetGreetingUseCase {}"), "{uc}");
+    assert!(uc.contains("pub ObtenerSaludo {}"), "{uc}");
 
     cleanup(&dir);
 }
@@ -522,10 +517,10 @@ fn presentation_tests_get_business_test_utils_and_the_poem_test_client() {
         .nth(1)
         .expect("api has [dev-dependencies]");
     assert!(
-        dev.contains(r#"aplicacion_greeting = { workspace = true, features = ["pruebas"] }"#),
+        dev.contains(r#"aplicacion_saludo = { workspace = true, features = ["pruebas"] }"#),
         "{manifest}"
     );
-    let rest = fs::read_to_string(output.join("contextos/greeting/rest/Cargo.toml")).unwrap();
+    let rest = fs::read_to_string(output.join("contextos/saludo/rest/Cargo.toml")).unwrap();
     let rest_dev = rest.split("[dev-dependencies]").nth(1).unwrap();
     assert!(
         rest_dev.contains(r#"poem = { workspace = true, features = ["test"] }"#),
@@ -561,10 +556,10 @@ fn context_agent_rules_describe_what_a_use_case_file_holds() {
     let agents = include_str!("../../template/contextos/AGENTS.md");
     assert!(!agents.contains("exactly `Params struct` + `Trait`"));
     for must in [
-        "mocks::Mock<Action>UseCase",
+        "dobles::Mock<Accion>",
         "unit_of_work.rs",
         "eventos.rs",
-        "RecordingUnitOfWorkFactory",
+        "UnitOfWorkFactoryGrabadora",
     ] {
         assert!(agents.contains(must), "contextos/AGENTS.md misses '{must}'");
     }
@@ -577,16 +572,16 @@ fn root_agent_rules_say_how_to_work_with_puerto() {
     // an entity's fields change once its table exists.
     let agents = include_str!("../../template/AGENTS.md");
     for must in [
-        "## Working with Puerto",
+        "## Trabajar con Puerto",
         // what `generate use-case` leaves
         "todo!()",
-        "#[ignore = \"write this test\"]",
+        "#[ignore = \"escribe este test\"]",
         // generated vs yours
-        "Rewritten on every run",
-        "Written once",
+        "Se reescriben en cada ejecución",
+        "Se escriben una vez",
         "presentacion/api/src/app.rs",
         // changing an entity's fields
-        "## Changing an entity's fields",
+        "### Cambiar los campos de una entidad",
         "puerto generar migracion",
         // the checklist, per project kind
         "puerto validar",
@@ -604,19 +599,19 @@ fn root_agent_rules_document_the_field_syntax() {
     // object or an enum was one argument away.
     let agents = include_str!("../../template/AGENTS.md");
     for form in [
-        "title:String",
-        "price:i64!",
-        "summary:opt:String",
-        "tags:vec:String",
-        "published_at:DateTime",
+        "titulo:String",
+        "precio:i64!",
+        "resumen:opt:String",
+        "etiquetas:vec:String",
+        "publicado_en:DateTime",
         "meta:map",
-        "name:Name:String",
-        "middle_name:MiddleName:opt:String",
-        "label:Label:vec:String",
-        "status:Status:enum:Draft/Published",
+        "nombre:Nombre:String",
+        "segundo_nombre:SegundoNombre:opt:String",
+        "etiqueta:Etiqueta:vec:String",
+        "estado:Estado:enum:Borrador/Publicado",
         "email:Email",
-        "customer_id:ref:Customer",
-        "reviewer_id:ref:opt:Customer",
+        "cliente_id:ref:Cliente",
+        "revisor_id:ref:opt:Cliente",
     ] {
         assert!(
             agents.contains(form),

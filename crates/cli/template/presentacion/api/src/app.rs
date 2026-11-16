@@ -1,10 +1,11 @@
-//! Yours: `puerto nuevo` writes this file once and no generator touches it again.
+//! Lo escribe una vez `puerto nuevo`; desde entonces es tuyo y ningún generador vuelve a tocarlo.
 //!
-//! `generado/bootstrap.rs` hands every route — the API, the Swagger UI, the health probes — to
-//! `configure` last. Add middleware (`routes.with(…)`) or routes of your own (`routes.at(…)`) here.
+//! `generado/bootstrap.rs` entrega todas las rutas —la API, la Swagger UI, las sondas de salud— a
+//! `configurar`, lo último. Añade aquí middleware (`rutas.with(…)`) o rutas propias
+//! (`rutas.at(…)`).
 
 use poem::{Endpoint, Route};
 
-pub fn configure(routes: Route) -> impl Endpoint {
-    routes
+pub fn configurar(rutas: Route) -> impl Endpoint {
+    rutas
 }

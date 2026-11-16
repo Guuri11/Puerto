@@ -13,20 +13,20 @@ fn list_screen_reads_and_writes_its_page_in_the_url() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("walkthrough-list-page", &dir).unwrap();
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
 
     let container = read(
         &output,
-        "web/src/presentation/features/product/containers/product-list-container.tsx",
+        "web/src/presentation/features/producto/containers/producto-list-container.tsx",
     );
     assert!(container.contains("const offset = offsetFromSearch(useSearch(), PAGE_SIZE);"));
     assert!(container.contains("navigate(location + pageSearch(next, PAGE_SIZE))"));
     assert!(!container.contains("useState"));
     let test = read(
         &output,
-        "web/src/presentation/features/product/containers/product-list-container.test.tsx",
+        "web/src/presentation/features/producto/containers/producto-list-container.test.tsx",
     );
-    assert!(test.contains("const path = \"/products?page=2\";"));
+    assert!(test.contains("const path = \"/productos?page=2\";"));
 
     cleanup(&dir);
 }
@@ -47,14 +47,14 @@ nombre = "Email"
 tipo = "String"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product", "publish_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto", "publish_producto"]
 db = true
-eventos = ["product_published"]
+eventos = ["producto_published"]
 
 [[consumidor]]
-nombre = "notify_new_product"
-eventos = ["product_created", "product_published"]
+nombre = "notify_new_producto"
+eventos = ["producto_creado", "producto_published"]
 "#,
     )
     .unwrap();
@@ -62,14 +62,17 @@ eventos = ["product_created", "product_published"]
     let report = crate::commands::list::list_report(&config);
 
     assert!(report.contains("Events: db"), "{report}");
-    assert!(report.contains("    · publish_product"), "{report}");
-    assert!(report.contains("    events: product_published"), "{report}");
+    assert!(report.contains("    · publish_producto"), "{report}");
+    assert!(
+        report.contains("    events: producto_published"),
+        "{report}"
+    );
     assert!(
         report.contains("Shared value objects:\n  Email (String)"),
         "{report}"
     );
     assert!(
-        report.contains("Consumers:\n  notify_new_product ← product_created, product_published"),
+        report.contains("Consumers:\n  notify_new_producto ← producto_creado, producto_published"),
         "{report}"
     );
 }
@@ -77,7 +80,7 @@ eventos = ["product_created", "product_published"]
 #[test]
 fn list_of_a_plain_project_has_no_empty_sections() {
     let config: puerto_toml::PuertoConfig = toml::from_str(
-        "[proyecto]\nnombre = \"shop\"\n\n[[entidad]]\nnombre = \"Product\"\ncasos_de_uso = [\"create_product\"]\n",
+        "[proyecto]\nnombre = \"shop\"\n\n[[entidad]]\nnombre = \"Producto\"\ncasos_de_uso = [\"crear_producto\"]\n",
     )
     .unwrap();
 
@@ -97,15 +100,18 @@ fn generated_use_case_logs_no_payload_and_its_test_is_marked_to_write() {
     fs::create_dir_all(&dir).unwrap();
     setup_use_case_stubs(&dir);
 
-    scaffold::run_use_case("Product", "archive_product", &dir).unwrap();
+    scaffold::run_use_case("Producto", "archive_producto", &dir).unwrap();
 
-    let impl_rs = read(&dir, "contextos/product/aplicacion/src/archive_product.rs");
+    let impl_rs = read(
+        &dir,
+        "contextos/producto/aplicacion/src/archive_producto.rs",
+    );
     // The params are user data (architecture.md): the log names the use case only.
     assert!(!impl_rs.contains("?params"), "{impl_rs}");
-    assert!(impl_rs.contains("tracing::info!(\"archive_product: start\");"));
+    assert!(impl_rs.contains("tracing::info!(\"archive_producto: inicio\");"));
     // An empty test body passed: `cargo test` said the use case was tested.
     assert!(
-        impl_rs.contains("#[ignore = \"write this test\"]"),
+        impl_rs.contains("#[ignore = \"escribe este test\"]"),
         "{impl_rs}"
     );
     assert!(!impl_rs.contains("TODO: implement test body"));

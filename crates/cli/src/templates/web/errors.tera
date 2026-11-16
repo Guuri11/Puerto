@@ -1,6 +1,6 @@
 /**
  * A request about {{ a_words }} that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `{{ snake }}.not_found`, `{{ snake }}.validation_error.<field>_empty`.
+ * `{{ snake }}.no_encontrado`, `{{ snake }}.validacion.<field>_vacio`.
  */
 export class {{ pascal }}Error extends Error {
   readonly code: string;

@@ -2,23 +2,23 @@ use poem_openapi::Object;
 use puerto_nucleo::auth::Principal;
 use uuid::Uuid;
 
-/// The caller as the API resolved them: the id of their `User` row and the roles the API checks.
-/// The frontend reads this, never the provider's claims.
+/// Quien llama, según lo resuelve la API: el id de su fila `Usuario` y los roles que la API comprueba.
+/// El frontend lee esto, nunca los claims del proveedor.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct MeDto {
+pub struct DtoMe {
     pub id: Uuid,
     pub email: Option<String>,
-    pub name: Option<String>,
+    pub nombre: Option<String>,
     pub roles: Vec<String>,
 }
 
-impl MeDto {
+impl DtoMe {
     pub fn from_principal(principal: &Principal) -> Self {
         Self {
             id: principal.id_usuario,
             email: principal.email.clone(),
-            name: principal.nombre.clone(),
+            nombre: principal.nombre.clone(),
             roles: principal.roles.clone(),
         }
     }

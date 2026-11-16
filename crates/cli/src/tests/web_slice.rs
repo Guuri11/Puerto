@@ -25,12 +25,12 @@ fn read(base: &Path, path: &str) -> String {
 
 #[test]
 fn should_name_frontend_identifiers_after_the_snake_case_name() {
-    assert_eq!(snake_to_kebab("order_item"), "order-item");
-    assert_eq!(snake_to_camel("order_item"), "orderItem");
+    assert_eq!(snake_to_kebab("linea_pedido"), "linea-pedido");
+    assert_eq!(snake_to_camel("linea_pedido"), "lineaPedido");
     assert_eq!(snake_to_camel("in_stock"), "inStock");
-    assert_eq!(snake_to_camel("product"), "product");
-    assert_eq!(snake_to_words("order_items"), "order items");
-    assert_eq!(capitalize("order items"), "Order items");
+    assert_eq!(snake_to_camel("producto"), "producto");
+    assert_eq!(snake_to_words("lineas_pedido"), "lineas pedido");
+    assert_eq!(capitalize("lineas pedido"), "Lineas pedido");
     assert_eq!(capitalize(""), "");
 }
 
@@ -60,14 +60,14 @@ fn scaffold_in_a_web_project_writes_the_whole_slice_and_no_frontend_use_case() {
     let (dir, output) = web_project("web_scaffold_slice");
 
     scaffold::run_scaffold(
-        "OrderItem",
+        "LineaPedido",
         &output,
         &fields(&["title:String", "quantity:i64"]),
         OverwritePolicy::Ask,
     )
     .unwrap();
 
-    for file in web_entity_files("order_item") {
+    for file in web_entity_files("linea_pedido") {
         assert!(output.join(&file).exists(), "{} missing", file.display());
     }
     assert!(
@@ -75,8 +75,8 @@ fn scaffold_in_a_web_project_writes_the_whole_slice_and_no_frontend_use_case() {
             .join("web/src/infrastructure/http/client.ts")
             .exists()
     );
-    assert!(!output.join("web/src/application/order-item").exists());
-    assert!(!output.join("web/src/application/order_item").exists());
+    assert!(!output.join("web/src/application/linea-pedido").exists());
+    assert!(!output.join("web/src/application/linea_pedido").exists());
     cleanup(&dir);
 }
 
@@ -84,32 +84,32 @@ fn scaffold_in_a_web_project_writes_the_whole_slice_and_no_frontend_use_case() {
 fn scaffold_names_files_in_kebab_case_routes_after_the_plural_and_variables_in_camel_case() {
     let (dir, output) = web_project("web_scaffold_names");
 
-    scaffold::run_scaffold("OrderItem", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("LineaPedido", &output, &[], OverwritePolicy::Ask).unwrap();
 
     let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
     assert!(
-        routes.contains(r#"<Route path="/order_items/:id/edit">"#),
+        routes.contains(r#"<Route path="/lineas_pedido/:id/edit">"#),
         "{routes}"
     );
-    assert!(routes.contains(r#"<Route path="/order_items/new">"#));
-    assert!(routes.contains(r#"{ label: "Order items", href: "/order_items" }"#));
-    assert!(routes.contains("../../features/order-item/containers/order-item-list-container"));
+    assert!(routes.contains(r#"<Route path="/lineas_pedido/new">"#));
+    assert!(routes.contains(r#"{ label: "Lineas pedido", href: "/lineas_pedido" }"#));
+    assert!(routes.contains("../../features/linea-pedido/containers/linea-pedido-list-container"));
 
     let dependencies = read(
         &output,
         "web/src/presentation/core/generated/dependencies.ts",
     );
-    assert!(dependencies.contains("orderItemRepository: orderItemRepositoryHttp(api),"));
+    assert!(dependencies.contains("lineaPedidoRepository: lineaPedidoRepositoryHttp(api),"));
 
     let adapter = read(
         &output,
-        "web/src/infrastructure/order-item/order-item-repository-http.ts",
+        "web/src/infrastructure/linea-pedido/linea-pedido-repository-http.ts",
     );
     assert!(
-        adapter.contains(r#"api.GET("/order_items/{id}""#),
+        adapter.contains(r#"api.GET("/lineas_pedido/{id}""#),
         "{adapter}"
     );
-    assert!(adapter.contains(r#"components["schemas"]["OrderItemDto"]"#));
+    assert!(adapter.contains(r#"components["schemas"]["DtoLineaPedido"]"#));
     cleanup(&dir);
 }
 
@@ -118,7 +118,7 @@ fn scaffold_maps_every_field_to_its_type_input_and_wire_name() {
     let (dir, output) = web_project("web_scaffold_fields");
 
     scaffold::run_scaffold(
-        "Product",
+        "Producto",
         &output,
         &fields(&[
             "title:String",
@@ -132,7 +132,7 @@ fn scaffold_maps_every_field_to_its_type_input_and_wire_name() {
     )
     .unwrap();
 
-    let model = read(&output, "web/src/domain/product/model.ts");
+    let model = read(&output, "web/src/domain/producto/model.ts");
     for property in [
         "title: string;",
         "price: number;",
@@ -146,10 +146,10 @@ fn scaffold_maps_every_field_to_its_type_input_and_wire_name() {
 
     let form = read(
         &output,
-        "web/src/presentation/features/product/views/product-form-view.tsx",
+        "web/src/presentation/features/producto/views/producto-form-view.tsx",
     );
     assert!(form.contains("price: Number(values.price),"));
-    assert!(form.contains("inStock: product.inStock,"));
+    assert!(form.contains("inStock: producto.inStock,"));
     assert!(form.contains(r#"step="any""#), "an f64 takes decimals");
     assert_eq!(
         form.matches(r#"step="any""#).count(),
@@ -168,18 +168,18 @@ fn scaffold_in_a_project_without_web_writes_nothing_under_web() {
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
 
-    scaffold::run_scaffold("Product", &dir, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &dir, &[], OverwritePolicy::Ask).unwrap();
 
     assert!(!dir.join("web").exists());
     cleanup(&dir);
 }
 
 #[test]
-fn generated_files_list_every_crud_entity_and_skip_greeting() {
+fn generated_files_list_every_crud_entity_and_skip_saludo() {
     let (dir, output) = web_project("web_generated_lists");
 
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
-    scaffold::run_scaffold("Category", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Categoria", &output, &[], OverwritePolicy::Ask).unwrap();
 
     let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
     let dependencies = read(
@@ -187,10 +187,10 @@ fn generated_files_list_every_crud_entity_and_skip_greeting() {
         "web/src/presentation/core/generated/dependencies.ts",
     );
     for text in [&routes, &dependencies] {
-        assert!(text.contains("Product") && text.contains("Category"));
+        assert!(text.contains("Producto") && text.contains("Categoria"));
         assert!(
-            !text.contains("Greeting"),
-            "Greeting has no CRUD endpoints:\n{text}"
+            !text.contains("Saludo"),
+            "Saludo has no CRUD endpoints:\n{text}"
         );
     }
     cleanup(&dir);
@@ -224,7 +224,7 @@ fn every_field_type_reaches_the_frontend_with_its_own_input() {
         "meta: Record<string, string>;",
         "status: Status;",
         r#"export const statusValues = ["Draft", "Published"] as const;"#,
-        r#"throw new EventError("event.invalid_status");"#,
+        r#"throw new EventError("event.status_invalido");"#,
     ] {
         assert!(model.contains(line), "{line} in:\n{model}");
     }
@@ -283,10 +283,10 @@ fn every_enum_of_an_entity_gets_its_values_once() {
 #[test]
 fn generate_use_case_leaves_web_untouched() {
     let (dir, output) = web_project("web_use_case_untouched");
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
     let before = generated_output::project_tree(&output.join("web"));
 
-    scaffold::run_use_case("Product", "archive_product", &output).unwrap();
+    scaffold::run_use_case("Producto", "archive_producto", &output).unwrap();
 
     assert_eq!(generated_output::project_tree(&output.join("web")), before);
     cleanup(&dir);
@@ -295,15 +295,15 @@ fn generate_use_case_leaves_web_untouched() {
 #[test]
 fn rescaffold_without_force_refuses_when_only_web_files_exist() {
     let (dir, output) = web_project("web_rescaffold_guard");
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
     // Only the frontend slice is left: the guard must still see it.
-    for file in crate::generators::conflict::entity_files("product", false, false) {
+    for file in crate::generators::conflict::entity_files("producto", false, false) {
         let _ = fs::remove_file(output.join(file));
     }
-    let form = output.join("web/src/presentation/features/product/views/product-form-view.tsx");
+    let form = output.join("web/src/presentation/features/producto/views/producto-form-view.tsx");
     fs::write(&form, "// hand-written\n").unwrap();
 
-    let result = scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask);
+    let result = scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask);
 
     assert!(
         result.is_err(),
@@ -318,23 +318,23 @@ fn generate_web_is_the_last_step_of_the_layered_flow() {
     // `generate presentation` regenerates `core/generated/*` with the entity, whose screens do not
     // exist yet: the drift warning points at `generate web`, which writes them.
     let (dir, output) = web_project("web_generate_web");
-    let invoice = fields(&["amount:i64"]);
-    scaffold::run_generate_domain("Invoice", &output, &invoice).unwrap();
-    scaffold::run_generate_application("Invoice", &output).unwrap();
-    scaffold::run_generate_repository("Invoice", &output).unwrap();
-    scaffold::run_generate_presentation("Invoice", &output).unwrap();
+    let factura = fields(&["amount:i64"]);
+    scaffold::run_generate_domain("Factura", &output, &factura).unwrap();
+    scaffold::run_generate_application("Factura", &output).unwrap();
+    scaffold::run_generate_repository("Factura", &output).unwrap();
+    scaffold::run_generate_presentation("Factura", &output).unwrap();
     assert!(
         validate::run_validate(&output).is_err(),
         "the screens are missing"
     );
 
-    scaffold::run_generate_web("Invoice", &output, OverwritePolicy::Ask).unwrap();
+    scaffold::run_generate_web("Factura", &output, OverwritePolicy::Ask).unwrap();
 
-    for file in web_entity_files("invoice") {
+    for file in web_entity_files("factura") {
         assert!(output.join(&file).exists(), "{} missing", file.display());
     }
     assert!(validate::run_validate(&output).is_ok());
-    let again = scaffold::run_generate_web("Invoice", &output, OverwritePolicy::Ask);
+    let again = scaffold::run_generate_web("Factura", &output, OverwritePolicy::Ask);
     assert!(
         again.is_err(),
         "written files are the user's: --force to overwrite"
@@ -346,11 +346,11 @@ fn generate_web_is_the_last_step_of_the_layered_flow() {
 fn generate_web_refuses_an_undeclared_entity_a_non_crud_one_and_a_project_without_web() {
     let (dir, output) = web_project("web_generate_web_refusals");
 
-    let undeclared = scaffold::run_generate_web("Invoice", &output, OverwritePolicy::Ask);
-    let greeting = scaffold::run_generate_web("Greeting", &output, OverwritePolicy::Ask);
+    let undeclared = scaffold::run_generate_web("Factura", &output, OverwritePolicy::Ask);
+    let saludo = scaffold::run_generate_web("Saludo", &output, OverwritePolicy::Ask);
     scaffold::apply_no_web(&output).unwrap();
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
-    let non_web = scaffold::run_generate_web("Product", &output, OverwritePolicy::Ask);
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
+    let non_web = scaffold::run_generate_web("Producto", &output, OverwritePolicy::Ask);
 
     assert!(
         undeclared
@@ -359,7 +359,7 @@ fn generate_web_refuses_an_undeclared_entity_a_non_crud_one_and_a_project_withou
             .contains("not found in puerto.toml")
     );
     assert!(
-        greeting
+        saludo
             .unwrap_err()
             .to_string()
             .contains("no CRUD endpoints")
@@ -378,9 +378,9 @@ fn the_api_client_is_written_once_and_never_overwritten() {
         "a fresh project has no schema.d.ts for it to import"
     );
 
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
     fs::write(&client, "// customised\n").unwrap();
-    scaffold::run_scaffold("Category", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Categoria", &output, &[], OverwritePolicy::Ask).unwrap();
 
     assert_eq!(fs::read_to_string(&client).unwrap(), "// customised\n");
     cleanup(&dir);
@@ -389,8 +389,8 @@ fn the_api_client_is_written_once_and_never_overwritten() {
 #[test]
 fn validate_and_bootstrap_report_a_crud_entity_without_its_screens() {
     let (dir, output) = web_project("web_validate_drift");
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
-    fs::remove_dir_all(output.join("web/src/presentation/features/product")).unwrap();
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
+    fs::remove_dir_all(output.join("web/src/presentation/features/producto")).unwrap();
 
     let validated = validate::run_validate(&output);
     let bootstrap = scaffold::run_bootstrap_command(&output, false);
@@ -398,8 +398,8 @@ fn validate_and_bootstrap_report_a_crud_entity_without_its_screens() {
     for err in [validated.unwrap_err(), bootstrap.unwrap_err()] {
         let err = err.to_string();
         assert!(
-            err.contains("web/src/presentation/features/product/containers")
-                && err.contains("puerto generar web Product"),
+            err.contains("web/src/presentation/features/producto/containers")
+                && err.contains("puerto generar web Producto"),
             "{err}"
         );
     }
@@ -437,12 +437,12 @@ fn new_web_project_has_a_routes_file_of_its_own() {
 
 #[test]
 fn generated_routes_match_custom_routes_before_the_entities() {
-    let (dir, output) = web_project("web_custom_routes_order");
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    let (dir, output) = web_project("web_custom_routes_pedido");
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
 
     let generated = read(&output, "web/src/presentation/core/generated/routes.tsx");
     let custom = generated.find("{customRoutes}").unwrap();
-    assert!(custom < generated.find("<Route path=\"/products\">").unwrap());
+    assert!(custom < generated.find("<Route path=\"/productos\">").unwrap());
     assert!(custom > generated.find("<HomePage").unwrap());
 
     cleanup(&dir);
@@ -460,11 +460,11 @@ fn messages_cover_every_code_of_errors_rs_and_name_the_field_it_is_about() {
         "note:opt:String",
         "count:i64",
     ]);
-    scaffold::run_scaffold("Product", &output, &args, OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &args, OverwritePolicy::Ask).unwrap();
 
-    let messages = read(&output, "web/src/domain/product/messages.ts");
-    let errors = read(&output, "contextos/product/dominio/src/errores.rs");
-    for line in errors.lines().filter(|l| l.contains("#[error(\"product.")) {
+    let messages = read(&output, "web/src/domain/producto/messages.ts");
+    let errors = read(&output, "contextos/producto/dominio/src/errores.rs");
+    for line in errors.lines().filter(|l| l.contains("#[error(\"producto.")) {
         let code = line.split('"').nth(1).unwrap();
         if code.ends_with("{0}") {
             continue; // the field-specific validation codes are below
@@ -474,27 +474,28 @@ fn messages_cover_every_code_of_errors_rs_and_name_the_field_it_is_about() {
             "{code} has no message"
         );
     }
-    assert!(messages.contains("\"product.validation_error.title_empty\": \"Title is required\","));
-    assert!(messages.contains("\"product.validation_error.title_empty\": \"title\","));
-    assert!(messages.contains("\"product.invalid_sku\": \"Sku is not valid\","));
-    assert!(messages.contains("\"product.invalid_status\": \"status\","));
+    assert!(messages.contains("\"producto.validacion.title_vacio\": \"Title is required\","));
+    assert!(messages.contains("\"producto.validacion.title_vacio\": \"title\","));
+    assert!(messages.contains("\"producto.sku_invalido\": \"Sku is not valid\","));
+    assert!(messages.contains("\"producto.status_invalido\": \"status\","));
     assert!(
-        messages.contains("\"product.duplicate\": \"A product with these values already exists\",")
+        messages
+            .contains("\"producto.duplicado\": \"A producto with these values already exists\",")
     );
-    assert!(!messages.contains("note_empty"));
+    assert!(!messages.contains("note_vacio"));
     assert!(
         messages.contains("return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };")
     );
 
     let view = read(
         &output,
-        "web/src/presentation/features/product/views/product-form-view.tsx",
+        "web/src/presentation/features/producto/views/producto-form-view.tsx",
     );
     assert!(view.contains("<FieldError problem={problem} field=\"title\" />"));
     assert!(view.contains("aria-invalid={problem?.field === \"status\"}"));
     let container = read(
         &output,
-        "web/src/presentation/features/product/containers/product-form-container.tsx",
+        "web/src/presentation/features/producto/containers/producto-form-container.tsx",
     );
     assert!(
         container

@@ -1,0 +1,32 @@
+use async_trait::async_trait;
+
+use dominio_usuario::{errores::ErrorUsuario, modelo::Usuario};
+
+/// Una cuenta nueva: un email que no tenga otra cuenta y una contraseña de al menos
+/// `MIN_PASSWORD_LENGTH` caracteres.
+pub struct ParamsRegistrarUsuario {
+    pub email: String,
+    pub contrasena: String,
+    pub nombre: Option<String>,
+}
+
+#[async_trait]
+pub trait RegistrarUsuario: Send + Sync {
+    async fn ejecutar(&self, params: ParamsRegistrarUsuario) -> Result<Usuario, ErrorUsuario>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub RegistrarUsuario {}
+
+        #[async_trait]
+        impl RegistrarUsuario for RegistrarUsuario {
+            async fn ejecutar(&self, params: ParamsRegistrarUsuario) -> Result<Usuario, ErrorUsuario>;
+        }
+    }
+}

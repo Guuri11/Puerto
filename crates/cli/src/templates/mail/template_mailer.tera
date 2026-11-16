@@ -1,58 +1,59 @@
-//! Renders the `{{ name }}` mail from its templates and hands it to the mailer. Written once by
-//! `puerto generar correo`; it is yours now. The text is in `plantillas/{{ name }}/`:
-//! change it there — the tests below render it again, so a typo fails `make test`.
+//! Renderiza el correo `{{ name }}` con sus plantillas y se lo pasa al enviador. Lo escribe una
+//! vez `puerto generar correo`; desde entonces es tuyo. El texto está en `plantillas/{{ name }}/`:
+//! cámbialo allí; los tests de abajo lo vuelven a renderizar, así que una errata hace fallar
+//! `make test`.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use dominio_correo::{{ name }}::{ {{- pascal }}Mail, {{ pascal }}Mailer};
+use dominio_correo::{{ name }}::{ {{- "Correo" ~ pascal }}, EnviadorCorreo{{ pascal }}};
 use puerto_correo::{ErrorCorreo, EnviadorCorreo, Plantillas};
 use serde::Serialize;
 {%- for import in imports %}
 use {{ import }};
 {%- endfor %}
 
-const TEMPLATES: Plantillas = Plantillas::new(
-    include_str!("../plantillas/{{ name }}/subject.txt"),
-    include_str!("../plantillas/{{ name }}/body.html"),
+const PLANTILLAS: Plantillas = Plantillas::new(
+    include_str!("../plantillas/{{ name }}/asunto.txt"),
+    include_str!("../plantillas/{{ name }}/cuerpo.html"),
 )
-.con_texto(include_str!("../plantillas/{{ name }}/body.txt"));
+.con_texto(include_str!("../plantillas/{{ name }}/cuerpo.txt"));
 
-/// What the templates see: the mail's fields but the recipient, under their own names.
+/// Lo que ven las plantillas: los campos del correo salvo el destinatario, con sus propios nombres.
 #[derive(Serialize)]
-struct Context<'a> {
+struct Contexto<'a> {
 {%- for f in fields %}
     {{ f.name }}: &'a {{ f.rust_type }},
 {%- endfor %}
 }
 
-impl<'a> Context<'a> {
-    fn of(mail: &'a {{ pascal }}Mail) -> Self {
+impl<'a> Contexto<'a> {
+    fn de(correo: &'a Correo{{ pascal }}) -> Self {
         Self {
 {%- for f in fields %}
-            {{ f.name }}: &mail.{{ f.name }},
+            {{ f.name }}: &correo.{{ f.name }},
 {%- endfor %}
         }
     }
 }
 
-/// The `{{ name }}` mail, rendered from `plantillas/{{ name }}/` and sent through `mailer`
-/// (`puerto_correo::EnviadorCorreoSmtp` where it runs).
-pub struct Template{{ pascal }}Mailer {
-    mailer: Arc<dyn EnviadorCorreo>,
+/// El correo `{{ name }}`, renderizado desde `plantillas/{{ name }}/` y enviado por `enviador`
+/// (`puerto_correo::EnviadorCorreoSmtp` allí donde se ejecuta).
+pub struct EnviadorCorreo{{ pascal }}Plantilla {
+    enviador: Arc<dyn EnviadorCorreo>,
 }
 
-impl Template{{ pascal }}Mailer {
-    pub fn new(mailer: Arc<dyn EnviadorCorreo>) -> Self {
-        Self { mailer }
+impl EnviadorCorreo{{ pascal }}Plantilla {
+    pub fn new(enviador: Arc<dyn EnviadorCorreo>) -> Self {
+        Self { enviador }
     }
 }
 
 #[async_trait]
-impl {{ pascal }}Mailer for Template{{ pascal }}Mailer {
-    async fn send(&self, mail: &{{ pascal }}Mail) -> Result<(), ErrorCorreo> {
-        let email = TEMPLATES.renderizar(mail.to.clone(), Context::of(mail))?;
-        self.mailer.enviar(&email).await
+impl EnviadorCorreo{{ pascal }} for EnviadorCorreo{{ pascal }}Plantilla {
+    async fn enviar(&self, correo: &Correo{{ pascal }}) -> Result<(), ErrorCorreo> {
+        let renderizado = PLANTILLAS.renderizar(correo.para.clone(), Contexto::de(correo))?;
+        self.enviador.enviar(&renderizado).await
     }
 }
 
@@ -61,9 +62,9 @@ mod tests {
     use super::*;
     use puerto_correo::pruebas::EnviadorCorreoGrabador;
 
-    fn {{ name }}() -> {{ pascal }}Mail {
-        {{ pascal }}Mail {
-            to: "ada@example.com".to_string(),
+    fn {{ name }}() -> Correo{{ pascal }} {
+        Correo{{ pascal }} {
+            para: "ada@example.com".to_string(),
 {%- for f in fields %}
             {{ f.name }}: {{ f.sample }},
 {%- endfor %}
@@ -71,47 +72,47 @@ mod tests {
     }
 
     #[test]
-    fn should_render_every_template_when_the_mail_has_its_fields() {
-        // Act
-        let email = TEMPLATES.renderizar("ada@example.com", Context::of(&{{ name }}()));
+    fn deberia_renderizar_todas_las_plantillas_cuando_el_correo_tiene_sus_campos() {
+        // Actuar
+        let renderizado = PLANTILLAS.renderizar("ada@example.com", Contexto::de(&{{ name }}()));
 
-        // Assert
-        let email = match email {
-            Ok(email) => email,
-            Err(err) => panic!("plantillas/{{ name }}/ does not render: {err}"),
+        // Comprobar
+        let renderizado = match renderizado {
+            Ok(renderizado) => renderizado,
+            Err(err) => panic!("plantillas/{{ name }}/ no se renderiza: {err}"),
         };
-        assert!(!email.asunto.is_empty());
-        assert!(!email.html.is_empty());
-        assert!(email.texto.is_some());
+        assert!(!renderizado.asunto.is_empty());
+        assert!(!renderizado.html.is_empty());
+        assert!(renderizado.texto.is_some());
     }
 
     #[tokio::test]
-    async fn should_send_the_rendered_mail_to_its_recipient() {
-        // Arrange
-        let recorder = Arc::new(EnviadorCorreoGrabador::new());
-        let mailer = Template{{ pascal }}Mailer::new(recorder.clone());
+    async fn deberia_enviar_el_correo_renderizado_a_su_destinatario() {
+        // Preparar
+        let grabador = Arc::new(EnviadorCorreoGrabador::new());
+        let enviador = EnviadorCorreo{{ pascal }}Plantilla::new(grabador.clone());
 
-        // Act
-        let result = mailer.send(&{{ name }}()).await;
+        // Actuar
+        let resultado = enviador.enviar(&{{ name }}()).await;
 
-        // Assert
-        assert_eq!(result, Ok(()));
-        let sent = recorder.enviados();
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].para, "ada@example.com");
+        // Comprobar
+        assert_eq!(resultado, Ok(()));
+        let enviados = grabador.enviados();
+        assert_eq!(enviados.len(), 1);
+        assert_eq!(enviados[0].para, "ada@example.com");
     }
 
     #[tokio::test]
-    async fn should_return_the_mailer_error_when_sending_fails() {
-        // Arrange
-        let rejected = ErrorCorreo::Permanente("550 no such user".to_string());
-        let mailer =
-            Template{{ pascal }}Mailer::new(Arc::new(EnviadorCorreoGrabador::fallando_con(rejected.clone())));
+    async fn deberia_devolver_el_error_del_enviador_cuando_el_envio_falla() {
+        // Preparar
+        let rechazado = ErrorCorreo::Permanente("550 no such user".to_string());
+        let enviador =
+            EnviadorCorreo{{ pascal }}Plantilla::new(Arc::new(EnviadorCorreoGrabador::fallando_con(rechazado.clone())));
 
-        // Act
-        let result = mailer.send(&{{ name }}()).await;
+        // Actuar
+        let resultado = enviador.enviar(&{{ name }}()).await;
 
-        // Assert
-        assert_eq!(result, Err(rejected));
+        // Comprobar
+        assert_eq!(resultado, Err(rechazado));
     }
 }

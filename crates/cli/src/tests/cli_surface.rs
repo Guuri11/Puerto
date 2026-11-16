@@ -30,7 +30,7 @@ fn cli_definition_is_well_formed() {
 
 #[test]
 fn list_fails_outside_puerto_project() {
-    let dir = temp_dir("list_no_toml");
+    let dir = temp_dir("listar_no_toml");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
 
@@ -44,7 +44,7 @@ fn list_fails_outside_puerto_project() {
 
 #[test]
 fn list_succeeds_inside_puerto_project() {
-    let dir = temp_dir("list_with_toml");
+    let dir = temp_dir("listar_with_toml");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
 

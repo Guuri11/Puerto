@@ -5,43 +5,43 @@ use super::*;
 
 #[test]
 fn should_parse_a_reference_as_a_uuid_naming_its_target() {
-    let field = puerto_toml::parse_field_arg("customer_id:ref:Customer").unwrap();
+    let field = puerto_toml::parse_field_arg("cliente_id:ref:Cliente").unwrap();
 
-    assert_eq!(field.name, "customer_id");
+    assert_eq!(field.name, "cliente_id");
     assert_eq!(field.field_type, "Uuid");
-    assert_eq!(field.references.as_deref(), Some("Customer"));
+    assert_eq!(field.references.as_deref(), Some("Cliente"));
     assert!(field.value_object.is_none());
     assert!(!field.unique);
 }
 
 #[test]
 fn should_parse_an_optional_reference_as_an_optional_uuid() {
-    let field = puerto_toml::parse_field_arg("reviewer_id:ref:opt:Customer").unwrap();
+    let field = puerto_toml::parse_field_arg("reviewer_id:ref:opt:Cliente").unwrap();
 
     assert_eq!(field.field_type, "Option<Uuid>");
-    assert_eq!(field.references.as_deref(), Some("Customer"));
+    assert_eq!(field.references.as_deref(), Some("Cliente"));
 }
 
 #[test]
 fn should_parse_a_unique_reference_as_one_to_one() {
-    let field = puerto_toml::parse_field_arg("customer_id:ref:Customer!").unwrap();
+    let field = puerto_toml::parse_field_arg("cliente_id:ref:Cliente!").unwrap();
 
     assert!(field.unique);
-    assert_eq!(field.references.as_deref(), Some("Customer"));
+    assert_eq!(field.references.as_deref(), Some("Cliente"));
 }
 
 #[test]
 fn should_reject_a_unique_optional_reference() {
-    let err = puerto_toml::parse_field_arg("reviewer_id:ref:opt:Customer!").unwrap_err();
+    let err = puerto_toml::parse_field_arg("reviewer_id:ref:opt:Cliente!").unwrap_err();
 
     assert!(err.contains("unique"), "{err}");
 }
 
 #[test]
 fn should_reject_a_reference_whose_target_is_not_pascal_case() {
-    let err = puerto_toml::parse_field_arg("customer_id:ref:customer").unwrap_err();
+    let err = puerto_toml::parse_field_arg("cliente_id:ref:cliente").unwrap_err();
 
-    assert!(err.contains("customer"), "{err}");
+    assert!(err.contains("cliente"), "{err}");
 }
 
 #[test]
@@ -51,25 +51,25 @@ fn should_keep_a_reference_through_puerto_toml() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("puerto.toml"), "[proyecto]\nnombre = \"shop\"\n").unwrap();
-    let field = puerto_toml::parse_field_arg("customer_id:ref:Customer").unwrap();
+    let field = puerto_toml::parse_field_arg("cliente_id:ref:Cliente").unwrap();
 
     // Act
-    puerto_toml::add_entity(&dir, "Order", vec![], false, vec![field]).unwrap();
+    puerto_toml::add_entity(&dir, "Pedido", vec![], false, vec![field]).unwrap();
 
     // Assert
     let written = fs::read_to_string(dir.join("puerto.toml")).unwrap();
-    assert!(written.contains("referencia = \"Customer\""), "{written}");
+    assert!(written.contains("referencia = \"Cliente\""), "{written}");
     let config = puerto_toml::read(&dir).unwrap();
     assert_eq!(
         config.entity[0].fields[0].references.as_deref(),
-        Some("Customer")
+        Some("Cliente")
     );
 
     cleanup(&dir);
 }
 
-/// A manifest with a CRUD `Customer`, a simple `Greeting` and an `Order` holding `order_field`.
-fn validate_order_with(name: &str, project_extra: &str, order_field: &str) -> Result<(), String> {
+/// A manifest with a CRUD `Cliente`, a simple `Saludo` and an `Pedido` holding `pedido_field`.
+fn validate_pedido_with(name: &str, project_extra: &str, pedido_field: &str) -> Result<(), String> {
     let dir = temp_dir(name);
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -80,19 +80,19 @@ fn validate_order_with(name: &str, project_extra: &str, order_field: &str) -> Re
 nombre = "shop"
 {project_extra}
 [[entidad]]
-nombre = "Greeting"
-casos_de_uso = ["get_greeting"]
+nombre = "Saludo"
+casos_de_uso = ["obtener_saludo"]
 
 [[entidad]]
-nombre = "Customer"
-casos_de_uso = ["create_customer", "get_customer", "list_customers", "update_customer", "delete_customer"]
+nombre = "Cliente"
+casos_de_uso = ["crear_cliente", "obtener_cliente", "listar_clientes", "actualizar_cliente", "borrar_cliente"]
 
 [[entidad]]
-nombre = "Order"
-casos_de_uso = ["create_order", "get_order", "list_orders", "update_order", "delete_order"]
+nombre = "Pedido"
+casos_de_uso = ["crear_pedido", "obtener_pedido", "listar_pedidos", "actualizar_pedido", "borrar_pedido"]
 
 [[entidad.campos]]
-{order_field}
+{pedido_field}
 "#
         ),
     )
@@ -104,10 +104,10 @@ casos_de_uso = ["create_order", "get_order", "list_orders", "update_order", "del
 
 #[test]
 fn should_validate_a_reference_to_a_declared_crud_entity() {
-    let result = validate_order_with(
+    let result = validate_pedido_with(
         "references_validate_ok",
         "",
-        "nombre = \"customer_id\"\ntipo = \"Uuid\"\nreferencia = \"Customer\"",
+        "nombre = \"cliente_id\"\ntipo = \"Uuid\"\nreferencia = \"Cliente\"",
     );
 
     assert!(result.is_ok(), "{result:?}");
@@ -115,25 +115,25 @@ fn should_validate_a_reference_to_a_declared_crud_entity() {
 
 #[test]
 fn should_refuse_a_reference_to_an_undeclared_entity() {
-    let err = validate_order_with(
+    let err = validate_pedido_with(
         "references_validate_undeclared",
         "",
-        "nombre = \"supplier_id\"\ntipo = \"Uuid\"\nreferencia = \"Supplier\"",
+        "nombre = \"proveedor_id\"\ntipo = \"Uuid\"\nreferencia = \"Proveedor\"",
     )
     .unwrap_err();
 
     assert!(
-        err.contains("'supplier_id'") && err.contains("Supplier"),
+        err.contains("'proveedor_id'") && err.contains("Proveedor"),
         "{err}"
     );
 }
 
 #[test]
 fn should_refuse_a_reference_to_the_entity_itself() {
-    let err = validate_order_with(
+    let err = validate_pedido_with(
         "references_validate_self",
         "",
-        "nombre = \"parent_id\"\ntipo = \"Option<Uuid>\"\nreferencia = \"Order\"",
+        "nombre = \"parent_id\"\ntipo = \"Option<Uuid>\"\nreferencia = \"Pedido\"",
     )
     .unwrap_err();
 
@@ -145,22 +145,19 @@ fn should_refuse_a_reference_to_the_entity_itself() {
 
 #[test]
 fn should_refuse_a_reference_to_an_entity_without_crud() {
-    let err = validate_order_with(
+    let err = validate_pedido_with(
         "references_validate_simple",
         "",
-        "nombre = \"greeting_id\"\ntipo = \"Uuid\"\nreferencia = \"Greeting\"",
+        "nombre = \"saludo_id\"\ntipo = \"Uuid\"\nreferencia = \"Saludo\"",
     )
     .unwrap_err();
 
-    assert!(
-        err.contains("'greeting_id'") && err.contains("CRUD"),
-        "{err}"
-    );
+    assert!(err.contains("'saludo_id'") && err.contains("CRUD"), "{err}");
 }
 
 #[test]
 fn should_refuse_a_reference_to_the_user_in_an_auth_project() {
-    let err = validate_order_with(
+    let err = validate_pedido_with(
         "references_validate_user",
         "auth = \"oidc\"",
         "nombre = \"owner_id\"\ntipo = \"Uuid\"\nreferencia = \"User\"",
@@ -172,38 +169,38 @@ fn should_refuse_a_reference_to_the_user_in_an_auth_project() {
 
 #[test]
 fn should_refuse_a_reference_that_is_not_a_uuid() {
-    let err = validate_order_with(
+    let err = validate_pedido_with(
         "references_validate_type",
         "",
-        "nombre = \"customer_id\"\ntipo = \"i64\"\nreferencia = \"Customer\"",
+        "nombre = \"cliente_id\"\ntipo = \"i64\"\nreferencia = \"Cliente\"",
     )
     .unwrap_err();
 
     assert!(
-        err.contains("'customer_id'") && err.contains("Uuid"),
+        err.contains("'cliente_id'") && err.contains("Uuid"),
         "{err}"
     );
 }
 
 #[test]
 fn should_refuse_a_reference_that_is_also_a_value_object() {
-    let err = validate_order_with(
+    let err = validate_pedido_with(
         "references_validate_vo",
         "",
-        "nombre = \"customer_id\"\ntipo = \"Uuid\"\nreferencia = \"Customer\"\nobjeto_valor = \"CustomerRef\"",
+        "nombre = \"cliente_id\"\ntipo = \"Uuid\"\nreferencia = \"Cliente\"\nobjeto_valor = \"ClienteRef\"",
     )
     .unwrap_err();
 
     assert!(
-        err.contains("'customer_id'") && err.contains("value_object"),
+        err.contains("'cliente_id'") && err.contains("value_object"),
         "{err}"
     );
 }
 
 // ── 18.2: scaffold refuses before writing ───────────────────────────────────
 
-fn order_fields() -> Vec<puerto_toml::Field> {
-    vec![puerto_toml::parse_field_arg("customer_id:ref:Customer").unwrap()]
+fn pedido_fields() -> Vec<puerto_toml::Field> {
+    vec![puerto_toml::parse_field_arg("cliente_id:ref:Cliente").unwrap()]
 }
 
 #[test]
@@ -215,41 +212,41 @@ fn should_refuse_to_scaffold_a_reference_to_an_undeclared_entity() {
     let output = new_project_non_interactive(Some("shop".into()), false, &dir).unwrap();
 
     // Act
-    let err = scaffold::run_scaffold("Order", &output, &order_fields(), OverwritePolicy::Ask)
+    let err = scaffold::run_scaffold("Pedido", &output, &pedido_fields(), OverwritePolicy::Ask)
         .unwrap_err()
         .to_string();
 
     // Assert
-    assert!(err.contains("Customer"), "{err}");
-    assert!(!output.join("business/src/domain/order").exists());
+    assert!(err.contains("Cliente"), "{err}");
+    assert!(!output.join("business/src/domain/pedido").exists());
 
     cleanup(&dir);
 }
 
 #[test]
 fn should_refuse_to_scaffold_a_reference_to_a_target_without_code() {
-    // Arrange: Customer is declared, but nothing was generated for it.
+    // Arrange: Cliente is declared, but nothing was generated for it.
     let dir = temp_dir("references_scaffold_no_code");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = new_project_non_interactive(Some("shop".into()), true, &dir).unwrap();
     puerto_toml::add_entity(
         &output,
-        "Customer",
-        crate::generators::naming::crud_use_cases("customer"),
+        "Cliente",
+        crate::generators::naming::crud_use_cases("cliente"),
         true,
         vec![],
     )
     .unwrap();
 
     // Act
-    let err = scaffold::run_scaffold("Order", &output, &order_fields(), OverwritePolicy::Ask)
+    let err = scaffold::run_scaffold("Pedido", &output, &pedido_fields(), OverwritePolicy::Ask)
         .unwrap_err()
         .to_string();
 
     // Assert
-    assert!(err.contains("puerto generar scaffold Customer"), "{err}");
-    assert!(!output.join("business/src/domain/order").exists());
+    assert!(err.contains("puerto generar scaffold Cliente"), "{err}");
+    assert!(!output.join("business/src/domain/pedido").exists());
 
     cleanup(&dir);
 }
@@ -263,20 +260,20 @@ fn should_refuse_to_add_the_domain_of_a_reference_to_an_undeclared_entity() {
     let output = new_project_non_interactive(Some("shop".into()), false, &dir).unwrap();
 
     // Act
-    let err = scaffold::run_generate_domain("Order", &output, &order_fields())
+    let err = scaffold::run_generate_domain("Pedido", &output, &pedido_fields())
         .unwrap_err()
         .to_string();
 
     // Assert
-    assert!(err.contains("Customer"), "{err}");
-    assert!(!output.join("business/src/domain/order").exists());
+    assert!(err.contains("Cliente"), "{err}");
+    assert!(!output.join("business/src/domain/pedido").exists());
 
     cleanup(&dir);
 }
 
 #[test]
 fn should_validate_a_reference_to_an_entity_named_user_outside_an_auth_project() {
-    // Arrange: without auth, `User` is an ordinary entity.
+    // Arrange: without auth, `Usuario` is an ordinary entity.
     let dir = temp_dir("references_validate_plain_user");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -286,17 +283,17 @@ fn should_validate_a_reference_to_an_entity_named_user_outside_an_auth_project()
 nombre = "shop"
 
 [[entidad]]
-nombre = "User"
-casos_de_uso = ["create_user", "get_user", "list_users", "update_user", "delete_user"]
+nombre = "Usuario"
+casos_de_uso = ["crear_usuario", "obtener_usuario", "listar_usuarios", "actualizar_usuario", "borrar_usuario"]
 
 [[entidad]]
-nombre = "Order"
-casos_de_uso = ["create_order"]
+nombre = "Pedido"
+casos_de_uso = ["crear_pedido"]
 
 [[entidad.campos]]
 nombre = "owner_id"
 tipo = "Uuid"
-referencia = "User"
+referencia = "Usuario"
 "#,
     )
     .unwrap();
@@ -316,16 +313,16 @@ fn should_scaffold_a_reference_to_a_target_with_code() {
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = new_project_non_interactive(Some("shop".into()), false, &dir).unwrap();
-    scaffold::run_scaffold("Customer", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Cliente", &output, &[], OverwritePolicy::Ask).unwrap();
 
     // Act
-    let result = scaffold::run_scaffold("Order", &output, &order_fields(), OverwritePolicy::Ask);
+    let result = scaffold::run_scaffold("Pedido", &output, &pedido_fields(), OverwritePolicy::Ask);
 
     // Assert
     assert!(result.is_ok(), "{result:?}");
     assert!(
         output
-            .join("contextos/order/dominio/src/modelo.rs")
+            .join("contextos/pedido/dominio/src/modelo.rs")
             .exists()
     );
     cleanup(&dir);
@@ -338,32 +335,29 @@ fn should_refuse_to_scaffold_a_reference_to_a_target_whose_table_is_not_created(
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = new_project_non_interactive(Some("shop".into()), true, &dir).unwrap();
-    scaffold::run_scaffold("Customer", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Cliente", &output, &[], OverwritePolicy::Ask).unwrap();
     for entry in fs::read_dir(output.join("migraciones")).unwrap() {
         let path = entry.unwrap().path();
-        if path
-            .to_string_lossy()
-            .ends_with("_create_customer_table.sql")
-        {
+        if path.to_string_lossy().ends_with("_crear_tabla_cliente.sql") {
             fs::remove_file(path).unwrap();
         }
     }
 
     // Act
-    let err = scaffold::run_scaffold("Order", &output, &order_fields(), OverwritePolicy::Ask)
+    let err = scaffold::run_scaffold("Pedido", &output, &pedido_fields(), OverwritePolicy::Ask)
         .unwrap_err()
         .to_string();
 
     // Assert
-    assert!(err.contains("puerto generar scaffold Customer"), "{err}");
+    assert!(err.contains("puerto generar scaffold Cliente"), "{err}");
     cleanup(&dir);
 }
 
 // ── 18.3: generated backend ─────────────────────────────────────────────────
 
-/// A project with a CRUD `Customer` and an `Order` holding `customer_id:ref:Customer` and
-/// `reviewer_id:ref:opt:Customer`. `db`: `--db`; `events`: also `[proyecto] eventos = "db"`.
-fn order_project(name: &str, db: bool, events: bool) -> (PathBuf, PathBuf) {
+/// A project with a CRUD `Cliente` and an `Pedido` holding `cliente_id:ref:Cliente` and
+/// `reviewer_id:ref:opt:Cliente`. `db`: `--db`; `events`: also `[proyecto] eventos = "db"`.
+fn pedido_project(name: &str, db: bool, events: bool) -> (PathBuf, PathBuf) {
     let dir = temp_dir(name);
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -377,12 +371,12 @@ fn order_project(name: &str, db: bool, events: bool) -> (PathBuf, PathBuf) {
         )
         .unwrap();
     }
-    scaffold::run_scaffold("Customer", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Cliente", &output, &[], OverwritePolicy::Ask).unwrap();
     let fields = vec![
-        puerto_toml::parse_field_arg("customer_id:ref:Customer").unwrap(),
-        puerto_toml::parse_field_arg("reviewer_id:ref:opt:Customer").unwrap(),
+        puerto_toml::parse_field_arg("cliente_id:ref:Cliente").unwrap(),
+        puerto_toml::parse_field_arg("reviewer_id:ref:opt:Cliente").unwrap(),
     ];
-    scaffold::run_scaffold("Order", &output, &fields, OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Pedido", &output, &fields, OverwritePolicy::Ask).unwrap();
     (dir, output)
 }
 
@@ -392,50 +386,50 @@ fn read(output: &Path, path: &str) -> String {
 
 #[test]
 fn should_hold_the_target_id_type_in_the_domain() {
-    let (dir, output) = order_project("references_domain", false, false);
+    let (dir, output) = pedido_project("references_domain", false, false);
 
-    let model = read(&output, "contextos/order/dominio/src/modelo.rs");
+    let model = read(&output, "contextos/pedido/dominio/src/modelo.rs");
     assert!(
-        model.contains("use dominio_customer::modelo::CustomerId;"),
+        model.contains("use dominio_cliente::modelo::IdCliente;"),
         "{model}"
     );
-    assert!(model.contains("pub customer_id: CustomerId,"), "{model}");
+    assert!(model.contains("pub cliente_id: IdCliente,"), "{model}");
     assert!(
-        model.contains("pub reviewer_id: Option<CustomerId>,"),
+        model.contains("pub reviewer_id: Option<IdCliente>,"),
         "{model}"
     );
 
-    for uc in ["create_order", "update_order"] {
-        let params = read(&output, &format!("contextos/order/aplicacion/src/{uc}.rs"));
+    for uc in ["crear_pedido", "actualizar_pedido"] {
+        let params = read(&output, &format!("contextos/pedido/aplicacion/src/{uc}.rs"));
         assert!(
-            params.contains("use dominio_customer::modelo::CustomerId;"),
+            params.contains("use dominio_cliente::modelo::IdCliente;"),
             "{uc}"
         );
         assert!(
-            params.contains("pub customer_id: CustomerId,"),
+            params.contains("pub cliente_id: IdCliente,"),
             "{uc}: {params}"
         );
         assert!(
-            params.contains("pub reviewer_id: Option<CustomerId>,"),
+            params.contains("pub reviewer_id: Option<IdCliente>,"),
             "{uc}"
         );
         assert!(!params.contains("uuid::Uuid"), "{uc} imports Uuid");
     }
 
-    let mother = read(&output, "contextos/order/dominio/src/pruebas/madres.rs");
+    let mother = read(&output, "contextos/pedido/dominio/src/pruebas/madres.rs");
     assert!(
-        mother.contains("pub fn with_customer_id(mut self, customer_id: CustomerId)"),
+        mother.contains("pub fn con_cliente_id(mut self, cliente_id: IdCliente)"),
         "{mother}"
     );
     assert!(
-        mother.contains("unwrap_or_else(CustomerId::generate)"),
+        mother.contains("unwrap_or_else(IdCliente::generar)"),
         "{mother}"
     );
     assert!(!mother.contains("uuid::Uuid"), "{mother}");
 
-    let create = read(&output, "contextos/order/aplicacion/src/create_order.rs");
+    let create = read(&output, "contextos/pedido/aplicacion/src/crear_pedido.rs");
     assert!(
-        create.contains("customer_id: CustomerId::generate(),"),
+        create.contains("cliente_id: IdCliente::generar(),"),
         "{create}"
     );
 
@@ -444,23 +438,23 @@ fn should_hold_the_target_id_type_in_the_domain() {
 
 #[test]
 fn should_turn_a_missing_reference_into_a_validation_error_on_the_field() {
-    let (dir, output) = order_project("references_errors", false, false);
+    let (dir, output) = pedido_project("references_errors", false, false);
 
-    let errors = read(&output, "contextos/order/dominio/src/errores.rs");
+    let errors = read(&output, "contextos/pedido/dominio/src/errores.rs");
     assert!(
         errors.contains(
-            "ErrorRepositorio::ReferenciaInexistente(field) => {\n                Self::ValidationError(format!(\"{field}_not_found\"))"
+            "ErrorRepositorio::ReferenciaInexistente(field) => {\n                Self::Validacion(format!(\"{field}_no_encontrado\"))"
         ),
         "{errors}"
     );
     assert!(
-        errors.contains("\"order.validation_error.customer_id_not_found\""),
+        errors.contains("\"pedido.validacion.cliente_id_no_encontrado\""),
         "{errors}"
     );
-    let customer_errors = read(&output, "contextos/customer/dominio/src/errores.rs");
+    let cliente_errors = read(&output, "contextos/cliente/dominio/src/errores.rs");
     assert!(
-        !customer_errors.contains("MissingReference"),
-        "{customer_errors}"
+        !cliente_errors.contains("MissingReference"),
+        "{cliente_errors}"
     );
 
     cleanup(&dir);
@@ -468,36 +462,37 @@ fn should_turn_a_missing_reference_into_a_validation_error_on_the_field() {
 
 #[test]
 fn should_convert_a_reference_at_the_api_edge() {
-    let (dir, output) = order_project("references_api", false, false);
+    let (dir, output) = pedido_project("references_api", false, false);
 
-    let dto = read(&output, "contextos/order/rest/src/dto.rs");
-    assert!(dto.contains("pub customer_id: Uuid,"), "{dto}");
+    let dto = read(&output, "contextos/pedido/rest/src/dto.rs");
+    assert!(dto.contains("pub cliente_id: Uuid,"), "{dto}");
     assert!(dto.contains("pub reviewer_id: Option<Uuid>,"), "{dto}");
     assert!(
-        dto.contains("customer_id: entity.customer_id.value(),"),
+        dto.contains("cliente_id: entidad.cliente_id.valor(),"),
         "{dto}"
     );
     assert!(
-        dto.contains("reviewer_id: entity.reviewer_id.map(|v| v.value()),"),
+        dto.contains("reviewer_id: entidad.reviewer_id.map(|v| v.valor()),"),
         "{dto}"
     );
 
-    let routes = read(&output, "contextos/order/rest/src/rutas.rs");
+    let routes = read(&output, "contextos/pedido/rest/src/rutas.rs");
     assert!(
-        routes.contains("use dominio_customer::modelo::CustomerId;"),
+        routes.contains("use dominio_cliente::modelo::IdCliente;"),
         "{routes}"
     );
     assert!(
-        routes.contains("customer_id: CustomerId::from_uuid(body.customer_id),"),
+        routes.contains("cliente_id: IdCliente::from_uuid(cuerpo.cliente_id),"),
         "{routes}"
     );
     assert!(
-        routes.contains("reviewer_id: body.reviewer_id.map(CustomerId::from_uuid),"),
+        routes.contains("reviewer_id: cuerpo.reviewer_id.map(IdCliente::from_uuid),"),
         "{routes}"
     );
     assert!(
-        routes
-            .contains("async fn should_respond_422_when_a_referenced_customer_id_does_not_exist()"),
+        routes.contains(
+            "async fn deberia_responder_422_cuando_no_existe_la_referencia_de_cliente_id()"
+        ),
         "{routes}"
     );
 
@@ -506,28 +501,28 @@ fn should_convert_a_reference_at_the_api_edge() {
 
 #[test]
 fn should_hold_a_uuid_in_the_row_and_the_target_id_in_the_entity() {
-    let (dir, output) = order_project("references_row", true, false);
+    let (dir, output) = pedido_project("references_row", true, false);
 
-    let entity = read(&output, "contextos/order/infraestructura/src/fila.rs");
+    let entity = read(&output, "contextos/pedido/infraestructura/src/fila.rs");
     assert!(
-        entity.contains("use dominio_customer::modelo::CustomerId;"),
+        entity.contains("use dominio_cliente::modelo::IdCliente;"),
         "{entity}"
     );
-    assert!(entity.contains("pub customer_id: Uuid,"), "{entity}");
+    assert!(entity.contains("pub cliente_id: Uuid,"), "{entity}");
     assert!(
         entity.contains("pub reviewer_id: Option<Uuid>,"),
         "{entity}"
     );
     assert!(
-        entity.contains("customer_id: CustomerId::from_uuid(row.customer_id),"),
+        entity.contains("cliente_id: IdCliente::from_uuid(fila.cliente_id),"),
         "{entity}"
     );
     assert!(
-        entity.contains("reviewer_id: row.reviewer_id.map(CustomerId::from_uuid),"),
+        entity.contains("reviewer_id: fila.reviewer_id.map(IdCliente::from_uuid),"),
         "{entity}"
     );
     assert!(
-        entity.contains("customer_id: entity.customer_id.value(),"),
+        entity.contains("cliente_id: entidad.cliente_id.valor(),"),
         "{entity}"
     );
 
@@ -536,32 +531,32 @@ fn should_hold_a_uuid_in_the_row_and_the_target_id_in_the_entity() {
 
 #[test]
 fn should_create_a_foreign_key_and_an_index_per_reference() {
-    let (dir, output) = order_project("references_migration", true, false);
+    let (dir, output) = pedido_project("references_migration", true, false);
 
     let migration = fs::read_dir(output.join("migraciones"))
         .unwrap()
         .map(|e| e.unwrap().path())
-        .find(|p| p.to_string_lossy().ends_with("_create_order_table.sql"))
+        .find(|p| p.to_string_lossy().ends_with("_crear_tabla_pedido.sql"))
         .map(|p| fs::read_to_string(p).unwrap())
         .unwrap();
     assert!(
         migration.contains(
-            "customer_id UUID NOT NULL CONSTRAINT orders_customer_id_fkey REFERENCES customers (id),"
+            "cliente_id UUID NOT NULL CONSTRAINT pedidos_cliente_id_fkey REFERENCES clientes (id),"
         ),
         "{migration}"
     );
     assert!(
         migration.contains(
-            "reviewer_id UUID CONSTRAINT orders_reviewer_id_fkey REFERENCES customers (id),"
+            "reviewer_id UUID CONSTRAINT pedidos_reviewer_id_fkey REFERENCES clientes (id),"
         ),
         "{migration}"
     );
     assert!(
-        migration.contains("CREATE INDEX orders_customer_id_idx ON orders (customer_id);"),
+        migration.contains("CREATE INDEX pedidos_cliente_id_idx ON pedidos (cliente_id);"),
         "{migration}"
     );
     assert!(
-        migration.contains("CREATE INDEX orders_reviewer_id_idx ON orders (reviewer_id);"),
+        migration.contains("CREATE INDEX pedidos_reviewer_id_idx ON pedidos (reviewer_id);"),
         "{migration}"
     );
 
@@ -571,31 +566,31 @@ fn should_create_a_foreign_key_and_an_index_per_reference() {
 #[test]
 fn should_index_a_unique_reference_only_once() {
     let sql = crate::generators::infrastructure::create_table_sql(
-        "order",
-        &[puerto_toml::parse_field_arg("customer_id:ref:Customer!").unwrap()],
+        "pedido",
+        &[puerto_toml::parse_field_arg("cliente_id:ref:Cliente!").unwrap()],
     );
 
     assert!(
-        sql.contains("CREATE UNIQUE INDEX orders_customer_id_key"),
+        sql.contains("CREATE UNIQUE INDEX pedidos_cliente_id_key"),
         "{sql}"
     );
-    assert!(!sql.contains("orders_customer_id_idx"), "{sql}");
+    assert!(!sql.contains("pedidos_cliente_id_idx"), "{sql}");
 }
 
 #[test]
 fn should_map_the_foreign_keys_where_the_rows_are_written() {
-    let (dir, output) = order_project("references_pg_repo", true, false);
+    let (dir, output) = pedido_project("references_pg_repo", true, false);
 
     let repo = read(
         &output,
-        "contextos/order/infraestructura/src/repositorio.rs",
+        "contextos/pedido/infraestructura/src/repositorio.rs",
     );
     assert!(
         repo.contains("const REFERENCES: &[ClaveForanea] = &["),
         "{repo}"
     );
     assert!(
-        repo.contains("restriccion: \"orders_customer_id_fkey\","),
+        repo.contains("restriccion: \"pedidos_cliente_id_fkey\","),
         "{repo}"
     );
     assert!(repo.contains("campo: \"reviewer_id\","), "{repo}");
@@ -603,56 +598,56 @@ fn should_map_the_foreign_keys_where_the_rows_are_written() {
         repo.contains("mapear_error_sqlx_con(&e, REFERENCES)"),
         "{repo}"
     );
-    // The rows it seeds first get their customer through Customer's own seed (ADR-0023 § 5).
+    // The rows it seeds first get their cliente through Cliente's own seed (ADR-0023 § 5).
     let seed = read(
         &output,
-        "contextos/order/infraestructura/src/pruebas/siembra.rs",
+        "contextos/pedido/infraestructura/src/pruebas/siembra.rs",
     );
     assert!(
-        seed.contains("customer_id: infra_customer::pruebas::siembra::seed(pool).await.id,"),
+        seed.contains("cliente_id: infra_cliente::pruebas::siembra::sembrar(pool).await.id,"),
         "{seed}"
     );
-    let manifest = read(&output, "contextos/order/infraestructura/Cargo.toml");
+    let manifest = read(&output, "contextos/pedido/infraestructura/Cargo.toml");
     assert!(
-        manifest.contains("pruebas = [\"dominio_order/pruebas\", \"dep:infra_customer\", \"infra_customer/pruebas\"]"),
+        manifest.contains("pruebas = [\"dominio_pedido/pruebas\", \"dep:infra_cliente\", \"infra_cliente/pruebas\"]"),
         "{manifest}"
     );
     assert!(
-        repo.contains("async fn should_reject_a_missing_customer_id(pool: PgPool)"),
+        repo.contains("async fn deberia_rechazar_cliente_id_inexistente(pool: PgPool)"),
         "{repo}"
     );
     assert!(
-        repo.contains("async fn should_reject_a_missing_reviewer_id(pool: PgPool)"),
+        repo.contains("async fn deberia_rechazar_reviewer_id_inexistente(pool: PgPool)"),
         "{repo}"
     );
     assert!(
-        repo.contains("ErrorRepositorio::ReferenciaInexistente(\"customer_id\")"),
+        repo.contains("ErrorRepositorio::ReferenciaInexistente(\"cliente_id\")"),
         "{repo}"
     );
-    let customer = read(
+    let cliente = read(
         &output,
-        "contextos/customer/infraestructura/src/pruebas/siembra.rs",
+        "contextos/cliente/infraestructura/src/pruebas/siembra.rs",
     );
     assert!(
-        customer.contains("pub async fn seed(pool: &PgPool) -> Customer {"),
-        "{customer}"
+        cliente.contains("pub async fn sembrar(pool: &PgPool) -> Cliente {"),
+        "{cliente}"
     );
-    let customer_repo = read(
+    let cliente_repo = read(
         &output,
-        "contextos/customer/infraestructura/src/repositorio.rs",
+        "contextos/cliente/infraestructura/src/repositorio.rs",
     );
-    assert!(!customer_repo.contains("REFERENCES"), "{customer_repo}");
+    assert!(!cliente_repo.contains("REFERENCES"), "{cliente_repo}");
 
     cleanup(&dir);
 }
 
 #[test]
 fn should_map_the_foreign_keys_in_the_unit_of_work_of_an_events_project() {
-    let (dir, output) = order_project("references_pg_uow", true, true);
+    let (dir, output) = pedido_project("references_pg_uow", true, true);
 
     let uow = read(
         &output,
-        "contextos/order/infraestructura/src/unit_of_work.rs",
+        "contextos/pedido/infraestructura/src/unit_of_work.rs",
     );
     assert!(
         uow.contains("const REFERENCES: &[ClaveForanea] = &["),
@@ -663,12 +658,12 @@ fn should_map_the_foreign_keys_in_the_unit_of_work_of_an_events_project() {
         "{uow}"
     );
     assert!(
-        uow.contains("async fn should_reject_a_missing_customer_id(pool: PgPool)"),
+        uow.contains("async fn deberia_rechazar_cliente_id_inexistente(pool: PgPool)"),
         "{uow}"
     );
     let repo = read(
         &output,
-        "contextos/order/infraestructura/src/repositorio.rs",
+        "contextos/pedido/infraestructura/src/repositorio.rs",
     );
     assert!(
         !repo.contains("REFERENCES"),
@@ -706,16 +701,16 @@ fn postgres_references_project_answers_422_on_the_field_of_a_missing_reference()
     wait_until("the API to be ready", || {
         http(port, "GET", "/health/ready", "").is_some_and(|(s, _)| s == 200)
     });
-    let order = |customer: &str, reviewer: &str| {
-        format!(r#"{{"customerId":"{customer}","reviewerId":{reviewer},"total":42}}"#)
+    let pedido = |cliente: &str, reviewer: &str| {
+        format!(r#"{{"clienteId":"{cliente}","reviewerId":{reviewer},"total":42}}"#)
     };
     let missing = "00000000-0000-4000-8000-000000000000";
 
-    // A customer nobody created: the foreign key refuses it, on its field.
-    let (status, body) = http(port, "POST", "/api/orders", &order(missing, "null")).unwrap();
+    // A cliente nobody created: the foreign key refuses it, on its field.
+    let (status, body) = http(port, "POST", "/api/pedidos", &pedido(missing, "null")).unwrap();
     assert_eq!(status, 422, "{body}");
     assert!(
-        body.contains("\"codigo\":\"order.validation_error.customer_id_not_found\""),
+        body.contains("\"codigo\":\"pedido.validacion.cliente_id_no_encontrado\""),
         "{body}"
     );
 
@@ -723,47 +718,51 @@ fn postgres_references_project_answers_422_on_the_field_of_a_missing_reference()
     let (status, body) = http(
         port,
         "POST",
-        "/api/customers",
+        "/api/clientes",
         r#"{"name":"Ada","email":"ada@example.com"}"#,
     )
     .unwrap();
     assert_eq!(status, 201, "{body}");
-    let customer: serde_json::Value = serde_json::from_str(&body).unwrap();
-    let customer = customer["id"].as_str().unwrap().to_string();
-    let (status, body) = http(port, "POST", "/api/orders", &order(&customer, "null")).unwrap();
+    let cliente: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let cliente = cliente["id"].as_str().unwrap().to_string();
+    let (status, body) = http(port, "POST", "/api/pedidos", &pedido(&cliente, "null")).unwrap();
     assert_eq!(status, 201, "{body}");
     let reviewer = format!("\"{missing}\"");
-    let (status, body) = http(port, "POST", "/api/orders", &order(&customer, &reviewer)).unwrap();
+    let (status, body) = http(port, "POST", "/api/pedidos", &pedido(&cliente, &reviewer)).unwrap();
     assert_eq!(status, 422, "{body}");
     assert!(
-        body.contains("\"codigo\":\"order.validation_error.reviewer_id_not_found\""),
+        body.contains("\"codigo\":\"pedido.validacion.reviewer_id_no_encontrado\""),
         "{body}"
     );
 
-    // The list filters by customer (18.4): another customer's order is left out, page and total.
+    // The list filters by cliente (18.4): another cliente's pedido is left out, page and total.
     let (status, body) = http(
         port,
         "POST",
-        "/api/customers",
+        "/api/clientes",
         r#"{"name":"Grace","email":"grace@example.com"}"#,
     )
     .unwrap();
     assert_eq!(status, 201, "{body}");
     let other: serde_json::Value = serde_json::from_str(&body).unwrap();
     let other = other["id"].as_str().unwrap().to_string();
-    let (status, body) = http(port, "POST", "/api/orders", &order(&other, "null")).unwrap();
+    let (status, body) = http(port, "POST", "/api/pedidos", &pedido(&other, "null")).unwrap();
     assert_eq!(status, 201, "{body}");
     let (status, body) = http(
         port,
         "GET",
-        &format!("/api/orders?customerId={customer}"),
+        &format!("/api/pedidos?clienteId={cliente}"),
         "",
     )
     .unwrap();
     assert_eq!(status, 200, "{body}");
     let page: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(page["total"], 1, "{body}");
-    assert_eq!(page["items"][0]["customerId"], customer.as_str(), "{body}");
+    assert_eq!(
+        page["elementos"][0]["clienteId"],
+        cliente.as_str(),
+        "{body}"
+    );
 
     drop(api);
     cleanup(&project.dir);
@@ -775,20 +774,20 @@ fn should_test_that_create_reports_a_missing_reference_on_its_field() {
         ("references_create_test", false),
         ("references_create_test_events", true),
     ] {
-        let (dir, output) = order_project(name, events, events);
+        let (dir, output) = pedido_project(name, events, events);
 
-        let create = read(&output, "contextos/order/aplicacion/src/create_order.rs");
-        for field in ["customer_id", "reviewer_id"] {
+        let create = read(&output, "contextos/pedido/aplicacion/src/crear_pedido.rs");
+        for field in ["cliente_id", "reviewer_id"] {
             assert!(
                 create.contains(&format!(
-                    "async fn should_return_a_validation_error_when_the_{field}_does_not_exist()"
+                    "async fn deberia_devolver_un_error_de_validacion_cuando_{field}_no_existe()"
                 )),
                 "eventos = {events}: {create}"
             );
             assert!(create.contains(&format!(
                 "ErrorRepositorio::ReferenciaInexistente(\"{field}\")"
             )));
-            assert!(create.contains(&format!("\"order.validation_error.{field}_not_found\"")));
+            assert!(create.contains(&format!("\"pedido.validacion.{field}_no_encontrado\"")));
         }
 
         cleanup(&dir);
@@ -799,42 +798,42 @@ fn should_test_that_create_reports_a_missing_reference_on_its_field() {
 
 #[test]
 fn should_filter_the_list_by_each_reference_in_the_domain() {
-    let (dir, output) = order_project("references_filter_domain", false, false);
+    let (dir, output) = pedido_project("references_filter_domain", false, false);
 
-    let repository = read(&output, "contextos/order/dominio/src/repositorio.rs");
+    let repository = read(&output, "contextos/pedido/dominio/src/repositorio.rs");
     assert!(
-        repository.contains("use dominio_customer::modelo::CustomerId;"),
+        repository.contains("use dominio_cliente::modelo::IdCliente;"),
         "{repository}"
     );
     assert!(
         repository.contains(
-            "pub struct OrderFilter {\n    pub customer_id: Option<CustomerId>,\n    pub reviewer_id: Option<CustomerId>,\n}"
+            "pub struct FiltroPedido {\n    pub cliente_id: Option<IdCliente>,\n    pub reviewer_id: Option<IdCliente>,\n}"
         ),
         "{repository}"
     );
     assert_eq!(
         repository
-            .matches("async fn find_all(&self, page: PeticionPagina, filter: OrderFilter)")
+            .matches("async fn buscar_todos(&self, pagina: PeticionPagina, filtro: FiltroPedido)")
             .count(),
         2,
         "the port and its mock: {repository}"
     );
-    let params = read(&output, "contextos/order/aplicacion/src/list_orders.rs");
+    let params = read(&output, "contextos/pedido/aplicacion/src/listar_pedidos.rs");
     assert!(
-        params.contains("pub customer_id: Option<CustomerId>,"),
+        params.contains("pub cliente_id: Option<IdCliente>,"),
         "{params}"
     );
     assert!(
-        params.contains("pub reviewer_id: Option<CustomerId>,"),
+        params.contains("pub reviewer_id: Option<IdCliente>,"),
         "{params}"
     );
 
     // An entity without references keeps today's port.
-    let customer = read(&output, "contextos/customer/dominio/src/repositorio.rs");
-    assert!(!customer.contains("Filter"), "{customer}");
+    let cliente = read(&output, "contextos/cliente/dominio/src/repositorio.rs");
+    assert!(!cliente.contains("Filter"), "{cliente}");
     assert!(
-        customer.contains("async fn find_all(&self, page: PeticionPagina)"),
-        "{customer}"
+        cliente.contains("async fn buscar_todos(&self, pagina: PeticionPagina)"),
+        "{cliente}"
     );
 
     cleanup(&dir);
@@ -842,34 +841,34 @@ fn should_filter_the_list_by_each_reference_in_the_domain() {
 
 #[test]
 fn should_pass_the_filter_from_the_use_case_to_the_repository() {
-    let (dir, output) = order_project("references_filter_application", false, false);
+    let (dir, output) = pedido_project("references_filter_application", false, false);
 
-    let list = read(&output, "contextos/order/aplicacion/src/list_orders.rs");
+    let list = read(&output, "contextos/pedido/aplicacion/src/listar_pedidos.rs");
     assert!(
         list.contains(
-            "OrderFilter {\n                    customer_id: params.customer_id,\n                    reviewer_id: params.reviewer_id,\n                }"
+            "FiltroPedido {\n                    cliente_id: params.cliente_id,\n                    reviewer_id: params.reviewer_id,\n                }"
         ),
         "{list}"
     );
     assert!(
-        list.contains("async fn should_pass_the_filter_to_the_repository()"),
+        list.contains("async fn deberia_pasar_el_filtro_al_repositorio()"),
         "{list}"
     );
 
     let repo = read(
         &output,
-        "contextos/order/infraestructura/src/repositorio.rs",
+        "contextos/pedido/infraestructura/src/repositorio.rs",
     );
     assert!(
-        repo.contains(".is_none_or(|id| row.customer_id == id)"),
+        repo.contains(".is_none_or(|id| fila.cliente_id == id)"),
         "{repo}"
     );
     assert!(
-        repo.contains(".is_none_or(|id| row.reviewer_id == Some(id))"),
+        repo.contains(".is_none_or(|id| fila.reviewer_id == Some(id))"),
         "{repo}"
     );
     assert!(
-        repo.contains("async fn should_list_only_the_orders_of_the_requested_customer_id()"),
+        repo.contains("async fn deberia_listar_solo_pedidos_con_ese_valor_de_cliente_id()"),
         "{repo}"
     );
 
@@ -878,19 +877,19 @@ fn should_pass_the_filter_from_the_use_case_to_the_repository() {
 
 #[test]
 fn should_take_each_reference_filter_as_a_camel_case_query_parameter() {
-    let (dir, output) = order_project("references_filter_api", false, false);
+    let (dir, output) = pedido_project("references_filter_api", false, false);
 
-    let routes = read(&output, "contextos/order/rest/src/rutas.rs");
+    let routes = read(&output, "contextos/pedido/rest/src/rutas.rs");
     assert!(
-        routes.contains("#[oai(name = \"customerId\")] customer_id: Query<Option<Uuid>>"),
+        routes.contains("#[oai(name = \"clienteId\")] cliente_id: Query<Option<Uuid>>"),
         "{routes}"
     );
     assert!(
-        routes.contains("customer_id: customer_id.0.map(CustomerId::from_uuid),"),
+        routes.contains("cliente_id: cliente_id.0.map(IdCliente::from_uuid),"),
         "{routes}"
     );
     assert!(
-        routes.contains("async fn should_pass_the_reviewer_id_filter_to_the_use_case()"),
+        routes.contains("async fn deberia_pasar_el_filtro_por_reviewer_id_al_caso_de_uso()"),
         "{routes}"
     );
     assert!(routes.contains("?reviewerId={reviewer_id}"), "{routes}");
@@ -904,32 +903,32 @@ fn should_filter_the_page_and_its_total_in_postgres() {
         ("references_filter_pg", false),
         ("references_filter_pg_events", true),
     ] {
-        let (dir, output) = order_project(name, true, events);
+        let (dir, output) = pedido_project(name, true, events);
 
         let repo = read(
             &output,
-            "contextos/order/infraestructura/src/repositorio.rs",
+            "contextos/pedido/infraestructura/src/repositorio.rs",
         );
         assert!(
             repo.contains(
-                "FROM orders WHERE deleted = false AND ($3::uuid IS NULL OR customer_id = $3) AND ($4::uuid IS NULL OR reviewer_id = $4)"
+                "FROM pedidos WHERE borrado = false AND ($3::uuid IS NULL OR cliente_id = $3) AND ($4::uuid IS NULL OR reviewer_id = $4)"
             ),
             "eventos = {events}: {repo}"
         );
         assert!(
             repo.contains(
-                "FROM orders WHERE deleted = false AND ($1::uuid IS NULL OR customer_id = $1) AND ($2::uuid IS NULL OR reviewer_id = $2)"
+                "FROM pedidos WHERE borrado = false AND ($1::uuid IS NULL OR cliente_id = $1) AND ($2::uuid IS NULL OR reviewer_id = $2)"
             ),
             "the COUNT, events = {events}: {repo}"
         );
         assert!(
-            repo.contains("filter.customer_id.map(|id| id.value())"),
+            repo.contains("filtro.cliente_id.map(|id| id.valor())"),
             "{repo}"
         );
-        for field in ["customer_id", "reviewer_id"] {
+        for field in ["cliente_id", "reviewer_id"] {
             assert!(
                 repo.contains(&format!(
-                    "async fn should_list_only_the_orders_of_the_requested_{field}(pool: PgPool)"
+                    "async fn deberia_listar_solo_pedidos_con_ese_valor_de_{field}(pool: PgPool)"
                 )),
                 "eventos = {events}: {repo}"
             );
@@ -941,61 +940,61 @@ fn should_filter_the_page_and_its_total_in_postgres() {
 
 // ── 18.5: the frontend ──────────────────────────────────────────────────────
 
-const ORDER_WEB: &str = "web/src/presentation/features/order";
+const PEDIDO_WEB: &str = "web/src/presentation/features/pedido";
 
 #[test]
 fn should_choose_a_reference_from_a_select_of_its_targets() {
-    let (dir, output) = order_project("references_web_form", false, false);
+    let (dir, output) = pedido_project("references_web_form", false, false);
 
-    let view = read(&output, &format!("{ORDER_WEB}/views/order-form-view.tsx"));
+    let view = read(&output, &format!("{PEDIDO_WEB}/views/pedido-form-view.tsx"));
     assert!(
-        view.contains("export interface OrderFormOptions {\n  customerId: ReferenceOption[];\n  reviewerId: ReferenceOption[];\n}"),
+        view.contains("export interface PedidoFormOptions {\n  clienteId: ReferenceOption[];\n  reviewerId: ReferenceOption[];\n}"),
         "{view}"
     );
     assert!(
-        view.contains("<span className=\"fieldset-legend\">Customer</span>"),
+        view.contains("<span className=\"fieldset-legend\">Cliente</span>"),
         "{view}"
     );
     assert!(
-        view.contains("<option value=\"\">Choose a customer</option>"),
+        view.contains("<option value=\"\">Choose a cliente</option>"),
         "{view}"
     );
     assert!(view.contains("<option value=\"\">None</option>"), "{view}");
     assert!(
-        view.contains("{options.customerId.map((option) => ("),
+        view.contains("{options.clienteId.map((option) => ("),
         "{view}"
     );
 
     let container = read(
         &output,
-        &format!("{ORDER_WEB}/containers/order-form-container.tsx"),
+        &format!("{PEDIDO_WEB}/containers/pedido-form-container.tsx"),
     );
     assert!(
-        container.contains("customerRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 })"),
+        container.contains("clienteRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 })"),
         "{container}"
     );
     // One load per target entity, whatever the number of references to it.
     assert_eq!(
-        container.matches("customerRepository.list(").count(),
+        container.matches("clienteRepository.list(").count(),
         1,
         "{container}"
     );
     assert!(
-        container.contains("customerId: referenceOptions(customers, (customer) => customer.name),"),
+        container.contains("clienteId: referenceOptions(clientes, (cliente) => cliente.nombre),"),
         "{container}"
     );
 
     let test = read(
         &output,
-        &format!("{ORDER_WEB}/containers/order-form-container.test.tsx"),
+        &format!("{PEDIDO_WEB}/containers/pedido-form-container.test.tsx"),
     );
     assert!(test.contains("...referencedBy(draft),"), "{test}");
     assert!(
-        test.contains("CustomerMother.random({ id: draft.customerId }),"),
+        test.contains("ClienteMother.random({ id: draft.clienteId }),"),
         "{test}"
     );
     assert!(
-        test.contains("test(\"should offer every customer in the selects that reference one\""),
+        test.contains("test(\"should offer every cliente in the selects that reference one\""),
         "{test}"
     );
 
@@ -1035,11 +1034,14 @@ fn should_label_a_target_without_a_string_field_by_its_id() {
 
 #[test]
 fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
-    let (dir, output) = order_project("references_web_detail", false, false);
+    let (dir, output) = pedido_project("references_web_detail", false, false);
 
-    let detail = read(&output, &format!("{ORDER_WEB}/views/order-detail-view.tsx"));
+    let detail = read(
+        &output,
+        &format!("{PEDIDO_WEB}/views/pedido-detail-view.tsx"),
+    );
     assert!(
-        detail.contains("<ReferenceLink path=\"/customers\" id={order.customerId} />"),
+        detail.contains("<ReferenceLink path=\"/clientes\" id={pedido.clienteId} />"),
         "{detail}"
     );
     assert!(
@@ -1049,22 +1051,22 @@ fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
     );
     let detail_test = read(
         &output,
-        &format!("{ORDER_WEB}/containers/order-detail-container.test.tsx"),
+        &format!("{PEDIDO_WEB}/containers/pedido-detail-container.test.tsx"),
     );
     assert!(
         detail_test.contains("test(\"should link the reviewer to its page\""),
         "{detail_test}"
     );
 
-    let messages = read(&output, "web/src/domain/order/messages.ts");
+    let messages = read(&output, "web/src/domain/pedido/messages.ts");
     assert!(
         messages.contains(
-            "\"order.validation_error.customer_id_not_found\": \"Customer does not exist\","
+            "\"pedido.validacion.cliente_id_no_encontrado\": \"Cliente does not exist\","
         ),
         "{messages}"
     );
     assert!(
-        messages.contains("\"order.validation_error.reviewer_id_not_found\": \"reviewerId\","),
+        messages.contains("\"pedido.validacion.reviewer_id_no_encontrado\": \"reviewerId\","),
         "{messages}"
     );
 
@@ -1102,34 +1104,34 @@ fn project_dependencies(manifest: &str) -> Vec<String> {
 
 #[test]
 fn should_let_each_crate_depend_only_on_what_its_layer_may_use() {
-    let (dir, output) = order_project("references_dependency_rule", true, true);
+    let (dir, output) = pedido_project("references_dependency_rule", true, true);
 
     let deps = |c: &str, layer: &str| {
         project_dependencies(&read(&output, &format!("contextos/{c}/{layer}/Cargo.toml")))
     };
-    assert_eq!(deps("order", "dominio"), ["dominio_customer"]);
+    assert_eq!(deps("pedido", "dominio"), ["dominio_cliente"]);
     assert_eq!(
-        deps("order", "aplicacion"),
-        ["dominio_order", "dominio_customer"]
+        deps("pedido", "aplicacion"),
+        ["dominio_pedido", "dominio_cliente"]
     );
-    // `infra_customer` is optional, for the seeds of the Postgres tests (`pruebas`).
+    // `infra_cliente` is optional, for the seeds of the Postgres tests (`pruebas`).
     assert_eq!(
-        deps("order", "infraestructura"),
-        ["dominio_order", "dominio_customer", "infra_customer"]
+        deps("pedido", "infraestructura"),
+        ["dominio_pedido", "dominio_cliente", "infra_cliente"]
     );
     assert!(
-        read(&output, "contextos/order/infraestructura/Cargo.toml")
-            .contains("infra_customer = { workspace = true, optional = true }")
+        read(&output, "contextos/pedido/infraestructura/Cargo.toml")
+            .contains("infra_cliente = { workspace = true, optional = true }")
     );
     assert_eq!(
-        deps("order", "rest"),
-        ["aplicacion_order", "dominio_order", "dominio_customer"]
+        deps("pedido", "rest"),
+        ["aplicacion_pedido", "dominio_pedido", "dominio_cliente"]
     );
-    assert!(deps("customer", "dominio").is_empty());
+    assert!(deps("cliente", "dominio").is_empty());
     // Only the composition root knows the adapters; it knows no HTTP.
     let cableado = read(&output, "presentacion/cableado/Cargo.toml");
     assert!(
-        cableado.contains("infra_order = { workspace = true }"),
+        cableado.contains("infra_pedido = { workspace = true }"),
         "{cableado}"
     );
     assert!(
@@ -1142,19 +1144,19 @@ fn should_let_each_crate_depend_only_on_what_its_layer_may_use() {
 
 #[test]
 fn should_refuse_a_reference_that_closes_a_cycle_naming_it() {
-    // Arrange: Order → Customer already.
-    let (dir, output) = order_project("references_cycle", false, false);
-    let field = puerto_toml::parse_field_arg("last_order_id:ref:opt:Order").unwrap();
+    // Arrange: Pedido → Cliente already.
+    let (dir, output) = pedido_project("references_cycle", false, false);
+    let field = puerto_toml::parse_field_arg("last_pedido_id:ref:opt:Pedido").unwrap();
 
     // Act
-    let err = scaffold::run_scaffold("Customer", &output, &[field], OverwritePolicy::Force)
+    let err = scaffold::run_scaffold("Cliente", &output, &[field], OverwritePolicy::Force)
         .unwrap_err()
         .to_string();
 
     // Assert
-    assert!(err.contains("Customer → Order → Customer"), "{err}");
+    assert!(err.contains("Cliente → Pedido → Cliente"), "{err}");
     assert!(
-        !read(&output, "contextos/customer/dominio/src/modelo.rs").contains("last_order_id"),
+        !read(&output, "contextos/cliente/dominio/src/modelo.rs").contains("last_pedido_id"),
         "nothing is rewritten"
     );
     cleanup(&dir);

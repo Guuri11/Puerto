@@ -79,7 +79,7 @@ async fn kafka() -> Option<ConfigKafka> {
         _ => None,
     })
     .unwrap();
-    config.ensure_topics(&["product"]).await.unwrap();
+    config.asegurar_topics(&["product"]).await.unwrap();
     Some(config)
 }
 

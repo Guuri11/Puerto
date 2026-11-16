@@ -1,33 +1,33 @@
 use async_trait::async_trait;
 {% if actor %}use puerto_nucleo::auth::Principal;
 {% endif %}
-use dominio_{{ snake }}::{errores::{{ pascal }}Error, modelo::{{ pascal }}Id};
+use dominio_{{ snake }}::{errores::Error{{ pascal }}, modelo::Id{{ pascal }}};
 
 #[derive(Debug, Clone)]
-pub struct Delete{{ pascal }}Params {
-{% if actor %}    /// Who asks (ADR-0021). A rule that depends on the data ("only the owner edits") decides on
-    /// it here and answers `Forbidden`.
+pub struct ParamsBorrar{{ pascal }} {
+{% if actor %}    /// Quien lo pide (ADR-0021). Una regla que depende de los datos ("solo edita el propietario")
+    /// se decide aquí, sobre él, y responde `Prohibido`.
     pub actor: Principal,
-{% endif %}    pub id: {{ pascal }}Id,
+{% endif %}    pub id: Id{{ pascal }},
 }
 
 #[async_trait]
-pub trait Delete{{ pascal }}UseCaseTrait: Send + Sync {
-    async fn execute(&self, params: Delete{{ pascal }}Params) -> Result<(), {{ pascal }}Error>;
+pub trait Borrar{{ pascal }}: Send + Sync {
+    async fn ejecutar(&self, params: ParamsBorrar{{ pascal }}) -> Result<(), Error{{ pascal }}>;
 }
 
 #[cfg(any(test, feature = "pruebas"))]
-pub mod mocks {
+pub mod dobles {
     use mockall::mock;
 
     use super::*;
 
     mock! {
-        pub Delete{{ pascal }}UseCase {}
+        pub Borrar{{ pascal }} {}
 
         #[async_trait]
-        impl Delete{{ pascal }}UseCaseTrait for Delete{{ pascal }}UseCase {
-            async fn execute(&self, params: Delete{{ pascal }}Params) -> Result<(), {{ pascal }}Error>;
+        impl Borrar{{ pascal }} for Borrar{{ pascal }} {
+            async fn ejecutar(&self, params: ParamsBorrar{{ pascal }}) -> Result<(), Error{{ pascal }}>;
         }
     }
 }

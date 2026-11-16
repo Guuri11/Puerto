@@ -33,14 +33,16 @@ function api(answers: Record<string, [number, unknown]>) {
 }
 
 const ADA = { id: crypto.randomUUID(), email: "ada@example.com", name: "Ada", roles: ["admin"] };
+/** `ADA` as `GET /me` answers it. */
+const ADA_ME = { id: ADA.id, email: ADA.email, nombre: ADA.name, roles: ADA.roles };
 
 describe("localAuthGateway", () => {
   test("should store the token and load the user when signing in", async () => {
     // Arrange
     const storage = memoryStorage();
     const { fetch, requests } = api({
-      "/api/auth/login": [200, { token: "opaque", expiresAt: "2030-01-01T00:00:00Z" }],
-      "/api/me": [200, ADA],
+      "/api/auth/login": [200, { token: "opaque", expiraEn: "2030-01-01T00:00:00Z" }],
+      "/api/me": [200, ADA_ME],
     });
     const gateway = localAuthGateway({ storage, fetch });
 
@@ -57,7 +59,7 @@ describe("localAuthGateway", () => {
 
   test("should reject with the API's code when the password is wrong", async () => {
     // Arrange
-    const code = "auth.invalid_credentials";
+    const code = "auth.credenciales_invalidas";
     const storage = memoryStorage();
     const { fetch } = api({ "/api/auth/login": [401, { codigo: code, mensaje: code }] });
 
@@ -129,7 +131,7 @@ describe("localAuthGateway", () => {
 
   test("should send the registration and answer the new account", async () => {
     // Arrange
-    const { fetch, requests } = api({ "/api/auth/register": [201, { ...ADA, roles: [] }] });
+    const { fetch, requests } = api({ "/api/auth/registro": [201, { ...ADA_ME, roles: [] }] });
     const registration = {
       email: "ada@example.com",
       password: "correct horse battery",
@@ -140,7 +142,11 @@ describe("localAuthGateway", () => {
     const user = await localAuthGateway({ storage: memoryStorage(), fetch }).register(registration);
 
     // Assert
-    expect(JSON.parse(String(requests[0]?.init.body))).toEqual(registration);
+    expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
+      email: "ada@example.com",
+      contrasena: "correct horse battery",
+      nombre: "Ada",
+    });
     expect(user.email).toBe("ada@example.com");
   });
 });

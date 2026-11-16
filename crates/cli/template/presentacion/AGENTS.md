@@ -1,70 +1,74 @@
-# Presentacion — AI Agent Notes
+# Presentación — notas para agentes de IA
 
-The binaries and their wiring (ADR-0023 § 7 of Puerto). No business logic lives here: each crate
-is a composition root.
+Los binarios y su cableado (ADR-0023 § 7 de Puerto). Aquí no vive lógica de negocio: cada crate
+es una raíz de composición.
 
-## Layout
+## Estructura
 
 ```
 presentacion/
-├── cableado/                 # AUTO-GENERATED crate, `Cargo.toml` included — never hand-edit
-│   └── src/lib.rs            # per context: its repository, unit of work and use cases, built
-├── api/                      # the HTTP binary (named after the project)
+├── cableado/                 # crate GENERADO, `Cargo.toml` incluido — no lo edites a mano
+│   └── src/lib.rs            # por contexto: su repositorio, su unidad de trabajo y sus casos de uso, construidos
+├── api/                      # el binario HTTP (con el nombre del proyecto)
 │   └── src/
-│       ├── main.rs           # `puerto_web::Config::from_env()` + `App::new(config).intentar_servir(…)` (never changes)
+│       ├── main.rs           # `puerto_web::Config::from_env()` + `App::new(config).intentar_servir(…)` (no cambia)
 │       ├── lib.rs            # `mod app; pub mod generado { pub mod bootstrap; }`
-│       ├── app.rs            # Yours: `configure(routes)` — extra middleware and routes
-│       └── generado/bootstrap.rs   # AUTO-GENERATED: each context's `<Entity>Api` on `cableado` — never hand-edit
-└── worker/                   # `events` projects: relays the outbox, runs the consumers (its own AGENTS.md)
+│       ├── app.rs            # Tuyo: `configurar(rutas)` — middleware y rutas extra
+│       └── generado/bootstrap.rs   # GENERADO: la `Api<Entidad>` de cada contexto sobre `cableado` — no lo edites a mano
+└── worker/                   # proyectos con `eventos`: releva el outbox y ejecuta los consumidores (con su propio AGENTS.md)
 ```
 
-## Critical Rules
+## Reglas críticas
 
-- **The wiring is generated**: `cableado` and `generado/bootstrap.rs` are rewritten from
-  `puerto.toml` by `puerto generar bootstrap` (and every scaffold) — never wire by hand. A new
-  context's REST crate is added to `api/Cargo.toml` by the same commands.
-- **`cableado` knows no HTTP**: it builds the use cases; `api` mounts the routes on them.
-- **`<Entity>Api` holds ports** — `Arc<dyn CreateProductUseCaseTrait>`, never the `…UseCaseImpl`.
-- **Error contract**: every error body is `RespuestaError { codigo, mensaje }` built with
-  `RespuestaError::from_codigo(…)`. `codigo` is the machine-readable code (`product.not_found`).
-  Domain validation (including invalid value objects) → `422`; not found → `404`; duplicate →
-  `409`; repository / unknown → `500`. Poem itself answers `400` for a malformed body. Each
-  context's `rest_<c>::errores::a_respuesta_error` does the mapping.
-- Your own middleware and routes go in `api/src/app.rs`, which no generator touches.
+- **El cableado se genera**: `puerto generar bootstrap` (y cada scaffold) reescribe `cableado` y
+  `generado/bootstrap.rs` desde `puerto.toml` — nunca cablees a mano. Los mismos comandos añaden
+  a `api/Cargo.toml` el crate REST de un contexto nuevo.
+- **`cableado` no sabe de HTTP**: construye los casos de uso; `api` monta las rutas sobre ellos.
+- **`Api<Entidad>` guarda puertos** — `Arc<dyn CrearProducto>`, nunca el `CrearProductoImpl`.
+- **Contrato de errores**: todo cuerpo de error es `RespuestaError { codigo, mensaje }`, construido
+  con `RespuestaError::from_codigo(…)`. `codigo` es el código legible por máquina
+  (`producto.no_encontrado`). Validación del dominio (objetos valor inválidos incluidos) → `422`;
+  no encontrado → `404`; duplicado → `409`; repositorio / desconocido → `500`. Poem responde por su
+  cuenta `400` a un cuerpo mal formado. El mapeo lo hace `rest_<c>::errores::a_respuesta_error` de
+  cada contexto.
+- Tu middleware y tus rutas van en `api/src/app.rs`, que ningún generador toca.
 
-## Health and shutdown
+## Salud y apagado
 
-Served by the Puerto runtime, `puerto-web`; `generado/bootstrap.rs` hands it the readiness check.
+Los sirve el runtime de Puerto, `puerto-web`; `generado/bootstrap.rs` le pasa la comprobación de
+disponibilidad.
 
-- `GET /health` — liveness: the process answers.
-- `GET /health/ready` — readiness: `503` until every dependency answers (the database, in a
-  `--db` project). Point orchestrator readiness checks here, liveness checks at `/health`.
-- On SIGTERM / Ctrl-C the server stops accepting and drains in-flight requests for up to
-  `puerto_web::app::PLAZO_APAGADO` (8s).
+- `GET /health` — vida: el proceso responde.
+- `GET /health/ready` — disponibilidad: `503` hasta que responde cada dependencia (la base de
+  datos, en un proyecto `--db`). Apunta aquí las comprobaciones de disponibilidad del orquestador,
+  y las de vida a `/health`.
+- Con SIGTERM / Ctrl-C el servidor deja de aceptar peticiones y termina las que tiene en curso,
+  durante como mucho `puerto_web::app::PLAZO_APAGADO` (8 s).
 
-## Configuration
+## Configuración
 
-`puerto_web::Config::from_env()` reads the environment, after `.env`: `SERVICE_PORT` (default
-`8080`), `CORS_ALLOWED_ORIGINS` (comma-separated; none set means any origin), `PUERTO_BANNER`
-(`false` hides the banner). A value that is set but invalid stops the server at startup.
+`puerto_web::Config::from_env()` lee el entorno, después de `.env`: `SERVICE_PORT` (por defecto
+`8080`), `CORS_ALLOWED_ORIGINS` (separados por comas; sin ninguno, vale cualquier origen),
+`PUERTO_BANNER` (`false` oculta el banner). Un valor definido pero inválido detiene el servidor al
+arrancar.
 
-## Route Handler Pattern
+## Patrón de un handler
 
-In `contextos/<c>/rest/src/rutas.rs`:
+En `contextos/<c>/rest/src/rutas.rs`:
 
 ```rust
-#[oai(path = "/products/:id", method = "get", tag = "ApiTags::Product")]
-async fn get_by_id(&self, id: Path<Uuid>) -> GetProductResponse {
-    match self.get_product.execute(GetProductParams { id: ProductId::from_uuid(id.0) }).await {
-        Ok(entity) => GetProductResponse::Ok(Json(ProductDto::from_domain(&entity))),
+#[oai(path = "/productos/:id", method = "get", tag = "ApiTags::Producto")]
+async fn obtener(&self, id: Path<Uuid>) -> RespuestaObtenerProducto {
+    match self.obtener_producto.ejecutar(ParamsObtenerProducto { id: IdProducto::from_uuid(id.0) }).await {
+        Ok(entidad) => RespuestaObtenerProducto::Ok(Json(DtoProducto::from_dominio(&entidad))),
         Err(err) => {
             let (status, error) = a_respuesta_error(err);
-            tracing::warn!(code = %error.0.codigo, "get_product failed");
-            GetProductResponse::from_status(status, error)
+            tracing::warn!(codigo = %error.0.codigo, "obtener_producto falló");
+            RespuestaObtenerProducto::from_status(status, error)
         }
     }
 }
 ```
 
-A use case added with `puerto generar caso-de-uso` gets a field on `<Entity>Api`; expose it by
-adding an endpoint to `rutas.rs`, with one route test per status.
+Un caso de uso añadido con `puerto generar caso-de-uso` gana un campo en `Api<Entidad>`; exponlo
+añadiendo un endpoint a `rutas.rs`, con un test de ruta por estado.

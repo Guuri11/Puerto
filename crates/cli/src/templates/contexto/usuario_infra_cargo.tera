@@ -15,7 +15,7 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 dominio_usuario = { workspace = true, features = ["pruebas"] }
-{% if not local %}# `aprovisionamiento.rs` tests over `MockAutenticador`.
+{% if not local %}# Los tests de `aprovisionamiento.rs`, sobre `MockAutenticador`.
 puerto-nucleo = { workspace = true, features = ["pruebas"] }
 {% endif %}{% if db %}migrador = { workspace = true }
 {% endif %}tokio = { workspace = true }

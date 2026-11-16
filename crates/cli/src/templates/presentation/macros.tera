@@ -2,11 +2,11 @@
 {% macro error_case(name, error, status, code) %}
     #[test]
     fn {{ name }}() {
-        // Act
-        let (status, Json(body)) = a_respuesta_error({{ error }});
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error({{ error }});
 
-        // Assert
+        // Comprobar
         assert_eq!(status, StatusCode::{{ status }});
-        assert_eq!(body.codigo, "{{ code }}");
+        assert_eq!(cuerpo.codigo, "{{ code }}");
     }
 {% endmacro error_case %}

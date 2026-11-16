@@ -1,6 +1,7 @@
-//! Yours: `puerto nuevo --auth local` writes this file once.
+//! Lo escribe una vez `puerto nuevo --auth local`; desde entonces es tuyo.
 //!
-//! No `Debug` on the requests: they carry a password, and a `{:?}` in a log line must not print it.
+//! Las peticiones no derivan `Debug`: llevan una contraseña, y un `{:?}` en una línea de log no
+//! debe imprimirla.
 
 use chrono::{DateTime, Utc};
 use poem_openapi::Object;
@@ -8,34 +9,34 @@ use puerto_nucleo::auth::Sesion;
 
 #[derive(Object)]
 #[oai(rename_all = "camelCase")]
-pub struct RegisterRequest {
+pub struct PeticionRegistro {
     pub email: String,
     #[oai(write_only)]
-    pub password: String,
-    pub name: Option<String>,
+    pub contrasena: String,
+    pub nombre: Option<String>,
 }
 
 #[derive(Object)]
 #[oai(rename_all = "camelCase")]
-pub struct LoginRequest {
+pub struct PeticionLogin {
     pub email: String,
     #[oai(write_only)]
-    pub password: String,
+    pub contrasena: String,
 }
 
-/// A signed-in session: send `token` as `Authorization: Bearer <token>` until `expiresAt`.
+/// Una sesión iniciada: envía `token` como `Authorization: Bearer <token>` hasta `expiraEn`.
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct SessionDto {
+pub struct DtoSesion {
     pub token: String,
-    pub expires_at: DateTime<Utc>,
+    pub expira_en: DateTime<Utc>,
 }
 
-impl SessionDto {
-    pub fn from_session(session: Sesion) -> Self {
+impl DtoSesion {
+    pub fn from_sesion(sesion: Sesion) -> Self {
         Self {
-            token: session.token,
-            expires_at: session.expira_en,
+            token: sesion.token,
+            expira_en: sesion.expira_en,
         }
     }
 }

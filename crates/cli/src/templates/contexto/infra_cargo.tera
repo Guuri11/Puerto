@@ -19,8 +19,8 @@ chrono = { workspace = true }
 {% if events %}serde_json = { workspace = true }
 {% endif %}
 [features]
-{% if db %}# The seed helpers of the Postgres tests (`pruebas::siembra`), for the tests of the contexts that
-# reference this one (ADR-0023 § 5 of Puerto).
+{% if db %}# Las funciones de siembra de los tests de Postgres (`pruebas::siembra`), para los tests de los
+# contextos que referencian a este (ADR-0023 § 5 de Puerto).
 {% endif %}pruebas = ["dominio_{{ c }}/pruebas"{% if db %}{% for r in refs %}, "dep:infra_{{ r }}", "infra_{{ r }}/pruebas"{% endfor %}{% endif %}]
 
 [dev-dependencies]

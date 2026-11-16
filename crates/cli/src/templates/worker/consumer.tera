@@ -1,12 +1,13 @@
-//! `{{ name }}`: reacts to {% for e in events %}`{{ e.event_type }}`{% if not loop.last %}, {% endif %}{% endfor %}. Written once by
-//! `puerto generar consumidor`; it is yours now.
+//! `{{ name }}`: reacciona a {% for e in events %}`{{ e.event_type }}`{% if not loop.last %}, {% endif %}{% endfor %}. Lo escribe una vez
+//! `puerto generar consumidor`; desde entonces es tuyo.
 //!
-//! Delivery is at-least-once: the same event (the same `event.id`) can arrive twice — after a
-//! crash, a timeout or a redeploy. Whatever this does must be **idempotent**: check whether it
-//! already happened (keyed on `event.id`) before doing it again.
+//! La entrega es al menos una vez: el mismo evento (el mismo `evento.id`) puede llegar dos veces,
+//! tras una caída, un timeout o un redespliegue. Lo que haga esto debe ser **idempotente**:
+//! comprueba si ya ocurrió (por `evento.id`) antes de volver a hacerlo.
 //!
-//! `Ack` when done; `Retry` for a failure that may pass (the worker redelivers with a growing
-//! backoff, then dead-letters); `ResultadoManejo::descartar(…)` for one that never will.
+//! `Ack` cuando termina; `Reintentar` para un fallo que puede pasar (el worker vuelve a entregarlo
+//! con una espera creciente y después lo descarta); `ResultadoManejo::descartar(…)` para uno que no
+//! pasará nunca.
 
 use async_trait::async_trait;
 {% for import in imports -%}
@@ -18,14 +19,14 @@ pub struct {{ pascal }};
 
 #[async_trait]
 impl ManejadorEvento for {{ pascal }} {
-    async fn manejar(&self, event: &SobreEvento) -> ResultadoManejo {
-        match event.tipo_evento.as_str() {
+    async fn manejar(&self, evento: &SobreEvento) -> ResultadoManejo {
+        match evento.tipo_evento.as_str() {
 {%- for e in events %}
-            {{ e.constant }} => match event.decodificar::<{{ e.entity_pascal }}Snapshot>() {
+            {{ e.constant }} => match evento.decodificar::<Snapshot{{ e.entity_pascal }}>() {
                 Ok({{ e.entity_snake }}) => {
                     tracing::info!(
-                        event_id = %event.id,
-                        {{ e.entity_snake }}_id = %{{ e.entity_snake }}.id,
+                        id_evento = %evento.id,
+                        id_{{ e.entity_snake }} = %{{ e.entity_snake }}.id,
                         "{{ name }}: {{ e.event_type }}"
                     );
                     ResultadoManejo::Ack
@@ -33,7 +34,7 @@ impl ManejadorEvento for {{ pascal }} {
                 Err(err) => ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle),
             },
 {%- endfor %}
-            // Not subscribed (puerto.toml `[[consumidor]] eventos`): nothing to do.
+            // Sin suscripción (puerto.toml `[[consumidor]] eventos`): nada que hacer.
             _ => ResultadoManejo::Ack,
         }
     }
@@ -42,58 +43,58 @@ impl ManejadorEvento for {{ pascal }} {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_{{ first.entity_snake }}::eventos::{{ first.entity_pascal }}Event;
-    use dominio_{{ first.entity_snake }}::pruebas::madres::{{ first.entity_pascal }}Mother;
+    use dominio_{{ first.entity_snake }}::eventos::Evento{{ first.entity_pascal }};
+    use dominio_{{ first.entity_snake }}::pruebas::madres::Madre{{ first.entity_pascal }};
 
     fn {{ first.const_lower }}() -> SobreEvento {
-        let snapshot = {{ first.entity_pascal }}Snapshot::from_entity(&{{ first.entity_pascal }}Mother::random());
-        SobreEvento::new(&{{ first.entity_pascal }}Event::{{ first.variant }}(snapshot))
+        let snapshot = Snapshot{{ first.entity_pascal }}::from_entidad(&Madre{{ first.entity_pascal }}::aleatorio());
+        SobreEvento::new(&Evento{{ first.entity_pascal }}::{{ first.variant }}(snapshot))
     }
 
     #[tokio::test]
-    async fn should_ack_when_a_{{ first.event_type }}_event_is_valid() {
-        // Arrange
-        let event = {{ first.const_lower }}();
+    async fn deberia_hacer_ack_cuando_el_evento_{{ first.event_type }}_es_valido() {
+        // Preparar
+        let evento = {{ first.const_lower }}();
 
-        // Act
-        let outcome = {{ pascal }}.manejar(&event).await;
+        // Actuar
+        let resultado = {{ pascal }}.manejar(&evento).await;
 
-        // Assert
-        assert_eq!(outcome, ResultadoManejo::Ack);
+        // Comprobar
+        assert_eq!(resultado, ResultadoManejo::Ack);
     }
 
     #[tokio::test]
-    async fn should_ack_again_when_the_same_event_is_delivered_twice() {
-        // Arrange
-        let event = {{ first.const_lower }}();
+    async fn deberia_hacer_ack_otra_vez_cuando_el_mismo_evento_llega_dos_veces() {
+        // Preparar
+        let evento = {{ first.const_lower }}();
 
-        // Act
-        let first = {{ pascal }}.manejar(&event).await;
-        let second = {{ pascal }}.manejar(&event).await;
+        // Actuar
+        let primero = {{ pascal }}.manejar(&evento).await;
+        let segundo = {{ pascal }}.manejar(&evento).await;
 
-        // Assert
-        assert_eq!((first, second), (ResultadoManejo::Ack, ResultadoManejo::Ack));
+        // Comprobar
+        assert_eq!((primero, segundo), (ResultadoManejo::Ack, ResultadoManejo::Ack));
     }
 
     #[tokio::test]
-    async fn should_dead_letter_when_the_payload_is_malformed() {
-        // Arrange
-        let mut event = {{ first.const_lower }}();
-        event.payload = serde_json::json!({ "unexpected": true });
+    async fn deberia_descartar_cuando_el_payload_esta_mal_formado() {
+        // Preparar
+        let mut evento = {{ first.const_lower }}();
+        evento.payload = serde_json::json!({ "unexpected": true });
 
-        // Act
-        let outcome = {{ pascal }}.manejar(&event).await;
+        // Actuar
+        let resultado = {{ pascal }}.manejar(&evento).await;
 
-        // Assert
+        // Comprobar
         assert!(
             matches!(
-                outcome,
+                resultado,
                 ResultadoManejo::Descartar {
                     motivo: MOTIVO_PAYLOAD_INVALIDO,
                     ..
                 }
             ),
-            "{outcome:?}"
+            "{resultado:?}"
         );
     }
 }

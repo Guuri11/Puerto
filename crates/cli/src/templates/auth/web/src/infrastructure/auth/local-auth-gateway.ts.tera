@@ -14,15 +14,16 @@ export interface LocalAuthOptions {
   goTo?: (url: string) => void;
 }
 
+/** `GET /me` as the API answers it (`DtoMe`). */
 interface MeBody {
   id: string;
   email?: string | null;
-  name?: string | null;
+  nombre?: string | null;
   roles: string[];
 }
 
 function toCurrentUser(me: MeBody): CurrentUser {
-  return { id: me.id, email: me.email ?? null, name: me.name ?? null, roles: me.roles };
+  return { id: me.id, email: me.email ?? null, name: me.nombre ?? null, roles: me.roles };
 }
 
 /** `RespuestaError.codigo` of a failed call, or `http.<status>` for a body that is not one. */
@@ -82,10 +83,15 @@ export function localAuthGateway({
     },
 
     async register(registration: Registration) {
-      const response = await send("/api/auth/register", {
+      const response = await send("/api/auth/registro", {
         method: "POST",
         headers: JSON_BODY,
-        body: JSON.stringify(registration),
+        // `PeticionRegistro`: the API's names for the fields.
+        body: JSON.stringify({
+          email: registration.email,
+          contrasena: registration.password,
+          nombre: registration.name,
+        }),
       });
       if (!response.ok) throw new AuthError(await errorCode(response));
       return toCurrentUser((await response.json()) as MeBody);
@@ -95,7 +101,7 @@ export function localAuthGateway({
       const response = await send("/api/auth/login", {
         method: "POST",
         headers: JSON_BODY,
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, contrasena: password }),
       });
       if (!response.ok) throw new AuthError(await errorCode(response));
       const session = (await response.json()) as { token: string };

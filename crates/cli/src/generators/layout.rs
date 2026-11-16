@@ -119,7 +119,7 @@ pub fn mail_adapter(name: &str) -> String {
     crate_file(MAIL_CONTEXT, Layer::Infrastructure, name)
 }
 
-/// `subject.txt`, `body.html` and `body.txt` of a mail, next to its adapter.
+/// `asunto.txt`, `cuerpo.html` and `cuerpo.txt` of a mail, next to its adapter.
 pub fn mail_templates_dir(name: &str) -> String {
     format!(
         "{}/plantillas/{name}",

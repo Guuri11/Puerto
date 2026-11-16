@@ -53,8 +53,8 @@ fn new_with_auth_records_the_mode_and_keeps_the_demo_public() {
 
     let config = puerto_toml::read(&output).unwrap();
     assert_eq!(config.project.auth.as_deref(), Some("oidc"));
-    let greeting = config.entity.iter().find(|e| e.name == "Greeting").unwrap();
-    assert_eq!(greeting.public, vec!["get_greeting"]);
+    let saludo = config.entity.iter().find(|e| e.name == "Saludo").unwrap();
+    assert_eq!(saludo.public, vec!["obtener_saludo"]);
     // What it wrote passes its own checks: the demo's handler takes no BearerAuth, and `user`
     // is not an orphan entity.
     assert!(validate::run_validate(&output).is_ok());
@@ -95,7 +95,7 @@ fn new_with_auth_writes_the_user_the_provisioning_and_me() {
             &output,
             "contextos/usuario/infraestructura/src/repositorio.rs"
         )
-        .contains("InMemoryUserRepository")
+        .contains("RepositorioUsuarioEnMemoria")
     );
     assert!(read(&output, "contextos/usuario/rest/src/lib.rs").contains("pub mod me;"));
     let bootstrap = wiring(&output);
@@ -104,11 +104,11 @@ fn new_with_auth_writes_the_user_the_provisioning_and_me() {
         "{bootstrap}"
     );
     assert!(
-        bootstrap.contains("InMemoryUserRepository::new()"),
+        bootstrap.contains("RepositorioUsuarioEnMemoria::new()"),
         "{bootstrap}"
     );
-    assert!(bootstrap.contains(".data(authenticator)"), "{bootstrap}");
-    assert!(bootstrap.contains("me_api"), "{bootstrap}");
+    assert!(bootstrap.contains(".data(autenticador)"), "{bootstrap}");
+    assert!(bootstrap.contains("api_me"), "{bootstrap}");
     cleanup(&dir);
 }
 
@@ -129,7 +129,7 @@ fn new_with_auth_and_db_keeps_users_in_postgres() {
             &output,
             "contextos/usuario/infraestructura/src/repositorio.rs"
         )
-        .contains("PgUserRepository")
+        .contains("RepositorioUsuarioPostgres")
     );
     let migrations: Vec<String> = fs::read_dir(output.join("migraciones"))
         .unwrap()
@@ -137,7 +137,7 @@ fn new_with_auth_and_db_keeps_users_in_postgres() {
         .collect();
     let users = migrations
         .iter()
-        .find(|m| m.ends_with("_create_users_table.sql"))
+        .find(|m| m.ends_with("_crear_tabla_usuarios.sql"))
         .unwrap_or_else(|| panic!("{migrations:?}"));
     let sql = read(&output, &format!("migraciones/{users}"));
     assert!(sql.contains("UNIQUE (emisor, sujeto)"), "{sql}");
@@ -145,7 +145,7 @@ fn new_with_auth_and_db_keeps_users_in_postgres() {
     let bootstrap = wiring(&output);
     assert!(bootstrap.contains("crear_pool_postgres"), "{bootstrap}");
     assert!(
-        bootstrap.contains("PgUserRepository::new(pool.clone())"),
+        bootstrap.contains("RepositorioUsuarioPostgres::new(pool.clone())"),
         "{bootstrap}"
     );
     // Postgres keeps its service; Keycloak joins it before the volumes.
@@ -176,7 +176,7 @@ fn new_with_auth_without_the_demo_still_declares_the_user_and_me() {
         "the usuario context is a member:\n{root}"
     );
     assert!(root.contains("dominio_usuario = { path"), "{root}");
-    assert!(!root.contains("greeting"), "{root}");
+    assert!(!root.contains("saludo"), "{root}");
     let infrastructure = read(&output, "contextos/usuario/infraestructura/src/lib.rs");
     assert!(
         infrastructure.contains("pub mod aprovisionamiento;"),
@@ -184,7 +184,7 @@ fn new_with_auth_without_the_demo_still_declares_the_user_and_me() {
     );
     let api = read(&output, "presentacion/api/Cargo.toml");
     assert!(api.contains("rest_usuario = { workspace = true }"), "{api}");
-    assert!(!api.contains("greeting"), "{api}");
+    assert!(!api.contains("saludo"), "{api}");
     cleanup(&dir);
 }
 
@@ -296,7 +296,7 @@ fn new_with_auth_adds_the_auth_section_to_agents_md() {
 
     let agents = read(&output, "AGENTS.md");
     assert!(agents.contains(AGENTS_AUTH_SECTION));
-    assert!(agents.find("## Auth").unwrap() < agents.find("## Conventions").unwrap());
+    assert!(agents.find("## Auth").unwrap() < agents.find("## Convenciones").unwrap());
     // What the section names exists in the project it describes (ADR-0010).
     for path in [
         "contextos/usuario/dominio/",
@@ -327,9 +327,9 @@ fn access(public: &[&str], roles: &[&str]) -> scaffold::ScaffoldAccess {
     scaffold::ScaffoldAccess::from_args(&strings(public), &strings(roles)).unwrap()
 }
 
-fn scaffold_product(output: &Path, access: &scaffold::ScaffoldAccess) -> Result<(), String> {
+fn scaffold_producto(output: &Path, access: &scaffold::ScaffoldAccess) -> Result<(), String> {
     scaffold::run_scaffold_with_access(
-        "Product",
+        "Producto",
         output,
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Force,
@@ -353,34 +353,34 @@ fn auth_project(name: &str) -> (PathBuf, PathBuf) {
 fn scaffold_in_an_auth_project_protects_every_route_but_the_public_ones() {
     let (dir, output) = auth_project("auth_scaffold_routes");
 
-    scaffold_product(
+    scaffold_producto(
         &output,
-        &access(&["list_products"], &["delete_product=admin"]),
+        &access(&["listar_productos"], &["borrar_producto=admin"]),
     )
     .unwrap();
 
-    let routes = read(&output, "contextos/product/rest/src/rutas.rs");
+    let routes = read(&output, "contextos/producto/rest/src/rutas.rs");
     assert_eq!(routes.matches("auth: BearerAuth").count(), 4, "{routes}");
     assert_eq!(routes.matches("actor: auth.0").count(), 4, "{routes}");
     assert_eq!(routes.matches("#[requiere_rol(\"admin\")]").count(), 1);
     let config = puerto_toml::read(&output).unwrap();
-    let product = config.entity.iter().find(|e| e.name == "Product").unwrap();
-    assert_eq!(product.public, vec!["list_products"]);
+    let producto = config.entity.iter().find(|e| e.name == "Producto").unwrap();
+    assert_eq!(producto.public, vec!["listar_productos"]);
     assert_eq!(
-        product.roles.get("delete_product"),
+        producto.roles.get("borrar_producto"),
         Some(&vec!["admin".to_string()])
     );
     // The use cases behind protected routes carry the caller; the public one does not.
     let use_case = |uc: &str| {
         read(
             &output,
-            &format!("contextos/product/aplicacion/src/{uc}.rs"),
+            &format!("contextos/producto/aplicacion/src/{uc}.rs"),
         )
     };
-    assert!(use_case("create_product").contains("pub actor: Principal,"));
-    assert!(!use_case("list_products").contains("actor"));
+    assert!(use_case("crear_producto").contains("pub actor: Principal,"));
+    assert!(!use_case("listar_productos").contains("actor"));
     assert!(
-        read(&output, "contextos/product/dominio/src/errores.rs").contains("product.forbidden")
+        read(&output, "contextos/producto/dominio/src/errores.rs").contains("producto.prohibido")
     );
     // What scaffold wrote is what validate checks.
     assert!(validate::run_validate(&output).is_ok());
@@ -390,23 +390,24 @@ fn scaffold_in_an_auth_project_protects_every_route_but_the_public_ones() {
 #[test]
 fn rescaffold_without_flags_keeps_what_the_manifest_says() {
     let (dir, output) = auth_project("auth_scaffold_keep");
-    scaffold_product(
+    scaffold_producto(
         &output,
-        &access(&["list_products"], &["create_product=admin"]),
+        &access(&["listar_productos"], &["crear_producto=admin"]),
     )
     .unwrap();
 
-    scaffold_product(&output, &scaffold::ScaffoldAccess::default()).unwrap();
+    scaffold_producto(&output, &scaffold::ScaffoldAccess::default()).unwrap();
 
-    let product = puerto_toml::read(&output)
+    let producto = puerto_toml::read(&output)
         .unwrap()
         .entity
         .into_iter()
-        .find(|e| e.name == "Product")
+        .find(|e| e.name == "Producto")
         .unwrap();
-    assert_eq!(product.public, vec!["list_products"]);
+    assert_eq!(producto.public, vec!["listar_productos"]);
     assert!(
-        read(&output, "contextos/product/rest/src/rutas.rs").contains("#[requiere_rol(\"admin\")]")
+        read(&output, "contextos/producto/rest/src/rutas.rs")
+            .contains("#[requiere_rol(\"admin\")]")
     );
     cleanup(&dir);
 }
@@ -415,10 +416,14 @@ fn rescaffold_without_flags_keeps_what_the_manifest_says() {
 fn scaffold_refuses_access_naming_another_use_case_before_writing() {
     let (dir, output) = auth_project("auth_scaffold_refuse");
 
-    let result = scaffold_product(&output, &access(&["list_product"], &[]));
+    let result = scaffold_producto(&output, &access(&["listar_producto"], &[]));
 
-    assert!(result.unwrap_err().contains("'list_product' is not one of"));
-    assert!(!output.join("contextos/product").exists());
+    assert!(
+        result
+            .unwrap_err()
+            .contains("'listar_producto' is not one of")
+    );
+    assert!(!output.join("contextos/producto").exists());
     cleanup(&dir);
 }
 
@@ -426,9 +431,9 @@ fn scaffold_refuses_access_naming_another_use_case_before_writing() {
 fn scaffold_refuses_a_role_on_a_public_route() {
     let (dir, output) = auth_project("auth_scaffold_both");
 
-    let result = scaffold_product(
+    let result = scaffold_producto(
         &output,
-        &access(&["list_products"], &["list_products=admin"]),
+        &access(&["listar_productos"], &["listar_productos=admin"]),
     );
 
     assert!(
@@ -444,7 +449,7 @@ fn scaffold_refuses_the_user_entity_in_an_auth_project() {
     let (dir, output) = auth_project("auth_scaffold_user");
 
     let result = scaffold::run_scaffold_with_access(
-        "User",
+        "Usuario",
         &output,
         &[],
         OverwritePolicy::Force,
@@ -464,7 +469,7 @@ fn scaffold_refuses_the_user_entity_in_an_auth_project() {
 fn scaffold_refuses_access_flags_outside_an_auth_project() {
     let (dir, output) = new_auth_project_without_auth("auth_scaffold_noauth");
 
-    let result = scaffold_product(&output, &access(&["list_products"], &[]));
+    let result = scaffold_producto(&output, &access(&["listar_productos"], &[]));
 
     assert!(result.unwrap_err().contains("need an auth project"));
     cleanup(&dir);
@@ -479,13 +484,13 @@ fn role_args_need_a_use_case_and_a_role() {
 #[test]
 fn a_custom_use_case_of_an_auth_project_takes_the_caller() {
     let (dir, output) = auth_project("auth_use_case");
-    scaffold_product(&output, &scaffold::ScaffoldAccess::default()).unwrap();
+    scaffold_producto(&output, &scaffold::ScaffoldAccess::default()).unwrap();
 
-    scaffold::run_use_case("Product", "publish_product", &output).unwrap();
+    scaffold::run_use_case("Producto", "publish_producto", &output).unwrap();
 
     let params = read(
         &output,
-        "contextos/product/aplicacion/src/publish_product.rs",
+        "contextos/producto/aplicacion/src/publish_producto.rs",
     );
     assert!(params.contains("pub actor: Principal,"), "{params}");
     cleanup(&dir);
@@ -596,9 +601,9 @@ fn new_with_auth_and_no_web_writes_nothing_for_the_frontend() {
     cleanup(&dir);
 }
 
-fn scaffold_web_product(output: &Path, access: &scaffold::ScaffoldAccess) {
+fn scaffold_web_producto(output: &Path, access: &scaffold::ScaffoldAccess) {
     scaffold::run_scaffold_with_access(
-        "Product",
+        "Producto",
         output,
         &[scaffold_test_field("title", "String")],
         OverwritePolicy::Force,
@@ -611,29 +616,32 @@ fn scaffold_web_product(output: &Path, access: &scaffold::ScaffoldAccess) {
 fn scaffold_in_an_auth_web_project_guards_every_screen_but_the_public_ones() {
     let (dir, output) = auth_web_project("auth_web_routes");
 
-    scaffold_web_product(
+    scaffold_web_producto(
         &output,
-        &access(&["list_products", "get_product"], &["create_product=admin"]),
+        &access(
+            &["listar_productos", "obtener_producto"],
+            &["crear_producto=admin"],
+        ),
     );
 
     let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
     // List and detail are public; new and edit (create, update) are not.
     assert!(
-        routes.contains("<Route path=\"/products\">\n        <ProductListContainer />"),
+        routes.contains("<Route path=\"/productos\">\n        <ProductoListContainer />"),
         "{routes}"
     );
     assert!(
-        routes.contains("<Route path=\"/products/new\">\n        <RequireAuth>\n          <ProductFormContainer />"),
+        routes.contains("<Route path=\"/productos/new\">\n        <RequireAuth>\n          <ProductoFormContainer />"),
         "{routes}"
     );
     assert!(
         routes.contains(
-            "<Route path=\"/products/:id/edit\">\n        {(params) => (\n          <RequireAuth>"
+            "<Route path=\"/productos/:id/edit\">\n        {(params) => (\n          <RequireAuth>"
         ),
         "{routes}"
     );
     assert!(
-        routes.contains("<Route path=\"/products/:id\">{(params) => <ProductDetailContainer"),
+        routes.contains("<Route path=\"/productos/:id\">{(params) => <ProductoDetailContainer"),
         "{routes}"
     );
     let roles = read(&output, "web/src/presentation/core/generated/roles.ts");
@@ -645,24 +653,27 @@ fn scaffold_in_an_auth_web_project_guards_every_screen_but_the_public_ones() {
 fn scaffold_in_an_auth_web_project_hides_the_actions_a_role_guards() {
     let (dir, output) = auth_web_project("auth_web_screens");
 
-    scaffold_web_product(
+    scaffold_web_producto(
         &output,
         &access(
             &[],
             &[
-                "create_product=admin",
-                "delete_product=admin",
-                "delete_product=owner",
+                "crear_producto=admin",
+                "borrar_producto=admin",
+                "borrar_producto=owner",
             ],
         ),
     );
 
-    let containers = "web/src/presentation/features/product/containers";
-    let list = read(&output, &format!("{containers}/product-list-container.tsx"));
+    let containers = "web/src/presentation/features/producto/containers";
+    let list = read(
+        &output,
+        &format!("{containers}/producto-list-container.tsx"),
+    );
     assert!(list.contains("{can(\"admin\") && ("), "{list}");
     let detail = read(
         &output,
-        &format!("{containers}/product-detail-container.tsx"),
+        &format!("{containers}/producto-detail-container.tsx"),
     );
     assert!(
         detail.contains("{can(\"admin\") && can(\"owner\") && ("),
@@ -675,7 +686,7 @@ fn scaffold_in_an_auth_web_project_hides_the_actions_a_role_guards() {
     );
     let detail_test = read(
         &output,
-        &format!("{containers}/product-detail-container.test.tsx"),
+        &format!("{containers}/producto-detail-container.test.tsx"),
     );
     assert!(
         detail_test.contains("should not offer Delete to a user without its role"),
@@ -687,7 +698,7 @@ fn scaffold_in_an_auth_web_project_hides_the_actions_a_role_guards() {
     );
     let list_test = read(
         &output,
-        &format!("{containers}/product-list-container.test.tsx"),
+        &format!("{containers}/producto-list-container.test.tsx"),
     );
     assert!(
         list_test.contains("should not offer New to a user without its role"),
@@ -700,17 +711,20 @@ fn scaffold_in_an_auth_web_project_hides_the_actions_a_role_guards() {
 fn scaffold_in_an_auth_web_project_without_roles_checks_none() {
     let (dir, output) = auth_web_project("auth_web_no_roles");
 
-    scaffold_web_product(&output, &access(&[], &[]));
+    scaffold_web_producto(&output, &access(&[], &[]));
 
-    let containers = "web/src/presentation/features/product/containers";
-    for file in ["product-list-container.tsx", "product-detail-container.tsx"] {
+    let containers = "web/src/presentation/features/producto/containers";
+    for file in [
+        "producto-list-container.tsx",
+        "producto-detail-container.tsx",
+    ] {
         let src = read(&output, &format!("{containers}/{file}"));
         assert!(!src.contains("useAuth"), "{file}: {src}");
     }
     // A protected deletion can still be refused by the use case itself.
     let detail_test = read(
         &output,
-        &format!("{containers}/product-detail-container.test.tsx"),
+        &format!("{containers}/producto-detail-container.test.tsx"),
     );
     assert!(detail_test.contains("auth.prohibido"), "{detail_test}");
     cleanup(&dir);
@@ -772,7 +786,7 @@ fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
     let config = puerto_toml::read(&output).unwrap();
     assert_eq!(config.project.auth.as_deref(), Some("local"));
     for file in [
-        "contextos/usuario/aplicacion/src/register_user.rs",
+        "contextos/usuario/aplicacion/src/registrar_usuario.rs",
         "contextos/usuario/aplicacion/src/login.rs",
         "contextos/usuario/aplicacion/src/logout.rs",
         "contextos/usuario/rest/src/auth.rs",
@@ -794,8 +808,8 @@ fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
     assert!(!read(&output, "docker-compose.yml").contains("keycloak"));
     // The tables `puerto-sqlx` is tested against, users first: credentials and sessions
     // reference them.
-    let (users, users_sql) = migration_ending(&output, "_create_users_table.sql");
-    let (auth, auth_sql) = migration_ending(&output, "_create_auth_tables.sql");
+    let (users, users_sql) = migration_ending(&output, "_crear_tabla_usuarios.sql");
+    let (auth, auth_sql) = migration_ending(&output, "_crear_tablas_auth.sql");
     assert!(users_sql.ends_with(include_str!("../../../sqlx/migrations/users.sql")));
     assert!(auth_sql.ends_with(include_str!("../../../sqlx/migrations/auth.sql")));
     assert!(users < auth, "{users} runs before {auth}");
@@ -804,8 +818,8 @@ fn new_with_local_auth_writes_accounts_sessions_and_the_auth_api() {
         "SesionesPostgres::new",
         "CredencialesPostgres::new",
         "HasherArgon2",
-        "auth_api",
-        ".data(authenticator)",
+        "api_auth",
+        ".data(autenticador)",
     ] {
         assert!(bootstrap.contains(wired), "{wired}: {bootstrap}");
     }
@@ -823,12 +837,12 @@ fn new_with_local_auth_grants_roles_from_make_and_reads_the_session_lifetime() {
     assert!(env.contains("AUTH_SESSION_TTL=30d"), "{env}");
     assert!(!env.contains("AUTH_ISSUER"), "{env}");
     let makefile = read(&output, "Makefile");
-    assert!(makefile.contains("auth/grant:"), "{makefile}");
+    assert!(makefile.contains("auth/conceder:"), "{makefile}");
     assert!(makefile.contains("array_append(roles"), "{makefile}");
     assert!(!makefile.contains("auth/ui:"), "{makefile}");
     let agents = read(&output, "AGENTS.md");
     assert!(agents.contains("## Auth (`[proyecto] auth`)"), "{agents}");
-    assert!(agents.contains("make auth/grant"), "{agents}");
+    assert!(agents.contains("make auth/conceder"), "{agents}");
     assert!(!agents.contains("Keycloak"), "{agents}");
     cleanup(&dir);
 }
@@ -911,13 +925,13 @@ fn new_with_local_auth_and_web_signs_in_with_a_password_not_a_provider() {
 fn scaffold_in_a_local_auth_project_protects_routes_as_in_an_oidc_one() {
     let (dir, output) = local_project("auth_local_scaffold");
 
-    scaffold_product(
+    scaffold_producto(
         &output,
-        &access(&["list_products"], &["delete_product=admin"]),
+        &access(&["listar_productos"], &["borrar_producto=admin"]),
     )
     .unwrap();
 
-    let routes = read(&output, "contextos/product/rest/src/rutas.rs");
+    let routes = read(&output, "contextos/producto/rest/src/rutas.rs");
     assert_eq!(routes.matches("auth: BearerAuth").count(), 4, "{routes}");
     assert_eq!(routes.matches("#[requiere_rol(\"admin\")]").count(), 1);
     assert!(validate::run_validate(&output).is_ok());

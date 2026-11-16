@@ -21,15 +21,21 @@ describe("{{ camel }}RepositoryHttp", () => {
   test("should ask for the page and return its {{ words_plural }}", async () => {
     // Arrange
     const {{ ident }} = {{ pascal }}Mother.random();
-    const page = { items: [{{ ident }}], total: 21, limit: 20, offset: 20 };
-    const { repository, requests } = answering(200, page);
+    const { repository, requests } = answering(200, {
+      elementos: [{{ ident }}],
+      total: 21,
+      limite: 20,
+      desplazamiento: 20,
+    });
 
     // Act
     const listed = await repository.list({ limit: 20, offset: 20 });
 
     // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/{{ plural }}?limit=20&offset=20");
-    expect(listed).toEqual(page);
+    const url = new URL(requests[0]?.url ?? "");
+    expect(url.pathname).toBe("/api/{{ plural }}");
+    expect(url.search).toBe("?limite=20&desplazamiento=20");
+    expect(listed).toEqual({ items: [{{ ident }}], total: 21, limit: 20, offset: 20 });
   });
 
   test("should send the draft when creating {{ a_words }}", async () => {
@@ -48,7 +54,7 @@ describe("{{ camel }}RepositoryHttp", () => {
 
   test("should reject with the API's error code when the {{ words }} does not exist", async () => {
     // Arrange
-    const code = "{{ snake }}.not_found";
+    const code = "{{ snake }}.no_encontrado";
     const { repository } = answering(404, { codigo: code, mensaje: code });
 
     // Act

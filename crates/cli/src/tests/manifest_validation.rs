@@ -14,8 +14,8 @@ fn validate_valid_config() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product", "get_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto", "obtener_producto"]
 
 [[entidad.campos]]
 nombre = "title"
@@ -46,8 +46,8 @@ fn validate_rejects_unknown_field_type() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad.campos]]
 nombre = "title"
@@ -79,8 +79,8 @@ fn validate_rejects_invalid_entity_name() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "lowercase_product"
-casos_de_uso = ["create_product"]
+nombre = "lowercase_producto"
+casos_de_uso = ["crear_producto"]
 "#,
     )
     .unwrap();
@@ -108,8 +108,8 @@ fn validate_rejects_invalid_use_case_name() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["CreateProduct"]
+nombre = "Producto"
+casos_de_uso = ["CreateProducto"]
 "#,
     )
     .unwrap();
@@ -137,8 +137,8 @@ fn validate_rejects_duplicate_field_name() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad.campos]]
 nombre = "title"
@@ -174,8 +174,8 @@ fn validate_warns_on_option_unique_field() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad.campos]]
 nombre = "email"
@@ -203,12 +203,12 @@ fn validate_rejects_duplicate_entity_name() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["get_product"]
+nombre = "Producto"
+casos_de_uso = ["obtener_producto"]
 "#,
     )
     .unwrap();
@@ -217,7 +217,7 @@ casos_de_uso = ["get_product"]
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("duplicate entity name 'Product'"),
+        err.contains("duplicate entity name 'Producto'"),
         "expected duplicate entity error, got: {err}"
     );
 
@@ -236,8 +236,8 @@ fn validate_rejects_invalid_field_name() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad.campos]]
 nombre = "BadName"
@@ -264,7 +264,7 @@ fn declare_phantom_entity(base: &Path, name: &str) {
     puerto_toml::add_entity(
         base,
         name,
-        vec![format!("create_{}", name.to_lowercase())],
+        vec![format!("crear_{}", name.to_lowercase())],
         false,
         vec![],
     )
@@ -278,14 +278,14 @@ fn validate_fails_on_declared_but_unscaffolded_entity() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("drift-validate", &dir).unwrap();
 
-    declare_phantom_entity(&output, "Invoice");
+    declare_phantom_entity(&output, "Factura");
 
     let result = validate::run_validate(&output);
 
     assert!(result.is_err(), "a phantom entity must fail validation");
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("Invoice") && err.contains("puerto generar scaffold Invoice"),
+        err.contains("Factura") && err.contains("puerto generar scaffold Factura"),
         "error should name the entity and the fix: {err}"
     );
 
@@ -294,7 +294,7 @@ fn validate_fails_on_declared_but_unscaffolded_entity() {
 
 #[test]
 fn validate_passes_on_a_freshly_generated_project() {
-    // The demo Greeting entity must satisfy the same consistency pass.
+    // The demo Saludo entity must satisfy the same consistency pass.
     let dir = temp_dir("drift_validate_clean");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -333,7 +333,7 @@ fn bootstrap_command_refuses_when_declared_code_is_missing() {
     let output = generate_project("drift-bootstrap", &dir).unwrap();
 
     let before = wiring(&output);
-    declare_phantom_entity(&output, "Invoice");
+    declare_phantom_entity(&output, "Factura");
 
     let result = scaffold::run_bootstrap_command(&output, false);
 
@@ -356,12 +356,12 @@ fn bootstrap_command_writes_anyway_with_allow_missing() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("drift-bootstrap-allow", &dir).unwrap();
 
-    declare_phantom_entity(&output, "Invoice");
+    declare_phantom_entity(&output, "Factura");
 
     scaffold::run_bootstrap_command(&output, true).unwrap();
 
     let bootstrap = wiring(&output);
-    assert!(bootstrap.contains("InvoiceApi"));
+    assert!(bootstrap.contains("ApiFactura"));
 
     cleanup(&dir);
 }
@@ -373,8 +373,8 @@ fn scaffolding_the_declared_entity_clears_the_drift() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("drift-cleared", &dir).unwrap();
 
-    declare_phantom_entity(&output, "Invoice");
-    scaffold::run_scaffold("Invoice", &output, &[], OverwritePolicy::Ask).unwrap();
+    declare_phantom_entity(&output, "Factura");
+    scaffold::run_scaffold("Factura", &output, &[], OverwritePolicy::Ask).unwrap();
 
     assert!(validate::run_validate(&output).is_ok());
     assert!(scaffold::run_bootstrap_command(&output, false).is_ok());
@@ -425,11 +425,11 @@ fn validate_rejects_hand_edited_system_field_name() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad.campos]]
-nombre = "created_at"
+nombre = "creado_en"
 tipo = "DateTime<Utc>"
 "#,
     )
@@ -455,7 +455,7 @@ nombre = "my-app"
 
 [[entidad]]
 nombre = "Error"
-casos_de_uso = ["create_error"]
+casos_de_uso = ["crear_error"]
 "#,
     )
     .unwrap();
@@ -479,8 +479,8 @@ fn validate_rejects_conflicting_value_object_inner_types() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad.campos]]
 nombre = "code"
@@ -541,7 +541,7 @@ fn model_does_not_reimport_chrono_or_uuid_for_field_types() {
     ];
 
     let model =
-        crate::generators::domain::generate_model("Product", "product", &fields, &[]).unwrap();
+        crate::generators::domain::generate_model("Producto", "producto", &fields, &[]).unwrap();
 
     assert_eq!(model.matches("use chrono::{DateTime, Utc};").count(), 1);
     assert_eq!(model.matches("use uuid::Uuid;").count(), 1);
@@ -555,7 +555,7 @@ fn scaffold_rejects_sql_reserved_field_names_in_a_database_project() {
     setup_puerto_stubs_with_project_db(&dir);
 
     let result = scaffold::run_scaffold(
-        "Product",
+        "Producto",
         &dir,
         &[scaffold_test_field("desc", "String")],
         OverwritePolicy::Ask,
@@ -563,7 +563,7 @@ fn scaffold_rejects_sql_reserved_field_names_in_a_database_project() {
 
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("SQL"));
-    assert!(!dir.join("business/src/domain/product").exists());
+    assert!(!dir.join("business/src/domain/producto").exists());
 
     cleanup(&dir);
 }
@@ -576,7 +576,7 @@ fn scaffold_accepts_sql_reserved_field_names_without_a_database() {
     setup_puerto_stubs(&dir);
 
     let result = scaffold::run_scaffold(
-        "Product",
+        "Producto",
         &dir,
         &[scaffold_test_field("order", "String")],
         OverwritePolicy::Ask,
@@ -598,8 +598,8 @@ nombre = "my-app"
 db = true
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
 
 [[entidad.campos]]
 nombre = "user"
@@ -659,10 +659,10 @@ nombre = "my-app"
 auth = "oidc"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product", "list_products"]
-publicos = ["list_products"]
-roles = { create_product = ["admin"] }
+nombre = "Producto"
+casos_de_uso = ["crear_producto", "listar_productos"]
+publicos = ["listar_productos"]
+roles = { crear_producto = ["admin"] }
 "#,
     );
 
@@ -697,9 +697,9 @@ fn validate_rejects_public_and_roles_without_auth() {
 nombre = "my-app"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["list_products"]
-publicos = ["list_products"]
+nombre = "Producto"
+casos_de_uso = ["listar_productos"]
+publicos = ["listar_productos"]
 "#,
     );
 
@@ -719,8 +719,8 @@ nombre = "my-app"
 auth = "oidc"
 
 [[entidad]]
-nombre = "User"
-casos_de_uso = ["get_user"]
+nombre = "Usuario"
+casos_de_uso = ["obtener_usuario"]
 "#,
     );
 
@@ -736,16 +736,16 @@ nombre = "my-app"
 auth = "oidc"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product"]
-roles = { delete_product = ["admin"] }
+nombre = "Producto"
+casos_de_uso = ["crear_producto"]
+roles = { borrar_producto = ["admin"] }
 "#,
     );
 
     assert!(
         result
             .unwrap_err()
-            .contains("roles: 'delete_product' is not one of the entity's use cases")
+            .contains("roles: 'borrar_producto' is not one of the entity's use cases")
     );
 }
 
@@ -761,10 +761,10 @@ nombre = "my-app"
 auth = "oidc"
 
 [[entidad]]
-nombre = "Product"
-casos_de_uso = ["create_product", "list_products"]
-publicos = ["list_products"]
-roles = { create_product = ["admin", "editor"] }
+nombre = "Producto"
+casos_de_uso = ["crear_producto", "listar_productos"]
+publicos = ["listar_productos"]
+roles = { crear_producto = ["admin", "editor"] }
 
 [[entidad.campos]]
 nombre = "title"
@@ -779,9 +779,9 @@ tipo = "String"
     let reread = puerto_toml::read(&dir).unwrap();
 
     assert_eq!(reread.project.auth.as_deref(), Some("oidc"));
-    assert_eq!(reread.entity[0].public, vec!["list_products"]);
+    assert_eq!(reread.entity[0].public, vec!["listar_productos"]);
     assert_eq!(
-        reread.entity[0].roles.get("create_product"),
+        reread.entity[0].roles.get("crear_producto"),
         Some(&vec!["admin".to_string(), "editor".to_string()])
     );
     assert_eq!(reread.entity[0].fields.len(), 1, "{written}");

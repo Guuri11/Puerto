@@ -19,7 +19,7 @@ pub(super) struct Scenario<'a> {
     pub(super) events: Option<&'a str>,
     /// `puerto nuevo --auth <mode>`: the `User` entity, the provisioning authenticator, `GET /me`.
     pub(super) auth: Option<&'a str>,
-    /// Strip the Greeting demo before scaffolding (`puerto nuevo --sin-demo`).
+    /// Strip the Saludo demo before scaffolding (`puerto nuevo --sin-demo`).
     pub(super) no_demo: bool,
     /// Strip the web frontend (`puerto nuevo --sin-web`).
     pub(super) no_web: bool,
@@ -93,7 +93,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[(
-        "Product",
+        "Producto",
         &[
             "title:String",
             "price:i64",
@@ -103,7 +103,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
             "meta:map",
             // A `Uuid` field (the usual foreign key) was missing from this matrix, which is how
             // the generators shipped dropping it from every params struct and DTO.
-            "category_id:Uuid",
+            "categoria_id:Uuid",
         ],
     )],
 };
@@ -121,7 +121,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
-    entities: &[("Booking", &["reference:String", "tenant_id:TenantId:Uuid"])],
+    entities: &[("Reserva", &["reference:String", "tenant_id:TenantId:Uuid"])],
 };
 
 pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
@@ -163,7 +163,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[(
-        "Item",
+        "Articulo",
         &["name:Name:String", "sku:Sku:String!", "weight:Weight:i64"],
     )],
 };
@@ -205,7 +205,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[(
-        "Order",
+        "Pedido",
         &[
             "reference:String",
             "status:Status:enum:Pending/Confirmed/Cancelled",
@@ -226,7 +226,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
-    entities: &[("Customer", &["name:String", "email:Email", "credit:Money"])],
+    entities: &[("Cliente", &["name:String", "email:Email", "credit:Money"])],
 };
 
 pub(super) const MULTI_ENTITY: Scenario = Scenario {
@@ -243,8 +243,8 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[
-        ("Product", &["title:String", "price:i64"]),
-        ("Category", &["name:Name:String"]),
+        ("Producto", &["title:String", "price:i64"]),
+        ("Categoria", &["name:Name:String"]),
     ],
 };
 
@@ -262,7 +262,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[(
-        "Account",
+        "Cuenta",
         &[
             "title:String",
             "price:i64",
@@ -290,7 +290,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     use_cases: &[],
     entity_events: &[],
     consumers: &[],
-    entities: &[("Ticket", &["state:State:enum:Open/Closed"])],
+    entities: &[("Billete", &["state:State:enum:Open/Closed"])],
 };
 
 pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
@@ -303,14 +303,14 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     no_web: false,
     shared_vos: &[],
     mails: &[],
-    use_cases: &[("Product", "archive_product")],
+    use_cases: &[("Producto", "archive_producto")],
     entity_events: &[],
     consumers: &[],
-    entities: &[("Product", &["title:String", "price:i64"])],
+    entities: &[("Producto", &["title:String", "price:i64"])],
 };
 
 /// Phase 9.2: an entity whose every field reaches the frontend — each primitive an input holds,
-/// and a value object over one — with a two-word name (`order-item` files, `/order_items`).
+/// and a value object over one — with a two-word name (`linea-pedido` files, `/lineas_pedido`).
 pub(super) const WEB_CRUD: Scenario = Scenario {
     name: "web_crud",
     db: false,
@@ -325,7 +325,7 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[(
-        "OrderItem",
+        "LineaPedido",
         &[
             "title:String",
             "quantity:i64",
@@ -374,18 +374,18 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
 };
 
 /// Phase 18 (ADR-0022): references — required, optional, two to one target, a chain
-/// (`Shipment` → `Order` → `Customer`) and a unique one (one-to-one).
+/// (`Envio` → `Pedido` → `Cliente`) and a unique one (one-to-one).
 const REFERENCE_ENTITIES: &[(&str, &[&str])] = &[
-    ("Customer", &["name:Name:String", "email:String!"]),
+    ("Cliente", &["name:Name:String", "email:String!"]),
     (
-        "Order",
+        "Pedido",
         &[
-            "customer_id:ref:Customer",
-            "reviewer_id:ref:opt:Customer",
+            "cliente_id:ref:Cliente",
+            "reviewer_id:ref:opt:Cliente",
             "total:i64",
         ],
     ),
-    ("Shipment", &["order_id:ref:Order!", "carrier:String"]),
+    ("Envio", &["pedido_id:ref:Pedido!", "carrier:String"]),
 ];
 
 pub(super) const REFERENCES: Scenario = Scenario {
@@ -417,16 +417,16 @@ pub(super) const REFERENCES_EVENTS: Scenario = Scenario {
     db: true,
     events: Some("db"),
     entities: &[
-        ("Supplier", &["name:Name:String", "email:String!"]),
+        ("Proveedor", &["name:Name:String", "email:String!"]),
         (
-            "Purchase",
+            "Compra",
             &[
-                "supplier_id:ref:Supplier",
-                "approver_id:ref:opt:Supplier",
+                "proveedor_id:ref:Proveedor",
+                "approver_id:ref:opt:Proveedor",
                 "total:i64",
             ],
         ),
-        ("Delivery", &["purchase_id:ref:Purchase!", "carrier:String"]),
+        ("Entrega", &["compra_id:ref:Compra!", "carrier:String"]),
     ],
     ..REFERENCES
 };
@@ -441,12 +441,12 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     no_web: false,
     shared_vos: &[("Email", "String")],
     mails: &[],
-    use_cases: &[("Product", "archive_product")],
+    use_cases: &[("Producto", "archive_producto")],
     entity_events: &[],
     consumers: &[],
     entities: &[
         (
-            "Product",
+            "Producto",
             &[
                 "title:String",
                 "sku:String!",
@@ -464,7 +464,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
             ],
         ),
         (
-            "Customer",
+            "Cliente",
             &[
                 "email:Email",
                 "name:Name:String",
@@ -476,7 +476,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
                 "status:Status:enum:Active/Inactive",
             ],
         ),
-        ("Ticket", &["state:State:enum:Open/Closed"]),
+        ("Billete", &["state:State:enum:Open/Closed"]),
     ],
 };
 
@@ -490,14 +490,14 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     no_web: false,
     shared_vos: &[],
     mails: &[],
-    use_cases: &[("Product", "publish_product")],
-    entity_events: &[("Product", "product_published")],
+    use_cases: &[("Producto", "publish_producto")],
+    entity_events: &[("Producto", "producto_published")],
     consumers: &[(
-        "notify_new_product",
-        &["product_created", "product_published"],
+        "notify_new_producto",
+        &["producto_creado", "producto_published"],
     )],
     entities: &[(
-        "Product",
+        "Producto",
         &[
             "name:Name:String",
             "sku:Sku:String!",
@@ -515,7 +515,11 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
 pub(super) const AUTH_OIDC_EVENTS: Scenario = Scenario {
     name: "auth_oidc_events",
     auth: Some("oidc"),
-    access: &[("Product", &["list_products"], &["delete_product=admin"])],
+    access: &[(
+        "Producto",
+        &["listar_productos"],
+        &["borrar_producto=admin"],
+    )],
     ..EVENTS_DB
 };
 
@@ -527,22 +531,22 @@ pub(super) const EVENTS_KAFKA: Scenario = Scenario {
     ..EVENTS_DB
 };
 
-/// `events_db` with mails the worker sends (Phase 14.4): one on two events of `Product`, its fields
+/// `events_db` with mails the worker sends (Phase 14.4): one on two events of `Producto`, its fields
 /// taken from the snapshot (VO, enum, `Option<DateTime>`; `Vec` and map left out), and one with
 /// fields named after `--`. Plus a mail nothing sends, which the registry leaves out.
 pub(super) const EVENTS_MAIL: Scenario = Scenario {
     name: "events_mail",
     mails: &[
         (
-            "product_live",
+            "producto_live",
             &[],
-            &["product_created", "product_published"],
+            &["producto_creado", "producto_published"],
             Some("sku"),
         ),
         (
             "price_alert",
             &["name:String", "price:i64"],
-            &["product_published"],
+            &["producto_published"],
             Some("name"),
         ),
         ("digest", &[], &[], None),
@@ -591,7 +595,7 @@ pub(super) const MAIL: Scenario = Scenario {
         (
             "receipt",
             &[
-                "order_id:Uuid",
+                "pedido_id:Uuid",
                 "paid_at:DateTime",
                 "total:f64",
                 "gift:bool",
@@ -613,7 +617,7 @@ pub(super) const MAIL: Scenario = Scenario {
 
 /// `puerto nuevo --auth oidc` (Phase 16.4): the `User` entity in memory, the provisioning
 /// authenticator and its tests, `GET /me` in the spec the frontend is typed from, Keycloak in a
-/// `docker-compose.yml` of its own. The Greeting demo is `public`. Two scaffolds: protected routes
+/// `docker-compose.yml` of its own. The Saludo demo is `public`. Two scaffolds: protected routes
 /// (`BearerAuth`, `actor`, 401/403/503) and the route tests that prove them.
 pub(super) const AUTH_OIDC: Scenario = Scenario {
     name: "auth_oidc",
@@ -625,12 +629,12 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     // Protected by default: its params carry the caller.
-    use_cases: &[("Product", "publish_product")],
+    use_cases: &[("Producto", "publish_producto")],
     entity_events: &[],
     consumers: &[],
     entities: &[
         (
-            "Product",
+            "Producto",
             &[
                 "name:Name:String",
                 "sku:String!",
@@ -638,17 +642,17 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
                 "status:Status:enum:Draft/Live",
             ],
         ),
-        ("Order", &["total:i64"]),
+        ("Pedido", &["total:i64"]),
     ],
-    // Product: public reads, two roles on one route, a protected route with no role. Order: every
+    // Producto: public reads, two roles on one route, a protected route with no role. Pedido: every
     // route protected, no role.
     access: &[(
-        "Product",
-        &["list_products", "get_product"],
+        "Producto",
+        &["listar_productos", "obtener_producto"],
         &[
-            "create_product=admin",
-            "delete_product=admin",
-            "delete_product=owner",
+            "crear_producto=admin",
+            "borrar_producto=admin",
+            "borrar_producto=owner",
         ],
     )],
 };
@@ -969,16 +973,16 @@ fn compiles_with_domain_first_layered_flow_and_fields() {
         let _ = crate::generators::format::format_project(&output);
     };
     format();
-    scaffold::run_generate_domain("Invoice", &output, &fields).unwrap();
+    scaffold::run_generate_domain("Factura", &output, &fields).unwrap();
     format();
-    scaffold::run_generate_application("Invoice", &output).unwrap();
+    scaffold::run_generate_application("Factura", &output).unwrap();
     format();
-    scaffold::run_generate_repository("Invoice", &output).unwrap();
+    scaffold::run_generate_repository("Factura", &output).unwrap();
     format();
-    scaffold::run_generate_presentation("Invoice", &output).unwrap();
+    scaffold::run_generate_presentation("Factura", &output).unwrap();
     format();
-    // The flow's last step in a web project: `core/generated/*` already routes Invoice.
-    scaffold::run_generate_web("Invoice", &output, OverwritePolicy::Ask).unwrap();
+    // The flow's last step in a web project: `core/generated/*` already routes Factura.
+    scaffold::run_generate_web("Factura", &output, OverwritePolicy::Ask).unwrap();
 
     assert_generated_project_is_clean(&output, &dir, "layered_fields", &[]);
 
@@ -1004,7 +1008,7 @@ fn compiles_with_mails_and_renders_their_templates() {
 #[test]
 #[ignore = "slow: compiles and tests a generated project"]
 fn compiles_with_custom_use_case_after_scaffold() {
-    // `generate use-case` on a scaffolded entity wired the use case into `ProductApi` in
+    // `generate use-case` on a scaffolded entity wired the use case into `ProductoApi` in
     // bootstrap.rs while routes.rs had no such field (E0560).
     assert_scenario_compiles(&CUSTOM_USE_CASE);
 }
@@ -1149,7 +1153,7 @@ fn postgres_oidc_auth_events_project_compiles_lints_and_passes_integration_tests
 #[ignore = "slow: needs Postgres — run via `make test/db`"]
 fn postgres_events_project_compiles_lints_and_passes_integration_tests() {
     // Phase 13.3: units of work, the outbox migration and `events.rs` — the Pg unit of work's
-    // tests write an entity and its `product_created` row, and a taken `unique` writes neither.
+    // tests write an entity and its `producto_created` row, and a taken `unique` writes neither.
     assert_postgres_scenario_is_clean(&EVENTS_DB, "puerto_matrix_events");
 }
 
@@ -1270,7 +1274,7 @@ fn assert_startup_reports_a_database_that_is_down(output: &Path, dir: &Path, dat
         assert_eq!(run.status.code(), Some(1), "{binary}: {stderr}");
         assert!(stderr.contains("127.0.0.1:1/shop"), "{binary}: {stderr}");
         assert!(
-            stderr.contains("is the database up? `make docker-compose/up`"),
+            stderr.contains("¿está arrancada la base de datos? `make docker-compose/up`"),
             "{binary}: {stderr}"
         );
         assert!(!stderr.contains("panicked"), "{binary}: {stderr}");

@@ -316,7 +316,7 @@ const THIRD_PARTY: &[(&str, &str)] = &[
     ("poem", "poem = \"3\"\n"),
     (
         "poem-openapi",
-        "# `chrono` feature: without it poem-openapi has no `Type` impl for DateTime<Utc>.\n\
+        "# Feature `chrono`: sin ella, poem-openapi no implementa `Type` para DateTime<Utc>.\n\
          poem-openapi = { version = \"5\", features = [\"swagger-ui\", \"uuid\", \"chrono\"] }\n",
     ),
     (
@@ -326,7 +326,7 @@ const THIRD_PARTY: &[(&str, &str)] = &[
     ),
 ];
 
-const THIRD_PARTY_HEADER: &str = "# Third-party crates: one version for the whole project.\n";
+const THIRD_PARTY_HEADER: &str = "# Crates de terceros: una sola versión para todo el proyecto.\n";
 
 /// The root `[workspace.dependencies]` declares exactly the third-party crates (and `nucleo`) the
 /// members name: Cargo warns about every declared one no member uses
@@ -373,8 +373,8 @@ pub fn sync_workspace_dependencies(base: &Path) -> std::io::Result<()> {
     }
     if used.iter().any(|u| u == "nucleo") && !out.lines().any(|l| l.starts_with("nucleo = ")) {
         out = out.replacen(
-            "every `Cargo.toml` names them with `{ workspace = true }`.\n",
-            "every `Cargo.toml` names them with `{ workspace = true }`.\nnucleo = { path = \"nucleo\" }\n",
+            "cada `Cargo.toml` los nombra con `{ workspace = true }`.\n",
+            "cada `Cargo.toml` los nombra con `{ workspace = true }`.\nnucleo = { path = \"nucleo\" }\n",
             1,
         );
     }
@@ -440,10 +440,10 @@ mod sync_tests {
         fs::create_dir_all(dir.join("nucleo")).unwrap();
         fs::write(
             dir.join("Cargo.toml"),
-            "[workspace.dependencies]\n# Third-party crates: one version for the whole project.\n\
+            "[workspace.dependencies]\n# Crates de terceros: una sola versión para todo el proyecto.\n\
              thiserror = \"2\"\nmockall = \"0.13\"\nmine = \"1\"\n\n# The Puerto runtime\n\
              # on the same minor as the `puerto` CLI that generated this project.\n\
-             puerto-web = \"0.1\"\n\n# This project's crates: every `Cargo.toml` names them with \
+             puerto-web = \"0.1\"\n\n# Los crates de este proyecto: cada `Cargo.toml` los nombra con \
              `{ workspace = true }`.\nnucleo = { path = \"nucleo\" }\n",
         )
         .unwrap();

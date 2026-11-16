@@ -3,23 +3,23 @@
 use async_trait::async_trait;
 
 use dominio_{{ snake }}::{
-    errores::{{ pascal }}Error,
+    errores::Error{{ pascal }},
     modelo::{{ pascal }},
-    repositorio::{{ pascal }}RepositoryTrait,
+    repositorio::Repositorio{{ pascal }},
 };
 
-pub struct Get{{ pascal }}UseCaseImpl {
-    pub repository: Arc<dyn {{ pascal }}RepositoryTrait>,
+pub struct Obtener{{ pascal }}Impl {
+    pub repositorio: Arc<dyn Repositorio{{ pascal }}>,
 }
 
 #[async_trait]
-impl Get{{ pascal }}UseCaseTrait for Get{{ pascal }}UseCaseImpl {
-    async fn execute(&self, params: Get{{ pascal }}Params) -> Result<{{ pascal }}, {{ pascal }}Error> {
-        tracing::info!(id = %params.id, "get_{{ snake }}: start");
-        let result = self.repository.find_by_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "get_{{ snake }}: repository failed"))?;
-        result.ok_or_else(|| {
-            let err = {{ pascal }}Error::NotFound;
-            tracing::warn!(error = %err, "get_{{ snake }}: rejected");
+impl Obtener{{ pascal }} for Obtener{{ pascal }}Impl {
+    async fn ejecutar(&self, params: ParamsObtener{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
+        tracing::info!(id = %params.id, "obtener_{{ snake }}: inicio");
+        let resultado = self.repositorio.buscar_por_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "obtener_{{ snake }}: fallo del repositorio"))?;
+        resultado.ok_or_else(|| {
+            let err = Error{{ pascal }}::NoEncontrado;
+            tracing::warn!(error = %err, "obtener_{{ snake }}: rechazado");
             err
         })
     }
@@ -30,64 +30,64 @@ mod tests {
     use super::*;
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use dominio_{{ snake }}::{
-        modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id, {{ pascal }}Props},
-        repositorio::mocks::Mock{{ pascal }}Repository,
+        modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}, Props{{ pascal }}},
+        repositorio::dobles::MockRepositorio{{ pascal }},
     };
     use puerto_nucleo::ErrorRepositorio;
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
 
     #[tokio::test]
-    async fn should_return_{{ snake }}_when_id_exists() {
-        let entity = {{ pascal }}::new({{ pascal }}Props {
+    async fn deberia_devolver_{{ snake }}_cuando_el_id_existe() {
+        let entidad = {{ pascal }}::new(Props{{ pascal }} {
 {{ macros::props(fields=fields, word="example") }}        }).unwrap();
-        let entity_id = entity.id;
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo
-            .expect_find_by_id()
-            .returning(move |_| Ok(Some(entity.clone())));
-        let use_case = Get{{ pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = Obtener{{ pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case.execute(Get{{ pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: entity_id }).await;
+        let resultado = caso_de_uso.ejecutar(ParamsObtener{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: id_entidad }).await;
 
-        assert!(result.is_ok());{% if required %}
-        assert_eq!(result.unwrap().{{ required.0.name }}, "example");{% elif string_vos %}
-        assert_eq!(result.unwrap().{{ string_vos.0.name }}.value(), "example");{% endif %}
+        assert!(resultado.is_ok());{% if required %}
+        assert_eq!(resultado.unwrap().{{ required.0.name }}, "example");{% elif string_vos %}
+        assert_eq!(resultado.unwrap().{{ string_vos.0.name }}.valor(), "example");{% endif %}
     }
 
     #[tokio::test]
-    async fn should_return_not_found_when_id_does_not_exist() {
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo.expect_find_by_id().returning(|_| Ok(None));
-        let use_case = Get{{ pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+    async fn deberia_devolver_no_encontrado_cuando_el_id_no_existe() {
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble.expect_buscar_por_id().returning(|_| Ok(None));
+        let caso_de_uso = Obtener{{ pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case
-            .execute(Get{{ pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: {{ pascal }}Id::generate() })
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtener{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: Id{{ pascal }}::generar() })
             .await;
 
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.not_found");
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "{{ snake }}.no_encontrado");
     }
 
     #[tokio::test]
-    async fn should_return_repository_error_when_the_store_is_unavailable() {
-        let mut mock_repo = Mock{{ pascal }}Repository::new();
-        mock_repo
-            .expect_find_by_id()
+    async fn deberia_devolver_error_de_repositorio_cuando_el_almacen_no_esta_disponible() {
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_por_id()
             .returning(|_| Err(ErrorRepositorio::NoDisponible));
-        let use_case = Get{{ pascal }}UseCaseImpl {
-            repository: Arc::new(mock_repo),
+        let caso_de_uso = Obtener{{ pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
         };
 
-        let result = use_case
-            .execute(Get{{ pascal }}Params { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: {{ pascal }}Id::generate() })
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtener{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: Id{{ pascal }}::generar() })
             .await;
 
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "{{ snake }}.repository_error");
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "{{ snake }}.repositorio");
     }
 }

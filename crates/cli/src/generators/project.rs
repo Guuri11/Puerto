@@ -5,69 +5,70 @@ use crate::generators::naming::write_file;
 use crate::generators::render::render;
 
 const DB_MAKEFILE_TARGETS: &str = r#"
-.PHONY: db-up db-down docker-compose/up docker-compose/down reset-db \
+.PHONY: db/arrancar db/parar docker-compose/up docker-compose/down db/reiniciar \
         sqlx/online sqlx/offline sqlx/migrate sqlx/prepare sqlx/check \
-        generate/migration
+        generar/migracion
 
 DOCKER         := docker
 DOCKER_COMPOSE := docker compose
 
-db-up: docker-compose/up ## Start database containers
+db/arrancar: docker-compose/up ## Arranca los contenedores de la base de datos
 
-db-down: docker-compose/down ## Stop database containers
+db/parar: docker-compose/down ## Para los contenedores de la base de datos
 
-docker-compose/up: ## Start all containers
-	@echo "${CYAN}Starting containers...${NC}"
+docker-compose/up: ## Arranca todos los contenedores
+	@echo "${CYAN}Arrancando los contenedores...${NC}"
 	$(DOCKER_COMPOSE) up -d --wait
 
-docker-compose/down: ## Stop all containers
-	@echo "${CYAN}Stopping containers...${NC}"
+docker-compose/down: ## Para todos los contenedores
+	@echo "${CYAN}Parando los contenedores...${NC}"
 	$(DOCKER_COMPOSE) down
 
-reset-db: ## Wipe database and re-run migrations (DESTRUCTIVE)
-	@printf "${RED}This destroys ALL database data. Type DESTROY to confirm: ${NC}"; \
+db/reiniciar: ## Vacía la base de datos y vuelve a aplicar las migraciones (DESTRUCTIVO)
+	@printf "${RED}Esto destruye TODOS los datos de la base de datos. Escribe DESTRUIR para confirmar: ${NC}"; \
 	read CONFIRM; \
-	if [ "$$CONFIRM" != "DESTROY" ]; then \
-		echo "${GREEN}Cancelled${NC}"; \
+	if [ "$$CONFIRM" != "DESTRUIR" ]; then \
+		echo "${GREEN}Cancelado${NC}"; \
 		exit 1; \
 	fi; \
-	echo "${CYAN}Stopping containers and removing volumes...${NC}"; \
+	echo "${CYAN}Parando los contenedores y borrando los volúmenes...${NC}"; \
 	$(DOCKER_COMPOSE) down -v; \
-	echo "${CYAN}Restarting containers...${NC}"; \
+	echo "${CYAN}Volviendo a arrancar los contenedores...${NC}"; \
 	$(DOCKER_COMPOSE) up -d --wait; \
-	echo "${GREEN}Running migrations...${NC}"; \
+	echo "${GREEN}Aplicando las migraciones...${NC}"; \
 	sqlx migrate run --source migraciones
 
-# The template's `run` and `test/infrastructure` keep their recipes; here they gain the database.
-run test/infrastructure: docker-compose/up
+# El `run` y el `test/infraestructura` de la plantilla conservan su receta; aquí ganan la base
+# de datos.
+run test/infraestructura: docker-compose/up
 
-sqlx/online: ## Switch SQLx to ONLINE mode (check against live DB)
+sqlx/online: ## Pasa SQLx a modo ONLINE (comprueba contra la base de datos en marcha)
 	@printf '[env]\nSQLX_OFFLINE = "false"\n' > .cargo/config.toml
-	@echo "${GREEN}SQLx ONLINE mode${NC}"
+	@echo "${GREEN}SQLx en modo ONLINE${NC}"
 
-sqlx/offline: ## Switch SQLx to OFFLINE mode (use saved cache)
+sqlx/offline: ## Pasa SQLx a modo OFFLINE (usa la caché guardada)
 	@printf '[env]\nSQLX_OFFLINE = "true"\n' > .cargo/config.toml
-	@echo "${GREEN}SQLx OFFLINE mode${NC}"
+	@echo "${GREEN}SQLx en modo OFFLINE${NC}"
 
-sqlx/migrate: docker-compose/up ## Run pending database migrations
-	@echo "${GREEN}Running migrations...${NC}"
+sqlx/migrate: docker-compose/up ## Aplica las migraciones pendientes
+	@echo "${GREEN}Aplicando las migraciones...${NC}"
 	sqlx migrate run --source migraciones
 
-sqlx/prepare: docker-compose/up ## Regenerate SQLx offline cache (requires live DB)
-	@echo "${GREEN}Preparing SQLx cache...${NC}"
+sqlx/prepare: docker-compose/up ## Regenera la caché offline de SQLx (necesita la base de datos en marcha)
+	@echo "${GREEN}Preparando la caché de SQLx...${NC}"
 	SQLX_OFFLINE=false $(CARGO) sqlx prepare --workspace
 
-sqlx/check: docker-compose/up ## Verify SQLx cache matches current queries
-	@echo "${GREEN}Checking SQLx cache...${NC}"
+sqlx/check: docker-compose/up ## Comprueba que la caché de SQLx coincide con las consultas actuales
+	@echo "${GREEN}Comprobando la caché de SQLx...${NC}"
 	SQLX_OFFLINE=false $(CARGO) sqlx prepare --workspace --check
 
-generate/migration: ## Create a new SQLx migration — make generate/migration NAME=add_users
-	@if [ -z "$$NAME" ]; then \
-		echo "${RED}Error: provide name — make generate/migration NAME=add_users_table${NC}"; \
+generar/migracion: ## Crea una migración SQLx nueva — make generar/migracion NOMBRE=anadir_usuarios
+	@if [ -z "$$NOMBRE" ]; then \
+		echo "${RED}Error: falta el nombre — make generar/migracion NOMBRE=anadir_tabla_usuarios${NC}"; \
 		exit 1; \
 	fi
-	@echo "${GREEN}Creating migration '$$NAME'...${NC}"
-	puerto generar migracion $$NAME
+	@echo "${GREEN}Creando la migración '$$NOMBRE'...${NC}"
+	puerto generar migracion $$NOMBRE
 "#;
 
 fn docker_compose_content(project_name: &str, db_name: &str) -> String {
@@ -132,8 +133,8 @@ fn patch_makefile_setup_for_db(base: &Path) -> Result<(), Box<dyn std::error::Er
         )
         // The template's banner speaks of the in-memory repositories.
         .replace(
-            "Starting API server (in memory: data is lost on restart)...",
-            "Starting API server...",
+            "Arrancando el servidor de la API (en memoria: los datos se pierden al reiniciar)...",
+            "Arrancando el servidor de la API...",
         );
     fs::write(&path, patched)?;
     Ok(())
@@ -149,9 +150,9 @@ edition = "2024"
 sqlx = { workspace = true }
 "#;
 
-const MIGRADOR_LIB: &str = r#"//! The migrations of the whole database (`migraciones/`), embedded at compile time: `api` applies
-//! them at startup, and every Postgres test runs on them —
-//! `#[sqlx::test(migrator = "migrador::MIGRADOR")]` (ADR-0023 § 6 of Puerto).
+const MIGRADOR_LIB: &str = r#"//! Las migraciones de toda la base de datos (`migraciones/`), incrustadas al compilar: `api` las
+//! aplica al arrancar y todos los tests de Postgres corren sobre ellas —
+//! `#[sqlx::test(migrator = "migrador::MIGRADOR")]` (ADR-0023 § 6 de Puerto).
 
 pub static MIGRADOR: sqlx::migrate::Migrator = sqlx::migrate!("../migraciones");
 "#;
@@ -240,7 +241,7 @@ pub(crate) fn add_workspace_dependency(
     let path = base.join(layout::WORKSPACE_MANIFEST);
     let src = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     // No runtime crate left (`--sin-demo` without web): under the block's comment again.
-    let comment = "# on the same minor as the `puerto` CLI that generated this project.\n";
+    let comment = "# en estos crates, en la misma versión minor que la CLI `puerto` que generó este proyecto.\n";
     if !src.lines().any(|l| l.starts_with("puerto-")) && src.contains(comment) {
         fs::write(
             &path,
@@ -318,7 +319,7 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
 
     // Append DB vars to .env and .env.example (apply_base_env already created them)
     let db_vars = format!(
-        "\n# Database\nDB_HOST_PORT=5432\nDATABASE_URL=postgres://devuser:password@localhost:5432/{db_name}\n"
+        "\n# Base de datos\nDB_HOST_PORT=5432\nDATABASE_URL=postgres://devuser:password@localhost:5432/{db_name}\n"
     );
     for file in &[".env", ".env.example"] {
         let path = base.join(file);
@@ -359,22 +360,23 @@ pub fn apply_db_to_new_project(base: &Path) -> Result<(), Box<dyn std::error::Er
 }
 
 /// The root `AGENTS.md` section an `events` project gets (ADR-0010: what it names is tested).
-const AGENTS_EVENTS_SECTION: &str = r#"## Domain events (`[proyecto] eventos`)
+const AGENTS_EVENTS_SECTION: &str = r#"## Eventos de dominio (`[proyecto] eventos`)
 
-Every write of a CRUD entity goes through its unit of work, which saves the entity and records an
-event in the `outbox` table in one transaction (ADR-0018 of Puerto). The repository only reads.
+Toda escritura de una entidad CRUD pasa por su unidad de trabajo, que guarda la entidad y registra
+un evento en la tabla `outbox` en una sola transacción (ADR-0018 de Puerto). El repositorio solo
+lee.
 
-- **Never hand-edit `contextos/<c>/dominio/src/eventos.rs`** — it is rewritten from
-  `puerto.toml` (the snapshot follows the entity's fields). Add an event with
-  `puerto generar evento <Entity> <name>`, then record it from a use case:
-  `uow.record(ProductEvent::Published(ProductSnapshot::from_entity(&entity)))`.
-- A write use case: `uow_factory.begin()` → `save` → `record` → `commit`. Returning early with
-  `?` before `commit` rolls everything back.
-- The snapshot is a public contract: consumers decode it. Renaming a field changes it.
-- `presentacion/worker/` is the second process: it relays the outbox and runs the consumers (`make worker`).
-  **Never hand-edit `presentacion/worker/src/generado/registro.rs`.** Add a consumer with
-  `puerto generar consumidor <name> --tras <event_type>`; its handler must be idempotent — delivery
-  is at-least-once. See `presentacion/worker/AGENTS.md`.
+- **No edites nunca a mano `contextos/<c>/dominio/src/eventos.rs`**: se reescribe a partir de
+  `puerto.toml` (el snapshot sigue los campos de la entidad). Añade un evento con
+  `puerto generar evento <Entidad> <nombre>` y regístralo después desde un caso de uso:
+  `uow.registrar(EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))`.
+- Un caso de uso de escritura: `uow_factory.begin()` → `guardar` → `registrar` → `commit`. Salir
+  antes con `?`, sin llegar al `commit`, deshace todo.
+- El snapshot es un contrato público: los consumidores lo decodifican. Renombrar un campo lo cambia.
+- `presentacion/worker/` es el segundo proceso: hace de relay del outbox y ejecuta los consumidores
+  (`make worker`). **No edites nunca a mano `presentacion/worker/src/generado/registro.rs`.**
+  Añade un consumidor con `puerto generar consumidor <nombre> --tras <tipo_evento>`; su handler
+  debe ser idempotente: la entrega es al menos una vez. Ver `presentacion/worker/AGENTS.md`.
 
 "#;
 
@@ -405,7 +407,7 @@ pub fn apply_events_to_new_project(
     let agents = fs::read_to_string(&agents_path)?;
     if !agents.contains(AGENTS_EVENTS_SECTION) {
         // Before the conventions: next to the rules about generated files.
-        let out = match agents.find("## Conventions") {
+        let out = match agents.find("## Convenciones") {
             Some(at) => format!("{}{AGENTS_EVENTS_SECTION}{}", &agents[..at], &agents[at..]),
             None => format!("{agents}\n{AGENTS_EVENTS_SECTION}"),
         };
@@ -439,16 +441,14 @@ fn ignore_not_found(result: std::io::Result<()>) -> std::io::Result<()> {
     }
 }
 
-/// Strip the Greeting demo entity from a freshly generated project (`puerto nuevo --sin-demo`):
+/// Strip the Saludo demo entity from a freshly generated project (`puerto nuevo --sin-demo`):
 /// its context's four crates and their declarations, its entity in puerto.toml, and the wiring
 /// regenerated without it.
 pub fn apply_no_demo(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    ignore_not_found(fs::remove_dir_all(
-        base.join(layout::context_dir("greeting")),
-    ))?;
+    ignore_not_found(fs::remove_dir_all(base.join(layout::context_dir("saludo"))))?;
     crate::generators::crates::remove_contexts_member(base)?;
     for layer in Layer::ALL {
-        let name = layout::crate_name("greeting", layer);
+        let name = layout::crate_name("saludo", layer);
         crate::generators::crates::remove_internal_dependency(base, &name)?;
         crate::generators::crates::remove_dependency_line(base, layout::API_MANIFEST, &name)?;
     }

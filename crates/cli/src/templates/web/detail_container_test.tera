@@ -43,10 +43,12 @@ describe("{{ pascal }}DetailContainer", () => {
     const {{ camel }}Repository = fake{{ pascal }}Repository();
 
     // Act
-    renderScreen(<{{ pascal }}DetailContainer id={crypto.randomUUID()} />, { {{ camel }}Repository });
+    renderScreen(<{{ pascal }}DetailContainer id={crypto.randomUUID()} />, {
+      {{ camel }}Repository,
+    });
 
     // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.not_found");
+    expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.no_encontrado");
   });
 
   test("should delete the {{ words }} only once the deletion is confirmed", async () => {

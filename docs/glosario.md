@@ -72,14 +72,15 @@ Lo marcado **pendiente** se decide en su fase, antes de escribir código.
 | Hoy | Ahora |
 |---|---|
 | `create_<e>`, `list_<plural>`, `get_<e>`, `update_<e>`, `delete_<e>` | `crear_<e>`, `listar_<plural>`, `obtener_<e>`, `actualizar_<e>`, `borrar_<e>` |
-| `Created`, `Updated`, `Deleted`; `product.created`; `PRODUCT_CREATED` | `Creado`, `Actualizado`, `Borrado`; `producto.creado`; `PRODUCTO_CREADO` |
+| `Created`, `Updated`, `Deleted`; `product_created`; `PRODUCT_CREATED` | `Creado`, `Actualizado`, `Borrado`; `producto_creado`; `PRODUCTO_CREADO` |
 | `created_at`, `updated_at`, `deleted`, `deleted_at` (`createdAt`…) | `creado_en`, `actualizado_en`, `borrado`, `borrado_en` (`creadoEn`…); `id` igual |
 | tabla `products`, ruta `/products`, `?limit=&offset=` | tabla `productos`, ruta `/productos`, `?limite=&desplazamiento=` |
 | `Page { items, total, limit, offset }` (JSON) | `{ elementos, total, limite, desplazamiento }` |
 
-**Plural:** si termina en vocal, se añade `s` (`productos`); si termina en `z`, `ces` (`lapices`); si
-termina en otra consonante, incluida la `y`, `es` (`ciudades`, `leyes`). Hay una tabla de
-excepciones, con tests: `pais` → `paises`; invariables como `analisis`, `crisis`, `tesis` y `lunes`.
+**Plural:** se flexiona la primera palabra, el núcleo de un nombre castellano (`linea_pedido` →
+`lineas_pedido`). Si termina en vocal, se añade `s` (`productos`); si termina en `z`, `ces`
+(`lapices`); si termina en otra consonante, incluida la `y`, `es` (`ciudades`, `leyes`, `paises`).
+Hay una tabla de invariables, con tests: `analisis`, `crisis`, `tesis`, `lunes`…
 
 ## Errores
 
@@ -100,6 +101,30 @@ excepciones, con tests: `pais` → `paises`; invariables como `analisis`, `crisi
 | `should_<resultado>_when_<escenario>` | `deberia_<resultado>_cuando_<escenario>` |
 | `// Arrange`, `// Act`, `// Assert` | `// Preparar`, `// Actuar`, `// Comprobar` |
 | `create_product: start`, `done`, `rejected`, `repository failed` | `crear_producto: inicio`, `fin`, `rechazado`, `fallo del repositorio` |
+
+## Lo que la Fase 19.7 decidió por el camino
+
+| Hoy | Ahora |
+|---|---|
+| `shared.value_object.<vo>.invalid` (objetos valor compartidos) | `nucleo.<vo>_invalido` |
+| `from_entity` (el snapshot de un evento) | `from_entidad` |
+| variantes de respuesta `Ok`, `Created`, `NoContent`, `UnprocessableEntity`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`, `Unavailable`, `InternalError` | `Ok`, `Creado`, `SinContenido`, `NoProcesable`, `NoAutorizado`, `Prohibido`, `NoEncontrado`, `Conflicto`, `NoDisponible`, `ErrorInterno` |
+| handlers `create`, `get_by_id`, `list`, `update`, `delete` | `crear`, `obtener`, `listar`, `actualizar`, `borrar` |
+| `RecordingUnitOfWorkFactory`, `Recorded { saved, events, committed }`, `recorded()` | `UnitOfWorkFactoryGrabadora`, `Grabado { guardados, eventos, confirmado }`, `grabado()` |
+| `FailAt::{Begin, Save, Record, Commit}`, `failing_at` | `FallarEn::{Begin, Guardar, Registrar, Commit}`, `fallando_en` |
+| `build_app`, `build_worker`, `openapi_service`, `configure(routes)` (`app.rs`) | `construir_app`, `construir_worker`, `servicio_openapi`, `configurar(rutas)` |
+| locales y campos: `result`, `response`, `entity`, `repository`, `mock_repo`, `use_case`, `page`, `filter`, `row`, `body`, `client` | `resultado`, `respuesta`, `entidad`, `repositorio`, `repositorio_doble`, `caso_de_uso`, `pagina`, `filtro`, `fila`, `cuerpo`, `cliente` |
+| `make db-up`, `db-down`, `reset-db`, `generate/entity`, `generate/use-case`, `generate/migration` | `make db/arrancar`, `db/parar`, `db/reiniciar`, `generar/entidad`, `generar/caso-de-uso`, `generar/migracion` |
+| variables de make `NAME`, `ENTITY`, `ACTION`, `ROLE` | `NOMBRE`, `ENTIDAD`, `ACCION`, `ROL` (`EMAIL` igual) |
+| el campo por defecto de una entidad o un correo sin campos, `name: String` | `nombre: String` |
+| las APIs en `bootstrap.rs`, `product_api`, `me_api`, `auth_api` | `api_producto`, `api_me`, `api_auth` |
+| migraciones `create_<e>_table`, `create_users_table`, `create_auth_tables` | `crear_tabla_<e>`, `crear_tabla_usuarios`, `crear_tablas_auth` |
+| auth: `UserId`, `UserError`, `ProvisioningAuthenticator`, `RegisterUserParams`, `LoginParams` | `IdUsuario`, `ErrorUsuario`, `AutenticadorAprovisionador`, `ParamsRegistrarUsuario`, `ParamsLogin` |
+| auth: `RegisterRequest`, `LoginRequest`, `SessionDto`, `MeDto`, `MeApi`, `AuthApi`, `InvalidCredentials` | `PeticionRegistro`, `PeticionLogin`, `DtoSesion`, `DtoMe`, `ApiMe`, `ApiAuth`, `CredencialesInvalidas` |
+| auth, JSON del API: `password`, `name`, `expiresAt` | `contrasena`, `nombre`, `expiraEn` |
+| auth, códigos: `user.*`, `auth.invalid_credentials`, `password_too_short`, `email_invalid` | `usuario.*`, `auth.credenciales_invalidas`, `contrasena_demasiado_corta`, `email_invalido` |
+| correo: el campo `to`, el consumidor `mail_<nombre>`, `Context::of`, `TEMPLATES` | `para`, `correo_<nombre>`, `Contexto::de`, `PLANTILLAS` |
+| los mensajes de arranque del proyecto generado (`DATABASE_URL is not set…`) | en castellano (`DATABASE_URL no está definida…`) |
 
 ## `puerto.toml`
 

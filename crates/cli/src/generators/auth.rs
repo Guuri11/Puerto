@@ -1,4 +1,4 @@
-//! `puerto nuevo --auth oidc` (ADR-0021): the `User` entity every caller becomes, the provisioning
+//! `puerto nuevo --auth oidc` (ADR-0021): the `Usuario` entity every caller becomes, the provisioning
 //! `Autenticador` in front of the provider, `GET /me`, and Keycloak for development. Every file
 //! here is written once — the project's from then on.
 
@@ -142,7 +142,7 @@ fn write_user_crate(
     Ok(())
 }
 
-/// The `User` entity: model, errors and repository port.
+/// The `Usuario` entity: model, errors and repository port.
 fn write_user_domain(base: &Path, db: bool, local: bool) -> Result<(), Box<dyn std::error::Error>> {
     write_user_crate(
         base,
@@ -182,7 +182,7 @@ fn write_user_infrastructure(
     write_user_crate(base, Layer::Infrastructure, &files, db, local)?;
     if db {
         crate::generators::migration::run_migration(
-            "create_users_table",
+            "crear_tabla_usuarios",
             base,
             Some(&render_static("auth/users.sql")?),
         )?;
@@ -191,7 +191,7 @@ fn write_user_infrastructure(
 }
 
 /// The local use cases: one file each, contract and implementation (ADR-0023 § 4).
-const LOCAL_USE_CASES: [&str; 3] = ["login", "logout", "register_user"];
+const LOCAL_USE_CASES: [&str; 3] = ["login", "logout", "registrar_usuario"];
 
 /// The `usuario` REST crate: `GET /me` and, with local accounts, `POST /auth/*`.
 fn write_user_rest(base: &Path, db: bool, local: bool) -> Result<(), Box<dyn std::error::Error>> {
@@ -214,7 +214,7 @@ fn write_user_rest(base: &Path, db: bool, local: bool) -> Result<(), Box<dyn std
     write_user_crate(base, Layer::Rest, &files, db, local)
 }
 
-/// Local accounts (`PLAN.md` § 16.6): `register_user`, `login`, `logout`, the credentials and
+/// Local accounts (`PLAN.md` § 16.6): `registrar_usuario`, `login`, `logout`, the credentials and
 /// sessions migration after `users`'.
 fn write_local_accounts(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut files = vec![];
@@ -235,7 +235,7 @@ fn write_local_accounts(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     write_user_crate(base, Layer::Application, &files, true, true)?;
 
     crate::generators::migration::run_migration(
-        "create_auth_tables",
+        "crear_tablas_auth",
         base,
         Some(&render_static("auth/local/auth.sql")?),
     )?;
@@ -300,8 +300,8 @@ fn keycloak_service(project: &str) -> String {
         r#"  keycloak:
     image: {KEYCLOAK_IMAGE}
     container_name: {project}-keycloak
-    # Imports keycloak/realm.json on the first start: the `web` client, the
-    # `admin` role and a user holding it (`make auth/ui`).
+    # Importa keycloak/realm.json en el primer arranque: el cliente `web`, el
+    # rol `admin` y un usuario que lo tiene (`make auth/ui`).
     command: start-dev --import-realm
     ports:
       - "{KEYCLOAK_PORT}:8080"
@@ -313,7 +313,7 @@ fn keycloak_service(project: &str) -> String {
       - ./keycloak:/opt/keycloak/data/import:ro
     restart: unless-stopped
     healthcheck:
-      # The image has no curl: bash's /dev/tcp asks the management port.
+      # La imagen no trae curl: el /dev/tcp de bash pregunta al puerto de gestión.
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && grep -q UP <&3"]
       interval: 5s
       timeout: 5s
@@ -337,10 +337,10 @@ fn write_keycloak(base: &Path, project: &str) -> Result<(), Box<dyn std::error::
 
 fn add_env(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>> {
     let vars = format!(
-        "\n# Auth — the OpenID Connect provider (ADR-0021). Keycloak (docker-compose.yml) in\n\
-         # development: `make auth/ui`; sign in as admin@{host}.localhost / {DEV_PASSWORD}.\n\
-         # Auth0: AUTH_ISSUER=https://<tenant>.auth0.com/, AUTH_AUDIENCE=<the API identifier>,\n\
-         # AUTH_ROLES_CLAIM=<the claim an Action adds, e.g. https://example.com/roles>\n\
+        "\n# Auth — el proveedor OpenID Connect (ADR-0021). Keycloak (docker-compose.yml) en\n\
+         # desarrollo: `make auth/ui`; inicia sesión como admin@{host}.localhost / {DEV_PASSWORD}.\n\
+         # Auth0: AUTH_ISSUER=https://<tenant>.auth0.com/, AUTH_AUDIENCE=<el identificador de la API>,\n\
+         # AUTH_ROLES_CLAIM=<el claim que añade una Action, p. ej. https://example.com/roles>\n\
          AUTH_ISSUER=http://localhost:{KEYCLOAK_PORT}/realms/{project}\n\
          AUTH_AUDIENCE={AUDIENCE}\nAUTH_ROLES_CLAIM=realm_access.roles\n",
         host = host(project)
@@ -362,7 +362,7 @@ fn add_env(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Error>>
 
 /// `AUTH_SESSION_TTL`, read by `puerto_sqlx::auth::ttl_sesion_from_env`.
 fn add_local_env(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let vars = "\n# Auth — accounts in this database (ADR-0021). How long a session lasts: 30d, 12h, 90m.\n\
+    let vars = "\n# Auth — las cuentas, en esta base de datos (ADR-0021). Lo que dura una sesión: 30d, 12h, 90m.\n\
                 AUTH_SESSION_TTL=30d\n";
     for file in [".env", ".env.example"] {
         let path = base.join(file);
@@ -385,15 +385,15 @@ const COMPOSE_MAKEFILE_TARGETS: &str = r#"
 
 DOCKER_COMPOSE := docker compose
 
-docker-compose/up: ## Start the containers
-	@echo "${CYAN}Starting containers...${NC}"
+docker-compose/up: ## Arranca los contenedores
+	@echo "${CYAN}Arrancando los contenedores...${NC}"
 	$(DOCKER_COMPOSE) up -d --wait
 
-docker-compose/down: ## Stop the containers
-	@echo "${CYAN}Stopping containers...${NC}"
+docker-compose/down: ## Para los contenedores
+	@echo "${CYAN}Parando los contenedores...${NC}"
 	$(DOCKER_COMPOSE) down
 
-# The template's `run` keeps its recipe; here it gains the provider `bootstrap.rs` discovers.
+# El `run` de la plantilla conserva su receta; aquí gana el proveedor que descubre `bootstrap.rs`.
 run: docker-compose/up
 "#;
 
@@ -402,37 +402,37 @@ fn auth_makefile_targets(project: &str) -> String {
         r#"
 .PHONY: auth/ui auth/token
 
-auth/ui: docker-compose/up ## The Keycloak console: users, roles, sessions
+auth/ui: docker-compose/up ## La consola de Keycloak: usuarios, roles, sesiones
 	@echo "${{GREEN}}Keycloak: http://localhost:{KEYCLOAK_PORT}/admin/master/console/#/{project} (admin / admin)${{NC}}"
-	@echo "${{GREEN}}Sign in to the app as admin@{host}.localhost / {DEV_PASSWORD} (role admin)${{NC}}"
+	@echo "${{GREEN}}Inicia sesión en la app como admin@{host}.localhost / {DEV_PASSWORD} (rol admin)${{NC}}"
 
-# The development realm's `dev-cli` client (password grant): curl -H "Authorization: Bearer
-# $(make -s auth/token)" … An EMAIL from the shell's environment is not taken for one.
+# El cliente `dev-cli` del realm de desarrollo (password grant): curl -H "Authorization: Bearer
+# $(make -s auth/token)" … Un EMAIL del entorno de la shell no se toma por uno.
 AUTH_ISSUER ?= $(shell sed -n 's/^AUTH_ISSUER=//p' .env 2>/dev/null)
 TOKEN_EMAIL = $(if $(filter command line,$(origin EMAIL)),$(EMAIL),admin@{host}.localhost)
 
-auth/token: ## A development access token: make -s auth/token [EMAIL=user@{host}.localhost]
+auth/token: ## Un token de acceso de desarrollo: make -s auth/token [EMAIL=user@{host}.localhost]
 	@curl -sf "$(AUTH_ISSUER)/protocol/openid-connect/token" -d grant_type=password -d client_id=dev-cli \
 		--data-urlencode "username=$(TOKEN_EMAIL)" --data-urlencode "password={DEV_PASSWORD}" \
 		| sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p' | grep . \
-		|| {{ echo "${{RED}}no token for $(TOKEN_EMAIL) from $(AUTH_ISSUER) — is Keycloak up? make docker-compose/up${{NC}}" >&2; exit 1; }}
+		|| {{ echo "${{RED}}sin token para $(TOKEN_EMAIL) de $(AUTH_ISSUER): ¿está arrancado Keycloak? make docker-compose/up${{NC}}" >&2; exit 1; }}
 "#,
         host = host(project)
     )
 }
 
-/// `make auth/grant`: a role is a row's `roles` entry in a local project, applied from the next
+/// `make auth/conceder`: a role is a row's `roles` entry in a local project, applied from the next
 /// request (no cache in between).
 fn local_makefile_targets(project: &str) -> String {
     let db_name = project.replace('-', "_");
     format!(
         r#"
-.PHONY: auth/grant
+.PHONY: auth/conceder
 
-auth/grant: docker-compose/up ## Give an account a role: make auth/grant EMAIL=ada@example.com ROLE=admin
-	@test -n "$(EMAIL)" -a -n "$(ROLE)" || {{ echo "${{RED}}usage: make auth/grant EMAIL=… ROLE=…${{NC}}"; exit 1; }}
+auth/conceder: docker-compose/up ## Concede un rol a una cuenta: make auth/conceder EMAIL=ada@example.com ROL=admin
+	@test -n "$(EMAIL)" -a -n "$(ROL)" || {{ echo "${{RED}}uso: make auth/conceder EMAIL=… ROL=…${{NC}}"; exit 1; }}
 	$(DOCKER_COMPOSE) exec -T postgres psql -U devuser -d {db_name} -v ON_ERROR_STOP=1 -c \
-		"UPDATE usuarios SET roles = array_append(roles, '$(ROLE)'), actualizado_en = now() WHERE emisor = 'local' AND sujeto = lower(trim('$(EMAIL)')) AND NOT '$(ROLE)' = ANY(roles)"
+		"UPDATE usuarios SET roles = array_append(roles, '$(ROL)'), actualizado_en = now() WHERE emisor = 'local' AND sujeto = lower(trim('$(EMAIL)')) AND NOT '$(ROL)' = ANY(roles)"
 "#
     )
 }
@@ -447,7 +447,7 @@ fn add_makefile_targets(
         return Ok(());
     }
     let mut src = fs::read_to_string(&path)?;
-    if src.contains("auth/ui:") || src.contains("auth/grant:") {
+    if src.contains("auth/ui:") || src.contains("auth/conceder:") {
         return Ok(());
     }
     if !src.ends_with('\n') {
@@ -529,9 +529,10 @@ fn add_oidc_client(package: &str) -> Option<String> {
 /// The provider and client `oidc-client-ts` signs in with — read by `oidcSettingsFromEnv()`.
 fn web_env(project: &str) -> String {
     format!(
-        "# Auth — the OpenID Connect provider the browser signs in with (ADR-0021). Keycloak in\n\
-         # development; Auth0: VITE_AUTH_ISSUER=https://<tenant>.auth0.com/, VITE_AUTH_CLIENT_ID=<the\n\
-         # SPA's client id>, VITE_AUTH_AUDIENCE=<the API identifier, AUTH_AUDIENCE of the API>.\n\
+        "# Auth — el proveedor OpenID Connect con el que inicia sesión el navegador (ADR-0021).\n\
+         # Keycloak en desarrollo; Auth0: VITE_AUTH_ISSUER=https://<tenant>.auth0.com/,\n\
+         # VITE_AUTH_CLIENT_ID=<el client id de la SPA>, VITE_AUTH_AUDIENCE=<el identificador de la\n\
+         # API, el AUTH_AUDIENCE de la API>.\n\
          VITE_AUTH_ISSUER=http://localhost:{KEYCLOAK_PORT}/realms/{project}\n\
          VITE_AUTH_CLIENT_ID=web\n\
          VITE_AUTH_AUDIENCE=\n"
@@ -589,94 +590,104 @@ fn write_web(base: &Path, project: &str, local: bool) -> Result<(), Box<dyn std:
 /// The root `AGENTS.md` section an auth project gets (ADR-0010: what it names is tested).
 pub const AGENTS_AUTH_SECTION: &str = r#"## Auth (`[proyecto] auth`)
 
-The API is an OAuth2 resource server (ADR-0021 of Puerto): it verifies the bearer token of every
-protected request against the provider at `AUTH_ISSUER` — Keycloak in development
-(`make docker-compose/up`, `make auth/ui`), Auth0 or any OpenID Connect provider in production.
+La API es un servidor de recursos OAuth2 (ADR-0021 de Puerto): verifica el token bearer de cada
+petición protegida contra el proveedor de `AUTH_ISSUER`: Keycloak en desarrollo
+(`make docker-compose/up`, `make auth/ui`), Auth0 o cualquier proveedor OpenID Connect en
+producción.
 
-- A handler that takes `auth: BearerAuth` is protected: no or a bad token is answered
-  `401 auth.no_autenticado` before it runs. `#[requiere_rol("admin")]` on it adds the
-  `403 auth.prohibido` check. Both come from `puerto_web`.
-- `puerto generar scaffold <Name>` protects every CRUD route. `--publico list_products,get_product`
-  leaves routes open; `--rol delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
-  the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
-  `puerto validar` checks `rutas.rs` still says the same — change both together.
-- A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
-  build one with `puerto_nucleo::auth::dobles::MadrePrincipal`. `generar caso-de-uso` adds it too.
-- **Roles come from the token only** (`AUTH_ROLES_CLAIM`); the `usuarios.roles` column is not read.
-- Calling the API by hand: `curl -H "Authorization: Bearer $(make -s auth/token)" …` —
-  `admin@…` holds `admin`, `make -s auth/token EMAIL=user@…` no role. It asks the development
-  realm's `dev-cli` client (password grant): never create such a client in a real provider.
-- Every caller is a `User` (`contextos/usuario/dominio/`), created on their first request by
-  `contextos/usuario/infraestructura/src/aprovisionamiento.rs`. Point at a person with a `UserId`,
-  never with the provider's subject. These files are yours.
-- `GET /me` answers the caller as the API resolved them. The frontend reads it, never the token.
-- A rule that depends on data ("only the owner edits") belongs in the use case, not in an
-  attribute.
+- Un handler que recibe `auth: BearerAuth` está protegido: sin token o con uno malo se responde
+  `401 auth.no_autenticado` antes de ejecutarlo. Un `#[requiere_rol("admin")]` encima añade la
+  comprobación `403 auth.prohibido`. Las dos cosas vienen de `puerto_web`.
+- `puerto generar scaffold <Nombre>` protege todas las rutas CRUD. `--publico
+  listar_productos,obtener_producto` deja rutas abiertas; `--rol borrar_producto=admin` añade
+  `#[requiere_rol]` (dos roles en una ruta: quien llama necesita los dos). Las dos opciones quedan
+  en `publicos` / `roles` de la entidad en `puerto.toml`, y `puerto validar` comprueba que
+  `rutas.rs` sigue diciendo lo mismo: cambia los dos a la vez.
+- Los params de un caso de uso protegido llevan `actor: Principal` (el handler pasa `auth.0`); los
+  tests construyen uno con `puerto_nucleo::auth::dobles::MadrePrincipal`. `generar caso-de-uso`
+  también lo añade.
+- **Los roles salen solo del token** (`AUTH_ROLES_CLAIM`); la columna `usuarios.roles` no se lee.
+- Para llamar a la API a mano: `curl -H "Authorization: Bearer $(make -s auth/token)" …`;
+  `admin@…` tiene `admin`, y `make -s auth/token EMAIL=user@…` ningún rol. Lo pide al cliente
+  `dev-cli` del realm de desarrollo (password grant): no crees nunca un cliente así en un proveedor
+  real.
+- Cada quien llama es un `Usuario` (`contextos/usuario/dominio/`), que crea en su primera petición
+  `contextos/usuario/infraestructura/src/aprovisionamiento.rs`. Señala a una persona con un
+  `IdUsuario`, nunca con el sujeto del proveedor. Estos ficheros son tuyos.
+- `GET /me` responde quién llama, tal como lo resolvió la API. El frontend lo lee a él, nunca el
+  token.
+- Una regla que depende de los datos («solo edita el propietario») va en el caso de uso, no en un
+  atributo.
 
 "#;
 
 /// The root `AGENTS.md` section of a project that keeps its own accounts (`--auth local`).
 pub const AGENTS_AUTH_LOCAL_SECTION: &str = r#"## Auth (`[proyecto] auth`)
 
-The API keeps its own accounts (ADR-0021 of Puerto): `POST /auth/register` creates one,
-`POST /auth/login` answers an opaque session token, `POST /auth/logout` revokes it. A client sends
-the token as `Authorization: Bearer <token>`; the database keeps only its SHA-256.
+La API guarda sus propias cuentas (ADR-0021 de Puerto): `POST /auth/registro` crea una,
+`POST /auth/login` responde un token de sesión opaco y `POST /auth/logout` lo revoca. Un cliente
+envía el token como `Authorization: Bearer <token>`; la base de datos solo guarda su SHA-256.
 
-- A handler that takes `auth: BearerAuth` is protected: no, an unknown or an expired session is
-  answered `401 auth.no_autenticado` before it runs. `#[requiere_rol("admin")]` on it adds the
-  `403 auth.prohibido` check. Both come from `puerto_web`.
-- `puerto generar scaffold <Name>` protects every CRUD route. `--publico list_products,get_product`
-  leaves routes open; `--rol delete_product=admin` adds `#[requiere_rol]` (two roles on one route:
-  the caller needs both). Both land in the entity's `public` / `roles` in `puerto.toml`, and
-  `puerto validar` checks `rutas.rs` still says the same — change both together.
-- A protected use case's params carry `actor: Principal` (the handler passes `auth.0`); tests
-  build one with `puerto_nucleo::auth::dobles::MadrePrincipal`. `generar caso-de-uso` adds it too.
-- **Roles are the `usuarios.roles` column**: `make auth/grant EMAIL=… ROLE=…`. They apply from the
-  next request.
-- Passwords are argon2id hashes in `credentials`; `User` carries no secret. A login with an unknown
-  email and one with a wrong password get the same `401 auth.invalid_credentials`, in the same time.
-  Sessions last `AUTH_SESSION_TTL` (`.env`); expired rows are refused, pruning them is yours.
-- `register_user`, `login`, `logout` (`contextos/usuario/aplicacion/`) and
-  `contextos/usuario/rest/src/auth/` are yours. Registration is open: close it, or add rules, there.
-- `GET /me` answers the caller as the API resolved them.
-- A rule that depends on data ("only the owner edits") belongs in the use case, not in an
-  attribute.
+- Un handler que recibe `auth: BearerAuth` está protegido: sin sesión, o con una desconocida o
+  caducada, se responde `401 auth.no_autenticado` antes de ejecutarlo. Un `#[requiere_rol("admin")]`
+  encima añade la comprobación `403 auth.prohibido`. Las dos cosas vienen de `puerto_web`.
+- `puerto generar scaffold <Nombre>` protege todas las rutas CRUD. `--publico
+  listar_productos,obtener_producto` deja rutas abiertas; `--rol borrar_producto=admin` añade
+  `#[requiere_rol]` (dos roles en una ruta: quien llama necesita los dos). Las dos opciones quedan
+  en `publicos` / `roles` de la entidad en `puerto.toml`, y `puerto validar` comprueba que
+  `rutas.rs` sigue diciendo lo mismo: cambia los dos a la vez.
+- Los params de un caso de uso protegido llevan `actor: Principal` (el handler pasa `auth.0`); los
+  tests construyen uno con `puerto_nucleo::auth::dobles::MadrePrincipal`. `generar caso-de-uso`
+  también lo añade.
+- **Los roles son la columna `usuarios.roles`**: `make auth/conceder EMAIL=… ROL=…`. Se aplican
+  desde la petición siguiente.
+- Las contraseñas son hashes argon2id en `credenciales`; `Usuario` no lleva ningún secreto. Un login
+  con un email desconocido y otro con una contraseña equivocada reciben el mismo
+  `401 auth.credenciales_invalidas`, en el mismo tiempo. Las sesiones duran `AUTH_SESSION_TTL`
+  (`.env`); las filas caducadas se rechazan, y podarlas te toca a ti.
+- `registrar_usuario`, `login`, `logout` (`contextos/usuario/aplicacion/`) y
+  `contextos/usuario/rest/src/auth/` son tuyos. El registro está abierto: ciérralo, o añade reglas,
+  ahí.
+- `GET /me` responde quién llama, tal como lo resolvió la API.
+- Una regla que depende de los datos («solo edita el propietario») va en el caso de uso, no en un
+  atributo.
 
 "#;
 
 /// What follows [`AGENTS_AUTH_SECTION`] in a project with `web/`.
-pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth in `web/`
+pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth en `web/`
 
-- `useAuth()` (`presentation/core/auth.tsx`) gives `{ user, can(role), login, logout }`; `user` is
-  `GET /me`, never the token. Generated screens hide what `can` denies, but the API decides: its
-  `403` reaches the alert as `auth.prohibido`.
-- `core/generated/routes.tsx` wraps every non-public screen in `<RequireAuth>`, which signs in and
-  comes back. Wrap your own routes in `routes.tsx` the same way.
-- The token stays in memory and `oidc-client-ts` stays in `infrastructure/auth/`
-  (`make web/lint` checks it): a reload signs in again through the provider's session.
-  `web/.env` holds `VITE_AUTH_*`.
-- Screen tests sign in a caller holding every role (`renderScreen`); pass `{ user }` for another one
-  (`CurrentUserMother`), or `{ auth: fakeAuthGateway(…) }` to see the sign-ins it starts.
+- `useAuth()` (`presentation/core/auth.tsx`) da `{ user, can(role), login, logout }`; `user` es
+  `GET /me`, nunca el token. Las pantallas generadas esconden lo que `can` niega, pero decide la
+  API: su `403` llega a la alerta como `auth.prohibido`.
+- `core/generated/routes.tsx` envuelve cada pantalla no pública en `<RequireAuth>`, que inicia
+  sesión y vuelve. Envuelve igual tus propias rutas en `routes.tsx`.
+- El token se queda en memoria y `oidc-client-ts` se queda en `infrastructure/auth/`
+  (`make web/lint` lo comprueba): al recargar se vuelve a iniciar sesión con la sesión del
+  proveedor. `web/.env` guarda `VITE_AUTH_*`.
+- Los tests de pantalla inician sesión con alguien que tiene todos los roles (`renderScreen`); pasa
+  `{ user }` para otro (`CurrentUserMother`), o `{ auth: fakeAuthGateway(…) }` para ver los inicios
+  de sesión que lanza.
 
 "#;
 
 /// What follows [`AGENTS_AUTH_LOCAL_SECTION`] in a project with `web/`.
-pub const AGENTS_AUTH_LOCAL_WEB_SECTION: &str = r#"### Auth in `web/`
+pub const AGENTS_AUTH_LOCAL_WEB_SECTION: &str = r#"### Auth en `web/`
 
-- `useAuth()` (`presentation/core/auth.tsx`) gives `{ user, can(role), login, logout }`; `user` is
-  `GET /me`. Generated screens hide what `can` denies, but the API decides: its `403` reaches the
-  alert as `auth.prohibido`.
-- `core/generated/routes.tsx` wraps every non-public screen in `<RequireAuth>`, which sends whoever
-  is not signed in to `/login?next=…`, as a `401` from any call does. Wrap your own routes in
-  `routes.tsx` the same way.
-- `/login` and `/register` (`presentation/pages/`) sign in through `Accounts`
-  (`domain/auth/accounts.ts`); `domain/auth/messages.ts` turns the API's codes into what the forms
-  say, under the field they are about. These files are yours.
-- The session token is in `localStorage` (`infrastructure/auth/local-auth-gateway.ts`): a reload
-  stays signed in; Sign out revokes it on the API.
-- Screen tests sign in a caller holding every role (`renderScreen`); pass `{ user }` for another one
-  (`CurrentUserMother`), `{ auth: fakeAuthGateway(…) }` or `{ accounts: fakeAccounts() }` to see
-  what a screen asked.
+- `useAuth()` (`presentation/core/auth.tsx`) da `{ user, can(role), login, logout }`; `user` es
+  `GET /me`. Las pantallas generadas esconden lo que `can` niega, pero decide la API: su `403` llega
+  a la alerta como `auth.prohibido`.
+- `core/generated/routes.tsx` envuelve cada pantalla no pública en `<RequireAuth>`, que manda a
+  quien no tiene sesión iniciada a `/login?next=…`, igual que un `401` de cualquier llamada.
+  Envuelve igual tus propias rutas en `routes.tsx`.
+- `/login` y `/register` (`presentation/pages/`) inician sesión a través de `Accounts`
+  (`domain/auth/accounts.ts`); `domain/auth/messages.ts` convierte los códigos de la API en lo que
+  dicen los formularios, bajo el campo al que se refieren. Estos ficheros son tuyos.
+- El token de sesión está en `localStorage` (`infrastructure/auth/local-auth-gateway.ts`): al
+  recargar se sigue con la sesión iniciada; «Sign out» la revoca en la API.
+- Los tests de pantalla inician sesión con alguien que tiene todos los roles (`renderScreen`); pasa
+  `{ user }` para otro (`CurrentUserMother`), `{ auth: fakeAuthGateway(…) }` o
+  `{ accounts: fakeAccounts() }` para ver lo que pidió una pantalla.
 
 "#;
 
@@ -702,7 +713,7 @@ fn add_agents_section(
         AGENTS_AUTH_SECTION.to_string()
     };
     // Before the conventions: next to the rules about what is generated.
-    let out = match agents.find("## Conventions") {
+    let out = match agents.find("## Convenciones") {
         Some(at) => format!("{}{section}{}", &agents[..at], &agents[at..]),
         None => format!("{agents}\n{section}"),
     };
@@ -710,7 +721,7 @@ fn add_agents_section(
     Ok(())
 }
 
-/// Turns a fresh project into an auth one (`puerto nuevo --auth oidc|local`). The Greeting demo
+/// Turns a fresh project into an auth one (`puerto nuevo --auth oidc|local`). The Saludo demo
 /// stays open: it is listed `public`.
 pub fn apply_auth_to_new_project(
     base: &Path,
@@ -720,7 +731,7 @@ pub fn apply_auth_to_new_project(
     let mut config = crate::puerto_toml::read(base)?;
     config.project.auth = Some(mode.to_string());
     for entity in &mut config.entity {
-        if entity.name == "Greeting" && entity.public.is_empty() {
+        if entity.name == "Saludo" && entity.public.is_empty() {
             entity.public = entity.use_cases.clone();
         }
     }
@@ -799,16 +810,16 @@ mod tests {
 
     #[test]
     fn should_protect_every_use_case_but_the_public_ones_when_the_project_has_auth() {
-        let access = access(true, &["list_products"], &[]);
-        assert!(access.is_protected("create_product"));
-        assert!(!access.is_protected("list_products"));
+        let access = access(true, &["listar_products"], &[]);
+        assert!(access.is_protected("crear_product"));
+        assert!(!access.is_protected("listar_products"));
     }
 
     #[test]
     fn should_protect_nothing_when_the_project_has_no_auth() {
-        let access = access(false, &[], &[("create_product", &["admin"])]);
-        assert!(!access.is_protected("create_product"));
-        assert_eq!(access.roles("create_product"), Vec::<String>::new());
+        let access = access(false, &[], &[("crear_product", &["admin"])]);
+        assert!(!access.is_protected("crear_product"));
+        assert_eq!(access.roles("crear_product"), Vec::<String>::new());
     }
 
     #[test]
@@ -817,12 +828,12 @@ mod tests {
             true,
             &[],
             &[
-                ("create_product", &["admin"]),
-                ("delete_product", &["admin", "owner"]),
+                ("crear_product", &["admin"]),
+                ("borrar_product", &["admin", "owner"]),
             ],
         );
-        let use_cases = ["create_product".to_string(), "delete_product".to_string()];
-        assert_eq!(access.roles("delete_product"), vec!["admin", "owner"]);
+        let use_cases = ["crear_product".to_string(), "borrar_product".to_string()];
+        assert_eq!(access.roles("borrar_product"), vec!["admin", "owner"]);
         assert_eq!(access.all_roles(&use_cases), vec!["admin", "owner"]);
     }
 

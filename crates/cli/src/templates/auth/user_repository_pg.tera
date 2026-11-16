@@ -4,27 +4,28 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use dominio_usuario::{
-    modelo::{User, UserId},
-    repositorio::UserRepositoryTrait,
+    modelo::{Usuario, IdUsuario},
+    repositorio::RepositorioUsuario,
 };
 use puerto_nucleo::ErrorRepositorio;
 
 use puerto_sqlx::mapear_error_sqlx;
 
-/// Runtime-checked queries (`query_as`, not `query_as!`): `puerto nuevo` writes this file before
-/// there is a database to build the query cache from, and the project builds offline.
-pub struct PgUserRepository {
+/// Consultas comprobadas en tiempo de ejecución (`query_as`, no `query_as!`): `puerto nuevo`
+/// escribe este fichero antes de que haya una base de datos de la que sacar la caché de consultas,
+/// y el proyecto compila sin conexión.
+pub struct RepositorioUsuarioPostgres {
     pub pool: PgPool,
 }
 
-impl PgUserRepository {
+impl RepositorioUsuarioPostgres {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 }
 
 #[derive(sqlx::FromRow)]
-struct UserRow {
+struct FilaUsuario {
     id: Uuid,
     emisor: String,
     sujeto: String,
@@ -35,17 +36,17 @@ struct UserRow {
     actualizado_en: DateTime<Utc>,
 }
 
-impl From<UserRow> for User {
-    fn from(row: UserRow) -> Self {
-        User::from_repository(User {
-            id: UserId::from_uuid(row.id),
-            issuer: row.emisor,
-            subject: row.sujeto,
-            email: row.email,
-            name: row.nombre,
-            roles: row.roles,
-            created_at: row.creado_en,
-            updated_at: row.actualizado_en,
+impl From<FilaUsuario> for Usuario {
+    fn from(fila: FilaUsuario) -> Self {
+        Usuario::from_repositorio(Usuario {
+            id: IdUsuario::from_uuid(fila.id),
+            emisor: fila.emisor,
+            sujeto: fila.sujeto,
+            email: fila.email,
+            nombre: fila.nombre,
+            roles: fila.roles,
+            creado_en: fila.creado_en,
+            actualizado_en: fila.actualizado_en,
         })
     }
 }
@@ -53,41 +54,41 @@ impl From<UserRow> for User {
 const COLUMNS: &str = "id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en";
 
 #[async_trait]
-impl UserRepositoryTrait for PgUserRepository {
-    async fn find_by_subject(
+impl RepositorioUsuario for RepositorioUsuarioPostgres {
+    async fn buscar_por_sujeto(
         &self,
-        issuer: &str,
-        subject: &str,
-    ) -> Result<Option<User>, ErrorRepositorio> {
-        let row = sqlx::query_as::<_, UserRow>(&format!(
+        emisor: &str,
+        sujeto: &str,
+    ) -> Result<Option<Usuario>, ErrorRepositorio> {
+        let fila = sqlx::query_as::<_, FilaUsuario>(&format!(
             "SELECT {COLUMNS} FROM usuarios WHERE emisor = $1 AND sujeto = $2"
         ))
-        .bind(issuer)
-        .bind(subject)
+        .bind(emisor)
+        .bind(sujeto)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "find_by_subject failed");
+            tracing::error!(error = %e, "find_by_subject falló");
             mapear_error_sqlx(&e)
         })?;
-        Ok(row.map(User::from))
+        Ok(fila.map(Usuario::from))
     }
 
-    async fn find_by_id(&self, id: UserId) -> Result<Option<User>, ErrorRepositorio> {
-        tracing::debug!(%id, "find_by_id");
-        let row = sqlx::query_as::<_, UserRow>(&format!("SELECT {COLUMNS} FROM usuarios WHERE id = $1"))
-            .bind(id.value())
+    async fn buscar_por_id(&self, id: IdUsuario) -> Result<Option<Usuario>, ErrorRepositorio> {
+        tracing::debug!(%id, "buscar_por_id");
+        let fila = sqlx::query_as::<_, FilaUsuario>(&format!("SELECT {COLUMNS} FROM usuarios WHERE id = $1"))
+            .bind(id.valor())
             .fetch_optional(&self.pool)
             .await
             .map_err(|e| {
-                tracing::error!(error = %e, "find_by_id failed");
+                tracing::error!(error = %e, "buscar_por_id falló");
                 mapear_error_sqlx(&e)
             })?;
-        Ok(row.map(User::from))
+        Ok(fila.map(Usuario::from))
     }
 
-    async fn save(&self, user: &User) -> Result<(), ErrorRepositorio> {
-        tracing::debug!(id = %user.id, "save");
+    async fn guardar(&self, usuario: &Usuario) -> Result<(), ErrorRepositorio> {
+        tracing::debug!(id = %usuario.id, "guardar");
         sqlx::query(
             "INSERT INTO usuarios (id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -97,18 +98,18 @@ impl UserRepositoryTrait for PgUserRepository {
                  roles = EXCLUDED.roles,
                  actualizado_en = EXCLUDED.actualizado_en",
         )
-        .bind(user.id.value())
-        .bind(&user.issuer)
-        .bind(&user.subject)
-        .bind(&user.email)
-        .bind(&user.name)
-        .bind(&user.roles)
-        .bind(user.created_at)
-        .bind(user.updated_at)
+        .bind(usuario.id.valor())
+        .bind(&usuario.emisor)
+        .bind(&usuario.sujeto)
+        .bind(&usuario.email)
+        .bind(&usuario.nombre)
+        .bind(&usuario.roles)
+        .bind(usuario.creado_en)
+        .bind(usuario.actualizado_en)
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "save failed");
+            tracing::error!(error = %e, "guardar falló");
             mapear_error_sqlx(&e)
         })?;
         Ok(())
@@ -119,39 +120,39 @@ impl UserRepositoryTrait for PgUserRepository {
 mod tests {
     use super::*;
 
-    fn ada() -> User {
-        User::provision("emisor", "ada", Some("ada@example.com".into()), None)
+    fn ada() -> Usuario {
+        Usuario::aprovisionar("emisor", "ada", Some("ada@example.com".into()), None)
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_find_a_saved_user_when_looked_up_by_subject_or_id(pool: PgPool) {
-        // Arrange
-        let repository = PgUserRepository::new(pool);
-        let user = ada();
-        repository.save(&user).await.expect("saved");
+    async fn deberia_encontrar_un_usuario_guardado_cuando_se_busca_por_sujeto_o_por_id(pool: PgPool) {
+        // Preparar
+        let repositorio = RepositorioUsuarioPostgres::new(pool);
+        let usuario = ada();
+        repositorio.guardar(&usuario).await.expect("guardado");
 
-        // Act
-        let by_subject = repository
-            .find_by_subject("emisor", "ada")
+        // Actuar
+        let por_sujeto = repositorio
+            .buscar_por_sujeto("emisor", "ada")
             .await
-            .expect("read");
-        let by_id = repository.find_by_id(user.id).await.expect("read");
+            .expect("leído");
+        let por_id = repositorio.buscar_por_id(usuario.id).await.expect("leído");
 
-        // Assert
-        assert_eq!(by_subject.map(|u| u.id), Some(user.id));
-        assert_eq!(by_id.map(|u| u.subject), Some("ada".to_string()));
+        // Comprobar
+        assert_eq!(por_sujeto.map(|u| u.id), Some(usuario.id));
+        assert_eq!(por_id.map(|u| u.sujeto), Some("ada".to_string()));
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
-    async fn should_reject_a_second_user_when_the_subject_is_taken(pool: PgPool) {
-        // Arrange
-        let repository = PgUserRepository::new(pool);
-        repository.save(&ada()).await.expect("saved");
+    async fn deberia_rechazar_un_segundo_usuario_cuando_el_sujeto_esta_ocupado(pool: PgPool) {
+        // Preparar
+        let repositorio = RepositorioUsuarioPostgres::new(pool);
+        repositorio.guardar(&ada()).await.expect("guardado");
 
-        // Act
-        let result = repository.save(&ada()).await;
+        // Actuar
+        let resultado = repositorio.guardar(&ada()).await;
 
-        // Assert
-        assert_eq!(result, Err(ErrorRepositorio::Duplicado));
+        // Comprobar
+        assert_eq!(resultado, Err(ErrorRepositorio::Duplicado));
     }
 }

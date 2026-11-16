@@ -93,18 +93,18 @@ fn build_context(
     ctx
 }
 
-/// What `OpenApiService` serves: `()` with no API, the one `{snake}_api`, or a tuple of them —
-/// `me_api` last in an auth project, then `auth_api` in a local one.
+/// What `OpenApiService` serves: `()` with no API, the one `api_{snake}`, or a tuple of them —
+/// `api_me` last in an auth project, then `api_auth` in a local one.
 fn api_expression(entities: &[crate::puerto_toml::Entity], auth: bool, local: bool) -> String {
     let mut apis: Vec<String> = entities
         .iter()
-        .map(|e| format!("{}_api", pascal_to_snake(&e.name)))
+        .map(|e| format!("api_{}", pascal_to_snake(&e.name)))
         .collect();
     if auth {
-        apis.push("me_api".into());
+        apis.push("api_me".into());
     }
     if local {
-        apis.push("auth_api".into());
+        apis.push("api_auth".into());
     }
     match apis.as_slice() {
         [single] => single.clone(),

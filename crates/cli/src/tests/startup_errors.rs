@@ -18,7 +18,7 @@ fn project(name: &str, db: bool, events: Option<&str>) -> (PathBuf, PathBuf) {
     if let Some(transport) = events {
         scaffold::apply_events_to_new_project(&output, transport).unwrap();
     }
-    scaffold::run_scaffold("Product", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
     (dir, output)
 }
 
@@ -28,7 +28,7 @@ fn main_lets_a_failed_build_end_the_process_with_its_message() {
         .get_file("presentacion/api/src/main.rs")
         .and_then(|f| f.contents_utf8())
         .unwrap();
-    assert!(main.contains(".intentar_servir(api::generado::bootstrap::build_app)"));
+    assert!(main.contains(".intentar_servir(api::generado::bootstrap::construir_app)"));
 }
 
 #[test]
@@ -38,12 +38,12 @@ fn db_bootstrap_reports_a_database_it_cannot_use_instead_of_panicking() {
     let bootstrap = wiring(&output);
     let code = non_test_code(&bootstrap);
     assert!(code.contains(
-        "pub async fn build_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {"
+        "pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {"
     ));
     assert!(!code.contains(".expect("), "{code}");
-    assert!(code.contains("set it in .env"));
-    assert!(code.contains("is the database up? `make docker-compose/up`"));
-    assert!(code.contains("Ok(crate::app::configure("));
+    assert!(code.contains("defínela en .env"));
+    assert!(code.contains("¿está arrancada la base de datos? `make docker-compose/up`"));
+    assert!(code.contains("Ok(crate::app::configurar("));
 
     cleanup(&dir);
 }
@@ -54,7 +54,7 @@ fn inmemory_bootstrap_builds_the_app_the_same_way() {
 
     let bootstrap = wiring(&output);
     assert!(bootstrap.contains("-> Result<impl Endpoint, String> {"));
-    assert!(bootstrap.contains("Ok(crate::app::configure("));
+    assert!(bootstrap.contains("Ok(crate::app::configurar("));
     assert!(!bootstrap.contains("DATABASE_URL"));
 
     cleanup(&dir);
@@ -71,20 +71,20 @@ fn worker_reports_what_it_cannot_reach_instead_of_panicking() {
 
         let main = read(&output, "presentacion/worker/src/main.rs");
         assert!(
-            main.contains(".intentar_ejecutar(generado::registro::build_worker)"),
+            main.contains(".intentar_ejecutar(generado::registro::construir_worker)"),
             "{transport}"
         );
         let registry = read(&output, "presentacion/worker/src/generado/registro.rs");
         let code = non_test_code(&registry);
         assert!(
             code.contains(
-                "pub async fn build_worker(config: ConfigWorker) -> Result<Bucles, String> {"
+                "pub async fn construir_worker(config: ConfigWorker) -> Result<Bucles, String> {"
             ),
             "{transport}: {code}"
         );
         assert!(!code.contains(".expect("), "{transport}: {code}");
         assert!(
-            code.contains("is the database up? `make docker-compose/up`"),
+            code.contains("¿está arrancada la base de datos? `make docker-compose/up`"),
             "{transport}"
         );
 

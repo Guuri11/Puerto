@@ -6,29 +6,29 @@ use super::*;
 fn routes_patch_appends_the_field_as_the_last_member_of_the_api_struct() {
     let dir = temp_dir("routes_patch_position");
     cleanup(&dir);
-    fs::create_dir_all(dir.join("contextos/product/rest/src")).unwrap();
+    fs::create_dir_all(dir.join("contextos/producto/rest/src")).unwrap();
     fs::write(
-        dir.join("contextos/product/rest/src/rutas.rs"),
-        "use std::sync::Arc;\n\npub struct ProductApi {\n    pub get_product: Arc<dyn GetProductUseCaseTrait>,\n}\n\nimpl ProductApi {}\n",
+        dir.join("contextos/producto/rest/src/rutas.rs"),
+        "use std::sync::Arc;\n\npub struct ApiProducto {\n    pub obtener_producto: Arc<dyn ObtenerProducto>,\n}\n\nimpl ApiProducto {}\n",
     )
     .unwrap();
 
     crate::patchers::routes_rs::patch_routes_use_cases(
         &dir,
-        "Product",
-        "product",
-        &["archive_product".to_string()],
+        "Producto",
+        "producto",
+        &["archive_producto".to_string()],
     )
     .unwrap();
 
     assert_eq!(
-        fs::read_to_string(dir.join("contextos/product/rest/src/rutas.rs")).unwrap(),
-        "use aplicacion_product::archive_product::ArchiveProductUseCaseTrait;\n\
+        fs::read_to_string(dir.join("contextos/producto/rest/src/rutas.rs")).unwrap(),
+        "use aplicacion_producto::archive_producto::ArchiveProducto;\n\
          use std::sync::Arc;\n\n\
-         pub struct ProductApi {\n    pub get_product: Arc<dyn GetProductUseCaseTrait>,\n    \
-         /// Wired by bootstrap.rs. Call it from an endpoint in the `#[OpenApi]` impl below.\n    \
-         #[allow(dead_code)]\n    pub archive_product: Arc<dyn ArchiveProductUseCaseTrait>,\n}\n\n\
-         impl ProductApi {}\n"
+         pub struct ApiProducto {\n    pub obtener_producto: Arc<dyn ObtenerProducto>,\n    \
+         /// Lo cablea bootstrap.rs. Llámalo desde un endpoint en el impl `#[OpenApi]` de abajo.\n    \
+         #[allow(dead_code)]\n    pub archive_producto: Arc<dyn ArchiveProducto>,\n}\n\n\
+         impl ApiProducto {}\n"
     );
     cleanup(&dir);
 }
@@ -39,27 +39,27 @@ fn routes_patch_gives_the_route_tests_api_literal_an_unexpecting_mock() {
     // compiling (E0063). The mock is spelled out in full — its module only exists under test.
     let dir = temp_dir("routes_patch_test_literal");
     cleanup(&dir);
-    fs::create_dir_all(dir.join("contextos/product/rest/src")).unwrap();
-    let before = "use std::sync::Arc;\n\npub struct ProductApi {\n    pub get_product: Arc<dyn GetProductUseCaseTrait>,\n}\n\n\
-                  #[cfg(test)]\nmod tests {\n    fn client() {\n        let _ = Mocks {};\n        let api = ProductApi {\n            \
-                  get_product: Arc::new(self.get),\n        };\n    }\n}\n";
-    fs::write(dir.join("contextos/product/rest/src/rutas.rs"), before).unwrap();
+    fs::create_dir_all(dir.join("contextos/producto/rest/src")).unwrap();
+    let before = "use std::sync::Arc;\n\npub struct ApiProducto {\n    pub obtener_producto: Arc<dyn ObtenerProducto>,\n}\n\n\
+                  #[cfg(test)]\nmod tests {\n    fn client() {\n        let _ = Mocks {};\n        let api = ApiProducto {\n            \
+                  obtener_producto: Arc::new(self.get),\n        };\n    }\n}\n";
+    fs::write(dir.join("contextos/producto/rest/src/rutas.rs"), before).unwrap();
 
     for _ in 0..2 {
         crate::patchers::routes_rs::patch_routes_use_cases(
             &dir,
-            "Product",
-            "product",
-            &["archive_product".to_string()],
+            "Producto",
+            "producto",
+            &["archive_producto".to_string()],
         )
         .unwrap();
     }
 
-    let after = fs::read_to_string(dir.join("contextos/product/rest/src/rutas.rs")).unwrap();
+    let after = fs::read_to_string(dir.join("contextos/producto/rest/src/rutas.rs")).unwrap();
     assert!(
         after.contains(
-            "        let api = ProductApi {\n            get_product: Arc::new(self.get),\n            \
-             archive_product: Arc::new(\n                aplicacion_product::archive_product::mocks::MockArchiveProductUseCase::new(),\n            ),\n        };\n"
+            "        let api = ApiProducto {\n            obtener_producto: Arc::new(self.get),\n            \
+             archive_producto: Arc::new(\n                aplicacion_producto::archive_producto::dobles::MockArchiveProducto::new(),\n            ),\n        };\n"
         ),
         "{after}"
     );
@@ -72,36 +72,39 @@ fn routes_patch_gives_the_route_tests_mocks_a_field_for_the_custom_use_case() {
     // `mocks.<action>` (the `poem-route-test` snippet), like the CRUD tests do on `mocks.create`.
     let dir = temp_dir("routes_patch_mocks_field");
     cleanup(&dir);
-    fs::create_dir_all(dir.join("contextos/product/rest/src")).unwrap();
-    let before = "use std::sync::Arc;\n\npub struct ProductApi {\n    pub get_product: Arc<dyn GetProductUseCaseTrait>,\n}\n\n\
-                  #[cfg(test)]\nmod tests {\n    #[derive(Default)]\n    struct Mocks {\n        get: MockGetProductUseCase,\n    }\n\n    \
-                  impl Mocks {\n        fn client(self) {\n            let api = ProductApi {\n                \
-                  get_product: Arc::new(self.get),\n            };\n        }\n    }\n}\n";
-    fs::write(dir.join("contextos/product/rest/src/rutas.rs"), before).unwrap();
+    fs::create_dir_all(dir.join("contextos/producto/rest/src")).unwrap();
+    let before = "use std::sync::Arc;\n\npub struct ApiProducto {\n    pub obtener_producto: Arc<dyn ObtenerProducto>,\n}\n\n\
+                  #[cfg(test)]\nmod tests {\n    #[derive(Default)]\n    struct Mocks {\n        get: MockObtenerProducto,\n    }\n\n    \
+                  impl Mocks {\n        fn client(self) {\n            let api = ApiProducto {\n                \
+                  obtener_producto: Arc::new(self.get),\n            };\n        }\n    }\n}\n";
+    fs::write(dir.join("contextos/producto/rest/src/rutas.rs"), before).unwrap();
 
     for _ in 0..2 {
         crate::patchers::routes_rs::patch_routes_use_cases(
             &dir,
-            "Product",
-            "product",
-            &["get_product".to_string(), "archive_product".to_string()],
+            "Producto",
+            "producto",
+            &[
+                "obtener_producto".to_string(),
+                "archive_producto".to_string(),
+            ],
         )
         .unwrap();
     }
 
-    let after = fs::read_to_string(dir.join("contextos/product/rest/src/rutas.rs")).unwrap();
+    let after = fs::read_to_string(dir.join("contextos/producto/rest/src/rutas.rs")).unwrap();
     assert!(
         after.contains(
-            // `get_product` is already in the literal (as `self.get`): no second mock for it.
-            "    struct Mocks {\n        get: MockGetProductUseCase,\n        \
-             archive_product: aplicacion_product::archive_product::mocks::MockArchiveProductUseCase,\n    }\n"
+            // `get_producto` is already in the literal (as `self.get`): no second mock for it.
+            "    struct Mocks {\n        get: MockObtenerProducto,\n        \
+             archive_producto: aplicacion_producto::archive_producto::dobles::MockArchiveProducto,\n    }\n"
         ),
         "{after}"
     );
     assert!(
         after.contains(
-            "            let api = ProductApi {\n                get_product: Arc::new(self.get),\n                \
-             archive_product: Arc::new(self.archive_product),\n            };\n"
+            "            let api = ApiProducto {\n                obtener_producto: Arc::new(self.get),\n                \
+             archive_producto: Arc::new(self.archive_producto),\n            };\n"
         ),
         "{after}"
     );

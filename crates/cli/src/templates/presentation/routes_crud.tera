@@ -1,13 +1,13 @@
 {% set refs = fields | filter(attribute="is_ref", value=true) %}use std::sync::Arc;
 
-use dominio_{{ snake }}::modelo::{{ pascal }}Id;
+use dominio_{{ snake }}::modelo::Id{{ pascal }};
 {% for import in reference_imports %}use {{ import }};
 {% endfor %}use aplicacion_{{ snake }}::{
-    create_{{ snake }}::{Create{{ pascal }}Params, Create{{ pascal }}UseCaseTrait},
-    delete_{{ snake }}::{Delete{{ pascal }}Params, Delete{{ pascal }}UseCaseTrait},
-    get_{{ snake }}::{Get{{ pascal }}Params, Get{{ pascal }}UseCaseTrait},
-    list_{{ plural }}::{List{{ plural_pascal }}Params, List{{ plural_pascal }}UseCaseTrait},
-    update_{{ snake }}::{Update{{ pascal }}Params, Update{{ pascal }}UseCaseTrait},
+    crear_{{ snake }}::{ParamsCrear{{ pascal }}, Crear{{ pascal }}},
+    borrar_{{ snake }}::{ParamsBorrar{{ pascal }}, Borrar{{ pascal }}},
+    obtener_{{ snake }}::{ParamsObtener{{ pascal }}, Obtener{{ pascal }}},
+    listar_{{ plural }}::{ParamsListar{{ plural_pascal }}, Listar{{ plural_pascal }}},
+    actualizar_{{ snake }}::{ParamsActualizar{{ pascal }}, Actualizar{{ pascal }}},
 };
 use poem_openapi::{
     OpenApi, Tags,
@@ -20,12 +20,12 @@ use puerto_nucleo::PeticionPagina;
 {% endif %}use uuid::Uuid;
 
 use crate::dto::{
-    Create{{ pascal }}Request, Update{{ pascal }}Request, {{ pascal }}Dto, {{ pascal }}PageDto,
+    PeticionCrear{{ pascal }}, PeticionActualizar{{ pascal }}, Dto{{ pascal }}, DtoPagina{{ pascal }},
 };
 use crate::errores::a_respuesta_error;
 use crate::respuestas::{
-    Create{{ pascal }}Response, Delete{{ pascal }}Response, Get{{ pascal }}Response, List{{ plural_pascal }}Response,
-    Update{{ pascal }}Response,
+    RespuestaCrear{{ pascal }}, RespuestaBorrar{{ pascal }}, RespuestaObtener{{ pascal }}, RespuestaListar{{ plural_pascal }},
+    RespuestaActualizar{{ pascal }},
 };
 
 #[derive(Tags)]
@@ -33,114 +33,114 @@ enum ApiTags {
     {{ pascal }},
 }
 
-/// Holds the use case ports; `generado/bootstrap.rs` plugs in the implementations.
-pub struct {{ pascal }}Api {
-    pub create_{{ snake }}: Arc<dyn Create{{ pascal }}UseCaseTrait>,
-    pub get_{{ snake }}: Arc<dyn Get{{ pascal }}UseCaseTrait>,
-    pub list_{{ plural }}: Arc<dyn List{{ plural_pascal }}UseCaseTrait>,
-    pub update_{{ snake }}: Arc<dyn Update{{ pascal }}UseCaseTrait>,
-    pub delete_{{ snake }}: Arc<dyn Delete{{ pascal }}UseCaseTrait>,
+/// Guarda los puertos de los casos de uso; `generado/bootstrap.rs` conecta las implementaciones.
+pub struct Api{{ pascal }} {
+    pub crear_{{ snake }}: Arc<dyn Crear{{ pascal }}>,
+    pub obtener_{{ snake }}: Arc<dyn Obtener{{ pascal }}>,
+    pub listar_{{ plural }}: Arc<dyn Listar{{ plural_pascal }}>,
+    pub actualizar_{{ snake }}: Arc<dyn Actualizar{{ pascal }}>,
+    pub borrar_{{ snake }}: Arc<dyn Borrar{{ pascal }}>,
 }
 
 #[OpenApi]
-impl {{ pascal }}Api {
-    /// Create a new {{ pascal }}
+impl Api{{ pascal }} {
+    /// Crea: {{ pascal }}
     #[oai(path = "/{{ plural }}", method = "post", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.create.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn create(&self, {% if access.create.protected %}auth: BearerAuth, {% endif %}body: Json<Create{{ pascal }}Request>) -> Create{{ pascal }}Response {
+{% endfor %}    async fn crear(&self, {% if access.create.protected %}auth: BearerAuth, {% endif %}cuerpo: Json<PeticionCrear{{ pascal }}>) -> RespuestaCrear{{ pascal }} {
         match self
-            .create_{{ snake }}
-            .execute(Create{{ pascal }}Params {
+            .crear_{{ snake }}
+            .ejecutar(ParamsCrear{{ pascal }} {
 {% if access.create.protected %}                actor: auth.0,
 {% endif %}{% for f in fields %}                {{ f.name }}: {{ f.from_body }},
 {% endfor %}            })
             .await
         {
-            Ok(entity) => Create{{ pascal }}Response::Created(Json({{ pascal }}Dto::from_domain(&entity))),
+            Ok(entidad) => RespuestaCrear{{ pascal }}::Creado(Json(Dto{{ pascal }}::from_dominio(&entidad))),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
-                tracing::warn!(code = %error.0.codigo, "create_{{ snake }} failed");
-                Create{{ pascal }}Response::from_status(status, error)
+                tracing::warn!(codigo = %error.0.codigo, "crear_{{ snake }} falló");
+                RespuestaCrear{{ pascal }}::from_status(status, error)
             }
         }
     }
 
-    /// Get a {{ pascal }} by ID
+    /// Obtiene: {{ pascal }} por id
     #[oai(path = "/{{ plural }}/:id", method = "get", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.get.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn get_by_id(&self, {% if access.get.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> Get{{ pascal }}Response {
+{% endfor %}    async fn obtener(&self, {% if access.get.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> RespuestaObtener{{ pascal }} {
         match self
-            .get_{{ snake }}
-            .execute(Get{{ pascal }}Params { {% if access.get.protected %}actor: auth.0, {% endif %}id: {{ pascal }}Id::from_uuid(id.0) })
+            .obtener_{{ snake }}
+            .ejecutar(ParamsObtener{{ pascal }} { {% if access.get.protected %}actor: auth.0, {% endif %}id: Id{{ pascal }}::from_uuid(id.0) })
             .await
         {
-            Ok(entity) => Get{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
+            Ok(entidad) => RespuestaObtener{{ pascal }}::Ok(Json(Dto{{ pascal }}::from_dominio(&entidad))),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
-                tracing::warn!(code = %error.0.codigo, "get_{{ snake }} failed");
-                Get{{ pascal }}Response::from_status(status, error)
+                tracing::warn!(codigo = %error.0.codigo, "obtener_{{ snake }} falló");
+                RespuestaObtener{{ pascal }}::from_status(status, error)
             }
         }
     }
 
-    /// List {{ plural_pascal }}, one page at a time (`limit` is capped by the domain)
+    /// Lista {{ plural_pascal }}, página a página (el dominio acota `limite`)
     #[oai(path = "/{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.list.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn list(&self, {% if access.list.protected %}auth: BearerAuth, {% endif %}limit: Query<Option<u32>>, offset: Query<Option<u32>>{% for r in refs %}, #[oai(name = "{{ r.camel }}")] {{ r.name }}: Query<Option<Uuid>>{% endfor %}) -> List{{ plural_pascal }}Response {
+{% endfor %}    async fn listar(&self, {% if access.list.protected %}auth: BearerAuth, {% endif %}limite: Query<Option<u32>>, desplazamiento: Query<Option<u32>>{% for r in refs %}, #[oai(name = "{{ r.camel }}")] {{ r.name }}: Query<Option<Uuid>>{% endfor %}) -> RespuestaListar{{ plural_pascal }} {
         match self
-            .list_{{ plural }}
-            .execute(List{{ plural_pascal }}Params {
+            .listar_{{ plural }}
+            .ejecutar(ParamsListar{{ plural_pascal }} {
 {% if access.list.protected %}                actor: auth.0,
-{% endif %}                page: PeticionPagina::new(limit.0, offset.0),
-{% for r in refs %}                {{ r.name }}: {{ r.name }}.0.map({{ r.ref_target }}Id::from_uuid),
+{% endif %}                pagina: PeticionPagina::new(limite.0, desplazamiento.0),
+{% for r in refs %}                {{ r.name }}: {{ r.name }}.0.map(Id{{ r.ref_target }}::from_uuid),
 {% endfor %}            })
             .await
         {
-            Ok(page) => List{{ plural_pascal }}Response::Ok(Json({{ pascal }}PageDto::from_domain(&page))),
+            Ok(pagina) => RespuestaListar{{ plural_pascal }}::Ok(Json(DtoPagina{{ pascal }}::from_dominio(&pagina))),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
-                tracing::error!(code = %error.0.codigo, "list_{{ plural }} failed");
-                List{{ plural_pascal }}Response::from_status(status, error)
+                tracing::error!(codigo = %error.0.codigo, "listar_{{ plural }} falló");
+                RespuestaListar{{ plural_pascal }}::from_status(status, error)
             }
         }
     }
 
-    /// Update a {{ pascal }}
+    /// Actualiza: {{ pascal }}
     #[oai(path = "/{{ plural }}/:id", method = "put", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.update.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn update(&self, {% if access.update.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>, body: Json<Update{{ pascal }}Request>) -> Update{{ pascal }}Response {
+{% endfor %}    async fn actualizar(&self, {% if access.update.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>, cuerpo: Json<PeticionActualizar{{ pascal }}>) -> RespuestaActualizar{{ pascal }} {
         match self
-            .update_{{ snake }}
-            .execute(Update{{ pascal }}Params {
+            .actualizar_{{ snake }}
+            .ejecutar(ParamsActualizar{{ pascal }} {
 {% if access.update.protected %}                actor: auth.0,
-{% endif %}                id: {{ pascal }}Id::from_uuid(id.0),
+{% endif %}                id: Id{{ pascal }}::from_uuid(id.0),
 {% for f in fields %}                {{ f.name }}: {{ f.from_body }},
 {% endfor %}            })
             .await
         {
-            Ok(entity) => Update{{ pascal }}Response::Ok(Json({{ pascal }}Dto::from_domain(&entity))),
+            Ok(entidad) => RespuestaActualizar{{ pascal }}::Ok(Json(Dto{{ pascal }}::from_dominio(&entidad))),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
-                tracing::warn!(code = %error.0.codigo, "update_{{ snake }} failed");
-                Update{{ pascal }}Response::from_status(status, error)
+                tracing::warn!(codigo = %error.0.codigo, "actualizar_{{ snake }} falló");
+                RespuestaActualizar{{ pascal }}::from_status(status, error)
             }
         }
     }
 
-    /// Delete a {{ pascal }}
+    /// Borra: {{ pascal }}
     #[oai(path = "/{{ plural }}/:id", method = "delete", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.delete.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn delete(&self, {% if access.delete.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> Delete{{ pascal }}Response {
+{% endfor %}    async fn borrar(&self, {% if access.delete.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> RespuestaBorrar{{ pascal }} {
         match self
-            .delete_{{ snake }}
-            .execute(Delete{{ pascal }}Params { {% if access.delete.protected %}actor: auth.0, {% endif %}id: {{ pascal }}Id::from_uuid(id.0) })
+            .borrar_{{ snake }}
+            .ejecutar(ParamsBorrar{{ pascal }} { {% if access.delete.protected %}actor: auth.0, {% endif %}id: Id{{ pascal }}::from_uuid(id.0) })
             .await
         {
-            Ok(()) => Delete{{ pascal }}Response::NoContent,
+            Ok(()) => RespuestaBorrar{{ pascal }}::SinContenido,
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
-                tracing::warn!(code = %error.0.codigo, "delete_{{ snake }} failed");
-                Delete{{ pascal }}Response::from_status(status, error)
+                tracing::warn!(codigo = %error.0.codigo, "borrar_{{ snake }} falló");
+                RespuestaBorrar{{ pascal }}::from_status(status, error)
             }
         }
     }
@@ -148,13 +148,13 @@ impl {{ pascal }}Api {
 
 #[cfg(test)]
 mod tests {
-    use dominio_{{ snake }}::errores::{{ pascal }}Error;
+    use dominio_{{ snake }}::errores::Error{{ pascal }};
     use aplicacion_{{ snake }}::{
-        create_{{ snake }}::mocks::MockCreate{{ pascal }}UseCase, delete_{{ snake }}::mocks::MockDelete{{ pascal }}UseCase,
-        get_{{ snake }}::mocks::MockGet{{ pascal }}UseCase, list_{{ plural }}::mocks::MockList{{ plural_pascal }}UseCase,
-        update_{{ snake }}::mocks::MockUpdate{{ pascal }}UseCase,
+        crear_{{ snake }}::dobles::MockCrear{{ pascal }}, borrar_{{ snake }}::dobles::MockBorrar{{ pascal }},
+        obtener_{{ snake }}::dobles::MockObtener{{ pascal }}, listar_{{ plural }}::dobles::MockListar{{ plural_pascal }},
+        actualizar_{{ snake }}::dobles::MockActualizar{{ pascal }},
     };
-    use dominio_{{ snake }}::pruebas::madres::{{ pascal }}Mother;{% if auth %}
+    use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};{% if auth %}
     use puerto_nucleo::auth::dobles::MadrePrincipal;
     use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
     use puerto_nucleo::auth::dobles::MockAutenticador;
@@ -166,19 +166,20 @@ mod tests {
 
     use super::*;
 
-    /// One mock per use case. A test sets expectations only on the one its route should call: a
-    /// route that reaches for another use case panics instead of passing.
+    /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
+    /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
     struct Mocks {
-        create: MockCreate{{ pascal }}UseCase,
-        get: MockGet{{ pascal }}UseCase,
-        list: MockList{{ plural_pascal }}UseCase,
-        update: MockUpdate{{ pascal }}UseCase,
-        delete: MockDelete{{ pascal }}UseCase,
+        crear: MockCrear{{ pascal }},
+        get: MockObtener{{ pascal }},
+        listar: MockListar{{ plural_pascal }},
+        actualizar: MockActualizar{{ pascal }},
+        borrar: MockBorrar{{ pascal }},
     }
 
-{% if auth %}    /// Accepts `caller` (every role a route of this API requires) and `nobody` (no role).
-    fn authenticator() -> Arc<dyn Autenticador> {
+{% if auth %}    /// Acepta `caller` (con todos los roles que pide alguna ruta de esta API) y `nobody`
+    /// (sin roles).
+    fn autenticador() -> Arc<dyn Autenticador> {
         let mut authenticator = MockAutenticador::new();
         authenticator.expect_autenticar().returning(|token| match token {
             "caller" => Ok({% if caller_roles %}MadrePrincipal::new()
@@ -191,305 +192,305 @@ mod tests {
     }
 
 {% endif %}    impl Mocks {
-{% if auth %}        /// Every request signed in as `caller`.
-        fn client(self) -> TestClient<impl poem::Endpoint> {
+{% if auth %}        /// Todas las peticiones, con sesión iniciada como `caller`.
+        fn cliente(self) -> TestClient<impl poem::Endpoint> {
             self.client_with(Some("Bearer caller"))
         }
 
-        /// `authorization`: the header every request sends; `None` sends none.
+        /// `authorization`: la cabecera que envía cada petición; con `None` no se envía ninguna.
         fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
-{% else %}        fn client(self) -> TestClient<Route> {
-{% endif %}            let api = {{ pascal }}Api {
-                create_{{ snake }}: Arc::new(self.create),
-                get_{{ snake }}: Arc::new(self.get),
-                list_{{ plural }}: Arc::new(self.list),
-                update_{{ snake }}: Arc::new(self.update),
-                delete_{{ snake }}: Arc::new(self.delete),
+{% else %}        fn cliente(self) -> TestClient<Route> {
+{% endif %}            let api = Api{{ pascal }} {
+                crear_{{ snake }}: Arc::new(self.crear),
+                obtener_{{ snake }}: Arc::new(self.get),
+                listar_{{ plural }}: Arc::new(self.listar),
+                actualizar_{{ snake }}: Arc::new(self.actualizar),
+                borrar_{{ snake }}: Arc::new(self.borrar),
             };
-{% if auth %}            let client = TestClient::new(
+{% if auth %}            let cliente = TestClient::new(
                 Route::new()
                     .nest("/", OpenApiService::new(api, "test", "1.0"))
-                    .data(authenticator()),
+                    .data(autenticador()),
             );
             match authorization {
-                Some(value) => client.default_header("Authorization", value),
-                None => client,
+                Some(valor) => cliente.default_header("Authorization", valor),
+                None => cliente,
             }
 {% else %}            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
 {% endif %}        }
     }
 
-    fn create_request() -> Create{{ pascal }}Request {
-        Create{{ pascal }}Request {
+    fn peticion_crear() -> PeticionCrear{{ pascal }} {
+        PeticionCrear{{ pascal }} {
 {% for f in fields %}            {{ f.name }}: {{ f.default_literal }},
 {% endfor %}        }
     }
 
-    fn update_request() -> Update{{ pascal }}Request {
-        Update{{ pascal }}Request {
+    fn peticion_actualizar() -> PeticionActualizar{{ pascal }} {
+        PeticionActualizar{{ pascal }} {
 {% for f in fields %}            {{ f.name }}: {{ f.default_literal }},
 {% endfor %}        }
     }
 
-    fn item_path() -> String {
+    fn ruta_elemento() -> String {
         format!("/{{ plural }}/{}", Uuid::new_v4())
     }
 
     #[tokio::test]
-    async fn should_respond_201_when_{{ snake }}_is_created() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| Ok({{ pascal }}Mother::random()));
+    async fn deberia_responder_201_cuando_se_crea_{{ snake }}() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles.crear.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
 
-        // Act
-        let response = mocks
-            .client()
+        // Actuar
+        let respuesta = dobles
+            .cliente()
             .post("/{{ plural }}")
-            .body_json(&create_request().to_json())
+            .body_json(&peticion_crear().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::CREATED);
+        // Comprobar
+        respuesta.assert_status(StatusCode::CREATED);
     }
 
     #[tokio::test]
-    async fn should_respond_422_when_{{ snake }}_is_invalid() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks
-            .create
-            .expect_execute()
-            .returning(|_| Err({{ pascal }}Error::ValidationError("invalid".to_string())));
+    async fn deberia_responder_422_cuando_{{ snake }}_no_supera_la_validacion() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Err(Error{{ pascal }}::Validacion("invalid".to_string())));
 
-        // Act
-        let response = mocks
-            .client()
+        // Actuar
+        let respuesta = dobles
+            .cliente()
             .post("/{{ plural }}")
-            .body_json(&create_request().to_json())
+            .body_json(&peticion_crear().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
     }
 {% for f in fields | filter(attribute="is_ref", value=true) %}
     #[tokio::test]
-    async fn should_respond_422_when_a_referenced_{{ f.name }}_does_not_exist() {
-        // Arrange: the database found no {{ f.ref_target }} with that id (ADR-0022 of Puerto).
-        let mut mocks = Mocks::default();
-        mocks.create.expect_execute().returning(|_| {
-            Err({{ pascal }}Error::ValidationError("{{ f.name }}_not_found".to_string()))
+    async fn deberia_responder_422_cuando_no_existe_la_referencia_de_{{ f.name }}() {
+        // Preparar: en la base de datos no hay {{ f.ref_target }} con ese id (ADR-0022 de Puerto).
+        let mut dobles = Mocks::default();
+        dobles.crear.expect_ejecutar().returning(|_| {
+            Err(Error{{ pascal }}::Validacion("{{ f.name }}_no_encontrado".to_string()))
         });
 
-        // Act
-        let response = mocks
-            .client()
+        // Actuar
+        let respuesta = dobles
+            .cliente()
             .post("/{{ plural }}")
-            .body_json(&create_request().to_json())
+            .body_json(&peticion_crear().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
-        response
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        respuesta
             .json()
             .await
             .value()
             .object()
             .get("codigo")
-            .assert_string("{{ snake }}.validation_error.{{ f.name }}_not_found");
+            .assert_string("{{ snake }}.validacion.{{ f.name }}_no_encontrado");
     }
 {% endfor %}
     #[tokio::test]
-    async fn should_respond_200_when_{{ snake }}_is_found() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Ok({{ pascal }}Mother::random()));
+    async fn deberia_responder_200_cuando_{{ snake }}_existe() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles.get.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
 
-        // Act
-        let response = mocks.client().get(item_path()).send().await;
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
 
-        // Assert
-        response.assert_status(StatusCode::OK);
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
-    async fn should_respond_404_when_{{ snake }}_does_not_exist() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks.get.expect_execute().returning(|_| Err({{ pascal }}Error::NotFound));
+    async fn deberia_responder_404_cuando_{{ snake }}_no_existe() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles.get.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::NoEncontrado));
 
-        // Act
-        let response = mocks.client().get(item_path()).send().await;
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
 
-        // Assert
-        response.assert_status(StatusCode::NOT_FOUND);
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
-    async fn should_respond_200_with_a_page_of_{{ plural }}_when_listing() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks
-            .list
-            .expect_execute()
-            .returning(|params| Ok(Pagina::new({{ pascal }}Mother::random_vec(2), 7, params.page)));
+    async fn deberia_responder_200_con_una_pagina_de_{{ plural }}_cuando_se_listan() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .returning(|params| Ok(Pagina::new(Madre{{ pascal }}::aleatorios(2), 7, params.pagina)));
 
-        // Act
-        let response = mocks.client().get("/{{ plural }}").send().await;
+        // Actuar
+        let respuesta = dobles.cliente().get("/{{ plural }}").send().await;
 
-        // Assert
-        response.assert_status(StatusCode::OK);
-        let json = response.json().await;
-        let body = json.value().object();
-        body.get("items").array().assert_len(2);
-        body.get("total").assert_i64(7);
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let json = respuesta.json().await;
+        let cuerpo = json.value().object();
+        cuerpo.get("elementos").array().assert_len(2);
+        cuerpo.get("total").assert_i64(7);
     }
 
     #[tokio::test]
-    async fn should_pass_limit_and_offset_to_the_use_case() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks
-            .list
-            .expect_execute()
-            .withf(|params| params.page == PeticionPagina::new(Some(5), Some(10)))
-            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
+    async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .withf(|params| params.pagina == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.pagina)));
 
-        // Act
-        let response = mocks.client().get("/{{ plural }}?limit=5&offset=10").send().await;
+        // Actuar
+        let respuesta = dobles.cliente().get("/{{ plural }}?limite=5&desplazamiento=10").send().await;
 
-        // Assert
-        response.assert_status(StatusCode::OK);
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
     }
 
 {% for r in refs %}    #[tokio::test]
-    async fn should_pass_the_{{ r.name }}_filter_to_the_use_case() {
-        // Arrange
+    async fn deberia_pasar_el_filtro_por_{{ r.name }}_al_caso_de_uso() {
+        // Preparar
         let {{ r.name }} = Uuid::new_v4();
-        let mut mocks = Mocks::default();
-        mocks
-            .list
-            .expect_execute()
-            .withf(move |params| params.{{ r.name }} == Some({{ r.ref_target }}Id::from_uuid({{ r.name }})))
-            .returning(|params| Ok(Pagina::new(vec![], 0, params.page)));
+        let mut dobles = Mocks::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .withf(move |params| params.{{ r.name }} == Some(Id{{ r.ref_target }}::from_uuid({{ r.name }})))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.pagina)));
 
-        // Act
-        let response = mocks.client().get(format!("/{{ plural }}?{{ r.camel }}={{ "{" }}{{ r.name }}}")).send().await;
+        // Actuar
+        let respuesta = dobles.cliente().get(format!("/{{ plural }}?{{ r.camel }}={{ "{" }}{{ r.name }}}")).send().await;
 
-        // Assert
-        response.assert_status(StatusCode::OK);
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
     }
 
 {% endfor %}    #[tokio::test]
-    async fn should_respond_500_when_listing_fails_in_the_repository() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks.list.expect_execute().returning(|_| Err({{ pascal }}Error::RepositoryError));
+    async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles.listar.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::Repositorio));
 
-        // Act
-        let response = mocks.client().get("/{{ plural }}").send().await;
+        // Actuar
+        let respuesta = dobles.cliente().get("/{{ plural }}").send().await;
 
-        // Assert
-        response.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+        // Comprobar
+        respuesta.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
-    async fn should_respond_200_when_{{ snake }}_is_updated() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Ok({{ pascal }}Mother::random()));
+    async fn deberia_responder_200_cuando_se_actualiza_{{ snake }}() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles.actualizar.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
 
-        // Act
-        let response = mocks
-            .client()
-            .put(item_path())
-            .body_json(&update_request().to_json())
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::OK);
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
     }
 
     #[tokio::test]
-    async fn should_respond_404_when_updating_a_missing_{{ snake }}() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks.update.expect_execute().returning(|_| Err({{ pascal }}Error::NotFound));
+    async fn deberia_responder_404_cuando_se_actualiza_{{ snake }}_inexistente() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles.actualizar.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::NoEncontrado));
 
-        // Act
-        let response = mocks
-            .client()
-            .put(item_path())
-            .body_json(&update_request().to_json())
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::NOT_FOUND);
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
-    async fn should_respond_204_when_{{ snake }}_is_deleted() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Ok(()));
+    async fn deberia_responder_204_cuando_se_borra_{{ snake }}() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
-        // Act
-        let response = mocks.client().delete(item_path()).send().await;
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
 
-        // Assert
-        response.assert_status(StatusCode::NO_CONTENT);
+        // Comprobar
+        respuesta.assert_status(StatusCode::NO_CONTENT);
     }
 
     #[tokio::test]
-    async fn should_respond_404_when_deleting_a_missing_{{ snake }}() {
-        // Arrange
-        let mut mocks = Mocks::default();
-        mocks.delete.expect_execute().returning(|_| Err({{ pascal }}Error::NotFound));
+    async fn deberia_responder_404_cuando_se_borra_{{ snake }}_inexistente() {
+        // Preparar
+        let mut dobles = Mocks::default();
+        dobles.borrar.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::NoEncontrado));
 
-        // Act
-        let response = mocks.client().delete(item_path()).send().await;
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
 
-        // Assert
-        response.assert_status(StatusCode::NOT_FOUND);
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
     }
 {% if access.create.protected %}
     #[tokio::test]
-    async fn should_respond_401_when_creating_without_a_token() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_401_cuando_se_crea_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(None)
             .post("/{{ plural }}")
-            .body_json(&create_request().to_json())
+            .body_json(&peticion_crear().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
     }
 {% endif %}{% if access.create.roles %}
     #[tokio::test]
-    async fn should_respond_403_when_creating_without_the_role() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_403_cuando_se_crea_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(Some("Bearer nobody"))
             .post("/{{ plural }}")
-            .body_json(&create_request().to_json())
+            .body_json(&peticion_crear().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::FORBIDDEN);
-        response
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
             .json()
             .await
             .value()
@@ -499,36 +500,36 @@ mod tests {
     }
 {% endif %}{% if access.get.protected %}
     #[tokio::test]
-    async fn should_respond_401_when_getting_without_a_token() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_401_cuando_se_obtiene_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(None)
-            .get(item_path())
+            .get(ruta_elemento())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
     }
 {% endif %}{% if access.get.roles %}
     #[tokio::test]
-    async fn should_respond_403_when_getting_without_the_role() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_403_cuando_se_obtiene_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(Some("Bearer nobody"))
-            .get(item_path())
+            .get(ruta_elemento())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::FORBIDDEN);
-        response
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
             .json()
             .await
             .value()
@@ -538,36 +539,36 @@ mod tests {
     }
 {% endif %}{% if access.list.protected %}
     #[tokio::test]
-    async fn should_respond_401_when_listing_without_a_token() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_401_cuando_se_lista_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(None)
             .get("/{{ plural }}")
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
     }
 {% endif %}{% if access.list.roles %}
     #[tokio::test]
-    async fn should_respond_403_when_listing_without_the_role() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_403_cuando_se_lista_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(Some("Bearer nobody"))
             .get("/{{ plural }}")
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::FORBIDDEN);
-        response
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
             .json()
             .await
             .value()
@@ -577,38 +578,38 @@ mod tests {
     }
 {% endif %}{% if access.update.protected %}
     #[tokio::test]
-    async fn should_respond_401_when_updating_without_a_token() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_401_cuando_se_actualiza_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(None)
-            .put(item_path())
-            .body_json(&update_request().to_json())
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
     }
 {% endif %}{% if access.update.roles %}
     #[tokio::test]
-    async fn should_respond_403_when_updating_without_the_role() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_403_cuando_se_actualiza_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(Some("Bearer nobody"))
-            .put(item_path())
-            .body_json(&update_request().to_json())
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::FORBIDDEN);
-        response
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
             .json()
             .await
             .value()
@@ -618,36 +619,36 @@ mod tests {
     }
 {% endif %}{% if access.delete.protected %}
     #[tokio::test]
-    async fn should_respond_401_when_deleting_without_a_token() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_401_cuando_se_borra_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(None)
-            .delete(item_path())
+            .delete(ruta_elemento())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::UNAUTHORIZED);
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
     }
 {% endif %}{% if access.delete.roles %}
     #[tokio::test]
-    async fn should_respond_403_when_deleting_without_the_role() {
-        // Arrange — no expectation: the use case is never reached
-        let mocks = Mocks::default();
+    async fn deberia_responder_403_cuando_se_borra_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Mocks::default();
 
-        // Act
-        let response = mocks
+        // Actuar
+        let respuesta = dobles
             .client_with(Some("Bearer nobody"))
-            .delete(item_path())
+            .delete(ruta_elemento())
             .send()
             .await;
 
-        // Assert
-        response.assert_status(StatusCode::FORBIDDEN);
-        response
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
             .json()
             .await
             .value()

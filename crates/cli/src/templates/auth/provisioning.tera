@@ -1,5 +1,5 @@
-//! Yours: `puerto nuevo --auth oidc` writes this file once. Every caller the provider vouches for
-//! becomes a `User` row on their first request (ADR-0021 § 3 of Puerto).
+//! Lo escribe una vez `puerto nuevo --auth oidc`; desde entonces es tuyo. Quien llama con el aval
+//! del proveedor se convierte en una fila `Usuario` en su primera petición (ADR-0021 § 3 de Puerto).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -7,81 +7,82 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use dominio_usuario::{
-    modelo::{User, UserId},
-    repositorio::UserRepositoryTrait,
+    modelo::{Usuario, IdUsuario},
+    repositorio::RepositorioUsuario,
 };
 use puerto_nucleo::auth::{ErrorAuth, Autenticador, Principal};
 use puerto_nucleo::ErrorRepositorio;
 
-/// How long a caller's user id is remembered: within it, a request costs no lookup.
+/// Cuánto tiempo se recuerda el id de usuario de quien llama: mientras dura, una petición no
+/// cuesta ninguna búsqueda.
 pub const CACHE_TTL: Duration = Duration::from_secs(60);
 
-/// The project's [`Autenticador`]: asks `inner` (the provider) who the caller is, then finds or
-/// creates their `User` and hands the routes a [`Principal`] carrying its id. The roles stay the
-/// token's.
-pub struct ProvisioningAuthenticator {
-    inner: Arc<dyn Autenticador>,
-    users: Arc<dyn UserRepositoryTrait>,
-    issuer: String,
-    /// The user id of each subject seen in the last [`CACHE_TTL`].
-    cache: Mutex<HashMap<String, (UserId, Instant)>>,
+/// El [`Autenticador`] del proyecto: pregunta a `inner` (el proveedor) quién llama, después busca o
+/// crea su `Usuario` y entrega a las rutas un [`Principal`] con su id. Los roles siguen siendo los del
+/// token.
+pub struct AutenticadorAprovisionador {
+    interno: Arc<dyn Autenticador>,
+    usuarios: Arc<dyn RepositorioUsuario>,
+    emisor: String,
+    /// El id de usuario de cada sujeto visto en el último [`CACHE_TTL`].
+    cache: Mutex<HashMap<String, (IdUsuario, Instant)>>,
 }
 
-impl ProvisioningAuthenticator {
-    /// `issuer`: `AUTH_ISSUER` — with the token's subject, what identifies a user.
+impl AutenticadorAprovisionador {
+    /// `emisor`: `AUTH_ISSUER` — junto con el sujeto del token, lo que identifica a un usuario.
     pub fn new(
-        inner: Arc<dyn Autenticador>,
-        users: Arc<dyn UserRepositoryTrait>,
-        issuer: impl Into<String>,
+        interno: Arc<dyn Autenticador>,
+        usuarios: Arc<dyn RepositorioUsuario>,
+        emisor: impl Into<String>,
     ) -> Self {
         Self {
-            inner,
-            users,
-            issuer: issuer.into(),
+            interno,
+            usuarios,
+            emisor: emisor.into(),
             cache: Mutex::new(HashMap::new()),
         }
     }
 
-    fn cached(&self, subject: &str) -> Option<UserId> {
+    fn en_cache(&self, sujeto: &str) -> Option<IdUsuario> {
         let cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
         cache
-            .get(subject)
+            .get(sujeto)
             .filter(|(_, at)| at.elapsed() < CACHE_TTL)
             .map(|(id, _)| *id)
     }
 
-    fn remember(&self, subject: &str, id: UserId) {
+    fn recordar(&self, sujeto: &str, id: IdUsuario) {
         let mut cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
         cache.retain(|_, (_, at)| at.elapsed() < CACHE_TTL);
-        cache.insert(subject.to_string(), (id, Instant::now()));
+        cache.insert(sujeto.to_string(), (id, Instant::now()));
     }
 
-    /// The caller's user, created on their first request.
-    async fn user_id(&self, principal: &Principal) -> Result<UserId, ErrorRepositorio> {
-        if let Some(user) = self
-            .users
-            .find_by_subject(&self.issuer, &principal.sujeto)
+    /// El usuario de quien llama, creado en su primera petición.
+    async fn id_usuario(&self, principal: &Principal) -> Result<IdUsuario, ErrorRepositorio> {
+        if let Some(usuario) = self
+            .usuarios
+            .buscar_por_sujeto(&self.emisor, &principal.sujeto)
             .await?
         {
-            return Ok(user.id);
+            return Ok(usuario.id);
         }
-        let user = User::provision(
-            &self.issuer,
+        let usuario = Usuario::aprovisionar(
+            &self.emisor,
             &principal.sujeto,
             principal.email.clone(),
             principal.nombre.clone(),
         );
-        match self.users.save(&user).await {
+        match self.usuarios.guardar(&usuario).await {
             Ok(()) => {
-                tracing::info!(id = %user.id, "user provisioned");
-                Ok(user.id)
+                tracing::info!(id = %usuario.id, "usuario dado de alta");
+                Ok(usuario.id)
             }
-            // Two first requests at once: the other one created it.
+            // Dos primeras peticiones a la vez: lo creó la otra.
             Err(ErrorRepositorio::Duplicado) => self
-                .users
-                .find_by_subject(&self.issuer, &principal.sujeto)
+                .usuarios
+                .buscar_por_sujeto(&self.emisor, &principal.sujeto)
                 .await?
-                .map(|user| user.id)
+                .map(|usuario| usuario.id)
                 .ok_or(ErrorRepositorio::NoDisponible),
             Err(err) => Err(err),
         }
@@ -89,155 +90,155 @@ impl ProvisioningAuthenticator {
 }
 
 #[async_trait]
-impl Autenticador for ProvisioningAuthenticator {
+impl Autenticador for AutenticadorAprovisionador {
     async fn autenticar(&self, token: &str) -> Result<Principal, ErrorAuth> {
-        let principal = self.inner.autenticar(token).await?;
-        let id = match self.cached(&principal.sujeto) {
+        let principal = self.interno.autenticar(token).await?;
+        let id = match self.en_cache(&principal.sujeto) {
             Some(id) => id,
             None => {
-                let id = self.user_id(&principal).await.map_err(|err| {
-                    tracing::error!(error = %err, "could not provision the caller");
+                let id = self.id_usuario(&principal).await.map_err(|err| {
+                    tracing::error!(error = %err, "no se pudo dar de alta a quien llama");
                     ErrorAuth::NoDisponible
                 })?;
-                self.remember(&principal.sujeto, id);
+                self.recordar(&principal.sujeto, id);
                 id
             }
         };
-        Ok(principal.con_id_usuario(id.value()))
+        Ok(principal.con_id_usuario(id.valor()))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use dominio_usuario::repositorio::mocks::MockUserRepository;
+    use dominio_usuario::repositorio::dobles::MockRepositorioUsuario;
     use puerto_nucleo::auth::dobles::MockAutenticador;
     use uuid::Uuid;
 
     use super::*;
 
-    const ISSUER: &str = "http://localhost:8180/realms/test";
+    const EMISOR: &str = "http://localhost:8180/realms/test";
 
-    /// The provider accepts `good` as Ada and rejects anything else as expired.
-    fn provider() -> Arc<dyn Autenticador> {
-        let mut provider = MockAutenticador::new();
-        provider.expect_autenticar().returning(|token| match token {
+    /// El proveedor acepta `good` como Ada y rechaza cualquier otro token como caducado.
+    fn proveedor() -> Arc<dyn Autenticador> {
+        let mut proveedor = MockAutenticador::new();
+        proveedor.expect_autenticar().returning(|token| match token {
             "good" => Ok(Principal::new(Uuid::nil(), "ada")
                 .con_email("ada@example.com")
                 .con_roles(["admin"])),
             _ => Err(ErrorAuth::Expirado),
         });
-        Arc::new(provider)
+        Arc::new(proveedor)
     }
 
-    fn authenticator(users: MockUserRepository) -> ProvisioningAuthenticator {
-        ProvisioningAuthenticator::new(provider(), Arc::new(users), ISSUER)
+    fn autenticador(usuarios: MockRepositorioUsuario) -> AutenticadorAprovisionador {
+        AutenticadorAprovisionador::new(proveedor(), Arc::new(usuarios), EMISOR)
     }
 
     #[tokio::test]
-    async fn should_create_the_user_when_the_caller_is_new() {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        users.expect_find_by_subject().returning(|_, _| Ok(None));
-        users
-            .expect_save()
-            .withf(|user| {
-                user.issuer == ISSUER
-                    && user.subject == "ada"
-                    && user.email.as_deref() == Some("ada@example.com")
+    async fn deberia_crear_el_usuario_cuando_llama_por_primera_vez() {
+        // Preparar
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios.expect_buscar_por_sujeto().returning(|_, _| Ok(None));
+        usuarios
+            .expect_guardar()
+            .withf(|usuario| {
+                usuario.emisor == EMISOR
+                    && usuario.sujeto == "ada"
+                    && usuario.email.as_deref() == Some("ada@example.com")
             })
             .times(1)
             .returning(|_| Ok(()));
 
-        // Act
-        let principal = authenticator(users).autenticar("good").await;
+        // Actuar
+        let principal = autenticador(usuarios).autenticar("good").await;
 
-        // Assert
-        let principal = principal.expect("authenticated");
+        // Comprobar
+        let principal = principal.expect("autenticado");
         assert_ne!(principal.id_usuario, Uuid::nil());
         assert_eq!(principal.roles, vec!["admin"]);
     }
 
     #[tokio::test]
-    async fn should_carry_the_existing_user_id_when_the_caller_is_known() {
-        // Arrange
-        let known = User::provision(ISSUER, "ada", None, None);
-        let id = known.id;
-        let mut users = MockUserRepository::new();
-        users
-            .expect_find_by_subject()
-            .returning(move |_, _| Ok(Some(known.clone())));
-        users.expect_save().times(0);
+    async fn deberia_devolver_el_id_existente_cuando_quien_llama_ya_tiene_usuario() {
+        // Preparar
+        let conocido = Usuario::aprovisionar(EMISOR, "ada", None, None);
+        let id = conocido.id;
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios
+            .expect_buscar_por_sujeto()
+            .returning(move |_, _| Ok(Some(conocido.clone())));
+        usuarios.expect_guardar().times(0);
 
-        // Act
-        let principal = authenticator(users).autenticar("good").await;
+        // Actuar
+        let principal = autenticador(usuarios).autenticar("good").await;
 
-        // Assert
-        assert_eq!(principal.map(|p| p.id_usuario), Ok(id.value()));
+        // Comprobar
+        assert_eq!(principal.map(|p| p.id_usuario), Ok(id.valor()));
     }
 
     #[tokio::test]
-    async fn should_not_ask_the_repository_again_when_the_caller_is_cached() {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        users.expect_find_by_subject().times(1).returning(|_, _| Ok(None));
-        users.expect_save().times(1).returning(|_| Ok(()));
-        let authenticator = authenticator(users);
-        let first = authenticator.autenticar("good").await.expect("first");
+    async fn no_deberia_volver_a_preguntar_al_repositorio_cuando_quien_llama_esta_en_cache() {
+        // Preparar
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios.expect_buscar_por_sujeto().times(1).returning(|_, _| Ok(None));
+        usuarios.expect_guardar().times(1).returning(|_| Ok(()));
+        let autenticador = autenticador(usuarios);
+        let primero = autenticador.autenticar("good").await.expect("primera autenticación");
 
-        // Act
-        let second = authenticator.autenticar("good").await.expect("second");
+        // Actuar
+        let segundo = autenticador.autenticar("good").await.expect("segunda autenticación");
 
-        // Assert
-        assert_eq!(first.id_usuario, second.id_usuario);
+        // Comprobar
+        assert_eq!(primero.id_usuario, segundo.id_usuario);
     }
 
     #[tokio::test]
-    async fn should_use_the_other_requests_user_when_both_created_it_at_once() {
-        // Arrange
-        let winner = User::provision(ISSUER, "ada", None, None);
-        let id = winner.id;
-        let mut users = MockUserRepository::new();
-        let mut lookups = 0;
-        users.expect_find_by_subject().returning(move |_, _| {
-            lookups += 1;
-            Ok((lookups > 1).then(|| winner.clone()))
+    async fn deberia_usar_el_usuario_de_la_otra_peticion_cuando_ambas_lo_crean_a_la_vez() {
+        // Preparar
+        let ganador = Usuario::aprovisionar(EMISOR, "ada", None, None);
+        let id = ganador.id;
+        let mut usuarios = MockRepositorioUsuario::new();
+        let mut busquedas = 0;
+        usuarios.expect_buscar_por_sujeto().returning(move |_, _| {
+            busquedas += 1;
+            Ok((busquedas > 1).then(|| ganador.clone()))
         });
-        users
-            .expect_save()
+        usuarios
+            .expect_guardar()
             .returning(|_| Err(ErrorRepositorio::Duplicado));
 
-        // Act
-        let principal = authenticator(users).autenticar("good").await;
+        // Actuar
+        let principal = autenticador(usuarios).autenticar("good").await;
 
-        // Assert
-        assert_eq!(principal.map(|p| p.id_usuario), Ok(id.value()));
+        // Comprobar
+        assert_eq!(principal.map(|p| p.id_usuario), Ok(id.valor()));
     }
 
     #[tokio::test]
-    async fn should_answer_unavailable_when_the_users_cannot_be_read() {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        users
-            .expect_find_by_subject()
+    async fn deberia_responder_no_disponible_cuando_no_se_pueden_leer_los_usuarios() {
+        // Preparar
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios
+            .expect_buscar_por_sujeto()
             .returning(|_, _| Err(ErrorRepositorio::NoDisponible));
 
-        // Act
-        let result = authenticator(users).autenticar("good").await;
+        // Actuar
+        let resultado = autenticador(usuarios).autenticar("good").await;
 
-        // Assert
-        assert_eq!(result, Err(ErrorAuth::NoDisponible));
+        // Comprobar
+        assert_eq!(resultado, Err(ErrorAuth::NoDisponible));
     }
 
     #[tokio::test]
-    async fn should_pass_the_providers_answer_on_when_it_rejects_the_token() {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        users.expect_find_by_subject().times(0);
+    async fn deberia_trasladar_la_respuesta_del_proveedor_cuando_rechaza_el_token() {
+        // Preparar
+        let mut usuarios = MockRepositorioUsuario::new();
+        usuarios.expect_buscar_por_sujeto().times(0);
 
-        // Act
-        let result = authenticator(users).autenticar("old").await;
+        // Actuar
+        let resultado = autenticador(usuarios).autenticar("old").await;
 
-        // Assert
-        assert_eq!(result, Err(ErrorAuth::Expirado));
+        // Comprobar
+        assert_eq!(resultado, Err(ErrorAuth::Expirado));
     }
 }

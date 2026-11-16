@@ -37,7 +37,7 @@ describe("LoginPage", () => {
     // Arrange
     const accounts = {
       ...fakeAccounts(),
-      signIn: () => Promise.reject(new AuthError("auth.invalid_credentials")),
+      signIn: () => Promise.reject(new AuthError("auth.credenciales_invalidas")),
     };
     renderScreen(<LoginPage />, { accounts }, "/login", { user: null });
     await screen.findByText("Create an account");

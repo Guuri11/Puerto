@@ -13,7 +13,7 @@ use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 /// Fields every generated entity already has. A `[[entidad.campos]]` entry with one of these names
 /// emits the struct field twice (E0124).
-pub const SYSTEM_FIELDS: &[&str] = &["id", "created_at", "updated_at", "deleted", "deleted_at"];
+pub const SYSTEM_FIELDS: &[&str] = &["id", "creado_en", "actualizado_en", "borrado", "borrado_en"];
 
 /// Rust keywords, strict and reserved. Field names become struct fields and entity names become
 /// module names, so either can land on one.
@@ -457,7 +457,7 @@ fn validate_reference_shape(field: &Field) -> Result<(), String> {
 
 /// The references of entity `pascal`, against the manifest (ADR-0022): each target is another
 /// declared CRUD entity — not the entity itself (self references are a later spec), not the
-/// auth projects' `User` (ownership is a later spec).
+/// auth projects' `Usuario` (ownership is a later spec).
 pub fn validate_references(
     pascal: &str,
     fields: &[Field],
@@ -567,7 +567,7 @@ pub fn validate_references_before_writing(
         for target in fields.iter().filter_map(|f| f.references.as_deref()) {
             let snake = pascal_to_snake(target);
             let model = base.join(layout::domain_file(&snake, "modelo"));
-            let suffix = format!("_create_{snake}_table.sql");
+            let suffix = format!("_crear_tabla_{snake}.sql");
             let migrated = !config.project.db
                 || std::fs::read_dir(base.join(layout::MIGRATIONS_DIR))
                     .into_iter()
@@ -649,9 +649,9 @@ pub fn validate_auth_mode(mode: &str) -> Result<(), String> {
     ))
 }
 
-/// Names an auth project already occupies: its `usuario` context, the `User` entity it is created
-/// with, and the APIs of `GET /me` (`MeApi`) and `/auth/*` (`AuthApi`).
-const AUTH_RESERVED_MODULE_NAMES: &[&str] = &["usuario", "user", "me", "auth"];
+/// Names an auth project already occupies: its `usuario` context with the `Usuario` entity it is
+/// created with, and the APIs of `GET /me` (`ApiMe`) and `/auth/*` (`ApiAuth`).
+const AUTH_RESERVED_MODULE_NAMES: &[&str] = &["usuario", "me", "auth"];
 
 /// The entity names an auth project cannot scaffold, on top of [`validate_entity_name`].
 pub fn validate_auth_entity_name(pascal: &str) -> Result<(), String> {
@@ -659,7 +659,7 @@ pub fn validate_auth_entity_name(pascal: &str) -> Result<(), String> {
     if AUTH_RESERVED_MODULE_NAMES.contains(&snake.as_str()) {
         return Err(format!(
             "entity name '{pascal}' becomes the context '{snake}', which an auth project already \
-             uses (the usuario context, the User entity, GET /me, /auth). Pick another name"
+             uses (the usuario context, the Usuario entity, GET /me, /auth). Pick another name"
         ));
     }
     Ok(())
@@ -871,10 +871,10 @@ mod tests {
 
     #[test]
     fn should_reserve_the_auth_modules_when_naming_an_entity_of_an_auth_project() {
-        for name in ["User", "Me", "Auth"] {
+        for name in ["Usuario", "Me", "Auth"] {
             assert!(validate_auth_entity_name(name).is_err(), "{name}");
         }
-        for name in ["Users", "UserProfile", "Author", "Product"] {
+        for name in ["Usuarios", "UsuarioPerfil", "User", "Author", "Producto"] {
             assert!(validate_auth_entity_name(name).is_ok(), "{name}");
         }
     }
@@ -892,7 +892,7 @@ mod tests {
     fn product(public: &[&str], roles: &[(&str, &[&str])]) -> crate::puerto_toml::Entity {
         crate::puerto_toml::Entity {
             name: "Product".into(),
-            use_cases: vec!["create_product".into(), "list_products".into()],
+            use_cases: vec!["crear_product".into(), "listar_products".into()],
             public: public.iter().map(|s| s.to_string()).collect(),
             roles: roles
                 .iter()
@@ -909,28 +909,28 @@ mod tests {
 
     #[test]
     fn should_accept_public_and_roles_when_they_name_distinct_use_cases() {
-        let entity = product(&["list_products"], &[("create_product", &["admin"])]);
+        let entity = product(&["listar_products"], &[("crear_product", &["admin"])]);
         assert_eq!(validate_entity_access(&entity), Vec::<String>::new());
     }
 
     #[test]
     fn should_reject_public_and_roles_when_they_name_no_use_case_of_the_entity() {
-        let entity = product(&["get_product"], &[("delete_product", &["admin"])]);
+        let entity = product(&["obtener_product"], &[("borrar_product", &["admin"])]);
         let errors = validate_entity_access(&entity);
         assert_eq!(errors.len(), 2, "{errors:?}");
         assert!(
-            errors[0].contains("'get_product' is not one of"),
+            errors[0].contains("'obtener_product' is not one of"),
             "{errors:?}"
         );
         assert!(
-            errors[1].contains("'delete_product' is not one of"),
+            errors[1].contains("'borrar_product' is not one of"),
             "{errors:?}"
         );
     }
 
     #[test]
     fn should_reject_a_use_case_when_it_is_both_public_and_role_protected() {
-        let entity = product(&["create_product"], &[("create_product", &["admin"])]);
+        let entity = product(&["crear_product"], &[("crear_product", &["admin"])]);
         let errors = validate_entity_access(&entity);
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(
@@ -941,15 +941,15 @@ mod tests {
 
     #[test]
     fn should_reject_roles_when_they_are_empty_or_not_role_names() {
-        let errors = validate_entity_access(&product(&[], &[("create_product", &[])]));
+        let errors = validate_entity_access(&product(&[], &[("crear_product", &[])]));
         assert!(errors[0].contains("requires no role"), "{errors:?}");
-        let errors = validate_entity_access(&product(&[], &[("create_product", &["Admin"])]));
+        let errors = validate_entity_access(&product(&[], &[("crear_product", &["Admin"])]));
         assert!(errors[0].contains("invalid role 'Admin'"), "{errors:?}");
     }
 
     #[test]
     fn should_reject_a_public_use_case_when_it_is_listed_twice() {
-        let errors = validate_entity_access(&product(&["list_products", "list_products"], &[]));
+        let errors = validate_entity_access(&product(&["listar_products", "listar_products"], &[]));
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(errors[0].contains("listed twice"), "{errors:?}");
     }
@@ -963,16 +963,10 @@ mod tests {
             references: Some(target.to_string()),
             ..Field::default()
         };
-        let crud = |name: &str, snake: &str, plural: &str, fields: Vec<Field>| {
+        let crud = |name: &str, snake: &str, _plural: &str, fields: Vec<Field>| {
             crate::puerto_toml::Entity {
                 name: name.to_string(),
-                use_cases: ["create", "get", "list", "update", "delete"]
-                    .iter()
-                    .map(|a| match *a {
-                        "list" => format!("list_{plural}"),
-                        a => format!("{a}_{snake}"),
-                    })
-                    .collect(),
+                use_cases: crate::generators::naming::crud_use_cases(snake),
                 fields,
                 ..Default::default()
             }

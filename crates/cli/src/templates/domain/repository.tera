@@ -1,37 +1,38 @@
 use async_trait::async_trait;
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
-use crate::modelo::{{ "{" }}{{ pascal }}, {{ pascal }}Id};
+use crate::modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}};
 {% for import in reference_imports %}use {{ import }};
 {% endfor %}{% set refs = fields | filter(attribute="is_ref", value=true) %}{% if refs %}
-/// What `find_all` narrows the page to: one id per reference, `None` does not filter.
+/// A qué reduce `buscar_todos` la página: un id por referencia; `None` no filtra.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct {{ pascal }}Filter {
-{% for r in refs %}    pub {{ r.name }}: Option<{{ r.ref_target }}Id>,
+pub struct Filtro{{ pascal }} {
+{% for r in refs %}    pub {{ r.name }}: Option<Id{{ r.ref_target }}>,
 {% endfor %}}
 {% endif %}
 #[async_trait]
-pub trait {{ pascal }}RepositoryTrait: Send + Sync {
-    async fn find_all(&self, page: PeticionPagina{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio>;
-    async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio>;
-{% if events %}    // No `save`: writes go through `{{ pascal }}UnitOfWorkFactory`, which records their events.
-{% else %}    async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
+pub trait Repositorio{{ pascal }}: Send + Sync {
+    async fn buscar_todos(&self, pagina: PeticionPagina{% if refs %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio>;
+    async fn buscar_por_id(&self, id: Id{{ pascal }}) -> Result<Option<{{ pascal }}>, ErrorRepositorio>;
+{% if events %}    // Sin `guardar`: las escrituras pasan por `UnitOfWorkFactory{{ pascal }}`, que registra sus
+    // eventos.
+{% else %}    async fn guardar(&self, entidad: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
 {% endif %}}
 
 #[cfg(any(test, feature = "pruebas"))]
-pub mod mocks {
+pub mod dobles {
     use mockall::mock;
 
     use super::*;
 
     mock! {
-        pub {{ pascal }}Repository {}
+        pub Repositorio{{ pascal }} {}
 
         #[async_trait]
-        impl {{ pascal }}RepositoryTrait for {{ pascal }}Repository {
-            async fn find_all(&self, page: PeticionPagina{% if refs %}, filter: {{ pascal }}Filter{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio>;
-            async fn find_by_id(&self, id: {{ pascal }}Id) -> Result<Option<{{ pascal }}>, ErrorRepositorio>;
-{% if not events %}            async fn save(&self, entity: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
+        impl Repositorio{{ pascal }} for Repositorio{{ pascal }} {
+            async fn buscar_todos(&self, pagina: PeticionPagina{% if refs %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio>;
+            async fn buscar_por_id(&self, id: Id{{ pascal }}) -> Result<Option<{{ pascal }}>, ErrorRepositorio>;
+{% if not events %}            async fn guardar(&self, entidad: &{{ pascal }}) -> Result<(), ErrorRepositorio>;
 {% endif %}        }
     }
 }

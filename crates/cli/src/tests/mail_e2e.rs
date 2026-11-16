@@ -12,11 +12,11 @@ use std::sync::{Arc, Mutex};
 
 use super::compile_matrix::{EVENTS_MAIL, EVENTS_MAIL_KAFKA, Scenario};
 use super::worker_e2e::{
-    Project, build_project, create_product, free_port, http, logged, wait_until,
+    Project, build_project, create_producto, free_port, http, logged, wait_until,
 };
 
-/// The consumer the worker runs `product_live` as.
-const CONSUMER: &str = "mail_product_live";
+/// The consumer the worker runs `producto_live` as.
+const CONSUMER: &str = "correo_producto_live";
 
 /// A TCP proxy in front of Mailpit's SMTP port: `down()` refuses new connections and cuts the
 /// open ones (the mailer's pool keeps them), `up()` lets them through again.
@@ -115,7 +115,7 @@ fn address(tag: &str) -> String {
     format!("{tag}-{}@e2e.test", std::process::id())
 }
 
-/// Hands the `db` transport's deliveries of `consumer` back to the worker, as a redelivery after
+/// Hands the `db` transport's entregas of `consumer` back to the worker, as a redelivery after
 /// a lost acknowledgement would.
 fn redeliver(database_url: &str, consumer: &str) {
     tokio::runtime::Builder::new_current_thread()
@@ -133,13 +133,13 @@ fn redeliver(database_url: &str, consumer: &str) {
             .await
             .unwrap()
             .rows_affected();
-            assert!(handed_back > 0, "no delivery of {consumer} to hand back");
+            assert!(handed_back > 0, "no entrega of {consumer} to hand back");
             pool.close().await;
         });
 }
 
 /// `scenario` built with the mail settings: the worker sends through `switch`, retries every
-/// 100 ms, and gives up only after 100 deliveries — longer than the server is ever down here.
+/// 100 ms, and gives up only after 100 entregas — longer than the server is ever down here.
 fn build_mail_project(
     scenario: &Scenario,
     name: &str,
@@ -191,15 +191,15 @@ fn assert_mails_are_sent_once(
         http(worker_port, "GET", "/health/ready", "").is_some_and(|(s, _)| s == 200)
     });
 
-    // A POST sends the mail, rendered from its templates, to the product's sku.
+    // A POST sends the mail, rendered from its templates, to the producto's sku.
     let first = address("first");
-    create_product(api_port, &first);
+    create_producto(api_port, &first);
     wait_until("the first mail to reach Mailpit", || {
         !sent_to(api_port_mailpit, &first).is_empty()
     });
     assert_eq!(
         sent_to(api_port_mailpit, &first),
-        ["Product live, Desk lamp"]
+        ["Producto live, Desk lamp"]
     );
 
     // The same event delivered again finds its row in `correos_enviados`: no second mail.
@@ -208,7 +208,7 @@ fn assert_mails_are_sent_once(
         wait_until("the redelivered event to be skipped", || {
             logged(
                 &worker_log,
-                &["correo ya enviado para este evento", "product_live"],
+                &["correo ya enviado para este evento", "producto_live"],
             )
         });
         assert_eq!(sent_to(api_port_mailpit, &first).len(), 1);
@@ -217,11 +217,11 @@ fn assert_mails_are_sent_once(
     // A mail that finds the server down is retried, and sent once it is back.
     switch.down();
     let delayed = address("delayed");
-    create_product(api_port, &delayed);
+    create_producto(api_port, &delayed);
     wait_until("the mail to be retried", || {
         logged(
             &worker_log,
-            &["correo: no enviado, se reintenta", "product_live"],
+            &["correo: no enviado, se reintenta", "producto_live"],
         )
     });
     assert!(sent_to(api_port_mailpit, &delayed).is_empty());
@@ -234,7 +234,7 @@ fn assert_mails_are_sent_once(
     // A restarted worker sends what was written while it was down, and nothing it sent before.
     drop(worker);
     let after_restart = address("after-restart");
-    create_product(api_port, &after_restart);
+    create_producto(api_port, &after_restart);
     let restarted_log = project.dir.join("worker-restarted.log");
     let restarted = project.spawn("worker", &restarted_log, &worker_env);
     wait_until("the restarted worker to send the next mail", || {

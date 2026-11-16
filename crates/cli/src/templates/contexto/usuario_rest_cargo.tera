@@ -16,7 +16,7 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 {% if local %}aplicacion_usuario = { workspace = true, features = ["pruebas"] }
-{% endif %}# `MockAutenticador`, for the routes that take `BearerAuth`.
+{% endif %}# `MockAutenticador`, para las rutas que reciben `BearerAuth`.
 puerto-nucleo = { workspace = true, features = ["pruebas"] }
 poem = { workspace = true, features = ["test"] }
 tokio = { workspace = true }

@@ -74,7 +74,7 @@ fn generated_output(scenario: &Scenario) -> String {
         }
     }
     for path in before.keys().filter(|p| !after.contains_key(*p)) {
-        sections.insert(normalize_path(path), "(deleted)\n".to_string());
+        sections.insert(normalize_path(path), "(borrado)\n".to_string());
     }
     sections
         .iter()
@@ -126,11 +126,11 @@ snapshot_scenarios! {
 #[test]
 fn should_hide_only_the_migration_version_from_snapshots() {
     assert_eq!(
-        normalize_path("migraciones/20261011093000_create_product_table.sql"),
-        "migraciones/<version>_create_product_table.sql"
+        normalize_path("migraciones/20261011093000_crear_tabla_producto.sql"),
+        "migraciones/<version>_crear_tabla_producto.sql"
     );
     assert_eq!(
-        normalize_path("contextos/product/dominio/src/modelo.rs"),
-        "contextos/product/dominio/src/modelo.rs"
+        normalize_path("contextos/producto/dominio/src/modelo.rs"),
+        "contextos/producto/dominio/src/modelo.rs"
     );
 }
