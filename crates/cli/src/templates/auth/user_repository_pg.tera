@@ -51,7 +51,7 @@ impl From<FilaUsuario> for Usuario {
     }
 }
 
-const COLUMNS: &str = "id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en";
+const COLUMNAS: &str = "id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en";
 
 #[async_trait]
 impl RepositorioUsuario for RepositorioUsuarioPostgres {
@@ -61,7 +61,7 @@ impl RepositorioUsuario for RepositorioUsuarioPostgres {
         sujeto: &str,
     ) -> Result<Option<Usuario>, ErrorRepositorio> {
         let fila = sqlx::query_as::<_, FilaUsuario>(&format!(
-            "SELECT {COLUMNS} FROM usuarios WHERE emisor = $1 AND sujeto = $2"
+            "SELECT {COLUMNAS} FROM usuarios WHERE emisor = $1 AND sujeto = $2"
         ))
         .bind(emisor)
         .bind(sujeto)
@@ -76,7 +76,7 @@ impl RepositorioUsuario for RepositorioUsuarioPostgres {
 
     async fn buscar_por_id(&self, id: IdUsuario) -> Result<Option<Usuario>, ErrorRepositorio> {
         tracing::debug!(%id, "buscar_por_id");
-        let fila = sqlx::query_as::<_, FilaUsuario>(&format!("SELECT {COLUMNS} FROM usuarios WHERE id = $1"))
+        let fila = sqlx::query_as::<_, FilaUsuario>(&format!("SELECT {COLUMNAS} FROM usuarios WHERE id = $1"))
             .bind(id.valor())
             .fetch_optional(&self.pool)
             .await

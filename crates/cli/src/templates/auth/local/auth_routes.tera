@@ -78,9 +78,9 @@ impl ApiAuth {
 
     /// Revoca la sesión con la que va firmada esta petición
     #[oai(path = "/auth/logout", method = "post", tag = "ApiTags::Auth")]
-    async fn logout(&self, _auth: BearerAuth, request: &Request) -> RespuestaLogout {
+    async fn logout(&self, _auth: BearerAuth, peticion: &Request) -> RespuestaLogout {
         // `BearerAuth` aceptó el token, así que la petición lleva uno.
-        let token = bearer_token(request).unwrap_or_default().to_string();
+        let token = bearer_token(peticion).unwrap_or_default().to_string();
         match self.logout.ejecutar(ParamsLogout { token }).await {
             Ok(()) => RespuestaLogout::SinContenido,
             Err(err) => {

@@ -111,7 +111,7 @@ Hay una tabla de invariables, con tests: `analisis`, `crisis`, `tesis`, `lunes`�
 | variantes de respuesta `Ok`, `Created`, `NoContent`, `UnprocessableEntity`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`, `Unavailable`, `InternalError` | `Ok`, `Creado`, `SinContenido`, `NoProcesable`, `NoAutorizado`, `Prohibido`, `NoEncontrado`, `Conflicto`, `NoDisponible`, `ErrorInterno` |
 | handlers `create`, `get_by_id`, `list`, `update`, `delete` | `crear`, `obtener`, `listar`, `actualizar`, `borrar` |
 | `RecordingUnitOfWorkFactory`, `Recorded { saved, events, committed }`, `recorded()` | `UnitOfWorkFactoryGrabadora`, `Grabado { guardados, eventos, confirmado }`, `grabado()` |
-| `FailAt::{Begin, Save, Record, Commit}`, `failing_at` | `FallarEn::{Begin, Guardar, Registrar, Commit}`, `fallando_en` |
+| `FailAt::{Begin, Save, Commit}`, `failing_at` | `FallarEn::{Begin, Guardar, Commit}`, `fallando_en` |
 | `build_app`, `build_worker`, `openapi_service`, `configure(routes)` (`app.rs`) | `construir_app`, `construir_worker`, `servicio_openapi`, `configurar(rutas)` |
 | locales y campos: `result`, `response`, `entity`, `repository`, `mock_repo`, `use_case`, `page`, `filter`, `row`, `body`, `client` | `resultado`, `respuesta`, `entidad`, `repositorio`, `repositorio_doble`, `caso_de_uso`, `pagina`, `filtro`, `fila`, `cuerpo`, `cliente` |
 | `make db-up`, `db-down`, `reset-db`, `generate/entity`, `generate/use-case`, `generate/migration` | `make db/arrancar`, `db/parar`, `db/reiniciar`, `generar/entidad`, `generar/caso-de-uso`, `generar/migracion` |
@@ -123,7 +123,7 @@ Hay una tabla de invariables, con tests: `analisis`, `crisis`, `tesis`, `lunes`�
 | auth: `RegisterRequest`, `LoginRequest`, `SessionDto`, `MeDto`, `MeApi`, `AuthApi`, `InvalidCredentials` | `PeticionRegistro`, `PeticionLogin`, `DtoSesion`, `DtoMe`, `ApiMe`, `ApiAuth`, `CredencialesInvalidas` |
 | auth, JSON del API: `password`, `name`, `expiresAt` | `contrasena`, `nombre`, `expiraEn` |
 | auth, códigos: `user.*`, `auth.invalid_credentials`, `password_too_short`, `email_invalid` | `usuario.*`, `auth.credenciales_invalidas`, `contrasena_demasiado_corta`, `email_invalido` |
-| correo: el campo `to`, el consumidor `mail_<nombre>`, `Context::of`, `TEMPLATES` | `para`, `correo_<nombre>`, `Contexto::de`, `PLANTILLAS` |
+| correo: el campo `to`, el consumidor `mail_<nombre>`, su constante `MAIL`, `Context::of`, `TEMPLATES` | `para`, `correo_<nombre>`, `CORREO`, `Contexto::de`, `PLANTILLAS` |
 | los mensajes de arranque del proyecto generado (`DATABASE_URL is not set…`) | en castellano (`DATABASE_URL no está definida…`) |
 
 ## `puerto.toml`

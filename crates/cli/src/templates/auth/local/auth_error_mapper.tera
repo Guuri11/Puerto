@@ -21,7 +21,7 @@ pub fn a_respuesta_error(err: ErrorUsuario) -> (StatusCode, Json<RespuestaError>
 mod tests {
     use super::*;
 
-    fn mapped(err: ErrorUsuario) -> (StatusCode, String) {
+    fn mapear(err: ErrorUsuario) -> (StatusCode, String) {
         let (status, Json(cuerpo)) = a_respuesta_error(err);
         (status, cuerpo.codigo)
     }
@@ -29,7 +29,7 @@ mod tests {
     #[test]
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::Validacion("contrasena_demasiado_corta".into())),
+            mapear(ErrorUsuario::Validacion("contrasena_demasiado_corta".into())),
             (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "usuario.validacion.contrasena_demasiado_corta".into()
@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn deberia_mapear_credenciales_invalidas_a_401_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::CredencialesInvalidas),
+            mapear(ErrorUsuario::CredencialesInvalidas),
             (StatusCode::UNAUTHORIZED, "auth.credenciales_invalidas".into())
         );
     }
@@ -48,7 +48,7 @@ mod tests {
     #[test]
     fn deberia_mapear_no_encontrado_a_404_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::NoEncontrado),
+            mapear(ErrorUsuario::NoEncontrado),
             (StatusCode::NOT_FOUND, "usuario.no_encontrado".into())
         );
     }
@@ -56,7 +56,7 @@ mod tests {
     #[test]
     fn deberia_mapear_duplicado_a_409_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::Duplicado),
+            mapear(ErrorUsuario::Duplicado),
             (StatusCode::CONFLICT, "usuario.duplicado".into())
         );
     }
@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn deberia_mapear_repositorio_a_500_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::Repositorio),
+            mapear(ErrorUsuario::Repositorio),
             (StatusCode::INTERNAL_SERVER_ERROR, "usuario.repositorio".into())
         );
     }
@@ -72,7 +72,7 @@ mod tests {
     #[test]
     fn deberia_mapear_desconocido_a_500_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::Desconocido),
+            mapear(ErrorUsuario::Desconocido),
             (StatusCode::INTERNAL_SERVER_ERROR, "usuario.desconocido".into())
         );
     }

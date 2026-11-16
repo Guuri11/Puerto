@@ -64,11 +64,11 @@ fn add_api_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pasca
 
 /// The route tests build `{Pascal}Api` with a struct literal (`let api = {Pascal}Api {`): a new
 /// field makes it stop compiling (E0063). It gets a mock with no expectations — a route that
-/// calls it panics. Spelled out in full: the `mocks` module exists only under test, so a
+/// calls it panics. Spelled out in full: the `dobles` module exists only under test, so a
 /// file-level import would break the non-test build.
 ///
-/// When the tests hold their mocks in `struct Mocks` (the CRUD template), the mock becomes a
-/// field there too, so a test of the use case's endpoint can set `mocks.{uc}.expect_execute()`.
+/// When the tests hold their doubles in `struct Dobles` (the CRUD template), the double becomes a
+/// field there too, so a test of the use case's endpoint can set `dobles.{uc}.expect_ejecutar()`.
 fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str, uc_pascal: &str) {
     let literal_open = format!("let api = Api{pascal} {{\n");
     let Some(open) = src.find(&literal_open) else {
@@ -87,7 +87,7 @@ fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str,
     }
 
     let mock = format!("aplicacion_{snake}::{uc}::dobles::Mock{uc_pascal}");
-    // Read before `struct Mocks` grows: it precedes the literal, so `close` would move.
+    // Read before `struct Dobles` grows: it precedes the literal, so `close` would move.
     let in_mocks = src.contains(MOCKS_OPEN);
     let line_start = src[..close].rfind('\n').map_or(0, |i| i + 1);
     let indent = format!("{}    ", &src[line_start..close]);
@@ -102,10 +102,10 @@ fn add_test_literal_field(src: &mut String, pascal: &str, snake: &str, uc: &str,
     }
 }
 
-const MOCKS_OPEN: &str = "    struct Mocks {\n";
+const MOCKS_OPEN: &str = "    struct Dobles {\n";
 
-/// Adds `{uc}: {mock},` as the last field of the tests' `struct Mocks`. The CRUD use cases are
-/// already there under short names (`create`, `get`…): the caller only gets here for a use case
+/// Adds `{uc}: {mock},` as the last field of the tests' `struct Dobles`. The CRUD use cases are
+/// already there under short names (`crear`, `obtener`…): the caller only gets here for a use case
 /// the API literal did not have.
 fn add_mocks_field(src: &mut String, uc: &str, mock: &str) {
     let Some(start) = src.find(MOCKS_OPEN) else {

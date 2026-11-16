@@ -686,7 +686,7 @@ fn validate_rejects_local_auth_without_a_database() {
         "[proyecto]\nnombre = \"my-app\"\nauth = \"local\"\n",
     );
 
-    assert!(result.unwrap_err().contains("needs project.db = true"));
+    assert!(result.unwrap_err().contains("needs proyecto.db = true"));
 }
 
 #[test]
@@ -706,7 +706,7 @@ publicos = ["listar_productos"]
     assert!(
         result
             .unwrap_err()
-            .contains("declares public or roles, but project.auth is not set")
+            .contains("declares publicos or roles, but proyecto.auth is not set")
     );
 }
 

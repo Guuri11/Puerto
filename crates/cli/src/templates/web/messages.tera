@@ -7,7 +7,7 @@ export interface {{ pascal }}Problem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {

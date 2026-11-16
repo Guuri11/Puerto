@@ -24,7 +24,7 @@ pub fn a_respuesta_error(err: Error{{ pascal }}) -> (StatusCode, Json<RespuestaE
 mod tests {
     use super::*;
 {# One test per arm, so a status cannot drift unnoticed. -#}
-{{ macros::error_case(name="deberia_mapear_validacion_a_422_con_su_codigo", error="Error" ~ pascal ~ '::Validacion("name_vacio".into())', status="UNPROCESSABLE_ENTITY", code=snake ~ ".validacion.name_vacio") }}
+{{ macros::error_case(name="deberia_mapear_validacion_a_422_con_su_codigo", error="Error" ~ pascal ~ '::Validacion("nombre_vacio".into())', status="UNPROCESSABLE_ENTITY", code=snake ~ ".validacion.nombre_vacio") }}
 {{- macros::error_case(name="deberia_mapear_no_encontrado_a_404_con_su_codigo", error="Error" ~ pascal ~ "::NoEncontrado", status="NOT_FOUND", code=snake ~ ".no_encontrado") }}
 {{- macros::error_case(name="deberia_mapear_duplicado_a_409_con_su_codigo", error="Error" ~ pascal ~ "::Duplicado", status="CONFLICT", code=snake ~ ".duplicado") }}
 {{- macros::error_case(name="deberia_mapear_repositorio_a_500_con_su_codigo", error="Error" ~ pascal ~ "::Repositorio", status="INTERNAL_SERVER_ERROR", code=snake ~ ".repositorio") }}

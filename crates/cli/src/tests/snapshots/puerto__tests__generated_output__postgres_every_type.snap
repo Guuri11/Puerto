@@ -1679,7 +1679,7 @@ impl RepositorioBillete for RepositorioBilletePostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::sembrar;
 
@@ -1892,11 +1892,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorBillete::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorBillete::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "billete.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "billete.validacion.nombre_vacio");
     }
 
     #[test]
@@ -2266,19 +2266,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearBillete,
-        get: MockObtenerBillete,
+        obtener: MockObtenerBillete,
         listar: MockListarBilletes,
         actualizar: MockActualizarBillete,
         borrar: MockBorrarBillete,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiBillete {
                 crear_billete: Arc::new(self.crear),
-                obtener_billete: Arc::new(self.get),
+                obtener_billete: Arc::new(self.obtener),
                 listar_billetes: Arc::new(self.listar),
                 actualizar_billete: Arc::new(self.actualizar),
                 borrar_billete: Arc::new(self.borrar),
@@ -2306,7 +2306,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_billete() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2327,7 +2327,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_billete_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2348,9 +2348,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_billete_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreBillete::aleatorio()));
 
@@ -2364,9 +2364,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_billete_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorBillete::NoEncontrado));
 
@@ -2380,7 +2380,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_billetes_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2400,7 +2400,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2421,7 +2421,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2437,7 +2437,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_billete() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2458,7 +2458,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_billete_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2479,7 +2479,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_billete() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -2492,7 +2492,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_billete_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -2646,8 +2646,8 @@ mod tests {
             email: Email::new("original".to_string()).expect("el literal de Email es válido"),
             name: Name::new("original".to_string()).expect("el literal de Name es válido"),
             code: Code::new("original".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("valid Age"),
-            joined: Joined::new(Utc::now()).expect("valid Joined"),
+            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
             middle: None,
             labels: vec![],
             status: Status::Active,
@@ -2720,8 +2720,8 @@ mod tests {
             email: Email::new("original".to_string()).expect("el literal de Email es válido"),
             name: Name::new("original".to_string()).expect("el literal de Name es válido"),
             code: Code::new("original".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("valid Age"),
-            joined: Joined::new(Utc::now()).expect("valid Joined"),
+            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
             middle: None,
             labels: vec![],
             status: Status::Active,
@@ -2763,8 +2763,8 @@ mod tests {
             email: Email::new("original".to_string()).expect("el literal de Email es válido"),
             name: Name::new("original".to_string()).expect("el literal de Name es válido"),
             code: Code::new("original".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("valid Age"),
-            joined: Joined::new(Utc::now()).expect("valid Joined"),
+            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
             middle: None,
             labels: vec![],
             status: Status::Active,
@@ -2806,8 +2806,8 @@ mod tests {
             email: Email::new("original".to_string()).expect("el literal de Email es válido"),
             name: Name::new("original".to_string()).expect("el literal de Name es válido"),
             code: Code::new("original".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("valid Age"),
-            joined: Joined::new(Utc::now()).expect("valid Joined"),
+            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
             middle: None,
             labels: vec![],
             status: Status::Active,
@@ -2926,8 +2926,8 @@ mod tests {
             email: Email::new("example".to_string()).expect("el literal de Email es válido"),
             name: Name::new("example".to_string()).expect("el literal de Name es válido"),
             code: Code::new("example".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("valid Age"),
-            joined: Joined::new(Utc::now()).expect("valid Joined"),
+            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
             middle: None,
             labels: vec![],
             status: Status::Active,
@@ -3319,8 +3319,8 @@ mod tests {
                 email: Email::new("first".to_string()).expect("el literal de Email es válido"),
                 name: Name::new("first".to_string()).expect("el literal de Name es válido"),
                 code: Code::new("first".to_string()).expect("el literal de Code es válido"),
-                age: Age::new(42).expect("valid Age"),
-                joined: Joined::new(Utc::now()).expect("valid Joined"),
+                age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+                joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
                 middle: None,
                 labels: vec![],
                 status: Status::Active,
@@ -3330,8 +3330,8 @@ mod tests {
                 email: Email::new("second".to_string()).expect("el literal de Email es válido"),
                 name: Name::new("second".to_string()).expect("el literal de Name es válido"),
                 code: Code::new("second".to_string()).expect("el literal de Code es válido"),
-                age: Age::new(42).expect("valid Age"),
-                joined: Joined::new(Utc::now()).expect("valid Joined"),
+                age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+                joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
                 middle: None,
                 labels: vec![],
                 status: Status::Active,
@@ -3477,8 +3477,8 @@ mod tests {
             email: Email::new("example".to_string()).expect("el literal de Email es válido"),
             name: Name::new("example".to_string()).expect("el literal de Name es válido"),
             code: Code::new("example".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("valid Age"),
-            joined: Joined::new(Utc::now()).expect("valid Joined"),
+            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
             middle: None,
             labels: vec![],
             status: Status::Active,
@@ -3750,11 +3750,12 @@ mod tests {
     #[test]
     fn deberia_crear_cliente_cuando_los_campos_son_validos() {
         let resultado = Cliente::new(PropsCliente {
-            email: Email::new("example".to_string()).expect("valid Email"),
-            name: Name::new("example".to_string()).expect("valid Name"),
-            code: Code::new("example".to_string()).expect("valid Code"),
-            age: Age::new(42).expect("valid Age"),
-            joined: Joined::new(Utc::now()).expect("valid Joined"),
+            email: Email::new("example".to_string())
+                .expect("Email::new rechazó el valor de ejemplo"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
+            code: Code::new("example".to_string()).expect("Code::new rechazó el valor de ejemplo"),
+            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
+            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
             middle: None,
             labels: vec![],
             status: Status::Active,
@@ -3874,19 +3875,21 @@ impl MadreCliente {
 
     pub fn construir(self) -> Cliente {
         Cliente::new(PropsCliente {
-            email: self
-                .email
-                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
-            code: self
-                .code
-                .unwrap_or_else(|| Code::new("example".to_string()).expect("valid Code")),
-            age: self.age.unwrap_or_else(|| Age::new(42).expect("valid Age")),
-            joined: self
-                .joined
-                .unwrap_or_else(|| Joined::new(Utc::now()).expect("valid Joined")),
+            email: self.email.unwrap_or_else(|| {
+                Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
+            }),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
+            code: self.code.unwrap_or_else(|| {
+                Code::new("example".to_string()).expect("Code::new rechazó el valor de ejemplo")
+            }),
+            age: self
+                .age
+                .unwrap_or_else(|| Age::new(42).expect("Age::new rechazó el valor de ejemplo")),
+            joined: self.joined.unwrap_or_else(|| {
+                Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo")
+            }),
             middle: self.middle,
             labels: self.labels.unwrap_or_default(),
             status: self.status.unwrap_or(Status::Active),
@@ -3896,19 +3899,21 @@ impl MadreCliente {
 
     pub fn construir_props(self) -> PropsCliente {
         PropsCliente {
-            email: self
-                .email
-                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
-            code: self
-                .code
-                .unwrap_or_else(|| Code::new("example".to_string()).expect("valid Code")),
-            age: self.age.unwrap_or_else(|| Age::new(42).expect("valid Age")),
-            joined: self
-                .joined
-                .unwrap_or_else(|| Joined::new(Utc::now()).expect("valid Joined")),
+            email: self.email.unwrap_or_else(|| {
+                Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
+            }),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
+            code: self.code.unwrap_or_else(|| {
+                Code::new("example".to_string()).expect("Code::new rechazó el valor de ejemplo")
+            }),
+            age: self
+                .age
+                .unwrap_or_else(|| Age::new(42).expect("Age::new rechazó el valor de ejemplo")),
+            joined: self.joined.unwrap_or_else(|| {
+                Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo")
+            }),
             middle: self.middle,
             labels: self.labels.unwrap_or_default(),
             status: self.status.unwrap_or(Status::Active),
@@ -4240,12 +4245,12 @@ use crate::repositorio::RepositorioClientePostgres;
 /// Una entidad cliente válida, sin guardar.
 pub fn construir() -> Cliente {
     Cliente::new(PropsCliente {
-        email: Email::new("example".to_string()).expect("valid Email"),
-        name: Name::new("example".to_string()).expect("valid Name"),
-        code: Code::new(Uuid::new_v4().to_string()).expect("valid Code"),
-        age: Age::new(42).expect("valid Age"),
+        email: Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo"),
+        name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
+        code: Code::new(Uuid::new_v4().to_string()).expect("Code::new rechazó el valor de ejemplo"),
+        age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
         joined: Joined::new(chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap())
-            .expect("valid Joined"),
+            .expect("Joined::new rechazó el valor de ejemplo"),
         middle: None,
         labels: vec![],
         status: Status::Active,
@@ -4391,7 +4396,7 @@ impl RepositorioCliente for RepositorioClientePostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::{construir, sembrar};
     use nucleo::valores::Email;
@@ -4669,11 +4674,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorCliente::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorCliente::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "cliente.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "cliente.validacion.nombre_vacio");
     }
 
     #[test]
@@ -5128,19 +5133,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearCliente,
-        get: MockObtenerCliente,
+        obtener: MockObtenerCliente,
         listar: MockListarClientes,
         actualizar: MockActualizarCliente,
         borrar: MockBorrarCliente,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiCliente {
                 crear_cliente: Arc::new(self.crear),
-                obtener_cliente: Arc::new(self.get),
+                obtener_cliente: Arc::new(self.obtener),
                 listar_clientes: Arc::new(self.listar),
                 actualizar_cliente: Arc::new(self.actualizar),
                 borrar_cliente: Arc::new(self.borrar),
@@ -5182,7 +5187,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -5203,7 +5208,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_cliente_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -5224,9 +5229,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_cliente_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreCliente::aleatorio()));
 
@@ -5240,9 +5245,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_cliente_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorCliente::NoEncontrado));
 
@@ -5256,7 +5261,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_clientes_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -5276,7 +5281,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -5297,7 +5302,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -5313,7 +5318,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -5334,7 +5339,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_cliente_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -5355,7 +5360,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -5368,7 +5373,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_cliente_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -7278,7 +7283,7 @@ impl RepositorioProducto for RepositorioProductoPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::{construir, sembrar};
 
@@ -7569,11 +7574,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorProducto::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorProducto::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "producto.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "producto.validacion.nombre_vacio");
     }
 
     #[test]
@@ -7970,20 +7975,20 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearProducto,
-        get: MockObtenerProducto,
+        obtener: MockObtenerProducto,
         listar: MockListarProductos,
         actualizar: MockActualizarProducto,
         borrar: MockBorrarProducto,
         archive_producto: aplicacion_producto::archive_producto::dobles::MockArchiveProducto,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiProducto {
                 crear_producto: Arc::new(self.crear),
-                obtener_producto: Arc::new(self.get),
+                obtener_producto: Arc::new(self.obtener),
                 listar_productos: Arc::new(self.listar),
                 actualizar_producto: Arc::new(self.actualizar),
                 borrar_producto: Arc::new(self.borrar),
@@ -8036,7 +8041,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -8057,7 +8062,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_producto_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -8078,9 +8083,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_producto_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreProducto::aleatorio()));
 
@@ -8094,9 +8099,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_producto_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorProducto::NoEncontrado));
 
@@ -8110,7 +8115,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_productos_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -8130,7 +8135,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -8151,7 +8156,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -8167,7 +8172,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -8188,7 +8193,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_producto_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -8209,7 +8214,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -8222,7 +8227,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_producto_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -8783,16 +8788,16 @@ mod tests {
         };
         let spec = servicio_openapi((api_saludo, api_producto, api_cliente, api_billete)).spec();
 
-        let path = std::path::Path::new(OPENAPI_JSON);
-        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
-            let dir = path
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
                 .parent()
                 .expect("docs/api/openapi.json tiene directorio padre");
-            std::fs::create_dir_all(dir).expect("crear docs/api");
-            std::fs::write(path, &spec).expect("escribir docs/api/openapi.json");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
             return;
         }
-        let en_disco = std::fs::read_to_string(path).expect("leer docs/api/openapi.json");
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
         assert!(
             en_disco == spec,
             "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
@@ -9169,7 +9174,7 @@ export interface BilleteProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
@@ -9249,7 +9254,7 @@ export interface ClienteProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
@@ -9350,7 +9355,7 @@ export interface ProductoProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {

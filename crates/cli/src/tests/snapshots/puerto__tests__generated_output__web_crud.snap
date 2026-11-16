@@ -1367,7 +1367,7 @@ mod tests {
             rate: 1.5,
             in_stock: true,
             ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("valid Sku"),
+            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
         });
         assert_eq!(resultado.unwrap().title, "example");
     }
@@ -1380,7 +1380,7 @@ mod tests {
             rate: 1.5,
             in_stock: true,
             ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("valid Sku"),
+            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
         });
         assert!(resultado.is_err());
         assert_eq!(
@@ -1397,7 +1397,7 @@ mod tests {
             rate: 1.5,
             in_stock: true,
             ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("valid Sku"),
+            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
         });
         assert!(resultado.is_err());
     }
@@ -1482,9 +1482,9 @@ impl MadreLineaPedido {
             rate: self.rate.unwrap_or(1.5),
             in_stock: self.in_stock.unwrap_or(true),
             ref_id: self.ref_id.unwrap_or_else(Uuid::new_v4),
-            sku: self
-                .sku
-                .unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
+            sku: self.sku.unwrap_or_else(|| {
+                Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo")
+            }),
         })
         .expect("MadreLineaPedido: LineaPedido::new rechazó los props")
     }
@@ -1496,9 +1496,9 @@ impl MadreLineaPedido {
             rate: self.rate.unwrap_or(1.5),
             in_stock: self.in_stock.unwrap_or(true),
             ref_id: self.ref_id.unwrap_or_else(Uuid::new_v4),
-            sku: self
-                .sku
-                .unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
+            sku: self.sku.unwrap_or_else(|| {
+                Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo")
+            }),
         }
     }
 
@@ -1626,11 +1626,11 @@ impl RepositorioLineaPedidoEnMemoria {
 
     // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
     // insert, así que el mapa sigue entero y se usa tal cual.
-    fn read(&self) -> RwLockReadGuard<'_, HashMap<IdLineaPedido, LineaPedido>> {
+    fn leer(&self) -> RwLockReadGuard<'_, HashMap<IdLineaPedido, LineaPedido>> {
         self.filas.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, HashMap<IdLineaPedido, LineaPedido>> {
+    fn escribir(&self) -> RwLockWriteGuard<'_, HashMap<IdLineaPedido, LineaPedido>> {
         self.filas.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -1646,7 +1646,7 @@ impl RepositorioLineaPedido for RepositorioLineaPedidoEnMemoria {
             desplazamiento = pagina.desplazamiento(),
             "buscar_todos"
         );
-        let filas = self.read();
+        let filas = self.leer();
         let mut vivos: Vec<&LineaPedido> = filas.values().filter(|fila| !fila.borrado).collect();
         vivos.sort_by(|a, b| {
             b.creado_en
@@ -1668,12 +1668,12 @@ impl RepositorioLineaPedido for RepositorioLineaPedidoEnMemoria {
         id: IdLineaPedido,
     ) -> Result<Option<LineaPedido>, ErrorRepositorio> {
         tracing::debug!(%id, "buscar_por_id");
-        Ok(self.read().get(&id).filter(|fila| !fila.borrado).cloned())
+        Ok(self.leer().get(&id).filter(|fila| !fila.borrado).cloned())
     }
 
     async fn guardar(&self, entidad: &LineaPedido) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entidad.id, "guardar");
-        let mut filas = self.write();
+        let mut filas = self.escribir();
         filas.insert(entidad.id, entidad.clone());
         Ok(())
     }
@@ -1686,14 +1686,14 @@ mod tests {
     use dominio_linea_pedido::valores::Sku;
     use uuid::Uuid;
 
-    fn new_linea_pedido() -> LineaPedido {
+    fn nuevo_linea_pedido() -> LineaPedido {
         LineaPedido::new(PropsLineaPedido {
             title: "example".to_string(),
             quantity: 42,
             rate: 1.5,
             in_stock: true,
             ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("valid Sku"),
+            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
         })
         .unwrap()
     }
@@ -1702,7 +1702,7 @@ mod tests {
     async fn deberia_encontrar_linea_pedido_por_id_tras_guardar() {
         // Preparar
         let repositorio = RepositorioLineaPedidoEnMemoria::new();
-        let entidad = new_linea_pedido();
+        let entidad = nuevo_linea_pedido();
         repositorio.guardar(&entidad).await.unwrap();
 
         // Actuar
@@ -1716,7 +1716,7 @@ mod tests {
     async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
         // Preparar
         let repositorio = RepositorioLineaPedidoEnMemoria::new();
-        let mut entidad = new_linea_pedido();
+        let mut entidad = nuevo_linea_pedido();
         repositorio.guardar(&entidad).await.unwrap();
         entidad.actualizado_en = chrono::Utc::now();
 
@@ -1736,7 +1736,7 @@ mod tests {
     async fn no_deberia_encontrar_linea_pedido_tras_su_borrado() {
         // Preparar
         let repositorio = RepositorioLineaPedidoEnMemoria::new();
-        let mut entidad = new_linea_pedido();
+        let mut entidad = nuevo_linea_pedido();
         entidad.borrado = true;
         entidad.borrado_en = Some(entidad.actualizado_en);
         repositorio.guardar(&entidad).await.unwrap();
@@ -1758,7 +1758,7 @@ mod tests {
         // Preparar
         let repositorio = RepositorioLineaPedidoEnMemoria::new();
         for _ in 0..3 {
-            repositorio.guardar(&new_linea_pedido()).await.unwrap();
+            repositorio.guardar(&nuevo_linea_pedido()).await.unwrap();
         }
 
         // Actuar
@@ -1907,11 +1907,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorLineaPedido::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorLineaPedido::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "linea_pedido.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "linea_pedido.validacion.nombre_vacio");
     }
 
     #[test]
@@ -2313,19 +2313,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearLineaPedido,
-        get: MockObtenerLineaPedido,
+        obtener: MockObtenerLineaPedido,
         listar: MockListarLineasPedido,
         actualizar: MockActualizarLineaPedido,
         borrar: MockBorrarLineaPedido,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiLineaPedido {
                 crear_linea_pedido: Arc::new(self.crear),
-                obtener_linea_pedido: Arc::new(self.get),
+                obtener_linea_pedido: Arc::new(self.obtener),
                 listar_lineas_pedido: Arc::new(self.listar),
                 actualizar_linea_pedido: Arc::new(self.actualizar),
                 borrar_linea_pedido: Arc::new(self.borrar),
@@ -2363,7 +2363,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_linea_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2384,7 +2384,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_linea_pedido_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2405,9 +2405,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_linea_pedido_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreLineaPedido::aleatorio()));
 
@@ -2421,9 +2421,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_linea_pedido_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorLineaPedido::NoEncontrado));
 
@@ -2437,7 +2437,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_lineas_pedido_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.listar.expect_ejecutar().returning(|params| {
             Ok(Pagina::new(
                 MadreLineaPedido::aleatorios(2),
@@ -2460,7 +2460,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2481,7 +2481,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2497,7 +2497,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_linea_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2518,7 +2518,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_linea_pedido_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2539,7 +2539,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_linea_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -2552,7 +2552,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_linea_pedido_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -2901,16 +2901,16 @@ mod tests {
         };
         let spec = servicio_openapi((api_saludo, api_linea_pedido)).spec();
 
-        let path = std::path::Path::new(OPENAPI_JSON);
-        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
-            let dir = path
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
                 .parent()
                 .expect("docs/api/openapi.json tiene directorio padre");
-            std::fs::create_dir_all(dir).expect("crear docs/api");
-            std::fs::write(path, &spec).expect("escribir docs/api/openapi.json");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
             return;
         }
-        let en_disco = std::fs::read_to_string(path).expect("leer docs/api/openapi.json");
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
         assert!(
             en_disco == spec,
             "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
@@ -3081,7 +3081,7 @@ export interface LineaPedidoProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {

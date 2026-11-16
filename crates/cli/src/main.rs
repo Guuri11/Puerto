@@ -84,21 +84,21 @@ enum Commands {
 enum GenerateAction {
     /// Scaffold all DDD layers for a new entity (db and CRUD inferred from puerto.toml)
     Scaffold {
-        /// Entity name in PascalCase (e.g. Product, OrderItem)
+        /// Entity name in PascalCase (e.g. Producto, LineaPedido)
         name: String,
         /// Overwrite an already-generated entity, discarding hand-written changes in its files
         #[arg(long = "forzar")]
         force: bool,
         /// Auth projects: use cases whose routes need no token, comma-separated
-        /// (e.g. list_products,get_product). Every other route takes `auth: BearerAuth`
+        /// (e.g. listar_productos,obtener_producto). Every other route takes `auth: BearerAuth`
         #[arg(long = "publico", value_delimiter = ',')]
         public: Vec<String>,
         /// Auth projects: a role a route requires, <use_case>=<role>, comma-separated
-        /// (e.g. create_product=admin,delete_product=admin) — `#[requiere_rol]` on the handler
+        /// (e.g. crear_producto=admin,borrar_producto=admin) — `#[requiere_rol]` on the handler
         #[arg(long = "rol", value_delimiter = ',')]
         role: Vec<String>,
-        /// Fields after -- separator. Primitives: title:String price:i64! desc:opt:String tags:vec:String
-        /// Value Objects: name:Name:String age:Age:i64 status:Status:enum:Active/Inactive mid:Mid:opt:String
+        /// Fields after -- separator. Primitives: titulo:String precio:i64! nota:opt:String etiquetas:vec:String
+        /// Value Objects: nombre:Nombre:String edad:Edad:i64 estado:Estado:enum:Activo/Inactivo apodo:Apodo:opt:String
         /// Shared VO (type inferred from puerto.toml): email:Email
         #[arg(raw = true)]
         fields: Vec<String>,
@@ -106,44 +106,44 @@ enum GenerateAction {
     /// Add a use case to an existing entity
     #[command(name = "caso-de-uso")]
     UseCase {
-        /// Entity name in PascalCase (e.g. Product)
+        /// Entity name in PascalCase (e.g. Producto)
         entity: String,
-        /// Use case action in snake_case (e.g. delete_product)
+        /// Use case action in snake_case (e.g. publicar_producto)
         action: String,
     },
     /// Declare a custom domain event of a CRUD entity and regenerate its events.rs (projects
     /// created with --eventos)
     #[command(name = "evento")]
     Event {
-        /// Entity name in PascalCase (e.g. Product)
+        /// Entity name in PascalCase (e.g. Producto)
         entity: String,
-        /// Event type in snake_case, past tense (e.g. product_published)
+        /// Event type in snake_case, past tense (e.g. producto_publicado)
         name: String,
     },
     /// Add a consumer to the worker: an event handler, its tests and its registry entry
     /// (projects created with --eventos)
     #[command(name = "consumidor")]
     Consumer {
-        /// Consumer name in snake_case (e.g. notify_new_product)
+        /// Consumer name in snake_case (e.g. avisar_producto_nuevo)
         name: String,
-        /// The event types it handles, comma-separated (e.g. product_created,product_published)
+        /// The event types it handles, comma-separated (e.g. producto_creado,producto_publicado)
         #[arg(long = "tras", value_delimiter = ',', required = true)]
         on: Vec<String>,
     },
-    /// Add a mail: its port, its template implementation and its templates (subject.txt,
-    /// body.html, body.txt). The first one also adds Mailpit and SMTP_URL / MAIL_FROM to .env
+    /// Add a mail: its port, its template implementation and its templates (asunto.txt,
+    /// cuerpo.html, cuerpo.txt). The first one also adds Mailpit and SMTP_URL / MAIL_FROM to .env
     #[command(name = "correo")]
     Mail {
-        /// Mail name in snake_case (e.g. welcome, order_shipped)
+        /// Mail name in snake_case (e.g. bienvenida, pedido_enviado)
         name: String,
         /// Projects created with --eventos: the worker sends the mail on these event types,
-        /// comma-separated (e.g. customer_created). Its fields come from the events' snapshots
+        /// comma-separated (e.g. cliente_creado). Its fields come from the events' snapshots
         #[arg(long = "tras", value_delimiter = ',')]
         on: Vec<String>,
         /// With --tras: the String field of the snapshot that holds the recipient (e.g. email)
         #[arg(long = "para")]
         to: Option<String>,
-        /// The values its text shows, after --: name:String seats:i64 plan:opt:String.
+        /// The values its text shows, after --: nombre:String plazas:i64 plan:opt:String.
         /// Primitives and opt:<type> only; the recipient `para` is always there. None: nombre:String
         #[arg(raw = true)]
         fields: Vec<String>,
@@ -158,7 +158,7 @@ enum GenerateAction {
     /// Create a new SQLx migration file
     #[command(name = "migracion")]
     Migration {
-        /// Migration name in snake_case (e.g. add_products_table)
+        /// Migration name in snake_case (e.g. anadir_stock_a_productos)
         name: String,
     },
     /// Write IDE snippet files (.zed/snippets/rust.json, .vscode/puerto.code-snippets)
@@ -170,35 +170,35 @@ enum GenerateAction {
     /// Scaffold only the domain layer for a new entity (domain-first workflow)
     #[command(name = "dominio")]
     Domain {
-        /// Entity name in PascalCase (e.g. Product, OrderItem)
+        /// Entity name in PascalCase (e.g. Producto, LineaPedido)
         name: String,
-        /// Fields after -- separator. Same syntax as `generate scaffold`. They are written to
-        /// puerto.toml, so `generate application/repository/presentation` pick them up.
+        /// Fields after -- separator. Same syntax as `generar scaffold`. They are written to
+        /// puerto.toml, so `generar aplicacion/repositorio/presentacion` pick them up.
         #[arg(raw = true)]
         fields: Vec<String>,
     },
     /// Scaffold only the application layer for an existing entity
     #[command(name = "aplicacion")]
     Application {
-        /// Entity name in PascalCase (e.g. Product)
+        /// Entity name in PascalCase (e.g. Producto)
         name: String,
     },
     /// Scaffold only the repository (infrastructure) layer for an existing entity
     #[command(name = "repositorio")]
     Repository {
-        /// Entity name in PascalCase (e.g. Product)
+        /// Entity name in PascalCase (e.g. Producto)
         name: String,
     },
     /// Scaffold only the presentation layer for an existing entity (regenerates bootstrap.rs)
     #[command(name = "presentacion")]
     Presentation {
-        /// Entity name in PascalCase (e.g. Product)
+        /// Entity name in PascalCase (e.g. Producto)
         name: String,
     },
     /// Scaffold only the frontend slice of an existing CRUD entity (web projects; regenerates
     /// web/src/presentation/core/generated/)
     Web {
-        /// Entity name in PascalCase (e.g. Product)
+        /// Entity name in PascalCase (e.g. Producto)
         name: String,
         /// Overwrite the entity's existing frontend files, discarding hand-written changes
         #[arg(long = "forzar")]
@@ -207,7 +207,7 @@ enum GenerateAction {
     /// Declare a shared value object in puerto.toml (reusable across entities)
     #[command(name = "objeto-valor")]
     ValueObject {
-        /// Value object name in PascalCase (e.g. Email, Money)
+        /// Value object name in PascalCase (e.g. Email, Dinero)
         name: String,
         /// Inner primitive type: String, i64, bool, f64, Uuid, DateTime
         inner_type: String,
@@ -218,7 +218,7 @@ enum GenerateAction {
 
 /// Parse the trailing `-- name:Type …` arguments into validated `Field`s.
 ///
-/// Shared by `generate scaffold` and `generate domain` so the two cannot drift: parse, resolve
+/// Shared by `generar scaffold` and `generar dominio` so the two cannot drift: parse, resolve
 /// shared-VO type inference against puerto.toml, then type-check against the registry.
 fn parse_cli_fields(
     cwd: &std::path::Path,
@@ -273,7 +273,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 let web = path.join("web").is_dir();
                 println!("├── nucleo/          (shared value objects)");
                 println!("├── contextos/       (one crate per context and layer)");
-                println!("├── presentacion/    (the API binary and its wiring)");
+                println!("├── presentacion/    (the binaries and their wiring)");
                 if web {
                     println!("├── web/             (React frontend)");
                 }

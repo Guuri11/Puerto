@@ -565,7 +565,7 @@ fn validate_rejects_consumers_in_a_project_without_events() {
 
     let err = validate_manifest("validate_consumer_no_events", manifest).unwrap_err();
 
-    assert!(err.contains("project.events is not set"), "{err}");
+    assert!(err.contains("proyecto.eventos is not set"), "{err}");
 }
 
 #[test]

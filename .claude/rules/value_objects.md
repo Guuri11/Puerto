@@ -463,7 +463,7 @@ impl MadrePersona {
 
     pub fn construir(self) -> Persona {
         Persona::new(PropsPersona {
-            nombre: self.nombre.unwrap_or_else(|| Nombre::new("example".to_string()).expect("valid Nombre")),
+            nombre: self.nombre.unwrap_or_else(|| Nombre::new("example".to_string()).expect("Nombre::new rechazó el valor de ejemplo")),
             segundo_nombre: self.segundo_nombre,
             etiquetas: self.etiquetas.unwrap_or_default(),
             estado: self.estado.unwrap_or(Estado::Pendiente),   // la primera variante

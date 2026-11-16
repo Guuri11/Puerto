@@ -20,7 +20,7 @@ presentation → infrastructure → application → domain
 `bun run lint:arch` (dependency-cruiser) falla con cualquier import que rompa esto.
 
 Las pantallas llegan a los adaptadores con `useDependencies()`, nunca importándolos: un test
-renderiza una pantalla con `renderScreen(<Screen />, { productRepository: fake })`
+renderiza una pantalla con `renderScreen(<Screen />, { productoRepository: fake })`
 (`src/test-support/render.tsx`) y no necesita red.
 
 ## Las pantallas de una entidad

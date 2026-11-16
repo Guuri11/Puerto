@@ -76,7 +76,7 @@ pub mod dobles {
     }
 
     fn lock(grabado: &Mutex<Grabado>) -> MutexGuard<'_, Grabado> {
-        grabado.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        grabado.lock().unwrap_or_else(|envenenado| envenenado.into_inner())
     }
 
     struct UnitOfWorkGrabadora {

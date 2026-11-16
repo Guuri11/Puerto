@@ -541,7 +541,7 @@ fn literal_with(field: &Field, value: impl Fn(&str) -> String) -> String {
         format!("{vo}::{}", first.map_or("", String::as_str))
     } else if is_value_object(field) {
         format!(
-            "{vo}::new({}).expect(\"valid {vo}\")",
+            "{vo}::new({}).expect(\"{vo}::new rechazó el valor de ejemplo\")",
             value(&field.field_type)
         )
     } else {
@@ -1268,7 +1268,7 @@ mod tests {
         assert_eq!(props_literal(&enum_field()), "Status::Active");
         assert_eq!(
             props_literal(&field("i64", Some("Age"))),
-            "Age::new(42).expect(\"valid Age\")"
+            "Age::new(42).expect(\"Age::new rechazó el valor de ejemplo\")"
         );
     }
 
@@ -1313,7 +1313,7 @@ mod tests {
                 field("String", Some("Name")),
                 "Name",
                 "Name",
-                "self.x.unwrap_or_else(|| Name::new(\"example\".to_string()).expect(\"valid Name\"))",
+                "self.x.unwrap_or_else(|| Name::new(\"example\".to_string()).expect(\"Name::new rechazó el valor de ejemplo\"))",
             ),
             (field("Option<String>", Some("Mid")), "Mid", "Mid", "self.x"),
             (
@@ -1396,7 +1396,7 @@ mod tests {
         );
         assert_eq!(
             seed_literal(&field("DateTime<Utc>", Some("Joined"))),
-            format!("Joined::new({fixed}).expect(\"valid Joined\")")
+            format!("Joined::new({fixed}).expect(\"Joined::new rechazó el valor de ejemplo\")")
         );
         assert_eq!(seed_literal(&field("Vec<String>", Some("Tag"))), "vec![]");
         assert_eq!(seed_literal(&enum_field()), "Status::Active");

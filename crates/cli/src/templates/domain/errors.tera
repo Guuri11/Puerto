@@ -28,8 +28,8 @@ impl From<ErrorRepositorio> for Error{{ pascal }} {
         match err {
             ErrorRepositorio::Duplicado => Self::Duplicado,
 {% if references %}            // Una referencia nombra una fila inexistente: la entrada de quien llama, en ese campo.
-            ErrorRepositorio::ReferenciaInexistente(field) => {
-                Self::Validacion(format!("{field}_no_encontrado"))
+            ErrorRepositorio::ReferenciaInexistente(campo) => {
+                Self::Validacion(format!("{campo}_no_encontrado"))
             }
 {% endif %}            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
             _ => Self::Repositorio,

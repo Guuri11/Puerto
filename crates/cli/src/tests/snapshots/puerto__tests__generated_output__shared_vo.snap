@@ -392,7 +392,7 @@ mod tests {
         let entidad = Cliente::new(PropsCliente {
             name: "original".to_string(),
             email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-            credit: Money::new(42).expect("valid Money"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         })
         .unwrap();
         let id_entidad = entidad.id;
@@ -451,7 +451,7 @@ mod tests {
         let entidad = Cliente::new(PropsCliente {
             name: "original".to_string(),
             email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-            credit: Money::new(42).expect("valid Money"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         })
         .unwrap();
         let id_entidad = entidad.id;
@@ -487,7 +487,7 @@ mod tests {
         let entidad = Cliente::new(PropsCliente {
             name: "original".to_string(),
             email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-            credit: Money::new(42).expect("valid Money"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         })
         .unwrap();
         let id_entidad = entidad.id;
@@ -592,7 +592,7 @@ mod tests {
         let entidad = Cliente::new(PropsCliente {
             name: "example".to_string(),
             email: Email::new("example".to_string()).expect("el literal de Email es válido"),
-            credit: Money::new(42).expect("valid Money"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         })
         .unwrap();
         let id_entidad = entidad.id;
@@ -878,13 +878,13 @@ mod tests {
             Cliente::new(PropsCliente {
                 name: "first".to_string(),
                 email: Email::new("first".to_string()).expect("el literal de Email es válido"),
-                credit: Money::new(42).expect("valid Money"),
+                credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
             })
             .unwrap(),
             Cliente::new(PropsCliente {
                 name: "second".to_string(),
                 email: Email::new("second".to_string()).expect("el literal de Email es válido"),
-                credit: Money::new(42).expect("valid Money"),
+                credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
             })
             .unwrap(),
         ];
@@ -1021,7 +1021,7 @@ mod tests {
         let entidad = Cliente::new(PropsCliente {
             name: "example".to_string(),
             email: Email::new("example".to_string()).expect("el literal de Email es válido"),
-            credit: Money::new(42).expect("valid Money"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         })
         .unwrap();
         let id_entidad = entidad.id;
@@ -1260,8 +1260,9 @@ mod tests {
     fn deberia_crear_cliente_cuando_los_campos_son_validos() {
         let resultado = Cliente::new(PropsCliente {
             name: "example".to_string(),
-            email: Email::new("example".to_string()).expect("valid Email"),
-            credit: Money::new(42).expect("valid Money"),
+            email: Email::new("example".to_string())
+                .expect("Email::new rechazó el valor de ejemplo"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         });
         assert_eq!(resultado.unwrap().name, "example");
     }
@@ -1270,8 +1271,9 @@ mod tests {
     fn deberia_rechazar_cliente_cuando_name_es_una_cadena_vacia() {
         let resultado = Cliente::new(PropsCliente {
             name: "".into(),
-            email: Email::new("example".to_string()).expect("valid Email"),
-            credit: Money::new(42).expect("valid Money"),
+            email: Email::new("example".to_string())
+                .expect("Email::new rechazó el valor de ejemplo"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         });
         assert!(resultado.is_err());
         assert_eq!(
@@ -1284,8 +1286,9 @@ mod tests {
     fn deberia_rechazar_cliente_cuando_name_solo_tiene_espacios() {
         let resultado = Cliente::new(PropsCliente {
             name: "   ".into(),
-            email: Email::new("example".to_string()).expect("valid Email"),
-            credit: Money::new(42).expect("valid Money"),
+            email: Email::new("example".to_string())
+                .expect("Email::new rechazó el valor de ejemplo"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         });
         assert!(resultado.is_err());
     }
@@ -1342,12 +1345,12 @@ impl MadreCliente {
     pub fn construir(self) -> Cliente {
         Cliente::new(PropsCliente {
             name: self.name.unwrap_or_else(|| "example".to_string()),
-            email: self
-                .email
-                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            email: self.email.unwrap_or_else(|| {
+                Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
+            }),
             credit: self
                 .credit
-                .unwrap_or_else(|| Money::new(42).expect("valid Money")),
+                .unwrap_or_else(|| Money::new(42).expect("Money::new rechazó el valor de ejemplo")),
         })
         .expect("MadreCliente: Cliente::new rechazó los props")
     }
@@ -1355,12 +1358,12 @@ impl MadreCliente {
     pub fn construir_props(self) -> PropsCliente {
         PropsCliente {
             name: self.name.unwrap_or_else(|| "example".to_string()),
-            email: self
-                .email
-                .unwrap_or_else(|| Email::new("example".to_string()).expect("valid Email")),
+            email: self.email.unwrap_or_else(|| {
+                Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
+            }),
             credit: self
                 .credit
-                .unwrap_or_else(|| Money::new(42).expect("valid Money")),
+                .unwrap_or_else(|| Money::new(42).expect("Money::new rechazó el valor de ejemplo")),
         }
     }
 
@@ -1464,11 +1467,11 @@ impl RepositorioClienteEnMemoria {
 
     // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
     // insert, así que el mapa sigue entero y se usa tal cual.
-    fn read(&self) -> RwLockReadGuard<'_, HashMap<IdCliente, Cliente>> {
+    fn leer(&self) -> RwLockReadGuard<'_, HashMap<IdCliente, Cliente>> {
         self.filas.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, HashMap<IdCliente, Cliente>> {
+    fn escribir(&self) -> RwLockWriteGuard<'_, HashMap<IdCliente, Cliente>> {
         self.filas.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -1484,7 +1487,7 @@ impl RepositorioCliente for RepositorioClienteEnMemoria {
             desplazamiento = pagina.desplazamiento(),
             "buscar_todos"
         );
-        let filas = self.read();
+        let filas = self.leer();
         let mut vivos: Vec<&Cliente> = filas.values().filter(|fila| !fila.borrado).collect();
         vivos.sort_by(|a, b| {
             b.creado_en
@@ -1503,12 +1506,12 @@ impl RepositorioCliente for RepositorioClienteEnMemoria {
 
     async fn buscar_por_id(&self, id: IdCliente) -> Result<Option<Cliente>, ErrorRepositorio> {
         tracing::debug!(%id, "buscar_por_id");
-        Ok(self.read().get(&id).filter(|fila| !fila.borrado).cloned())
+        Ok(self.leer().get(&id).filter(|fila| !fila.borrado).cloned())
     }
 
     async fn guardar(&self, entidad: &Cliente) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entidad.id, "guardar");
-        let mut filas = self.write();
+        let mut filas = self.escribir();
         filas.insert(entidad.id, entidad.clone());
         Ok(())
     }
@@ -1521,11 +1524,12 @@ mod tests {
     use nucleo::valores::Email;
     use nucleo::valores::Money;
 
-    fn new_cliente() -> Cliente {
+    fn nuevo_cliente() -> Cliente {
         Cliente::new(PropsCliente {
             name: "example".to_string(),
-            email: Email::new("example".to_string()).expect("valid Email"),
-            credit: Money::new(42).expect("valid Money"),
+            email: Email::new("example".to_string())
+                .expect("Email::new rechazó el valor de ejemplo"),
+            credit: Money::new(42).expect("Money::new rechazó el valor de ejemplo"),
         })
         .unwrap()
     }
@@ -1534,7 +1538,7 @@ mod tests {
     async fn deberia_encontrar_cliente_por_id_tras_guardar() {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
-        let entidad = new_cliente();
+        let entidad = nuevo_cliente();
         repositorio.guardar(&entidad).await.unwrap();
 
         // Actuar
@@ -1548,7 +1552,7 @@ mod tests {
     async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
-        let mut entidad = new_cliente();
+        let mut entidad = nuevo_cliente();
         repositorio.guardar(&entidad).await.unwrap();
         entidad.actualizado_en = chrono::Utc::now();
 
@@ -1568,7 +1572,7 @@ mod tests {
     async fn no_deberia_encontrar_cliente_tras_su_borrado() {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
-        let mut entidad = new_cliente();
+        let mut entidad = nuevo_cliente();
         entidad.borrado = true;
         entidad.borrado_en = Some(entidad.actualizado_en);
         repositorio.guardar(&entidad).await.unwrap();
@@ -1590,7 +1594,7 @@ mod tests {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
         for _ in 0..3 {
-            repositorio.guardar(&new_cliente()).await.unwrap();
+            repositorio.guardar(&nuevo_cliente()).await.unwrap();
         }
 
         // Actuar
@@ -1728,11 +1732,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorCliente::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorCliente::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "cliente.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "cliente.validacion.nombre_vacio");
     }
 
     #[test]
@@ -2116,19 +2120,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearCliente,
-        get: MockObtenerCliente,
+        obtener: MockObtenerCliente,
         listar: MockListarClientes,
         actualizar: MockActualizarCliente,
         borrar: MockBorrarCliente,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiCliente {
                 crear_cliente: Arc::new(self.crear),
-                obtener_cliente: Arc::new(self.get),
+                obtener_cliente: Arc::new(self.obtener),
                 listar_clientes: Arc::new(self.listar),
                 actualizar_cliente: Arc::new(self.actualizar),
                 borrar_cliente: Arc::new(self.borrar),
@@ -2160,7 +2164,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2181,7 +2185,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_cliente_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2202,9 +2206,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_cliente_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreCliente::aleatorio()));
 
@@ -2218,9 +2222,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_cliente_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorCliente::NoEncontrado));
 
@@ -2234,7 +2238,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_clientes_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2254,7 +2258,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2275,7 +2279,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2291,7 +2295,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2312,7 +2316,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_cliente_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2333,7 +2337,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -2346,7 +2350,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_cliente_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -2754,16 +2758,16 @@ mod tests {
         };
         let spec = servicio_openapi((api_saludo, api_cliente)).spec();
 
-        let path = std::path::Path::new(OPENAPI_JSON);
-        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
-            let dir = path
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
                 .parent()
                 .expect("docs/api/openapi.json tiene directorio padre");
-            std::fs::create_dir_all(dir).expect("crear docs/api");
-            std::fs::write(path, &spec).expect("escribir docs/api/openapi.json");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
             return;
         }
-        let en_disco = std::fs::read_to_string(path).expect("leer docs/api/openapi.json");
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
         assert!(
             en_disco == spec,
             "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
@@ -2924,7 +2928,7 @@ export interface ClienteProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {

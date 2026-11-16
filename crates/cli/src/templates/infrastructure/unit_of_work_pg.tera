@@ -73,7 +73,7 @@ impl UnitOfWork{{ pascal }} for UnitOfWork{{ pascal }}Postgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use dominio_{{ snake }}::{eventos::Snapshot{{ pascal }}, repositorio::Repositorio{{ pascal }}};
 
@@ -90,7 +90,7 @@ mod integration_tests {
         uow.commit().await
     }
 
-    async fn count(pool: &PgPool, sql: &str) -> i64 {
+    async fn contar(pool: &PgPool, sql: &str) -> i64 {
         sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
     }
 
@@ -105,13 +105,13 @@ mod integration_tests {
         // Comprobar
         let encontrado = Repositorio{{ pascal }}Postgres::new(pool.clone()).buscar_por_id(entidad.id).await.unwrap();
         assert!(encontrado.is_some());
-        let (event_type, aggregate_id): (String, uuid::Uuid) =
+        let (tipo_evento, id_agregado): (String, uuid::Uuid) =
             sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(event_type, "{{ snake }}_creado");
-        assert_eq!(aggregate_id, entidad.id.valor());
+        assert_eq!(tipo_evento, "{{ snake }}_creado");
+        assert_eq!(id_agregado, entidad.id.valor());
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -127,8 +127,8 @@ mod integration_tests {
         }
 
         // Comprobar
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 0);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -156,7 +156,7 @@ mod integration_tests {
         uow.commit().await.unwrap();
 
         // Comprobar
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
 {% endif %}    }
 {% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %}{% set u = uniques.0 %}
 
@@ -173,8 +173,8 @@ mod integration_tests {
 
         // Comprobar
         assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
 {% endif %}{% for r in references %}
 
@@ -189,6 +189,6 @@ mod integration_tests {
 
         // Comprobar
         assert_eq!(resultado.unwrap_err(), ErrorRepositorio::ReferenciaInexistente("{{ r.field }}"));
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 {% endfor %}}

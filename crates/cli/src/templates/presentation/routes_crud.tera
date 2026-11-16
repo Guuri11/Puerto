@@ -169,40 +169,40 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrear{{ pascal }},
-        get: MockObtener{{ pascal }},
+        obtener: MockObtener{{ pascal }},
         listar: MockListar{{ plural_pascal }},
         actualizar: MockActualizar{{ pascal }},
         borrar: MockBorrar{{ pascal }},
     }
 
-{% if auth %}    /// Acepta `caller` (con todos los roles que pide alguna ruta de esta API) y `nobody`
+{% if auth %}    /// Acepta `llamante` (con todos los roles que pide alguna ruta de esta API) y `nadie`
     /// (sin roles).
     fn autenticador() -> Arc<dyn Autenticador> {
-        let mut authenticator = MockAutenticador::new();
-        authenticator.expect_autenticar().returning(|token| match token {
-            "caller" => Ok({% if caller_roles %}MadrePrincipal::new()
+        let mut doble = MockAutenticador::new();
+        doble.expect_autenticar().returning(|token| match token {
+            "llamante" => Ok({% if caller_roles %}MadrePrincipal::new()
                 .con_roles([{% for role in caller_roles %}"{{ role }}"{% if not loop.last %}, {% endif %}{% endfor %}])
                 .construir(){% else %}MadrePrincipal::aleatorio(){% endif %}),
-            "nobody" => Ok(MadrePrincipal::aleatorio()),
+            "nadie" => Ok(MadrePrincipal::aleatorio()),
             _ => Err(ErrorAuth::Invalido),
         });
-        Arc::new(authenticator)
+        Arc::new(doble)
     }
 
-{% endif %}    impl Mocks {
-{% if auth %}        /// Todas las peticiones, con sesión iniciada como `caller`.
+{% endif %}    impl Dobles {
+{% if auth %}        /// Todas las peticiones, con sesión iniciada como `llamante`.
         fn cliente(self) -> TestClient<impl poem::Endpoint> {
-            self.client_with(Some("Bearer caller"))
+            self.cliente_con(Some("Bearer llamante"))
         }
 
-        /// `authorization`: la cabecera que envía cada petición; con `None` no se envía ninguna.
-        fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
+        /// `autorizacion`: la cabecera que envía cada petición; con `None` no se envía ninguna.
+        fn cliente_con(self, autorizacion: Option<&str>) -> TestClient<impl poem::Endpoint> {
 {% else %}        fn cliente(self) -> TestClient<Route> {
 {% endif %}            let api = Api{{ pascal }} {
                 crear_{{ snake }}: Arc::new(self.crear),
-                obtener_{{ snake }}: Arc::new(self.get),
+                obtener_{{ snake }}: Arc::new(self.obtener),
                 listar_{{ plural }}: Arc::new(self.listar),
                 actualizar_{{ snake }}: Arc::new(self.actualizar),
                 borrar_{{ snake }}: Arc::new(self.borrar),
@@ -212,7 +212,7 @@ mod tests {
                     .nest("/", OpenApiService::new(api, "test", "1.0"))
                     .data(autenticador()),
             );
-            match authorization {
+            match autorizacion {
                 Some(valor) => cliente.default_header("Authorization", valor),
                 None => cliente,
             }
@@ -239,7 +239,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_{{ snake }}() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.crear.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
 
         // Actuar
@@ -257,7 +257,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_{{ snake }}_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -278,7 +278,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_no_existe_la_referencia_de_{{ f.name }}() {
         // Preparar: en la base de datos no hay {{ f.ref_target }} con ese id (ADR-0022 de Puerto).
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.crear.expect_ejecutar().returning(|_| {
             Err(Error{{ pascal }}::Validacion("{{ f.name }}_no_encontrado".to_string()))
         });
@@ -305,8 +305,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_{{ snake }}_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
-        dobles.get.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
+        let mut dobles = Dobles::default();
+        dobles.obtener.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
 
         // Actuar
         let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
@@ -318,8 +318,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_{{ snake }}_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
-        dobles.get.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::NoEncontrado));
+        let mut dobles = Dobles::default();
+        dobles.obtener.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::NoEncontrado));
 
         // Actuar
         let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
@@ -331,7 +331,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_{{ plural }}_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -351,7 +351,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -369,7 +369,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_por_{{ r.name }}_al_caso_de_uso() {
         // Preparar
         let {{ r.name }} = Uuid::new_v4();
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -386,7 +386,7 @@ mod tests {
 {% endfor %}    #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.listar.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::Repositorio));
 
         // Actuar
@@ -399,7 +399,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_{{ snake }}() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.actualizar.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
 
         // Actuar
@@ -417,7 +417,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_{{ snake }}_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.actualizar.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::NoEncontrado));
 
         // Actuar
@@ -435,7 +435,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_{{ snake }}() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -448,7 +448,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_{{ snake }}_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Err(Error{{ pascal }}::NoEncontrado));
 
         // Actuar
@@ -461,11 +461,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_crea_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .post("/{{ plural }}")
             .body_json(&peticion_crear().to_json())
             .send()
@@ -478,11 +478,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_403_cuando_se_crea_sin_el_rol() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(Some("Bearer nobody"))
+            .cliente_con(Some("Bearer nadie"))
             .post("/{{ plural }}")
             .body_json(&peticion_crear().to_json())
             .send()
@@ -502,11 +502,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_obtiene_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .get(ruta_elemento())
             .send()
             .await;
@@ -518,11 +518,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_403_cuando_se_obtiene_sin_el_rol() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(Some("Bearer nobody"))
+            .cliente_con(Some("Bearer nadie"))
             .get(ruta_elemento())
             .send()
             .await;
@@ -541,11 +541,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_lista_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .get("/{{ plural }}")
             .send()
             .await;
@@ -557,11 +557,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_403_cuando_se_lista_sin_el_rol() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(Some("Bearer nobody"))
+            .cliente_con(Some("Bearer nadie"))
             .get("/{{ plural }}")
             .send()
             .await;
@@ -580,11 +580,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_actualiza_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .put(ruta_elemento())
             .body_json(&peticion_actualizar().to_json())
             .send()
@@ -597,11 +597,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_403_cuando_se_actualiza_sin_el_rol() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(Some("Bearer nobody"))
+            .cliente_con(Some("Bearer nadie"))
             .put(ruta_elemento())
             .body_json(&peticion_actualizar().to_json())
             .send()
@@ -621,11 +621,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_borra_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .delete(ruta_elemento())
             .send()
             .await;
@@ -637,11 +637,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_403_cuando_se_borra_sin_el_rol() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(Some("Bearer nobody"))
+            .cliente_con(Some("Bearer nadie"))
             .delete(ruta_elemento())
             .send()
             .await;

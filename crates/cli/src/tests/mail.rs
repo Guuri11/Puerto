@@ -451,7 +451,34 @@ fn validate_rejects_a_mail_sent_on_events_in_a_project_without_events() {
     let err = error_of(validate::run_validate(&output));
 
     assert!(err.contains("mail 'welcome'"), "{err}");
-    assert!(err.contains("project.events is not set"), "{err}");
+    assert!(err.contains("proyecto.eventos is not set"), "{err}");
+    cleanup(&dir);
+}
+
+#[test]
+fn validate_rejects_a_consumer_named_like_the_consumer_of_a_mail() {
+    let (dir, output) = project("mail_validate_consumer_clash");
+    welcome(&output);
+    let toml = read(&output, "puerto.toml");
+    fs::write(
+        output.join("puerto.toml"),
+        format!(
+            "{}\n[[consumidor]]\nnombre = \"correo_welcome\"\neventos = [\"saludo_creado\"]\n",
+            // Only a mail sent on events has a worker consumer.
+            toml.replace(
+                "nombre = \"welcome\"\n",
+                "nombre = \"welcome\"\ntras = [\"saludo_creado\"]\n"
+            )
+        ),
+    )
+    .unwrap();
+
+    let err = error_of(validate::run_validate(&output));
+
+    assert!(
+        err.contains("the worker runs it as the consumer 'correo_welcome'"),
+        "{err}"
+    );
     cleanup(&dir);
 }
 

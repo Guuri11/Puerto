@@ -42,14 +42,14 @@ mod tests {
         let api_saludo = ApiSaludo { obtener_saludo: Arc::new(MockObtenerSaludo::new()) };
         let spec = servicio_openapi(api_saludo).spec();
 
-        let path = std::path::Path::new(OPENAPI_JSON);
-        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
-            let dir = path.parent().expect("docs/api/openapi.json tiene directorio padre");
-            std::fs::create_dir_all(dir).expect("crear docs/api");
-            std::fs::write(path, &spec).expect("escribir docs/api/openapi.json");
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta.parent().expect("docs/api/openapi.json tiene directorio padre");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
             return;
         }
-        let en_disco = std::fs::read_to_string(path).expect("leer docs/api/openapi.json");
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
         assert!(
             en_disco == spec,
             "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"

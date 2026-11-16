@@ -1458,8 +1458,8 @@ impl From<ErrorRepositorio> for ErrorCompra {
         match err {
             ErrorRepositorio::Duplicado => Self::Duplicado,
             // Una referencia nombra una fila inexistente: la entrada de quien llama, en ese campo.
-            ErrorRepositorio::ReferenciaInexistente(field) => {
-                Self::Validacion(format!("{field}_no_encontrado"))
+            ErrorRepositorio::ReferenciaInexistente(campo) => {
+                Self::Validacion(format!("{campo}_no_encontrado"))
             }
             ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
             _ => Self::Repositorio,
@@ -1924,7 +1924,7 @@ pub mod dobles {
     fn lock(grabado: &Mutex<Grabado>) -> MutexGuard<'_, Grabado> {
         grabado
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|envenenado| envenenado.into_inner())
     }
 
     struct UnitOfWorkGrabadora {
@@ -2202,7 +2202,7 @@ impl RepositorioCompra for RepositorioCompraPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::{construir, guardar, sembrar};
 
@@ -2442,7 +2442,7 @@ impl UnitOfWorkCompra for UnitOfWorkCompraPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use dominio_compra::{eventos::SnapshotCompra, repositorio::RepositorioCompra};
 
@@ -2461,7 +2461,7 @@ mod integration_tests {
         uow.commit().await
     }
 
-    async fn count(pool: &PgPool, sql: &str) -> i64 {
+    async fn contar(pool: &PgPool, sql: &str) -> i64 {
         sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
     }
 
@@ -2479,13 +2479,13 @@ mod integration_tests {
             .await
             .unwrap();
         assert!(encontrado.is_some());
-        let (event_type, aggregate_id): (String, uuid::Uuid) =
+        let (tipo_evento, id_agregado): (String, uuid::Uuid) =
             sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(event_type, "compra_creado");
-        assert_eq!(aggregate_id, entidad.id.valor());
+        assert_eq!(tipo_evento, "compra_creado");
+        assert_eq!(id_agregado, entidad.id.valor());
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -2506,8 +2506,8 @@ mod integration_tests {
         }
 
         // Comprobar
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM compras").await, 0);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM compras").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -2525,7 +2525,7 @@ mod integration_tests {
         uow.commit().await.unwrap();
 
         // Comprobar
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM compras").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM compras").await, 1);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -2542,7 +2542,7 @@ mod integration_tests {
             resultado.unwrap_err(),
             ErrorRepositorio::ReferenciaInexistente("proveedor_id")
         );
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -2559,7 +2559,7 @@ mod integration_tests {
             resultado.unwrap_err(),
             ErrorRepositorio::ReferenciaInexistente("approver_id")
         );
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 }
 
@@ -2685,11 +2685,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorCompra::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorCompra::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "compra.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "compra.validacion.nombre_vacio");
     }
 
     #[test]
@@ -3056,19 +3056,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearCompra,
-        get: MockObtenerCompra,
+        obtener: MockObtenerCompra,
         listar: MockListarCompras,
         actualizar: MockActualizarCompra,
         borrar: MockBorrarCompra,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiCompra {
                 crear_compra: Arc::new(self.crear),
-                obtener_compra: Arc::new(self.get),
+                obtener_compra: Arc::new(self.obtener),
                 listar_compras: Arc::new(self.listar),
                 actualizar_compra: Arc::new(self.actualizar),
                 borrar_compra: Arc::new(self.borrar),
@@ -3100,7 +3100,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_compra() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -3121,7 +3121,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_compra_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -3142,7 +3142,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_no_existe_la_referencia_de_proveedor_id() {
         // Preparar: en la base de datos no hay Proveedor con ese id (ADR-0022 de Puerto).
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.crear.expect_ejecutar().returning(|_| {
             Err(ErrorCompra::Validacion(
                 "proveedor_id_no_encontrado".to_string(),
@@ -3171,7 +3171,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_no_existe_la_referencia_de_approver_id() {
         // Preparar: en la base de datos no hay Proveedor con ese id (ADR-0022 de Puerto).
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.crear.expect_ejecutar().returning(|_| {
             Err(ErrorCompra::Validacion(
                 "approver_id_no_encontrado".to_string(),
@@ -3200,9 +3200,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_compra_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreCompra::aleatorio()));
 
@@ -3216,9 +3216,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_compra_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorCompra::NoEncontrado));
 
@@ -3232,7 +3232,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_compras_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -3252,7 +3252,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -3274,7 +3274,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_por_proveedor_id_al_caso_de_uso() {
         // Preparar
         let proveedor_id = Uuid::new_v4();
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -3296,7 +3296,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_por_approver_id_al_caso_de_uso() {
         // Preparar
         let approver_id = Uuid::new_v4();
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -3317,7 +3317,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -3333,7 +3333,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_compra() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -3354,7 +3354,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_compra_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -3375,7 +3375,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_compra() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -3388,7 +3388,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_compra_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -4340,8 +4340,8 @@ impl From<ErrorRepositorio> for ErrorEntrega {
         match err {
             ErrorRepositorio::Duplicado => Self::Duplicado,
             // Una referencia nombra una fila inexistente: la entrada de quien llama, en ese campo.
-            ErrorRepositorio::ReferenciaInexistente(field) => {
-                Self::Validacion(format!("{field}_no_encontrado"))
+            ErrorRepositorio::ReferenciaInexistente(campo) => {
+                Self::Validacion(format!("{campo}_no_encontrado"))
             }
             ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
             _ => Self::Repositorio,
@@ -4820,7 +4820,7 @@ pub mod dobles {
     fn lock(grabado: &Mutex<Grabado>) -> MutexGuard<'_, Grabado> {
         grabado
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|envenenado| envenenado.into_inner())
     }
 
     struct UnitOfWorkGrabadora {
@@ -5091,7 +5091,7 @@ impl RepositorioEntrega for RepositorioEntregaPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::{construir, guardar, sembrar};
 
@@ -5289,7 +5289,7 @@ impl UnitOfWorkEntrega for UnitOfWorkEntregaPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use dominio_entrega::{eventos::SnapshotEntrega, repositorio::RepositorioEntrega};
 
@@ -5310,7 +5310,7 @@ mod integration_tests {
         uow.commit().await
     }
 
-    async fn count(pool: &PgPool, sql: &str) -> i64 {
+    async fn contar(pool: &PgPool, sql: &str) -> i64 {
         sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
     }
 
@@ -5328,13 +5328,13 @@ mod integration_tests {
             .await
             .unwrap();
         assert!(encontrado.is_some());
-        let (event_type, aggregate_id): (String, uuid::Uuid) =
+        let (tipo_evento, id_agregado): (String, uuid::Uuid) =
             sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(event_type, "entrega_creado");
-        assert_eq!(aggregate_id, entidad.id.valor());
+        assert_eq!(tipo_evento, "entrega_creado");
+        assert_eq!(id_agregado, entidad.id.valor());
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -5357,8 +5357,8 @@ mod integration_tests {
         }
 
         // Comprobar
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM entregas").await, 0);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM entregas").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -5399,8 +5399,8 @@ mod integration_tests {
 
         // Comprobar
         assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM entregas").await, 1);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM entregas").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -5417,7 +5417,7 @@ mod integration_tests {
             resultado.unwrap_err(),
             ErrorRepositorio::ReferenciaInexistente("compra_id")
         );
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 }
 
@@ -5539,11 +5539,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorEntrega::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorEntrega::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "entrega.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "entrega.validacion.nombre_vacio");
     }
 
     #[test]
@@ -5908,19 +5908,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearEntrega,
-        get: MockObtenerEntrega,
+        obtener: MockObtenerEntrega,
         listar: MockListarEntregas,
         actualizar: MockActualizarEntrega,
         borrar: MockBorrarEntrega,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiEntrega {
                 crear_entrega: Arc::new(self.crear),
-                obtener_entrega: Arc::new(self.get),
+                obtener_entrega: Arc::new(self.obtener),
                 listar_entregas: Arc::new(self.listar),
                 actualizar_entrega: Arc::new(self.actualizar),
                 borrar_entrega: Arc::new(self.borrar),
@@ -5950,7 +5950,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_entrega() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -5971,7 +5971,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_entrega_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -5992,7 +5992,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_no_existe_la_referencia_de_compra_id() {
         // Preparar: en la base de datos no hay Compra con ese id (ADR-0022 de Puerto).
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.crear.expect_ejecutar().returning(|_| {
             Err(ErrorEntrega::Validacion(
                 "compra_id_no_encontrado".to_string(),
@@ -6021,9 +6021,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_entrega_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreEntrega::aleatorio()));
 
@@ -6037,9 +6037,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_entrega_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorEntrega::NoEncontrado));
 
@@ -6053,7 +6053,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_entregas_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6073,7 +6073,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6095,7 +6095,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_por_compra_id_al_caso_de_uso() {
         // Preparar
         let compra_id = Uuid::new_v4();
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6116,7 +6116,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6132,7 +6132,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_entrega() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -6153,7 +6153,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_entrega_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -6174,7 +6174,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_entrega() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -6187,7 +6187,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_entrega_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -7413,7 +7413,7 @@ mod tests {
     #[test]
     fn deberia_crear_proveedor_cuando_los_campos_son_validos() {
         let resultado = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             email: "example".to_string(),
         });
         assert_eq!(resultado.unwrap().email, "example");
@@ -7422,7 +7422,7 @@ mod tests {
     #[test]
     fn deberia_rechazar_proveedor_cuando_email_es_una_cadena_vacia() {
         let resultado = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             email: "".into(),
         });
         assert!(resultado.is_err());
@@ -7435,7 +7435,7 @@ mod tests {
     #[test]
     fn deberia_rechazar_proveedor_cuando_email_solo_tiene_espacios() {
         let resultado = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             email: "   ".into(),
         });
         assert!(resultado.is_err());
@@ -7487,9 +7487,9 @@ impl MadreProveedor {
 
     pub fn construir(self) -> Proveedor {
         Proveedor::new(PropsProveedor {
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
             email: self.email.unwrap_or_else(|| "example".to_string()),
         })
         .expect("MadreProveedor: Proveedor::new rechazó los props")
@@ -7497,9 +7497,9 @@ impl MadreProveedor {
 
     pub fn construir_props(self) -> PropsProveedor {
         PropsProveedor {
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
             email: self.email.unwrap_or_else(|| "example".to_string()),
         }
     }
@@ -7634,7 +7634,7 @@ pub mod dobles {
     fn lock(grabado: &Mutex<Grabado>) -> MutexGuard<'_, Grabado> {
         grabado
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|envenenado| envenenado.into_inner())
     }
 
     struct UnitOfWorkGrabadora {
@@ -7800,7 +7800,7 @@ use crate::unit_of_work::UnitOfWorkFactoryProveedorPostgres;
 /// Una entidad proveedor válida, sin guardar.
 pub fn construir() -> Proveedor {
     Proveedor::new(PropsProveedor {
-        name: Name::new("example".to_string()).expect("valid Name"),
+        name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
         email: Uuid::new_v4().to_string(),
     })
     .unwrap()
@@ -7920,7 +7920,7 @@ impl RepositorioProveedor for RepositorioProveedorPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::{guardar, sembrar};
 
@@ -8075,7 +8075,7 @@ impl UnitOfWorkProveedor for UnitOfWorkProveedorPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use dominio_proveedor::{eventos::SnapshotProveedor, repositorio::RepositorioProveedor};
 
@@ -8095,7 +8095,7 @@ mod integration_tests {
         uow.commit().await
     }
 
-    async fn count(pool: &PgPool, sql: &str) -> i64 {
+    async fn contar(pool: &PgPool, sql: &str) -> i64 {
         sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
     }
 
@@ -8113,13 +8113,13 @@ mod integration_tests {
             .await
             .unwrap();
         assert!(encontrado.is_some());
-        let (event_type, aggregate_id): (String, uuid::Uuid) =
+        let (tipo_evento, id_agregado): (String, uuid::Uuid) =
             sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(event_type, "proveedor_creado");
-        assert_eq!(aggregate_id, entidad.id.valor());
+        assert_eq!(tipo_evento, "proveedor_creado");
+        assert_eq!(id_agregado, entidad.id.valor());
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -8142,8 +8142,8 @@ mod integration_tests {
         }
 
         // Comprobar
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM proveedores").await, 0);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM proveedores").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -8184,8 +8184,8 @@ mod integration_tests {
 
         // Comprobar
         assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM proveedores").await, 1);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM proveedores").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
 }
 
@@ -8306,11 +8306,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorProveedor::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorProveedor::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "proveedor.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "proveedor.validacion.nombre_vacio");
     }
 
     #[test]
@@ -8695,19 +8695,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearProveedor,
-        get: MockObtenerProveedor,
+        obtener: MockObtenerProveedor,
         listar: MockListarProveedores,
         actualizar: MockActualizarProveedor,
         borrar: MockBorrarProveedor,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiProveedor {
                 crear_proveedor: Arc::new(self.crear),
-                obtener_proveedor: Arc::new(self.get),
+                obtener_proveedor: Arc::new(self.obtener),
                 listar_proveedores: Arc::new(self.listar),
                 actualizar_proveedor: Arc::new(self.actualizar),
                 borrar_proveedor: Arc::new(self.borrar),
@@ -8737,7 +8737,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_proveedor() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -8758,7 +8758,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_proveedor_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -8779,9 +8779,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_proveedor_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreProveedor::aleatorio()));
 
@@ -8795,9 +8795,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_proveedor_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorProveedor::NoEncontrado));
 
@@ -8811,7 +8811,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_proveedores_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -8831,7 +8831,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -8852,7 +8852,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -8868,7 +8868,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_proveedor() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -8889,7 +8889,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_proveedor_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -8910,7 +8910,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_proveedor() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -8923,7 +8923,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_proveedor_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -9477,16 +9477,16 @@ mod tests {
         };
         let spec = servicio_openapi((api_saludo, api_proveedor, api_compra, api_entrega)).spec();
 
-        let path = std::path::Path::new(OPENAPI_JSON);
-        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
-            let dir = path
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
                 .parent()
                 .expect("docs/api/openapi.json tiene directorio padre");
-            std::fs::create_dir_all(dir).expect("crear docs/api");
-            std::fs::write(path, &spec).expect("escribir docs/api/openapi.json");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
             return;
         }
-        let en_disco = std::fs::read_to_string(path).expect("leer docs/api/openapi.json");
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
         assert!(
             en_disco == spec,
             "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
@@ -9919,7 +9919,7 @@ export interface CompraProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
@@ -9990,7 +9990,7 @@ export interface EntregaProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
@@ -10060,7 +10060,7 @@ export interface ProveedorProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {

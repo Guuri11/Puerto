@@ -42,7 +42,7 @@ fn routes_patch_gives_the_route_tests_api_literal_an_unexpecting_mock() {
     fs::create_dir_all(dir.join("contextos/producto/rest/src")).unwrap();
     let before = "use std::sync::Arc;\n\npub struct ApiProducto {\n    pub obtener_producto: Arc<dyn ObtenerProducto>,\n}\n\n\
                   #[cfg(test)]\nmod tests {\n    fn client() {\n        let _ = Mocks {};\n        let api = ApiProducto {\n            \
-                  obtener_producto: Arc::new(self.get),\n        };\n    }\n}\n";
+                  obtener_producto: Arc::new(self.obtener),\n        };\n    }\n}\n";
     fs::write(dir.join("contextos/producto/rest/src/rutas.rs"), before).unwrap();
 
     for _ in 0..2 {
@@ -58,7 +58,7 @@ fn routes_patch_gives_the_route_tests_api_literal_an_unexpecting_mock() {
     let after = fs::read_to_string(dir.join("contextos/producto/rest/src/rutas.rs")).unwrap();
     assert!(
         after.contains(
-            "        let api = ApiProducto {\n            obtener_producto: Arc::new(self.get),\n            \
+            "        let api = ApiProducto {\n            obtener_producto: Arc::new(self.obtener),\n            \
              archive_producto: Arc::new(\n                aplicacion_producto::archive_producto::dobles::MockArchiveProducto::new(),\n            ),\n        };\n"
         ),
         "{after}"
@@ -74,9 +74,9 @@ fn routes_patch_gives_the_route_tests_mocks_a_field_for_the_custom_use_case() {
     cleanup(&dir);
     fs::create_dir_all(dir.join("contextos/producto/rest/src")).unwrap();
     let before = "use std::sync::Arc;\n\npub struct ApiProducto {\n    pub obtener_producto: Arc<dyn ObtenerProducto>,\n}\n\n\
-                  #[cfg(test)]\nmod tests {\n    #[derive(Default)]\n    struct Mocks {\n        get: MockObtenerProducto,\n    }\n\n    \
-                  impl Mocks {\n        fn client(self) {\n            let api = ApiProducto {\n                \
-                  obtener_producto: Arc::new(self.get),\n            };\n        }\n    }\n}\n";
+                  #[cfg(test)]\nmod tests {\n    #[derive(Default)]\n    struct Dobles {\n        obtener: MockObtenerProducto,\n    }\n\n    \
+                  impl Dobles {\n        fn client(self) {\n            let api = ApiProducto {\n                \
+                  obtener_producto: Arc::new(self.obtener),\n            };\n        }\n    }\n}\n";
     fs::write(dir.join("contextos/producto/rest/src/rutas.rs"), before).unwrap();
 
     for _ in 0..2 {
@@ -95,15 +95,15 @@ fn routes_patch_gives_the_route_tests_mocks_a_field_for_the_custom_use_case() {
     let after = fs::read_to_string(dir.join("contextos/producto/rest/src/rutas.rs")).unwrap();
     assert!(
         after.contains(
-            // `get_producto` is already in the literal (as `self.get`): no second mock for it.
-            "    struct Mocks {\n        get: MockObtenerProducto,\n        \
+            // `get_producto` is already in the literal (as `self.obtener`): no second mock for it.
+            "    struct Dobles {\n        obtener: MockObtenerProducto,\n        \
              archive_producto: aplicacion_producto::archive_producto::dobles::MockArchiveProducto,\n    }\n"
         ),
         "{after}"
     );
     assert!(
         after.contains(
-            "            let api = ApiProducto {\n                obtener_producto: Arc::new(self.get),\n                \
+            "            let api = ApiProducto {\n                obtener_producto: Arc::new(self.obtener),\n                \
              archive_producto: Arc::new(self.archive_producto),\n            };\n"
         ),
         "{after}"

@@ -24,11 +24,11 @@ impl Repositorio{{ pascal }}EnMemoria {
 
     // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
     // insert, así que el mapa sigue entero y se usa tal cual.
-    fn read(&self) -> RwLockReadGuard<'_, HashMap<Id{{ pascal }}, {{ pascal }}>> {
+    fn leer(&self) -> RwLockReadGuard<'_, HashMap<Id{{ pascal }}, {{ pascal }}>> {
         self.filas.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, HashMap<Id{{ pascal }}, {{ pascal }}>> {
+    fn escribir(&self) -> RwLockWriteGuard<'_, HashMap<Id{{ pascal }}, {{ pascal }}>> {
         self.filas.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -37,7 +37,7 @@ impl Repositorio{{ pascal }}EnMemoria {
 impl Repositorio{{ pascal }} for Repositorio{{ pascal }}EnMemoria {
     async fn buscar_todos(&self, pagina: PeticionPagina{% if refs %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
         tracing::debug!(limite = pagina.limite(), desplazamiento = pagina.desplazamiento(), "buscar_todos");
-        let filas = self.read();
+        let filas = self.leer();
         let mut vivos: Vec<&{{ pascal }}> = filas
             .values()
             .filter(|fila| !fila.borrado)
@@ -60,12 +60,12 @@ impl Repositorio{{ pascal }} for Repositorio{{ pascal }}EnMemoria {
 
     async fn buscar_por_id(&self, id: Id{{ pascal }}) -> Result<Option<{{ pascal }}>, ErrorRepositorio> {
         tracing::debug!(%id, "buscar_por_id");
-        Ok(self.read().get(&id).filter(|fila| !fila.borrado).cloned())
+        Ok(self.leer().get(&id).filter(|fila| !fila.borrado).cloned())
     }
 
     async fn guardar(&self, entidad: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entidad.id, "guardar");
-        let mut filas = self.write();
+        let mut filas = self.escribir();
 {% if uniques %}        // Como los índices únicos parciales: solo las filas vivas ocupan sus valores.
         let ocupado = !entidad.borrado
             && filas.values().any(|fila| {
@@ -88,7 +88,7 @@ mod tests {
     use dominio_{{ snake }}::modelo::Props{{ pascal }};
 {% for import in test_imports %}    use {{ import }};
 {% endfor %}
-    fn new_{{ snake }}() -> {{ pascal }} {
+    fn nuevo_{{ snake }}() -> {{ pascal }} {
         {{ pascal }}::new(Props{{ pascal }} {
 {% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
 {% endfor %}        })
@@ -99,7 +99,7 @@ mod tests {
     async fn deberia_encontrar_{{ snake }}_por_id_tras_guardar() {
         // Preparar
         let repositorio = Repositorio{{ pascal }}EnMemoria::new();
-        let entidad = new_{{ snake }}();
+        let entidad = nuevo_{{ snake }}();
         repositorio.guardar(&entidad).await.unwrap();
 
         // Actuar
@@ -113,7 +113,7 @@ mod tests {
     async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
         // Preparar
         let repositorio = Repositorio{{ pascal }}EnMemoria::new();
-        let mut entidad = new_{{ snake }}();
+        let mut entidad = nuevo_{{ snake }}();
         repositorio.guardar(&entidad).await.unwrap();
         entidad.actualizado_en = chrono::Utc::now();
 
@@ -130,7 +130,7 @@ mod tests {
     async fn no_deberia_encontrar_{{ snake }}_tras_su_borrado() {
         // Preparar
         let repositorio = Repositorio{{ pascal }}EnMemoria::new();
-        let mut entidad = new_{{ snake }}();
+        let mut entidad = nuevo_{{ snake }}();
         entidad.borrado = true;
         entidad.borrado_en = Some(entidad.actualizado_en);
         repositorio.guardar(&entidad).await.unwrap();
@@ -149,7 +149,7 @@ mod tests {
         // Preparar
         let repositorio = Repositorio{{ pascal }}EnMemoria::new();
         for _ in 0..3 {
-            repositorio.guardar(&new_{{ snake }}()).await.unwrap();
+            repositorio.guardar(&nuevo_{{ snake }}()).await.unwrap();
         }
 
         // Actuar
@@ -165,9 +165,9 @@ mod tests {
     async fn deberia_rechazar_un_duplicado_de_{{ u.name }}() {
         // Preparar
         let repositorio = Repositorio{{ pascal }}EnMemoria::new();
-        let primero = new_{{ snake }}();
+        let primero = nuevo_{{ snake }}();
         repositorio.guardar(&primero).await.unwrap();
-        let mut segundo = new_{{ snake }}();
+        let mut segundo = nuevo_{{ snake }}();
         segundo.{{ u.name }} = primero.{{ u.name }}{% if u.needs_clone %}.clone(){% endif %};
 
         // Actuar
@@ -182,10 +182,10 @@ mod tests {
         // Preparar: una entidad {{ snake }} con este valor de {{ r.name }} y otra sin él.
         let repositorio = Repositorio{{ pascal }}EnMemoria::new();
         let {{ r.name }} = Id{{ r.ref_target }}::generar();
-        let mut esperado = new_{{ snake }}();
+        let mut esperado = nuevo_{{ snake }}();
         esperado.{{ r.name }} = {% if r.field_type is starting_with("Option<") %}Some({{ r.name }}){% else %}{{ r.name }}{% endif %};
         repositorio.guardar(&esperado).await.unwrap();
-        repositorio.guardar(&new_{{ snake }}()).await.unwrap();
+        repositorio.guardar(&nuevo_{{ snake }}()).await.unwrap();
 
         // Actuar
         let pagina = repositorio

@@ -3,8 +3,8 @@
 //! eventos, añade valores que el snapshot no lleva.
 //!
 //! La entrega es al menos una vez: `enviar_una_vez` guarda una fila en `correos_enviados` por
-//! evento, así que un evento que se vuelve a entregar no envía el correo otra vez. Deja `MAIL` como
-//! está: renombrarlo vuelve a enviar todos los correos.
+//! evento, así que un evento que se vuelve a entregar no envía el correo otra vez. Deja `CORREO`
+//! como está: renombrarlo vuelve a enviar todos los correos.
 
 use std::sync::Arc;
 
@@ -18,7 +18,7 @@ use puerto_nucleo::correo::CorreosEnviados;
 use puerto_correo::enviar_una_vez;
 
 /// La clave de este correo en `correos_enviados`.
-const MAIL: &str = "{{ name }}";
+const CORREO: &str = "{{ name }}";
 
 pub struct EnviarCorreo{{ pascal }} {
     pub enviador: Arc<dyn EnviadorCorreo{{ pascal }}>,
@@ -47,7 +47,7 @@ impl ManejadorEvento for EnviarCorreo{{ pascal }} {
             tracing::warn!(id_evento = %evento.id, "correo_{{ name }}: sin destinatario, no se envía");
             return ResultadoManejo::Ack;
         }
-        enviar_una_vez(self.correos_enviados.as_ref(), evento.id, MAIL, self.enviador.enviar(&correo)).await
+        enviar_una_vez(self.correos_enviados.as_ref(), evento.id, CORREO, self.enviador.enviar(&correo)).await
     }
 }
 

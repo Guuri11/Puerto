@@ -47,25 +47,25 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut warnings: Vec<String> = vec![];
 
     if config.project.name.is_empty() {
-        errors.push("project.name is empty".into());
+        errors.push("proyecto.nombre is empty".into());
     }
     if let Some(transport) = &config.project.events {
         if let Err(e) = crate::validation::validate_events_transport(transport) {
-            errors.push(format!("project.events: {e}"));
+            errors.push(format!("proyecto.eventos: {e}"));
         }
         // The outbox is written in the same transaction as the entity (ADR-0018 § 1).
         if !config.project.db {
-            errors.push("project.events needs project.db = true: events are written to an outbox table in the entity's transaction".into());
+            errors.push("proyecto.eventos needs proyecto.db = true: events are written to an outbox table in the entity's transaction".into());
         }
     }
 
     if let Some(mode) = &config.project.auth {
         if let Err(e) = crate::validation::validate_auth_mode(mode) {
-            errors.push(format!("project.auth: {e}"));
+            errors.push(format!("proyecto.auth: {e}"));
         }
         // Local sessions and credentials are rows (ADR-0021 § 2).
         if mode == "local" && !config.project.db {
-            errors.push("project.auth = \"local\" needs project.db = true: sessions and credentials are database rows".into());
+            errors.push("proyecto.auth = \"local\" needs proyecto.db = true: sessions and credentials are database rows".into());
         }
     }
 
@@ -81,7 +81,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
             }
         } else if !entity.public.is_empty() || !entity.roles.is_empty() {
             errors.push(format!(
-                "entity '{}': declares public or roles, but project.auth is not set",
+                "entity '{}': declares publicos or roles, but proyecto.auth is not set",
                 entity.name
             ));
         }
@@ -113,7 +113,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let snake = crate::generators::naming::pascal_to_snake(&entity.name);
         if !entity.events.is_empty() && !config.project.has_events() {
             errors.push(format!(
-                "entity '{}': declares events, but project.events is not set",
+                "entity '{}': declares eventos, but proyecto.eventos is not set",
                 entity.name
             ));
         }
@@ -266,7 +266,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     for consumer in &config.consumer {
         if !config.project.has_events() {
             errors.push(format!(
-                "consumer '{}': declared, but project.events is not set",
+                "consumer '{}': declared, but proyecto.eventos is not set",
                 consumer.name
             ));
         }
@@ -311,7 +311,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         }
         if !config.project.has_events() {
             errors.push(format!(
-                "mail '{}': sent on events, but project.events is not set",
+                "mail '{}': sent on events, but proyecto.eventos is not set",
                 mail.name
             ));
         }
@@ -326,10 +326,10 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         if config
             .consumer
             .iter()
-            .any(|c| c.name == format!("mail_{}", mail.name))
+            .any(|c| c.name == format!("correo_{}", mail.name))
         {
             errors.push(format!(
-                "mail '{0}': the worker runs it as the consumer 'mail_{0}', which a [[consumidor]] \
+                "mail '{0}': the worker runs it as the consumer 'correo_{0}', which a [[consumidor]] \
                  already uses",
                 mail.name
             ));

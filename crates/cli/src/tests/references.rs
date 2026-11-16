@@ -443,7 +443,7 @@ fn should_turn_a_missing_reference_into_a_validation_error_on_the_field() {
     let errors = read(&output, "contextos/pedido/dominio/src/errores.rs");
     assert!(
         errors.contains(
-            "ErrorRepositorio::ReferenciaInexistente(field) => {\n                Self::Validacion(format!(\"{field}_no_encontrado\"))"
+            "ErrorRepositorio::ReferenciaInexistente(campo) => {\n                Self::Validacion(format!(\"{campo}_no_encontrado\"))"
         ),
         "{errors}"
     );

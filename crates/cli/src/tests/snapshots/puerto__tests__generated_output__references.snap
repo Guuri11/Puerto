@@ -1234,7 +1234,7 @@ mod tests {
     #[test]
     fn deberia_crear_cliente_cuando_los_campos_son_validos() {
         let resultado = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             email: "example".to_string(),
         });
         assert_eq!(resultado.unwrap().email, "example");
@@ -1243,7 +1243,7 @@ mod tests {
     #[test]
     fn deberia_rechazar_cliente_cuando_email_es_una_cadena_vacia() {
         let resultado = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             email: "".into(),
         });
         assert!(resultado.is_err());
@@ -1256,7 +1256,7 @@ mod tests {
     #[test]
     fn deberia_rechazar_cliente_cuando_email_solo_tiene_espacios() {
         let resultado = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             email: "   ".into(),
         });
         assert!(resultado.is_err());
@@ -1305,9 +1305,9 @@ impl MadreCliente {
 
     pub fn construir(self) -> Cliente {
         Cliente::new(PropsCliente {
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
             email: self.email.unwrap_or_else(|| "example".to_string()),
         })
         .expect("MadreCliente: Cliente::new rechazó los props")
@@ -1315,9 +1315,9 @@ impl MadreCliente {
 
     pub fn construir_props(self) -> PropsCliente {
         PropsCliente {
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
             email: self.email.unwrap_or_else(|| "example".to_string()),
         }
     }
@@ -1444,11 +1444,11 @@ impl RepositorioClienteEnMemoria {
 
     // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
     // insert, así que el mapa sigue entero y se usa tal cual.
-    fn read(&self) -> RwLockReadGuard<'_, HashMap<IdCliente, Cliente>> {
+    fn leer(&self) -> RwLockReadGuard<'_, HashMap<IdCliente, Cliente>> {
         self.filas.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, HashMap<IdCliente, Cliente>> {
+    fn escribir(&self) -> RwLockWriteGuard<'_, HashMap<IdCliente, Cliente>> {
         self.filas.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -1464,7 +1464,7 @@ impl RepositorioCliente for RepositorioClienteEnMemoria {
             desplazamiento = pagina.desplazamiento(),
             "buscar_todos"
         );
-        let filas = self.read();
+        let filas = self.leer();
         let mut vivos: Vec<&Cliente> = filas.values().filter(|fila| !fila.borrado).collect();
         vivos.sort_by(|a, b| {
             b.creado_en
@@ -1483,12 +1483,12 @@ impl RepositorioCliente for RepositorioClienteEnMemoria {
 
     async fn buscar_por_id(&self, id: IdCliente) -> Result<Option<Cliente>, ErrorRepositorio> {
         tracing::debug!(%id, "buscar_por_id");
-        Ok(self.read().get(&id).filter(|fila| !fila.borrado).cloned())
+        Ok(self.leer().get(&id).filter(|fila| !fila.borrado).cloned())
     }
 
     async fn guardar(&self, entidad: &Cliente) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entidad.id, "guardar");
-        let mut filas = self.write();
+        let mut filas = self.escribir();
         // Como los índices únicos parciales: solo las filas vivas ocupan sus valores.
         let ocupado = !entidad.borrado
             && filas
@@ -1510,9 +1510,9 @@ mod tests {
     use dominio_cliente::valores::Name;
     use uuid::Uuid;
 
-    fn new_cliente() -> Cliente {
+    fn nuevo_cliente() -> Cliente {
         Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             email: Uuid::new_v4().to_string(),
         })
         .unwrap()
@@ -1522,7 +1522,7 @@ mod tests {
     async fn deberia_encontrar_cliente_por_id_tras_guardar() {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
-        let entidad = new_cliente();
+        let entidad = nuevo_cliente();
         repositorio.guardar(&entidad).await.unwrap();
 
         // Actuar
@@ -1536,7 +1536,7 @@ mod tests {
     async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
-        let mut entidad = new_cliente();
+        let mut entidad = nuevo_cliente();
         repositorio.guardar(&entidad).await.unwrap();
         entidad.actualizado_en = chrono::Utc::now();
 
@@ -1556,7 +1556,7 @@ mod tests {
     async fn no_deberia_encontrar_cliente_tras_su_borrado() {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
-        let mut entidad = new_cliente();
+        let mut entidad = nuevo_cliente();
         entidad.borrado = true;
         entidad.borrado_en = Some(entidad.actualizado_en);
         repositorio.guardar(&entidad).await.unwrap();
@@ -1578,7 +1578,7 @@ mod tests {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
         for _ in 0..3 {
-            repositorio.guardar(&new_cliente()).await.unwrap();
+            repositorio.guardar(&nuevo_cliente()).await.unwrap();
         }
 
         // Actuar
@@ -1597,9 +1597,9 @@ mod tests {
     async fn deberia_rechazar_un_duplicado_de_email() {
         // Preparar
         let repositorio = RepositorioClienteEnMemoria::new();
-        let primero = new_cliente();
+        let primero = nuevo_cliente();
         repositorio.guardar(&primero).await.unwrap();
-        let mut segundo = new_cliente();
+        let mut segundo = nuevo_cliente();
         segundo.email = primero.email.clone();
 
         // Actuar
@@ -1727,11 +1727,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorCliente::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorCliente::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "cliente.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "cliente.validacion.nombre_vacio");
     }
 
     #[test]
@@ -2103,19 +2103,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearCliente,
-        get: MockObtenerCliente,
+        obtener: MockObtenerCliente,
         listar: MockListarClientes,
         actualizar: MockActualizarCliente,
         borrar: MockBorrarCliente,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiCliente {
                 crear_cliente: Arc::new(self.crear),
-                obtener_cliente: Arc::new(self.get),
+                obtener_cliente: Arc::new(self.obtener),
                 listar_clientes: Arc::new(self.listar),
                 actualizar_cliente: Arc::new(self.actualizar),
                 borrar_cliente: Arc::new(self.borrar),
@@ -2145,7 +2145,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2166,7 +2166,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_cliente_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2187,9 +2187,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_cliente_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreCliente::aleatorio()));
 
@@ -2203,9 +2203,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_cliente_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorCliente::NoEncontrado));
 
@@ -2219,7 +2219,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_clientes_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2239,7 +2239,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2260,7 +2260,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2276,7 +2276,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2297,7 +2297,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_cliente_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2318,7 +2318,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_cliente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -2331,7 +2331,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_cliente_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -3181,8 +3181,8 @@ impl From<ErrorRepositorio> for ErrorEnvio {
         match err {
             ErrorRepositorio::Duplicado => Self::Duplicado,
             // Una referencia nombra una fila inexistente: la entrada de quien llama, en ese campo.
-            ErrorRepositorio::ReferenciaInexistente(field) => {
-                Self::Validacion(format!("{field}_no_encontrado"))
+            ErrorRepositorio::ReferenciaInexistente(campo) => {
+                Self::Validacion(format!("{campo}_no_encontrado"))
             }
             ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
             _ => Self::Repositorio,
@@ -3496,11 +3496,11 @@ impl RepositorioEnvioEnMemoria {
 
     // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
     // insert, así que el mapa sigue entero y se usa tal cual.
-    fn read(&self) -> RwLockReadGuard<'_, HashMap<IdEnvio, Envio>> {
+    fn leer(&self) -> RwLockReadGuard<'_, HashMap<IdEnvio, Envio>> {
         self.filas.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, HashMap<IdEnvio, Envio>> {
+    fn escribir(&self) -> RwLockWriteGuard<'_, HashMap<IdEnvio, Envio>> {
         self.filas.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -3517,7 +3517,7 @@ impl RepositorioEnvio for RepositorioEnvioEnMemoria {
             desplazamiento = pagina.desplazamiento(),
             "buscar_todos"
         );
-        let filas = self.read();
+        let filas = self.leer();
         let mut vivos: Vec<&Envio> = filas
             .values()
             .filter(|fila| !fila.borrado)
@@ -3540,12 +3540,12 @@ impl RepositorioEnvio for RepositorioEnvioEnMemoria {
 
     async fn buscar_por_id(&self, id: IdEnvio) -> Result<Option<Envio>, ErrorRepositorio> {
         tracing::debug!(%id, "buscar_por_id");
-        Ok(self.read().get(&id).filter(|fila| !fila.borrado).cloned())
+        Ok(self.leer().get(&id).filter(|fila| !fila.borrado).cloned())
     }
 
     async fn guardar(&self, entidad: &Envio) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entidad.id, "guardar");
-        let mut filas = self.write();
+        let mut filas = self.escribir();
         // Como los índices únicos parciales: solo las filas vivas ocupan sus valores.
         let ocupado = !entidad.borrado
             && filas.values().any(|fila| {
@@ -3566,7 +3566,7 @@ mod tests {
     use dominio_envio::modelo::PropsEnvio;
     use dominio_pedido::modelo::IdPedido;
 
-    fn new_envio() -> Envio {
+    fn nuevo_envio() -> Envio {
         Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
             carrier: "example".to_string(),
@@ -3578,7 +3578,7 @@ mod tests {
     async fn deberia_encontrar_envio_por_id_tras_guardar() {
         // Preparar
         let repositorio = RepositorioEnvioEnMemoria::new();
-        let entidad = new_envio();
+        let entidad = nuevo_envio();
         repositorio.guardar(&entidad).await.unwrap();
 
         // Actuar
@@ -3592,7 +3592,7 @@ mod tests {
     async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
         // Preparar
         let repositorio = RepositorioEnvioEnMemoria::new();
-        let mut entidad = new_envio();
+        let mut entidad = nuevo_envio();
         repositorio.guardar(&entidad).await.unwrap();
         entidad.actualizado_en = chrono::Utc::now();
 
@@ -3612,7 +3612,7 @@ mod tests {
     async fn no_deberia_encontrar_envio_tras_su_borrado() {
         // Preparar
         let repositorio = RepositorioEnvioEnMemoria::new();
-        let mut entidad = new_envio();
+        let mut entidad = nuevo_envio();
         entidad.borrado = true;
         entidad.borrado_en = Some(entidad.actualizado_en);
         repositorio.guardar(&entidad).await.unwrap();
@@ -3634,7 +3634,7 @@ mod tests {
         // Preparar
         let repositorio = RepositorioEnvioEnMemoria::new();
         for _ in 0..3 {
-            repositorio.guardar(&new_envio()).await.unwrap();
+            repositorio.guardar(&nuevo_envio()).await.unwrap();
         }
 
         // Actuar
@@ -3656,9 +3656,9 @@ mod tests {
     async fn deberia_rechazar_un_duplicado_de_pedido_id() {
         // Preparar
         let repositorio = RepositorioEnvioEnMemoria::new();
-        let primero = new_envio();
+        let primero = nuevo_envio();
         repositorio.guardar(&primero).await.unwrap();
-        let mut segundo = new_envio();
+        let mut segundo = nuevo_envio();
         segundo.pedido_id = primero.pedido_id;
 
         // Actuar
@@ -3673,10 +3673,10 @@ mod tests {
         // Preparar: una entidad envio con este valor de pedido_id y otra sin él.
         let repositorio = RepositorioEnvioEnMemoria::new();
         let pedido_id = IdPedido::generar();
-        let mut esperado = new_envio();
+        let mut esperado = nuevo_envio();
         esperado.pedido_id = pedido_id;
         repositorio.guardar(&esperado).await.unwrap();
-        repositorio.guardar(&new_envio()).await.unwrap();
+        repositorio.guardar(&nuevo_envio()).await.unwrap();
 
         // Actuar
         let pagina = repositorio
@@ -3819,11 +3819,12 @@ mod tests {
     #[test]
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
-        let (status, Json(cuerpo)) = a_respuesta_error(ErrorEnvio::Validacion("name_vacio".into()));
+        let (status, Json(cuerpo)) =
+            a_respuesta_error(ErrorEnvio::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "envio.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "envio.validacion.nombre_vacio");
     }
 
     #[test]
@@ -4186,19 +4187,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearEnvio,
-        get: MockObtenerEnvio,
+        obtener: MockObtenerEnvio,
         listar: MockListarEnvios,
         actualizar: MockActualizarEnvio,
         borrar: MockBorrarEnvio,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiEnvio {
                 crear_envio: Arc::new(self.crear),
-                obtener_envio: Arc::new(self.get),
+                obtener_envio: Arc::new(self.obtener),
                 listar_envios: Arc::new(self.listar),
                 actualizar_envio: Arc::new(self.actualizar),
                 borrar_envio: Arc::new(self.borrar),
@@ -4228,7 +4229,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_envio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -4249,7 +4250,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_envio_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -4270,7 +4271,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_no_existe_la_referencia_de_pedido_id() {
         // Preparar: en la base de datos no hay Pedido con ese id (ADR-0022 de Puerto).
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.crear.expect_ejecutar().returning(|_| {
             Err(ErrorEnvio::Validacion(
                 "pedido_id_no_encontrado".to_string(),
@@ -4299,9 +4300,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_envio_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreEnvio::aleatorio()));
 
@@ -4315,9 +4316,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_envio_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorEnvio::NoEncontrado));
 
@@ -4331,7 +4332,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_envios_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -4351,7 +4352,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -4373,7 +4374,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_por_pedido_id_al_caso_de_uso() {
         // Preparar
         let pedido_id = Uuid::new_v4();
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -4394,7 +4395,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -4410,7 +4411,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_envio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -4431,7 +4432,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_envio_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -4452,7 +4453,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_envio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -4465,7 +4466,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_envio_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -5302,8 +5303,8 @@ impl From<ErrorRepositorio> for ErrorPedido {
         match err {
             ErrorRepositorio::Duplicado => Self::Duplicado,
             // Una referencia nombra una fila inexistente: la entrada de quien llama, en ese campo.
-            ErrorRepositorio::ReferenciaInexistente(field) => {
-                Self::Validacion(format!("{field}_no_encontrado"))
+            ErrorRepositorio::ReferenciaInexistente(campo) => {
+                Self::Validacion(format!("{campo}_no_encontrado"))
             }
             ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
             _ => Self::Repositorio,
@@ -5603,11 +5604,11 @@ impl RepositorioPedidoEnMemoria {
 
     // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
     // insert, así que el mapa sigue entero y se usa tal cual.
-    fn read(&self) -> RwLockReadGuard<'_, HashMap<IdPedido, Pedido>> {
+    fn leer(&self) -> RwLockReadGuard<'_, HashMap<IdPedido, Pedido>> {
         self.filas.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, HashMap<IdPedido, Pedido>> {
+    fn escribir(&self) -> RwLockWriteGuard<'_, HashMap<IdPedido, Pedido>> {
         self.filas.write().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -5624,7 +5625,7 @@ impl RepositorioPedido for RepositorioPedidoEnMemoria {
             desplazamiento = pagina.desplazamiento(),
             "buscar_todos"
         );
-        let filas = self.read();
+        let filas = self.leer();
         let mut vivos: Vec<&Pedido> = filas
             .values()
             .filter(|fila| !fila.borrado)
@@ -5652,12 +5653,12 @@ impl RepositorioPedido for RepositorioPedidoEnMemoria {
 
     async fn buscar_por_id(&self, id: IdPedido) -> Result<Option<Pedido>, ErrorRepositorio> {
         tracing::debug!(%id, "buscar_por_id");
-        Ok(self.read().get(&id).filter(|fila| !fila.borrado).cloned())
+        Ok(self.leer().get(&id).filter(|fila| !fila.borrado).cloned())
     }
 
     async fn guardar(&self, entidad: &Pedido) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entidad.id, "guardar");
-        let mut filas = self.write();
+        let mut filas = self.escribir();
         filas.insert(entidad.id, entidad.clone());
         Ok(())
     }
@@ -5669,7 +5670,7 @@ mod tests {
     use dominio_cliente::modelo::IdCliente;
     use dominio_pedido::modelo::PropsPedido;
 
-    fn new_pedido() -> Pedido {
+    fn nuevo_pedido() -> Pedido {
         Pedido::new(PropsPedido {
             cliente_id: IdCliente::generar(),
             reviewer_id: None,
@@ -5682,7 +5683,7 @@ mod tests {
     async fn deberia_encontrar_pedido_por_id_tras_guardar() {
         // Preparar
         let repositorio = RepositorioPedidoEnMemoria::new();
-        let entidad = new_pedido();
+        let entidad = nuevo_pedido();
         repositorio.guardar(&entidad).await.unwrap();
 
         // Actuar
@@ -5696,7 +5697,7 @@ mod tests {
     async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
         // Preparar
         let repositorio = RepositorioPedidoEnMemoria::new();
-        let mut entidad = new_pedido();
+        let mut entidad = nuevo_pedido();
         repositorio.guardar(&entidad).await.unwrap();
         entidad.actualizado_en = chrono::Utc::now();
 
@@ -5716,7 +5717,7 @@ mod tests {
     async fn no_deberia_encontrar_pedido_tras_su_borrado() {
         // Preparar
         let repositorio = RepositorioPedidoEnMemoria::new();
-        let mut entidad = new_pedido();
+        let mut entidad = nuevo_pedido();
         entidad.borrado = true;
         entidad.borrado_en = Some(entidad.actualizado_en);
         repositorio.guardar(&entidad).await.unwrap();
@@ -5738,7 +5739,7 @@ mod tests {
         // Preparar
         let repositorio = RepositorioPedidoEnMemoria::new();
         for _ in 0..3 {
-            repositorio.guardar(&new_pedido()).await.unwrap();
+            repositorio.guardar(&nuevo_pedido()).await.unwrap();
         }
 
         // Actuar
@@ -5761,10 +5762,10 @@ mod tests {
         // Preparar: una entidad pedido con este valor de cliente_id y otra sin él.
         let repositorio = RepositorioPedidoEnMemoria::new();
         let cliente_id = IdCliente::generar();
-        let mut esperado = new_pedido();
+        let mut esperado = nuevo_pedido();
         esperado.cliente_id = cliente_id;
         repositorio.guardar(&esperado).await.unwrap();
-        repositorio.guardar(&new_pedido()).await.unwrap();
+        repositorio.guardar(&nuevo_pedido()).await.unwrap();
 
         // Actuar
         let pagina = repositorio
@@ -5795,10 +5796,10 @@ mod tests {
         // Preparar: una entidad pedido con este valor de reviewer_id y otra sin él.
         let repositorio = RepositorioPedidoEnMemoria::new();
         let reviewer_id = IdCliente::generar();
-        let mut esperado = new_pedido();
+        let mut esperado = nuevo_pedido();
         esperado.reviewer_id = Some(reviewer_id);
         repositorio.guardar(&esperado).await.unwrap();
-        repositorio.guardar(&new_pedido()).await.unwrap();
+        repositorio.guardar(&nuevo_pedido()).await.unwrap();
 
         // Actuar
         let pagina = repositorio
@@ -5947,11 +5948,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorPedido::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorPedido::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "pedido.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "pedido.validacion.nombre_vacio");
     }
 
     #[test]
@@ -6318,19 +6319,19 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearPedido,
-        get: MockObtenerPedido,
+        obtener: MockObtenerPedido,
         listar: MockListarPedidos,
         actualizar: MockActualizarPedido,
         borrar: MockBorrarPedido,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiPedido {
                 crear_pedido: Arc::new(self.crear),
-                obtener_pedido: Arc::new(self.get),
+                obtener_pedido: Arc::new(self.obtener),
                 listar_pedidos: Arc::new(self.listar),
                 actualizar_pedido: Arc::new(self.actualizar),
                 borrar_pedido: Arc::new(self.borrar),
@@ -6362,7 +6363,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -6383,7 +6384,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_pedido_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -6404,7 +6405,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_no_existe_la_referencia_de_cliente_id() {
         // Preparar: en la base de datos no hay Cliente con ese id (ADR-0022 de Puerto).
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.crear.expect_ejecutar().returning(|_| {
             Err(ErrorPedido::Validacion(
                 "cliente_id_no_encontrado".to_string(),
@@ -6433,7 +6434,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_no_existe_la_referencia_de_reviewer_id() {
         // Preparar: en la base de datos no hay Cliente con ese id (ADR-0022 de Puerto).
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.crear.expect_ejecutar().returning(|_| {
             Err(ErrorPedido::Validacion(
                 "reviewer_id_no_encontrado".to_string(),
@@ -6462,9 +6463,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_pedido_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadrePedido::aleatorio()));
 
@@ -6478,9 +6479,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_pedido_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorPedido::NoEncontrado));
 
@@ -6494,7 +6495,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_pedidos_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6514,7 +6515,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6536,7 +6537,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_por_cliente_id_al_caso_de_uso() {
         // Preparar
         let cliente_id = Uuid::new_v4();
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6558,7 +6559,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_por_reviewer_id_al_caso_de_uso() {
         // Preparar
         let reviewer_id = Uuid::new_v4();
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6579,7 +6580,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -6595,7 +6596,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -6616,7 +6617,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_pedido_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -6637,7 +6638,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -6650,7 +6651,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_pedido_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -7047,16 +7048,16 @@ mod tests {
         };
         let spec = servicio_openapi((api_saludo, api_cliente, api_pedido, api_envio)).spec();
 
-        let path = std::path::Path::new(OPENAPI_JSON);
-        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
-            let dir = path
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
                 .parent()
                 .expect("docs/api/openapi.json tiene directorio padre");
-            std::fs::create_dir_all(dir).expect("crear docs/api");
-            std::fs::write(path, &spec).expect("escribir docs/api/openapi.json");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
             return;
         }
-        let en_disco = std::fs::read_to_string(path).expect("leer docs/api/openapi.json");
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
         assert!(
             en_disco == spec,
             "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
@@ -7339,7 +7340,7 @@ export interface ClienteProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
@@ -7409,7 +7410,7 @@ export interface EnvioProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
@@ -7479,7 +7480,7 @@ export interface PedidoProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {

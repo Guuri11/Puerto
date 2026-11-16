@@ -1,7 +1,7 @@
 # application/
 
 Empty on purpose. The generated screens call the repository port directly
-(`useDependencies().productRepository.list()`): a frontend CRUD use case would only delegate, the
+(`useDependencies().productoRepository.list()`): a frontend CRUD use case would only delegate, the
 server owns validation.
 
 Write a use case here when there is logic to hold — a rule, or an orchestration of two

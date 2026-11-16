@@ -1707,7 +1707,7 @@ impl RepositorioPedido for RepositorioPedidoPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::sembrar;
 
@@ -1922,11 +1922,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorPedido::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorPedido::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "pedido.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "pedido.validacion.nombre_vacio");
     }
 
     #[test]
@@ -2329,39 +2329,37 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearPedido,
-        get: MockObtenerPedido,
+        obtener: MockObtenerPedido,
         listar: MockListarPedidos,
         actualizar: MockActualizarPedido,
         borrar: MockBorrarPedido,
     }
 
-    /// Acepta `caller` (con todos los roles que pide alguna ruta de esta API) y `nobody`
+    /// Acepta `llamante` (con todos los roles que pide alguna ruta de esta API) y `nadie`
     /// (sin roles).
     fn autenticador() -> Arc<dyn Autenticador> {
-        let mut authenticator = MockAutenticador::new();
-        authenticator
-            .expect_autenticar()
-            .returning(|token| match token {
-                "caller" => Ok(MadrePrincipal::aleatorio()),
-                "nobody" => Ok(MadrePrincipal::aleatorio()),
-                _ => Err(ErrorAuth::Invalido),
-            });
-        Arc::new(authenticator)
+        let mut doble = MockAutenticador::new();
+        doble.expect_autenticar().returning(|token| match token {
+            "llamante" => Ok(MadrePrincipal::aleatorio()),
+            "nadie" => Ok(MadrePrincipal::aleatorio()),
+            _ => Err(ErrorAuth::Invalido),
+        });
+        Arc::new(doble)
     }
 
-    impl Mocks {
-        /// Todas las peticiones, con sesión iniciada como `caller`.
+    impl Dobles {
+        /// Todas las peticiones, con sesión iniciada como `llamante`.
         fn cliente(self) -> TestClient<impl poem::Endpoint> {
-            self.client_with(Some("Bearer caller"))
+            self.cliente_con(Some("Bearer llamante"))
         }
 
-        /// `authorization`: la cabecera que envía cada petición; con `None` no se envía ninguna.
-        fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
+        /// `autorizacion`: la cabecera que envía cada petición; con `None` no se envía ninguna.
+        fn cliente_con(self, autorizacion: Option<&str>) -> TestClient<impl poem::Endpoint> {
             let api = ApiPedido {
                 crear_pedido: Arc::new(self.crear),
-                obtener_pedido: Arc::new(self.get),
+                obtener_pedido: Arc::new(self.obtener),
                 listar_pedidos: Arc::new(self.listar),
                 actualizar_pedido: Arc::new(self.actualizar),
                 borrar_pedido: Arc::new(self.borrar),
@@ -2371,7 +2369,7 @@ mod tests {
                     .nest("/", OpenApiService::new(api, "test", "1.0"))
                     .data(autenticador()),
             );
-            match authorization {
+            match autorizacion {
                 Some(valor) => cliente.default_header("Authorization", valor),
                 None => cliente,
             }
@@ -2393,7 +2391,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2414,7 +2412,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_pedido_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -2435,9 +2433,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_pedido_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadrePedido::aleatorio()));
 
@@ -2451,9 +2449,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_pedido_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorPedido::NoEncontrado));
 
@@ -2467,7 +2465,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_pedidos_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2487,7 +2485,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2508,7 +2506,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -2524,7 +2522,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2545,7 +2543,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_pedido_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -2566,7 +2564,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_pedido() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -2579,7 +2577,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_pedido_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -2595,11 +2593,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_crea_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .post("/pedidos")
             .body_json(&peticion_crear().to_json())
             .send()
@@ -2612,10 +2610,10 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_obtiene_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
-        let respuesta = dobles.client_with(None).get(ruta_elemento()).send().await;
+        let respuesta = dobles.cliente_con(None).get(ruta_elemento()).send().await;
 
         // Comprobar
         respuesta.assert_status(StatusCode::UNAUTHORIZED);
@@ -2624,10 +2622,10 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_lista_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
-        let respuesta = dobles.client_with(None).get("/pedidos").send().await;
+        let respuesta = dobles.cliente_con(None).get("/pedidos").send().await;
 
         // Comprobar
         respuesta.assert_status(StatusCode::UNAUTHORIZED);
@@ -2636,11 +2634,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_actualiza_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .put(ruta_elemento())
             .body_json(&peticion_actualizar().to_json())
             .send()
@@ -2653,11 +2651,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_borra_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .delete(ruta_elemento())
             .send()
             .await;
@@ -3805,7 +3803,7 @@ mod tests {
     #[test]
     fn deberia_crear_producto_cuando_los_campos_son_validos() {
         let resultado = Producto::new(PropsProducto {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             sku: "example".to_string(),
             price: 42,
             status: Status::Draft,
@@ -3816,7 +3814,7 @@ mod tests {
     #[test]
     fn deberia_rechazar_producto_cuando_sku_es_una_cadena_vacia() {
         let resultado = Producto::new(PropsProducto {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             sku: "".into(),
             price: 42,
             status: Status::Draft,
@@ -3831,7 +3829,7 @@ mod tests {
     #[test]
     fn deberia_rechazar_producto_cuando_sku_solo_tiene_espacios() {
         let resultado = Producto::new(PropsProducto {
-            name: Name::new("example".to_string()).expect("valid Name"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             sku: "   ".into(),
             price: 42,
             status: Status::Draft,
@@ -3907,9 +3905,9 @@ impl MadreProducto {
 
     pub fn construir(self) -> Producto {
         Producto::new(PropsProducto {
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
             sku: self.sku.unwrap_or_else(|| "example".to_string()),
             price: self.price.unwrap_or(42),
             status: self.status.unwrap_or(Status::Draft),
@@ -3919,9 +3917,9 @@ impl MadreProducto {
 
     pub fn construir_props(self) -> PropsProducto {
         PropsProducto {
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
             sku: self.sku.unwrap_or_else(|| "example".to_string()),
             price: self.price.unwrap_or(42),
             status: self.status.unwrap_or(Status::Draft),
@@ -4138,7 +4136,7 @@ use crate::repositorio::RepositorioProductoPostgres;
 /// Una entidad producto válida, sin guardar.
 pub fn construir() -> Producto {
     Producto::new(PropsProducto {
-        name: Name::new("example".to_string()).expect("valid Name"),
+        name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
         sku: Uuid::new_v4().to_string(),
         price: 42,
         status: Status::Draft,
@@ -4280,7 +4278,7 @@ impl RepositorioProducto for RepositorioProductoPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::{construir, sembrar};
 
@@ -4529,11 +4527,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorProducto::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorProducto::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "producto.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "producto.validacion.nombre_vacio");
     }
 
     #[test]
@@ -4968,42 +4966,40 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearProducto,
-        get: MockObtenerProducto,
+        obtener: MockObtenerProducto,
         listar: MockListarProductos,
         actualizar: MockActualizarProducto,
         borrar: MockBorrarProducto,
         publish_producto: aplicacion_producto::publish_producto::dobles::MockPublishProducto,
     }
 
-    /// Acepta `caller` (con todos los roles que pide alguna ruta de esta API) y `nobody`
+    /// Acepta `llamante` (con todos los roles que pide alguna ruta de esta API) y `nadie`
     /// (sin roles).
     fn autenticador() -> Arc<dyn Autenticador> {
-        let mut authenticator = MockAutenticador::new();
-        authenticator
-            .expect_autenticar()
-            .returning(|token| match token {
-                "caller" => Ok(MadrePrincipal::new()
-                    .con_roles(["admin", "owner"])
-                    .construir()),
-                "nobody" => Ok(MadrePrincipal::aleatorio()),
-                _ => Err(ErrorAuth::Invalido),
-            });
-        Arc::new(authenticator)
+        let mut doble = MockAutenticador::new();
+        doble.expect_autenticar().returning(|token| match token {
+            "llamante" => Ok(MadrePrincipal::new()
+                .con_roles(["admin", "owner"])
+                .construir()),
+            "nadie" => Ok(MadrePrincipal::aleatorio()),
+            _ => Err(ErrorAuth::Invalido),
+        });
+        Arc::new(doble)
     }
 
-    impl Mocks {
-        /// Todas las peticiones, con sesión iniciada como `caller`.
+    impl Dobles {
+        /// Todas las peticiones, con sesión iniciada como `llamante`.
         fn cliente(self) -> TestClient<impl poem::Endpoint> {
-            self.client_with(Some("Bearer caller"))
+            self.cliente_con(Some("Bearer llamante"))
         }
 
-        /// `authorization`: la cabecera que envía cada petición; con `None` no se envía ninguna.
-        fn client_with(self, authorization: Option<&str>) -> TestClient<impl poem::Endpoint> {
+        /// `autorizacion`: la cabecera que envía cada petición; con `None` no se envía ninguna.
+        fn cliente_con(self, autorizacion: Option<&str>) -> TestClient<impl poem::Endpoint> {
             let api = ApiProducto {
                 crear_producto: Arc::new(self.crear),
-                obtener_producto: Arc::new(self.get),
+                obtener_producto: Arc::new(self.obtener),
                 listar_productos: Arc::new(self.listar),
                 actualizar_producto: Arc::new(self.actualizar),
                 borrar_producto: Arc::new(self.borrar),
@@ -5014,7 +5010,7 @@ mod tests {
                     .nest("/", OpenApiService::new(api, "test", "1.0"))
                     .data(autenticador()),
             );
-            match authorization {
+            match autorizacion {
                 Some(valor) => cliente.default_header("Authorization", valor),
                 None => cliente,
             }
@@ -5046,7 +5042,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -5067,7 +5063,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_producto_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -5088,9 +5084,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_producto_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreProducto::aleatorio()));
 
@@ -5104,9 +5100,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_producto_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorProducto::NoEncontrado));
 
@@ -5120,7 +5116,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_productos_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -5140,7 +5136,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -5161,7 +5157,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -5177,7 +5173,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -5198,7 +5194,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_producto_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -5219,7 +5215,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -5232,7 +5228,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_producto_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -5248,11 +5244,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_crea_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .post("/productos")
             .body_json(&peticion_crear().to_json())
             .send()
@@ -5265,11 +5261,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_403_cuando_se_crea_sin_el_rol() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(Some("Bearer nobody"))
+            .cliente_con(Some("Bearer nadie"))
             .post("/productos")
             .body_json(&peticion_crear().to_json())
             .send()
@@ -5289,11 +5285,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_actualiza_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .put(ruta_elemento())
             .body_json(&peticion_actualizar().to_json())
             .send()
@@ -5306,11 +5302,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_401_cuando_se_borra_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(None)
+            .cliente_con(None)
             .delete(ruta_elemento())
             .send()
             .await;
@@ -5322,11 +5318,11 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_403_cuando_se_borra_sin_el_rol() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Mocks::default();
+        let dobles = Dobles::default();
 
         // Actuar
         let respuesta = dobles
-            .client_with(Some("Bearer nobody"))
+            .cliente_con(Some("Bearer nadie"))
             .delete(ruta_elemento())
             .send()
             .await;
@@ -6429,7 +6425,7 @@ impl From<FilaUsuario> for Usuario {
     }
 }
 
-const COLUMNS: &str = "id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en";
+const COLUMNAS: &str = "id, emisor, sujeto, email, nombre, roles, creado_en, actualizado_en";
 
 #[async_trait]
 impl RepositorioUsuario for RepositorioUsuarioPostgres {
@@ -6439,7 +6435,7 @@ impl RepositorioUsuario for RepositorioUsuarioPostgres {
         sujeto: &str,
     ) -> Result<Option<Usuario>, ErrorRepositorio> {
         let fila = sqlx::query_as::<_, FilaUsuario>(&format!(
-            "SELECT {COLUMNS} FROM usuarios WHERE emisor = $1 AND sujeto = $2"
+            "SELECT {COLUMNAS} FROM usuarios WHERE emisor = $1 AND sujeto = $2"
         ))
         .bind(emisor)
         .bind(sujeto)
@@ -6455,7 +6451,7 @@ impl RepositorioUsuario for RepositorioUsuarioPostgres {
     async fn buscar_por_id(&self, id: IdUsuario) -> Result<Option<Usuario>, ErrorRepositorio> {
         tracing::debug!(%id, "buscar_por_id");
         let fila = sqlx::query_as::<_, FilaUsuario>(&format!(
-            "SELECT {COLUMNS} FROM usuarios WHERE id = $1"
+            "SELECT {COLUMNAS} FROM usuarios WHERE id = $1"
         ))
         .bind(id.valor())
         .fetch_optional(&self.pool)
@@ -6637,7 +6633,7 @@ pub fn a_respuesta_error(err: ErrorUsuario) -> (StatusCode, Json<RespuestaError>
 mod tests {
     use super::*;
 
-    fn mapped(err: ErrorUsuario) -> (StatusCode, String) {
+    fn mapear(err: ErrorUsuario) -> (StatusCode, String) {
         let (status, Json(cuerpo)) = a_respuesta_error(err);
         (status, cuerpo.codigo)
     }
@@ -6645,7 +6641,7 @@ mod tests {
     #[test]
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::Validacion(
+            mapear(ErrorUsuario::Validacion(
                 "contrasena_demasiado_corta".into()
             )),
             (
@@ -6658,7 +6654,7 @@ mod tests {
     #[test]
     fn deberia_mapear_credenciales_invalidas_a_401_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::CredencialesInvalidas),
+            mapear(ErrorUsuario::CredencialesInvalidas),
             (
                 StatusCode::UNAUTHORIZED,
                 "auth.credenciales_invalidas".into()
@@ -6669,7 +6665,7 @@ mod tests {
     #[test]
     fn deberia_mapear_no_encontrado_a_404_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::NoEncontrado),
+            mapear(ErrorUsuario::NoEncontrado),
             (StatusCode::NOT_FOUND, "usuario.no_encontrado".into())
         );
     }
@@ -6677,7 +6673,7 @@ mod tests {
     #[test]
     fn deberia_mapear_duplicado_a_409_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::Duplicado),
+            mapear(ErrorUsuario::Duplicado),
             (StatusCode::CONFLICT, "usuario.duplicado".into())
         );
     }
@@ -6685,7 +6681,7 @@ mod tests {
     #[test]
     fn deberia_mapear_repositorio_a_500_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::Repositorio),
+            mapear(ErrorUsuario::Repositorio),
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "usuario.repositorio".into()
@@ -6696,7 +6692,7 @@ mod tests {
     #[test]
     fn deberia_mapear_desconocido_a_500_con_su_codigo() {
         assert_eq!(
-            mapped(ErrorUsuario::Desconocido),
+            mapear(ErrorUsuario::Desconocido),
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "usuario.desconocido".into()
@@ -6858,9 +6854,9 @@ impl ApiAuth {
 
     /// Revoca la sesión con la que va firmada esta petición
     #[oai(path = "/auth/logout", method = "post", tag = "ApiTags::Auth")]
-    async fn logout(&self, _auth: BearerAuth, request: &Request) -> RespuestaLogout {
+    async fn logout(&self, _auth: BearerAuth, peticion: &Request) -> RespuestaLogout {
         // `BearerAuth` aceptó el token, así que la petición lleva uno.
-        let token = bearer_token(request).unwrap_or_default().to_string();
+        let token = bearer_token(peticion).unwrap_or_default().to_string();
         match self.logout.ejecutar(ParamsLogout { token }).await {
             Ok(()) => RespuestaLogout::SinContenido,
             Err(err) => {
@@ -7533,16 +7529,16 @@ mod tests {
         };
         let spec = servicio_openapi((api_producto, api_pedido, api_me, api_auth)).spec();
 
-        let path = std::path::Path::new(OPENAPI_JSON);
-        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
-            let dir = path
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
                 .parent()
                 .expect("docs/api/openapi.json tiene directorio padre");
-            std::fs::create_dir_all(dir).expect("crear docs/api");
-            std::fs::write(path, &spec).expect("escribir docs/api/openapi.json");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
             return;
         }
-        let en_disco = std::fs::read_to_string(path).expect("leer docs/api/openapi.json");
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
         assert!(
             en_disco == spec,
             "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
@@ -7846,7 +7842,7 @@ export interface PedidoProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {
@@ -7910,7 +7906,7 @@ export interface ProductoProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {

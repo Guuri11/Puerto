@@ -2617,8 +2617,8 @@ mod tests {
     #[test]
     fn deberia_crear_producto_cuando_los_campos_son_validos() {
         let resultado = Producto::new(PropsProducto {
-            name: Name::new("example".to_string()).expect("valid Name"),
-            sku: Sku::new("example".to_string()).expect("valid Sku"),
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
+            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
             price: 42,
             status: Status::Draft,
             tags: vec![],
@@ -2722,12 +2722,12 @@ impl MadreProducto {
 
     pub fn construir(self) -> Producto {
         Producto::new(PropsProducto {
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
-            sku: self
-                .sku
-                .unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
+            sku: self.sku.unwrap_or_else(|| {
+                Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo")
+            }),
             price: self.price.unwrap_or(42),
             status: self.status.unwrap_or(Status::Draft),
             tags: self.tags.unwrap_or_default(),
@@ -2739,12 +2739,12 @@ impl MadreProducto {
 
     pub fn construir_props(self) -> PropsProducto {
         PropsProducto {
-            name: self
-                .name
-                .unwrap_or_else(|| Name::new("example".to_string()).expect("valid Name")),
-            sku: self
-                .sku
-                .unwrap_or_else(|| Sku::new("example".to_string()).expect("valid Sku")),
+            name: self.name.unwrap_or_else(|| {
+                Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
+            }),
+            sku: self.sku.unwrap_or_else(|| {
+                Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo")
+            }),
             price: self.price.unwrap_or(42),
             status: self.status.unwrap_or(Status::Draft),
             tags: self.tags.unwrap_or_default(),
@@ -2883,7 +2883,7 @@ pub mod dobles {
     fn lock(grabado: &Mutex<Grabado>) -> MutexGuard<'_, Grabado> {
         grabado
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|envenenado| envenenado.into_inner())
     }
 
     struct UnitOfWorkGrabadora {
@@ -3116,8 +3116,8 @@ use crate::unit_of_work::UnitOfWorkFactoryProductoPostgres;
 /// Una entidad producto válida, sin guardar.
 pub fn construir() -> Producto {
     Producto::new(PropsProducto {
-        name: Name::new("example".to_string()).expect("valid Name"),
-        sku: Sku::new(Uuid::new_v4().to_string()).expect("valid Sku"),
+        name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
+        sku: Sku::new(Uuid::new_v4().to_string()).expect("Sku::new rechazó el valor de ejemplo"),
         price: 42,
         status: Status::Draft,
         tags: vec![],
@@ -3243,7 +3243,7 @@ impl RepositorioProducto for RepositorioProductoPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use crate::pruebas::siembra::{guardar, sembrar};
 
@@ -3408,7 +3408,7 @@ impl UnitOfWorkProducto for UnitOfWorkProductoPostgres {
 }
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
     use dominio_producto::{eventos::SnapshotProducto, repositorio::RepositorioProducto};
 
@@ -3429,7 +3429,7 @@ mod integration_tests {
         uow.commit().await
     }
 
-    async fn count(pool: &PgPool, sql: &str) -> i64 {
+    async fn contar(pool: &PgPool, sql: &str) -> i64 {
         sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
     }
 
@@ -3447,13 +3447,13 @@ mod integration_tests {
             .await
             .unwrap();
         assert!(encontrado.is_some());
-        let (event_type, aggregate_id): (String, uuid::Uuid) =
+        let (tipo_evento, id_agregado): (String, uuid::Uuid) =
             sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-        assert_eq!(event_type, "producto_creado");
-        assert_eq!(aggregate_id, entidad.id.valor());
+        assert_eq!(tipo_evento, "producto_creado");
+        assert_eq!(id_agregado, entidad.id.valor());
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -3476,8 +3476,8 @@ mod integration_tests {
         }
 
         // Comprobar
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM productos").await, 0);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM productos").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -3518,8 +3518,8 @@ mod integration_tests {
 
         // Comprobar
         assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM productos").await, 1);
-        assert_eq!(count(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM productos").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
 }
 
@@ -3664,11 +3664,11 @@ mod tests {
     fn deberia_mapear_validacion_a_422_con_su_codigo() {
         // Actuar
         let (status, Json(cuerpo)) =
-            a_respuesta_error(ErrorProducto::Validacion("name_vacio".into()));
+            a_respuesta_error(ErrorProducto::Validacion("nombre_vacio".into()));
 
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(cuerpo.codigo, "producto.validacion.name_vacio");
+        assert_eq!(cuerpo.codigo, "producto.validacion.nombre_vacio");
     }
 
     #[test]
@@ -4082,20 +4082,20 @@ mod tests {
     /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
     /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
     #[derive(Default)]
-    struct Mocks {
+    struct Dobles {
         crear: MockCrearProducto,
-        get: MockObtenerProducto,
+        obtener: MockObtenerProducto,
         listar: MockListarProductos,
         actualizar: MockActualizarProducto,
         borrar: MockBorrarProducto,
         publish_producto: aplicacion_producto::publish_producto::dobles::MockPublishProducto,
     }
 
-    impl Mocks {
+    impl Dobles {
         fn cliente(self) -> TestClient<Route> {
             let api = ApiProducto {
                 crear_producto: Arc::new(self.crear),
-                obtener_producto: Arc::new(self.get),
+                obtener_producto: Arc::new(self.obtener),
                 listar_productos: Arc::new(self.listar),
                 actualizar_producto: Arc::new(self.actualizar),
                 borrar_producto: Arc::new(self.borrar),
@@ -4136,7 +4136,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_201_cuando_se_crea_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -4157,7 +4157,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_422_cuando_producto_no_supera_la_validacion() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .crear
             .expect_ejecutar()
@@ -4178,9 +4178,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_producto_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Ok(MadreProducto::aleatorio()));
 
@@ -4194,9 +4194,9 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_producto_no_existe() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
-            .get
+            .obtener
             .expect_ejecutar()
             .returning(|_| Err(ErrorProducto::NoEncontrado));
 
@@ -4210,7 +4210,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_con_una_pagina_de_productos_cuando_se_listan() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -4230,7 +4230,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -4251,7 +4251,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .listar
             .expect_ejecutar()
@@ -4267,7 +4267,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_200_cuando_se_actualiza_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -4288,7 +4288,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_actualiza_producto_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .actualizar
             .expect_ejecutar()
@@ -4309,7 +4309,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_204_cuando_se_borra_producto() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
 
         // Actuar
@@ -4322,7 +4322,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_responder_404_cuando_se_borra_producto_inexistente() {
         // Preparar
-        let mut dobles = Mocks::default();
+        let mut dobles = Dobles::default();
         dobles
             .borrar
             .expect_ejecutar()
@@ -4839,16 +4839,16 @@ mod tests {
         };
         let spec = servicio_openapi((api_saludo, api_producto)).spec();
 
-        let path = std::path::Path::new(OPENAPI_JSON);
-        if std::env::var_os("UPDATE_OPENAPI").is_some() || !path.exists() {
-            let dir = path
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
                 .parent()
                 .expect("docs/api/openapi.json tiene directorio padre");
-            std::fs::create_dir_all(dir).expect("crear docs/api");
-            std::fs::write(path, &spec).expect("escribir docs/api/openapi.json");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
             return;
         }
-        let en_disco = std::fs::read_to_string(path).expect("leer docs/api/openapi.json");
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
         assert!(
             en_disco == spec,
             "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
@@ -5065,8 +5065,8 @@ pub mod notify_new_producto;
 //! eventos, añade valores que el snapshot no lleva.
 //!
 //! La entrega es al menos una vez: `enviar_una_vez` guarda una fila en `correos_enviados` por
-//! evento, así que un evento que se vuelve a entregar no envía el correo otra vez. Deja `MAIL` como
-//! está: renombrarlo vuelve a enviar todos los correos.
+//! evento, así que un evento que se vuelve a entregar no envía el correo otra vez. Deja `CORREO`
+//! como está: renombrarlo vuelve a enviar todos los correos.
 
 use std::sync::Arc;
 
@@ -5080,7 +5080,7 @@ use puerto_nucleo::eventos::{
 };
 
 /// La clave de este correo en `correos_enviados`.
-const MAIL: &str = "price_alert";
+const CORREO: &str = "price_alert";
 
 pub struct EnviarCorreoPriceAlert {
     pub enviador: Arc<dyn EnviadorCorreoPriceAlert>,
@@ -5111,7 +5111,7 @@ impl ManejadorEvento for EnviarCorreoPriceAlert {
         enviar_una_vez(
             self.correos_enviados.as_ref(),
             evento.id,
-            MAIL,
+            CORREO,
             self.enviador.enviar(&correo),
         )
         .await
@@ -5250,8 +5250,8 @@ mod tests {
 //! eventos, añade valores que el snapshot no lleva.
 //!
 //! La entrega es al menos una vez: `enviar_una_vez` guarda una fila en `correos_enviados` por
-//! evento, así que un evento que se vuelve a entregar no envía el correo otra vez. Deja `MAIL` como
-//! está: renombrarlo vuelve a enviar todos los correos.
+//! evento, así que un evento que se vuelve a entregar no envía el correo otra vez. Deja `CORREO`
+//! como está: renombrarlo vuelve a enviar todos los correos.
 
 use std::sync::Arc;
 
@@ -5265,7 +5265,7 @@ use puerto_nucleo::eventos::{
 };
 
 /// La clave de este correo en `correos_enviados`.
-const MAIL: &str = "producto_live";
+const CORREO: &str = "producto_live";
 
 pub struct EnviarCorreoProductoLive {
     pub enviador: Arc<dyn EnviadorCorreoProductoLive>,
@@ -5310,7 +5310,7 @@ impl ManejadorEvento for EnviarCorreoProductoLive {
         enviar_una_vez(
             self.correos_enviados.as_ref(),
             evento.id,
-            MAIL,
+            CORREO,
             self.enviador.enviar(&correo),
         )
         .await
@@ -5781,7 +5781,7 @@ export interface ProductoProblem {
 }
 
 /**
- * The messages for the codes of the backend's `errors.rs`, generated from the same list. English:
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
  * this file is the place to translate them. A code missing here shows as it is.
  */
 const TEXTS: Record<string, string> = {

@@ -799,7 +799,7 @@ pub const SNIPPETS_JSON: &str = r##"{
       "#[tokio::test]",
       "async fn deberia_responder_${1:200}_cuando_${2:entidad}_${3:se_publica}() {",
       "\t// Preparar",
-      "\tlet mut dobles = Mocks::default();",
+      "\tlet mut dobles = Dobles::default();",
       "\tdobles",
       "\t\t.${4:accion}",
       "\t\t.expect_ejecutar()",

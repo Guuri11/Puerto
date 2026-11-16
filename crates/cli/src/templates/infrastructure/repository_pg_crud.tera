@@ -116,7 +116,7 @@ impl Repositorio{{ pascal }} for Repositorio{{ pascal }}Postgres {
 {% endif %}}
 
 #[cfg(test)]
-mod integration_tests {
+mod pruebas_integracion {
     use super::*;
 {% set uniques = fields | filter(attribute="unique", value=true) %}    use crate::pruebas::siembra::{{ "{" }}{% if refs or (uniques and not events) %}construir, {% endif %}sembrar{% if events %}, guardar{% endif %}};
 {% if not events %}{% if update_vo_import %}    use {{ update_vo_import }};
