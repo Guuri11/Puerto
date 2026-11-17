@@ -245,6 +245,77 @@ Lo que añadió la Fase 20 (lo que encontró canasta); no hay un nombre anterior
 | DTO | `DtoProducto::from_dominio_publico(&entidad)` (los campos privados a `None`) |
 | SQL | el índice de un único compuesto: `<tabla>_<campo>_<campo>_key` |
 
+## Fase 22 — el frontend (decidido el 2026-11-17)
+
+`web/` pasa a castellano: estructura, nombres y textos. Mismas reglas que el backend (el concepto
+delante, sin tildes ni ñ en los identificadores, la jerga igual); en inglés también lo que imponen
+React, Vite, Bun y las librerías (el prefijo `use` de los hooks, `main.tsx`, `index.css`, `*.test.tsx`,
+los scripts de `package.json`, `happy-dom.ts`, `testing-library.ts`). Los textos que ve el usuario y
+los nombres de los tests son frases: con tildes.
+
+### Carpetas y ficheros
+
+| Hoy | Ahora |
+|---|---|
+| `api/`, `auth/` | igual (jerga) |
+| `features/<e>/` | `contextos/<e>/` (el mismo nombre que en el backend) |
+| `containers/`, `views/` | `contenedores/`, `vistas/` |
+| `pages/`, `shared/`, `shared/ui/`, `generated/`, `test-support/` | `paginas/`, `compartido/`, `compartido/ui/`, `generado/`, `pruebas/` |
+| `routes.tsx`, `dependencies.tsx` | `rutas.tsx`, `dependencias.tsx` |
+| `api/client.ts`, `api/schema.d.ts`, `api/http.ts` | `api/cliente.ts`, `api/esquema.d.ts`, `api/http.ts` |
+| `containers/producto-list-container.tsx` (`-detail-`, `-form-`) | `contenedores/lista-producto.tsx` (`detalle-`, `formulario-`) |
+| `views/producto-list-view.tsx` | `vistas/lista-producto.tsx` |
+| `messages.ts`, `shared/forms.ts`, `shared/use-async.ts` | `mensajes.ts`, `compartido/formularios.ts`, `compartido/use-carga.ts` |
+| `test-support/producto.ts`, `fake-api.ts`, `render.tsx`, `auth.ts` | `pruebas/producto.ts`, `api-falsa.ts`, `renderizar.tsx`, `auth.ts` |
+| `shared/ui/error-alert.tsx`, `field-error`, `confirm-dialog`, `empty-state`, `layout`, `pagination`, `reference-link`, `user-menu` | `compartido/ui/alerta-error.tsx`, `error-campo`, `dialogo-confirmar`, `sin-elementos`, `marco`, `paginacion`, `enlace-referencia`, `menu-usuario` |
+| `pages/home.tsx`, `not-found`, `login`, `register`, `auth-callback` | `paginas/inicio.tsx`, `no-encontrada`, `login`, `registro`, `auth-callback` |
+| `auth/session.ts`, `accounts`, `messages`, `auth.tsx`, `oidc-auth-gateway`, `local-auth-gateway`, `bearer-middleware` | `auth/sesion.ts`, `cuentas`, `mensajes`, `auth.tsx`, `pasarela-oidc`, `pasarela-local`, `middleware-bearer` |
+
+### Nombres
+
+| Hoy | Ahora |
+|---|---|
+| `ProductoListContainer`, `ProductoDetailContainer`, `ProductoFormContainer`, `ProductoForm` | `ContenedorListaProducto`, `ContenedorDetalleProducto`, `ContenedorFormularioProducto`, `FormularioProducto` |
+| `ProductoListView`, `ProductoDetailView`, `ProductoFormView` | `VistaListaProducto`, `VistaDetalleProducto`, `VistaFormularioProducto` |
+| `ProductoFormValues`, `ProductoFormOptions`, `toProductoForm`, `toProductoRequest` | `ValoresFormularioProducto`, `OpcionesFormularioProducto`, `aFormularioProducto`, `aPeticionProducto` |
+| `ProductoProblem`, `toProblem`, `TEXTS`, `FIELDS` | `ProblemaProducto`, `aProblema`, `TEXTOS`, `CAMPOS` |
+| `clienteLabel` (el detalle de una referencia) | `etiquetaCliente` |
+| `ApiClient`, `createApiClient`, `Schemas` | `ClienteApi`, `crearClienteApi`, `Esquemas` |
+| `ApiError`, `apiErrorCode`, `unwrap`, `PAGE_SIZE`, `MAX_PAGE_LIMIT` | `ErrorApi`, `codigoErrorApi`, `desenvolver`, `TAMANO_PAGINA`, `LIMITE_PAGINA_MAXIMO` |
+| `Dependencies`, `createDependencies`, `DependenciesProvider`, `useDependencies` | `Dependencias`, `crearDependencias`, `ProveedorDependencias`, `useDependencias` |
+| `AppRoutes`, `customRoutes`, `navEntries`, `NavEntry` | `RutasApp`, `rutasPropias`, `entradasMenu`, `EntradaMenu` |
+| `useAsync`, `AsyncState { status: "loading" \| "error" \| "ok", data, error }` | `useCarga`, `EstadoCarga { estado: "cargando" \| "error" \| "listo", datos, error }` |
+| `ErrorAlert`, `errorCode`, `FieldError`, `ConfirmDialog`, `EmptyState`, `Layout`, `Pagination`, `ReferenceLink` | `AlertaError`, `codigoError`, `ErrorCampo`, `DialogoConfirmar`, `SinElementos`, `Marco`, `Paginacion`, `EnlaceReferencia` |
+| `offsetFromSearch`, `pageSearch`, `HomePage`, `NotFoundPage` | `desplazamientoDeUrl`, `busquedaPagina`, `PaginaInicio`, `PaginaNoEncontrada` |
+| `textOf`, `optionalText`, `optionalNumber`, `optionalBoolean`, `optionalDateTime` | `textoDe`, `textoOpcional`, `numeroOpcional`, `booleanoOpcional`, `fechaHoraOpcional` |
+| `splitList`, `splitNumbers`, `formatEntries`, `parseEntries` | `separarLista`, `separarNumeros`, `formatearEntradas`, `leerEntradas` |
+| `toDateTimeLocal`, `fromDateTimeLocal`, `formatDateTime`, `ReferenceOption`, `referenceOptions` | `aFechaHoraLocal`, `deFechaHoraLocal`, `formatearFechaHora`, `OpcionReferencia`, `opcionesReferencia` |
+| `ProductoMother.request()`, `.random()`, `productoCollection` | `MadreProducto.peticion()`, `.aleatorio()`, `coleccionProducto` |
+| `fakeApi`, `collection`, `Collection { path, notFound, items }` | `apiFalsa`, `coleccion`, `Coleccion { ruta, noEncontrado, elementos }` |
+| `renderScreen`, `referencedBy`, `fillIn`, `choose`, `type` | `renderizarPantalla`, `referenciadosPor`, `rellenar`, `elegir`, `escribir` |
+| el sufijo de una variable que choca con una palabra reservada o un local (`caseItem`, `seriesList`) | `casoElemento`, `seriesLista` |
+| locales: `seeded`, `stored`, `failures`, `request`, `values`, `saving`, `failure`, `problem`, `existing`, `navigate`, `location`, `goTo`, `offset`, `query`, `confirming`, `remove`, `save`, `saved`, `found`, `target`, `owner`, `options`, `history`, `user`, `code`, `created`, `input` | `sembrado`, `guardados`, `fallos`, `peticion`, `valores`, `guardando`, `fallo`, `problema`, `existente`, `navegar`, `ubicacion`, `irA`, `desplazamiento`, `consulta`, `confirmando`, `borrar`, `guardar`, `guardado`, `encontrado`, `objetivo`, `dueno`, `opciones`, `historial`, `usuario`, `codigo`, `creado`, `campo` |
+| auth: `AuthGateway`, `CurrentUser`, `Accounts`, `Registration`, `AuthError`, `AuthProvider`, `RequireAuth`, `useAuth` | `PasarelaAuth`, `UsuarioActual`, `Cuentas`, `Registro`, `ErrorAuth`, `ProveedorAuth`, `RequiereAuth`, `useAuth` |
+| auth: `currentUser`, `accessToken`, `login`, `completeLogin`, `logout`, `refresh`, `can(role)`, `register`, `signIn` | `usuarioActual`, `tokenAcceso`, `login`, `completarLogin`, `logout`, `refrescar`, `puede(rol)`, `registrar`, `iniciarSesion` |
+| auth: `oidcAuthGateway`, `localAuthGateway`, `bearerMiddleware`, `OidcSettings`, `oidcSettingsFromEnv`, `TOKEN_KEY` | `pasarelaOidc`, `pasarelaLocal`, `middlewareBearer`, `AjustesOidc`, `ajustesOidcDeEntorno`, `CLAVE_TOKEN` |
+| auth: `CurrentUserMother`, `fakeAuthGateway`, `fakeAccounts`, `UserMenu`, `LoginPage`, `RegisterPage`, `AuthCallbackPage`, `nextPath`, `AccountProblem`, `toAccountProblem` | `MadreUsuarioActual`, `pasarelaAuthFalsa`, `cuentasFalsas`, `MenuUsuario`, `PaginaLogin`, `PaginaRegistro`, `PaginaAuthCallback`, `rutaSiguiente`, `ProblemaCuenta`, `aProblemaCuenta` |
+| reglas de dependency-cruiser | `vistas-solo-props`, `solo-generado-construye-el-cliente`, `solo-los-tests-importan-pruebas`, `sin-ciclos`, `solo-la-pasarela-importa-oidc-client-ts` |
+
+### Rutas y textos
+
+| Hoy | Ahora |
+|---|---|
+| `/productos/new`, `/productos/:id/edit`, `?page=2` | `/productos/nuevo`, `/productos/:id/editar`, `?pagina=2` |
+| `/register`, `/login?next=`, `/login`, `/auth/callback` | `/registro`, `/login?siguiente=`; `/login` y `/auth/callback` igual (el callback lo registra Keycloak) |
+| `New producto`, `Edit producto`, `Delete this producto?` | `Crear producto`, `Editar producto`, `¿Borrar producto?` (frases neutras: sin artículo ni adjetivo que concuerde, porque el género de la entidad no se sabe) |
+| `View`, `Edit`, `Delete`, `Save`, `Cancel`, `Yes`, `No`, `Previous`, `Next`, `1–20 of 45` | `Ver`, `Editar`, `Borrar`, `Guardar`, `Cancelar`, `Sí`, `No`, `Anterior`, `Siguiente`, `1–20 de 45` |
+| `Back to productos`, `No productos yet.`, `Choose a cliente` / `Choose…`, `None` | `Volver a productos`, `Todavía no hay productos.`, `Elige una opción`, `—` |
+| `Home`, `Page not found`, `key=value, one per line` | `Inicio`, `Página no encontrada`, `clave=valor, una por línea` |
+| mensajes: `Title is required`, `Sku is not valid`, `Cliente does not exist` | `Título: obligatorio`, `Sku: no válido`, `Cliente: no existe` (con dos puntos: concuerdan con cualquier campo) |
+| mensajes: `A producto with these values already exists`, `This producto no longer exists`, `… could not be saved, try again later`, `Something went wrong` | `Estos valores ya están en uso`, `Ya no existe`, `No se ha podido guardar; inténtalo más tarde`, `Algo ha ido mal` |
+| auth: `Sign in`, `Sign out`, `Create account`, `Create an account`, `Email`, `Password`, `Name`, `Wrong email or password`, `An account with this email already exists`, `This is not an email address` | `Iniciar sesión`, `Cerrar sesión`, `Crear cuenta`, `Crea una cuenta`, `Email`, `Contraseña`, `Nombre`, `Email o contraseña incorrectos`, `Ya hay una cuenta con este email`, `No es una dirección de email` |
+| tests: `should show … when …`, `// Arrange`, `// Act`, `// Assert` | `debería mostrar … cuando …`, `// Preparar`, `// Actuar`, `// Comprobar` |
+
 ## Pendiente
 
 Nada por ahora. Una palabra nueva se pregunta antes de usarla.

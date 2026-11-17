@@ -3353,3 +3353,35 @@ Desaparecen `domain/`, `application/`, `infrastructure/`, `presentation/` y `cor
 
 Las pantallas en castellano (la fase siguiente); pantallas para los casos de uso propios; declarar
 los enums en la especificación OpenAPI; TanStack Query.
+
+---
+
+## Fase 22 — El frontend en castellano (ADR-0024)
+
+**Estado:** en curso. La ADR-0024 dejó el frontend para su propia fase; el vocabulario lo decidió
+Sergio el 2026-11-17 (`docs/glosario.md` § Fase 22): estructura, nombres, rutas, textos y tests en
+castellano, con frases neutras donde el género de la entidad importaría, y las pantallas de una
+entidad en `web/src/contextos/<e>/` (el mismo nombre que el backend). Va en la 0.23, con la Fase 21.
+
+### 22.1 — Todo `web/` en castellano
+
+- `web/src/`: `api/` (`cliente.ts`, `esquema.d.ts`, `http.ts`), `contextos/<e>/` (`contenedores/`,
+  `vistas/`, `mensajes.ts`), `paginas/`, `compartido/` (`formularios.ts`, `use-carga.ts`, `ui/`),
+  `auth/`, `generado/`, `pruebas/`, `rutas.tsx`, `dependencias.tsx`. Por entidad:
+  `contenedores/{lista,detalle,formulario}-<k>.tsx` (+ tests), `vistas/{lista,detalle,formulario}-<k>.tsx`,
+  `pruebas/<k>.ts`.
+- Los nombres del glosario en el código (`ContenedorListaProducto`, `useDependencias().api`,
+  `desenvolver`, `apiFalsa`, `MadreProducto.peticion()`…), los comentarios, las reglas de
+  dependency-cruiser y los tests (`debería …`, `// Preparar` / `// Actuar` / `// Comprobar`).
+- Rutas: `/<plural>/nuevo`, `/<plural>/:id/editar`, `?pagina=`, `/registro`, `/login?siguiente=`.
+  `/auth/callback` no cambia: es la URI que tiene registrada el realm de Keycloak.
+- Textos de la interfaz en castellano y neutros (`Crear producto`, `¿Borrar producto?`,
+  `Título: obligatorio`, `Estos valores ya están en uso`); `<html lang="es">`.
+- Los snippets del frontend, `web/AGENTS.md` y la sección Frontend del `AGENTS.md` raíz.
+- Tests de la CLI: las rutas y los nombres nuevos; ningún fichero ni identificador del frontend en
+  inglés salvo los que el glosario deja igual; los snapshots; el compile matrix.
+
+### Fuera de alcance (Fase 22)
+
+La internacionalización (un catálogo de textos, varios idiomas); el género de una entidad en
+`puerto.toml`.
