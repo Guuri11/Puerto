@@ -1,0 +1,177 @@
+use async_trait::async_trait;
+use dominio_producto::errores::ErrorProducto;
+use dominio_producto::modelo::{Producto, PropsProducto};
+use dominio_producto::repositorio::RepositorioProducto;
+use puerto_nucleo::auth::Principal;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsCrearProducto {
+    /// Quien lo pide (ADR-0021). Una regla que depende de los datos ("solo edita el propietario")
+    /// se decide aquí, sobre él, y responde `Prohibido`.
+    pub actor: Principal,
+    pub nombre: String,
+    pub precio: i64,
+    pub sku: String,
+}
+
+#[async_trait]
+pub trait CrearProducto: Send + Sync {
+    async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CrearProducto {}
+
+        #[async_trait]
+        impl CrearProducto for CrearProducto {
+            async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto>;
+        }
+    }
+}
+
+pub struct CrearProductoImpl {
+    pub repositorio: Arc<dyn RepositorioProducto>,
+}
+
+#[async_trait]
+impl CrearProducto for CrearProductoImpl {
+    async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto> {
+        tracing::info!("crear_producto: inicio");
+        let entidad = Producto::new(PropsProducto {
+            nombre: params.nombre,
+            precio: params.precio,
+            sku: params.sku,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "crear_producto: rechazado"))?;
+        self.repositorio.guardar(&entidad).await.inspect_err(
+            |e| tracing::error!(error = %e, "crear_producto: fallo del repositorio"),
+        )?;
+        tracing::info!(id = %entidad.id, "crear_producto: fin");
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_producto::pruebas::madres::MadreProducto;
+    use dominio_producto::repositorio::dobles::MockRepositorioProducto;
+    use puerto_nucleo::ErrorRepositorio;
+    use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    #[tokio::test]
+    async fn deberia_crear_producto_cuando_los_campos_son_validos() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = CrearProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearProducto {
+                actor: MadrePrincipal::aleatorio(),
+                nombre: props.nombre,
+                precio: props.precio,
+                sku: props.sku,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().nombre,
+            MadreProducto::new().construir_props().nombre
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_guardar()
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
+        let caso_de_uso = CrearProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearProducto {
+                actor: MadrePrincipal::aleatorio(),
+                nombre: props.nombre,
+                precio: props.precio,
+                sku: props.sku,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "producto.duplicado");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_nombre_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+        let repositorio_doble = MockRepositorioProducto::new();
+        let caso_de_uso = CrearProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearProducto {
+                actor: MadrePrincipal::aleatorio(),
+                nombre: "".to_string(),
+                precio: props.precio,
+                sku: props.sku,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "producto.validacion.nombre_vacio"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+        let repositorio_doble = MockRepositorioProducto::new();
+        let caso_de_uso = CrearProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearProducto {
+                actor: MadrePrincipal::aleatorio(),
+                nombre: props.nombre,
+                precio: props.precio,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "producto.validacion.sku_vacio"
+        );
+    }
+}

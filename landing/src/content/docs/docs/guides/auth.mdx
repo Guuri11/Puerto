@@ -122,6 +122,26 @@ borrar_producto = ["admin"]
 `puerto validar` checks that `rutas.rs` still says the same as the manifest. Change both
 together.
 
+## Private fields
+
+A public route answers everyone, so a player's email in a public list is everyone's. Mark it
+private:
+
+```bash
+puerto generar scaffold Jugador \
+  --publico listar_jugadores,obtener_jugador \
+  --privado email \
+  -- nombre:String email:String dorsal:i64
+```
+
+The field is optional in `DtoJugador`. A public route that answers the entity takes
+`auth: BearerAuthOpcional`: a caller with a session gets the whole entity, a caller without one
+gets `DtoJugador::from_dominio_publico`, without the field. `BearerAuthOpcional` never answers
+`401`: no token, a token the authenticator rejects or one it cannot check all mean no caller.
+Protected routes answer the whole entity, as their caller always has a session. Private fields
+are text (`String`, `Option<String>`, or a value object over one); the flag lands in
+`[[entidad.campos]] privado = true`.
+
 ## Rules that depend on data
 
 "Only the owner can edit it" is not an attribute: it depends on the row. Protected use cases

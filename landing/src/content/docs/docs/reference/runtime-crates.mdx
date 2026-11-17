@@ -12,7 +12,7 @@ adapters. Their API is in Spanish, like the code that calls it.
 | Crate | Owns | Used by | Present when |
 |---|---|---|---|
 | [`puerto-nucleo`](https://docs.rs/puerto-nucleo) | `ErrorRepositorio`, `PeticionPagina` / `Pagina<T>`; the event envelope (`SobreEvento`), `ManejadorEvento`, the delivery policy and the transport ports; the mail ports (`Correo`, `EnviadorCorreo`, `CorreosEnviados`); the auth port (`Autenticador`) and `Principal` | every crate, the domain included: no driver, no runtime, no I/O | always |
-| [`puerto-web`](https://docs.rs/puerto-web) | the server (`App`), `Config`, CORS, health probes, graceful shutdown, `RespuestaError`, `BearerAuth`, `#[requiere_rol]` | the `rest_<c>` crates and `api` | always |
+| [`puerto-web`](https://docs.rs/puerto-web) | the server (`App`), `Config`, CORS, health probes, graceful shutdown, `RespuestaError`, `BearerAuth`, `BearerAuthOpcional`, `#[requiere_rol]` | the `rest_<c>` crates and `api` | always |
 | [`puerto-sqlx`](https://docs.rs/puerto-sqlx) | the pool, migrations at startup, the readiness ping, `mapear_error_sqlx`; the unit of work, outbox and `db` transport; the sent-mail log; local sessions and credentials | the `infra_<c>` crates and the binaries | `--db` |
 | [`puerto-eventos`](https://docs.rs/puerto-eventos) | the worker: the outbox relay, the consume loops, their health probes and shutdown | `worker` | `--eventos` |
 | [`puerto-kafka`](https://docs.rs/puerto-kafka) | the Kafka publisher and subscription | `worker` | `--eventos kafka` |

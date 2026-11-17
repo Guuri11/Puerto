@@ -1,0 +1,32 @@
+//! Las filas que necesitan los tests de Postgres —una entidad producto válida y otra guardada—,
+//! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
+//! Puerto).
+use dominio_producto::modelo::Producto;
+use dominio_producto::modelo::PropsProducto;
+use dominio_producto::pruebas::madres::MadreProducto;
+use dominio_producto::repositorio::RepositorioProducto;
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use crate::repositorio::RepositorioProductoPostgres;
+
+/// Una entidad producto válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
+pub fn construir() -> Producto {
+    Producto::new(PropsProducto {
+        sku: Uuid::new_v4().to_string(),
+        ..MadreProducto::new().construir_props()
+    })
+    .unwrap()
+}
+
+/// Una entidad producto guardada.
+pub async fn sembrar(pool: &PgPool) -> Producto {
+    let entidad = construir();
+    RepositorioProductoPostgres::new(pool.clone())
+        .guardar(&entidad)
+        .await
+        .unwrap();
+    entidad
+}

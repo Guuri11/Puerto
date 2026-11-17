@@ -1,5 +1,5 @@
 {
-  "version": "0.21.0",
+  "version": "0.22.0",
   "file": "contextos/producto/aplicacion/src/publicar_producto.rs",
   "code": "async fn ejecutar(&self, params: ParamsPublicarProducto) -> Result<Producto, ErrorProducto> {\n    tracing::info!(id = %params.id, \"publicar_producto: inicio\");\n    let mut producto = self\n        .repositorio\n        .buscar_por_id(params.id)\n        .await?\n        .ok_or(ErrorProducto::NoEncontrado)?;\n    producto.actualizado_en = chrono::Utc::now();\n    self.repositorio.guardar(&producto).await?;\n    Ok(producto)\n}",
   "error": "error[E0599]: no method named `guardar` found for struct `Arc<(dyn RepositorioProducto + 'static)>` in the current scope\n  --> contextos/producto/aplicacion/src/publicar_producto.rs:51:26\n   |\n51 |         self.repositorio.guardar(&producto).await?;\n   |                          ^^^^^^^ method not found in `Arc<(dyn RepositorioProducto + 'static)>`\n\nFor more information about this error, try `rustc --explain E0599`.\nerror: could not compile `aplicacion_producto` (lib) due to 1 previous error"

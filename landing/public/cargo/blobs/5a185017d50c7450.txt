@@ -1,0 +1,24 @@
+//! Las filas que necesitan los tests de Postgres —una entidad pedido válida y otra guardada—,
+//! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
+//! Puerto).
+use dominio_pedido::modelo::Pedido;
+use dominio_pedido::pruebas::madres::MadrePedido;
+use dominio_pedido::repositorio::RepositorioPedido;
+use sqlx::PgPool;
+
+use crate::repositorio::RepositorioPedidoPostgres;
+
+/// Una entidad pedido válida, sin guardar, con los valores de la madre.
+pub fn construir() -> Pedido {
+    MadrePedido::aleatorio()
+}
+
+/// Una entidad pedido guardada.
+pub async fn sembrar(pool: &PgPool) -> Pedido {
+    let entidad = construir();
+    RepositorioPedidoPostgres::new(pool.clone())
+        .guardar(&entidad)
+        .await
+        .unwrap();
+    entidad
+}

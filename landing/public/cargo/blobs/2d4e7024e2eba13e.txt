@@ -1,0 +1,142 @@
+use async_trait::async_trait;
+use dominio_pedido::errores::ErrorPedido;
+use dominio_pedido::modelo::{IdPedido, Pedido, PropsPedido};
+use dominio_pedido::repositorio::RepositorioPedido;
+use dominio_pedido::valores::{Estado, Importe};
+use puerto_nucleo::auth::Principal;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsActualizarPedido {
+    /// Quien lo pide (ADR-0021). Una regla que depende de los datos ("solo edita el propietario")
+    /// se decide aquí, sobre él, y responde `Prohibido`.
+    pub actor: Principal,
+    pub id: IdPedido,
+    pub importe: f64,
+    pub estado: String,
+    pub nota: Option<String>,
+}
+
+#[async_trait]
+pub trait ActualizarPedido: Send + Sync {
+    async fn ejecutar(&self, params: ParamsActualizarPedido) -> Result<Pedido, ErrorPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ActualizarPedido {}
+
+        #[async_trait]
+        impl ActualizarPedido for ActualizarPedido {
+            async fn ejecutar(&self, params: ParamsActualizarPedido) -> Result<Pedido, ErrorPedido>;
+        }
+    }
+}
+
+pub struct ActualizarPedidoImpl {
+    pub repositorio: Arc<dyn RepositorioPedido>,
+}
+
+#[async_trait]
+impl ActualizarPedido for ActualizarPedidoImpl {
+    async fn ejecutar(&self, params: ParamsActualizarPedido) -> Result<Pedido, ErrorPedido> {
+        tracing::info!(id = %params.id, "actualizar_pedido: inicio");
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await
+            .inspect_err(
+                |e| tracing::error!(error = %e, "actualizar_pedido: fallo del repositorio"),
+            )?
+            .ok_or_else(|| {
+                let err = ErrorPedido::NoEncontrado;
+                tracing::warn!(error = %err, "actualizar_pedido: rechazado");
+                err
+            })?;
+        let importe = Importe::new(params.importe)?;
+        let estado = params.estado.parse::<Estado>()?;
+        entidad
+            .actualizar(PropsPedido {
+                importe,
+                estado,
+                nota: params.nota,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_pedido: rechazado"))?;
+        self.repositorio.guardar(&entidad).await.inspect_err(
+            |e| tracing::error!(error = %e, "actualizar_pedido: fallo del repositorio"),
+        )?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_pedido::{
+        modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
+    };
+    use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    #[tokio::test]
+    async fn deberia_actualizar_pedido_cuando_los_parametros_son_validos() {
+        // Preparar
+        let props = MadrePedido::new().construir_props();
+        let entidad = MadrePedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = ActualizarPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarPedido {
+                actor: MadrePrincipal::aleatorio(),
+                id: id_entidad,
+                importe: props.importe.valor(),
+                estado: props.estado.as_str().to_string(),
+                nota: props.nota,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_pedido_no_existe() {
+        // Preparar
+        let props = MadrePedido::new().construir_props();
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Ok(None));
+        let caso_de_uso = ActualizarPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarPedido {
+                actor: MadrePrincipal::aleatorio(),
+                id: IdPedido::generar(),
+                importe: props.importe.valor(),
+                estado: props.estado.as_str().to_string(),
+                nota: props.nota,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "pedido.no_encontrado");
+    }
+}

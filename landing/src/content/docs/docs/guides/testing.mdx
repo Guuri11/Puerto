@@ -80,6 +80,13 @@ let props = MadreProducto::new().con_nombre_vacio().construir_props();
 ```
 
 Every field has `.con_<campo>(valor)`, and required `String` fields also `.con_<campo>_vacio()`.
+
+The mother is also where the generated tests get their valid values: the model's, the use
+cases' (`let props = MadreProducto::new().construir_props();`, then the params from `props`) and
+the repositories'. A rule that rejects a default, `puntos <= 100` against a `puntos` of `42`,
+is fixed in one place: the default in the mother. Repository seeds keep their own value only
+where a stored row needs one: a fresh value per unique field, and a whole-second timestamp
+Postgres stores exactly.
 Mothers are behind the same `pruebas` feature as the doubles
 (`dominio_producto::pruebas::madres::MadreProducto`), so route tests and worker tests build return
 values with them instead of a second set of fixtures. The frontend has its own

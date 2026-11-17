@@ -1,0 +1,182 @@
+use async_trait::async_trait;
+use dominio_pedido::errores::ErrorPedido;
+use dominio_pedido::eventos::{EventoPedido, SnapshotPedido};
+use dominio_pedido::modelo::{Pedido, PropsPedido};
+use dominio_pedido::unit_of_work::UnitOfWorkFactoryPedido;
+use dominio_pedido::valores::{Estado, Importe};
+use puerto_nucleo::ErrorRepositorio;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsCrearPedido {
+    pub importe: f64,
+    pub estado: String,
+    pub nota: Option<String>,
+}
+
+#[async_trait]
+pub trait CrearPedido: Send + Sync {
+    async fn ejecutar(&self, params: ParamsCrearPedido) -> Result<Pedido, ErrorPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CrearPedido {}
+
+        #[async_trait]
+        impl CrearPedido for CrearPedido {
+            async fn ejecutar(&self, params: ParamsCrearPedido) -> Result<Pedido, ErrorPedido>;
+        }
+    }
+}
+
+pub struct CrearPedidoImpl {
+    pub uow_factory: Arc<dyn UnitOfWorkFactoryPedido>,
+}
+
+#[async_trait]
+impl CrearPedido for CrearPedidoImpl {
+    async fn ejecutar(&self, params: ParamsCrearPedido) -> Result<Pedido, ErrorPedido> {
+        tracing::info!("crear_pedido: inicio");
+        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "crear_pedido: fallo del repositorio");
+        let importe = Importe::new(params.importe)?;
+        let estado = params.estado.parse::<Estado>()?;
+        let entidad = Pedido::new(PropsPedido {
+            importe,
+            estado,
+            nota: params.nota,
+        })
+        .inspect_err(|e| tracing::warn!(error = %e, "crear_pedido: rechazado"))?;
+        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
+        uow.guardar(&entidad).await.inspect_err(fallido)?;
+        uow.registrar(EventoPedido::Creado(SnapshotPedido::from_entidad(&entidad)))
+            .await
+            .inspect_err(fallido)?;
+        uow.commit().await.inspect_err(fallido)?;
+        tracing::info!(id = %entidad.id, "crear_pedido: fin");
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_pedido::pruebas::madres::MadrePedido;
+    use dominio_pedido::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
+    use puerto_nucleo::EventoDominio;
+
+    #[tokio::test]
+    async fn deberia_registrar_el_evento_pedido_creado_cuando_los_campos_son_validos() {
+        // Preparar
+        let props = MadrePedido::new().construir_props();
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+        let caso_de_uso = CrearPedidoImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearPedido {
+                importe: props.importe.valor(),
+                estado: props.estado.as_str().to_string(),
+                nota: props.nota,
+            })
+            .await;
+
+        // Comprobar
+        let entidad = match resultado {
+            Ok(entidad) => entidad,
+            Err(e) => panic!("la creación falló: {e}"),
+        };
+        assert_eq!(entidad.estado, MadrePedido::new().construir_props().estado);
+        let grabado = uow_factory.grabado();
+        assert!(grabado.confirmado);
+        assert_eq!(grabado.guardados.len(), 1);
+        assert_eq!(grabado.eventos.len(), 1);
+        assert_eq!(grabado.eventos[0].tipo_evento(), "pedido_creado");
+        assert_eq!(grabado.eventos[0].id_agregado(), entidad.id.valor());
+    }
+
+    #[tokio::test]
+    async fn no_deberia_hacer_commit_cuando_el_almacen_rechaza_un_duplicado() {
+        // Preparar
+        let props = MadrePedido::new().construir_props();
+        let uow_factory =
+            UnitOfWorkFactoryGrabadora::fallando_en(FallarEn::Guardar, ErrorRepositorio::Duplicado);
+        let caso_de_uso = CrearPedidoImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearPedido {
+                importe: props.importe.valor(),
+                estado: props.estado.as_str().to_string(),
+                nota: props.nota,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "pedido.duplicado");
+        let grabado = uow_factory.grabado();
+        assert!(!grabado.confirmado);
+        assert!(grabado.eventos.is_empty());
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_de_repositorio_cuando_falla_el_commit() {
+        // Preparar
+        let props = MadrePedido::new().construir_props();
+        let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
+            FallarEn::Commit,
+            ErrorRepositorio::NoDisponible,
+        );
+        let caso_de_uso = CrearPedidoImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearPedido {
+                importe: props.importe.valor(),
+                estado: props.estado.as_str().to_string(),
+                nota: props.nota,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "pedido.repositorio");
+        assert!(!uow_factory.grabado().confirmado);
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_sin_registrar_nada_cuando_estado_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadrePedido::new().construir_props();
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+        let caso_de_uso = CrearPedidoImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearPedido {
+                importe: props.importe.valor(),
+                estado: "".to_string(),
+                nota: props.nota,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "pedido.estado_invalido");
+        assert!(uow_factory.grabado().guardados.is_empty());
+    }
+}

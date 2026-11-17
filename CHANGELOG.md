@@ -1,3 +1,68 @@
+## [0.22.0] - 2026-11-17
+
+What a basketball league built with Puerto found missing (PLAN Phase 20).
+
+### Added
+
+- **Uniques over several fields**: `--unico jugador_id,partido_id` (repeatable) in `generar scaffold`
+  and `generar dominio`, `[[entidad]] unicos` in `puerto.toml`. A partial unique index per group
+  (`<tabla>_<a>_<b>_key … WHERE borrado = false`) in the create-table migration; the in-memory
+  repository answers `Duplicado` too. Each group gets its tests, in memory and against Postgres.
+- **The order of a list**: `--orden=-puntos,nombre` (`-` for descending), `[[entidad]] orden`.
+  Postgres lists `ORDER BY puntos DESC, nombre, creado_en DESC, id`; the in-memory repository
+  sorts the same way. Without it, the newest first, as before.
+- **Private fields** (auth projects): `--privado email[,…]`, `[[entidad.campos]] privado = true`,
+  text fields only. The field is optional in `Dto<Entidad>`; a public route that answers the entity
+  takes `auth: BearerAuthOpcional` and gives a caller without a session
+  `Dto<Entidad>::from_dominio_publico`, without the field. Route tests cover both callers.
+- **`puerto-web`**: `BearerAuthOpcional(pub Option<Principal>)` — the caller when the token is
+  valid, `None` otherwise, never a `401`. The spec lists the bearer scheme and anonymous access.
+- **The model's rules in one place**: `Entidad::actualizar(props)` runs the same `validar(props)`
+  as `new`, and `actualizar_<entidad>` calls it instead of repeating the empty-string checks and
+  assigning the fields itself.
+- **Consumers get their dependencies**: each consumer's file has
+  `construir(pool: &PgPool) -> Self`, which `generado/registro.rs` calls (both transports).
+  `cableado::<contexto>::construir(pool)` gives a context's use cases once the worker depends on
+  `cableado`.
+
+### Changed
+
+- The generated tests take their valid values from the Object Mother: the model's, the use
+  cases' and the repositories'. A rule that rejects a default is fixed by changing the default in
+  the mother, not dozens of `42`s. Repository seeds still set a fresh value per unique field and a
+  whole-second timestamp.
+- The web detail screen names a reference by its target's label (as the form's `<select>` does)
+  instead of its UUID. `ReferenceLink` takes a `load`, built with `labelOf(repository, label)`.
+- The root `AGENTS.md` of every project says the routes are served under `/api`.
+
+### Fixed
+
+- `puerto nuevo --sin-demo` wrote `entidad = []` above `[proyecto]`.
+
+### Breaking
+
+- `generado/registro.rs` builds each consumer with `<Consumidor>::construir(&pool)`: a consumer
+  written with 0.21 does not compile until it has one.
+
+### Migration Guide
+
+Bump the runtime crates to `0.22` and run `puerto generar bootstrap`. Then give each consumer in
+`presentacion/worker/src/consumidores/` the function the registry now calls:
+
+```rust
+use sqlx::PgPool;
+
+impl AvisarProductoNuevo {
+    pub fn construir(_pool: &PgPool) -> Self {
+        Self
+    }
+}
+```
+
+and add `sqlx = { workspace = true }` to `presentacion/worker/Cargo.toml`. Everything else is
+additive: re-scaffolding an entity with `--forzar` picks up `actualizar` / `validar` and the
+tests that take their values from the mother.
+
 ## [0.21.0] - 2026-11-16
 
 One crate per context and layer, and everything Puerto generates in Spanish (PLAN Phase 19,

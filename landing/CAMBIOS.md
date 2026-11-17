@@ -2,6 +2,17 @@
 
 Log de modificaciones. Lo más reciente arriba.
 
+## 2026-11-17 — Puerto 0.22: lo que encontró canasta
+
+- *Entities*: las reglas del modelo viven en `validar` (la llaman `new` y `actualizar`), y una
+  sección nueva para `--unico` (único sobre varios campos) y `--orden` (el orden de la lista).
+- *Auth*: una sección de campos privados (`--privado`, `BearerAuthOpcional`).
+- *Domain events*: un paso nuevo, el `construir(pool)` de cada consumidor y `cableado`.
+- *Testing*: la madre como fuente de los valores de los tests generados.
+- *Web*: el detalle nombra una referencia por la etiqueta de su objetivo.
+- Referencias de `puerto.toml` (`unicos`, `orden`, `privado`) y de los crates del runtime.
+- `make site/data`: la cosecha y la captura del compilador de la 0.22.
+
 ## 2026-11-16 — Puerto 0.21: un crate por contexto, lo generado en castellano
 
 - La cosecha (`harvest.mjs`) y la captura del compilador (`capture-compiler.mjs`) usan el CLI en

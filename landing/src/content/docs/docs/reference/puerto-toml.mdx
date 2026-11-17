@@ -130,6 +130,8 @@ tras = ["cliente_creado"]
 | `publicos` | string[] | `scaffold --publico` | Auth projects: use cases whose routes need no token |
 | `roles` | table | `scaffold --rol` | Auth projects: `caso_de_uso = ["rol", …]`; the caller needs all of them |
 | `eventos` | string[] | `generar evento` | Custom event types, beyond `_creado`, `_actualizado`, `_borrado` |
+| `unicos` | string[][] | `scaffold --unico`, `dominio --unico` | Uniques over several fields: one partial unique index each, checked by the in-memory repository too |
+| `orden` | string[] | `scaffold --orden`, `dominio --orden` | The list's order: own fields, `-` for descending; then the newest first |
 
 ## `[[entidad.campos]]`
 
@@ -138,6 +140,7 @@ tras = ["cliente_creado"]
 | `nombre` | string | snake_case |
 | `tipo` | string | `String`, `i64`, `f64`, `bool`, `Uuid`, `DateTime<Utc>`, `HashMap<String, String>`, or `Option<…>` / `Vec<…>` of them. See [Field types](/docs/reference/field-types/) |
 | `unico` | bool | A partial unique index, and `409` on a duplicate |
+| `privado` | bool | Auth projects, text fields: public routes give it only to a caller with a session (`scaffold --privado`) |
 | `objeto_valor` | string | The value object wrapping it, local or shared |
 | `clase_objeto_valor` | `"enum"` | An enum value object; `tipo` is then `String` |
 | `variantes` | string[] | Its PascalCase variants |
@@ -168,5 +171,6 @@ Written by `generar correo`: `nombre`, and `tras` when the worker sends it after
   has its files; in web projects, every CRUD entity has its screens; in auth projects, each
   route's `BearerAuth` and `#[requiere_rol]` match `publicos` and `roles`; every `referencia`
   names another declared CRUD entity, is a `Uuid` or `Option<Uuid>`, and closes no cycle between
-  contexts.
+  contexts; every `unicos` group and `orden` key names plain, required fields of the entity;
+  `privado` only on text fields of an auth project.
 - The runtime: a warning for each `puerto-*` crate on another minor than the CLI.

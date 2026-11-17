@@ -1,0 +1,124 @@
+use async_trait::async_trait;
+use dominio_pedido::errores::ErrorPedido;
+use dominio_pedido::modelo::Pedido;
+use dominio_pedido::repositorio::RepositorioPedido;
+use puerto_nucleo::{Pagina, PeticionPagina};
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsListarPedidos {
+    pub pagina: PeticionPagina,
+}
+
+#[async_trait]
+pub trait ListarPedidos: Send + Sync {
+    async fn ejecutar(&self, params: ParamsListarPedidos) -> Result<Pagina<Pedido>, ErrorPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListarPedidos {}
+
+        #[async_trait]
+        impl ListarPedidos for ListarPedidos {
+            async fn ejecutar(&self, params: ParamsListarPedidos) -> Result<Pagina<Pedido>, ErrorPedido>;
+        }
+    }
+}
+
+pub struct ListarPedidosImpl {
+    pub repositorio: Arc<dyn RepositorioPedido>,
+}
+
+#[async_trait]
+impl ListarPedidos for ListarPedidosImpl {
+    async fn ejecutar(&self, params: ParamsListarPedidos) -> Result<Pagina<Pedido>, ErrorPedido> {
+        tracing::info!(
+            limite = params.pagina.limite(),
+            desplazamiento = params.pagina.desplazamiento(),
+            "listar_pedidos: inicio"
+        );
+        self.repositorio
+            .buscar_todos(params.pagina)
+            .await
+            .inspect_err(|e| tracing::error!(error = %e, "listar_pedidos: fallo del repositorio"))
+            .map_err(ErrorPedido::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_pedido::{
+        pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
+    };
+    use puerto_nucleo::PeticionPagina;
+
+    #[tokio::test]
+    async fn deberia_devolver_la_pagina_de_pedidos() {
+        let entidades = MadrePedido::aleatorios(2);
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .returning(move |pagina| Ok(Pagina::new(entidades.clone(), 2, pagina)));
+        let caso_de_uso = ListarPedidosImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarPedidos {
+                pagina: PeticionPagina::default(),
+            })
+            .await;
+
+        let pagina = resultado.unwrap();
+        assert_eq!(pagina.elementos.len(), 2);
+        assert_eq!(pagina.total, 2);
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_una_pagina_vacia_cuando_no_hay_pedidos() {
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .returning(|pagina| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = ListarPedidosImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarPedidos {
+                pagina: PeticionPagina::default(),
+            })
+            .await;
+
+        let pagina = resultado.unwrap();
+        assert!(pagina.elementos.is_empty());
+        assert_eq!(pagina.total, 0);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_al_repositorio_la_pagina_pedida() {
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .withf(|pagina| pagina.limite() == 5 && pagina.desplazamiento() == 10)
+            .returning(|pagina| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = ListarPedidosImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarPedidos {
+                pagina: PeticionPagina::new(Some(5), Some(10)),
+            })
+            .await;
+
+        assert_eq!(resultado.unwrap().desplazamiento, 10);
+    }
+}

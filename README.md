@@ -146,7 +146,7 @@ Scaffold entities with typed fields — the type system flows from `puerto.toml`
 puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
 ```
 
-This creates a `Producto` entity with custom fields in `puerto.toml`, and generates typed structs in every layer (domain model, DTOs, repository rows, SQL migrations). Supported types include `String`, `i64`, `bool`, `f64`, `Uuid`, `DateTime<Utc>`, `Option<T>`, `Vec<T>`, and `HashMap<String, String>`. Append `!` to mark a field as unique (e.g., `sku:String!`).
+This creates a `Producto` entity with custom fields in `puerto.toml`, and generates typed structs in every layer (domain model, DTOs, repository rows, SQL migrations). Supported types include `String`, `i64`, `bool`, `f64`, `Uuid`, `DateTime<Utc>`, `Option<T>`, `Vec<T>`, and `HashMap<String, String>`. Append `!` to mark a field as unique (e.g., `sku:String!`); `--unico jugador_id,partido_id` makes a unique over several fields, and `--orden=-puntos,nombre` sets the order of the list.
 
 ### Value Objects
 
@@ -196,7 +196,8 @@ make worker                                      # relays the outbox, runs the c
 Each CRUD entity gets a generated `eventos.rs` (`EventoProducto::Creado(SnapshotProducto)`, …) and
 a unit of work; its repository only reads, so a write that skips the outbox does not compile. A
 second binary, `presentacion/worker/`, relays the outbox and runs the consumers: each is a
-`ManejadorEvento` that answers `Ack`, `Reintentar` (redelivered with backoff) or `Descartar` —
+`ManejadorEvento`, built once with the database pool (`construir(pool)`, where it takes the use
+cases it calls), that answers `Ack`, `Reintentar` (redelivered with backoff) or `Descartar` —
 nothing is dropped without a row in `descartados` (`make eventos/descartados`). Delivery is
 at-least-once, so handlers must be idempotent. The `db` transport needs no broker. On Kafka
 (`--eventos kafka`) the worker publishes each event to its aggregate's topic, keyed by the
@@ -233,7 +234,8 @@ runs in `docker-compose.yml` for development); `--auth local` (with `--db`) keep
 sessions in the project's database, with `POST /auth/registro`, `/auth/login` and `/auth/logout`
 ([ADR-0021](docs/adr/0021-auth-one-authenticator-port-oidc-or-local.md)). Routes need a token by
 default; `scaffold --publico listar_productos` opens one, `--rol borrar_producto=admin` adds
-`#[requiere_rol("admin")]` to its handler.
+`#[requiere_rol("admin")]` to its handler, and `--privado email` keeps a field out of what a public
+route answers a caller without a session.
 
 Validate your `puerto.toml` at any time:
 

@@ -256,12 +256,34 @@ ErrorRepositorio::Duplicado)` fails at the step you name; a rejected write leave
    Answer `ResultadoManejo::Ack` when done, `Reintentar` for a failure that may pass (a timeout,
    a service that is down), and `ResultadoManejo::descartar(…)` for one that never will.
 
-3. **Make it idempotent.** Delivery is **at least once**: after a crash or a redeploy the same
+3. **Give it what it needs.** The worker builds each consumer once, with its database pool, through
+   the `construir` in the consumer's own file. Keep what it needs in the struct's fields:
+
+   ```rust title="presentacion/worker/src/consumidores/actualizar_clasificacion.rs (excerpt)"
+   pub struct ActualizarClasificacion {
+       recalcular: Arc<dyn RecalcularClasificacion>,
+   }
+
+   impl ActualizarClasificacion {
+       pub fn construir(pool: &PgPool) -> Self {
+           Self {
+               recalcular: cableado::clasificacion::construir(pool).recalcular_clasificacion,
+           }
+       }
+   }
+   ```
+
+   `cableado::<context>::construir(pool)` gives a context's use cases, the ones the API serves.
+   Add `cableado = { workspace = true }` to `presentacion/worker/Cargo.toml` the first time; the
+   stub does not depend on it, so a project without such a consumer gets no unused-dependency
+   warning. Tests build the struct with the use case's double instead.
+
+4. **Make it idempotent.** Delivery is **at least once**: after a crash or a redeploy the same
    event can arrive twice, with the same `evento.id`. Check whether the work was already done,
    keyed on `evento.id`, before doing it again. The generated tests deliver the same envelope
    twice for that reason.
 
-4. **Run the worker.**
+5. **Run the worker.**
 
    ```bash
    make worker      # relays the outbox, runs the consumers; health on :8081
