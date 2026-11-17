@@ -51,6 +51,10 @@ tipo = "i64"
 nombre = "sku"
 tipo = "String"
 unico = true             # índice único en la base de datos
+# privado = true         # proyectos con auth, campos de texto (String, Option<String>, su objeto valor
+                         # no enum): `Option` en Dto<Entidad>; una ruta pública recibe
+                         # `auth: BearerAuthOpcional` y sin sesión responde from_dominio_publico (el
+                         # campo, ausente). En la CLI, --privado email,telefono
 
 [[entidad.campos]]
 nombre = "descripcion"

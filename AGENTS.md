@@ -28,7 +28,9 @@ crates/
   web/              — `puerto-web`, el runtime de presentación: `App` (tracing, CORS, apagado ordenado),
                       `Config::from_env`, las sondas de salud, `RespuestaError { codigo, mensaje }`;
                       `auth`: `BearerAuth` (pregunta al `Arc<dyn Autenticador>` que las rutas llevan
-                      como data; 401 `auth.no_autenticado`, 503 `auth.no_disponible`), `prohibido()`
+                      como data; 401 `auth.no_autenticado`, 503 `auth.no_disponible`), `prohibido()`,
+                      `BearerAuthOpcional` (el llamante si lo hay, nunca un 401: rutas públicas con
+                      campos privados)
   sqlx/             — `puerto-sqlx`, el runtime de Postgres (proyectos `--db`): `crear_pool_postgres`,
                       `ejecutar_migraciones(pool, &MIGRADOR)`, `ping`, `mapear_error_sqlx` (`_con` las
                       `ClaveForanea` de una entidad: `23503` → `ReferenciaInexistente(campo)`, ADR-0022);
@@ -263,6 +265,7 @@ puerto generar scaffold <Nombre> --forzar                                   # Re
 puerto generar scaffold <Nombre> -- nombre:String precio:i64!              # Campos primitivos (! = único)
 puerto generar scaffold Linea --unico jugador_id,partido_id -- …          # Un único sobre varios campos ([[entidad]] unicos)
 puerto generar scaffold Clasificacion --orden=-puntos,nombre -- …         # El orden de la lista ([[entidad]] orden; - = descendente)
+puerto generar scaffold Jugador --publico obtener_jugador --privado email -- …   # Proyectos con auth: un campo que las rutas públicas solo dan con sesión
 puerto generar scaffold <Nombre> -- descripcion:opt:String etiquetas:vec:String   # Primitivos Option / Vec
 puerto generar scaffold <Nombre> -- nombre:Nombre:String edad:Edad:i64     # Campos con objeto valor
 puerto generar scaffold Producto --publico listar_productos --rol borrar_producto=admin   # Proyectos con auth: rutas abiertas, roles exigidos

@@ -254,8 +254,11 @@ impl Handler<'_> {
         joined.contains(&format!(".{uc}.ejecutar("))
     }
 
+    /// `auth: BearerAuth` — not the `BearerAuthOpcional` of a public route with private fields.
     fn takes_bearer_auth(&self) -> bool {
-        self.signature.contains("BearerAuth")
+        self.signature
+            .match_indices("BearerAuth")
+            .any(|(at, _)| !self.signature[at..].starts_with("BearerAuthOpcional"))
     }
 
     fn requires_role(&self, role: &str) -> bool {

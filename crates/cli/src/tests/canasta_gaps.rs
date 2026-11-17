@@ -123,11 +123,11 @@ fn strings(args: &[&str]) -> Vec<String> {
 }
 
 fn unique_shape(groups: &[&str]) -> scaffold::EntityShape {
-    scaffold::EntityShape::from_args(&strings(groups), &[])
+    scaffold::EntityShape::from_args(&strings(groups), &[], &[])
 }
 
 fn order_shape(keys: &[&str]) -> scaffold::EntityShape {
-    scaffold::EntityShape::from_args(&[], &strings(keys))
+    scaffold::EntityShape::from_args(&[], &strings(keys), &[])
 }
 
 #[test]
@@ -272,7 +272,11 @@ fn scaffold_records_the_order_and_keeps_the_uniques_it_was_not_given() {
     let (dir, output) = scaffold_linea(
         "canasta_order_toml",
         false,
-        &scaffold::EntityShape::from_args(&strings(&["jugador,partido"]), &strings(&["-faltas"])),
+        &scaffold::EntityShape::from_args(
+            &strings(&["jugador,partido"]),
+            &strings(&["-faltas"]),
+            &[],
+        ),
     );
     let linea = |output: &Path| {
         puerto_toml::read(output)
@@ -352,5 +356,130 @@ fn the_order_reaches_postgres_and_the_in_memory_repository() {
         ),
         "{memory}"
     );
+    cleanup(&dir);
+}
+
+// ── 20.9: a private field ─────────────────────────────────────────────────────
+
+/// An OIDC project with `Jugador { nombre, email (private) }`, its reads public.
+fn jugador_with_private_email(name: &str, private: &[&str]) -> Result<(PathBuf, PathBuf), String> {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = crate::commands::new::new_project(
+        Some("liga".into()),
+        crate::commands::new::NewOptions {
+            auth: Some("oidc".into()),
+            no_web: true,
+            no_demo: true,
+            ..Default::default()
+        },
+        Some(dir.clone()),
+    )
+    .unwrap();
+    let fields = vec![
+        puerto_toml::parse_field_arg("nombre:String").unwrap(),
+        puerto_toml::parse_field_arg("email:String").unwrap(),
+        puerto_toml::parse_field_arg("dorsal:i64").unwrap(),
+    ];
+    scaffold::run_scaffold_with_options(
+        "Jugador",
+        &output,
+        &fields,
+        OverwritePolicy::Ask,
+        &scaffold::ScaffoldAccess::from_args(
+            &strings(&["listar_jugadores", "obtener_jugador"]),
+            &[],
+        )
+        .unwrap(),
+        &scaffold::EntityShape::from_args(&[], &[], &strings(private)),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok((dir, output))
+}
+
+#[test]
+fn a_private_field_is_hidden_from_public_routes_called_without_a_session() {
+    let (dir, output) = jugador_with_private_email("canasta_private", &["email"]).unwrap();
+
+    let config = puerto_toml::read(&output).unwrap();
+    let jugador = config.entity.iter().find(|e| e.name == "Jugador").unwrap();
+    assert!(
+        jugador
+            .fields
+            .iter()
+            .any(|f| f.name == "email" && f.private)
+    );
+    assert!(read(&output, "puerto.toml").contains("privado = true"));
+
+    let dto = read(&output, "contextos/jugador/rest/src/dto.rs");
+    assert!(
+        dto.contains("#[oai(skip_serializing_if_is_none)]\n    pub email: Option<String>,"),
+        "{dto}"
+    );
+    assert!(
+        dto.contains("pub fn from_dominio_publico(entidad: &Jugador) -> Self {"),
+        "{dto}"
+    );
+    assert!(dto.contains("email: None,"), "{dto}");
+
+    let rutas = read(&output, "contextos/jugador/rest/src/rutas.rs");
+    let compact: String = rutas.split_whitespace().collect();
+    assert!(
+        compact.contains("asyncfnobtener(&self,auth:BearerAuthOpcional,"),
+        "{rutas}"
+    );
+    assert!(
+        compact.contains("asyncfnlistar(&self,auth:BearerAuthOpcional,"),
+        "{rutas}"
+    );
+    assert!(
+        compact.contains("DtoJugador::from_dominio_publico(entidad)"),
+        "{rutas}"
+    );
+    assert!(
+        compact.contains("DtoPaginaJugador::from_dominio_publico(&pagina)"),
+        "{rutas}"
+    );
+    // A protected route answers the whole entity: its caller always has a session.
+    assert!(
+        compact.contains("asyncfncrear(&self,auth:BearerAuth,"),
+        "{rutas}"
+    );
+    for test in [
+        "async fn deberia_ocultar_los_campos_privados_a_quien_llama_sin_sesion()",
+        "async fn deberia_mostrar_los_campos_privados_a_quien_tiene_sesion()",
+    ] {
+        assert!(rutas.contains(test), "{test}\n{rutas}");
+    }
+
+    // `puerto validar`: the public handlers take `BearerAuthOpcional`, not `BearerAuth`.
+    let validated = crate::commands::validate::run_validate(&output).map_err(|e| e.to_string());
+    assert!(validated.is_ok(), "{validated:?}");
+    cleanup(&dir);
+}
+
+#[test]
+fn a_private_field_must_be_text_and_needs_an_auth_project() {
+    let err = jugador_with_private_email("canasta_private_number", &["dorsal"]).unwrap_err();
+    assert!(err.contains("privado: 'dorsal'"), "{err}");
+    let err = jugador_with_private_email("canasta_private_unknown", &["telefono"]).unwrap_err();
+    assert!(err.contains("'telefono' is not a field"), "{err}");
+
+    let dir = temp_dir("canasta_private_no_auth");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some("liga".into()), false, &dir).unwrap();
+    let err = scaffold::run_scaffold_with_options(
+        "Linea",
+        &output,
+        &linea_fields(),
+        OverwritePolicy::Ask,
+        &scaffold::ScaffoldAccess::default(),
+        &scaffold::EntityShape::from_args(&[], &[], &strings(&["jugador"])),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("auth"), "{err}");
     cleanup(&dir);
 }

@@ -120,8 +120,10 @@ también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden 
 `--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
 `[[entidad]] orden`.
 
-En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token) y
-`--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth).
+En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
+`--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto
+que las rutas públicas solo dan a quien tiene sesión (`[[entidad.campos]] privado`; esas rutas
+reciben `auth: BearerAuthOpcional` y responden `Dto<Entidad>::from_dominio_publico` sin ella).
 
 
 ### Campos
@@ -2825,6 +2827,7 @@ pub struct ParamsActualizarJugador {
     pub id: IdJugador,
     pub equipo_id: IdEquipo,
     pub dorsal: i64,
+    pub email: String,
 }
 
 #[async_trait]
@@ -2872,6 +2875,7 @@ impl ActualizarJugador for ActualizarJugadorImpl {
             .actualizar(PropsJugador {
                 equipo_id: params.equipo_id,
                 dorsal: params.dorsal,
+                email: params.email,
             })
             .inspect_err(|e| tracing::warn!(error = %e, "actualizar_jugador: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(
@@ -2894,7 +2898,9 @@ mod tests {
     async fn deberia_actualizar_jugador_cuando_los_parametros_son_validos() {
         // Preparar
         let props = MadreJugador::new().construir_props();
-        let entidad = MadreJugador::aleatorio();
+        let mut entidad = MadreJugador::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.email = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioJugador::new();
         repositorio_doble
@@ -2912,11 +2918,15 @@ mod tests {
                 id: id_entidad,
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
         // Comprobar
-        assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreJugador::new().construir_props().email
+        );
     }
 
     #[tokio::test]
@@ -2938,12 +2948,46 @@ mod tests {
                 id: IdJugador::generar(),
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "jugador.no_encontrado");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreJugador::new().construir_props();
+        let entidad = MadreJugador::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioJugador::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarJugadorImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarJugador {
+                actor: MadrePrincipal::aleatorio(),
+                id: id_entidad,
+                equipo_id: props.equipo_id,
+                dorsal: props.dorsal,
+                email: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "jugador.validacion.email_vacio"
+        );
     }
 }
 
@@ -3083,6 +3127,7 @@ pub struct ParamsCrearJugador {
     pub actor: Principal,
     pub equipo_id: IdEquipo,
     pub dorsal: i64,
+    pub email: String,
 }
 
 #[async_trait]
@@ -3117,6 +3162,7 @@ impl CrearJugador for CrearJugadorImpl {
         let entidad = Jugador::new(PropsJugador {
             equipo_id: params.equipo_id,
             dorsal: params.dorsal,
+            email: params.email,
         })
         .inspect_err(|e| tracing::warn!(error = %e, "crear_jugador: rechazado"))?;
         self.repositorio
@@ -3152,11 +3198,16 @@ mod tests {
                 actor: MadrePrincipal::aleatorio(),
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreJugador::new().construir_props().email
+        );
     }
 
     #[tokio::test]
@@ -3177,6 +3228,7 @@ mod tests {
                 actor: MadrePrincipal::aleatorio(),
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
@@ -3203,6 +3255,7 @@ mod tests {
                 actor: MadrePrincipal::aleatorio(),
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
@@ -3211,6 +3264,33 @@ mod tests {
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "jugador.validacion.equipo_id_no_encontrado"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreJugador::new().construir_props();
+        let repositorio_doble = MockRepositorioJugador::new();
+        let caso_de_uso = CrearJugadorImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearJugador {
+                actor: MadrePrincipal::aleatorio(),
+                equipo_id: props.equipo_id,
+                dorsal: props.dorsal,
+                email: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "jugador.validacion.email_vacio"
         );
     }
 }
@@ -3658,6 +3738,7 @@ impl std::fmt::Display for IdJugador {
 pub struct PropsJugador {
     pub equipo_id: IdEquipo,
     pub dorsal: i64,
+    pub email: String,
 }
 
 #[derive(Debug, Clone)]
@@ -3669,6 +3750,7 @@ pub struct Jugador {
     pub borrado_en: Option<DateTime<Utc>>,
     pub equipo_id: IdEquipo,
     pub dorsal: i64,
+    pub email: String,
 }
 
 impl Jugador {
@@ -3683,6 +3765,7 @@ impl Jugador {
             borrado_en: None,
             equipo_id: props.equipo_id,
             dorsal: props.dorsal,
+            email: props.email,
         })
     }
 
@@ -3691,6 +3774,7 @@ impl Jugador {
         Self::validar(&props)?;
         self.equipo_id = props.equipo_id;
         self.dorsal = props.dorsal;
+        self.email = props.email;
         self.actualizado_en = chrono::Utc::now();
         Ok(())
     }
@@ -3701,7 +3785,10 @@ impl Jugador {
 
     /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
     /// se escribe solo aquí.
-    fn validar(_props: &PropsJugador) -> Result<(), ErrorJugador> {
+    fn validar(props: &PropsJugador) -> Result<(), ErrorJugador> {
+        if props.email.trim().is_empty() {
+            return Err(ErrorJugador::Validacion("email_vacio".into()));
+        }
         Ok(())
     }
 }
@@ -3714,7 +3801,36 @@ mod tests {
     #[test]
     fn deberia_crear_jugador_cuando_los_campos_son_validos() {
         let resultado = Jugador::new(MadreJugador::new().construir_props());
-        assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreJugador::new().construir_props().email
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_jugador_cuando_email_es_una_cadena_vacia() {
+        let resultado = Jugador::new(MadreJugador::new().con_email_vacio().construir_props());
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "jugador.validacion.email_vacio"
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_jugador_cuando_email_solo_tiene_espacios() {
+        let resultado = Jugador::new(MadreJugador::new().con_email("   ").construir_props());
+        assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_jugador_cuando_email_es_una_cadena_vacia() {
+        let mut entidad = MadreJugador::aleatorio();
+        let resultado = entidad.actualizar(MadreJugador::new().con_email_vacio().construir_props());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "jugador.validacion.email_vacio"
+        );
     }
 }
 
@@ -3726,6 +3842,7 @@ use dominio_equipo::modelo::IdEquipo;
 pub struct MadreJugador {
     equipo_id: Option<IdEquipo>,
     dorsal: Option<i64>,
+    email: Option<String>,
 }
 
 impl MadreJugador {
@@ -3733,6 +3850,7 @@ impl MadreJugador {
         Self {
             equipo_id: None,
             dorsal: None,
+            email: None,
         }
     }
 
@@ -3746,10 +3864,21 @@ impl MadreJugador {
         self
     }
 
+    pub fn con_email(mut self, email: &str) -> Self {
+        self.email = Some(email.to_string());
+        self
+    }
+
+    pub fn con_email_vacio(mut self) -> Self {
+        self.email = Some(String::new());
+        self
+    }
+
     pub fn construir(self) -> Jugador {
         Jugador::new(PropsJugador {
             equipo_id: self.equipo_id.unwrap_or_else(IdEquipo::generar),
             dorsal: self.dorsal.unwrap_or(42),
+            email: self.email.unwrap_or_else(|| "example".to_string()),
         })
         .expect("MadreJugador: Jugador::new rechazó los props")
     }
@@ -3758,6 +3887,7 @@ impl MadreJugador {
         PropsJugador {
             equipo_id: self.equipo_id.unwrap_or_else(IdEquipo::generar),
             dorsal: self.dorsal.unwrap_or(42),
+            email: self.email.unwrap_or_else(|| "example".to_string()),
         }
     }
 
@@ -3869,6 +3999,7 @@ pub struct FilaJugador {
     pub borrado_en: Option<DateTime<Utc>>,
     pub equipo_id: Uuid,
     pub dorsal: i64,
+    pub email: String,
 }
 
 impl TryFrom<FilaJugador> for Jugador {
@@ -3883,6 +4014,7 @@ impl TryFrom<FilaJugador> for Jugador {
             borrado_en: fila.borrado_en,
             equipo_id: IdEquipo::from_uuid(fila.equipo_id),
             dorsal: fila.dorsal,
+            email: fila.email,
         }))
     }
 }
@@ -3897,6 +4029,7 @@ impl From<&Jugador> for FilaJugador {
             borrado_en: entidad.borrado_en,
             equipo_id: entidad.equipo_id.valor(),
             dorsal: entidad.dorsal,
+            email: entidad.email.clone(),
         }
     }
 }
@@ -3916,6 +4049,7 @@ pub mod pruebas {
 //! Puerto).
 use dominio_jugador::modelo::Jugador;
 use dominio_jugador::modelo::PropsJugador;
+use dominio_jugador::pruebas::madres::MadreJugador;
 use dominio_jugador::repositorio::RepositorioJugador;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -3929,6 +4063,7 @@ pub async fn construir(pool: &PgPool) -> Jugador {
     Jugador::new(PropsJugador {
         equipo_id: infra_equipo::pruebas::siembra::sembrar(pool).await.id,
         dorsal: (Uuid::new_v4().as_u128() >> 65) as i64,
+        ..MadreJugador::new().construir_props()
     })
     .unwrap()
 }
@@ -4001,7 +4136,7 @@ impl RepositorioJugador for RepositorioJugadorPostgres {
         let equipo_id = filtro.equipo_id.map(|id| id.valor());
         let filas = sqlx::query_as!(
             FilaJugador,
-            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, equipo_id, dorsal
+            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, equipo_id, dorsal, email
              FROM jugadores WHERE borrado = false AND ($3::uuid IS NULL OR equipo_id = $3)
              ORDER BY dorsal DESC, creado_en DESC, id LIMIT $1 OFFSET $2",
             i64::from(pagina.limite()),
@@ -4038,7 +4173,7 @@ impl RepositorioJugador for RepositorioJugadorPostgres {
         tracing::debug!(%id, "buscar_por_id");
         let fila = sqlx::query_as!(
             FilaJugador,
-            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, equipo_id, dorsal
+            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, equipo_id, dorsal, email
              FROM jugadores WHERE id = $1 AND borrado = false",
             id.valor()
         )
@@ -4056,10 +4191,10 @@ impl RepositorioJugador for RepositorioJugadorPostgres {
         tracing::debug!(id = %entidad.id, "guardar");
         let db = FilaJugador::from(entidad);
         sqlx::query!(
-            "INSERT INTO jugadores (id, creado_en, actualizado_en, borrado, borrado_en, equipo_id, dorsal)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            "INSERT INTO jugadores (id, creado_en, actualizado_en, borrado, borrado_en, equipo_id, dorsal, email)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT (id) DO UPDATE
-             SET actualizado_en = $3, borrado = $4, borrado_en = $5, equipo_id = $6, dorsal = $7",
+             SET actualizado_en = $3, borrado = $4, borrado_en = $5, equipo_id = $6, dorsal = $7, email = $8",
             db.id,
             db.creado_en,
             db.actualizado_en,
@@ -4067,6 +4202,7 @@ impl RepositorioJugador for RepositorioJugadorPostgres {
             db.borrado_en,
             db.equipo_id,
             db.dorsal,
+            db.email,
         )
         .execute(&self.pool)
         .await
@@ -4104,6 +4240,7 @@ mod pruebas_integracion {
         assert_eq!(encontrado.id, entidad.id);
         assert_eq!(encontrado.equipo_id, entidad.equipo_id);
         assert_eq!(encontrado.dorsal, entidad.dorsal);
+        assert_eq!(encontrado.email, entidad.email);
         assert!(!encontrado.borrado);
     }
 
@@ -4122,7 +4259,9 @@ mod pruebas_integracion {
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn deberia_actualizar_la_entidad_al_guardar_un_id_existente(pool: PgPool) {
         // Preparar
-        let entidad = sembrar(&pool).await;
+        let mut entidad = sembrar(&pool).await;
+        entidad.email = "updated".to_string();
+        entidad.actualizado_en = chrono::Utc::now();
 
         // Actuar
         repositorio_de_prueba(pool.clone())
@@ -4134,8 +4273,9 @@ mod pruebas_integracion {
         let encontrado = repositorio_de_prueba(pool)
             .buscar_por_id(entidad.id)
             .await
+            .unwrap()
             .unwrap();
-        assert!(encontrado.is_some());
+        assert_eq!(encontrado.email, "updated");
     }
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -4289,6 +4429,9 @@ pub struct DtoJugador {
     pub id: Uuid,
     pub equipo_id: Uuid,
     pub dorsal: i64,
+    /// Privado: una ruta pública no lo da a quien llama sin sesión.
+    #[oai(skip_serializing_if_is_none)]
+    pub email: Option<String>,
 }
 
 impl DtoJugador {
@@ -4297,6 +4440,15 @@ impl DtoJugador {
             id: entidad.id.valor(),
             equipo_id: entidad.equipo_id.valor(),
             dorsal: entidad.dorsal,
+            email: Some(entidad.email.clone()),
+        }
+    }
+
+    /// Sin los campos privados: lo que una ruta pública da a quien llama sin sesión.
+    pub fn from_dominio_publico(entidad: &Jugador) -> Self {
+        Self {
+            email: None,
+            ..Self::from_dominio(entidad)
         }
     }
 }
@@ -4306,6 +4458,7 @@ impl DtoJugador {
 pub struct PeticionCrearJugador {
     pub equipo_id: Uuid,
     pub dorsal: i64,
+    pub email: String,
 }
 
 /// Una página de Jugadores: `total` es el recuento completo y `limite`, el que aplicó
@@ -4332,6 +4485,18 @@ impl DtoPaginaJugador {
             desplazamiento: pagina.desplazamiento,
         }
     }
+
+    /// La página sin los campos privados de sus elementos.
+    pub fn from_dominio_publico(pagina: &Pagina<Jugador>) -> Self {
+        Self {
+            elementos: pagina
+                .elementos
+                .iter()
+                .map(DtoJugador::from_dominio_publico)
+                .collect(),
+            ..Self::from_dominio(pagina)
+        }
+    }
 }
 
 #[derive(Debug, Object)]
@@ -4339,6 +4504,7 @@ impl DtoPaginaJugador {
 pub struct PeticionActualizarJugador {
     pub equipo_id: Uuid,
     pub dorsal: i64,
+    pub email: String,
 }
 
 === contextos/jugador/rest/src/errores.rs ===
@@ -4608,7 +4774,7 @@ use poem_openapi::{
     payload::Json,
 };
 use puerto_nucleo::PeticionPagina;
-use puerto_web::auth::BearerAuth;
+use puerto_web::auth::{BearerAuth, BearerAuthOpcional};
 use puerto_web::requiere_rol;
 use uuid::Uuid;
 
@@ -4648,6 +4814,7 @@ impl ApiJugador {
                 actor: auth.0,
                 equipo_id: IdEquipo::from_uuid(cuerpo.equipo_id),
                 dorsal: cuerpo.dorsal,
+                email: cuerpo.email.clone(),
             })
             .await
         {
@@ -4662,7 +4829,7 @@ impl ApiJugador {
 
     /// Obtiene: Jugador por id
     #[oai(path = "/jugadores/:id", method = "get", tag = "ApiTags::Jugador")]
-    async fn obtener(&self, id: Path<Uuid>) -> RespuestaObtenerJugador {
+    async fn obtener(&self, auth: BearerAuthOpcional, id: Path<Uuid>) -> RespuestaObtenerJugador {
         match self
             .obtener_jugador
             .ejecutar(ParamsObtenerJugador {
@@ -4670,7 +4837,7 @@ impl ApiJugador {
             })
             .await
         {
-            Ok(entidad) => RespuestaObtenerJugador::Ok(Json(DtoJugador::from_dominio(&entidad))),
+            Ok(entidad) => RespuestaObtenerJugador::Ok(Json(dto(&auth, &entidad))),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
                 tracing::warn!(codigo = %error.0.codigo, "obtener_jugador falló");
@@ -4683,6 +4850,7 @@ impl ApiJugador {
     #[oai(path = "/jugadores", method = "get", tag = "ApiTags::Jugador")]
     async fn listar(
         &self,
+        auth: BearerAuthOpcional,
         limite: Query<Option<u32>>,
         desplazamiento: Query<Option<u32>>,
         #[oai(name = "equipoId")] equipo_id: Query<Option<Uuid>>,
@@ -4695,9 +4863,11 @@ impl ApiJugador {
             })
             .await
         {
-            Ok(pagina) => {
-                RespuestaListarJugadores::Ok(Json(DtoPaginaJugador::from_dominio(&pagina)))
-            }
+            Ok(pagina) => RespuestaListarJugadores::Ok(Json(if auth.0.is_some() {
+                DtoPaginaJugador::from_dominio(&pagina)
+            } else {
+                DtoPaginaJugador::from_dominio_publico(&pagina)
+            })),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
                 tracing::error!(codigo = %error.0.codigo, "listar_jugadores falló");
@@ -4722,6 +4892,7 @@ impl ApiJugador {
                 id: IdJugador::from_uuid(id.0),
                 equipo_id: IdEquipo::from_uuid(cuerpo.equipo_id),
                 dorsal: cuerpo.dorsal,
+                email: cuerpo.email.clone(),
             })
             .await
         {
@@ -4753,6 +4924,15 @@ impl ApiJugador {
                 RespuestaBorrarJugador::from_status(status, error)
             }
         }
+    }
+}
+
+/// La entidad entera a quien tiene sesión; sin los campos privados a quien no la tiene.
+fn dto(auth: &BearerAuthOpcional, entidad: &dominio_jugador::modelo::Jugador) -> DtoJugador {
+    if auth.0.is_some() {
+        DtoJugador::from_dominio(entidad)
+    } else {
+        DtoJugador::from_dominio_publico(entidad)
     }
 }
 
@@ -4828,6 +5008,7 @@ mod tests {
         PeticionCrearJugador {
             equipo_id: Uuid::new_v4(),
             dorsal: 42,
+            email: "example".to_string(),
         }
     }
 
@@ -4835,6 +5016,7 @@ mod tests {
         PeticionActualizarJugador {
             equipo_id: Uuid::new_v4(),
             dorsal: 42,
+            email: "example".to_string(),
         }
     }
 
@@ -4927,6 +5109,42 @@ mod tests {
 
         // Comprobar
         respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_ocultar_los_campos_privados_a_quien_llama_sin_sesion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreJugador::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente_con(None).get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let cuerpo = respuesta.json().await;
+        assert!(cuerpo.value().object().get_opt("email").is_none());
+    }
+
+    #[tokio::test]
+    async fn deberia_mostrar_los_campos_privados_a_quien_tiene_sesion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreJugador::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let cuerpo = respuesta.json().await;
+        assert!(cuerpo.value().object().get_opt("email").is_some());
     }
 
     #[tokio::test]
@@ -6233,6 +6451,7 @@ CREATE TABLE jugadores (
     id UUID PRIMARY KEY,
     equipo_id UUID NOT NULL CONSTRAINT jugadores_equipo_id_fkey REFERENCES equipos (id),
     dorsal BIGINT NOT NULL,
+    email TEXT NOT NULL,
     creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     borrado BOOLEAN NOT NULL DEFAULT FALSE,
@@ -6558,6 +6777,11 @@ referencia = "Equipo"
 [[entidad.campos]]
 nombre = "dorsal"
 tipo = "i64"
+
+[[entidad.campos]]
+nombre = "email"
+tipo = "String"
+privado = true
 
 === web/.dependency-cruiser.cjs ===
 (borrado)

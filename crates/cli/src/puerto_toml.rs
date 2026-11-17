@@ -140,6 +140,10 @@ pub struct Field {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[serde(rename = "unico")]
     pub unique: bool,
+    /// Auth projects: public routes answer it only to a caller with a session (`--privado`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[serde(rename = "privado")]
+    pub private: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "objeto_valor")]
     pub value_object: Option<String>,

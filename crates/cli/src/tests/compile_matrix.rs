@@ -29,7 +29,7 @@ pub(super) struct Scenario<'a> {
     pub(super) entities: &'a [(&'a str, &'a [&'a str])],
     /// Auth projects: `(PascalName, --public use cases, --role use_case=role)` of a scaffold.
     pub(super) access: &'a [Access<'a>],
-    /// `(PascalName, --unico groups, --orden keys)` of a scaffold (Phase 20.7, 20.8).
+    /// `(PascalName, --unico groups, --orden keys, --privado fields)` of a scaffold (Phase 20.7–20.9).
     pub(super) shapes: &'a [Shape<'a>],
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
     pub(super) use_cases: &'a [(&'a str, &'a str)],
@@ -44,7 +44,7 @@ pub(super) struct Scenario<'a> {
 
 pub(super) type Access<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
 
-pub(super) type Shape<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
+pub(super) type Shape<'a> = (&'a str, &'a [&'a str], &'a [&'a str], &'a [&'a str]);
 
 pub(super) type Mail<'a> = (&'a str, &'a [&'a str], &'a [&'a str], Option<&'a str>);
 
@@ -713,15 +713,18 @@ pub(super) const REFERENCES_AUTH: Scenario = Scenario {
     consumers: &[],
     entities: &[
         ("Equipo", &["nombre:String"]),
-        ("Jugador", &["equipo_id:ref:Equipo", "dorsal:i64"]),
+        (
+            "Jugador",
+            &["equipo_id:ref:Equipo", "dorsal:i64", "email:String"],
+        ),
     ],
     access: &[(
         "Jugador",
         &["listar_jugadores", "obtener_jugador"],
         &["actualizar_jugador=admin", "borrar_jugador=admin"],
     )],
-    // canasta: one shirt number per team, listed by number.
-    shapes: &[("Jugador", &["equipo_id,dorsal"], &["-dorsal"])],
+    // canasta: one shirt number per team, listed by number; a player's email for signed-in callers.
+    shapes: &[("Jugador", &["equipo_id,dorsal"], &["-dorsal"], &["email"])],
 };
 
 /// [`REFERENCES_AUTH`] on Postgres: the unique over a reference and a number is a partial index,
@@ -821,11 +824,15 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         let shape = scenario
             .shapes
             .iter()
-            .find(|(name, _, _)| name == entity)
-            .map(|(_, uniques, order)| {
+            .find(|(name, _, _, _)| name == entity)
+            .map(|(_, uniques, order, private)| {
                 let strings =
                     |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
-                scaffold::EntityShape::from_args(&strings(uniques), &strings(order))
+                scaffold::EntityShape::from_args(
+                    &strings(uniques),
+                    &strings(order),
+                    &strings(private),
+                )
             })
             .unwrap_or_default();
         scaffold::run_scaffold_with_options(

@@ -15,7 +15,9 @@ use poem_openapi::{
     payload::Json,
 };
 use puerto_nucleo::PeticionPagina;
-{% if auth %}use puerto_web::auth::BearerAuth;
+{% if bearer and optional_auth %}use puerto_web::auth::{BearerAuth, BearerAuthOpcional};
+{% elif bearer %}use puerto_web::auth::BearerAuth;
+{% elif optional_auth %}use puerto_web::auth::BearerAuthOpcional;
 {% endif %}{% if any_role %}use puerto_web::requiere_rol;
 {% endif %}use uuid::Uuid;
 
@@ -47,7 +49,7 @@ impl Api{{ pascal }} {
     /// Crea: {{ pascal }}
     #[oai(path = "/{{ plural }}", method = "post", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.create.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn crear(&self, {% if access.create.protected %}auth: BearerAuth, {% endif %}cuerpo: Json<PeticionCrear{{ pascal }}>) -> RespuestaCrear{{ pascal }} {
+{% endfor %}    async fn crear(&self, {% if access.create.protected %}auth: BearerAuth, {% elif access.create.optional %}auth: BearerAuthOpcional, {% endif %}cuerpo: Json<PeticionCrear{{ pascal }}>) -> RespuestaCrear{{ pascal }} {
         match self
             .crear_{{ snake }}
             .ejecutar(ParamsCrear{{ pascal }} {
@@ -56,7 +58,7 @@ impl Api{{ pascal }} {
 {% endfor %}            })
             .await
         {
-            Ok(entidad) => RespuestaCrear{{ pascal }}::Creado(Json(Dto{{ pascal }}::from_dominio(&entidad))),
+            Ok(entidad) => RespuestaCrear{{ pascal }}::Creado(Json({% if access.create.optional %}dto(&auth, &entidad){% else %}Dto{{ pascal }}::from_dominio(&entidad){% endif %})),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
                 tracing::warn!(codigo = %error.0.codigo, "crear_{{ snake }} falló");
@@ -68,13 +70,13 @@ impl Api{{ pascal }} {
     /// Obtiene: {{ pascal }} por id
     #[oai(path = "/{{ plural }}/:id", method = "get", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.get.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn obtener(&self, {% if access.get.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> RespuestaObtener{{ pascal }} {
+{% endfor %}    async fn obtener(&self, {% if access.get.protected %}auth: BearerAuth, {% elif access.get.optional %}auth: BearerAuthOpcional, {% endif %}id: Path<Uuid>) -> RespuestaObtener{{ pascal }} {
         match self
             .obtener_{{ snake }}
             .ejecutar(ParamsObtener{{ pascal }} { {% if access.get.protected %}actor: auth.0, {% endif %}id: Id{{ pascal }}::from_uuid(id.0) })
             .await
         {
-            Ok(entidad) => RespuestaObtener{{ pascal }}::Ok(Json(Dto{{ pascal }}::from_dominio(&entidad))),
+            Ok(entidad) => RespuestaObtener{{ pascal }}::Ok(Json({% if access.get.optional %}dto(&auth, &entidad){% else %}Dto{{ pascal }}::from_dominio(&entidad){% endif %})),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
                 tracing::warn!(codigo = %error.0.codigo, "obtener_{{ snake }} falló");
@@ -86,7 +88,7 @@ impl Api{{ pascal }} {
     /// Lista {{ plural_pascal }}, página a página (el dominio acota `limite`)
     #[oai(path = "/{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.list.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn listar(&self, {% if access.list.protected %}auth: BearerAuth, {% endif %}limite: Query<Option<u32>>, desplazamiento: Query<Option<u32>>{% for r in refs %}, #[oai(name = "{{ r.camel }}")] {{ r.name }}: Query<Option<Uuid>>{% endfor %}) -> RespuestaListar{{ plural_pascal }} {
+{% endfor %}    async fn listar(&self, {% if access.list.protected %}auth: BearerAuth, {% elif access.list.optional %}auth: BearerAuthOpcional, {% endif %}limite: Query<Option<u32>>, desplazamiento: Query<Option<u32>>{% for r in refs %}, #[oai(name = "{{ r.camel }}")] {{ r.name }}: Query<Option<Uuid>>{% endfor %}) -> RespuestaListar{{ plural_pascal }} {
         match self
             .listar_{{ plural }}
             .ejecutar(ParamsListar{{ plural_pascal }} {
@@ -96,7 +98,11 @@ impl Api{{ pascal }} {
 {% endfor %}            })
             .await
         {
-            Ok(pagina) => RespuestaListar{{ plural_pascal }}::Ok(Json(DtoPagina{{ pascal }}::from_dominio(&pagina))),
+            Ok(pagina) => RespuestaListar{{ plural_pascal }}::Ok(Json({% if access.list.optional %}if auth.0.is_some() {
+                DtoPagina{{ pascal }}::from_dominio(&pagina)
+            } else {
+                DtoPagina{{ pascal }}::from_dominio_publico(&pagina)
+            }{% else %}DtoPagina{{ pascal }}::from_dominio(&pagina){% endif %})),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
                 tracing::error!(codigo = %error.0.codigo, "listar_{{ plural }} falló");
@@ -108,7 +114,7 @@ impl Api{{ pascal }} {
     /// Actualiza: {{ pascal }}
     #[oai(path = "/{{ plural }}/:id", method = "put", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.update.roles %}    #[requiere_rol("{{ role }}")]
-{% endfor %}    async fn actualizar(&self, {% if access.update.protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>, cuerpo: Json<PeticionActualizar{{ pascal }}>) -> RespuestaActualizar{{ pascal }} {
+{% endfor %}    async fn actualizar(&self, {% if access.update.protected %}auth: BearerAuth, {% elif access.update.optional %}auth: BearerAuthOpcional, {% endif %}id: Path<Uuid>, cuerpo: Json<PeticionActualizar{{ pascal }}>) -> RespuestaActualizar{{ pascal }} {
         match self
             .actualizar_{{ snake }}
             .ejecutar(ParamsActualizar{{ pascal }} {
@@ -118,7 +124,7 @@ impl Api{{ pascal }} {
 {% endfor %}            })
             .await
         {
-            Ok(entidad) => RespuestaActualizar{{ pascal }}::Ok(Json(Dto{{ pascal }}::from_dominio(&entidad))),
+            Ok(entidad) => RespuestaActualizar{{ pascal }}::Ok(Json({% if access.update.optional %}dto(&auth, &entidad){% else %}Dto{{ pascal }}::from_dominio(&entidad){% endif %})),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
                 tracing::warn!(codigo = %error.0.codigo, "actualizar_{{ snake }} falló");
@@ -146,7 +152,16 @@ impl Api{{ pascal }} {
     }
 }
 
-#[cfg(test)]
+{% if access.create.optional or access.get.optional or access.update.optional %}/// La entidad entera a quien tiene sesión; sin los campos privados a quien no la tiene.
+fn dto(auth: &BearerAuthOpcional, entidad: &dominio_{{ snake }}::modelo::{{ pascal }}) -> Dto{{ pascal }} {
+    if auth.0.is_some() {
+        Dto{{ pascal }}::from_dominio(entidad)
+    } else {
+        Dto{{ pascal }}::from_dominio_publico(entidad)
+    }
+}
+
+{% endif %}#[cfg(test)]
 mod tests {
     use dominio_{{ snake }}::errores::Error{{ pascal }};
     use aplicacion_{{ snake }}::{
@@ -314,7 +329,37 @@ mod tests {
         // Comprobar
         respuesta.assert_status(StatusCode::OK);
     }
+{% if access.get.optional %}
+    #[tokio::test]
+    async fn deberia_ocultar_los_campos_privados_a_quien_llama_sin_sesion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles.obtener.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
 
+        // Actuar
+        let respuesta = dobles.cliente_con(None).get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let cuerpo = respuesta.json().await;
+{% for camel in private_fields %}        assert!(cuerpo.value().object().get_opt("{{ camel }}").is_none());
+{% endfor %}    }
+
+    #[tokio::test]
+    async fn deberia_mostrar_los_campos_privados_a_quien_tiene_sesion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles.obtener.expect_ejecutar().returning(|_| Ok(Madre{{ pascal }}::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let cuerpo = respuesta.json().await;
+{% for camel in private_fields %}        assert!(cuerpo.value().object().get_opt("{{ camel }}").is_some());
+{% endfor %}    }
+{% endif %}
     #[tokio::test]
     async fn deberia_responder_404_cuando_{{ snake }}_no_existe() {
         // Preparar

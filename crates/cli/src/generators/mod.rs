@@ -30,6 +30,7 @@ pub fn effective_fields(fields: &[Field]) -> Vec<Field> {
             name: "nombre".into(),
             field_type: "String".into(),
             unique: false,
+            private: false,
             value_object: None,
             value_object_kind: None,
             enum_variants: None,

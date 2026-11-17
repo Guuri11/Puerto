@@ -108,8 +108,10 @@ también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden 
 `--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
 `[[entidad]] orden`.
 
-En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token) y
-`--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth).
+En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
+`--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto
+que las rutas públicas solo dan a quien tiene sesión (`[[entidad.campos]] privado`; esas rutas
+reciben `auth: BearerAuthOpcional` y responden `Dto<Entidad>::from_dominio_publico` sin ella).
 
 Con `web/`, `scaffold` también escribe las pantallas de la entidad y `generar bootstrap` también
 reescribe los ficheros generados del frontend; `puerto generar web <Nombre>` escribe solo las
@@ -2647,6 +2649,7 @@ pub struct ParamsActualizarJugador {
     pub id: IdJugador,
     pub equipo_id: IdEquipo,
     pub dorsal: i64,
+    pub email: String,
 }
 
 #[async_trait]
@@ -2694,6 +2697,7 @@ impl ActualizarJugador for ActualizarJugadorImpl {
             .actualizar(PropsJugador {
                 equipo_id: params.equipo_id,
                 dorsal: params.dorsal,
+                email: params.email,
             })
             .inspect_err(|e| tracing::warn!(error = %e, "actualizar_jugador: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(
@@ -2716,7 +2720,9 @@ mod tests {
     async fn deberia_actualizar_jugador_cuando_los_parametros_son_validos() {
         // Preparar
         let props = MadreJugador::new().construir_props();
-        let entidad = MadreJugador::aleatorio();
+        let mut entidad = MadreJugador::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.email = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioJugador::new();
         repositorio_doble
@@ -2734,11 +2740,15 @@ mod tests {
                 id: id_entidad,
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
         // Comprobar
-        assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreJugador::new().construir_props().email
+        );
     }
 
     #[tokio::test]
@@ -2760,12 +2770,46 @@ mod tests {
                 id: IdJugador::generar(),
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "jugador.no_encontrado");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreJugador::new().construir_props();
+        let entidad = MadreJugador::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioJugador::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarJugadorImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarJugador {
+                actor: MadrePrincipal::aleatorio(),
+                id: id_entidad,
+                equipo_id: props.equipo_id,
+                dorsal: props.dorsal,
+                email: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "jugador.validacion.email_vacio"
+        );
     }
 }
 
@@ -2905,6 +2949,7 @@ pub struct ParamsCrearJugador {
     pub actor: Principal,
     pub equipo_id: IdEquipo,
     pub dorsal: i64,
+    pub email: String,
 }
 
 #[async_trait]
@@ -2939,6 +2984,7 @@ impl CrearJugador for CrearJugadorImpl {
         let entidad = Jugador::new(PropsJugador {
             equipo_id: params.equipo_id,
             dorsal: params.dorsal,
+            email: params.email,
         })
         .inspect_err(|e| tracing::warn!(error = %e, "crear_jugador: rechazado"))?;
         self.repositorio
@@ -2974,11 +3020,16 @@ mod tests {
                 actor: MadrePrincipal::aleatorio(),
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreJugador::new().construir_props().email
+        );
     }
 
     #[tokio::test]
@@ -2999,6 +3050,7 @@ mod tests {
                 actor: MadrePrincipal::aleatorio(),
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
@@ -3025,6 +3077,7 @@ mod tests {
                 actor: MadrePrincipal::aleatorio(),
                 equipo_id: props.equipo_id,
                 dorsal: props.dorsal,
+                email: props.email,
             })
             .await;
 
@@ -3033,6 +3086,33 @@ mod tests {
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "jugador.validacion.equipo_id_no_encontrado"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreJugador::new().construir_props();
+        let repositorio_doble = MockRepositorioJugador::new();
+        let caso_de_uso = CrearJugadorImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearJugador {
+                actor: MadrePrincipal::aleatorio(),
+                equipo_id: props.equipo_id,
+                dorsal: props.dorsal,
+                email: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "jugador.validacion.email_vacio"
         );
     }
 }
@@ -3480,6 +3560,7 @@ impl std::fmt::Display for IdJugador {
 pub struct PropsJugador {
     pub equipo_id: IdEquipo,
     pub dorsal: i64,
+    pub email: String,
 }
 
 #[derive(Debug, Clone)]
@@ -3491,6 +3572,7 @@ pub struct Jugador {
     pub borrado_en: Option<DateTime<Utc>>,
     pub equipo_id: IdEquipo,
     pub dorsal: i64,
+    pub email: String,
 }
 
 impl Jugador {
@@ -3505,6 +3587,7 @@ impl Jugador {
             borrado_en: None,
             equipo_id: props.equipo_id,
             dorsal: props.dorsal,
+            email: props.email,
         })
     }
 
@@ -3513,6 +3596,7 @@ impl Jugador {
         Self::validar(&props)?;
         self.equipo_id = props.equipo_id;
         self.dorsal = props.dorsal;
+        self.email = props.email;
         self.actualizado_en = chrono::Utc::now();
         Ok(())
     }
@@ -3523,7 +3607,10 @@ impl Jugador {
 
     /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
     /// se escribe solo aquí.
-    fn validar(_props: &PropsJugador) -> Result<(), ErrorJugador> {
+    fn validar(props: &PropsJugador) -> Result<(), ErrorJugador> {
+        if props.email.trim().is_empty() {
+            return Err(ErrorJugador::Validacion("email_vacio".into()));
+        }
         Ok(())
     }
 }
@@ -3536,7 +3623,36 @@ mod tests {
     #[test]
     fn deberia_crear_jugador_cuando_los_campos_son_validos() {
         let resultado = Jugador::new(MadreJugador::new().construir_props());
-        assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreJugador::new().construir_props().email
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_jugador_cuando_email_es_una_cadena_vacia() {
+        let resultado = Jugador::new(MadreJugador::new().con_email_vacio().construir_props());
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "jugador.validacion.email_vacio"
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_jugador_cuando_email_solo_tiene_espacios() {
+        let resultado = Jugador::new(MadreJugador::new().con_email("   ").construir_props());
+        assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_jugador_cuando_email_es_una_cadena_vacia() {
+        let mut entidad = MadreJugador::aleatorio();
+        let resultado = entidad.actualizar(MadreJugador::new().con_email_vacio().construir_props());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "jugador.validacion.email_vacio"
+        );
     }
 }
 
@@ -3548,6 +3664,7 @@ use dominio_equipo::modelo::IdEquipo;
 pub struct MadreJugador {
     equipo_id: Option<IdEquipo>,
     dorsal: Option<i64>,
+    email: Option<String>,
 }
 
 impl MadreJugador {
@@ -3555,6 +3672,7 @@ impl MadreJugador {
         Self {
             equipo_id: None,
             dorsal: None,
+            email: None,
         }
     }
 
@@ -3568,10 +3686,21 @@ impl MadreJugador {
         self
     }
 
+    pub fn con_email(mut self, email: &str) -> Self {
+        self.email = Some(email.to_string());
+        self
+    }
+
+    pub fn con_email_vacio(mut self) -> Self {
+        self.email = Some(String::new());
+        self
+    }
+
     pub fn construir(self) -> Jugador {
         Jugador::new(PropsJugador {
             equipo_id: self.equipo_id.unwrap_or_else(IdEquipo::generar),
             dorsal: self.dorsal.unwrap_or(42),
+            email: self.email.unwrap_or_else(|| "example".to_string()),
         })
         .expect("MadreJugador: Jugador::new rechazó los props")
     }
@@ -3580,6 +3709,7 @@ impl MadreJugador {
         PropsJugador {
             equipo_id: self.equipo_id.unwrap_or_else(IdEquipo::generar),
             dorsal: self.dorsal.unwrap_or(42),
+            email: self.email.unwrap_or_else(|| "example".to_string()),
         }
     }
 
@@ -3766,6 +3896,7 @@ mod tests {
     use super::*;
     use dominio_equipo::modelo::IdEquipo;
     use dominio_jugador::modelo::PropsJugador;
+    use dominio_jugador::pruebas::madres::MadreJugador;
     use uuid::Uuid;
 
     /// Una entidad válida, con los valores de la madre salvo en los campos únicos (uno
@@ -3774,6 +3905,7 @@ mod tests {
         Jugador::new(PropsJugador {
             equipo_id: IdEquipo::generar(),
             dorsal: (Uuid::new_v4().as_u128() >> 65) as i64,
+            ..MadreJugador::new().construir_props()
         })
         .unwrap()
     }
@@ -3962,6 +4094,9 @@ pub struct DtoJugador {
     pub id: Uuid,
     pub equipo_id: Uuid,
     pub dorsal: i64,
+    /// Privado: una ruta pública no lo da a quien llama sin sesión.
+    #[oai(skip_serializing_if_is_none)]
+    pub email: Option<String>,
 }
 
 impl DtoJugador {
@@ -3970,6 +4105,15 @@ impl DtoJugador {
             id: entidad.id.valor(),
             equipo_id: entidad.equipo_id.valor(),
             dorsal: entidad.dorsal,
+            email: Some(entidad.email.clone()),
+        }
+    }
+
+    /// Sin los campos privados: lo que una ruta pública da a quien llama sin sesión.
+    pub fn from_dominio_publico(entidad: &Jugador) -> Self {
+        Self {
+            email: None,
+            ..Self::from_dominio(entidad)
         }
     }
 }
@@ -3979,6 +4123,7 @@ impl DtoJugador {
 pub struct PeticionCrearJugador {
     pub equipo_id: Uuid,
     pub dorsal: i64,
+    pub email: String,
 }
 
 /// Una página de Jugadores: `total` es el recuento completo y `limite`, el que aplicó
@@ -4005,6 +4150,18 @@ impl DtoPaginaJugador {
             desplazamiento: pagina.desplazamiento,
         }
     }
+
+    /// La página sin los campos privados de sus elementos.
+    pub fn from_dominio_publico(pagina: &Pagina<Jugador>) -> Self {
+        Self {
+            elementos: pagina
+                .elementos
+                .iter()
+                .map(DtoJugador::from_dominio_publico)
+                .collect(),
+            ..Self::from_dominio(pagina)
+        }
+    }
 }
 
 #[derive(Debug, Object)]
@@ -4012,6 +4169,7 @@ impl DtoPaginaJugador {
 pub struct PeticionActualizarJugador {
     pub equipo_id: Uuid,
     pub dorsal: i64,
+    pub email: String,
 }
 
 === contextos/jugador/rest/src/errores.rs ===
@@ -4281,7 +4439,7 @@ use poem_openapi::{
     payload::Json,
 };
 use puerto_nucleo::PeticionPagina;
-use puerto_web::auth::BearerAuth;
+use puerto_web::auth::{BearerAuth, BearerAuthOpcional};
 use puerto_web::requiere_rol;
 use uuid::Uuid;
 
@@ -4321,6 +4479,7 @@ impl ApiJugador {
                 actor: auth.0,
                 equipo_id: IdEquipo::from_uuid(cuerpo.equipo_id),
                 dorsal: cuerpo.dorsal,
+                email: cuerpo.email.clone(),
             })
             .await
         {
@@ -4335,7 +4494,7 @@ impl ApiJugador {
 
     /// Obtiene: Jugador por id
     #[oai(path = "/jugadores/:id", method = "get", tag = "ApiTags::Jugador")]
-    async fn obtener(&self, id: Path<Uuid>) -> RespuestaObtenerJugador {
+    async fn obtener(&self, auth: BearerAuthOpcional, id: Path<Uuid>) -> RespuestaObtenerJugador {
         match self
             .obtener_jugador
             .ejecutar(ParamsObtenerJugador {
@@ -4343,7 +4502,7 @@ impl ApiJugador {
             })
             .await
         {
-            Ok(entidad) => RespuestaObtenerJugador::Ok(Json(DtoJugador::from_dominio(&entidad))),
+            Ok(entidad) => RespuestaObtenerJugador::Ok(Json(dto(&auth, &entidad))),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
                 tracing::warn!(codigo = %error.0.codigo, "obtener_jugador falló");
@@ -4356,6 +4515,7 @@ impl ApiJugador {
     #[oai(path = "/jugadores", method = "get", tag = "ApiTags::Jugador")]
     async fn listar(
         &self,
+        auth: BearerAuthOpcional,
         limite: Query<Option<u32>>,
         desplazamiento: Query<Option<u32>>,
         #[oai(name = "equipoId")] equipo_id: Query<Option<Uuid>>,
@@ -4368,9 +4528,11 @@ impl ApiJugador {
             })
             .await
         {
-            Ok(pagina) => {
-                RespuestaListarJugadores::Ok(Json(DtoPaginaJugador::from_dominio(&pagina)))
-            }
+            Ok(pagina) => RespuestaListarJugadores::Ok(Json(if auth.0.is_some() {
+                DtoPaginaJugador::from_dominio(&pagina)
+            } else {
+                DtoPaginaJugador::from_dominio_publico(&pagina)
+            })),
             Err(err) => {
                 let (status, error) = a_respuesta_error(err);
                 tracing::error!(codigo = %error.0.codigo, "listar_jugadores falló");
@@ -4395,6 +4557,7 @@ impl ApiJugador {
                 id: IdJugador::from_uuid(id.0),
                 equipo_id: IdEquipo::from_uuid(cuerpo.equipo_id),
                 dorsal: cuerpo.dorsal,
+                email: cuerpo.email.clone(),
             })
             .await
         {
@@ -4426,6 +4589,15 @@ impl ApiJugador {
                 RespuestaBorrarJugador::from_status(status, error)
             }
         }
+    }
+}
+
+/// La entidad entera a quien tiene sesión; sin los campos privados a quien no la tiene.
+fn dto(auth: &BearerAuthOpcional, entidad: &dominio_jugador::modelo::Jugador) -> DtoJugador {
+    if auth.0.is_some() {
+        DtoJugador::from_dominio(entidad)
+    } else {
+        DtoJugador::from_dominio_publico(entidad)
     }
 }
 
@@ -4501,6 +4673,7 @@ mod tests {
         PeticionCrearJugador {
             equipo_id: Uuid::new_v4(),
             dorsal: 42,
+            email: "example".to_string(),
         }
     }
 
@@ -4508,6 +4681,7 @@ mod tests {
         PeticionActualizarJugador {
             equipo_id: Uuid::new_v4(),
             dorsal: 42,
+            email: "example".to_string(),
         }
     }
 
@@ -4600,6 +4774,42 @@ mod tests {
 
         // Comprobar
         respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_ocultar_los_campos_privados_a_quien_llama_sin_sesion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreJugador::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente_con(None).get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let cuerpo = respuesta.json().await;
+        assert!(cuerpo.value().object().get_opt("email").is_none());
+    }
+
+    #[tokio::test]
+    async fn deberia_mostrar_los_campos_privados_a_quien_tiene_sesion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreJugador::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let cuerpo = respuesta.json().await;
+        assert!(cuerpo.value().object().get_opt("email").is_some());
     }
 
     #[tokio::test]
@@ -6129,6 +6339,11 @@ referencia = "Equipo"
 nombre = "dorsal"
 tipo = "i64"
 
+[[entidad.campos]]
+nombre = "email"
+tipo = "String"
+privado = true
+
 === web/.dependency-cruiser.cjs ===
 // The Dependency Rule of the frontend — the same one the Rust crates follow:
 //
@@ -6402,6 +6617,7 @@ export interface JugadorProblem {
  */
 const TEXTS: Record<string, string> = {
   "jugador.validacion.equipo_id_no_encontrado": "Equipo does not exist",
+  "jugador.validacion.email_vacio": "Email is required",
   "jugador.duplicado": "A jugador with these values already exists",
   "jugador.no_encontrado": "This jugador no longer exists",
   "jugador.repositorio": "The jugador could not be saved, try again later",
@@ -6411,6 +6627,7 @@ const TEXTS: Record<string, string> = {
 /** The input each field's code is about. */
 const FIELDS: Record<string, keyof JugadorDraft> = {
   "jugador.validacion.equipo_id_no_encontrado": "equipoId",
+  "jugador.validacion.email_vacio": "email",
 };
 
 export function toProblem(code: string): JugadorProblem {
@@ -6422,6 +6639,7 @@ export interface Jugador {
   id: string;
   equipoId: string;
   dorsal: number;
+  email: string;
 }
 
 /** What a create or an update sends: a jugador without its id. */
@@ -7003,6 +7221,7 @@ function toJugador(dto: JugadorDto): Jugador {
     id: dto.id,
     equipoId: dto.equipoId,
     dorsal: dto.dorsal,
+    email: dto.email ?? "",
   };
 }
 
@@ -7010,6 +7229,7 @@ function toRequest(draft: JugadorDraft): JugadorRequest {
   return {
     equipoId: draft.equipoId,
     dorsal: draft.dorsal,
+    email: draft.email,
   };
 }
 
@@ -8173,6 +8393,7 @@ async function fillIn(draft: JugadorDraft) {
   await screen.findByText("Save");
   await choose("Equipo", draft.equipoId);
   type("Dorsal", String(draft.dorsal));
+  type("Email", draft.email);
 }
 
 describe("JugadorFormContainer", () => {
@@ -8517,6 +8738,8 @@ export function JugadorDetailView({ jugador }: { jugador: Jugador }) {
       </dd>
       <dt className="font-semibold">Dorsal</dt>
       <dd>{jugador.dorsal}</dd>
+      <dt className="font-semibold">Email</dt>
+      <dd>{jugador.email}</dd>
     </dl>
   );
 }
@@ -8531,6 +8754,7 @@ import { FieldError } from "../../../shared/ui/field-error";
 export interface JugadorFormValues {
   equipoId: string;
   dorsal: string;
+  email: string;
 }
 
 /** The inputs for `jugador`, empty when there is none yet. */
@@ -8539,11 +8763,13 @@ export function toJugadorForm(jugador: Jugador | null): JugadorFormValues {
     return {
       equipoId: "",
       dorsal: "",
+      email: "",
     };
   }
   return {
     equipoId: jugador.equipoId,
     dorsal: String(jugador.dorsal),
+    email: jugador.email,
   };
 }
 
@@ -8556,6 +8782,7 @@ export function toJugadorDraft(values: JugadorFormValues): JugadorDraft {
   return {
     equipoId: values.equipoId,
     dorsal: Number(values.dorsal),
+    email: values.email,
   };
 }
 
@@ -8613,6 +8840,18 @@ export function JugadorFormView({
         />
       </label>
       <FieldError problem={problem} field="dorsal" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Email</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problem?.field === "email"}
+          required
+          value={values.email}
+          onChange={(event) => onChange({ ...values, email: event.target.value })}
+        />
+      </label>
+      <FieldError problem={problem} field="email" />
       <button type="submit" className="btn btn-primary" disabled={saving}>
         Save
       </button>
@@ -8632,6 +8871,7 @@ export function JugadorListView({ jugadores }: { jugadores: Jugador[] }) {
           <tr>
             <th>Equipo</th>
             <th>Dorsal</th>
+            <th>Email</th>
             <th />
           </tr>
         </thead>
@@ -8640,6 +8880,7 @@ export function JugadorListView({ jugadores }: { jugadores: Jugador[] }) {
             <tr key={jugador.id}>
               <td>{jugador.equipoId}</td>
               <td>{jugador.dorsal}</td>
+              <td>{jugador.email}</td>
               <td className="text-right">
                 <Link href={`/jugadores/${jugador.id}`} className="link">
                   View
@@ -8908,6 +9149,7 @@ export const JugadorMother = {
     return {
       equipoId: crypto.randomUUID(),
       dorsal: 42,
+      email: "example",
       ...overrides,
     };
   },

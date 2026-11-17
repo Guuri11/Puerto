@@ -68,21 +68,31 @@ pub(crate) fn build_simple_ctx(pascal: &str, snake: &str) -> tera::Context {
     entity_ctx(pascal, snake)
 }
 
-/// Who may call each CRUD route (ADR-0021): `access.<action>.protected` / `.roles`, `auth` when
-/// one route takes `BearerAuth`, `any_role` when one requires a role, and `caller_roles` — every
-/// role, held by the route tests' caller.
-fn insert_access(ctx: &mut tera::Context, snake: &str, access: &Access) {
+/// Who may call each CRUD route (ADR-0021): `access.<action>.protected` / `.roles` / `.optional`
+/// (a public route that answers the entity, with private fields: it takes `BearerAuthOpcional`),
+/// `bearer` when one route takes `BearerAuth`, `optional_auth` when one takes
+/// `BearerAuthOpcional`, `auth` when either does (the route tests sign in), `any_role` when one
+/// requires a role, and `caller_roles` — every role, held by the route tests' caller.
+fn insert_access(ctx: &mut tera::Context, snake: &str, access: &Access, private: bool) {
     let mut per_action = serde_json::Map::new();
+    let mut optional_auth = false;
     for action in ["create", "get", "list", "update", "delete"] {
         let use_case = crud_use_case(action, snake);
+        let protected = access.is_protected(&use_case);
+        // A deletion answers no entity.
+        let optional = private && !protected && action != "delete";
+        optional_auth |= optional;
         per_action.insert(
             action.into(),
-            json!({ "protected": access.is_protected(&use_case), "roles": access.roles(&use_case) }),
+            json!({ "protected": protected, "roles": access.roles(&use_case), "optional": optional }),
         );
     }
     let use_cases = crud_use_cases(snake);
+    let bearer = use_cases.iter().any(|uc| access.is_protected(uc));
     ctx.insert("access", &per_action);
-    ctx.insert("auth", &use_cases.iter().any(|uc| access.is_protected(uc)));
+    ctx.insert("bearer", &bearer);
+    ctx.insert("optional_auth", &optional_auth);
+    ctx.insert("auth", &(bearer || optional_auth));
     ctx.insert(
         "any_role",
         &use_cases.iter().any(|uc| !access.roles(uc).is_empty()),
@@ -110,7 +120,13 @@ fn build_routes_crud_ctx(
     let mut ctx = simple_ctx(pascal, snake, &eff);
     ctx.insert("test_imports", &test_imports);
     ctx.insert("reference_imports", &reference_imports);
-    insert_access(&mut ctx, snake, access);
+    insert_access(&mut ctx, snake, access, eff.iter().any(|f| f.private));
+    let private_fields: Vec<String> = eff
+        .iter()
+        .filter(|f| f.private)
+        .map(|f| crate::generators::naming::snake_to_camel(&f.name))
+        .collect();
+    ctx.insert("private_fields", &private_fields);
     ctx
 }
 
@@ -148,7 +164,12 @@ pub fn write_presentation_files(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let access = Access::of(base, pascal);
     let mut responses_ctx = build_simple_ctx(pascal, snake);
-    insert_access(&mut responses_ctx, snake, &access);
+    insert_access(
+        &mut responses_ctx,
+        snake,
+        &access,
+        effective_fields(fields).iter().any(|f| f.private),
+    );
     let mut error_mapper_ctx = build_error_mapper_ctx(pascal, snake, fields);
     // `{Entity}Error::Forbidden` exists in every CRUD entity of an auth project.
     error_mapper_ctx.insert("auth", &access.is_auth());

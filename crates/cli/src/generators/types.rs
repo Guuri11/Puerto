@@ -313,6 +313,9 @@ pub struct FieldCtx {
     pub camel: String,
     /// `unique = true`: a partial unique index in `--db` projects.
     pub unique: bool,
+    /// `privado = true` (auth projects): `None` in the DTO a public route gives a caller without a
+    /// session.
+    pub private: bool,
     /// The type in domain structs: the VO name, `Option<Vo>`, `Vec<Vo>`, or the primitive.
     pub rust_type: String,
     pub is_vo: bool,
@@ -403,6 +406,7 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         ref_target_snake: crate::generators::naming::pascal_to_snake(&ref_target),
         ref_target,
         unique: field.unique,
+        private: field.private,
         seed_literal: seed_literal(field),
         field_type: field.field_type.clone(),
         is_map,
@@ -929,6 +933,9 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
             format!("parse{vo}(dto.{camel})")
         } else if optional {
             format!("dto.{camel} ?? null")
+        } else if field.private {
+            // Absent from what a public route answers a caller without a session (Phase 20.9).
+            format!("dto.{camel} ?? \"\"")
         } else {
             format!("dto.{camel}")
         },
@@ -1026,6 +1033,7 @@ mod tests {
                 name: "name".into(),
                 field_type: "String".into(),
                 unique: false,
+                private: false,
                 value_object: None,
                 value_object_kind: None,
                 enum_variants: None,
@@ -1035,6 +1043,7 @@ mod tests {
                 name: "price".into(),
                 field_type: "i64".into(),
                 unique: false,
+                private: false,
                 value_object: None,
                 value_object_kind: None,
                 enum_variants: None,
@@ -1052,6 +1061,7 @@ mod tests {
                 name: "name".into(),
                 field_type: "String".into(),
                 unique: false,
+                private: false,
                 value_object: None,
                 value_object_kind: None,
                 enum_variants: None,
@@ -1061,6 +1071,7 @@ mod tests {
                 name: "bad".into(),
                 field_type: "UnknownType".into(),
                 unique: false,
+                private: false,
                 value_object: None,
                 value_object_kind: None,
                 enum_variants: None,

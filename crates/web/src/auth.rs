@@ -94,6 +94,56 @@ impl<'a> ApiExtractor<'a> for BearerAuth {
     }
 }
 
+/// The caller of a public route that answers more to someone with a session (a private field,
+/// Phase 20.9): `auth: BearerAuthOpcional`. `Some` when the request carries a bearer token the
+/// [`Autenticador`] accepts; `None` without one, with one it rejects, or when it cannot be checked —
+/// never a `401`: the route is public. The spec lists the bearer scheme and anonymous access.
+pub struct BearerAuthOpcional(pub Option<Principal>);
+
+impl<'a> ApiExtractor<'a> for BearerAuthOpcional {
+    const TYPES: &'static [ApiExtractorType] = &[ApiExtractorType::SecurityScheme];
+
+    type ParamType = ();
+    type ParamRawType = ();
+
+    fn register(registry: &mut Registry) {
+        BearerScheme::register(registry);
+    }
+
+    fn security_schemes() -> Vec<&'static str> {
+        BearerScheme::security_schemes()
+    }
+
+    fn has_security_fallback() -> bool {
+        true
+    }
+
+    async fn from_request(
+        req: &'a Request,
+        _body: &mut RequestBody,
+        _param_opts: ExtractParamOptions<Self::ParamType>,
+    ) -> poem::Result<Self> {
+        let Some(token) = bearer_token(req) else {
+            return Ok(Self(None));
+        };
+        let Some(authenticator) = req.data::<Arc<dyn Autenticador>>() else {
+            tracing::error!(
+                "BearerAuthOpcional: no hay ningún Autenticador registrado en las rutas"
+            );
+            return Ok(Self(None));
+        };
+        match authenticator.autenticar(token).await {
+            Ok(principal) => Ok(Self(Some(principal))),
+            Err(err) => {
+                if matches!(err, ErrorAuth::NoDisponible) {
+                    tracing::warn!(error = %err, "BearerAuthOpcional: no se pudo comprobar el token");
+                }
+                Ok(Self(None))
+            }
+        }
+    }
+}
+
 /// The status and body for a token the [`Autenticador`] did not accept.
 pub fn rechazo(err: ErrorAuth) -> (StatusCode, Json<RespuestaError>) {
     match err {

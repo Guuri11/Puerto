@@ -7,7 +7,11 @@ use poem::{EndpointExt, Route, http::StatusCode, test::TestClient};
 use poem_openapi::{ApiResponse, OpenApi, OpenApiService, payload::Json};
 use puerto_nucleo::auth::dobles::MockAutenticador;
 use puerto_nucleo::{Autenticador, ErrorAuth, Principal};
-use puerto_web::{RespuestaError, auth::BearerAuth, requiere_rol};
+use puerto_web::{
+    RespuestaError,
+    auth::{BearerAuth, BearerAuthOpcional},
+    requiere_rol,
+};
 use uuid::Uuid;
 
 #[derive(ApiResponse)]
@@ -51,6 +55,15 @@ impl Api {
     #[oai(path = "/open", method = "get")]
     async fn open(&self) -> Json<String> {
         Json("anyone".into())
+    }
+
+    /// A public route that answers more to a caller with a session (Phase 20.9).
+    #[oai(path = "/maybe", method = "get")]
+    async fn maybe(&self, auth: BearerAuthOpcional) -> Json<String> {
+        Json(
+            auth.0
+                .map_or_else(|| "anonymous".into(), |caller| caller.sujeto),
+        )
     }
 }
 
@@ -239,4 +252,52 @@ fn should_list_the_bearer_scheme_on_protected_routes_only_when_the_spec_is_built
     assert_eq!(scheme["type"], "http");
     assert_eq!(scheme["scheme"], "bearer");
     assert_eq!(scheme["bearerFormat"], "opaque or JWT");
+}
+
+#[tokio::test]
+async fn should_give_an_optional_route_the_caller_when_the_token_is_accepted() {
+    // Act
+    let response = client()
+        .get("/maybe")
+        .header("Authorization", "Bearer ada")
+        .send()
+        .await;
+
+    // Assert
+    response.assert_status_is_ok();
+    response.assert_json("ada").await;
+}
+
+#[tokio::test]
+async fn should_give_an_optional_route_no_caller_and_never_a_401() {
+    for authorization in [
+        None,
+        Some("Basic YWRhOmFkYQ=="),
+        Some("Bearer forged"),
+        Some("Bearer down"),
+    ] {
+        // Act
+        let client = client();
+        let mut request = client.get("/maybe");
+        if let Some(value) = authorization {
+            request = request.header("Authorization", value);
+        }
+        let response = request.send().await;
+
+        // Assert
+        response.assert_status_is_ok();
+        response.assert_json("anonymous").await;
+    }
+}
+
+#[test]
+fn should_list_the_bearer_scheme_and_anonymous_access_on_an_optional_route() {
+    // Act
+    let spec: serde_json::Value = serde_json::from_str(&service().spec()).expect("spec is JSON");
+
+    // Assert
+    assert_eq!(
+        spec["paths"]["/maybe"]["get"]["security"],
+        serde_json::json!([{ "BearerAuth": [] }, {}])
+    );
 }

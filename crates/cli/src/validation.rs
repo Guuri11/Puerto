@@ -724,6 +724,16 @@ pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String>
         }
         seen.push(sorted);
     }
+    for f in fields.iter().filter(|f| f.private) {
+        let text = matches!(f.field_type.as_str(), "String" | "Option<String>");
+        if !text || crate::generators::types::is_enum_vo(f) || f.references.is_some() {
+            errors.push(format!(
+                "privado: '{}' is a {} — a private field is text (String, Option<String> or a \
+                 value object over one, not an enum)",
+                f.name, f.field_type
+            ));
+        }
+    }
     for (i, key) in entity.order.iter().enumerate() {
         let name = key.strip_prefix('-').unwrap_or(key);
         match fields.iter().find(|f| f.name == name) {

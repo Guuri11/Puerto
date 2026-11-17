@@ -303,6 +303,7 @@ fn shape_of(base: &Path, pascal: &str) -> EntityShape {
         .map(|e| EntityShape {
             uniques: e.uniques,
             order: e.order,
+            ..Default::default()
         })
         .unwrap_or_default()
 }

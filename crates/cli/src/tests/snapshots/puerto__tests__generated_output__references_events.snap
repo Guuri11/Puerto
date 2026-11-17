@@ -110,8 +110,10 @@ también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden 
 `--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
 `[[entidad]] orden`.
 
-En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token) y
-`--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth).
+En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
+`--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto
+que las rutas públicas solo dan a quien tiene sesión (`[[entidad.campos]] privado`; esas rutas
+reciben `auth: BearerAuthOpcional` y responden `Dto<Entidad>::from_dominio_publico` sin ella).
 
 Con `web/`, `scaffold` también escribe las pantallas de la entidad y `generar bootstrap` también
 reescribe los ficheros generados del frontend; `puerto generar web <Nombre>` escribe solo las

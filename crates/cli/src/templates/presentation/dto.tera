@@ -6,19 +6,30 @@ use {{ import }};{% endfor %}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
-pub struct Dto{{ pascal }} {
+{% set private_fields = fields | filter(attribute="private", value=true) %}pub struct Dto{{ pascal }} {
     pub id: Uuid,
-{% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
-{% endfor %}}
+{% for f in fields %}{% if f.private %}    /// Privado: una ruta pública no lo da a quien llama sin sesión.
+    #[oai(skip_serializing_if_is_none)]
+    pub {{ f.name }}: {% if f.field_type is starting_with("Option<") %}{{ f.field_type }}{% else %}Option<{{ f.field_type }}>{% endif %},
+{% else %}    pub {{ f.name }}: {{ f.field_type }},
+{% endif %}{% endfor %}}
 
 impl Dto{{ pascal }} {
     pub fn from_dominio(entidad: &{{ pascal }}) -> Self {
         Self {
             id: entidad.id.valor(),
-{% for f in fields %}            {{ f.name }}: {{ f.accessor }},
+{% for f in fields %}            {{ f.name }}: {% if f.private and not f.field_type is starting_with("Option<") %}Some({{ f.accessor }}){% else %}{{ f.accessor }}{% endif %},
 {% endfor %}        }
     }
-}
+{% if private_fields %}
+    /// Sin los campos privados: lo que una ruta pública da a quien llama sin sesión.
+    pub fn from_dominio_publico(entidad: &{{ pascal }}) -> Self {
+        Self {
+{% for f in private_fields %}            {{ f.name }}: None,
+{% endfor %}            ..Self::from_dominio(entidad)
+        }
+    }
+{% endif %}}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
@@ -47,7 +58,15 @@ impl DtoPagina{{ pascal }} {
             desplazamiento: pagina.desplazamiento,
         }
     }
-}
+{% if private_fields %}
+    /// La página sin los campos privados de sus elementos.
+    pub fn from_dominio_publico(pagina: &Pagina<{{ pascal }}>) -> Self {
+        Self {
+            elementos: pagina.elementos.iter().map(Dto{{ pascal }}::from_dominio_publico).collect(),
+            ..Self::from_dominio(pagina)
+        }
+    }
+{% endif %}}
 
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]

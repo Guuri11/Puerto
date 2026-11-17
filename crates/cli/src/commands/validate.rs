@@ -91,6 +91,15 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         for e in crate::validation::validate_entity_shape(entity) {
             errors.push(format!("entity '{}': {e}", entity.name));
         }
+        if !config.project.has_auth() {
+            for f in entity.fields.iter().filter(|f| f.private) {
+                errors.push(format!(
+                    "entity '{}': field '{}' is privado, but proyecto.auth is not set — with no \
+                     session, nobody would ever see it",
+                    entity.name, f.name
+                ));
+            }
+        }
 
         if seen_entities.contains(&entity.name) {
             errors.push(format!("duplicate entity name '{}'", entity.name));

@@ -95,29 +95,64 @@ impl ScaffoldAccess {
     }
 }
 
-/// What a scaffold says about the entity's rows beyond its fields: its uniques over several fields
-/// (`--unico a,b`, repeatable) and the order of its list (`--orden=-a,b`). A re-scaffold without
-/// one keeps what the block says.
+/// What a scaffold says about the entity beyond its field list: its uniques over several fields
+/// (`--unico a,b`, repeatable), the order of its list (`--orden=-a,b`) and its private fields
+/// (`--privado a,b`, auth projects). A re-scaffold without one keeps what the block says.
 #[derive(Default)]
 pub struct EntityShape {
     pub uniques: Vec<Vec<String>>,
     pub order: Vec<String>,
+    pub private: Vec<String>,
 }
 
 impl EntityShape {
-    /// `--unico jugador_id,partido_id` (one group each) and `--orden` as the CLI got them.
-    pub fn from_args(uniques: &[String], order: &[String]) -> Self {
+    /// `--unico jugador_id,partido_id` (one group each), `--orden` and `--privado` as the CLI got
+    /// them.
+    pub fn from_args(uniques: &[String], order: &[String], private: &[String]) -> Self {
+        let trimmed = |args: &[String]| args.iter().map(|a| a.trim().to_string()).collect();
         Self {
             uniques: uniques
                 .iter()
                 .map(|group| group.split(',').map(|f| f.trim().to_string()).collect())
                 .collect(),
-            order: order.iter().map(|k| k.trim().to_string()).collect(),
+            order: trimmed(order),
+            private: trimmed(private),
         }
     }
 
     fn is_empty(&self) -> bool {
         self.uniques.is_empty() && self.order.is_empty()
+    }
+
+    /// `fields` with `--privado` applied: the named ones private. Without `--privado`, a field keeps
+    /// what the block (`declared`) said of it — a re-scaffold that passes its fields again. A name
+    /// that is no field is refused, before anything is written.
+    pub(crate) fn mark_private(
+        &self,
+        pascal: &str,
+        fields: Vec<Field>,
+        declared: &[Field],
+    ) -> Result<Vec<Field>, String> {
+        if let Some(unknown) = self
+            .private
+            .iter()
+            .find(|name| !fields.iter().any(|f| &&f.name == name))
+        {
+            return Err(format!(
+                "{pascal}: privado: '{unknown}' is not a field of {pascal}"
+            ));
+        }
+        Ok(fields
+            .into_iter()
+            .map(|f| Field {
+                private: if self.private.is_empty() {
+                    f.private || declared.iter().any(|d| d.name == f.name && d.private)
+                } else {
+                    self.private.contains(&f.name)
+                },
+                ..f
+            })
+            .collect())
     }
 }
 
@@ -278,16 +313,25 @@ pub fn run_scaffold_with_options(
     let db = config.project.db;
     let shared_vos = config.value_object.clone();
     let pascal = to_pascal_case(name);
+    let declared = config
+        .entity
+        .iter()
+        .find(|e| e.name == pascal)
+        .map(|e| e.fields.clone())
+        .unwrap_or_default();
     let fields = if !cli_fields.is_empty() {
         cli_fields.to_vec()
     } else {
-        config
-            .entity
-            .iter()
-            .find(|e| e.name == pascal)
-            .map(|e| e.fields.clone())
-            .unwrap_or_default()
+        declared.clone()
     };
+    let fields = shape.mark_private(&pascal, fields, &declared)?;
+    if !config.project.has_auth() && fields.iter().any(|f| f.private) {
+        return Err(
+            "--privado needs an auth project (`puerto nuevo --auth oidc`): with no session, \
+             nobody would ever see the field"
+                .into(),
+        );
+    }
 
     // Checked before the first byte is written — a half-overwritten project is worse than a
     // refused command.

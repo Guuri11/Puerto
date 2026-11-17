@@ -404,7 +404,10 @@ pub fn run_generate_domain_with(
         .into());
     }
 
-    let fields: Vec<Field> = cli_fields.to_vec();
+    let fields = shape.mark_private(&pascal, cli_fields.to_vec(), &[])?;
+    if !config.project.has_auth() && fields.iter().any(|f| f.private) {
+        return Err("--privado needs an auth project (`puerto nuevo --auth oidc`)".into());
+    }
     let shared_vos = config.value_object.clone();
 
     crate::validation::validate_unique_field_names(&fields)?;
