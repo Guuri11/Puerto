@@ -328,7 +328,9 @@ presentacion/worker/src/
   `Descartar` — nada se retira sin una fila en `descartados`
 - Los bucles, `/health` + `/health/ready` en `WORKER_PORT` y el drenaje con SIGTERM son de
   `puerto-eventos`; los adaptadores del transporte `db`, de `puerto_sqlx::eventos`
-- `registro.rs` todavía no usa `cableado`: los consumidores no reciben casos de uso
+- `registro.rs` construye cada consumidor con `<Consumidor>::construir(&pool)`, que es del usuario:
+  ahí saca de `cableado::<c>::construir(pool)` los casos de uso que necesita y los guarda en sus
+  campos (`worker` depende de `cableado`)
 - `kafka` (`puerto-kafka`): el relay sigue leyendo `OutboxPostgres` y los descartados siguen en
   `DescartadosPostgres`; los eventos van a `<KAFKA_TOPIC_PREFIX>.<agregado>` con el id del agregado
   como clave, y un consumidor es el grupo `<prefijo>.<consumidor>`. Reparte un registro cada vez:

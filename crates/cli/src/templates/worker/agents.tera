@@ -31,6 +31,10 @@ presentacion/worker/src/
   `ResultadoManejo::descartar(motivo, detalle)` para uno que no pasará nunca. Un payload que no se
   decodifica es `MOTIVO_PAYLOAD_INVALIDO`. Nada se tira sin una fila en `descartados`
   (`make eventos/descartados`).
+- **Lo que necesita un consumidor se construye en su `construir(pool)`**, que `generado/registro.rs`
+  llama al arrancar: guárdalo en un campo del struct (`cableado::<contexto>::construir(pool)` da los
+  casos de uso de un contexto, como `Arc<dyn …>`). Sus tests construyen el struct con dobles
+  (`dobles::Mock<Caso>`), sin base de datos.
 - **Decodifica el snapshot, nunca el modelo de dominio**:
   `evento.decodificar::<SnapshotProducto>()`. El snapshot es el contrato público del evento.
 

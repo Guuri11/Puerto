@@ -44,7 +44,7 @@ pub async fn construir_worker(config: ConfigWorker) -> Result<Bucles, String> {
 {% if consumers %}    let descartados = Arc::new(DescartadosPostgres::new(pool.clone()));
 
     Ok(Bucles::new(&config)
-        .relay(OutboxPostgres::new(pool), publicador)
+        .relay(OutboxPostgres::new(pool.clone()), publicador)
 {%- for c in consumers %}
         .consumidor(
             SuscripcionKafka::new(

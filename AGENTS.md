@@ -377,8 +377,9 @@ make format/fix    # cargo fmt --all
   sección del `AGENTS.md` raíz que dice que `eventos.rs` nunca se edita a mano
 - `--eventos` también escribe `presentacion/worker` (ADR-0018 § 5): `main.rs` es
   `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(construir_worker)`
-  (`puerto-eventos`), `generado/registro.rs` (GENERADO desde `[[consumidor]]`; todavía no usa
-  `cableado`: los consumidores no reciben casos de uso), `consumidores/<nombre>.rs` (del usuario),
+  (`puerto-eventos`), `generado/registro.rs` (GENERADO desde `[[consumidor]]`: construye cada uno con
+  `<Consumidor>::construir(&pool)`), `consumidores/<nombre>.rs` (del usuario; su `construir(pool)`
+  saca de `cableado` los casos de uso que necesita),
   `make worker`, `make eventos/descartados`, `WORKER_PORT`. Con `db`, el registro pasa
   `OutboxPostgres` → `EntregasPostgres`, con una `SuscripcionPostgres` por consumidor. Con `kafka`,
   pasa a `PublicadorKafka` (los topics se crean al arrancar), con una `SuscripcionKafka` por

@@ -14,8 +14,18 @@ use async_trait::async_trait;
 use {{ import }};
 {% endfor -%}
 use puerto_nucleo::eventos::{SobreEvento, ManejadorEvento, ResultadoManejo, MOTIVO_PAYLOAD_INVALIDO};
+use sqlx::PgPool;
 
 pub struct {{ pascal }};
+
+impl {{ pascal }} {
+    /// Lo llama `generado/registro.rs` al arrancar el worker, con su pool. Lo que necesite el
+    /// consumidor se construye aquí y se guarda en sus campos: `cableado::<contexto>::construir(pool)`
+    /// da los casos de uso de un contexto.
+    pub fn construir(_pool: &PgPool) -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl ManejadorEvento for {{ pascal }} {

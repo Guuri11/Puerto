@@ -69,6 +69,15 @@ fn new_with_db_events_writes_the_worker_and_adds_it_to_the_workspace() {
     }
     let manifest = read(&output, "presentacion/worker/Cargo.toml");
     assert!(manifest.contains("puerto-eventos = { workspace = true }"));
+    // A consumer builds its use cases from the pool it is given (Phase 20.3).
+    assert!(
+        manifest.contains("cableado = { workspace = true }"),
+        "{manifest}"
+    );
+    assert!(
+        manifest.contains("sqlx = { workspace = true }"),
+        "{manifest}"
+    );
     let main = read(&output, "presentacion/worker/src/main.rs");
     assert!(main.contains("puerto_eventos::Worker::new(config)"));
     assert!(main.contains(".intentar_ejecutar(generado::registro::construir_worker)"));
@@ -264,6 +273,12 @@ fn generate_consumer_writes_the_stub_the_toml_entry_and_the_registry_line() {
     assert!(stub.contains("PRODUCTO_PUBLISHED => match evento.decodificar::<SnapshotProducto>()"));
     assert!(stub.contains("ResultadoManejo::descartar(MOTIVO_PAYLOAD_INVALIDO, err.detalle)"));
     assert!(stub.contains("idempotent"), "{stub}");
+    // canasta opened its own pool in a OnceCell: the registry hands each consumer its pool.
+    assert!(stub.contains("use sqlx::PgPool;"), "{stub}");
+    assert!(
+        stub.contains("    pub fn construir(_pool: &PgPool) -> Self {\n        Self\n    }"),
+        "{stub}"
+    );
     for test in [
         "fn deberia_hacer_ack_cuando_el_evento_producto_creado_es_valido()",
         "fn deberia_hacer_ack_otra_vez_cuando_el_mismo_evento_llega_dos_veces()",
@@ -281,6 +296,10 @@ fn generate_consumer_writes_the_stub_the_toml_entry_and_the_registry_line() {
             .contains(".enrutar(\"notify_new_producto\", &[PRODUCTO_CREADO, PRODUCTO_PUBLISHED])")
     );
     assert!(registry.contains("SuscripcionPostgres::new(pool.clone(), \"notify_new_producto\")"));
+    assert!(
+        registry.contains("NotifyNewProducto::construir(&pool),"),
+        "{registry}"
+    );
     assert!(registry.contains("use crate::consumidores::notify_new_producto::NotifyNewProducto;"));
     cleanup(&dir);
 }
@@ -449,6 +468,10 @@ fn generate_consumer_on_kafka_subscribes_to_the_topics_of_its_events() {
     );
     assert!(registry.contains("use crate::consumidores::notify_new_producto::NotifyNewProducto;"));
     assert!(!registry.contains("SuscripcionPostgres"), "{registry}");
+    assert!(
+        registry.contains("NotifyNewProducto::construir(&pool),"),
+        "{registry}"
+    );
     cleanup(&dir);
 }
 

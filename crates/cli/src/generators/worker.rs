@@ -128,7 +128,7 @@ struct RegistryConsumer {
     events: Vec<String>,
     /// The aggregates whose topics it reads (Kafka): `product`, sorted.
     aggregates: Vec<String>,
-    /// The handler, as the registry builds it: the unit struct of a `[[consumidor]]`, the
+    /// The handler, as the registry builds it: `{Consumer}::construir(&pool)` for a `[[consumidor]]`, the
     /// `Send{Mail}Mail { … }` of a mail sent on events.
     handler: String,
 }
@@ -155,7 +155,7 @@ pub fn generate_registry(config: &PuertoConfig) -> Result<String, Box<dyn std::e
         let pascal = to_pascal_case(&consumer.name);
         consumers.push(RegistryConsumer {
             name: consumer.name.clone(),
-            handler: pascal.clone(),
+            handler: format!("{pascal}::construir(&pool)"),
             pascal,
             events: events.into_iter().map(|e| e.constant).collect(),
             aggregates,

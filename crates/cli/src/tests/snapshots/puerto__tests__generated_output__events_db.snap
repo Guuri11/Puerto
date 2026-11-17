@@ -4322,6 +4322,10 @@ presentacion/worker/src/
   `ResultadoManejo::descartar(motivo, detalle)` para uno que no pasará nunca. Un payload que no se
   decodifica es `MOTIVO_PAYLOAD_INVALIDO`. Nada se tira sin una fila en `descartados`
   (`make eventos/descartados`).
+- **Lo que necesita un consumidor se construye en su `construir(pool)`**, que `generado/registro.rs`
+  llama al arrancar: guárdalo en un campo del struct (`cableado::<contexto>::construir(pool)` da los
+  casos de uso de un contexto, como `Arc<dyn …>`). Sus tests construyen el struct con dobles
+  (`dobles::Mock<Caso>`), sin base de datos.
 - **Decodifica el snapshot, nunca el modelo de dominio**:
   `evento.decodificar::<SnapshotProducto>()`. El snapshot es el contrato público del evento.
 
@@ -4355,6 +4359,9 @@ puerto-eventos = { workspace = true }
 # El pool, las migraciones en el arranque y las tablas de outbox, entregas y descartados.
 puerto-sqlx = { workspace = true }
 migrador = { workspace = true }
+# Lo que un consumidor construye en su `construir(pool)`: los casos de uso de cada contexto.
+cableado = { workspace = true }
+sqlx = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -4385,8 +4392,18 @@ use dominio_producto::eventos::{PRODUCTO_CREADO, PRODUCTO_PUBLISHED, SnapshotPro
 use puerto_nucleo::eventos::{
     MOTIVO_PAYLOAD_INVALIDO, ManejadorEvento, ResultadoManejo, SobreEvento,
 };
+use sqlx::PgPool;
 
 pub struct NotifyNewProducto;
+
+impl NotifyNewProducto {
+    /// Lo llama `generado/registro.rs` al arrancar el worker, con su pool. Lo que necesite el
+    /// consumidor se construye aquí y se guarda en sus campos: `cableado::<contexto>::construir(pool)`
+    /// da los casos de uso de un contexto.
+    pub fn construir(_pool: &PgPool) -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl ManejadorEvento for NotifyNewProducto {
@@ -4521,7 +4538,7 @@ pub async fn construir_worker(config: ConfigWorker) -> Result<Bucles, String> {
         .relay(OutboxPostgres::new(pool.clone()), entregas)
         .consumidor(
             SuscripcionPostgres::new(pool.clone(), "notify_new_producto"),
-            NotifyNewProducto,
+            NotifyNewProducto::construir(&pool),
             descartados,
         ))
 }
