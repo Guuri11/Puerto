@@ -231,6 +231,20 @@ Los correos generados (`generar correo bienvenida`): `CorreoBienvenida`,
 | `make generate/*`, `events/dead-letters`, `mail/ui`, `auth/grant` | `make generar/*`, `eventos/descartados`, `correo/ui`, `auth/conceder` |
 | `make test`, `lint`, `format`, `run`, `check`, `audit`, `setup`, `docker-compose/*`, `sqlx/*`, `web/*`, `auth/token`, `auth/ui` | igual (jerga y nombres de herramientas) |
 
+## Fase 20 (2026-11-17)
+
+Lo que añadió la Fase 20 (lo que encontró canasta); no hay un nombre anterior.
+
+| Dónde | Nombre |
+|---|---|
+| modelo | `Producto::actualizar(&mut self, props)` (las mismas reglas que `new`), `Producto::validar(props)` (privada: la llaman `new` y `actualizar`) |
+| consumidor del worker | `AvisarProductoNuevo::construir(pool: &PgPool) -> Self` (lo llama `registro.rs`) |
+| `puerto.toml` | `[[entidad]] orden unicos`, `[[entidad.campos]] privado` |
+| CLI | `--orden`, `--unico`, `--privado` |
+| runtime (`puerto-web`) | `BearerAuthOpcional(pub Option<Principal>)` |
+| DTO | `DtoProducto::from_dominio_publico(&entidad)` (los campos privados a `None`) |
+| SQL | el índice de un único compuesto: `<tabla>_<campo>_<campo>_key` |
+
 ## Pendiente
 
 Nada por ahora. Una palabra nueva se pregunta antes de usarla.
