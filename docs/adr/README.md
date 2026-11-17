@@ -21,7 +21,7 @@ ADR; supersede it with a new one and link both ways.
 | [0010](0010-generated-agent-rules-are-tested.md) | Generated agent rules have a root entry point and are tested | Accepted |
 | [0011](0011-templates-own-shape-types-own-decisions.md) | Templates own the shape of generated code; `types.rs` owns per-field decisions | Accepted |
 | [0012](0012-presentation-holds-use-case-ports.md) | Presentation holds use case ports; routes are tested with mocks | Accepted |
-| [0013](0013-web-frontend-react-daisyui-bun.md) | Web frontend: React + daisyUI on Bun; structure by Puerto, wire types from OpenAPI | Accepted |
+| [0013](0013-web-frontend-react-daisyui-bun.md) | Web frontend: React + daisyUI on Bun; structure by Puerto, wire types from OpenAPI | Accepted (layers superseded by 0025) |
 | [0014](0014-entity-ids-are-generated-newtypes.md) | Entity ids are generated newtypes | Accepted |
 | [0015](0015-repositories-return-one-repository-error.md) | Repositories return one `RepositoryError` | Accepted |
 | [0016](0016-lists-are-offset-pages.md) | Lists are offset pages, capped in the domain | Accepted |
@@ -33,3 +33,4 @@ ADR; supersede it with a new one and link both ways.
 | [0022](0022-references-are-typed-ids-checked-by-foreign-keys.md) | References between entities are typed ids, checked by foreign keys | Accepted |
 | [0023](0023-crates-por-contexto-y-capa.md) | Un crate por contexto y capa en los proyectos generados | Aceptada |
 | [0024](0024-lo-generado-en-castellano.md) | Lo que genera Puerto, en castellano | Aceptada |
+| [0025](0025-el-frontend-es-presentacion.md) | El frontend generado es presentación: contenedores sobre el cliente tipado | Aceptada |

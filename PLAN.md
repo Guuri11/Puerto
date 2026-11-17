@@ -3280,3 +3280,74 @@ tiene sesión sí).
 
 Un orden elegido por quien llama (`?orden=`); campos privados por rol; añadir un único o un orden a
 una tabla que ya existe (la migración la escribe el usuario: `puerto generar migracion`).
+
+---
+
+## Fase 21 — El frontend, solo presentación (ADR-0025)
+
+**Estado:** en curso. Decidida por Sergio el 2026-11-17: las capas `domain/`, `application/` e
+`infrastructure/` del frontend son abstracciones de un solo uso. El frontend queda como capa de
+presentación —contenedores que llaman al cliente tipado, vistas que solo reciben props— sobre
+`openapi-typescript` + `openapi-fetch`, que ya estaban. Los nombres siguen en inglés: las pantallas
+en castellano son la fase siguiente. Rompe la forma del frontend generado (`feat!`, 0.23).
+
+### La estructura de `web/src/`
+
+```
+main.tsx · index.css
+routes.tsx              customRoutes (del usuario; antes presentation/core/routes.tsx)
+dependencies.tsx        DependenciesProvider + useDependencies
+generated/              dependencies.ts · routes.tsx · roles.ts (auth)          GENERADO
+api/
+  client.ts             createApiClient, ApiClient, Schemas — con la primera entidad, nunca se reescribe
+  schema.d.ts           openapi-typescript (make web/sync)                        GENERADO
+  http.ts               ApiError, apiErrorCode, unwrap, PAGE_SIZE, MAX_PAGE_LIMIT (plantilla)
+features/<entidad>/
+  messages.ts           código → texto + campo
+  containers/           list · detail · form (+ tests): useDependencies().api + useAsync
+  views/                list · detail · form: solo props, tipadas con Schemas
+pages/                  home · not-found (+ login, register, auth-callback)
+shared/                 forms.ts · use-async.ts · ui/
+auth/                   (proyectos con auth) session, accounts, messages, el gateway, bearer-middleware, auth.tsx
+test-support/           render.tsx · fake-api.ts (con la primera entidad) · <entidad>.ts · auth.ts
+```
+
+Desaparecen `domain/`, `application/`, `infrastructure/`, `presentation/` y `core/`.
+
+### 21.1 — Las pantallas sobre el cliente tipado
+
+- **Por entidad, 11 ficheros** (antes 16): `features/<k>/messages.ts`, las tres vistas, los tres
+  contenedores y sus tests, `test-support/<k>.ts`. Sin `model.ts`, `errors.ts`, `repository.ts`
+  ni el adaptador HTTP y su test.
+- **Tipos:** `Schemas["Dto<E>"]` en las vistas y los contenedores; el formulario produce un
+  `Schemas["PeticionCrear<E>"]` (`to<E>Request`), que vale también para `PUT` (los dos tienen los
+  mismos campos). Un `Option` es una propiedad opcional que puede llegar `null`: las expresiones
+  usan `??` y `== null`; el formulario manda `undefined` para un campo vacío (`optionalText`,
+  `optionalNumber`, `optionalBoolean`, `optionalDateTime` en `shared/forms.ts`, antes
+  `…OrNull`). Un enum es un `string`: sin `parse<Vo>`, el `<select>` ofrece las variantes de
+  `puerto.toml`. Un campo privado se lee con `?? ""`.
+- **Errores:** `unwrap(call)` devuelve `data` o rechaza con `ApiError(code)` (`code` = el
+  `RespuestaError.codigo`, o `http.<status>`). Un solo error para todas las entidades.
+- **Referencias:** el formulario carga cada objetivo con `api.GET("/<plural>", { limite:
+  MAX_PAGE_LIMIT })`; el detalle recibe del contenedor un `<objetivo>Label(id)` por objetivo y se
+  lo pasa a `<ReferenceLink load>`. La vista no toca el cliente.
+- **Tests:** `fakeApi(collections, failures)` responde como la API generada sobre colecciones en
+  memoria (`collection(path, entidad, seed)`): la página por `limite`/`desplazamiento`, un 404 con
+  `<entidad>.no_encontrado`, 201/200/204; `failures` (`{ "POST /productos": "producto.duplicado" }`)
+  responde ese código. `test-support/<k>.ts` trae `<E>Mother.request()` / `.random()` y
+  `<camel>Collection(seed)`. Los tests dicen lo mismo que antes; los de borrado miran la colección,
+  no un doble.
+- **dependency-cruiser:** una vista no importa el cliente, `api/http`, `dependencies`,
+  `generated/` ni `use-async` (los tipos sí); solo `generated/dependencies.ts` y `test-support/`
+  importan `createApiClient`; `test-support/` solo lo importan los tests; sin ciclos.
+- **Auth:** los mismos ficheros, en `auth/`, `pages/` y `shared/ui/`; el puerto `AuthGateway` se
+  queda.
+- Tests de la CLI: las rutas de `web_entity_files` / `web_required_files`; ningún fichero bajo
+  `domain/`, `infrastructure/` o `presentation/`; la deriva de `validar` con las rutas nuevas; los
+  snapshots; el compile matrix (`bun run typecheck`, `lint`, `lint:arch`, `bun test`, `build`) en
+  todos los escenarios con web.
+
+### Fuera de alcance (Fase 21)
+
+Las pantallas en castellano (la fase siguiente); pantallas para los casos de uso propios; declarar
+los enums en la especificación OpenAPI; TanStack Query.
