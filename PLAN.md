@@ -3189,24 +3189,24 @@ fuente de Puerto; la web, el README y los mensajes de la CLI (pasada aparte, ADR
 
 ## Fase 20 — Lo que encontró canasta
 
-**Estado:** especificada (2026-11-17). Canasta (`~/dev/canasta`, una liga de baloncesto hecha con
+**Estado:** hecha (2026-11-17), sin publicar. Canasta (`~/dev/canasta`, una liga de baloncesto hecha con
 la 0.20) dejó una lista de huecos; las decisiones las tomó Sergio el 2026-11-17 y los nombres están
 en `docs/glosario.md` § Fase 20. Un commit por pieza, en este orden; cada una deja `make test` y
 `make lint` en verde, y `make test/full` (+ `make test/db` las que tocan `--db`) se pasa por grupos.
 Va en la 0.22: rompe los consumidores escritos con la 0.21 (20.3), con su guía de migración.
 
-### 20.1 — `--sin-demo` escribe `[proyecto]` primero
+### 20.1 — `--sin-demo` escribe `[proyecto]` primero ✅
 
 `puerto nuevo --sin-demo` dejaba `entidad = []` encima de `[proyecto]`. Un `puerto.toml` sin
 entidades no escribe la clave. Test: el `puerto.toml` de un proyecto `--sin-demo` empieza por
 `[proyecto]` y no tiene `entidad = []`.
 
-### 20.2 — El `AGENTS.md` raíz dice que la API va bajo `/api`
+### 20.2 — El `AGENTS.md` raíz dice que la API va bajo `/api` ✅
 
 `puerto_web::rutas` sirve la API bajo `/api` y la Swagger UI en `/`; el `AGENTS.md` no lo decía y
 un agente probaba `GET /productos`. Test: el `AGENTS.md` de un proyecto nuevo nombra `/api`.
 
-### 20.3 — Un consumidor recibe sus dependencias
+### 20.3 — Un consumidor recibe sus dependencias ✅
 
 `registro.rs` construía cada consumidor como un struct unidad, sin nada: canasta abría su propio
 pool en un `OnceCell`. El fichero del consumidor (del usuario) trae
@@ -3218,7 +3218,7 @@ añade campos. Los consumidores de correo no cambian. Tests: el fichero del cons
 `Cargo.toml` del worker depende de `sqlx` y no de `cableado` (una dependencia sin usar es un aviso
 de Cargo: la añade quien la usa).
 
-### 20.4 — `actualizar` pasa por las reglas de `new`
+### 20.4 — `actualizar` pasa por las reglas de `new` ✅
 
 `actualizar_<e>` repetía la comprobación de vacío y asignaba los campos sin pasar por el modelo:
 una regla nueva había que escribirla dos veces (canasta: `ensure_invariants`). El modelo gana
@@ -3228,7 +3228,7 @@ una regla nueva había que escribirla dos veces (canasta: `ensure_invariants`). 
 `entidad.actualizar(Props…)`. Tests: el modelo rechaza en `actualizar` lo que rechaza `new`; los
 tests del caso de uso siguen igual.
 
-### 20.5 — Los tests sacan sus valores de la madre
+### 20.5 — Los tests sacan sus valores de la madre ✅
 
 Los tests generados escribían `42` y `"example"` en cada literal: una regla de rango en un `i64`
 rompía decenas de tests. Los valores válidos de un test salen de `Madre<E>` (sus valores por
@@ -3237,14 +3237,14 @@ defecto): los tests del modelo, de crear y de actualizar construyen sus props co
 la madre arregla todos. Tests: el escenario con todos los tipos compila y pasa; ningún test de
 modelo, crear o actualizar escribe un literal numérico propio.
 
-### 20.6 — El detalle de una referencia muestra su etiqueta
+### 20.6 — El detalle de una referencia muestra su etiqueta ✅
 
 El detalle web mostraba el UUID del objetivo. El contenedor del detalle carga el objetivo por su
 id (su repositorio, `get`) y `<ReferenceLink>` muestra su etiqueta — la misma que el `<select>`
 del formulario (el primer campo `String` obligatorio o, si no hay, el id). Si la carga falla,
 muestra el id. Tests del detalle: la etiqueta del objetivo aparece.
 
-### 20.7 — Un único que cubre varios campos
+### 20.7 — Un único que cubre varios campos ✅
 
 `[[entidad]] unicos = [["jugador_id", "partido_id"]]`; en la CLI, `--unico jugador_id,partido_id`
 (se puede repetir) en `scaffold` y `dominio`. `--db`: `CREATE UNIQUE INDEX
@@ -3254,7 +3254,7 @@ memoria, el repositorio devuelve `Duplicado` si una fila viva tiene los mismos v
 campo `Option`, `Vec` o `HashMap`. Un re-scaffold sin `--unico` conserva los del bloque. Tests: el
 parser, la validación, el SQL, el repositorio en memoria (y un `#[sqlx::test]` en Postgres).
 
-### 20.8 — El orden de una lista
+### 20.8 — El orden de una lista ✅
 
 `[[entidad]] orden = ["-puntos", "nombre"]` (un `-` delante: descendente); en la CLI,
 `--orden=-puntos,nombre` en `scaffold` y `dominio`. Postgres: `ORDER BY puntos DESC, nombre,
@@ -3263,7 +3263,7 @@ id`). `puerto validar` y la CLI rechazan un campo que no existe o se repite, y u
 o `HashMap`. Un re-scaffold sin `--orden` conserva el del bloque. Tests: el parser, la validación,
 el SQL y el repositorio en memoria.
 
-### 20.9 — Un campo privado
+### 20.9 — Un campo privado ✅
 
 Proyectos con auth. `[[entidad.campos]] privado = true`; en la CLI, `--privado email[,…]` en
 `scaffold` y `dominio`. El campo va como `Option` en `Dto<E>` (sin serializar si es `None`);
