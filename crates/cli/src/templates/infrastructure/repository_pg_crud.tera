@@ -118,7 +118,7 @@ impl Repositorio{{ pascal }} for Repositorio{{ pascal }}Postgres {
 #[cfg(test)]
 mod pruebas_integracion {
     use super::*;
-{% set uniques = fields | filter(attribute="unique", value=true) %}    use crate::pruebas::siembra::{{ "{" }}{% if refs or (uniques and not events) %}construir, {% endif %}sembrar{% if events %}, guardar{% endif %}};
+{% set uniques = fields | filter(attribute="unique", value=true) %}    use crate::pruebas::siembra::{{ "{" }}{% if refs or ((uniques or unique_groups) and not events) %}construir, {% endif %}sembrar{% if events %}, guardar{% endif %}};
 {% if not events %}{% if update_vo_import %}    use {{ update_vo_import }};
 {% endif %}{% for import in reference_imports %}    use {{ import }};
 {% endfor %}{% endif %}
@@ -222,7 +222,22 @@ mod pruebas_integracion {
         // Comprobar
         assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
     }
-{% endif %}{% if not events %}{% for r in references %}
+{% endif %}{% if not events %}{% for g in unique_groups %}
+
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
+    async fn deberia_rechazar_un_duplicado_de_{{ g.suffix }}(pool: PgPool) {
+        // Preparar
+        let primero = sembrar(&pool).await;
+        let mut segundo = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+{% for f in g.fields %}        segundo.{{ f.name }} = primero.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %};
+{% endfor %}
+        // Actuar
+        let resultado = repositorio_de_prueba(pool).guardar(&segundo).await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
+    }
+{% endfor %}{% for r in references %}
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn deberia_rechazar_{{ r.field }}_inexistente(pool: PgPool) {

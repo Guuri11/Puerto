@@ -118,6 +118,7 @@ pub fn generate_infra_entity(
     render("infrastructure/entity.tera", &ctx)
 }
 
+#[cfg(test)]
 pub fn generate_crud_infra_db_repository(
     pascal: &str,
     snake: &str,
@@ -125,13 +126,14 @@ pub fn generate_crud_infra_db_repository(
     shared_vos: &[ValueObjectDefinition],
     events: bool,
 ) -> Result<String, RenderError> {
-    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos);
+    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &[]);
     ctx.insert("events", &events);
     render("infrastructure/repository_pg_crud.tera", &ctx)
 }
 
 /// `pruebas/siembra.rs` of a Postgres infrastructure crate: `build` and `seed`, for its tests and
 /// for those of the contexts that reference it (ADR-0023 § 5).
+#[cfg(test)]
 pub fn generate_pg_seed(
     pascal: &str,
     snake: &str,
@@ -139,23 +141,9 @@ pub fn generate_pg_seed(
     shared_vos: &[ValueObjectDefinition],
     events: bool,
 ) -> Result<String, RenderError> {
-    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos);
+    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &[]);
     ctx.insert("events", &events);
     render("infrastructure/siembra.tera", &ctx)
-}
-
-/// `contextos/{snake}/infraestructura/src/unit_of_work.rs`: the upsert the Pg repository has in a project
-/// without events, inside a `puerto_sqlx::uow::TransaccionPostgres`.
-pub fn generate_pg_unit_of_work(
-    pascal: &str,
-    snake: &str,
-    fields: &[Field],
-    shared_vos: &[ValueObjectDefinition],
-) -> Result<String, RenderError> {
-    render(
-        "infrastructure/unit_of_work_pg.tera",
-        &pg_crud_ctx(pascal, snake, fields, shared_vos),
-    )
 }
 
 /// What the Pg repository and the Pg unit of work render from: the SQL of the entity's table,
@@ -165,17 +153,18 @@ fn pg_crud_ctx(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
+    groups: &[Vec<String>],
 ) -> tera::Context {
     let eff = effective_fields(fields);
 
     // SQL text stays a Rust computation: the `$n` numbering is index-dependent.
-    let mut ctx = seed_ctx(pascal, snake, fields, shared_vos);
+    let mut ctx = seed_ctx(pascal, snake, fields, shared_vos, groups);
     // A row's references must exist: it is seeded with a target seeded first, through the
     // target's own repository tests (transitively, for the target's own references).
-    let mut field_ctxs = field_ctxs(&eff, pascal, shared_vos);
+    let mut field_ctxs = seeded_field_ctxs(&eff, pascal, shared_vos, groups);
     let mut seeded: Vec<String> = eff
         .iter()
-        .filter(|f| seeds_its_own_value(f))
+        .filter(|f| seeds_its_own_value(f, groups))
         .map(|f| f.name.clone())
         .collect();
     for f in field_ctxs
@@ -244,8 +233,9 @@ fn seed_ctx(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
+    groups: &[Vec<String>],
 ) -> tera::Context {
-    seed_ctx_with(pascal, snake, fields, shared_vos, &[])
+    seed_ctx_with(pascal, snake, fields, shared_vos, &[], groups)
 }
 
 /// [`seed_ctx`] with more test imports.
@@ -255,9 +245,13 @@ fn seed_ctx_with(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
     more_test_imports: &[String],
+    groups: &[Vec<String>],
 ) -> tera::Context {
     let eff = effective_fields(fields);
-    let seeded: Vec<&Field> = eff.iter().filter(|f| seeds_its_own_value(f)).collect();
+    let seeded: Vec<&Field> = eff
+        .iter()
+        .filter(|f| seeds_its_own_value(f, groups))
+        .collect();
 
     // The seed names every plain and enum VO it constructs (`Name::new(…)`, `Status::Active`);
     // Option/Vec VOs are seeded as `None` / `vec![]` and need no import.
@@ -270,7 +264,10 @@ fn seed_ctx_with(
     }
     // A `Uuid` field and every `unique` seed draw on `Uuid::new_v4()`; the file itself names no
     // `Uuid` since ids are `{Entity}Id`.
-    if seeded.iter().any(|f| seed_literal(f).contains("Uuid::")) {
+    if seeded
+        .iter()
+        .any(|f| seed_literal(&as_seeded(f, groups)).contains("Uuid::"))
+    {
         test_imports.push("uuid::Uuid".to_string());
     }
     for import in more_test_imports {
@@ -285,15 +282,95 @@ fn seed_ctx_with(
         "seeded",
         &seeded.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
     );
-    ctx.insert("fields", &field_ctxs(&eff, pascal, shared_vos));
+    ctx.insert(
+        "fields",
+        &seeded_field_ctxs(&eff, pascal, shared_vos, groups),
+    );
+    insert_unique_groups(&mut ctx, &eff, pascal, shared_vos, groups);
     ctx
 }
 
+/// The entity's uniques over several fields, as `puerto.toml` declares them (`[[entidad]] unicos`).
+fn unique_groups_of(base: &Path, pascal: &str) -> Vec<Vec<String>> {
+    crate::puerto_toml::read(base)
+        .ok()
+        .and_then(|c| c.entity.into_iter().find(|e| e.name == pascal))
+        .map(|e| e.uniques)
+        .unwrap_or_default()
+}
+
+/// What the repositories and their tests say about the uniques: `unique_groups` (one test each,
+/// `deberia_rechazar_un_duplicado_de_<a>_y_<b>`) and `unique_conditions`, the in-memory
+/// repository's check — a single unique field, or every field of a group.
+fn insert_unique_groups(
+    ctx: &mut tera::Context,
+    eff: &[Field],
+    pascal: &str,
+    shared_vos: &[ValueObjectDefinition],
+    groups: &[Vec<String>],
+) {
+    let field_of = |name: &String| {
+        eff.iter()
+            .find(|f| &f.name == name)
+            .map(|f| field_ctx(f, pascal, shared_vos))
+    };
+    let unique_groups: Vec<serde_json::Value> = groups
+        .iter()
+        .map(|group| {
+            let fields: Vec<FieldCtx> = group.iter().filter_map(field_of).collect();
+            serde_json::json!({
+                "suffix": group.join("_y_"),
+                "first": group.first(),
+                "fields": fields,
+            })
+        })
+        .collect();
+    let mut conditions: Vec<String> = eff
+        .iter()
+        .filter(|f| f.unique)
+        .map(|f| format!("fila.{0} == entidad.{0}", f.name))
+        .collect();
+    conditions.extend(groups.iter().map(|group| {
+        let all = group
+            .iter()
+            .map(|name| format!("fila.{name} == entidad.{name}"))
+            .collect::<Vec<_>>()
+            .join(" && ");
+        format!("({all})")
+    }));
+    ctx.insert("unique_groups", &unique_groups);
+    ctx.insert("unique_conditions", &conditions);
+}
+
+/// A field of a unique group is seeded like a unique one: a fresh value per row.
+fn as_seeded(field: &Field, groups: &[Vec<String>]) -> Field {
+    Field {
+        unique: field.unique || groups.iter().flatten().any(|name| name == &field.name),
+        ..field.clone()
+    }
+}
+
+/// The field contexts a seed renders: a field of a unique group seeded as a unique one.
+fn seeded_field_ctxs(
+    eff: &[Field],
+    pascal: &str,
+    shared_vos: &[ValueObjectDefinition],
+    groups: &[Vec<String>],
+) -> Vec<FieldCtx> {
+    eff.iter()
+        .map(|f| FieldCtx {
+            seed_literal: seed_literal(&as_seeded(f, groups)),
+            ..field_ctx(f, pascal, shared_vos)
+        })
+        .collect()
+}
+
 /// A seeded entity takes the mother's values (Phase 20.5) but where one would not do for a stored
-/// row: a unique field gets a fresh value per row, a timestamp a whole second Postgres stores
-/// exactly (see [`seed_literal`]).
-fn seeds_its_own_value(field: &Field) -> bool {
-    field.unique || seed_literal(field).contains("from_timestamp")
+/// row: a unique field (or one of a unique group) gets a fresh value per row, a timestamp a whole
+/// second Postgres stores exactly (see [`seed_literal`]).
+fn seeds_its_own_value(field: &Field, groups: &[Vec<String>]) -> bool {
+    let seeded = as_seeded(field, groups);
+    seeded.unique || seed_literal(&seeded).contains("from_timestamp")
 }
 
 fn field_ctxs(eff: &[Field], pascal: &str, shared_vos: &[ValueObjectDefinition]) -> Vec<FieldCtx> {
@@ -307,7 +384,14 @@ fn foreign_key_name(table: &str, field: &str) -> String {
     format!("{table}_{field}_fkey")
 }
 
+#[cfg(test)]
 pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
+    create_table_sql_with(snake, fields, &[])
+}
+
+/// The `CREATE TABLE` of an entity, with its indexes: one per unique field, one per unique group
+/// (`[[entidad]] unicos`), one per reference.
+pub fn create_table_sql_with(snake: &str, fields: &[Field], groups: &[Vec<String>]) -> String {
     let eff = effective_fields(fields);
     let table = pluralize(snake);
     let custom_cols: String = eff
@@ -345,6 +429,13 @@ pub fn create_table_sql(snake: &str, fields: &[Field]) -> String {
         })
         .collect();
     sql.push_str(&unique_indexes);
+    for group in groups {
+        sql.push_str(&format!(
+            "\nCREATE UNIQUE INDEX {table}_{}_key ON {table} ({}) WHERE borrado = false;\n",
+            group.join("_"),
+            group.join(", ")
+        ));
+    }
 
     // A reference is what its entity is looked up by; a unique one already has its index.
     let reference_indexes: String = eff
@@ -370,25 +461,27 @@ pub fn write_repository_files(
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let events = crate::puerto_toml::events_enabled(base);
+    let groups = unique_groups_of(base, pascal);
     if db {
         write_file(
             &base.join(layout::infra_file(snake, "fila")),
             &generate_infra_entity(pascal, snake, fields, shared_vos)?,
         )?;
+        let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &groups);
+        ctx.insert("events", &events);
         write_file(
             &base.join(layout::infra_file(snake, "repositorio")),
-            &generate_crud_infra_db_repository(pascal, snake, fields, shared_vos, events)?,
+            &render("infrastructure/repository_pg_crud.tera", &ctx)?,
         )?;
-        let unit_of_work = base.join(layout::infra_file(snake, "unit_of_work"));
         if events {
             write_file(
-                &unit_of_work,
-                &generate_pg_unit_of_work(pascal, snake, fields, shared_vos)?,
+                &base.join(layout::infra_file(snake, "unit_of_work")),
+                &render("infrastructure/unit_of_work_pg.tera", &ctx)?,
             )?;
         }
         write_file(
             &base.join(layout::infra_file(snake, "pruebas/siembra")),
-            &generate_pg_seed(pascal, snake, fields, shared_vos, events)?,
+            &render("infrastructure/siembra.tera", &ctx)?,
         )?;
     } else {
         write_file(
@@ -397,11 +490,18 @@ pub fn write_repository_files(
                 "infrastructure/repository_inmemory_crud.tera",
                 // A reference is seeded, and filtered by, `CustomerId::generate()`: nothing
                 // checks it.
-                &seed_ctx_with(pascal, snake, fields, shared_vos, &{
-                    let mut imports = vec![];
-                    push_reference_imports(&mut imports, &effective_fields(fields));
-                    imports
-                }),
+                &seed_ctx_with(
+                    pascal,
+                    snake,
+                    fields,
+                    shared_vos,
+                    &{
+                        let mut imports = vec![];
+                        push_reference_imports(&mut imports, &effective_fields(fields));
+                        imports
+                    },
+                    &groups,
+                ),
             )?,
         )?;
     }
@@ -437,7 +537,11 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
     write_repository_files(&pascal, &snake, base, db, &fields, &shared_vos)?;
 
     if db {
-        run_create_table_migration(&snake, base, &create_table_sql(&snake, &fields))?;
+        run_create_table_migration(
+            &snake,
+            base,
+            &create_table_sql_with(&snake, &fields, &unique_groups_of(base, &pascal)),
+        )?;
     }
 
     let repo_label = if db {

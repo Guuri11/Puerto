@@ -95,6 +95,75 @@ impl ScaffoldAccess {
     }
 }
 
+/// What a scaffold says about the entity's rows beyond its fields: its uniques over several fields
+/// (`--unico a,b`, repeatable). A re-scaffold without them keeps what the block says.
+#[derive(Default)]
+pub struct EntityShape {
+    pub uniques: Vec<Vec<String>>,
+}
+
+impl EntityShape {
+    /// `--unico jugador_id,partido_id` (one group each) as the CLI got them.
+    pub fn from_args(uniques: &[String]) -> Self {
+        Self {
+            uniques: uniques
+                .iter()
+                .map(|group| group.split(',').map(|f| f.trim().to_string()).collect())
+                .collect(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.uniques.is_empty()
+    }
+}
+
+/// `shape` checked against the entity's fields, before anything is written.
+pub(crate) fn check_shape(
+    pascal: &str,
+    fields: &[Field],
+    shape: &EntityShape,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let errors = crate::validation::validate_entity_shape(&crate::puerto_toml::Entity {
+        name: pascal.to_string(),
+        fields: fields.to_vec(),
+        uniques: shape.uniques.clone(),
+        ..Default::default()
+    });
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("{pascal}: {}", errors.join("\n  ")).into())
+    }
+}
+
+/// Writes a checked `shape` to the entity's `[[entidad]]` block (creating the block) before any
+/// file is rendered: the generators read it back from there.
+pub(crate) fn record_shape(
+    base: &Path,
+    pascal: &str,
+    db: bool,
+    fields: &[Field],
+    shape: &EntityShape,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if shape.is_empty() {
+        return Ok(());
+    }
+    let mut config = crate::puerto_toml::read(base)?;
+    match config.entity.iter_mut().find(|e| e.name == pascal) {
+        Some(entity) => entity.uniques = shape.uniques.clone(),
+        None => config.entity.push(crate::puerto_toml::Entity {
+            name: pascal.to_string(),
+            use_cases: crud_use_cases(&pascal_to_snake(pascal)),
+            db,
+            fields: fields.to_vec(),
+            uniques: shape.uniques.clone(),
+            ..Default::default()
+        }),
+    }
+    crate::puerto_toml::write(base, &config)
+}
+
 /// Checks `access` against the entity's CRUD use cases and writes it to its `[[entidad]]` block,
 /// before any file is rendered: the generators read it back from there. A re-scaffold without
 /// flags keeps what the block says.
@@ -165,12 +234,32 @@ pub fn run_scaffold(
 
 /// [`run_scaffold`] with `--publico` / `--rol`. In an auth project every CRUD route takes
 /// `BearerAuth` except the `public` ones; outside one, `access` must be empty.
+#[cfg(test)]
 pub fn run_scaffold_with_access(
     name: &str,
     base: &Path,
     cli_fields: &[Field],
     overwrite: OverwritePolicy,
     access: &ScaffoldAccess,
+) -> Result<(), Box<dyn std::error::Error>> {
+    run_scaffold_with_options(
+        name,
+        base,
+        cli_fields,
+        overwrite,
+        access,
+        &EntityShape::default(),
+    )
+}
+
+/// [`run_scaffold_with_access`] with `--unico`.
+pub fn run_scaffold_with_options(
+    name: &str,
+    base: &Path,
+    cli_fields: &[Field],
+    overwrite: OverwritePolicy,
+    access: &ScaffoldAccess,
+    shape: &EntityShape,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     let db = config.project.db;
@@ -211,12 +300,22 @@ pub fn run_scaffold_with_access(
         config.project.web,
         overwrite,
     )?;
+    // Checked before the access is written: a refused shape leaves nothing behind.
+    check_shape(&pascal, &fields, shape)?;
     record_access(base, &pascal, db, &fields, access)?;
+    record_shape(base, &pascal, db, &fields, shape)?;
 
     run(name, base, db, &fields, &shared_vos)?;
     if db {
         let snake = pascal_to_snake(&pascal);
-        let migration_sql = crate::generators::infrastructure::create_table_sql(&snake, &fields);
+        let groups = crate::puerto_toml::read(base)?
+            .entity
+            .into_iter()
+            .find(|e| e.name == pascal)
+            .map(|e| e.uniques)
+            .unwrap_or_default();
+        let migration_sql =
+            crate::generators::infrastructure::create_table_sql_with(&snake, &fields, &groups);
         run_create_table_migration(&snake, base, &migration_sql)?;
     }
     Ok(())

@@ -370,10 +370,26 @@ pub fn write_domain_files(
 /// They are persisted to puerto.toml here, which is what makes the later layered commands
 /// (`application`, `repository`, `presentation`) field-aware: they all read their fields back
 /// from the manifest.
+#[cfg(test)]
 pub fn run_generate_domain(
     name: &str,
     base: &Path,
     cli_fields: &[Field],
+) -> Result<(), Box<dyn std::error::Error>> {
+    run_generate_domain_with(
+        name,
+        base,
+        cli_fields,
+        &crate::generators::scaffold::EntityShape::default(),
+    )
+}
+
+/// [`run_generate_domain`] with `--unico`: written to the block for the layers that follow.
+pub fn run_generate_domain_with(
+    name: &str,
+    base: &Path,
+    cli_fields: &[Field],
+    shape: &crate::generators::scaffold::EntityShape,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     let pascal = to_pascal_case(name);
@@ -403,6 +419,7 @@ pub fn run_generate_domain(
         return Err(vo_conflicts.join("\n  ").into());
     }
     crate::validation::validate_references_before_writing(&pascal, &fields, &config, base)?;
+    crate::generators::scaffold::check_shape(&pascal, &fields, shape)?;
 
     write_domain_files(&pascal, &snake, base, &fields, &shared_vos)?;
     let has_vo = fields.iter().any(is_value_object);
@@ -412,6 +429,7 @@ pub fn run_generate_domain(
 
     let use_cases = crud_use_cases(&snake);
     crate::puerto_toml::add_entity(base, &pascal, use_cases, config.project.db, fields.clone())?;
+    crate::generators::scaffold::record_shape(base, &pascal, config.project.db, &fields, shape)?;
 
     let dir = layout::crate_dir(&snake, Layer::Domain);
     if has_local_vo {

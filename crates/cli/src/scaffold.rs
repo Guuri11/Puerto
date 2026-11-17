@@ -1,13 +1,19 @@
 // Re-exports so existing call sites (`scaffold::run_scaffold`, etc.) continue to work.
 pub use crate::generators::application::run_generate_application;
 pub use crate::generators::bootstrap::run_bootstrap_command;
+#[cfg(test)]
 pub use crate::generators::domain::run_generate_domain;
+pub use crate::generators::domain::run_generate_domain_with;
 pub use crate::generators::events::run_generate_event;
 pub use crate::generators::infrastructure::run_generate_repository;
 pub use crate::generators::mail::run_generate_mail_on;
 pub use crate::generators::migration::run_generate_migration;
 pub use crate::generators::presentation::run_generate_presentation;
-pub use crate::generators::scaffold::{ScaffoldAccess, run_scaffold_with_access, run_value_object};
+#[cfg(test)]
+pub use crate::generators::scaffold::run_scaffold_with_access;
+pub use crate::generators::scaffold::{
+    EntityShape, ScaffoldAccess, run_scaffold_with_options, run_value_object,
+};
 pub use crate::generators::use_case::run_use_case;
 pub use crate::generators::web::run_generate_web;
 pub use crate::generators::worker::run_generate_consumer;

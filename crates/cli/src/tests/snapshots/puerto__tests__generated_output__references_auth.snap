@@ -102,6 +102,10 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar snippets` | snippets de editor para los patrones de abajo (Zed, VS Code) |
 | `puerto validar` | comprueba nombres, tipos y que el manifiesto y el código están de acuerdo |
 
+Un único sobre varios campos (una línea por jugador y partido) es `--unico jugador_id,partido_id`
+en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
+también por el repositorio en memoria; queda en `[[entidad]] unicos`.
+
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token) y
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth).
 
@@ -3671,7 +3675,8 @@ use dominio_jugador::{
 use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 /// Guarda jugadores en la memoria del proceso: se pierden cuando el proceso se para.
-/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes.
+/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes;
+/// un valor único que ya tiene otra fila viva es `Duplicado`.
 /// Cubre el hueco hasta que haya base de datos (`puerto nuevo --db` genera repositorios Postgres).
 #[derive(Default)]
 pub struct RepositorioJugadorEnMemoria {
@@ -3735,6 +3740,17 @@ impl RepositorioJugador for RepositorioJugadorEnMemoria {
     async fn guardar(&self, entidad: &Jugador) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entidad.id, "guardar");
         let mut filas = self.escribir();
+        // Como los índices únicos parciales: solo las filas vivas ocupan sus valores.
+        let ocupado = !entidad.borrado
+            && filas.values().any(|fila| {
+                fila.id != entidad.id
+                    && !fila.borrado
+                    && (fila.equipo_id == entidad.equipo_id && fila.dorsal == entidad.dorsal)
+            });
+        if ocupado {
+            tracing::warn!(id = %entidad.id, "guardar rechazado: un valor único ya está ocupado");
+            return Err(ErrorRepositorio::Duplicado);
+        }
         filas.insert(entidad.id, entidad.clone());
         Ok(())
     }
@@ -3744,11 +3760,17 @@ impl RepositorioJugador for RepositorioJugadorEnMemoria {
 mod tests {
     use super::*;
     use dominio_equipo::modelo::IdEquipo;
-    use dominio_jugador::pruebas::madres::MadreJugador;
+    use dominio_jugador::modelo::PropsJugador;
+    use uuid::Uuid;
 
-    /// Una entidad válida, con los valores de la madre.
+    /// Una entidad válida, con los valores de la madre salvo en los campos únicos (uno
+    /// nuevo cada vez) y las fechas (un segundo exacto).
     fn nuevo_jugador() -> Jugador {
-        MadreJugador::aleatorio()
+        Jugador::new(PropsJugador {
+            equipo_id: IdEquipo::generar(),
+            dorsal: (Uuid::new_v4().as_u128() >> 65) as i64,
+        })
+        .unwrap()
     }
 
     #[tokio::test]
@@ -3827,6 +3849,39 @@ mod tests {
         assert_eq!(pagina.elementos.len(), 1);
         assert_eq!(pagina.total, 3);
         assert_eq!((pagina.limite, pagina.desplazamiento), (2, 2));
+    }
+
+    #[tokio::test]
+    async fn deberia_rechazar_un_duplicado_de_equipo_id_y_dorsal() {
+        // Preparar
+        let repositorio = RepositorioJugadorEnMemoria::new();
+        let primero = nuevo_jugador();
+        repositorio.guardar(&primero).await.unwrap();
+        let mut segundo = nuevo_jugador();
+        segundo.equipo_id = primero.equipo_id;
+        segundo.dorsal = primero.dorsal;
+
+        // Actuar
+        let resultado = repositorio.guardar(&segundo).await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
+    }
+
+    #[tokio::test]
+    async fn deberia_aceptar_equipo_id_y_dorsal_cuando_solo_coincide_equipo_id() {
+        // Preparar
+        let repositorio = RepositorioJugadorEnMemoria::new();
+        let primero = nuevo_jugador();
+        repositorio.guardar(&primero).await.unwrap();
+        let mut segundo = nuevo_jugador();
+        segundo.equipo_id = primero.equipo_id;
+
+        // Actuar
+        let resultado = repositorio.guardar(&segundo).await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
     }
 
     #[tokio::test]
@@ -6046,6 +6101,10 @@ casos_de_uso = [
     "actualizar_jugador",
     "borrar_jugador",
 ]
+unicos = [[
+    "equipo_id",
+    "dorsal",
+]]
 publicos = [
     "listar_jugadores",
     "obtener_jugador",

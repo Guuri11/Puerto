@@ -100,6 +100,11 @@ pub struct Entity {
     pub use_cases: Vec<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub db: bool,
+    /// Uniques over several fields (`--unico jugador_id,partido_id`): one partial unique index
+    /// each, checked by the in-memory repository too. Values, so written before any table.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "unicos")]
+    pub uniques: Vec<Vec<String>>,
     /// Auth projects: the use cases whose routes take no `BearerAuth` — what scaffold wrote
     /// (`--publico`); after it, `rutas.rs` is the user's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

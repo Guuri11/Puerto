@@ -16,6 +16,10 @@ casos_de_uso = ["crear_producto", "listar_productos"]   # acciones en snake_case
 db = true                # opcional — omitido: en memoria; true: SQLx/Postgres
 eventos = ["producto_publicado"]   # opcional, proyectos con eventos: eventos propios además de los
                                    # CRUD creado/actualizado/borrado — snake_case, únicos, no CRUD
+unicos = [["jugador_id", "partido_id"]]   # opcional: un único sobre varios campos (`--unico a,b`) →
+                                 # CREATE UNIQUE INDEX <tabla>_<a>_<b>_key … WHERE borrado = false; el
+                                 # repositorio en memoria también lo comprueba. Dos o más campos propios,
+                                 # sin Option/Vec/HashMap. Un re-scaffold sin --unico conserva el del bloque
 publicos = ["listar_productos"]    # opcional, proyectos con auth: rutas sin BearerAuth
 roles = { crear_producto = ["admin"] }   # opcional, proyectos con auth: #[requiere_rol] por ruta.
                                  # Las claves son casos de uso de la entidad, nunca también

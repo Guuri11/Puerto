@@ -88,6 +88,9 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         for e in crate::validation::validate_entity_access(entity) {
             errors.push(format!("entity '{}': {e}", entity.name));
         }
+        for e in crate::validation::validate_entity_shape(entity) {
+            errors.push(format!("entity '{}': {e}", entity.name));
+        }
 
         if seen_entities.contains(&entity.name) {
             errors.push(format!("duplicate entity name '{}'", entity.name));

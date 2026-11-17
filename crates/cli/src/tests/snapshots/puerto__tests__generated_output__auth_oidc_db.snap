@@ -114,6 +114,10 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar snippets` | snippets de editor para los patrones de abajo (Zed, VS Code) |
 | `puerto validar` | comprueba nombres, tipos y que el manifiesto y el código están de acuerdo |
 
+Un único sobre varios campos (una línea por jugador y partido) es `--unico jugador_id,partido_id`
+en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
+también por el repositorio en memoria; queda en `[[entidad]] unicos`.
+
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token) y
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth).
 

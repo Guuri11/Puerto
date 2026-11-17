@@ -176,7 +176,25 @@ mod pruebas_integracion {
         assert_eq!(contar(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
         assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
     }
-{% endif %}{% for r in references %}
+{% endif %}{% for g in unique_groups %}
+
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
+    async fn no_deberia_escribir_fila_ni_evento_cuando_{{ g.suffix }}_ya_estan_en_uso(pool: PgPool) {
+        // Preparar
+        let primero = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+        crear(&pool, &primero).await.unwrap();
+        let mut segundo = construir({% if seeds_references %}&pool).await{% else %}){% endif %};
+{% for f in g.fields %}        segundo.{{ f.name }} = primero.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %};
+{% endfor %}
+        // Actuar
+        let resultado = crear(&pool, &segundo).await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM {{ plural }}").await, 1);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 1);
+    }
+{% endfor %}{% for r in references %}
 
     #[sqlx::test(migrator = "migrador::MIGRADOR")]
     async fn deberia_rechazar_{{ r.field }}_inexistente(pool: PgPool) {

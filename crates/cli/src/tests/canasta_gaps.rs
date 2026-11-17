@@ -89,3 +89,170 @@ fn postgres_seeds_take_their_valid_values_from_the_mother() {
     assert!(!siembra.contains("puntos: 42"), "{siembra}");
     cleanup(&dir);
 }
+
+// ── 20.7: a unique over several fields ───────────────────────────────────────
+
+fn linea_fields() -> Vec<puerto_toml::Field> {
+    vec![
+        puerto_toml::parse_field_arg("jugador:String").unwrap(),
+        puerto_toml::parse_field_arg("partido:String").unwrap(),
+        puerto_toml::parse_field_arg("faltas:i64").unwrap(),
+        puerto_toml::parse_field_arg("nota:opt:String").unwrap(),
+    ]
+}
+
+fn scaffold_linea(name: &str, db: bool, shape: &scaffold::EntityShape) -> (PathBuf, PathBuf) {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some("liga".into()), db, &dir).unwrap();
+    scaffold::run_scaffold_with_options(
+        "Linea",
+        &output,
+        &linea_fields(),
+        OverwritePolicy::Ask,
+        &scaffold::ScaffoldAccess::default(),
+        shape,
+    )
+    .unwrap();
+    (dir, output)
+}
+
+fn unique_shape(groups: &[&str]) -> scaffold::EntityShape {
+    scaffold::EntityShape::from_args(&groups.iter().map(|g| g.to_string()).collect::<Vec<_>>())
+}
+
+#[test]
+fn scaffold_records_a_unique_group_in_puerto_toml() {
+    let (dir, output) = scaffold_linea(
+        "canasta_unique_toml",
+        false,
+        &unique_shape(&["jugador,partido"]),
+    );
+
+    let config = puerto_toml::read(&output).unwrap();
+    let linea = config.entity.iter().find(|e| e.name == "Linea").unwrap();
+    assert_eq!(
+        linea.uniques,
+        vec![vec!["jugador".to_string(), "partido".to_string()]]
+    );
+    let toml = read(&output, "puerto.toml");
+    assert!(toml.contains("unicos = [["), "{toml}");
+
+    // A re-scaffold without --unico keeps what the block says.
+    scaffold::run_scaffold("Linea", &output, &[], OverwritePolicy::Force).unwrap();
+    let config = puerto_toml::read(&output).unwrap();
+    let linea = config.entity.iter().find(|e| e.name == "Linea").unwrap();
+    assert_eq!(linea.uniques.len(), 1);
+    cleanup(&dir);
+}
+
+#[test]
+fn validation_rejects_unique_groups_that_cannot_be_an_index() {
+    let entity = |groups: &[&[&str]]| puerto_toml::Entity {
+        name: "Linea".into(),
+        fields: linea_fields(),
+        uniques: groups
+            .iter()
+            .map(|g| g.iter().map(|f| f.to_string()).collect())
+            .collect(),
+        ..Default::default()
+    };
+    let errors_of = |groups: &[&[&str]]| crate::validation::validate_entity_shape(&entity(groups));
+
+    assert!(errors_of(&[&["jugador", "partido"]]).is_empty());
+    for (groups, expected) in [
+        (&[&["jugador"][..]][..], "at least two"),
+        (&[&["jugador", "equipo"][..]][..], "'equipo' is not a field"),
+        (&[&["jugador", "jugador"][..]][..], "'jugador' twice"),
+        (&[&["jugador", "nota"][..]][..], "'nota'"),
+        (
+            &[&["jugador", "partido"][..], &["partido", "jugador"][..]][..],
+            "twice",
+        ),
+    ] {
+        let errors = errors_of(groups);
+        assert!(
+            errors.iter().any(|e| e.contains(expected)),
+            "{groups:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn scaffold_refuses_a_unique_group_naming_an_unknown_field_and_writes_nothing() {
+    let dir = temp_dir("canasta_unique_refused");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some("liga".into()), false, &dir).unwrap();
+
+    let err = scaffold::run_scaffold_with_options(
+        "Linea",
+        &output,
+        &linea_fields(),
+        OverwritePolicy::Ask,
+        &scaffold::ScaffoldAccess::default(),
+        &unique_shape(&["jugador,equipo"]),
+    )
+    .unwrap_err()
+    .to_string();
+
+    assert!(err.contains("'equipo' is not a field"), "{err}");
+    assert!(!output.join("contextos/linea").exists());
+    assert!(!read(&output, "puerto.toml").contains("Linea"));
+    cleanup(&dir);
+}
+
+#[test]
+fn a_unique_group_is_a_partial_index_and_the_in_memory_repository_enforces_it() {
+    let (dir, output) = scaffold_linea(
+        "canasta_unique_index",
+        true,
+        &unique_shape(&["jugador,partido"]),
+    );
+
+    let migration = fs::read_dir(output.join("migraciones"))
+        .unwrap()
+        .map(|e| fs::read_to_string(e.unwrap().path()).unwrap())
+        .find(|sql| sql.contains("CREATE TABLE lineas"))
+        .unwrap();
+    assert!(
+        migration.contains(
+            "CREATE UNIQUE INDEX lineas_jugador_partido_key ON lineas (jugador, partido) WHERE borrado = false;"
+        ),
+        "{migration}"
+    );
+    let pg = read(
+        &output,
+        "contextos/linea/infraestructura/src/repositorio.rs",
+    );
+    assert!(
+        pg.contains("async fn deberia_rechazar_un_duplicado_de_jugador_y_partido(pool: PgPool)"),
+        "{pg}"
+    );
+    cleanup(&dir);
+
+    let (dir, output) = scaffold_linea(
+        "canasta_unique_memory",
+        false,
+        &unique_shape(&["jugador,partido"]),
+    );
+    let memory = read(
+        &output,
+        "contextos/linea/infraestructura/src/repositorio.rs",
+    );
+    assert!(
+        memory.contains("(fila.jugador == entidad.jugador && fila.partido == entidad.partido)"),
+        "{memory}"
+    );
+    assert!(
+        memory.contains("async fn deberia_rechazar_un_duplicado_de_jugador_y_partido()"),
+        "{memory}"
+    );
+    // Two seeded rows must not collide on the group: its fields get a fresh value each.
+    assert!(
+        memory.contains("jugador: Uuid::new_v4().to_string(),"),
+        "{memory}"
+    );
+    cleanup(&dir);
+}

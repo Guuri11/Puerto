@@ -261,6 +261,7 @@ puerto nuevo --db --auth local                 # Auth: cuentas y sesiones en est
 puerto generar scaffold <Nombre>                                            # Entidad DDD nueva — todas las capas (db, deducida de puerto.toml)
 puerto generar scaffold <Nombre> --forzar                                   # Regenera una entidad existente, pisando los cambios a mano
 puerto generar scaffold <Nombre> -- nombre:String precio:i64!              # Campos primitivos (! = único)
+puerto generar scaffold Linea --unico jugador_id,partido_id -- …          # Un único sobre varios campos ([[entidad]] unicos)
 puerto generar scaffold <Nombre> -- descripcion:opt:String etiquetas:vec:String   # Primitivos Option / Vec
 puerto generar scaffold <Nombre> -- nombre:Nombre:String edad:Edad:i64     # Campos con objeto valor
 puerto generar scaffold Producto --publico listar_productos --rol borrar_producto=admin   # Proyectos con auth: rutas abiertas, roles exigidos

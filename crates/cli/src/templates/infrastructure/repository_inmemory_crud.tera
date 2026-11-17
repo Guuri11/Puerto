@@ -9,7 +9,7 @@ use dominio_{{ snake }}::{
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
 /// Guarda {{ plural }} en la memoria del proceso: se pierden cuando el proceso se para.
-/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes{% set uniques = fields | filter(attribute="unique", value=true) %}{% if uniques %};
+/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes{% set uniques = fields | filter(attribute="unique", value=true) %}{% if unique_conditions %};
 /// un valor único que ya tiene otra fila viva es `Duplicado`{% endif %}.
 /// Cubre el hueco hasta que haya base de datos (`puerto nuevo --db` genera repositorios Postgres).
 #[derive(Default)]
@@ -66,12 +66,12 @@ impl Repositorio{{ pascal }} for Repositorio{{ pascal }}EnMemoria {
     async fn guardar(&self, entidad: &{{ pascal }}) -> Result<(), ErrorRepositorio> {
         tracing::debug!(id = %entidad.id, "guardar");
         let mut filas = self.escribir();
-{% if uniques %}        // Como los índices únicos parciales: solo las filas vivas ocupan sus valores.
+{% if unique_conditions %}        // Como los índices únicos parciales: solo las filas vivas ocupan sus valores.
         let ocupado = !entidad.borrado
             && filas.values().any(|fila| {
                 fila.id != entidad.id
                     && !fila.borrado
-                    && {% if uniques | length > 1 %}({% endif %}{% for u in uniques %}{% if not loop.first %} || {% endif %}fila.{{ u.name }} == entidad.{{ u.name }}{% endfor %}{% if uniques | length > 1 %}){% endif %}
+                    && {% if unique_conditions | length > 1 %}({% endif %}{{ unique_conditions | join(sep=" || ") }}{% if unique_conditions | length > 1 %}){% endif %}
             });
         if ocupado {
             tracing::warn!(id = %entidad.id, "guardar rechazado: un valor único ya está ocupado");
@@ -179,6 +179,38 @@ mod tests {
 
         // Comprobar
         assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
+    }
+{% endfor %}{% for g in unique_groups %}
+    #[tokio::test]
+    async fn deberia_rechazar_un_duplicado_de_{{ g.suffix }}() {
+        // Preparar
+        let repositorio = Repositorio{{ pascal }}EnMemoria::new();
+        let primero = nuevo_{{ snake }}();
+        repositorio.guardar(&primero).await.unwrap();
+        let mut segundo = nuevo_{{ snake }}();
+{% for f in g.fields %}        segundo.{{ f.name }} = primero.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %};
+{% endfor %}
+        // Actuar
+        let resultado = repositorio.guardar(&segundo).await;
+
+        // Comprobar
+        assert_eq!(resultado.unwrap_err(), ErrorRepositorio::Duplicado);
+    }
+
+    #[tokio::test]
+    async fn deberia_aceptar_{{ g.suffix }}_cuando_solo_coincide_{{ g.first }}() {
+        // Preparar
+        let repositorio = Repositorio{{ pascal }}EnMemoria::new();
+        let primero = nuevo_{{ snake }}();
+        repositorio.guardar(&primero).await.unwrap();
+        let mut segundo = nuevo_{{ snake }}();
+        segundo.{{ g.fields.0.name }} = primero.{{ g.fields.0.name }}{% if g.fields.0.needs_clone %}.clone(){% endif %};
+
+        // Actuar
+        let resultado = repositorio.guardar(&segundo).await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
     }
 {% endfor %}{% for r in refs %}
     #[tokio::test]

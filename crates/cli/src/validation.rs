@@ -680,6 +680,52 @@ pub fn validate_role_name(role: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// An entity's `unicos`: each group names two or more of its own fields, once each, none of them
+/// an `Option`, a `Vec` or a map (a null never collides in a unique index; a list or a map is not
+/// what a row is told apart by), and no group is listed twice.
+pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String> {
+    let fields = crate::generators::effective_fields(&entity.fields);
+    let mut errors = vec![];
+    let mut seen: Vec<Vec<&String>> = vec![];
+    for group in &entity.uniques {
+        let shown = group.join(", ");
+        if group.len() < 2 {
+            errors.push(format!(
+                "unicos: [{shown}] needs at least two fields — a single one is `unico = true` on the field"
+            ));
+        }
+        for (i, name) in group.iter().enumerate() {
+            match fields.iter().find(|f| &f.name == name) {
+                None => errors.push(format!(
+                    "unicos: '{name}' is not a field of {}",
+                    entity.name
+                )),
+                Some(f)
+                    if f.field_type.starts_with("Option<")
+                        || f.field_type.starts_with("Vec<")
+                        || f.field_type.starts_with("HashMap<") =>
+                {
+                    errors.push(format!(
+                        "unicos: '{name}' is a {} — a unique holds plain, required fields",
+                        f.field_type
+                    ));
+                }
+                Some(_) => {}
+            }
+            if group[..i].contains(name) {
+                errors.push(format!("unicos: [{shown}] names '{name}' twice"));
+            }
+        }
+        let mut sorted: Vec<&String> = group.iter().collect();
+        sorted.sort();
+        if seen.contains(&sorted) {
+            errors.push(format!("unicos: [{shown}] is listed twice"));
+        }
+        seen.push(sorted);
+    }
+    errors
+}
+
 /// An entity's `public` and `roles`: each names one of its use cases, a public route requires no
 /// role, and every role is a role name.
 pub fn validate_entity_access(entity: &crate::puerto_toml::Entity) -> Vec<String> {

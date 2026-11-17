@@ -29,6 +29,8 @@ pub(super) struct Scenario<'a> {
     pub(super) entities: &'a [(&'a str, &'a [&'a str])],
     /// Auth projects: `(PascalName, --public use cases, --role use_case=role)` of a scaffold.
     pub(super) access: &'a [Access<'a>],
+    /// `(PascalName, --unico groups)` of a scaffold (Phase 20.7).
+    pub(super) shapes: &'a [Shape<'a>],
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
     pub(super) use_cases: &'a [(&'a str, &'a str)],
     /// Custom events declared after scaffolding (`puerto generar evento`): `(PascalEntity, name)`.
@@ -41,6 +43,8 @@ pub(super) struct Scenario<'a> {
 }
 
 pub(super) type Access<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
+
+pub(super) type Shape<'a> = (&'a str, &'a [&'a str]);
 
 pub(super) type Mail<'a> = (&'a str, &'a [&'a str], &'a [&'a str], Option<&'a str>);
 
@@ -61,6 +65,7 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[("Persona", &["name:String"])],
+    shapes: &[],
 };
 
 pub(super) const NO_WEB: Scenario = Scenario {
@@ -77,6 +82,7 @@ pub(super) const NO_WEB: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[],
+    shapes: &[],
 };
 
 pub(super) const PRIMITIVES: Scenario = Scenario {
@@ -106,6 +112,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
             "categoria_id:Uuid",
         ],
     )],
+    shapes: &[],
 };
 
 pub(super) const UUID_VO: Scenario = Scenario {
@@ -122,6 +129,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[("Reserva", &["reference:String", "tenant_id:TenantId:Uuid"])],
+    shapes: &[],
 };
 
 pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
@@ -147,6 +155,7 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
             "scores:vec:i64",
         ],
     )],
+    shapes: &[],
 };
 
 pub(super) const PLAIN_VO: Scenario = Scenario {
@@ -166,6 +175,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
         "Articulo",
         &["name:Name:String", "sku:Sku:String!", "weight:Weight:i64"],
     )],
+    shapes: &[],
 };
 
 pub(super) const OPT_VEC_VO: Scenario = Scenario {
@@ -189,6 +199,7 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
             "tags:Tag:vec:String",
         ],
     )],
+    shapes: &[],
 };
 
 pub(super) const ENUM_VO: Scenario = Scenario {
@@ -211,6 +222,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
             "status:Status:enum:Pending/Confirmed/Cancelled",
         ],
     )],
+    shapes: &[],
 };
 
 pub(super) const SHARED_VO: Scenario = Scenario {
@@ -227,6 +239,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[("Cliente", &["name:String", "email:Email", "credit:Money"])],
+    shapes: &[],
 };
 
 pub(super) const MULTI_ENTITY: Scenario = Scenario {
@@ -246,6 +259,7 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
         ("Producto", &["title:String", "price:i64"]),
         ("Categoria", &["name:Name:String"]),
     ],
+    shapes: &[],
 };
 
 pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
@@ -275,6 +289,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
             "email:Email",
         ],
     )],
+    shapes: &[],
 };
 
 pub(super) const ENUM_ONLY: Scenario = Scenario {
@@ -291,6 +306,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[("Billete", &["state:State:enum:Open/Closed"])],
+    shapes: &[],
 };
 
 pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
@@ -307,6 +323,7 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[("Producto", &["title:String", "price:i64"])],
+    shapes: &[],
 };
 
 /// Phase 9.2: an entity whose every field reaches the frontend — each primitive an input holds,
@@ -335,6 +352,7 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
             "sku:Sku:String",
         ],
     )],
+    shapes: &[],
 };
 
 /// Phase 9.3: every field type on the frontend — `Option` of each primitive, `Vec`, `HashMap`,
@@ -371,6 +389,7 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
             "labels:Label:vec:String",
         ],
     )],
+    shapes: &[],
 };
 
 /// Phase 18 (ADR-0022): references — required, optional, two to one target, a chain
@@ -410,6 +429,7 @@ pub(super) const REFERENCES: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: REFERENCE_ENTITIES,
+    shapes: &[],
 };
 
 pub(super) const REFERENCES_DB: Scenario = Scenario {
@@ -493,6 +513,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
         ),
         ("Billete", &["state:State:enum:Open/Closed"]),
     ],
+    shapes: &[],
 };
 
 pub(super) const EVENTS_DB: Scenario = Scenario {
@@ -523,6 +544,7 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
             "meta:map",
         ],
     )],
+    shapes: &[],
 };
 
 /// [`EVENTS_DB`] in an auth project (Phase 16.4): the unit-of-work writes take the caller too,
@@ -628,6 +650,7 @@ pub(super) const MAIL: Scenario = Scenario {
     entity_events: &[],
     consumers: &[],
     entities: &[],
+    shapes: &[],
 };
 
 /// `puerto nuevo --auth oidc` (Phase 16.4): the `User` entity in memory, the provisioning
@@ -670,6 +693,7 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
             "borrar_producto=owner",
         ],
     )],
+    shapes: &[],
 };
 
 /// Phase 20.6: what canasta has — references on a web slice of an auth project. The detail screen
@@ -696,6 +720,17 @@ pub(super) const REFERENCES_AUTH: Scenario = Scenario {
         &["listar_jugadores", "obtener_jugador"],
         &["actualizar_jugador=admin", "borrar_jugador=admin"],
     )],
+    // canasta: one shirt number per team.
+    shapes: &[("Jugador", &["equipo_id,dorsal"])],
+};
+
+/// [`REFERENCES_AUTH`] on Postgres: the unique over a reference and a number is a partial index,
+/// its `#[sqlx::test]` hits it, and the seeds keep two rows apart.
+pub(super) const REFERENCES_AUTH_DB: Scenario = Scenario {
+    name: "references_auth_db",
+    db: true,
+    no_web: true,
+    ..REFERENCES_AUTH
 };
 
 /// [`AUTH_OIDC`] with a database: `PgUserRepository` over runtime-checked queries (no query cache
@@ -783,8 +818,25 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
                 scaffold::ScaffoldAccess::from_args(&strings(public), &strings(roles)).unwrap()
             })
             .unwrap_or_default();
-        scaffold::run_scaffold_with_access(entity, output, &fields, OverwritePolicy::Ask, &access)
-            .unwrap();
+        let shape = scenario
+            .shapes
+            .iter()
+            .find(|(name, _)| name == entity)
+            .map(|(_, uniques)| {
+                scaffold::EntityShape::from_args(
+                    &uniques.iter().map(|u| u.to_string()).collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_default();
+        scaffold::run_scaffold_with_options(
+            entity,
+            output,
+            &fields,
+            OverwritePolicy::Ask,
+            &access,
+            &shape,
+        )
+        .unwrap();
         format();
     }
 
@@ -1162,6 +1214,13 @@ fn postgres_project_with_every_type_compiles_lints_and_passes_integration_tests(
     // Nothing in the matrix generated a `--db` project, which is how `HashMap` columns, the Pg
     // repository test imports, timestamp round-trips and `unique` seeds all shipped broken.
     assert_postgres_scenario_is_clean(&POSTGRES_EVERY_TYPE, "puerto_matrix");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_unique_group_project_compiles_lints_and_passes_integration_tests() {
+    // Phase 20.7: a unique over several fields, in the migration and against Postgres.
+    assert_postgres_scenario_is_clean(&REFERENCES_AUTH_DB, "puerto_matrix_unique_group");
 }
 
 #[test]
