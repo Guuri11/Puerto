@@ -8825,9 +8825,22 @@ export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
 === web/src/presentation/features/envio/containers/envio-detail-container.test.tsx ===
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import type { Envio } from "../../../../domain/envio/model";
+import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
 import { EnvioMother, fakeEnvioRepository } from "../../../../test-support/envio";
+import { fakePedidoRepository, PedidoMother } from "../../../../test-support/pedido";
 import { renderScreen } from "../../../../test-support/render";
 import { EnvioDetailContainer } from "./envio-detail-container";
+
+/** The repositories the reference links load from, holding what `seeded` references. */
+function referencedBy(seeded: Envio) {
+  return {
+    pedidoRepository: fakePedidoRepository([PedidoMother.random({ id: seeded.pedidoId })]),
+    clienteRepository: fakeClienteRepository([
+      ClienteMother.random({ id: seeded.destinatarioId ?? crypto.randomUUID() }),
+    ]),
+  };
+}
 
 describe("EnvioDetailContainer", () => {
   test("should show the envio when it exists", async () => {
@@ -8836,36 +8849,49 @@ describe("EnvioDetailContainer", () => {
     const envioRepository = fakeEnvioRepository([seeded]);
 
     // Act
-    renderScreen(<EnvioDetailContainer id={seeded.id} />, { envioRepository });
+    renderScreen(<EnvioDetailContainer id={seeded.id} />, {
+      envioRepository,
+      ...referencedBy(seeded),
+    });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
   });
 
-  test("should link the pedido to its page", async () => {
+  test("should link the pedido to its page, named by its label", async () => {
     // Arrange
     const seeded = EnvioMother.random();
     const envioRepository = fakeEnvioRepository([seeded]);
+    const referenced = referencedBy(seeded);
+    const target = await referenced.pedidoRepository.get(seeded.pedidoId);
 
     // Act
-    renderScreen(<EnvioDetailContainer id={seeded.id} />, { envioRepository });
+    renderScreen(<EnvioDetailContainer id={seeded.id} />, {
+      envioRepository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.pedidoId });
-    expect(link.getAttribute("href")).toBe(`/pedidos/${seeded.pedidoId}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="/pedidos/${seeded.pedidoId}"]`;
+    expect(await screen.findByText(target.id, { selector })).toBeTruthy();
   });
 
-  test("should link the destinatario to its page", async () => {
+  test("should link the destinatario to its page, named by its label", async () => {
     // Arrange
     const seeded = EnvioMother.random();
     const envioRepository = fakeEnvioRepository([seeded]);
+    const referenced = referencedBy(seeded);
+    const target = await referenced.clienteRepository.get(seeded.destinatarioId ?? "");
 
     // Act
-    renderScreen(<EnvioDetailContainer id={seeded.id} />, { envioRepository });
+    renderScreen(<EnvioDetailContainer id={seeded.id} />, {
+      envioRepository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.destinatarioId ?? "" });
-    expect(link.getAttribute("href")).toBe(`/clientes/${seeded.destinatarioId}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="/clientes/${seeded.destinatarioId}"]`;
+    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
   });
 
   test("should show the not-found code when the envio does not exist", async () => {
@@ -8888,6 +8914,7 @@ describe("EnvioDetailContainer", () => {
     const remove = mock(fake.remove);
     const { history } = renderScreen(<EnvioDetailContainer id={seeded.id} />, {
       envioRepository: { ...fake, remove },
+      ...referencedBy(seeded),
     });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
     expect(remove).not.toHaveBeenCalled();
@@ -9350,18 +9377,28 @@ export function EnvioListContainer() {
 
 === web/src/presentation/features/envio/views/envio-detail-view.tsx ===
 import type { Envio } from "../../../../domain/envio/model";
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+import { useDependencies } from "../../../core/dependencies";
+import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
 
 export function EnvioDetailView({ envio }: { envio: Envio }) {
+  const { pedidoRepository, clienteRepository } = useDependencies();
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Pedido</dt>
       <dd>
-        <ReferenceLink path="/pedidos" id={envio.pedidoId} />
+        <ReferenceLink
+          path="/pedidos"
+          id={envio.pedidoId}
+          load={labelOf(pedidoRepository, (item) => item.id)}
+        />
       </dd>
       <dt className="font-semibold">Destinatario</dt>
       <dd>
-        <ReferenceLink path="/clientes" id={envio.destinatarioId} />
+        <ReferenceLink
+          path="/clientes"
+          id={envio.destinatarioId}
+          load={labelOf(clienteRepository, (item) => item.name)}
+        />
       </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{envio.carrier}</dd>
@@ -9528,9 +9565,21 @@ export function EnvioListView({ envios }: { envios: Envio[] }) {
 === web/src/presentation/features/pedido/containers/pedido-detail-container.test.tsx ===
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import type { Pedido } from "../../../../domain/pedido/model";
+import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
 import { fakePedidoRepository, PedidoMother } from "../../../../test-support/pedido";
 import { renderScreen } from "../../../../test-support/render";
 import { PedidoDetailContainer } from "./pedido-detail-container";
+
+/** The repositories the reference links load from, holding what `seeded` references. */
+function referencedBy(seeded: Pedido) {
+  return {
+    clienteRepository: fakeClienteRepository([
+      ClienteMother.random({ id: seeded.clienteId }),
+      ClienteMother.random({ id: seeded.reviewerId ?? crypto.randomUUID() }),
+    ]),
+  };
+}
 
 describe("PedidoDetailContainer", () => {
   test("should show the pedido when it exists", async () => {
@@ -9539,36 +9588,49 @@ describe("PedidoDetailContainer", () => {
     const pedidoRepository = fakePedidoRepository([seeded]);
 
     // Act
-    renderScreen(<PedidoDetailContainer id={seeded.id} />, { pedidoRepository });
+    renderScreen(<PedidoDetailContainer id={seeded.id} />, {
+      pedidoRepository,
+      ...referencedBy(seeded),
+    });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
   });
 
-  test("should link the cliente to its page", async () => {
+  test("should link the cliente to its page, named by its label", async () => {
     // Arrange
     const seeded = PedidoMother.random();
     const pedidoRepository = fakePedidoRepository([seeded]);
+    const referenced = referencedBy(seeded);
+    const target = await referenced.clienteRepository.get(seeded.clienteId);
 
     // Act
-    renderScreen(<PedidoDetailContainer id={seeded.id} />, { pedidoRepository });
+    renderScreen(<PedidoDetailContainer id={seeded.id} />, {
+      pedidoRepository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.clienteId });
-    expect(link.getAttribute("href")).toBe(`/clientes/${seeded.clienteId}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="/clientes/${seeded.clienteId}"]`;
+    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
   });
 
-  test("should link the reviewer to its page", async () => {
+  test("should link the reviewer to its page, named by its label", async () => {
     // Arrange
     const seeded = PedidoMother.random();
     const pedidoRepository = fakePedidoRepository([seeded]);
+    const referenced = referencedBy(seeded);
+    const target = await referenced.clienteRepository.get(seeded.reviewerId ?? "");
 
     // Act
-    renderScreen(<PedidoDetailContainer id={seeded.id} />, { pedidoRepository });
+    renderScreen(<PedidoDetailContainer id={seeded.id} />, {
+      pedidoRepository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.reviewerId ?? "" });
-    expect(link.getAttribute("href")).toBe(`/clientes/${seeded.reviewerId}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="/clientes/${seeded.reviewerId}"]`;
+    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
   });
 
   test("should show the not-found code when the pedido does not exist", async () => {
@@ -9591,6 +9653,7 @@ describe("PedidoDetailContainer", () => {
     const remove = mock(fake.remove);
     const { history } = renderScreen(<PedidoDetailContainer id={seeded.id} />, {
       pedidoRepository: { ...fake, remove },
+      ...referencedBy(seeded),
     });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
     expect(remove).not.toHaveBeenCalled();
@@ -10030,18 +10093,28 @@ export function PedidoListContainer() {
 
 === web/src/presentation/features/pedido/views/pedido-detail-view.tsx ===
 import type { Pedido } from "../../../../domain/pedido/model";
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+import { useDependencies } from "../../../core/dependencies";
+import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
 
 export function PedidoDetailView({ pedido }: { pedido: Pedido }) {
+  const { clienteRepository } = useDependencies();
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Cliente</dt>
       <dd>
-        <ReferenceLink path="/clientes" id={pedido.clienteId} />
+        <ReferenceLink
+          path="/clientes"
+          id={pedido.clienteId}
+          load={labelOf(clienteRepository, (item) => item.name)}
+        />
       </dd>
       <dt className="font-semibold">Reviewer</dt>
       <dd>
-        <ReferenceLink path="/clientes" id={pedido.reviewerId} />
+        <ReferenceLink
+          path="/clientes"
+          id={pedido.reviewerId}
+          load={labelOf(clienteRepository, (item) => item.name)}
+        />
       </dd>
       <dt className="font-semibold">Total</dt>
       <dd>{pedido.total}</dd>

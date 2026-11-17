@@ -229,6 +229,27 @@ struct WebTargetCtx {
     seeds: Vec<String>,
     /// `{target}Repository: fake{Target}Repository([…seeds]),` fits on one line.
     seeds_inline: bool,
+    /// The detail test's targets for `seeded` (an entity, not a draft), and whether they fit.
+    detail_seeds: Vec<String>,
+    detail_seeds_inline: bool,
+}
+
+/// A reference as the detail screen shows it (Phase 20.6): a link named by its target's label,
+/// loaded through the target's repository.
+#[derive(Serialize)]
+struct WebReferenceCtx {
+    camel: String,
+    /// What a screen calls the field, and the target's list path.
+    label: String,
+    ref_path: String,
+    required: bool,
+    /// The dependency it loads its target from (`customerRepository`) and the target's label.
+    repository: String,
+    target_label: String,
+    /// The view's `<ReferenceLink … />` fits on one line.
+    link_inline: bool,
+    /// The detail test's `const target = await referenced.….get(…);` fits on one line.
+    target_inline: bool,
 }
 
 /// The entities `fields` reference, in the order they are first named. `config` gives their
@@ -242,17 +263,21 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
         let camel = snake_to_camel(&f.name);
         let optional = f.field_type.starts_with("Option<");
         // A Mother's optional reference is present; `??` only satisfies the type.
-        let seed = format!(
-            "{target}Mother.random({{ id: draft.{camel}{} }})",
-            if optional {
-                " ?? crypto.randomUUID()"
-            } else {
-                ""
-            }
-        );
+        let seed_of = |owner: &str| {
+            format!(
+                "{target}Mother.random({{ id: {owner}.{camel}{} }})",
+                if optional {
+                    " ?? crypto.randomUUID()"
+                } else {
+                    ""
+                }
+            )
+        };
+        let (seed, detail_seed) = (seed_of("draft"), seed_of("seeded"));
         if let Some(known) = targets.iter_mut().find(|t| t.entity.pascal == target) {
             known.fields.push(camel);
             known.seeds.push(seed);
+            known.detail_seeds.push(detail_seed);
             continue;
         }
         let label = config
@@ -275,17 +300,59 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
             load_inline,
             seeds: vec![seed],
             seeds_inline: false,
+            detail_seeds: vec![detail_seed],
+            detail_seeds_inline: false,
         });
     }
     for t in &mut targets {
-        t.seeds_inline = fits(&format!(
-            "    {}Repository: fake{}Repository([{}]),",
-            t.entity.camel,
-            t.entity.pascal,
-            t.seeds.join(", ")
-        ));
+        let line = |seeds: &[String]| {
+            format!(
+                "    {}Repository: fake{}Repository([{}]),",
+                t.entity.camel,
+                t.entity.pascal,
+                seeds.join(", ")
+            )
+        };
+        t.seeds_inline = fits(&line(&t.seeds));
+        t.detail_seeds_inline = fits(&line(&t.detail_seeds));
     }
     targets
+}
+
+/// Each reference of `entity`, as its detail screen and its test show it.
+fn web_references(
+    entity: &WebEntityCtx,
+    web_fields: &[WebFieldCtx],
+    fields: &[Field],
+    targets: &[WebTargetCtx],
+) -> Vec<WebReferenceCtx> {
+    fields
+        .iter()
+        .zip(web_fields)
+        .filter_map(|(field, web)| {
+            let target = targets
+                .iter()
+                .find(|t| Some(t.entity.pascal.as_str()) == field.references.as_deref())?;
+            let repository = format!("{}Repository", target.entity.camel);
+            let unwrap = if web.required { "" } else { " ?? \"\"" };
+            Some(WebReferenceCtx {
+                link_inline: fits(&format!(
+                    "        <ReferenceLink path=\"{}\" id={{{}.{}}} load={{labelOf({repository}, (item) => item.{})}} />",
+                    web.ref_path, entity.ident, web.camel, target.label
+                )),
+                target_inline: fits(&format!(
+                    "    const target = await referenced.{repository}.get(seeded.{}{unwrap});",
+                    web.camel
+                )),
+                camel: web.camel.clone(),
+                label: web.label.clone(),
+                ref_path: web.ref_path.clone(),
+                required: web.required,
+                repository,
+                target_label: target.label.clone(),
+            })
+        })
+        .collect()
 }
 
 fn entity_template_ctx(
@@ -369,6 +436,22 @@ fn entity_template_ctx(
                 .iter()
                 .map(|t| format!(", {}Repository", t.entity.camel))
                 .collect::<String>()
+        )),
+    );
+    let eff = effective_fields(fields);
+    ctx.insert(
+        "references",
+        &web_references(&entity, &web_fields, &eff, &targets),
+    );
+    ctx.insert(
+        "view_deps_inline",
+        &fits(&format!(
+            "  const {{ {} }} = useDependencies();",
+            targets
+                .iter()
+                .map(|t| format!("{}Repository", t.entity.camel))
+                .collect::<Vec<_>>()
+                .join(", ")
         )),
     );
     ctx.insert("targets", &targets);

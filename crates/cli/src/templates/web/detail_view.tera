@@ -1,20 +1,44 @@
 import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
+{%- if targets %}
+import { useDependencies } from "../../../core/dependencies";
+{%- endif %}
 {%- if display_helpers %}
 import { {{ display_helpers | join(sep=", ") }} } from "../../../shared/forms";
 {%- endif %}
 {%- if targets %}
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
 {%- endif %}
 
 export function {{ pascal }}DetailView({ {{ ident }} }: { {{ ident }}: {{ pascal }} }) {
+{%- if targets %}
+{%- if view_deps_inline %}
+  const { {% for t in targets %}{{ t.camel }}Repository{% if not loop.last %}, {% endif %}{% endfor %} } = useDependencies();
+{%- else %}
+  const {
+{%- for t in targets %}
+    {{ t.camel }}Repository,
+{%- endfor %}
+  } = useDependencies();
+{%- endif %}
+{%- endif %}
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
 {%- for f in fields %}
       <dt className="font-semibold">{{ f.label }}</dt>
 {%- if f.input == "reference" %}
+{%- for r in references %}{% if r.camel == f.camel %}
       <dd>
-        <ReferenceLink path="{{ f.ref_path }}" id={{ "{" }}{{ ident }}.{{ f.camel }}} />
+{%- if r.link_inline %}
+        <ReferenceLink path="{{ r.ref_path }}" id={{ "{" }}{{ ident }}.{{ r.camel }}} load={labelOf({{ r.repository }}, (item) => item.{{ r.target_label }})} />
+{%- else %}
+        <ReferenceLink
+          path="{{ r.ref_path }}"
+          id={{ "{" }}{{ ident }}.{{ r.camel }}}
+          load={labelOf({{ r.repository }}, (item) => item.{{ r.target_label }})}
+        />
+{%- endif %}
       </dd>
+{%- endif %}{% endfor %}
 {%- else %}
       <dd>{{ "{" }}{{ f.display }}}</dd>
 {%- endif %}

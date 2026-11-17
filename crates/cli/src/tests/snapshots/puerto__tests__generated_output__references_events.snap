@@ -9950,7 +9950,8 @@ presentacion/worker/src/
   (`make eventos/descartados`).
 - **Lo que necesita un consumidor se construye en su `construir(pool)`**, que `generado/registro.rs`
   llama al arrancar: guárdalo en un campo del struct (`cableado::<contexto>::construir(pool)` da los
-  casos de uso de un contexto, como `Arc<dyn …>`). Sus tests construyen el struct con dobles
+  casos de uso de un contexto, como `Arc<dyn …>`; añade `cableado = { workspace = true }` a
+  `presentacion/worker/Cargo.toml` la primera vez). Sus tests construyen el struct con dobles
   (`dobles::Mock<Caso>`), sin base de datos.
 - **Decodifica el snapshot, nunca el modelo de dominio**:
   `evento.decodificar::<SnapshotProducto>()`. El snapshot es el contrato público del evento.
@@ -9985,8 +9986,8 @@ puerto-eventos = { workspace = true }
 # El pool, las migraciones en el arranque y las tablas de outbox, entregas y descartados.
 puerto-sqlx = { workspace = true }
 migrador = { workspace = true }
-# Lo que un consumidor construye en su `construir(pool)`: los casos de uso de cada contexto.
-cableado = { workspace = true }
+# El `PgPool` que recibe el `construir(pool)` de cada consumidor. Un consumidor que necesita casos
+# de uso añade aquí `cableado = { workspace = true }` y los saca de `cableado::<contexto>::construir`.
 sqlx = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
@@ -10919,9 +10920,21 @@ export function AppRoutes() {
 === web/src/presentation/features/compra/containers/compra-detail-container.test.tsx ===
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import type { Compra } from "../../../../domain/compra/model";
 import { CompraMother, fakeCompraRepository } from "../../../../test-support/compra";
+import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
 import { renderScreen } from "../../../../test-support/render";
 import { CompraDetailContainer } from "./compra-detail-container";
+
+/** The repositories the reference links load from, holding what `seeded` references. */
+function referencedBy(seeded: Compra) {
+  return {
+    proveedorRepository: fakeProveedorRepository([
+      ProveedorMother.random({ id: seeded.proveedorId }),
+      ProveedorMother.random({ id: seeded.approverId ?? crypto.randomUUID() }),
+    ]),
+  };
+}
 
 describe("CompraDetailContainer", () => {
   test("should show the compra when it exists", async () => {
@@ -10930,36 +10943,49 @@ describe("CompraDetailContainer", () => {
     const compraRepository = fakeCompraRepository([seeded]);
 
     // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, { compraRepository });
+    renderScreen(<CompraDetailContainer id={seeded.id} />, {
+      compraRepository,
+      ...referencedBy(seeded),
+    });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
   });
 
-  test("should link the proveedor to its page", async () => {
+  test("should link the proveedor to its page, named by its label", async () => {
     // Arrange
     const seeded = CompraMother.random();
     const compraRepository = fakeCompraRepository([seeded]);
+    const referenced = referencedBy(seeded);
+    const target = await referenced.proveedorRepository.get(seeded.proveedorId);
 
     // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, { compraRepository });
+    renderScreen(<CompraDetailContainer id={seeded.id} />, {
+      compraRepository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.proveedorId });
-    expect(link.getAttribute("href")).toBe(`/proveedores/${seeded.proveedorId}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="/proveedores/${seeded.proveedorId}"]`;
+    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
   });
 
-  test("should link the approver to its page", async () => {
+  test("should link the approver to its page, named by its label", async () => {
     // Arrange
     const seeded = CompraMother.random();
     const compraRepository = fakeCompraRepository([seeded]);
+    const referenced = referencedBy(seeded);
+    const target = await referenced.proveedorRepository.get(seeded.approverId ?? "");
 
     // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, { compraRepository });
+    renderScreen(<CompraDetailContainer id={seeded.id} />, {
+      compraRepository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.approverId ?? "" });
-    expect(link.getAttribute("href")).toBe(`/proveedores/${seeded.approverId}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="/proveedores/${seeded.approverId}"]`;
+    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
   });
 
   test("should show the not-found code when the compra does not exist", async () => {
@@ -10982,6 +11008,7 @@ describe("CompraDetailContainer", () => {
     const remove = mock(fake.remove);
     const { history } = renderScreen(<CompraDetailContainer id={seeded.id} />, {
       compraRepository: { ...fake, remove },
+      ...referencedBy(seeded),
     });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
     expect(remove).not.toHaveBeenCalled();
@@ -11421,18 +11448,28 @@ export function CompraListContainer() {
 
 === web/src/presentation/features/compra/views/compra-detail-view.tsx ===
 import type { Compra } from "../../../../domain/compra/model";
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+import { useDependencies } from "../../../core/dependencies";
+import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
 
 export function CompraDetailView({ compra }: { compra: Compra }) {
+  const { proveedorRepository } = useDependencies();
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Proveedor</dt>
       <dd>
-        <ReferenceLink path="/proveedores" id={compra.proveedorId} />
+        <ReferenceLink
+          path="/proveedores"
+          id={compra.proveedorId}
+          load={labelOf(proveedorRepository, (item) => item.name)}
+        />
       </dd>
       <dt className="font-semibold">Approver</dt>
       <dd>
-        <ReferenceLink path="/proveedores" id={compra.approverId} />
+        <ReferenceLink
+          path="/proveedores"
+          id={compra.approverId}
+          load={labelOf(proveedorRepository, (item) => item.name)}
+        />
       </dd>
       <dt className="font-semibold">Total</dt>
       <dd>{compra.total}</dd>
@@ -11599,9 +11636,22 @@ export function CompraListView({ compras }: { compras: Compra[] }) {
 === web/src/presentation/features/entrega/containers/entrega-detail-container.test.tsx ===
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import type { Entrega } from "../../../../domain/entrega/model";
+import { CompraMother, fakeCompraRepository } from "../../../../test-support/compra";
 import { EntregaMother, fakeEntregaRepository } from "../../../../test-support/entrega";
+import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
 import { renderScreen } from "../../../../test-support/render";
 import { EntregaDetailContainer } from "./entrega-detail-container";
+
+/** The repositories the reference links load from, holding what `seeded` references. */
+function referencedBy(seeded: Entrega) {
+  return {
+    compraRepository: fakeCompraRepository([CompraMother.random({ id: seeded.compraId })]),
+    proveedorRepository: fakeProveedorRepository([
+      ProveedorMother.random({ id: seeded.destinatarioId ?? crypto.randomUUID() }),
+    ]),
+  };
+}
 
 describe("EntregaDetailContainer", () => {
   test("should show the entrega when it exists", async () => {
@@ -11610,36 +11660,49 @@ describe("EntregaDetailContainer", () => {
     const entregaRepository = fakeEntregaRepository([seeded]);
 
     // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, { entregaRepository });
+    renderScreen(<EntregaDetailContainer id={seeded.id} />, {
+      entregaRepository,
+      ...referencedBy(seeded),
+    });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
   });
 
-  test("should link the compra to its page", async () => {
+  test("should link the compra to its page, named by its label", async () => {
     // Arrange
     const seeded = EntregaMother.random();
     const entregaRepository = fakeEntregaRepository([seeded]);
+    const referenced = referencedBy(seeded);
+    const target = await referenced.compraRepository.get(seeded.compraId);
 
     // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, { entregaRepository });
+    renderScreen(<EntregaDetailContainer id={seeded.id} />, {
+      entregaRepository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.compraId });
-    expect(link.getAttribute("href")).toBe(`/compras/${seeded.compraId}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="/compras/${seeded.compraId}"]`;
+    expect(await screen.findByText(target.id, { selector })).toBeTruthy();
   });
 
-  test("should link the destinatario to its page", async () => {
+  test("should link the destinatario to its page, named by its label", async () => {
     // Arrange
     const seeded = EntregaMother.random();
     const entregaRepository = fakeEntregaRepository([seeded]);
+    const referenced = referencedBy(seeded);
+    const target = await referenced.proveedorRepository.get(seeded.destinatarioId ?? "");
 
     // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, { entregaRepository });
+    renderScreen(<EntregaDetailContainer id={seeded.id} />, {
+      entregaRepository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.destinatarioId ?? "" });
-    expect(link.getAttribute("href")).toBe(`/proveedores/${seeded.destinatarioId}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="/proveedores/${seeded.destinatarioId}"]`;
+    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
   });
 
   test("should show the not-found code when the entrega does not exist", async () => {
@@ -11662,6 +11725,7 @@ describe("EntregaDetailContainer", () => {
     const remove = mock(fake.remove);
     const { history } = renderScreen(<EntregaDetailContainer id={seeded.id} />, {
       entregaRepository: { ...fake, remove },
+      ...referencedBy(seeded),
     });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
     expect(remove).not.toHaveBeenCalled();
@@ -12124,18 +12188,28 @@ export function EntregaListContainer() {
 
 === web/src/presentation/features/entrega/views/entrega-detail-view.tsx ===
 import type { Entrega } from "../../../../domain/entrega/model";
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+import { useDependencies } from "../../../core/dependencies";
+import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
 
 export function EntregaDetailView({ entrega }: { entrega: Entrega }) {
+  const { compraRepository, proveedorRepository } = useDependencies();
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Compra</dt>
       <dd>
-        <ReferenceLink path="/compras" id={entrega.compraId} />
+        <ReferenceLink
+          path="/compras"
+          id={entrega.compraId}
+          load={labelOf(compraRepository, (item) => item.id)}
+        />
       </dd>
       <dt className="font-semibold">Destinatario</dt>
       <dd>
-        <ReferenceLink path="/proveedores" id={entrega.destinatarioId} />
+        <ReferenceLink
+          path="/proveedores"
+          id={entrega.destinatarioId}
+          load={labelOf(proveedorRepository, (item) => item.name)}
+        />
       </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{entrega.carrier}</dd>

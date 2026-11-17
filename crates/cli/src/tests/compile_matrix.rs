@@ -672,6 +672,32 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
     )],
 };
 
+/// Phase 20.6: what canasta has — references on a web slice of an auth project. The detail screen
+/// loads each reference's label through its target's repository, so its tests (the role ones
+/// included) hand it the targets.
+pub(super) const REFERENCES_AUTH: Scenario = Scenario {
+    name: "references_auth",
+    db: false,
+    events: None,
+    auth: Some("oidc"),
+    no_demo: true,
+    no_web: false,
+    shared_vos: &[],
+    mails: &[],
+    use_cases: &[],
+    entity_events: &[],
+    consumers: &[],
+    entities: &[
+        ("Equipo", &["nombre:String"]),
+        ("Jugador", &["equipo_id:ref:Equipo", "dorsal:i64"]),
+    ],
+    access: &[(
+        "Jugador",
+        &["listar_jugadores", "obtener_jugador"],
+        &["actualizar_jugador=admin", "borrar_jugador=admin"],
+    )],
+};
+
 /// [`AUTH_OIDC`] with a database: `PgUserRepository` over runtime-checked queries (no query cache
 /// needed) and the `usuarios` migration; its `#[sqlx::test]`s run under `make test/db`. Without the
 /// demo: the strip once undid auth's module declarations.
@@ -1107,6 +1133,12 @@ fn compiles_without_the_web_frontend() {
 #[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
 fn compiles_an_oidc_auth_project() {
     assert_scenario_compiles(&AUTH_OIDC);
+}
+
+#[test]
+#[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
+fn compiles_references_on_the_web_slice_of_an_auth_project() {
+    assert_scenario_compiles(&REFERENCES_AUTH);
 }
 
 #[test]

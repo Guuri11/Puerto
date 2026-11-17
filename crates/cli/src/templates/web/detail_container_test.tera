@@ -3,12 +3,38 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 {% if access.delete_protected -%}
 import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
 {% endif -%}
+{% if targets -%}
+import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
+{% endif -%}
 {% if access.update_roles or access.delete_roles -%}
 import { CurrentUserMother } from "../../../../test-support/auth";
 {% endif -%}
+{% for t in targets -%}
+import { fake{{ t.pascal }}Repository, {{ t.pascal }}Mother } from "../../../../test-support/{{ t.kebab }}";
+{% endfor -%}
 import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
 import { renderScreen } from "../../../../test-support/render";
 import { {{ pascal }}DetailContainer } from "./{{ kebab }}-detail-container";
+
+{%- if targets %}
+
+/** The repositories the reference links load from, holding what `seeded` references. */
+function referencedBy(seeded: {{ pascal }}) {
+  return {
+{%- for t in targets %}
+{%- if t.detail_seeds_inline %}
+    {{ t.camel }}Repository: fake{{ t.pascal }}Repository([{{ t.detail_seeds | join(sep=", ") }}]),
+{%- else %}
+    {{ t.camel }}Repository: fake{{ t.pascal }}Repository([
+{%- for seed in t.detail_seeds %}
+      {{ seed }},
+{%- endfor %}
+    ]),
+{%- endif %}
+{%- endfor %}
+  };
+}
+{%- endif %}
 
 describe("{{ pascal }}DetailContainer", () => {
   test("should show the {{ words }} when it exists", async () => {
@@ -17,26 +43,44 @@ describe("{{ pascal }}DetailContainer", () => {
     const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
 
     // Act
+{%- if targets %}
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
+      {{ camel }}Repository,
+      ...referencedBy(seeded),
+    });
+{%- else %}
     renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
+{%- endif %}
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
   });
-{%- for f in fields %}{% if f.input == "reference" %}
+{%- for r in references %}
 
-  test("should link the {{ f.label | lower }} to its page", async () => {
+  test("should link the {{ r.label | lower }} to its page, named by its label", async () => {
     // Arrange
     const seeded = {{ pascal }}Mother.random();
     const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
+    const referenced = referencedBy(seeded);
+{%- if r.target_inline %}
+    const target = await referenced.{{ r.repository }}.get(seeded.{{ r.camel }}{% if not r.required %} ?? ""{% endif %});
+{%- else %}
+    const target = await referenced.{{ r.repository }}.get(
+      seeded.{{ r.camel }}{% if not r.required %} ?? ""{% endif %},
+    );
+{%- endif %}
 
     // Act
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
+      {{ camel }}Repository,
+      ...referenced,
+    });
 
-    // Assert
-    const link = await screen.findByRole("link", { name: seeded.{{ f.camel }}{% if not f.required %} ?? ""{% endif %} });
-    expect(link.getAttribute("href")).toBe(`{{ f.ref_path }}/${seeded.{{ f.camel }}}`);
+    // Assert: by its href — two references to one target may share a label.
+    const selector = `a[href="{{ r.ref_path }}/${seeded.{{ r.camel }}}"]`;
+    expect(await screen.findByText(target.{{ r.target_label }}, { selector })).toBeTruthy();
   });
-{%- endif %}{% endfor %}
+{%- endfor %}
 
   test("should show the not-found code when the {{ words }} does not exist", async () => {
     // Arrange
@@ -58,6 +102,9 @@ describe("{{ pascal }}DetailContainer", () => {
     const remove = mock(fake.remove);
     const { history } = renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
       {{ camel }}Repository: { ...fake, remove },
+{%- if targets %}
+      ...referencedBy(seeded),
+{%- endif %}
     });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
     expect(remove).not.toHaveBeenCalled();
@@ -80,7 +127,12 @@ describe("{{ pascal }}DetailContainer", () => {
     const user = CurrentUserMother.random();
 
     // Act
+{%- if targets %}
+    const dependencies = { {{ camel }}Repository, ...referencedBy(seeded) };
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, dependencies, "/", { user });
+{%- else %}
     renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository }, "/", { user });
+{%- endif %}
 
     // Assert
     expect(await screen.findByText("{{ fields[0].label }}", { selector: "dt" })).toBeTruthy();
@@ -97,7 +149,14 @@ describe("{{ pascal }}DetailContainer", () => {
       ...fake{{ pascal }}Repository([seeded]),
       remove: () => Promise.reject(new {{ pascal }}Error("auth.prohibido")),
     };
+{%- if targets %}
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
+      {{ camel }}Repository,
+      ...referencedBy(seeded),
+    });
+{%- else %}
     renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
+{%- endif %}
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
 
     // Act

@@ -1088,8 +1088,13 @@ fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
         &output,
         &format!("{PEDIDO_WEB}/views/pedido-detail-view.tsx"),
     );
+    // canasta's detail showed a UUID: the link is named by the target's label (Phase 20.6).
     assert!(
-        detail.contains("<ReferenceLink path=\"/clientes\" id={pedido.clienteId} />"),
+        detail.contains("          load={labelOf(clienteRepository, (item) => item.nombre)}"),
+        "{detail}"
+    );
+    assert!(
+        detail.contains("  const { clienteRepository } = useDependencies();"),
         "{detail}"
     );
     assert!(
@@ -1102,7 +1107,12 @@ fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
         &format!("{PEDIDO_WEB}/containers/pedido-detail-container.test.tsx"),
     );
     assert!(
-        detail_test.contains("test(\"should link the reviewer to its page\""),
+        detail_test.contains("test(\"should link the reviewer to its page, named by its label\""),
+        "{detail_test}"
+    );
+    assert!(
+        detail_test
+            .contains("expect(await screen.findByText(target.nombre, { selector })).toBeTruthy();"),
         "{detail_test}"
     );
 
