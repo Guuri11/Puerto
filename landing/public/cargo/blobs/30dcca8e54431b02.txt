@@ -1,9 +1,0 @@
-export interface Producto {
-  id: string;
-  nombre: string;
-  precio: number;
-  sku: string;
-}
-
-/** What a create or an update sends: a producto without its id. */
-export type ProductoDraft = Omit<Producto, "id">;

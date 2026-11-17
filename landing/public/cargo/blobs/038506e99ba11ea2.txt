@@ -1,0 +1,26 @@
+import "./index.css";
+
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { ProveedorAuth } from "./auth/auth";
+import { Marco } from "./compartido/ui/marco";
+import { ProveedorDependencias } from "./dependencias";
+import { crearDependencias } from "./generado/dependencias";
+import { entradasMenu, RutasApp } from "./generado/rutas";
+
+const raiz = document.getElementById("root");
+if (raiz === null) {
+  throw new Error("index.html no tiene el elemento #root");
+}
+
+createRoot(raiz).render(
+  <StrictMode>
+    <ProveedorDependencias valor={crearDependencias()}>
+      <ProveedorAuth>
+        <Marco titulo={document.title} menu={entradasMenu}>
+          <RutasApp />
+        </Marco>
+      </ProveedorAuth>
+    </ProveedorDependencias>
+  </StrictMode>,
+);

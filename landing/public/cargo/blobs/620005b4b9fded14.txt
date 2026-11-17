@@ -1,0 +1,84 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../../../pruebas/auth";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleCliente } from "./detalle-cliente";
+
+describe("ContenedorDetalleCliente", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const api = apiFalsa([coleccionCliente([sembrado])]);
+
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
+  });
+
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCliente()]);
+    const pantalla = <ContenedorDetalleCliente id={crypto.randomUUID()} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("cliente.no_encontrado");
+  });
+
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const guardados = coleccionCliente([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/clientes"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
+  });
+
+  test("no debería ofrecer Borrar a quien no tiene su rol", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const api = apiFalsa([coleccionCliente([sembrado])]);
+    const usuario = MadreUsuarioActual.aleatorio();
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Email", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("Borrar", { selector: ".card-actions *" })).toBeNull();
+  });
+
+  test("debería mostrar auth.prohibido cuando la API rechaza el borrado", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const fallos = { "DELETE /clientes": "auth.prohibido" };
+    const api = apiFalsa([coleccionCliente([sembrado])], fallos);
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.prohibido");
+  });
+});

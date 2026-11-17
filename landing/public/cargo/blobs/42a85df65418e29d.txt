@@ -1,0 +1,21 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+//
+// La raíz de composición: el único módulo que construye el cliente de la API. Las pantallas llegan
+// a él con `useDependencias()`, así un test les da un falso.
+
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
+import { middlewareBearer } from "../auth/middleware-bearer";
+import { ajustesOidcDeEntorno, pasarelaOidc } from "../auth/pasarela-oidc";
+import type { PasarelaAuth } from "../auth/sesion";
+
+export interface Dependencias {
+  api: ClienteApi;
+  auth: PasarelaAuth;
+}
+
+export function crearDependencias(): Dependencias {
+  const auth = pasarelaOidc(ajustesOidcDeEntorno());
+  const api = crearClienteApi();
+  api.use(middlewareBearer(auth));
+  return { api, auth };
+}

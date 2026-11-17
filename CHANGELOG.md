@@ -1,3 +1,57 @@
+## [0.23.0] - 2026-11-17
+
+The generated frontend is the presentation layer and nothing more, and it speaks Spanish like the
+backend (PLAN Phases 21 and 22, ADR-0025).
+
+### Changed
+
+- **The frontend is presentation** (ADR-0025): `web/src/` has no `domain/`, `application/` or
+  `infrastructure/` any more. The screens use the API's own types (`Esquemas["DtoProducto"]`,
+  from `api/esquema.d.ts` through `openapi-typescript`); containers call the typed `openapi-fetch`
+  client from `useDependencias()` and unwrap each call with `desenvolver`, which rejects with one
+  `ErrorApi` for every entity; views only take props. Per entity, 11 files instead of 16: no
+  model, error class, repository port, HTTP adapter or adapter test.
+- **Screen tests talk HTTP to one fake**: `pruebas/api-falsa.ts` (`apiFalsa(colecciones, fallos)`)
+  answers the way the generated API does — pages, `404` with `<entidad>.no_encontrado`, `201`,
+  `200`, `204` — and the code a test asks for (`{ "POST /productos": "producto.duplicado" }`).
+  It replaces the in-memory fake repository each entity had.
+- **dependency-cruiser checks the container/view split**: a view cannot import the API client,
+  `useDependencias` or `useCarga` (types are fine), and only `generado/dependencias.ts` and the
+  tests build the client.
+- **The frontend in Spanish** (ADR-0024, `docs/glosario.md` § Fase 22): folders (`api/`,
+  `contextos/<entidad>/{contenedores,vistas}`, `paginas/`, `compartido/`, `generado/`, `pruebas/`),
+  files (`contenedores/lista-producto.tsx`), names (`ContenedorListaProducto`, `VistaFormularioProducto`,
+  `MadreProducto.peticion()`, `useCarga`, `PasarelaAuth`), routes (`/productos/nuevo`,
+  `/productos/:id/editar`, `?pagina=`, `/registro`, `/login?siguiente=`), tests (`debería …`,
+  `// Preparar` / `// Actuar` / `// Comprobar`) and the screens' texts, in neutral phrases where an
+  entity's gender would matter (`Crear producto`, `¿Borrar producto?`, `Título: obligatorio`,
+  `Estos valores ya están en uso`). `<html lang="es">`.
+- An optional field is the API's optional property: an empty input is left out of the request
+  (`textoOpcional`…) instead of sent as `null`, and an absent one reads as empty. An enum value
+  object is the API's `string`; its `<select>` offers the variants.
+- The detail container loads a reference's label (`etiquetaCliente`) and hands it to the view, so
+  the view stays props-only.
+- The frontend IDE snippets follow the new names; the HTTP repository method snippet is gone with
+  the repository.
+
+### Breaking
+
+- The structure, the names and the routes of the generated `web/` changed (Changed, above). Nothing
+  in the backend, `puerto.toml` or the runtime crates changed.
+
+### Migration Guide
+
+A 0.22 project keeps its `web/` as it is: no command rewrites the files a project already owns. To
+move it to the 0.23 frontend:
+
+1. Generate a new project with the same flags (`puerto nuevo --nombre … [--db] [--auth …]`) and
+   replace your `web/` with its `web/`, keeping `web/node_modules` if you like.
+2. For each CRUD entity, `puerto generar web <Entidad> --forzar`, then `puerto generar bootstrap`
+   and `make web/sync`.
+3. Bring back any screen you wrote by hand under the new names (`docs/glosario.md` § Fase 22 maps
+   each old name to its new one): its route goes in `web/src/rutas.tsx` (`rutasPropias`), and it
+   reaches the API with `useDependencias().api` + `desenvolver`.
+
 ## [0.22.0] - 2026-11-17
 
 What a basketball league built with Puerto found missing (PLAN Phase 20).

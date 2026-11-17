@@ -1,0 +1,31 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../../pruebas/auth";
+import { renderizarPantalla } from "../../pruebas/renderizar";
+import { MenuUsuario } from "./menu-usuario";
+
+describe("MenuUsuario", () => {
+  test("debería mostrar quién tiene la sesión iniciada", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ nombre: "Ana Lozano" });
+
+    // Actuar
+    renderizarPantalla(<MenuUsuario />, {}, "/", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Ana Lozano")).toBeTruthy();
+    expect(screen.getByText("Cerrar sesión")).toBeTruthy();
+  });
+
+  test("debería iniciar sesión desde la página actual cuando se pulsa Iniciar sesión", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa();
+    renderizarPantalla(<MenuUsuario />, { auth }, "/productos");
+
+    // Actuar
+    fireEvent.click(await screen.findByText("Iniciar sesión"));
+
+    // Comprobar
+    await waitFor(() => expect(auth.logins).toEqual(["/productos"]));
+  });
+});

@@ -1,6 +1,6 @@
 ---
 title: The web frontend
-description: "The React frontend every Puerto project gets: typed from the OpenAPI spec, with the backend's dependency rule and a working CRUD screen per entity."
+description: "The React frontend every Puerto project gets: containers over the typed API client, props-only views, in Spanish, and a CRUD screen per entity."
 ---
 
 import { FileTree, Aside } from '@astrojs/starlight/components';
@@ -14,102 +14,105 @@ make web/install     # once
 make web/dev         # http://localhost:5173, /api proxied to :8080
 ```
 
-The frontend keeps its own English vocabulary inside (`ProductoRepository`, `list`, `get`,
-`items`), and speaks the API's contract at the edge: the routes (`/api/productos`), the JSON
-fields (`elementos`, `limite`, `desplazamiento`, `clienteId`) and the error codes
-(`producto.no_encontrado`). The HTTP repository is the one place that translates between them.
+The frontend is the presentation layer and little else
+([ADR-0025](/docs/decisions/adr/0025-el-frontend-es-presentacion/)): containers call the API
+through its typed client, views render what they are given. It has no domain model, no ports and
+no adapters of its own; the rules live in the backend. Like the backend, it is written in Spanish
+(`ContenedorListaProducto`, `useCarga`, `desenvolver`), and its screens use neutral phrases
+(`Crear producto`, `¿Borrar producto?`), because Puerto cannot know an entity's gender.
 
 ## The contract is the OpenAPI spec
 
 The backend's routes are poem-openapi, so the API describes itself. A test in `bootstrap.rs`
-exports the spec to `docs/api/openapi.json`, and the frontend's wire types are generated from it
-with `openapi-typescript`.
+exports the spec to `docs/api/openapi.json`, and the frontend's types are generated from it with
+`openapi-typescript`. The screens use them directly: `Esquemas["DtoProducto"]`,
+`Esquemas["PeticionCrearProducto"]`.
 
 ```bash
 make web/sync    # after a scaffold, and after touching a route or a DTO
 ```
 
-It re-exports the spec, regenerates `web/src/infrastructure/http/schema.d.ts`, and formats
-`web/`. Commit both. Until you run it, `make test` fails. That failure is the drift check: the
-frontend cannot silently disagree with the API.
+It re-exports the spec, regenerates `web/src/api/esquema.d.ts`, and formats `web/`. Commit both.
+Until you run it, `make test` fails, right in the screen that no longer matches the API. That
+failure is the drift check: the frontend cannot silently disagree with the API.
 
-## The same layers as the backend
+## One folder per kind of thing
 
 <FileTree>
 - web/src/
-  - domain/producto/
-    - model.ts Producto, ProductoDraft, enum unions
-    - errors.ts ProductoError: code is the API's codigo
-    - messages.ts what each error code says, and to which field
-    - repository.ts ProductoRepository, the port
-  - application/ empty until there is real logic
-  - infrastructure/
-    - http/client.ts the openapi-fetch client
-    - http/schema.d.ts **generated** by make web/sync
-    - producto/producto-repository-http.ts DTO ↔ model, with tests
-  - presentation/
-    - core/generated/ **generated**: composition root and route table
-    - core/routes.tsx yours: routes of your own
-    - features/producto/
-      - containers/ list, detail, form: data and state, with tests
-      - views/ list, detail, form: markup only
-    - shared/ui/ layout, alerts, pagination, field errors
-  - test-support/producto.ts ProductoMother and an in-memory fake
+  - api/
+    - cliente.ts crearClienteApi, ClienteApi, Esquemas (the DTOs by name)
+    - http.ts desenvolver, ErrorApi, TAMANO_PAGINA
+    - esquema.d.ts **generated** by make web/sync
+  - contextos/producto/
+    - contenedores/ lista, detalle, formulario: calls and state, with tests
+    - vistas/ lista, detalle, formulario: props only
+    - mensajes.ts what each error code says, and to which field
+  - paginas/ inicio, no-encontrada
+  - compartido/ formularios.ts, use-carga.ts, ui/ (marco, alerts, pagination, field errors)
+  - generado/ **generated**: composition root and route table
+  - rutas.tsx yours: routes of your own
+  - pruebas/ renderizarPantalla, the fake API, MadreProducto
 </FileTree>
 
-`domain` imports nothing, `infrastructure` imports `domain`, and only the composition root
-imports `infrastructure`. `dependency-cruiser` checks it in `make web/lint`, with the type check
-and Biome.
+A container gets the client from `useDependencias()` and unwraps each call with `desenvolver`,
+which rejects with an `ErrorApi` carrying the API's `codigo`:
 
-A list comes back from `GET /api/productos?limite=20&desplazamiento=0` as
-`{ elementos, total, limite, desplazamiento }`; `producto-repository-http.ts` turns it into the
-screens' `Page` (`items`, `total`, `limit`, `offset`), and each element into a `Producto`.
+```tsx title="web/src/contextos/producto/contenedores/detalle-producto.tsx (excerpt)"
+const { api } = useDependencias();
+const producto = useCarga(
+  () => desenvolver(api.GET("/productos/{id}", { params: { path: { id } } })),
+  [api, id],
+);
+```
 
-Containers call the repository port directly. A frontend CRUD use case would only delegate to
-the API, so Puerto does not generate one. When real logic arrives, a rule or two repositories to
-orchestrate, write `application/<entity>/<action>.ts` and point the container at it
-([ADR-0013](/docs/decisions/adr/0013-web-frontend-react-daisyui-bun/)).
+`dependency-cruiser` keeps the split honest in `make web/lint`, with the type check and Biome: a
+view cannot import the client, `useDependencias` or `useCarga`, and only `generado/dependencias.ts`
+and the tests build the client. When real client logic arrives, a rule or an orchestration, write
+it by hand where it belongs.
 
 ## Fields become controls
 
-| Field | TypeScript | Control |
+| Field | API type | Control |
 |---|---|---|
 | `String`, `Uuid` | `string` | text input, `required` |
 | `i64`, `f64` | `number` | number input (`step=any` for `f64`) |
 | `bool` | `boolean` | checkbox |
 | `DateTime` | `string` (ISO 8601) | `datetime-local` |
-| `opt:T` | `T \| null` | as `T`, not required; empty → `null` |
+| `opt:T` | `T`, optional; `null` when absent | as `T`, not required; an empty input is left out |
 | `vec:T` | `T[]` | text, comma-separated |
-| `map` | `Record<string, string>` | textarea, `key=value` per line |
-| enum VO | `"Pendiente" \| "Confirmado" \| "Cancelado"` | `<select>` |
-| `ref:Cliente` | `string` | `<select>` of the first 100 clientes; on the detail, a link named by the cliente's label, loaded through its repository |
+| `map` | `Record<string, string>` | textarea, `clave=valor` per line |
+| enum VO | `string` | `<select>` of its variants |
+| `ref:Cliente` | `string` | `<select>` of the first 100 clientes; on the detail, a link named by the cliente's label, loaded by the container |
 
 ## Errors land next to their field
 
 The frontend does not copy the domain's validation: the server is the authority. A `422` comes
-back with its `codigo`, and `messages.ts`, generated from the same list as `errores.rs`, turns
+back with its `codigo`, and `mensajes.ts`, generated from the same list as `errores.rs`, turns
 it into a sentence and a field:
 
-```ts title="web/src/domain/cliente/messages.ts (excerpt)"
-"cliente.email_invalido": "Email is not valid",
-"cliente.validacion.nombre_vacio": "Nombre is required",
+```ts title="web/src/contextos/cliente/mensajes.ts (excerpt)"
+"cliente.email_invalido": "Email: no válido",
+"cliente.validacion.nombre_vacio": "Nombre: obligatorio",
 ```
 
-`cliente.validacion.nombre_vacio` marks the `nombre` input. `cliente.duplicado` goes to the
-form's alert. A code nobody wrote a message for shows the code itself. This file is also where
-you translate.
+`cliente.validacion.nombre_vacio` marks the `nombre` input. `cliente.duplicado` ("Estos valores
+ya están en uso") goes to the form's alert. A code nobody wrote a message for shows the code
+itself.
 
 ## Routes
 
-`/productos`, `/productos/new`, `/productos/:id` and `/productos/:id/edit`. The list's page lives
-in the URL (`?page=2`), so reload and back keep it. Add your own routes in
-`presentation/core/routes.tsx`, never in `core/generated/`, which is rewritten.
+`/productos`, `/productos/nuevo`, `/productos/:id` and `/productos/:id/editar`. The list's page
+lives in the URL (`?pagina=2`), so reload and back keep it. Add your own routes in `rutas.tsx`,
+never in `generado/`, which is rewritten.
 
 ## Tests
 
-`bun test` with happy-dom and Testing Library. Each container is tested against the in-memory
-fake from `test-support/`, and each HTTP repository against a stubbed fetch. `make test` and
-`make lint` include `web/` whenever the directory exists.
+`bun test` with happy-dom and Testing Library. Each container is tested against `apiFalsa`, one
+in-memory fake of the generated API for every entity: it answers pages, `404` with
+`<entidad>.no_encontrado`, `201`, `200` and `204`, and the error code a test asks for
+(`{ "POST /productos": "producto.duplicado" }`). The tests speak HTTP, so they exercise the real
+routes and parameters. `make test` and `make lint` include `web/` whenever the directory exists.
 
 <Aside type="note" title="The stack, pinned">
 React 19 · daisyUI 5 on Tailwind 4 · wouter for routing · openapi-fetch · Vite · Bun · Biome ·

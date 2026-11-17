@@ -1,0 +1,103 @@
+import type { Esquemas } from "../../../api/cliente";
+import { separarLista } from "../../../compartido/formularios";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaCliente } from "../mensajes";
+
+type Cliente = Esquemas["DtoCliente"];
+type PeticionCliente = Esquemas["PeticionCrearCliente"];
+
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioCliente {
+  email: string;
+  nombre: string;
+  etiquetas: string;
+}
+
+/** Los inputs de `cliente`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioCliente(cliente: Cliente | null): ValoresFormularioCliente {
+  if (cliente === null) {
+    return {
+      email: "",
+      nombre: "",
+      etiquetas: "",
+    };
+  }
+  return {
+    email: cliente.email,
+    nombre: cliente.nombre,
+    etiquetas: cliente.etiquetas.join(", "),
+  };
+}
+
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionCliente(valores: ValoresFormularioCliente): PeticionCliente {
+  return {
+    email: valores.email,
+    nombre: valores.nombre,
+    etiquetas: separarLista(valores.etiquetas),
+  };
+}
+
+export function VistaFormularioCliente({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
+}: {
+  valores: ValoresFormularioCliente;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaCliente | null;
+  alCambiar: (valores: ValoresFormularioCliente) => void;
+  alEnviar: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        alEnviar();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Email</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problema?.campo === "email"}
+          required
+          value={valores.email}
+          onChange={(event) => alCambiar({ ...valores, email: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="email" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Nombre</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problema?.campo === "nombre"}
+          required
+          value={valores.nombre}
+          onChange={(event) => alCambiar({ ...valores, nombre: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="nombre" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Etiquetas</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problema?.campo === "etiquetas"}
+          value={valores.etiquetas}
+          onChange={(event) => alCambiar({ ...valores, etiquetas: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="etiquetas" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
+      </button>
+    </form>
+  );
+}

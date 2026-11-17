@@ -1,0 +1,28 @@
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaPedido {
+  campo: string | null;
+  texto: string;
+}
+
+/**
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
+ */
+const TEXTOS: Record<string, string> = {
+  "pedido.importe_invalido": "Importe: no válido",
+  "pedido.estado_invalido": "Estado: no válido",
+  "pedido.duplicado": "Estos valores ya están en uso",
+  "pedido.no_encontrado": "Ya no existe",
+  "pedido.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "pedido.desconocido": "Algo ha ido mal",
+};
+
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
+  "pedido.importe_invalido": "importe",
+  "pedido.estado_invalido": "estado",
+};
+
+export function aProblema(codigo: string): ProblemaPedido {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
+}

@@ -1,0 +1,35 @@
+import { Link } from "wouter";
+import type { Esquemas } from "../../../api/cliente";
+
+type Pedido = Esquemas["DtoPedido"];
+
+export function VistaListaPedido({ pedidos }: { pedidos: Pedido[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Importe</th>
+            <th>Estado</th>
+            <th>Nota</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {pedidos.map((pedido) => (
+            <tr key={pedido.id}>
+              <td>{pedido.importe}</td>
+              <td>{pedido.estado}</td>
+              <td>{pedido.nota ?? "—"}</td>
+              <td className="text-right">
+                <Link href={`/pedidos/${pedido.id}`} className="link">
+                  Ver
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

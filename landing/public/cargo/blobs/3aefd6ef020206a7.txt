@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { desenvolver } from "../../../api/http";
+import { useAuth } from "../../../auth/auth";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleProducto } from "../vistas/detalle-producto";
+
+export function ContenedorDetalleProducto({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const { puede } = useAuth();
+  const producto = useCarga(
+    () => desenvolver(api.GET("/productos/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+
+  const borrar = async () => {
+    setConfirmando(false);
+    try {
+      await desenvolver(api.DELETE("/productos/{id}", { params: { path: { id } } }));
+      navegar("/productos");
+    } catch (error) {
+      setFallo(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Producto</h1>
+      {fallo !== null && <AlertaError error={fallo} />}
+      {producto.estado === "cargando" && <span className="loading loading-spinner" />}
+      {producto.estado === "error" && <AlertaError error={producto.error} />}
+      {producto.estado === "listo" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <VistaDetalleProducto producto={producto.datos} />
+            <div className="card-actions justify-end">
+              <Link href={`/productos/${id}/editar`} className="btn">
+                Editar
+              </Link>
+              {puede("admin") && (
+                <button
+                  type="button"
+                  className="btn btn-error"
+                  onClick={() => setConfirmando(true)}
+                >
+                  Borrar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/productos" className="link">
+        Volver a productos
+      </Link>
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar producto?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
+      />
+    </section>
+  );
+}

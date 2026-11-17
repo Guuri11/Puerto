@@ -1,0 +1,81 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioPedido,
+  aPeticionPedido,
+  VistaFormularioPedido,
+} from "../vistas/formulario-pedido";
+
+type Pedido = Esquemas["DtoPedido"];
+
+/** Crear, o editar con `id`: el formulario de pedidos. */
+export function ContenedorFormularioPedido({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : desenvolver(api.GET("/pedidos/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
+  const titulo = id === undefined ? "Crear pedido" : "Editar pedido";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioPedido existente={existente.datos} />}
+      <Link href={id === undefined ? "/pedidos" : `/pedidos/${id}`} className="link">
+        Cancelar
+      </Link>
+    </section>
+  );
+}
+
+function FormularioPedido({ existente }: { existente: Pedido | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioPedido(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
+
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
+    try {
+      const cuerpo = aPeticionPedido(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/pedidos", { body: cuerpo })
+          : api.PUT("/pedidos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
+      );
+      navegar(`/pedidos/${guardado.id}`);
+    } catch (error) {
+      setFallo(error);
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioPedido
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
+        />
+      </div>
+    </div>
+  );
+}

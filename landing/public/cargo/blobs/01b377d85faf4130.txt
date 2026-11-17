@@ -1,0 +1,3 @@
+[test]
+# happy-dom primero: testing-library lee `document` al importarse.
+preload = ["./src/pruebas/happy-dom.ts", "./src/pruebas/testing-library.ts"]

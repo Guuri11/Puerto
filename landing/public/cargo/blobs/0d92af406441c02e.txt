@@ -1,9 +1,0 @@
-export interface Cliente {
-  id: string;
-  email: string;
-  nombre: string;
-  etiquetas: string[];
-}
-
-/** What a create or an update sends: a cliente without its id. */
-export type ClienteDraft = Omit<Cliente, "id">;

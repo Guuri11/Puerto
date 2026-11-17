@@ -1,0 +1,53 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { RequiereAuth } from "../auth/auth";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetalleProducto } from "../contextos/producto/contenedores/detalle-producto";
+import { ContenedorFormularioProducto } from "../contextos/producto/contenedores/formulario-producto";
+import { ContenedorListaProducto } from "../contextos/producto/contenedores/lista-producto";
+import { PaginaInicio } from "../paginas/inicio";
+import { PaginaLogin } from "../paginas/login";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaRegistro } from "../paginas/registro";
+import { rutasPropias } from "../rutas";
+
+export const entradasMenu: EntradaMenu[] = [{ etiqueta: "Productos", href: "/productos" }];
+
+export function RutasApp() {
+  return (
+    <Switch>
+      <Route path="/">
+        <PaginaInicio entradas={entradasMenu} />
+      </Route>
+      <Route path="/login">
+        <PaginaLogin />
+      </Route>
+      <Route path="/registro">
+        <PaginaRegistro />
+      </Route>
+      {rutasPropias}
+      <Route path="/productos">
+        <ContenedorListaProducto />
+      </Route>
+      <Route path="/productos/nuevo">
+        <RequiereAuth>
+          <ContenedorFormularioProducto />
+        </RequiereAuth>
+      </Route>
+      <Route path="/productos/:id/editar">
+        {(params) => (
+          <RequiereAuth>
+            <ContenedorFormularioProducto id={params.id} />
+          </RequiereAuth>
+        )}
+      </Route>
+      <Route path="/productos/:id">
+        {(params) => <ContenedorDetalleProducto id={params.id} />}
+      </Route>
+      <Route>
+        <PaginaNoEncontrada />
+      </Route>
+    </Switch>
+  );
+}

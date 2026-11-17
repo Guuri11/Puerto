@@ -1,0 +1,88 @@
+{
+  "Web — contenedor + vista": {
+    "prefix": "web-container",
+    "body": [
+      "import type { Esquemas } from \"../../../api/cliente\";",
+      "import { desenvolver } from \"../../../api/http\";",
+      "import { AlertaError } from \"../../../compartido/ui/alerta-error\";",
+      "import { useCarga } from \"../../../compartido/use-carga\";",
+      "import { useDependencias } from \"../../../dependencias\";",
+      "",
+      "export function Contenedor${3:Resumen}${1:Entidad}({ id }: { id: string }) {",
+      "\tconst { api } = useDependencias();",
+      "\tconst ${4:entidad} = useCarga(",
+      "\t\t() => desenvolver(api.GET(\"/${5:entidades}/{id}\", { params: { path: { id } } })),",
+      "\t\t[api, id],",
+      "\t);",
+      "",
+      "\treturn (",
+      "\t\t<section className=\"space-y-4\">",
+      "\t\t\t{${4:entidad}.estado === \"cargando\" && <span className=\"loading loading-spinner\" />}",
+      "\t\t\t{${4:entidad}.estado === \"error\" && <AlertaError error={${4:entidad}.error} />}",
+      "\t\t\t{${4:entidad}.estado === \"listo\" && <Vista${3:Resumen}${1:Entidad} ${4:entidad}={${4:entidad}.datos} />}",
+      "\t\t</section>",
+      "\t);",
+      "}",
+      "",
+      "/** Solo props. Pásala a `vistas/` cuando crezca: los contenedores cargan, las vistas pintan. */",
+      "function Vista${3:Resumen}${1:Entidad}({ ${4:entidad} }: { ${4:entidad}: Esquemas[\"Dto${1:Entidad}\"] }) {",
+      "\treturn <p>{${4:entidad}.id}</p>;$0",
+      "}"
+    ],
+    "description": "Un contenedor (contextos/<entidad>/contenedores/): llama a la API con useDependencias() + useCarga + desenvolver, y pinta cargando / error / su vista."
+  },
+  "Web — test de contenedor": {
+    "prefix": "web-container-test",
+    "body": [
+      "import { describe, expect, test } from \"bun:test\";",
+      "import { screen } from \"@testing-library/react\";",
+      "import { apiFalsa } from \"../../../pruebas/api-falsa\";",
+      "import { coleccion${1:Entidad}, Madre${1:Entidad} } from \"../../../pruebas/${2:nombre-entidad}\";",
+      "import { renderizarPantalla } from \"../../../pruebas/renderizar\";",
+      "import { Contenedor${3:Resumen}${1:Entidad} } from \"./${6:resumen}-${2:nombre-entidad}\";",
+      "",
+      "describe(\"Contenedor${3:Resumen}${1:Entidad}\", () => {",
+      "\ttest(\"debería mostrar ${7:qué} cuando existe\", async () => {",
+      "\t\t// Preparar",
+      "\t\tconst sembrado = Madre${1:Entidad}.aleatorio();",
+      "\t\tconst api = apiFalsa([coleccion${1:Entidad}([sembrado])]);",
+      "\t\tconst pantalla = <Contenedor${3:Resumen}${1:Entidad} id={sembrado.id} />;",
+      "",
+      "\t\t// Actuar",
+      "\t\trenderizarPantalla(pantalla, { api });",
+      "",
+      "\t\t// Comprobar",
+      "\t\texpect(await screen.findByText(sembrado.id)).toBeTruthy();",
+      "\t});",
+      "});"
+    ],
+    "description": "Un test de contenedor: lo pinta contra la API falsa (pruebas/api-falsa.ts) y comprueba lo que ve el usuario."
+  },
+  "Web — campo de formulario": {
+    "prefix": "web-form-field",
+    "body": [
+      "<label className=\"fieldset\">",
+      "\t<span className=\"fieldset-legend\">${1:Etiqueta}</span>",
+      "\t<input",
+      "\t\tclassName=\"input w-full\"",
+      "\t\ttype=\"${2:text}\"",
+      "\t\trequired",
+      "\t\taria-invalid={problema?.campo === \"${3:campo}\"}",
+      "\t\tvalue={valores.${3:campo}}",
+      "\t\tonChange={(event) => alCambiar({ ...valores, ${3:campo}: event.target.value })}",
+      "\t/>",
+      "</label>",
+      "<ErrorCampo problema={problema} campo=\"${3:campo}\" />"
+    ],
+    "description": "Un input de daisyUI unido a los valores de la vista de formulario (vistas/formulario-<entidad>.tsx), con el mensaje de la API debajo; añade el campo a ValoresFormulario<Entidad> y a sus dos conversiones."
+  },
+  "Web — ruta": {
+    "prefix": "web-route",
+    "body": [
+      "<Route key=\"${1:/entidades/:id/resumen}\" path=\"${1:/entidades/:id/resumen}\">",
+      "\t{(params) => <Contenedor${3:Resumen}${2:Entidad} id={params.id} />}",
+      "</Route>,"
+    ],
+    "description": "Una ruta en rutasPropias (src/rutas.tsx, tuyo; generado/rutas.tsx se reescribe)."
+  }
+}

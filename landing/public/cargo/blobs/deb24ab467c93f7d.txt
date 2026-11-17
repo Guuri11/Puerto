@@ -1,0 +1,76 @@
+import { describe, expect, test } from "bun:test";
+import { screen, waitFor } from "@testing-library/react";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { RequiereAuth, useAuth } from "./auth";
+
+function Secreto() {
+  const { puede } = useAuth();
+  return <p>{puede("admin") ? "zona de admin" : "zona de socios"}</p>;
+}
+
+describe("RequiereAuth", () => {
+  test("debería iniciar una sesión que vuelve aquí cuando no hay sesión", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa({ usuario: null });
+
+    // Actuar
+    renderizarPantalla(
+      <RequiereAuth>
+        <Secreto />
+      </RequiereAuth>,
+      { auth },
+      "/pedidos?pagina=2",
+    );
+
+    // Comprobar
+    await waitFor(() => expect(auth.logins).toEqual(["/pedidos?pagina=2"]));
+    expect(screen.queryByText("zona de socios")).toBeNull();
+  });
+
+  test("debería mostrar la página a quien tiene la sesión sin volver a iniciarla", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa({ usuario: MadreUsuarioActual.aleatorio() });
+
+    // Actuar
+    renderizarPantalla(
+      <RequiereAuth>
+        <Secreto />
+      </RequiereAuth>,
+      { auth },
+    );
+
+    // Comprobar
+    expect(await screen.findByText("zona de socios")).toBeTruthy();
+    expect(auth.logins).toEqual([]);
+  });
+});
+
+describe("useAuth", () => {
+  test("debería permitir un rol solo cuando quien tiene la sesión lo tiene", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ roles: ["admin"] });
+
+    // Actuar
+    renderizarPantalla(<Secreto />, {}, "/", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("zona de admin")).toBeTruthy();
+  });
+});
+
+describe("ProveedorAuth", () => {
+  test("debería mostrar el código del error cuando la API no acepta la sesión", async () => {
+    // Preparar
+    const auth = {
+      ...pasarelaAuthFalsa(),
+      usuarioActual: () => Promise.reject(new Error("auth.no_autenticado")),
+    };
+
+    // Actuar
+    renderizarPantalla(<Secreto />, { auth });
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.no_autenticado");
+  });
+});

@@ -1,0 +1,54 @@
+// El frontend es la capa de presentación (ADR-0025 de Puerto): los contenedores llaman a la API y
+// las vistas reciben props. `bun run lint:arch` falla con cualquier import que lo rompa.
+module.exports = {
+  forbidden: [
+    {
+      name: "solo-la-pasarela-importa-oidc-client-ts",
+      comment:
+        "El cliente del proveedor se queda detrás de PasarelaAuth: las pantallas ven un UsuarioActual, nunca un token.",
+      severity: "error",
+      from: { pathNot: "^src/auth/pasarela-oidc" },
+      to: { path: "oidc-client-ts" },
+    },
+    {
+      name: "vistas-solo-props",
+      comment:
+        "Una vista pinta lo que le da su contenedor: ni el cliente de la API, ni las dependencias, ni hooks de datos (los tipos sí).",
+      severity: "error",
+      from: { path: "^src/contextos/[^/]+/vistas/" },
+      to: {
+        path: "^src/(api/|dependencias\\.tsx$|generado/|compartido/use-carga\\.ts$)",
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+    {
+      name: "solo-generado-construye-el-cliente",
+      comment:
+        "Las pantallas llegan a la API con useDependencias(), así un test les da un falso: solo generado/dependencias.ts y pruebas/ la construyen.",
+      severity: "error",
+      from: {
+        path: "^src/",
+        pathNot: ["^src/generado/dependencias\\.ts$", "^src/pruebas/"],
+      },
+      to: { path: "^src/api/cliente\\.ts$", dependencyTypesNot: ["type-only"] },
+    },
+    {
+      name: "solo-los-tests-importan-pruebas",
+      comment: "Los falsos y las madres son de los tests; la app nunca los lleva.",
+      severity: "error",
+      from: { path: "^src/", pathNot: ["^src/pruebas/", "\\.test\\.tsx?$"] },
+      to: { path: "^src/pruebas/" },
+    },
+    {
+      name: "sin-ciclos",
+      severity: "error",
+      from: {},
+      to: { circular: true },
+    },
+  ],
+  options: {
+    doNotFollow: { path: "node_modules" },
+    tsPreCompilationDeps: true,
+    tsConfig: { fileName: "tsconfig.json" },
+  },
+};

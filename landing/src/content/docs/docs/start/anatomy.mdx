@@ -45,7 +45,7 @@ is `tienda`, with one entity, after `puerto generar scaffold Producto`:
       - main.rs starts the server from puerto-web
       - app.rs yours: middleware and routes of your own
       - generado/bootstrap.rs mounts the APIs on cableado, regenerated
-- web/ **React + daisyUI on Bun**: same layers, see The web frontend
+- web/ **React + daisyUI on Bun**: the presentation layer, in Spanish, see The web frontend
 - docs/api/openapi.json the API contract, exported by a test
 </FileTree>
 
@@ -84,7 +84,7 @@ Every generated name is in the
 What makes a Puerto project safe to regenerate is that each file has one owner.
 
 **Regenerated.** Rewritten from `puerto.toml` by every command that changes the manifest. They
-start with a `GENERADO` comment (`AUTO-GENERATED` in `web/`). Never edit them by hand: change
+start with a `GENERADO` comment. Never edit them by hand: change
 the manifest and run the generator.
 
 | File | Rewritten by |
@@ -92,8 +92,8 @@ the manifest and run the generator.
 | `presentacion/cableado/`, `presentacion/api/src/generado/bootstrap.rs` | `scaffold`, `caso-de-uso`, `presentacion`, `bootstrap` |
 | `contextos/<c>/dominio/src/eventos.rs` | `scaffold`, `evento`, `bootstrap` (events projects) |
 | `presentacion/worker/src/generado/registro.rs` | `consumidor`, `correo --tras`, `bootstrap` (events projects) |
-| `web/src/presentation/core/generated/*` | `scaffold`, `web`, `bootstrap` (web projects) |
-| `docs/api/openapi.json`, `web/src/infrastructure/http/schema.d.ts` | `make web/sync` |
+| `web/src/generado/*` | `scaffold`, `web`, `bootstrap` (web projects) |
+| `docs/api/openapi.json`, `web/src/api/esquema.d.ts` | `make web/sync` |
 
 **Written once, then yours.** A generator writes them when it creates the piece, then never
 touches them again. Models, use cases, repositories, routes, consumers, mail templates, screens:

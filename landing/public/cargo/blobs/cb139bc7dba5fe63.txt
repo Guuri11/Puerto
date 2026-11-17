@@ -1,0 +1,26 @@
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Cliente = Esquemas["DtoCliente"];
+type PeticionCliente = Esquemas["PeticionCrearCliente"];
+
+/** Datos válidos de clientes; en `cambios`, los campos de los que trata el test. */
+export const MadreCliente = {
+  peticion(cambios: Partial<PeticionCliente> = {}): PeticionCliente {
+    return {
+      email: "example",
+      nombre: "example",
+      etiquetas: ["example"],
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Cliente> = {}): Cliente {
+    return { id: crypto.randomUUID(), ...MadreCliente.peticion(), ...cambios };
+  },
+};
+
+/** El `/clientes` de la API falsa, con `semilla`. */
+export function coleccionCliente(semilla: Cliente[] = []) {
+  return coleccion("/clientes", "cliente", semilla);
+}

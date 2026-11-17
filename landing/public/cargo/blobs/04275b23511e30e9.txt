@@ -1,0 +1,26 @@
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Producto = Esquemas["DtoProducto"];
+type PeticionProducto = Esquemas["PeticionCrearProducto"];
+
+/** Datos válidos de productos; en `cambios`, los campos de los que trata el test. */
+export const MadreProducto = {
+  peticion(cambios: Partial<PeticionProducto> = {}): PeticionProducto {
+    return {
+      nombre: "example",
+      precio: 42,
+      sku: "example",
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Producto> = {}): Producto {
+    return { id: crypto.randomUUID(), ...MadreProducto.peticion(), ...cambios };
+  },
+};
+
+/** El `/productos` de la API falsa, con `semilla`. */
+export function coleccionProducto(semilla: Producto[] = []) {
+  return coleccion("/productos", "producto", semilla);
+}

@@ -1,0 +1,37 @@
+[workspace]
+# Un crate por contexto y capa (ADR-0023 de Puerto): `contextos/*/*` incluye cada uno nuevo.
+members = ["nucleo", "migrador", "contextos/*/*", "presentacion/*"]
+resolver = "3"
+
+[workspace.dependencies]
+# Crates de terceros: una sola versión para todo el proyecto.
+async-trait = "0.1"
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+mockall = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+poem = "3"
+# Feature `chrono`: sin ella, poem-openapi no implementa `Type` para DateTime<Utc>.
+poem-openapi = { version = "5", features = ["swagger-ui", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"] }
+
+# El runtime de Puerto (ADR-0017 de Puerto): lo que comparten todos los proyectos de Puerto vive
+# en estos crates, en la misma versión minor que la CLI `puerto` que generó este proyecto.
+puerto-web = "0.23"
+puerto-sqlx = "0.23"
+puerto-nucleo = "0.23"
+puerto-auth = "0.23"
+
+# Los crates de este proyecto: cada `Cargo.toml` los nombra con `{ workspace = true }`.
+cableado = { path = "presentacion/cableado" }
+migrador = { path = "migrador" }
+dominio_usuario = { path = "contextos/usuario/dominio" }
+infra_usuario = { path = "contextos/usuario/infraestructura" }
+rest_usuario = { path = "contextos/usuario/rest" }
+dominio_pedido = { path = "contextos/pedido/dominio" }
+aplicacion_pedido = { path = "contextos/pedido/aplicacion" }
+infra_pedido = { path = "contextos/pedido/infraestructura" }
+rest_pedido = { path = "contextos/pedido/rest" }

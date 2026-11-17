@@ -1,0 +1,48 @@
+import { Link, useLocation, useSearch } from "wouter";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaPedido } from "../vistas/lista-pedido";
+
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaPedido() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const pedidos = useCarga(
+    () => desenvolver(api.GET("/pedidos", { params: { query: consulta } })),
+    [api, desplazamiento],
+  );
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Pedidos</h1>
+        <Link href="/pedidos/nuevo" className="btn btn-primary">
+          Crear pedido
+        </Link>
+      </div>
+      {pedidos.estado === "cargando" && <span className="loading loading-spinner" />}
+      {pedidos.estado === "error" && <AlertaError error={pedidos.error} />}
+      {pedidos.estado === "listo" &&
+        (pedidos.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay pedidos." />
+        ) : (
+          <>
+            <VistaListaPedido pedidos={pedidos.datos.elementos} />
+            <Paginacion
+              total={pedidos.datos.total}
+              limite={pedidos.datos.limite}
+              desplazamiento={pedidos.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
+            />
+          </>
+        ))}
+    </section>
+  );
+}

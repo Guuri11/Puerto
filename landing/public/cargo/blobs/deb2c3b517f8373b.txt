@@ -1,0 +1,35 @@
+import { Link } from "wouter";
+import type { Esquemas } from "../../../api/cliente";
+
+type Producto = Esquemas["DtoProducto"];
+
+export function VistaListaProducto({ productos }: { productos: Producto[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Precio</th>
+            <th>Sku</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {productos.map((producto) => (
+            <tr key={producto.id}>
+              <td>{producto.nombre}</td>
+              <td>{producto.precio}</td>
+              <td>{producto.sku}</td>
+              <td className="text-right">
+                <Link href={`/productos/${producto.id}`} className="link">
+                  Ver
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

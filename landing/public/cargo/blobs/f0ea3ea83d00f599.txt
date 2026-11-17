@@ -1,0 +1,22 @@
+import type { Middleware } from "openapi-fetch";
+import type { PasarelaAuth } from "./sesion";
+
+/**
+ * Firma cada llamada a la API con el token de quien tiene la sesión; un `401` quiere decir que la
+ * sesión ya no vale, así que vuelve a iniciarla y regresa a la página en la que estaba.
+ */
+export function middlewareBearer(auth: PasarelaAuth): Middleware {
+  return {
+    async onRequest({ request }) {
+      const token = await auth.tokenAcceso();
+      if (token !== null) request.headers.set("Authorization", `Bearer ${token}`);
+      return request;
+    },
+    async onResponse({ response }) {
+      if (response.status === 401) {
+        void auth.login(window.location.pathname + window.location.search);
+      }
+      return response;
+    },
+  };
+}

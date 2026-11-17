@@ -1,0 +1,26 @@
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Pedido = Esquemas["DtoPedido"];
+type PeticionPedido = Esquemas["PeticionCrearPedido"];
+
+/** Datos válidos de pedidos; en `cambios`, los campos de los que trata el test. */
+export const MadrePedido = {
+  peticion(cambios: Partial<PeticionPedido> = {}): PeticionPedido {
+    return {
+      importe: 1.5,
+      estado: "Pendiente",
+      nota: "example",
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Pedido> = {}): Pedido {
+    return { id: crypto.randomUUID(), ...MadrePedido.peticion(), ...cambios };
+  },
+};
+
+/** El `/pedidos` de la API falsa, con `semilla`. */
+export function coleccionPedido(semilla: Pedido[] = []) {
+  return coleccion("/pedidos", "pedido", semilla);
+}

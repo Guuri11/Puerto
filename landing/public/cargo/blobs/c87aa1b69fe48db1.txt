@@ -1,0 +1,71 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ErrorAuth } from "../auth/sesion";
+import { cuentasFalsas } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { PaginaRegistro } from "./registro";
+
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+}
+
+async function rellenar() {
+  await screen.findByText("Ya tengo una cuenta");
+  escribir("Email", "ana@example.com");
+  escribir("Contraseña", "caballo correcto bateria");
+}
+
+describe("PaginaRegistro", () => {
+  test("debería iniciar sesión con la cuenta nueva y volver a la página que lo pidió", async () => {
+    // Preparar
+    const cuentas = cuentasFalsas();
+    const ruta = "/registro?siguiente=%2Fpedidos";
+    const { historial } = renderizarPantalla(<PaginaRegistro />, { cuentas }, ruta, {
+      usuario: null,
+    });
+    await rellenar();
+
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/pedidos"));
+    expect(cuentas.inicios).toHaveLength(1);
+  });
+
+  test("debería mostrar un email ya usado junto a su campo", async () => {
+    // Preparar
+    const cuentas = {
+      ...cuentasFalsas(),
+      registrar: () => Promise.reject(new ErrorAuth("usuario.duplicado")),
+    };
+    renderizarPantalla(<PaginaRegistro />, { cuentas }, "/registro", { usuario: null });
+    await rellenar();
+
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    // Comprobar
+    expect(await screen.findByText("Ya hay una cuenta con este email")).toBeTruthy();
+    expect(screen.getByLabelText("Email").getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("debería mostrar una contraseña corta junto a su campo", async () => {
+    // Preparar
+    const cuentas = {
+      ...cuentasFalsas(),
+      registrar: () =>
+        Promise.reject(new ErrorAuth("usuario.validacion.contrasena_demasiado_corta")),
+    };
+    renderizarPantalla(<PaginaRegistro />, { cuentas }, "/registro", { usuario: null });
+    await rellenar();
+
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    // Comprobar
+    expect(await screen.findByText("Usa al menos 12 caracteres")).toBeTruthy();
+    expect(screen.getByLabelText("Contraseña").getAttribute("aria-invalid")).toBe("true");
+  });
+});

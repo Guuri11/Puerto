@@ -1,0 +1,7 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+
+/**
+ * Cada rol que comprueba una pantalla generada (`roles` en puerto.toml). Quien llama en los tests de
+ * pantalla los tiene todos (`MadreUsuarioActual.llamante()`).
+ */
+export const ROLES: string[] = ["admin"];

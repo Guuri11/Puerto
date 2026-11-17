@@ -90,7 +90,8 @@ Postgres stores exactly.
 Mothers are behind the same `pruebas` feature as the doubles
 (`dominio_producto::pruebas::madres::MadreProducto`), so route tests and worker tests build return
 values with them instead of a second set of fixtures. The frontend has its own
-(`web/src/test-support/producto.ts`), next to an in-memory fake of the repository.
+(`MadreProducto` in `web/src/pruebas/producto.ts`), next to `apiFalsa`, one in-memory fake of the
+generated API that every screen test talks HTTP to.
 
 ## Running them
 

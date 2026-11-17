@@ -1,0 +1,99 @@
+import { InMemoryWebStorage, UserManager, WebStorageStateStore } from "oidc-client-ts";
+import { ErrorAuth, type PasarelaAuth, type UsuarioActual } from "./sesion";
+
+/** Dónde está el proveedor y quién es esta app para él: `web/.env`. */
+export interface AjustesOidc {
+  /** `VITE_AUTH_ISSUER`: la URL del realm de Keycloak, `https://<tenant>.auth0.com/`. */
+  emisor: string;
+  /** `VITE_AUTH_CLIENT_ID`: un cliente público, Authorization Code + PKCE. */
+  idCliente: string;
+  /** `VITE_AUTH_AUDIENCE`: el identificador de la API en Auth0. Vacío en Keycloak, que lo añade un mapper. */
+  audiencia: string;
+}
+
+/** Los ajustes de `web/.env`; si falta uno, es un error al arrancar, no una redirección a ninguna parte. */
+export function ajustesOidcDeEntorno(
+  entorno: Record<string, unknown> = import.meta.env,
+): AjustesOidc {
+  const leer = (nombre: string, obligatorio: boolean) => {
+    const valor = entorno[nombre];
+    if (typeof valor === "string" && valor !== "") return valor;
+    if (obligatorio)
+      throw new Error(`${nombre} no está definida: copia web/.env.example a web/.env`);
+    return "";
+  };
+  return {
+    emisor: leer("VITE_AUTH_ISSUER", true),
+    idCliente: leer("VITE_AUTH_CLIENT_ID", true),
+    audiencia: leer("VITE_AUTH_AUDIENCE", false),
+  };
+}
+
+/** Lo que necesita la pasarela del `UserManager` de `oidc-client-ts`. */
+export type ClienteOidc = Pick<
+  UserManager,
+  "getUser" | "signinRedirect" | "signinRedirectCallback" | "signoutRedirect"
+>;
+
+/** `PasarelaAuth` sobre un proveedor OpenID Connect (Keycloak, Auth0): Authorization Code + PKCE. */
+export function pasarelaOidc(ajustes: AjustesOidc): PasarelaAuth {
+  const origen = window.location.origin;
+  const cliente = new UserManager({
+    authority: ajustes.emisor,
+    client_id: ajustes.idCliente,
+    redirect_uri: `${origen}/auth/callback`,
+    post_logout_redirect_uri: origen,
+    scope: "openid profile email",
+    // En memoria, nunca en un almacenamiento que pueda leer un script: al recargar se vuelve a
+    // iniciar sesión con la sesión del propio proveedor (ADR-0021 § 5).
+    userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
+    extraQueryParams: ajustes.audiencia === "" ? {} : { audience: ajustes.audiencia },
+  });
+  return pasarelaOidcSobre(cliente, (url, init) => fetch(url, init));
+}
+
+interface CuerpoMe {
+  id: string;
+  email?: string | null;
+  nombre?: string | null;
+  roles: string[];
+}
+
+/** Cómo pide la pasarela `/me` a la API. */
+export type PedirMe = (url: string, init: RequestInit) => Promise<Response>;
+
+/** El `RespuestaError.codigo` de un `/me` que falló, o `http.<estado>` si la respuesta no es uno. */
+async function codigoDeError(respuesta: Response): Promise<string> {
+  const cuerpo: unknown = await respuesta.json().catch(() => null);
+  if (typeof cuerpo === "object" && cuerpo !== null && "codigo" in cuerpo) {
+    const { codigo } = cuerpo;
+    if (typeof codigo === "string") return codigo;
+  }
+  return `http.${respuesta.status}`;
+}
+
+/** La pasarela sobre cualquier cliente y `fetch`: lo que usan los tests. */
+export function pasarelaOidcSobre(cliente: ClienteOidc, pedirMe: PedirMe): PasarelaAuth {
+  const tokenAcceso = async () => {
+    const usuario = await cliente.getUser();
+    return usuario === null || usuario.expired === true ? null : usuario.access_token;
+  };
+  return {
+    tokenAcceso,
+    async usuarioActual(): Promise<UsuarioActual | null> {
+      const token = await tokenAcceso();
+      if (token === null) return null;
+      // Lo que la API sabe de quien llama: su id de usuario y los roles que comprueba.
+      const respuesta = await pedirMe("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+      if (!respuesta.ok) throw new ErrorAuth(await codigoDeError(respuesta));
+      const me = (await respuesta.json()) as CuerpoMe;
+      return { id: me.id, email: me.email ?? null, nombre: me.nombre ?? null, roles: me.roles };
+    },
+    login: (volverA) => cliente.signinRedirect({ state: volverA }),
+    async completarLogin() {
+      const usuario = await cliente.signinRedirectCallback();
+      return typeof usuario.state === "string" ? usuario.state : "/";
+    },
+    logout: () => cliente.signoutRedirect(),
+  };
+}

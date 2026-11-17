@@ -1,0 +1,48 @@
+import { Link, useLocation, useSearch } from "wouter";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaProducto } from "../vistas/lista-producto";
+
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaProducto() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const productos = useCarga(
+    () => desenvolver(api.GET("/productos", { params: { query: consulta } })),
+    [api, desplazamiento],
+  );
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Productos</h1>
+        <Link href="/productos/nuevo" className="btn btn-primary">
+          Crear producto
+        </Link>
+      </div>
+      {productos.estado === "cargando" && <span className="loading loading-spinner" />}
+      {productos.estado === "error" && <AlertaError error={productos.error} />}
+      {productos.estado === "listo" &&
+        (productos.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay productos." />
+        ) : (
+          <>
+            <VistaListaProducto productos={productos.datos.elementos} />
+            <Paginacion
+              total={productos.datos.total}
+              limite={productos.datos.limite}
+              desplazamiento={productos.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
+            />
+          </>
+        ))}
+    </section>
+  );
+}

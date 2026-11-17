@@ -1,0 +1,71 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen } from "@testing-library/react";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaPedido } from "./lista-pedido";
+
+describe("ContenedorListaPedido", () => {
+  test("debería mostrar una fila por cada pedido", async () => {
+    // Preparar
+    const semilla = [MadrePedido.aleatorio(), MadrePedido.aleatorio()];
+    const api = apiFalsa([coleccionPedido(semilla)]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
+  });
+
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadrePedido.aleatorio());
+    const api = apiFalsa([coleccionPedido(semilla)]);
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
+
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
+  });
+
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadrePedido.aleatorio());
+    const api = apiFalsa([coleccionPedido(semilla)]);
+    const ruta = "/pedidos?pagina=2";
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api }, ruta);
+
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+  });
+
+  test("debería decirlo cuando no hay pedidos", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionPedido()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay pedidos.")).toBeTruthy();
+  });
+
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /pedidos": "pedido.repositorio" };
+    const api = apiFalsa([coleccionPedido()], fallos);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("pedido.repositorio");
+  });
+});

@@ -1,0 +1,16 @@
+import type { Esquemas } from "../../../api/cliente";
+
+type Pedido = Esquemas["DtoPedido"];
+
+export function VistaDetallePedido({ pedido }: { pedido: Pedido }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Importe</dt>
+      <dd>{pedido.importe}</dd>
+      <dt className="font-semibold">Estado</dt>
+      <dd>{pedido.estado}</dd>
+      <dt className="font-semibold">Nota</dt>
+      <dd>{pedido.nota ?? "—"}</dd>
+    </dl>
+  );
+}

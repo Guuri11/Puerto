@@ -1,0 +1,70 @@
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { desenvolver } from "../../../api/http";
+import { useAuth } from "../../../auth/auth";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetallePedido } from "../vistas/detalle-pedido";
+
+export function ContenedorDetallePedido({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const { puede } = useAuth();
+  const pedido = useCarga(
+    () => desenvolver(api.GET("/pedidos/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+
+  const borrar = async () => {
+    setConfirmando(false);
+    try {
+      await desenvolver(api.DELETE("/pedidos/{id}", { params: { path: { id } } }));
+      navegar("/pedidos");
+    } catch (error) {
+      setFallo(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Pedido</h1>
+      {fallo !== null && <AlertaError error={fallo} />}
+      {pedido.estado === "cargando" && <span className="loading loading-spinner" />}
+      {pedido.estado === "error" && <AlertaError error={pedido.error} />}
+      {pedido.estado === "listo" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <VistaDetallePedido pedido={pedido.datos} />
+            <div className="card-actions justify-end">
+              <Link href={`/pedidos/${id}/editar`} className="btn">
+                Editar
+              </Link>
+              {puede("admin") && (
+                <button
+                  type="button"
+                  className="btn btn-error"
+                  onClick={() => setConfirmando(true)}
+                >
+                  Borrar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/pedidos" className="link">
+        Volver a pedidos
+      </Link>
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar pedido?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
+      />
+    </section>
+  );
+}

@@ -1,0 +1,71 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen } from "@testing-library/react";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionProducto, MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaProducto } from "./lista-producto";
+
+describe("ContenedorListaProducto", () => {
+  test("debería mostrar una fila por cada producto", async () => {
+    // Preparar
+    const semilla = [MadreProducto.aleatorio(), MadreProducto.aleatorio()];
+    const api = apiFalsa([coleccionProducto(semilla)]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
+
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
+  });
+
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreProducto.aleatorio());
+    const api = apiFalsa([coleccionProducto(semilla)]);
+    renderizarPantalla(<ContenedorListaProducto />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
+
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
+  });
+
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreProducto.aleatorio());
+    const api = apiFalsa([coleccionProducto(semilla)]);
+    const ruta = "/productos?pagina=2";
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api }, ruta);
+
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+  });
+
+  test("debería decirlo cuando no hay productos", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProducto()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay productos.")).toBeTruthy();
+  });
+
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /productos": "producto.repositorio" };
+    const api = apiFalsa([coleccionProducto()], fallos);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("producto.repositorio");
+  });
+});

@@ -1,0 +1,18 @@
+import type { UsuarioActual } from "./sesion";
+
+/** Lo que manda el formulario de registro. */
+export interface Registro {
+  email: string;
+  contrasena: string;
+  nombre?: string;
+}
+
+/**
+ * Las cuentas que guarda esta API: registrarse e iniciar sesión con contraseña. Un rechazo rechaza
+ * con un `ErrorAuth` con el código de la API (`usuario.duplicado`, `auth.credenciales_invalidas`).
+ */
+export interface Cuentas {
+  registrar(registro: Registro): Promise<UsuarioActual>;
+  /** Abre una sesión: desde entonces `PasarelaAuth.usuarioActual()` responde esta cuenta. */
+  iniciarSesion(email: string, contrasena: string): Promise<void>;
+}

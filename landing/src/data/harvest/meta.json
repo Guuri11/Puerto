@@ -1,5 +1,5 @@
 {
-  "version": "0.22.0",
+  "version": "0.23.0",
   "entities": [
     {
       "id": "producto",
@@ -39,8 +39,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 106,
-      "added": 39,
+      "total": 100,
+      "added": 35,
       "changed": 8
     },
     {
@@ -52,8 +52,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 107,
-      "added": 40,
+      "total": 101,
+      "added": 36,
       "changed": 8
     },
     {
@@ -65,8 +65,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 107,
-      "added": 40,
+      "total": 101,
+      "added": 36,
       "changed": 8
     },
     {
@@ -117,8 +117,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 137,
-      "added": 39,
+      "total": 131,
+      "added": 35,
       "changed": 9
     },
     {
@@ -130,8 +130,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 138,
-      "added": 40,
+      "total": 132,
+      "added": 36,
       "changed": 9
     },
     {
@@ -143,8 +143,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 138,
-      "added": 40,
+      "total": 132,
+      "added": 36,
       "changed": 9
     },
     {
@@ -195,8 +195,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 114,
-      "added": 42,
+      "total": 108,
+      "added": 38,
       "changed": 8
     },
     {
@@ -208,8 +208,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 115,
-      "added": 43,
+      "total": 109,
+      "added": 39,
       "changed": 8
     },
     {
@@ -221,8 +221,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 115,
-      "added": 43,
+      "total": 109,
+      "added": 39,
       "changed": 8
     },
     {
@@ -273,8 +273,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 145,
-      "added": 42,
+      "total": 139,
+      "added": 38,
       "changed": 9
     },
     {
@@ -286,8 +286,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 146,
-      "added": 43,
+      "total": 140,
+      "added": 39,
       "changed": 9
     },
     {
@@ -299,8 +299,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 146,
-      "added": 43,
+      "total": 140,
+      "added": 39,
       "changed": 9
     },
     {
@@ -351,8 +351,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 156,
-      "added": 42,
+      "total": 150,
+      "added": 38,
       "changed": 9
     },
     {
@@ -364,8 +364,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 157,
-      "added": 43,
+      "total": 151,
+      "added": 39,
       "changed": 9
     },
     {
@@ -377,8 +377,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 157,
-      "added": 43,
+      "total": 151,
+      "added": 39,
       "changed": 9
     },
     {
@@ -429,8 +429,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 124,
-      "added": 45,
+      "total": 118,
+      "added": 41,
       "changed": 8
     },
     {
@@ -442,8 +442,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 125,
-      "added": 46,
+      "total": 119,
+      "added": 42,
       "changed": 8
     },
     {
@@ -455,8 +455,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 125,
-      "added": 46,
+      "total": 119,
+      "added": 42,
       "changed": 8
     },
     {
@@ -507,8 +507,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 155,
-      "added": 45,
+      "total": 149,
+      "added": 41,
       "changed": 9
     },
     {
@@ -520,8 +520,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 156,
-      "added": 46,
+      "total": 150,
+      "added": 42,
       "changed": 9
     },
     {
@@ -533,8 +533,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 156,
-      "added": 46,
+      "total": 150,
+      "added": 42,
       "changed": 9
     },
     {
@@ -585,8 +585,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 166,
-      "added": 45,
+      "total": 160,
+      "added": 41,
       "changed": 9
     },
     {
@@ -598,8 +598,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 167,
-      "added": 46,
+      "total": 161,
+      "added": 42,
       "changed": 9
     },
     {
@@ -611,8 +611,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 167,
-      "added": 46,
+      "total": 161,
+      "added": 42,
       "changed": 9
     },
     {
@@ -663,8 +663,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 124,
-      "added": 45,
+      "total": 118,
+      "added": 41,
       "changed": 9
     },
     {
@@ -676,8 +676,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 125,
-      "added": 46,
+      "total": 119,
+      "added": 42,
       "changed": 9
     },
     {
@@ -689,8 +689,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 125,
-      "added": 46,
+      "total": 119,
+      "added": 42,
       "changed": 9
     },
     {
@@ -741,8 +741,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 155,
-      "added": 45,
+      "total": 149,
+      "added": 41,
       "changed": 10
     },
     {
@@ -754,8 +754,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 156,
-      "added": 46,
+      "total": 150,
+      "added": 42,
       "changed": 10
     },
     {
@@ -767,8 +767,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 156,
-      "added": 46,
+      "total": 150,
+      "added": 42,
       "changed": 10
     },
     {
@@ -819,8 +819,8 @@
         "web": true
       },
       "entity": "producto",
-      "total": 166,
-      "added": 45,
+      "total": 160,
+      "added": 41,
       "changed": 10
     },
     {
@@ -832,8 +832,8 @@
         "web": true
       },
       "entity": "pedido",
-      "total": 167,
-      "added": 46,
+      "total": 161,
+      "added": 42,
       "changed": 10
     },
     {
@@ -845,8 +845,8 @@
         "web": true
       },
       "entity": "cliente",
-      "total": 167,
-      "added": 46,
+      "total": 161,
+      "added": 42,
       "changed": 10
     },
     {

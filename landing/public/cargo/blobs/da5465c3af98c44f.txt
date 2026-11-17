@@ -1,0 +1,36 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetallePedido } from "../contextos/pedido/contenedores/detalle-pedido";
+import { ContenedorFormularioPedido } from "../contextos/pedido/contenedores/formulario-pedido";
+import { ContenedorListaPedido } from "../contextos/pedido/contenedores/lista-pedido";
+import { PaginaInicio } from "../paginas/inicio";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { rutasPropias } from "../rutas";
+
+export const entradasMenu: EntradaMenu[] = [{ etiqueta: "Pedidos", href: "/pedidos" }];
+
+export function RutasApp() {
+  return (
+    <Switch>
+      <Route path="/">
+        <PaginaInicio entradas={entradasMenu} />
+      </Route>
+      {rutasPropias}
+      <Route path="/pedidos">
+        <ContenedorListaPedido />
+      </Route>
+      <Route path="/pedidos/nuevo">
+        <ContenedorFormularioPedido />
+      </Route>
+      <Route path="/pedidos/:id/editar">
+        {(params) => <ContenedorFormularioPedido id={params.id} />}
+      </Route>
+      <Route path="/pedidos/:id">{(params) => <ContenedorDetallePedido id={params.id} />}</Route>
+      <Route>
+        <PaginaNoEncontrada />
+      </Route>
+    </Switch>
+  );
+}

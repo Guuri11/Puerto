@@ -1,0 +1,104 @@
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useLocation, useSearch } from "wouter";
+import { AlertaError } from "../compartido/ui/alerta-error";
+import { useDependencias } from "../dependencias";
+import type { UsuarioActual } from "./sesion";
+
+export interface Auth {
+  /** Quien tiene la sesión iniciada; `null` si no la tiene nadie. */
+  usuario: UsuarioActual | null;
+  /** Si tiene `rol`. Las pantallas esconden lo que la API rechazaría; decide la API. */
+  puede(rol: string): boolean;
+  /** Inicia sesión y después vuelve a la página actual. */
+  login(): Promise<void>;
+  logout(): Promise<void>;
+  /** Vuelve a preguntar a la pasarela quién tiene la sesión: tras un inicio que no salió de la app. */
+  refrescar(): Promise<void>;
+  /** Termina un inicio de sesión (`/auth/callback`): responde la página a la que volver. */
+  completarLogin(): Promise<string>;
+}
+
+type Estado =
+  | { estado: "cargando" }
+  | { estado: "listo"; usuario: UsuarioActual | null }
+  | { estado: "error"; error: unknown };
+
+const ContextoAuth = createContext<Auth | null>(null);
+
+/** Pregunta a la pasarela quién tiene la sesión una vez, antes de pintar la app: nada parpadea. */
+export function ProveedorAuth({ children }: { children: ReactNode }) {
+  const { auth } = useDependencias();
+  const [ubicacion] = useLocation();
+  const busqueda = useSearch();
+  const [estado, setEstado] = useState<Estado>({ estado: "cargando" });
+
+  useEffect(() => {
+    auth.usuarioActual().then(
+      (usuario) => setEstado({ estado: "listo", usuario }),
+      (error: unknown) => setEstado({ estado: "error", error }),
+    );
+  }, [auth]);
+
+  const aqui = busqueda === "" ? ubicacion : `${ubicacion}?${busqueda}`;
+  const login = useCallback(() => auth.login(aqui), [auth, aqui]);
+  const refrescar = useCallback(async () => {
+    setEstado({ estado: "listo", usuario: await auth.usuarioActual() });
+  }, [auth]);
+  const completarLogin = useCallback(async () => {
+    const vuelta = await auth.completarLogin();
+    await refrescar();
+    return vuelta;
+  }, [auth, refrescar]);
+  const logout = useCallback(async () => {
+    await auth.logout();
+    setEstado({ estado: "listo", usuario: null });
+  }, [auth]);
+  const usuario = estado.estado === "listo" ? estado.usuario : null;
+  const valor = useMemo<Auth>(
+    () => ({
+      usuario,
+      puede: (rol) => usuario?.roles.includes(rol) ?? false,
+      login,
+      logout,
+      refrescar,
+      completarLogin,
+    }),
+    [usuario, login, logout, refrescar, completarLogin],
+  );
+
+  if (estado.estado === "cargando") return <span className="loading loading-spinner" />;
+  if (estado.estado === "error") return <AlertaError error={estado.error} />;
+  return <ContextoAuth value={valor}>{children}</ContextoAuth>;
+}
+
+export function useAuth(): Auth {
+  const auth = useContext(ContextoAuth);
+  if (auth === null) {
+    throw new Error("useAuth() llamado fuera de <ProveedorAuth>");
+  }
+  return auth;
+}
+
+/** Pinta `children` a quien tiene la sesión iniciada; a cualquier otro lo manda a iniciarla, y vuelve. */
+export function RequiereAuth({ children }: { children: ReactNode }) {
+  const { usuario, login } = useAuth();
+  const empezado = useRef(false);
+
+  useEffect(() => {
+    // Una vez: StrictMode ejecuta los efectos dos veces.
+    if (usuario !== null || empezado.current) return;
+    empezado.current = true;
+    void login();
+  }, [usuario, login]);
+
+  return usuario === null ? <span className="loading loading-spinner" /> : children;
+}

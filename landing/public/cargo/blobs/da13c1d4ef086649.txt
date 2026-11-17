@@ -1,0 +1,152 @@
+import { describe, expect, test } from "bun:test";
+import { CLAVE_TOKEN, pasarelaLocal } from "./pasarela-local";
+import { ErrorAuth } from "./sesion";
+
+/** Un `Storage` propio para cada test. */
+function almacenEnMemoria(semilla: Record<string, string> = {}): Storage {
+  const elementos = new Map(Object.entries(semilla));
+  return {
+    get length() {
+      return elementos.size;
+    },
+    clear: () => elementos.clear(),
+    getItem: (clave) => elementos.get(clave) ?? null,
+    key: (indice) => [...elementos.keys()][indice] ?? null,
+    removeItem: (clave) => {
+      elementos.delete(clave);
+    },
+    setItem: (clave, valor) => {
+      elementos.set(clave, valor);
+    },
+  };
+}
+
+/** Una API que responde cada ruta con su `[estado, cuerpo]`; `peticiones` guarda lo que se le pidió. */
+function api(respuestas: Record<string, [number, unknown]>) {
+  const peticiones: { url: string; init: RequestInit }[] = [];
+  const fetch = async (url: string, init: RequestInit) => {
+    peticiones.push({ url, init });
+    const [estado, cuerpo] = respuestas[url] ?? [404, null];
+    return cuerpo === null
+      ? new Response(null, { status: estado })
+      : Response.json(cuerpo, { status: estado });
+  };
+  return { fetch, peticiones };
+}
+
+const ANA = { id: crypto.randomUUID(), email: "ana@example.com", nombre: "Ana", roles: ["admin"] };
+
+describe("pasarelaLocal", () => {
+  test("debería guardar el token y cargar el usuario al iniciar sesión", async () => {
+    // Preparar
+    const almacen = almacenEnMemoria();
+    const { fetch, peticiones } = api({
+      "/api/auth/login": [200, { token: "opaco", expiraEn: "2030-01-01T00:00:00Z" }],
+      "/api/me": [200, ANA],
+    });
+    const pasarela = pasarelaLocal({ almacen, fetch });
+
+    // Actuar
+    await pasarela.iniciarSesion("ana@example.com", "caballo correcto bateria");
+    const usuario = await pasarela.usuarioActual();
+
+    // Comprobar
+    expect(almacen.getItem(CLAVE_TOKEN)).toBe("opaco");
+    expect(await pasarela.tokenAcceso()).toBe("opaco");
+    expect(usuario).toEqual(ANA);
+    expect(peticiones[1]?.init.headers).toEqual({ Authorization: "Bearer opaco" });
+  });
+
+  test("debería rechazar con el código de la API cuando la contraseña está mal", async () => {
+    // Preparar
+    const codigo = "auth.credenciales_invalidas";
+    const almacen = almacenEnMemoria();
+    const { fetch } = api({ "/api/auth/login": [401, { codigo, mensaje: codigo }] });
+
+    // Actuar
+    const resultado = pasarelaLocal({ almacen, fetch }).iniciarSesion("ana@example.com", "¡mal!");
+
+    // Comprobar
+    await expect(resultado).rejects.toBeInstanceOf(ErrorAuth);
+    await expect(resultado).rejects.toMatchObject({ codigo });
+    expect(almacen.getItem(CLAVE_TOKEN)).toBeNull();
+  });
+
+  test("debería olvidar una sesión que la API ya no acepta", async () => {
+    // Preparar
+    const almacen = almacenEnMemoria({ [CLAVE_TOKEN]: "caducado" });
+    const { fetch } = api({ "/api/me": [401, { codigo: "auth.no_autenticado" }] });
+
+    // Actuar
+    const usuario = await pasarelaLocal({ almacen, fetch }).usuarioActual();
+
+    // Comprobar
+    expect(usuario).toBeNull();
+    expect(almacen.getItem(CLAVE_TOKEN)).toBeNull();
+  });
+
+  test("debería tirar la sesión e ir al login, y después volver, cuando se rechaza una llamada", async () => {
+    // Preparar: lo que hace el middleware bearer con un 401.
+    const almacen = almacenEnMemoria({ [CLAVE_TOKEN]: "revocado" });
+    const visitadas: string[] = [];
+    const pasarela = pasarelaLocal({
+      almacen,
+      fetch: api({}).fetch,
+      irA: (url) => visitadas.push(url),
+    });
+
+    // Actuar
+    await pasarela.login("/pedidos?pagina=2");
+
+    // Comprobar
+    expect(almacen.getItem(CLAVE_TOKEN)).toBeNull();
+    expect(visitadas).toEqual(["/login?siguiente=%2Fpedidos%3Fpagina%3D2"]);
+  });
+
+  test("debería revocar la sesión y después olvidarla al cerrarla", async () => {
+    // Preparar
+    const almacen = almacenEnMemoria({ [CLAVE_TOKEN]: "opaco" });
+    const { fetch, peticiones } = api({ "/api/auth/logout": [204, null] });
+
+    // Actuar
+    await pasarelaLocal({ almacen, fetch }).logout();
+
+    // Comprobar
+    expect(peticiones[0]?.url).toBe("/api/auth/logout");
+    expect(peticiones[0]?.init.headers).toEqual({ Authorization: "Bearer opaco" });
+    expect(almacen.getItem(CLAVE_TOKEN)).toBeNull();
+  });
+
+  test("debería cerrar la sesión aquí aunque no se llegue a la API", async () => {
+    // Preparar
+    const almacen = almacenEnMemoria({ [CLAVE_TOKEN]: "opaco" });
+    const fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+
+    // Actuar
+    await pasarelaLocal({ almacen, fetch }).logout();
+
+    // Comprobar
+    expect(almacen.getItem(CLAVE_TOKEN)).toBeNull();
+  });
+
+  test("debería mandar el registro y responder la cuenta nueva", async () => {
+    // Preparar
+    const { fetch, peticiones } = api({ "/api/auth/registro": [201, { ...ANA, roles: [] }] });
+    const registro = {
+      email: "ana@example.com",
+      contrasena: "caballo correcto bateria",
+      nombre: "Ana",
+    };
+
+    // Actuar
+    const usuario = await pasarelaLocal({ almacen: almacenEnMemoria(), fetch }).registrar(registro);
+
+    // Comprobar
+    expect(JSON.parse(String(peticiones[0]?.init.body))).toEqual({
+      email: "ana@example.com",
+      contrasena: "caballo correcto bateria",
+      nombre: "Ana",
+    });
+    expect(usuario.email).toBe("ana@example.com");
+  });
+});
