@@ -75,7 +75,7 @@ crates/
                       sobrescritura), consistency (deriva, incluida la deriva textual de auth en
                       `rutas.rs`), auth (`nuevo --auth`: el contexto `usuario`, aprovisionamiento,
                       `GET /me`, Keycloak), web (el slice del frontend +
-                      web/src/presentation/core/generated/*), events (`eventos.rs`, los puertos de
+                      web/src/generated/*), events (`eventos.rs`, los puertos de
                       unidad de trabajo, `generar evento`), worker (`presentacion/worker`,
                       `registro.rs`, `generar consumidor`), mail (el contexto `correo`, `generar correo`),
                       naming (pascal/snake, el plural en castellano, los verbos CRUD), layout (dónde va
@@ -365,14 +365,17 @@ make format/fix    # cargo fmt --all
 - Targets de make: `test/dominio`, `test/aplicacion`, `test/infraestructura` (un glob de paquetes
   cada uno), `generar/entidad`, `generar/caso-de-uso`, `generar/bootstrap`, `clean/incremental`;
   con `--db`, `db/arrancar`, `db/parar`, `db/reiniciar`, `sqlx/*`, `generar/migracion`
-- `web/` salvo con `--sin-web`: `[proyecto] web = true`, targets `make web/*` (ADR-0013);
-  `scaffold` escribe las pantallas de una entidad CRUD (dominio, repositorio HTTP,
-  lista/detalle/formulario, tests) y regenera
-  `web/src/presentation/core/generated/{dependencies.ts,routes.tsx}`; `bootstrap.rs` exporta la
+- `web/` salvo con `--sin-web`: `[proyecto] web = true`, targets `make web/*` (ADR-0013). Es
+  solo presentación (ADR-0025): `scaffold` escribe las pantallas de una entidad CRUD en
+  `web/src/features/<entidad>/` (contenedores que llaman al cliente tipado de `api/` con
+  `useDependencies()` + `unwrap`, vistas que solo reciben los DTO de `schema.d.ts`, `messages.ts`,
+  tests contra `test-support/fake-api.ts`) y regenera `web/src/generated/{dependencies.ts,routes.tsx}`;
+  sin modelo, puerto ni adaptador por entidad, y dependency-cruiser impide que una vista llame a la
+  API. `bootstrap.rs` exporta la
   especificación OpenAPI a `docs/api/openapi.json` desde los dobles de los casos de uso, y
   `make web/sync` la convierte en los tipos del frontend. El frontend sigue en inglés (su
   traducción es una fase aparte)
-- Los formularios web dicen qué falló junto al campo: `domain/<entity>/messages.ts` (generado de
+- Los formularios web dicen qué falló junto al campo: `features/<entity>/messages.ts` (generado de
   los mismos códigos que `errores.rs`) asocia un código a un mensaje y un campo; `FieldError` lo
   muestra bajo ese input, los demás códigos van a la alerta, los desconocidos se muestran tal cual
 - `--eventos db|kafka` (necesita `--db`, ADR-0018): `[proyecto] eventos`, la migración del outbox
@@ -418,15 +421,15 @@ make format/fix    # cargo fmt --all
   el autenticador. Las migraciones de `usuarios` y de `auth`, `AUTH_SESSION_TTL=30d` en `.env`,
   `make auth/conceder EMAIL= ROL=`, su propia sección Auth en el `AGENTS.md` raíz
 - `--auth local` con `web/`: los mismos ficheros compartidos que OIDC (`session.ts`, el middleware
-  bearer, `auth.tsx`, el menú de usuario, `renderScreen`), más `domain/auth/{accounts,messages}.ts`
+  bearer, `auth.tsx`, el menú de usuario, `renderScreen`), más `auth/{accounts,messages}.ts`
   (el puerto `Accounts`, los códigos de la API como mensajes de formulario),
-  `infrastructure/auth/local-auth-gateway.ts` (el token en `localStorage`; `login(returnTo)` lo
+  `auth/local-auth-gateway.ts` (el token en `localStorage`; `login(returnTo)` lo
   borra y va a `/login?next=`) y las páginas `/login` y `/register`. `dependencies.ts` construye un
   solo `localAuthGateway()` como `auth` y `accounts`; `routes.tsx` tiene `/login` y `/register` en
   vez de `/auth/callback`. Sin `oidc-client-ts`, sin `web/.env`
-- `--auth oidc` con `web/`: escrito una vez — `domain/auth/session.ts` (`AuthGateway`,
-  `CurrentUser`), `infrastructure/auth/{oidc-auth-gateway,bearer-middleware}.ts` (`oidc-client-ts`,
-  fijado, en memoria; dependency-cruiser lo mantiene ahí), `presentation/core/auth.tsx`
+- `--auth oidc` con `web/`: escrito una vez, en `web/src/auth/` — `session.ts` (`AuthGateway`,
+  `CurrentUser`), `{oidc-auth-gateway,bearer-middleware}.ts` (`oidc-client-ts`, fijado, en
+  memoria; dependency-cruiser lo mantiene en el gateway), `auth.tsx`
   (`AuthProvider`, `useAuth`, `RequireAuth`), `/auth/callback`, un menú de usuario en el layout,
   `test-support/auth.ts` y un `renderScreen` que inicia sesión con un llamante con todos los roles;
   `VITE_AUTH_*` en `web/.env`. Regenerados: `dependencies.ts` construye el gateway y firma el

@@ -48,7 +48,7 @@ presentacion/
   cableado/               → cableado          GENERADO entero, Cargo.toml incluido
   api/                    → api               el binario: main.rs + lib.rs, app.rs, generado/bootstrap.rs
   worker/                 → worker            (proyectos con eventos) generado/registro.rs, consumidores/
-web/                      el frontend (sigue en inglés: su traducción es otra fase)
+web/                      el frontend: solo presentación (ADR-0025), aún en inglés (su traducción es otra fase)
 ```
 
 - En la v1 **una entidad es un contexto**: `[[entidad]] nombre = "LineaPedido"` →

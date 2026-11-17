@@ -47,7 +47,7 @@ fn has_generated_tree(base: &Path) -> bool {
 }
 
 /// The files the generated code imports for this entity: `bootstrap.rs`'s, plus — in a web
-/// project, for an entity with screens — those `web/src/presentation/core/generated/*` import.
+/// project, for an entity with screens — those `web/src/generated/*` import.
 pub fn required_files(entity: &Entity, web: bool) -> Vec<PathBuf> {
     let mut files = bootstrap_required_files(entity);
     if web && crate::generators::web::has_web_slice(entity) {
@@ -367,7 +367,9 @@ mod tests {
             "puerto generar presentacion Invoice"
         );
 
-        let only_web = vec![PathBuf::from("web/src/domain/invoice/repository.ts")];
+        let only_web = vec![PathBuf::from(
+            "web/src/features/invoice/containers/invoice-list-container.tsx",
+        )];
         assert_eq!(
             suggested_command("Invoice", &only_web),
             "puerto generar web Invoice"

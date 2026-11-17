@@ -2,24 +2,24 @@
 
 import { Route, Switch } from "wouter";
 {% for e in entities -%}
-import { {{ e.pascal }}DetailContainer } from "../../features/{{ e.kebab }}/containers/{{ e.kebab }}-detail-container";
-import { {{ e.pascal }}FormContainer } from "../../features/{{ e.kebab }}/containers/{{ e.kebab }}-form-container";
-import { {{ e.pascal }}ListContainer } from "../../features/{{ e.kebab }}/containers/{{ e.kebab }}-list-container";
+import { {{ e.pascal }}DetailContainer } from "../features/{{ e.kebab }}/containers/{{ e.kebab }}-detail-container";
+import { {{ e.pascal }}FormContainer } from "../features/{{ e.kebab }}/containers/{{ e.kebab }}-form-container";
+import { {{ e.pascal }}ListContainer } from "../features/{{ e.kebab }}/containers/{{ e.kebab }}-list-container";
 {% endfor -%}
 {% if auth and not local -%}
-import { AuthCallbackPage } from "../../pages/auth-callback";
+import { AuthCallbackPage } from "../pages/auth-callback";
 {% endif -%}
-import { HomePage } from "../../pages/home";
+import { HomePage } from "../pages/home";
 {% if local -%}
-import { LoginPage } from "../../pages/login";
+import { LoginPage } from "../pages/login";
 {% endif -%}
-import { NotFoundPage } from "../../pages/not-found";
+import { NotFoundPage } from "../pages/not-found";
 {% if local -%}
-import { RegisterPage } from "../../pages/register";
+import { RegisterPage } from "../pages/register";
 {% endif -%}
-import type { NavEntry } from "../../shared/ui/layout";
+import type { NavEntry } from "../shared/ui/layout";
 {% if guarded -%}
-import { RequireAuth } from "../auth";
+import { RequireAuth } from "../auth/auth";
 {% endif -%}
 import { customRoutes } from "../routes";
 

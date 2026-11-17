@@ -1,0 +1,77 @@
+import { type ApiClient, createApiClient } from "../api/client";
+
+/** What the fake API holds under `path`: the API's DTOs, by id. */
+export interface Collection<T extends { id: string }> {
+  path: string;
+  /** The code a missing item answers: `producto.no_encontrado`. */
+  notFound: string;
+  items: Map<string, T>;
+}
+
+/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
+export function collection<T extends { id: string }>(
+  path: string,
+  entity: string,
+  seed: T[] = [],
+): Collection<T> {
+  const items = new Map(seed.map((item) => [item.id, item]));
+  return { path, notFound: `${entity}.no_encontrado`, items };
+}
+
+/**
+ * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
+ * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
+ * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ */
+export function fakeApi(
+  collections: Collection<{ id: string }>[],
+  failures: Record<string, string> = {},
+): ApiClient {
+  return createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/api/, "");
+      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
+      if (target === undefined) return answer(404, "http.404");
+      const failure = failures[`${request.method} ${target.path}`];
+      if (failure !== undefined) return answer(400, failure);
+      const id = path.slice(target.path.length + 1);
+      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
+    },
+  });
+}
+
+async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
+  if (request.method === "POST") {
+    const created = { ...(await request.json()), id: crypto.randomUUID() };
+    target.items.set(created.id, created);
+    return Response.json(created, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const all = [...target.items.values()];
+  const elementos = all.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+}
+
+async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
+  const found = target.items.get(id);
+  if (found === undefined) return answer(404, target.notFound);
+  if (request.method === "DELETE") {
+    target.items.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method === "PUT") {
+    // Like the API, an update replaces every field: one left out is cleared.
+    const updated = { ...(await request.json()), id };
+    target.items.set(id, updated);
+    return Response.json(updated);
+  }
+  return Response.json(found);
+}
+
+/** A `RespuestaError` the way the API answers one. */
+function answer(status: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status });
+}

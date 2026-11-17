@@ -685,9 +685,9 @@ fn new_project_includes_the_web_frontend_by_default() {
         "web/bunfig.toml",
         "web/.dependency-cruiser.cjs",
         "web/src/main.tsx",
-        "web/src/application/README.md",
-        "web/src/presentation/core/generated/dependencies.ts",
-        "web/src/presentation/core/generated/routes.tsx",
+        "web/src/api/http.ts",
+        "web/src/generated/dependencies.ts",
+        "web/src/generated/routes.tsx",
         "web/AGENTS.md",
     ] {
         assert!(output.join(file).exists(), "missing {file}");

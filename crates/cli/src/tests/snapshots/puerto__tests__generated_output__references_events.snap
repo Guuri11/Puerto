@@ -160,10 +160,10 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/presentation/core/generated/*`, `web/src/infrastructure/http/schema.d.ts` y
-`docs/api/openapi.json` también se reescriben (`generar bootstrap`, `make web/sync`); las pantallas
-de una entidad son ficheros suyos como los demás; `web/src/presentation/core/routes.tsx` (tus
-propias pantallas) es tuyo. El detalle, en `web/AGENTS.md`.
+Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
+como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+`web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
 
@@ -206,10 +206,10 @@ comando.
 
 ## Frontend (`web/`)
 
-Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Sigue la misma regla de
-dependencias que los crates (`domain` ← `application` ← `infrastructure` ← `presentation`), que
-comprueba `make web/lint`. Sus reglas (capas, ficheros generados, dónde van los casos de uso)
-están en `web/AGENTS.md`.
+Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Es solo presentación: los
+contenedores llaman a la API con su cliente tipado y las vistas pintan lo que reciben; las reglas
+viven en el backend. `make web/lint` comprueba que una vista no llama a la API. Sus reglas
+(carpetas, ficheros generados, tests) están en `web/AGENTS.md`.
 
 La spec OpenAPI es el contrato entre las dos mitades: `docs/api/openapi.json`, exportada por un test
 de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ruta o un DTO, ejecuta
@@ -472,7 +472,7 @@ web/lint: web/require-install ## Comprueba tipos, lint y la regla de dependencia
 web/sync: web/require-install ## Tras un scaffold o un cambio de DTO: exporta la spec OpenAPI y regenera los tipos del frontend
 	@echo "${CYAN}Exportando docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
-	@echo "${CYAN}Generando web/src/infrastructure/http/schema.d.ts...${NC}"
+	@echo "${CYAN}Generando web/src/api/schema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formateando web/ (Biome, sin arreglos de lint)...${NC}"
 	cd web && $(BUN) run format
@@ -10135,826 +10135,38 @@ referencia = "Proveedor"
 nombre = "carrier"
 tipo = "String"
 
-=== web/src/domain/compra/errors.ts ===
-/**
- * A request about a compra that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `compra.no_encontrado`, `compra.validacion.<field>_vacio`.
- */
-export class CompraError extends Error {
-  readonly code: string;
-
-  constructor(code: string) {
-    super(code);
-    this.name = "CompraError";
-    this.code = code;
-  }
-}
-
-=== web/src/domain/compra/messages.ts ===
-import type { CompraDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface CompraProblem {
-  field: keyof CompraDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "compra.validacion.proveedor_id_no_encontrado": "Proveedor does not exist",
-  "compra.validacion.approver_id_no_encontrado": "Approver does not exist",
-  "compra.duplicado": "A compra with these values already exists",
-  "compra.no_encontrado": "This compra no longer exists",
-  "compra.repositorio": "The compra could not be saved, try again later",
-  "compra.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof CompraDraft> = {
-  "compra.validacion.proveedor_id_no_encontrado": "proveedorId",
-  "compra.validacion.approver_id_no_encontrado": "approverId",
-};
-
-export function toProblem(code: string): CompraProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/compra/model.ts ===
-export interface Compra {
-  id: string;
-  proveedorId: string;
-  approverId: string | null;
-  total: number;
-}
-
-/** What a create or an update sends: a compra without its id. */
-export type CompraDraft = Omit<Compra, "id">;
-
-=== web/src/domain/compra/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Compra, CompraDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `CompraError` the API answered. */
-export interface CompraRepository {
-  list(page: PageRequest): Promise<Page<Compra>>;
-  get(id: string): Promise<Compra>;
-  create(draft: CompraDraft): Promise<Compra>;
-  update(id: string, draft: CompraDraft): Promise<Compra>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/domain/entrega/errors.ts ===
-/**
- * A request about an entrega that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `entrega.no_encontrado`, `entrega.validacion.<field>_vacio`.
- */
-export class EntregaError extends Error {
-  readonly code: string;
-
-  constructor(code: string) {
-    super(code);
-    this.name = "EntregaError";
-    this.code = code;
-  }
-}
-
-=== web/src/domain/entrega/messages.ts ===
-import type { EntregaDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface EntregaProblem {
-  field: keyof EntregaDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "entrega.validacion.compra_id_no_encontrado": "Compra does not exist",
-  "entrega.validacion.destinatario_id_no_encontrado": "Destinatario does not exist",
-  "entrega.validacion.carrier_vacio": "Carrier is required",
-  "entrega.duplicado": "An entrega with these values already exists",
-  "entrega.no_encontrado": "This entrega no longer exists",
-  "entrega.repositorio": "The entrega could not be saved, try again later",
-  "entrega.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof EntregaDraft> = {
-  "entrega.validacion.compra_id_no_encontrado": "compraId",
-  "entrega.validacion.destinatario_id_no_encontrado": "destinatarioId",
-  "entrega.validacion.carrier_vacio": "carrier",
-};
-
-export function toProblem(code: string): EntregaProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/entrega/model.ts ===
-export interface Entrega {
-  id: string;
-  compraId: string;
-  destinatarioId: string | null;
-  carrier: string;
-}
-
-/** What a create or an update sends: an entrega without its id. */
-export type EntregaDraft = Omit<Entrega, "id">;
-
-=== web/src/domain/entrega/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Entrega, EntregaDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `EntregaError` the API answered. */
-export interface EntregaRepository {
-  list(page: PageRequest): Promise<Page<Entrega>>;
-  get(id: string): Promise<Entrega>;
-  create(draft: EntregaDraft): Promise<Entrega>;
-  update(id: string, draft: EntregaDraft): Promise<Entrega>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/domain/proveedor/errors.ts ===
-/**
- * A request about a proveedor that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `proveedor.no_encontrado`, `proveedor.validacion.<field>_vacio`.
- */
-export class ProveedorError extends Error {
-  readonly code: string;
-
-  constructor(code: string) {
-    super(code);
-    this.name = "ProveedorError";
-    this.code = code;
-  }
-}
-
-=== web/src/domain/proveedor/messages.ts ===
-import type { ProveedorDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ProveedorProblem {
-  field: keyof ProveedorDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "proveedor.name_invalido": "Name is not valid",
-  "proveedor.validacion.email_vacio": "Email is required",
-  "proveedor.duplicado": "A proveedor with these values already exists",
-  "proveedor.no_encontrado": "This proveedor no longer exists",
-  "proveedor.repositorio": "The proveedor could not be saved, try again later",
-  "proveedor.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof ProveedorDraft> = {
-  "proveedor.name_invalido": "name",
-  "proveedor.validacion.email_vacio": "email",
-};
-
-export function toProblem(code: string): ProveedorProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/proveedor/model.ts ===
-export interface Proveedor {
-  id: string;
-  name: string;
-  email: string;
-}
-
-/** What a create or an update sends: a proveedor without its id. */
-export type ProveedorDraft = Omit<Proveedor, "id">;
-
-=== web/src/domain/proveedor/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Proveedor, ProveedorDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `ProveedorError` the API answered. */
-export interface ProveedorRepository {
-  list(page: PageRequest): Promise<Page<Proveedor>>;
-  get(id: string): Promise<Proveedor>;
-  create(draft: ProveedorDraft): Promise<Proveedor>;
-  update(id: string, draft: ProveedorDraft): Promise<Proveedor>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/infrastructure/compra/compra-repository-http.test.ts ===
-import { describe, expect, test } from "bun:test";
-import { CompraError } from "../../domain/compra/errors";
-import { CompraMother } from "../../test-support/compra";
-import { createApiClient } from "../http/client";
-import { compraRepositoryHttp } from "./compra-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: compraRepositoryHttp(api), requests };
-}
-
-describe("compraRepositoryHttp", () => {
-  test("should ask for the page and return its compras", async () => {
-    // Arrange
-    const compra = CompraMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [compra],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/compras");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [compra], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating a compra", async () => {
-    // Arrange
-    const draft = CompraMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the compra does not exist", async () => {
-    // Arrange
-    const code = "compra.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(CompraError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the compra", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/compras/42");
-  });
-});
-
-=== web/src/infrastructure/compra/compra-repository-http.ts ===
-import { CompraError } from "../../domain/compra/errors";
-import type { Compra, CompraDraft } from "../../domain/compra/model";
-import type { CompraRepository } from "../../domain/compra/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type CompraDto = components["schemas"]["DtoCompra"];
-type CompraRequest = components["schemas"]["PeticionCrearCompra"];
-
-function toCompra(dto: CompraDto): Compra {
-  return {
-    id: dto.id,
-    proveedorId: dto.proveedorId,
-    approverId: dto.approverId ?? null,
-    total: dto.total,
-  };
-}
-
-function toRequest(draft: CompraDraft): CompraRequest {
-  return {
-    proveedorId: draft.proveedorId,
-    approverId: draft.approverId ?? undefined,
-    total: draft.total,
-  };
-}
-
-/** `CompraRepository` over the REST API (`/compras`). */
-export function compraRepositoryHttp(api: ApiClient): CompraRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/compras", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new CompraError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toCompra),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/compras/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new CompraError(apiErrorCode(error, response));
-      return toCompra(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/compras", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new CompraError(apiErrorCode(error, response));
-      return toCompra(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/compras/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new CompraError(apiErrorCode(error, response));
-      return toCompra(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/compras/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new CompraError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/infrastructure/entrega/entrega-repository-http.test.ts ===
-import { describe, expect, test } from "bun:test";
-import { EntregaError } from "../../domain/entrega/errors";
-import { EntregaMother } from "../../test-support/entrega";
-import { createApiClient } from "../http/client";
-import { entregaRepositoryHttp } from "./entrega-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: entregaRepositoryHttp(api), requests };
-}
-
-describe("entregaRepositoryHttp", () => {
-  test("should ask for the page and return its entregas", async () => {
-    // Arrange
-    const entrega = EntregaMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [entrega],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/entregas");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [entrega], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating an entrega", async () => {
-    // Arrange
-    const draft = EntregaMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the entrega does not exist", async () => {
-    // Arrange
-    const code = "entrega.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(EntregaError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the entrega", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/entregas/42");
-  });
-});
-
-=== web/src/infrastructure/entrega/entrega-repository-http.ts ===
-import { EntregaError } from "../../domain/entrega/errors";
-import type { Entrega, EntregaDraft } from "../../domain/entrega/model";
-import type { EntregaRepository } from "../../domain/entrega/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type EntregaDto = components["schemas"]["DtoEntrega"];
-type EntregaRequest = components["schemas"]["PeticionCrearEntrega"];
-
-function toEntrega(dto: EntregaDto): Entrega {
-  return {
-    id: dto.id,
-    compraId: dto.compraId,
-    destinatarioId: dto.destinatarioId ?? null,
-    carrier: dto.carrier,
-  };
-}
-
-function toRequest(draft: EntregaDraft): EntregaRequest {
-  return {
-    compraId: draft.compraId,
-    destinatarioId: draft.destinatarioId ?? undefined,
-    carrier: draft.carrier,
-  };
-}
-
-/** `EntregaRepository` over the REST API (`/entregas`). */
-export function entregaRepositoryHttp(api: ApiClient): EntregaRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/entregas", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new EntregaError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toEntrega),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/entregas/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new EntregaError(apiErrorCode(error, response));
-      return toEntrega(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/entregas", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new EntregaError(apiErrorCode(error, response));
-      return toEntrega(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/entregas/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new EntregaError(apiErrorCode(error, response));
-      return toEntrega(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/entregas/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new EntregaError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/infrastructure/http/client.ts ===
+=== web/src/api/client.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 
 /** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
 export type ApiClient = Client<paths>;
+
+/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
+export type Schemas = components["schemas"];
 
 /** `/api` is the backend: proxied to `:8080` by Vite in development. */
 export function createApiClient(options: ClientOptions = {}): ApiClient {
   return createClient<paths>({ baseUrl: "/api", ...options });
 }
 
-/**
- * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
- * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
- */
-export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "codigo" in error) {
-    const { codigo } = error;
-    if (typeof codigo === "string") return codigo;
-  }
-  return `http.${response.status}`;
-}
-
-=== web/src/infrastructure/proveedor/proveedor-repository-http.test.ts ===
+=== web/src/features/compra/containers/compra-detail-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { ProveedorError } from "../../domain/proveedor/errors";
-import { ProveedorMother } from "../../test-support/proveedor";
-import { createApiClient } from "../http/client";
-import { proveedorRepositoryHttp } from "./proveedor-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: proveedorRepositoryHttp(api), requests };
-}
-
-describe("proveedorRepositoryHttp", () => {
-  test("should ask for the page and return its proveedores", async () => {
-    // Arrange
-    const proveedor = ProveedorMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [proveedor],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/proveedores");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [proveedor], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating a proveedor", async () => {
-    // Arrange
-    const draft = ProveedorMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the proveedor does not exist", async () => {
-    // Arrange
-    const code = "proveedor.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(ProveedorError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the proveedor", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/proveedores/42");
-  });
-});
-
-=== web/src/infrastructure/proveedor/proveedor-repository-http.ts ===
-import { ProveedorError } from "../../domain/proveedor/errors";
-import type { Proveedor, ProveedorDraft } from "../../domain/proveedor/model";
-import type { ProveedorRepository } from "../../domain/proveedor/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type ProveedorDto = components["schemas"]["DtoProveedor"];
-type ProveedorRequest = components["schemas"]["PeticionCrearProveedor"];
-
-function toProveedor(dto: ProveedorDto): Proveedor {
-  return {
-    id: dto.id,
-    name: dto.name,
-    email: dto.email,
-  };
-}
-
-function toRequest(draft: ProveedorDraft): ProveedorRequest {
-  return {
-    name: draft.name,
-    email: draft.email,
-  };
-}
-
-/** `ProveedorRepository` over the REST API (`/proveedores`). */
-export function proveedorRepositoryHttp(api: ApiClient): ProveedorRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/proveedores", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new ProveedorError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toProveedor),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/proveedores/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new ProveedorError(apiErrorCode(error, response));
-      return toProveedor(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/proveedores", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new ProveedorError(apiErrorCode(error, response));
-      return toProveedor(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/proveedores/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new ProveedorError(apiErrorCode(error, response));
-      return toProveedor(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/proveedores/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new ProveedorError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/presentation/core/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-//
-// The composition root: the only module that imports `infrastructure/`. Screens reach the
-// adapters through `useDependencies()`, so a test hands them a fake instead.
-
-import type { CompraRepository } from "../../../domain/compra/repository";
-import type { EntregaRepository } from "../../../domain/entrega/repository";
-import type { ProveedorRepository } from "../../../domain/proveedor/repository";
-import { compraRepositoryHttp } from "../../../infrastructure/compra/compra-repository-http";
-import { entregaRepositoryHttp } from "../../../infrastructure/entrega/entrega-repository-http";
-import { createApiClient } from "../../../infrastructure/http/client";
-import { proveedorRepositoryHttp } from "../../../infrastructure/proveedor/proveedor-repository-http";
-
-export interface Dependencies {
-  compraRepository: CompraRepository;
-  entregaRepository: EntregaRepository;
-  proveedorRepository: ProveedorRepository;
-}
-
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
-  return {
-    compraRepository: compraRepositoryHttp(api),
-    entregaRepository: entregaRepositoryHttp(api),
-    proveedorRepository: proveedorRepositoryHttp(api),
-  };
-}
-
-=== web/src/presentation/core/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-
-import { Route, Switch } from "wouter";
-import { CompraDetailContainer } from "../../features/compra/containers/compra-detail-container";
-import { CompraFormContainer } from "../../features/compra/containers/compra-form-container";
-import { CompraListContainer } from "../../features/compra/containers/compra-list-container";
-import { EntregaDetailContainer } from "../../features/entrega/containers/entrega-detail-container";
-import { EntregaFormContainer } from "../../features/entrega/containers/entrega-form-container";
-import { EntregaListContainer } from "../../features/entrega/containers/entrega-list-container";
-import { ProveedorDetailContainer } from "../../features/proveedor/containers/proveedor-detail-container";
-import { ProveedorFormContainer } from "../../features/proveedor/containers/proveedor-form-container";
-import { ProveedorListContainer } from "../../features/proveedor/containers/proveedor-list-container";
-import { HomePage } from "../../pages/home";
-import { NotFoundPage } from "../../pages/not-found";
-import type { NavEntry } from "../../shared/ui/layout";
-import { customRoutes } from "../routes";
-
-export const navEntries: NavEntry[] = [
-  { label: "Compras", href: "/compras" },
-  { label: "Entregas", href: "/entregas" },
-  { label: "Proveedores", href: "/proveedores" },
-];
-
-export function AppRoutes() {
-  return (
-    <Switch>
-      <Route path="/">
-        <HomePage entries={navEntries} />
-      </Route>
-      {customRoutes}
-      <Route path="/compras">
-        <CompraListContainer />
-      </Route>
-      <Route path="/compras/new">
-        <CompraFormContainer />
-      </Route>
-      <Route path="/compras/:id/edit">{(params) => <CompraFormContainer id={params.id} />}</Route>
-      <Route path="/compras/:id">{(params) => <CompraDetailContainer id={params.id} />}</Route>
-      <Route path="/entregas">
-        <EntregaListContainer />
-      </Route>
-      <Route path="/entregas/new">
-        <EntregaFormContainer />
-      </Route>
-      <Route path="/entregas/:id/edit">{(params) => <EntregaFormContainer id={params.id} />}</Route>
-      <Route path="/entregas/:id">{(params) => <EntregaDetailContainer id={params.id} />}</Route>
-      <Route path="/proveedores">
-        <ProveedorListContainer />
-      </Route>
-      <Route path="/proveedores/new">
-        <ProveedorFormContainer />
-      </Route>
-      <Route path="/proveedores/:id/edit">
-        {(params) => <ProveedorFormContainer id={params.id} />}
-      </Route>
-      <Route path="/proveedores/:id">
-        {(params) => <ProveedorDetailContainer id={params.id} />}
-      </Route>
-      <Route>
-        <NotFoundPage />
-      </Route>
-    </Switch>
-  );
-}
-
-=== web/src/presentation/features/compra/containers/compra-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Compra } from "../../../../domain/compra/model";
-import { CompraMother, fakeCompraRepository } from "../../../../test-support/compra";
-import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
-import { renderScreen } from "../../../../test-support/render";
+import { CompraMother, compraCollection } from "../../../test-support/compra";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
+import { renderScreen } from "../../../test-support/render";
 import { CompraDetailContainer } from "./compra-detail-container";
-
-/** The repositories the reference links load from, holding what `seeded` references. */
-function referencedBy(seeded: Compra) {
-  return {
-    proveedorRepository: fakeProveedorRepository([
-      ProveedorMother.random({ id: seeded.proveedorId }),
-      ProveedorMother.random({ id: seeded.approverId ?? crypto.randomUUID() }),
-    ]),
-  };
-}
 
 describe("CompraDetailContainer", () => {
   test("should show the compra when it exists", async () => {
     // Arrange
     const seeded = CompraMother.random();
-    const compraRepository = fakeCompraRepository([seeded]);
+    const api = fakeApi([compraCollection([seeded])]);
 
     // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, {
-      compraRepository,
-      ...referencedBy(seeded),
-    });
+    renderScreen(<CompraDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -10963,15 +10175,11 @@ describe("CompraDetailContainer", () => {
   test("should link the proveedor to its page, named by its label", async () => {
     // Arrange
     const seeded = CompraMother.random();
-    const compraRepository = fakeCompraRepository([seeded]);
-    const referenced = referencedBy(seeded);
-    const target = await referenced.proveedorRepository.get(seeded.proveedorId);
+    const target = ProveedorMother.random({ id: seeded.proveedorId });
+    const api = fakeApi([compraCollection([seeded]), proveedorCollection([target])]);
 
     // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, {
-      compraRepository,
-      ...referenced,
-    });
+    renderScreen(<CompraDetailContainer id={seeded.id} />, { api });
 
     // Assert: by its href — two references to one target may share a label.
     const selector = `a[href="/proveedores/${seeded.proveedorId}"]`;
@@ -10981,15 +10189,11 @@ describe("CompraDetailContainer", () => {
   test("should link the approver to its page, named by its label", async () => {
     // Arrange
     const seeded = CompraMother.random();
-    const compraRepository = fakeCompraRepository([seeded]);
-    const referenced = referencedBy(seeded);
-    const target = await referenced.proveedorRepository.get(seeded.approverId ?? "");
+    const target = ProveedorMother.random({ id: seeded.approverId ?? crypto.randomUUID() });
+    const api = fakeApi([compraCollection([seeded]), proveedorCollection([target])]);
 
     // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, {
-      compraRepository,
-      ...referenced,
-    });
+    renderScreen(<CompraDetailContainer id={seeded.id} />, { api });
 
     // Assert: by its href — two references to one target may share a label.
     const selector = `a[href="/proveedores/${seeded.approverId}"]`;
@@ -10998,12 +10202,10 @@ describe("CompraDetailContainer", () => {
 
   test("should show the not-found code when the compra does not exist", async () => {
     // Arrange
-    const compraRepository = fakeCompraRepository();
+    const api = fakeApi([compraCollection()]);
 
     // Act
-    renderScreen(<CompraDetailContainer id={crypto.randomUUID()} />, {
-      compraRepository,
-    });
+    renderScreen(<CompraDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("compra.no_encontrado");
@@ -11012,36 +10214,37 @@ describe("CompraDetailContainer", () => {
   test("should delete the compra only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = CompraMother.random();
-    const fake = fakeCompraRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<CompraDetailContainer id={seeded.id} />, {
-      compraRepository: { ...fake, remove },
-      ...referencedBy(seeded),
-    });
+    const stored = compraCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<CompraDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/compras"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 });
 
-=== web/src/presentation/features/compra/containers/compra-detail-container.tsx ===
+=== web/src/features/compra/containers/compra-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { CompraDetailView } from "../views/compra-detail-view";
 
 export function CompraDetailContainer({ id }: { id: string }) {
-  const { compraRepository } = useDependencies();
-  const compra = useAsync(() => compraRepository.get(id), [compraRepository, id]);
+  const { api } = useDependencies();
+  const compra = useAsync(
+    () => unwrap(api.GET("/compras/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -11049,11 +10252,16 @@ export function CompraDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await compraRepository.remove(id);
+      await unwrap(api.DELETE("/compras/{id}", { params: { path: { id } } }));
       navigate("/compras");
     } catch (error) {
       setFailure(error);
     }
+  };
+  const proveedorLabel = async (target: string) => {
+    const params = { path: { id: target } };
+    const found = await unwrap(api.GET("/proveedores/{id}", { params }));
+    return found.name;
   };
 
   return (
@@ -11065,7 +10273,7 @@ export function CompraDetailContainer({ id }: { id: string }) {
       {compra.status === "ok" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <CompraDetailView compra={compra.data} />
+            <CompraDetailView compra={compra.data} proveedorLabel={proveedorLabel} />
             <div className="card-actions justify-end">
               <Link href={`/compras/${id}/edit`} className="btn">
                 Edit
@@ -11090,15 +10298,15 @@ export function CompraDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/compra/containers/compra-form-container.test.tsx ===
+=== web/src/features/compra/containers/compra-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { CompraError } from "../../../../domain/compra/errors";
-import type { CompraDraft } from "../../../../domain/compra/model";
-import { CompraMother, fakeCompraRepository } from "../../../../test-support/compra";
-import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
 import { textOf } from "../../../shared/forms";
+import { CompraMother, compraCollection } from "../../../test-support/compra";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
+import { renderScreen } from "../../../test-support/render";
 import { CompraFormContainer } from "./compra-form-container";
 
 function type(label: string, value: string) {
@@ -11112,77 +10320,65 @@ async function choose(label: string, id: string) {
   fireEvent.change(select, { target: { value: id } });
 }
 
-/** The repositories the selects read, holding what `draft` references. */
-function referencedBy(draft: CompraDraft) {
-  return {
-    proveedorRepository: fakeProveedorRepository([
-      ProveedorMother.random({ id: draft.proveedorId }),
-      ProveedorMother.random({ id: draft.approverId ?? crypto.randomUUID() }),
+/** The collections the selects read, holding what `owner` references. */
+function referencedBy(owner: Partial<Schemas["DtoCompra"]>) {
+  return [
+    proveedorCollection([
+      ProveedorMother.random({ id: owner.proveedorId ?? crypto.randomUUID() }),
+      ProveedorMother.random({ id: owner.approverId ?? crypto.randomUUID() }),
     ]),
-  };
+  ];
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: CompraDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearCompra"]) {
   await screen.findByText("Save");
-  await choose("Proveedor", draft.proveedorId);
-  await choose("Approver", textOf(draft.approverId));
-  type("Total", String(draft.total));
+  await choose("Proveedor", request.proveedorId);
+  await choose("Approver", textOf(request.approverId));
+  type("Total", String(request.total));
 }
 
 describe("CompraFormContainer", () => {
   test("should create the compra from what was typed and show it", async () => {
     // Arrange
-    const draft = CompraMother.draft();
-    const compraRepository = fakeCompraRepository();
-    const { history } = renderScreen(<CompraFormContainer />, {
-      compraRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = CompraMother.request();
+    const stored = compraCollection();
+    const api = fakeApi([stored, ...referencedBy(request)]);
+    const { history } = renderScreen(<CompraFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/compras/"));
-    const {
-      items: [created],
-    } = await compraRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/compras/${created?.id}`);
   });
 
   test("should save the edited compra when an existing one is submitted", async () => {
     // Arrange
     const seeded = CompraMother.random();
-    const compraRepository = fakeCompraRepository([seeded]);
-    const { history } = renderScreen(<CompraFormContainer id={seeded.id} />, {
-      compraRepository,
-      ...referencedBy(seeded),
-    });
+    const stored = compraCollection([seeded]);
+    const api = fakeApi([stored, ...referencedBy(seeded)]);
+    const { history } = renderScreen(<CompraFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/compras/${seeded.id}`));
-    expect(await compraRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = CompraMother.request();
     const code = "compra.validacion.invalid";
-    const compraRepository = {
-      ...fakeCompraRepository(),
-      create: () => Promise.reject(new CompraError(code)),
-    };
-    const draft = CompraMother.draft();
-    renderScreen(<CompraFormContainer />, {
-      compraRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const failures = { "POST /compras": code };
+    const api = fakeApi([compraCollection(), ...referencedBy(request)], failures);
+    renderScreen(<CompraFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -11193,16 +10389,11 @@ describe("CompraFormContainer", () => {
 
   test("should say a compra with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const compraRepository = {
-      ...fakeCompraRepository(),
-      create: () => Promise.reject(new CompraError("compra.duplicado")),
-    };
-    const draft = CompraMother.draft();
-    renderScreen(<CompraFormContainer />, {
-      compraRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = CompraMother.request();
+    const failures = { "POST /compras": "compra.duplicado" };
+    const api = fakeApi([compraCollection(), ...referencedBy(request)], failures);
+    renderScreen(<CompraFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -11216,12 +10407,10 @@ describe("CompraFormContainer", () => {
   test("should offer every proveedor in the selects that reference one", async () => {
     // Arrange
     const proveedor = ProveedorMother.random();
+    const api = fakeApi([proveedorCollection([proveedor])]);
 
     // Act
-    renderScreen(<CompraFormContainer />, {
-      compraRepository: fakeCompraRepository(),
-      proveedorRepository: fakeProveedorRepository([proveedor]),
-    });
+    renderScreen(<CompraFormContainer />, { api });
 
     // Assert
     const options = await screen.findAllByRole("option", { name: proveedor.name });
@@ -11230,16 +10419,11 @@ describe("CompraFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const compraRepository = {
-      ...fakeCompraRepository(),
-      create: () => Promise.reject(new CompraError("compra.validacion.proveedor_id_no_encontrado")),
-    };
-    const draft = CompraMother.draft();
-    renderScreen(<CompraFormContainer />, {
-      compraRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = CompraMother.request();
+    const failures = { "POST /compras": "compra.validacion.proveedor_id_no_encontrado" };
+    const api = fakeApi([compraCollection(), ...referencedBy(request)], failures);
+    renderScreen(<CompraFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -11252,24 +10436,32 @@ describe("CompraFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/compra/containers/compra-form-container.tsx ===
+=== web/src/features/compra/containers/compra-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/compra/messages";
-import type { Compra } from "../../../../domain/compra/model";
-import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { MAX_PAGE_LIMIT, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { referenceOptions } from "../../../shared/forms";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { CompraFormView, toCompraDraft, toCompraForm } from "../views/compra-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { CompraFormView, toCompraForm, toCompraRequest } from "../views/compra-form-view";
+
+type Compra = Schemas["DtoCompra"];
+
+/** The first page of each referenced entity: what its selects offer. */
+const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
 
 /** Creates a compra, or edits the one with `id`. */
 export function CompraFormContainer({ id }: { id?: string }) {
-  const { compraRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : compraRepository.get(id)),
-    [compraRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/compras/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New compra" : "Edit compra";
 
@@ -11287,11 +10479,8 @@ export function CompraFormContainer({ id }: { id?: string }) {
 }
 
 function CompraForm({ existing }: { existing: Compra | null }) {
-  const { compraRepository, proveedorRepository } = useDependencies();
-  const proveedores = useAsync(
-    () => proveedorRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
-    [proveedorRepository],
-  );
+  const { api } = useDependencies();
+  const proveedores = useAsync(() => unwrap(api.GET("/proveedores", OPTIONS)), [api]);
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toCompraForm(existing));
   const [saving, setSaving] = useState(false);
@@ -11302,11 +10491,12 @@ function CompraForm({ existing }: { existing: Compra | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toCompraDraft(values);
-      const saved =
+      const body = toCompraRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await compraRepository.create(draft)
-          : await compraRepository.update(existing.id, draft);
+          ? api.POST("/compras", { body })
+          : api.PUT("/compras/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/compras/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -11335,22 +10525,22 @@ function CompraForm({ existing }: { existing: Compra | null }) {
   );
 }
 
-=== web/src/presentation/features/compra/containers/compra-list-container.test.tsx ===
+=== web/src/features/compra/containers/compra-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { CompraError } from "../../../../domain/compra/errors";
-import { CompraMother, fakeCompraRepository } from "../../../../test-support/compra";
-import { renderScreen } from "../../../../test-support/render";
+import { CompraMother, compraCollection } from "../../../test-support/compra";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { CompraListContainer } from "./compra-list-container";
 
 describe("CompraListContainer", () => {
   test("should show a row per compra when there are some", async () => {
     // Arrange
     const seed = [CompraMother.random(), CompraMother.random()];
-    const compraRepository = fakeCompraRepository(seed);
+    const api = fakeApi([compraCollection(seed)]);
 
     // Act
-    renderScreen(<CompraListContainer />, { compraRepository });
+    renderScreen(<CompraListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -11359,8 +10549,8 @@ describe("CompraListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => CompraMother.random());
-    const compraRepository = fakeCompraRepository(seed);
-    renderScreen(<CompraListContainer />, { compraRepository });
+    const api = fakeApi([compraCollection(seed)]);
+    renderScreen(<CompraListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -11374,11 +10564,11 @@ describe("CompraListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => CompraMother.random());
-    const compraRepository = fakeCompraRepository(seed);
+    const api = fakeApi([compraCollection(seed)]);
     const path = "/compras?page=2";
 
     // Act
-    renderScreen(<CompraListContainer />, { compraRepository }, path);
+    renderScreen(<CompraListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -11386,10 +10576,10 @@ describe("CompraListContainer", () => {
 
   test("should say so when there is no compra", async () => {
     // Arrange
-    const compraRepository = fakeCompraRepository();
+    const api = fakeApi([compraCollection()]);
 
     // Act
-    renderScreen(<CompraListContainer />, { compraRepository });
+    renderScreen(<CompraListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No compras yet.")).toBeTruthy();
@@ -11397,39 +10587,35 @@ describe("CompraListContainer", () => {
 
   test("should show the error code when the compras cannot be listed", async () => {
     // Arrange
-    const compraRepository = {
-      ...fakeCompraRepository(),
-      list: () => Promise.reject(new CompraError("compra.repositorio")),
-    };
+    const failures = { "GET /compras": "compra.repositorio" };
+    const api = fakeApi([compraCollection()], failures);
 
     // Act
-    renderScreen(<CompraListContainer />, { compraRepository });
+    renderScreen(<CompraListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("compra.repositorio");
   });
 });
 
-=== web/src/presentation/features/compra/containers/compra-list-container.tsx ===
+=== web/src/features/compra/containers/compra-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { CompraListView } from "../views/compra-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function CompraListContainer() {
-  const { compraRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const compras = useAsync(
-    () => compraRepository.list({ limit: PAGE_SIZE, offset }),
-    [compraRepository, offset],
-  );
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
+  const compras = useAsync(() => unwrap(api.GET("/compras", { params: { query } })), [api, offset]);
 
   return (
     <section className="space-y-4">
@@ -11446,38 +10632,72 @@ export function CompraListContainer() {
           <EmptyState message="No compras yet." />
         ) : (
           <>
-            <CompraListView compras={compras.data.items} />
-            <Pagination {...compras.data} onOffsetChange={goTo} />
+            <CompraListView compras={compras.data.elementos} />
+            <Pagination
+              total={compras.data.total}
+              limit={compras.data.limite}
+              offset={compras.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/compra/views/compra-detail-view.tsx ===
-import type { Compra } from "../../../../domain/compra/model";
-import { useDependencies } from "../../../core/dependencies";
-import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
+=== web/src/features/compra/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface CompraProblem {
+  field: string | null;
+  text: string;
+}
 
-export function CompraDetailView({ compra }: { compra: Compra }) {
-  const { proveedorRepository } = useDependencies();
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "compra.validacion.proveedor_id_no_encontrado": "Proveedor does not exist",
+  "compra.validacion.approver_id_no_encontrado": "Approver does not exist",
+  "compra.duplicado": "A compra with these values already exists",
+  "compra.no_encontrado": "This compra no longer exists",
+  "compra.repositorio": "The compra could not be saved, try again later",
+  "compra.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "compra.validacion.proveedor_id_no_encontrado": "proveedorId",
+  "compra.validacion.approver_id_no_encontrado": "approverId",
+};
+
+export function toProblem(code: string): CompraProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/compra/views/compra-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+import { ReferenceLink } from "../../../shared/ui/reference-link";
+
+type Compra = Schemas["DtoCompra"];
+
+/** `compra`, and the label of each proveedor it references, for its links. */
+export function CompraDetailView({
+  compra,
+  proveedorLabel,
+}: {
+  compra: Compra;
+  proveedorLabel: (id: string) => Promise<string>;
+}) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Proveedor</dt>
       <dd>
-        <ReferenceLink
-          path="/proveedores"
-          id={compra.proveedorId}
-          load={labelOf(proveedorRepository, (item) => item.name)}
-        />
+        <ReferenceLink path="/proveedores" id={compra.proveedorId} load={proveedorLabel} />
       </dd>
       <dt className="font-semibold">Approver</dt>
       <dd>
-        <ReferenceLink
-          path="/proveedores"
-          id={compra.approverId}
-          load={labelOf(proveedorRepository, (item) => item.name)}
-        />
+        <ReferenceLink path="/proveedores" id={compra.approverId} load={proveedorLabel} />
       </dd>
       <dt className="font-semibold">Total</dt>
       <dd>{compra.total}</dd>
@@ -11485,11 +10705,14 @@ export function CompraDetailView({ compra }: { compra: Compra }) {
   );
 }
 
-=== web/src/presentation/features/compra/views/compra-form-view.tsx ===
-import type { CompraProblem } from "../../../../domain/compra/messages";
-import type { Compra, CompraDraft } from "../../../../domain/compra/model";
-import { type ReferenceOption, textOf, textOrNull } from "../../../shared/forms";
+=== web/src/features/compra/views/compra-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
+import { optionalText, type ReferenceOption, textOf } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { CompraProblem } from "../messages";
+
+type Compra = Schemas["DtoCompra"];
+type CompraRequest = Schemas["PeticionCrearCompra"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface CompraFormValues {
@@ -11520,10 +10743,11 @@ export interface CompraFormOptions {
   approverId: ReferenceOption[];
 }
 
-export function toCompraDraft(values: CompraFormValues): CompraDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toCompraRequest(values: CompraFormValues): CompraRequest {
   return {
     proveedorId: values.proveedorId,
-    approverId: textOrNull(values.approverId),
+    approverId: optionalText(values.approverId),
     total: Number(values.total),
   };
 }
@@ -11606,9 +10830,11 @@ export function CompraFormView({
   );
 }
 
-=== web/src/presentation/features/compra/views/compra-list-view.tsx ===
+=== web/src/features/compra/views/compra-list-view.tsx ===
 import { Link } from "wouter";
-import type { Compra } from "../../../../domain/compra/model";
+import type { Schemas } from "../../../api/client";
+
+type Compra = Schemas["DtoCompra"];
 
 export function CompraListView({ compras }: { compras: Compra[] }) {
   return (
@@ -11641,37 +10867,24 @@ export function CompraListView({ compras }: { compras: Compra[] }) {
   );
 }
 
-=== web/src/presentation/features/entrega/containers/entrega-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
+=== web/src/features/entrega/containers/entrega-detail-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Entrega } from "../../../../domain/entrega/model";
-import { CompraMother, fakeCompraRepository } from "../../../../test-support/compra";
-import { EntregaMother, fakeEntregaRepository } from "../../../../test-support/entrega";
-import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
-import { renderScreen } from "../../../../test-support/render";
+import { CompraMother, compraCollection } from "../../../test-support/compra";
+import { EntregaMother, entregaCollection } from "../../../test-support/entrega";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
+import { renderScreen } from "../../../test-support/render";
 import { EntregaDetailContainer } from "./entrega-detail-container";
-
-/** The repositories the reference links load from, holding what `seeded` references. */
-function referencedBy(seeded: Entrega) {
-  return {
-    compraRepository: fakeCompraRepository([CompraMother.random({ id: seeded.compraId })]),
-    proveedorRepository: fakeProveedorRepository([
-      ProveedorMother.random({ id: seeded.destinatarioId ?? crypto.randomUUID() }),
-    ]),
-  };
-}
 
 describe("EntregaDetailContainer", () => {
   test("should show the entrega when it exists", async () => {
     // Arrange
     const seeded = EntregaMother.random();
-    const entregaRepository = fakeEntregaRepository([seeded]);
+    const api = fakeApi([entregaCollection([seeded])]);
 
     // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, {
-      entregaRepository,
-      ...referencedBy(seeded),
-    });
+    renderScreen(<EntregaDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -11680,15 +10893,11 @@ describe("EntregaDetailContainer", () => {
   test("should link the compra to its page, named by its label", async () => {
     // Arrange
     const seeded = EntregaMother.random();
-    const entregaRepository = fakeEntregaRepository([seeded]);
-    const referenced = referencedBy(seeded);
-    const target = await referenced.compraRepository.get(seeded.compraId);
+    const target = CompraMother.random({ id: seeded.compraId });
+    const api = fakeApi([entregaCollection([seeded]), compraCollection([target])]);
 
     // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, {
-      entregaRepository,
-      ...referenced,
-    });
+    renderScreen(<EntregaDetailContainer id={seeded.id} />, { api });
 
     // Assert: by its href — two references to one target may share a label.
     const selector = `a[href="/compras/${seeded.compraId}"]`;
@@ -11698,15 +10907,11 @@ describe("EntregaDetailContainer", () => {
   test("should link the destinatario to its page, named by its label", async () => {
     // Arrange
     const seeded = EntregaMother.random();
-    const entregaRepository = fakeEntregaRepository([seeded]);
-    const referenced = referencedBy(seeded);
-    const target = await referenced.proveedorRepository.get(seeded.destinatarioId ?? "");
+    const target = ProveedorMother.random({ id: seeded.destinatarioId ?? crypto.randomUUID() });
+    const api = fakeApi([entregaCollection([seeded]), proveedorCollection([target])]);
 
     // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, {
-      entregaRepository,
-      ...referenced,
-    });
+    renderScreen(<EntregaDetailContainer id={seeded.id} />, { api });
 
     // Assert: by its href — two references to one target may share a label.
     const selector = `a[href="/proveedores/${seeded.destinatarioId}"]`;
@@ -11715,12 +10920,10 @@ describe("EntregaDetailContainer", () => {
 
   test("should show the not-found code when the entrega does not exist", async () => {
     // Arrange
-    const entregaRepository = fakeEntregaRepository();
+    const api = fakeApi([entregaCollection()]);
 
     // Act
-    renderScreen(<EntregaDetailContainer id={crypto.randomUUID()} />, {
-      entregaRepository,
-    });
+    renderScreen(<EntregaDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("entrega.no_encontrado");
@@ -11729,36 +10932,37 @@ describe("EntregaDetailContainer", () => {
   test("should delete the entrega only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = EntregaMother.random();
-    const fake = fakeEntregaRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<EntregaDetailContainer id={seeded.id} />, {
-      entregaRepository: { ...fake, remove },
-      ...referencedBy(seeded),
-    });
+    const stored = entregaCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<EntregaDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/entregas"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 });
 
-=== web/src/presentation/features/entrega/containers/entrega-detail-container.tsx ===
+=== web/src/features/entrega/containers/entrega-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { EntregaDetailView } from "../views/entrega-detail-view";
 
 export function EntregaDetailContainer({ id }: { id: string }) {
-  const { entregaRepository } = useDependencies();
-  const entrega = useAsync(() => entregaRepository.get(id), [entregaRepository, id]);
+  const { api } = useDependencies();
+  const entrega = useAsync(
+    () => unwrap(api.GET("/entregas/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -11766,11 +10970,21 @@ export function EntregaDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await entregaRepository.remove(id);
+      await unwrap(api.DELETE("/entregas/{id}", { params: { path: { id } } }));
       navigate("/entregas");
     } catch (error) {
       setFailure(error);
     }
+  };
+  const compraLabel = async (target: string) => {
+    const params = { path: { id: target } };
+    const found = await unwrap(api.GET("/compras/{id}", { params }));
+    return found.id;
+  };
+  const proveedorLabel = async (target: string) => {
+    const params = { path: { id: target } };
+    const found = await unwrap(api.GET("/proveedores/{id}", { params }));
+    return found.name;
   };
 
   return (
@@ -11782,7 +10996,11 @@ export function EntregaDetailContainer({ id }: { id: string }) {
       {entrega.status === "ok" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <EntregaDetailView entrega={entrega.data} />
+            <EntregaDetailView
+              entrega={entrega.data}
+              compraLabel={compraLabel}
+              proveedorLabel={proveedorLabel}
+            />
             <div className="card-actions justify-end">
               <Link href={`/entregas/${id}/edit`} className="btn">
                 Edit
@@ -11807,16 +11025,16 @@ export function EntregaDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/entrega/containers/entrega-form-container.test.tsx ===
+=== web/src/features/entrega/containers/entrega-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { EntregaError } from "../../../../domain/entrega/errors";
-import type { EntregaDraft } from "../../../../domain/entrega/model";
-import { CompraMother, fakeCompraRepository } from "../../../../test-support/compra";
-import { EntregaMother, fakeEntregaRepository } from "../../../../test-support/entrega";
-import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
 import { textOf } from "../../../shared/forms";
+import { CompraMother, compraCollection } from "../../../test-support/compra";
+import { EntregaMother, entregaCollection } from "../../../test-support/entrega";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
+import { renderScreen } from "../../../test-support/render";
 import { EntregaFormContainer } from "./entrega-form-container";
 
 function type(label: string, value: string) {
@@ -11830,77 +11048,65 @@ async function choose(label: string, id: string) {
   fireEvent.change(select, { target: { value: id } });
 }
 
-/** The repositories the selects read, holding what `draft` references. */
-function referencedBy(draft: EntregaDraft) {
-  return {
-    compraRepository: fakeCompraRepository([CompraMother.random({ id: draft.compraId })]),
-    proveedorRepository: fakeProveedorRepository([
-      ProveedorMother.random({ id: draft.destinatarioId ?? crypto.randomUUID() }),
+/** The collections the selects read, holding what `owner` references. */
+function referencedBy(owner: Partial<Schemas["DtoEntrega"]>) {
+  return [
+    compraCollection([CompraMother.random({ id: owner.compraId ?? crypto.randomUUID() })]),
+    proveedorCollection([
+      ProveedorMother.random({ id: owner.destinatarioId ?? crypto.randomUUID() }),
     ]),
-  };
+  ];
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: EntregaDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearEntrega"]) {
   await screen.findByText("Save");
-  await choose("Compra", draft.compraId);
-  await choose("Destinatario", textOf(draft.destinatarioId));
-  type("Carrier", draft.carrier);
+  await choose("Compra", request.compraId);
+  await choose("Destinatario", textOf(request.destinatarioId));
+  type("Carrier", request.carrier);
 }
 
 describe("EntregaFormContainer", () => {
   test("should create the entrega from what was typed and show it", async () => {
     // Arrange
-    const draft = EntregaMother.draft();
-    const entregaRepository = fakeEntregaRepository();
-    const { history } = renderScreen(<EntregaFormContainer />, {
-      entregaRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = EntregaMother.request();
+    const stored = entregaCollection();
+    const api = fakeApi([stored, ...referencedBy(request)]);
+    const { history } = renderScreen(<EntregaFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/entregas/"));
-    const {
-      items: [created],
-    } = await entregaRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/entregas/${created?.id}`);
   });
 
   test("should save the edited entrega when an existing one is submitted", async () => {
     // Arrange
     const seeded = EntregaMother.random();
-    const entregaRepository = fakeEntregaRepository([seeded]);
-    const { history } = renderScreen(<EntregaFormContainer id={seeded.id} />, {
-      entregaRepository,
-      ...referencedBy(seeded),
-    });
+    const stored = entregaCollection([seeded]);
+    const api = fakeApi([stored, ...referencedBy(seeded)]);
+    const { history } = renderScreen(<EntregaFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/entregas/${seeded.id}`));
-    expect(await entregaRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = EntregaMother.request();
     const code = "entrega.validacion.invalid";
-    const entregaRepository = {
-      ...fakeEntregaRepository(),
-      create: () => Promise.reject(new EntregaError(code)),
-    };
-    const draft = EntregaMother.draft();
-    renderScreen(<EntregaFormContainer />, {
-      entregaRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const failures = { "POST /entregas": code };
+    const api = fakeApi([entregaCollection(), ...referencedBy(request)], failures);
+    renderScreen(<EntregaFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -11911,16 +11117,11 @@ describe("EntregaFormContainer", () => {
 
   test("should say a entrega with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const entregaRepository = {
-      ...fakeEntregaRepository(),
-      create: () => Promise.reject(new EntregaError("entrega.duplicado")),
-    };
-    const draft = EntregaMother.draft();
-    renderScreen(<EntregaFormContainer />, {
-      entregaRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = EntregaMother.request();
+    const failures = { "POST /entregas": "entrega.duplicado" };
+    const api = fakeApi([entregaCollection(), ...referencedBy(request)], failures);
+    renderScreen(<EntregaFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -11934,13 +11135,10 @@ describe("EntregaFormContainer", () => {
   test("should offer every compra in the selects that reference one", async () => {
     // Arrange
     const compra = CompraMother.random();
+    const api = fakeApi([compraCollection([compra])]);
 
     // Act
-    renderScreen(<EntregaFormContainer />, {
-      entregaRepository: fakeEntregaRepository(),
-      compraRepository: fakeCompraRepository([compra]),
-      proveedorRepository: fakeProveedorRepository(),
-    });
+    renderScreen(<EntregaFormContainer />, { api });
 
     // Assert
     const options = await screen.findAllByRole("option", { name: compra.id });
@@ -11950,13 +11148,10 @@ describe("EntregaFormContainer", () => {
   test("should offer every proveedor in the selects that reference one", async () => {
     // Arrange
     const proveedor = ProveedorMother.random();
+    const api = fakeApi([proveedorCollection([proveedor])]);
 
     // Act
-    renderScreen(<EntregaFormContainer />, {
-      entregaRepository: fakeEntregaRepository(),
-      compraRepository: fakeCompraRepository(),
-      proveedorRepository: fakeProveedorRepository([proveedor]),
-    });
+    renderScreen(<EntregaFormContainer />, { api });
 
     // Assert
     const options = await screen.findAllByRole("option", { name: proveedor.name });
@@ -11965,16 +11160,11 @@ describe("EntregaFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const entregaRepository = {
-      ...fakeEntregaRepository(),
-      create: () => Promise.reject(new EntregaError("entrega.validacion.compra_id_no_encontrado")),
-    };
-    const draft = EntregaMother.draft();
-    renderScreen(<EntregaFormContainer />, {
-      entregaRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = EntregaMother.request();
+    const failures = { "POST /entregas": "entrega.validacion.compra_id_no_encontrado" };
+    const api = fakeApi([entregaCollection(), ...referencedBy(request)], failures);
+    renderScreen(<EntregaFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -11987,24 +11177,32 @@ describe("EntregaFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/entrega/containers/entrega-form-container.tsx ===
+=== web/src/features/entrega/containers/entrega-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/entrega/messages";
-import type { Entrega } from "../../../../domain/entrega/model";
-import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { MAX_PAGE_LIMIT, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { referenceOptions } from "../../../shared/forms";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { EntregaFormView, toEntregaDraft, toEntregaForm } from "../views/entrega-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { EntregaFormView, toEntregaForm, toEntregaRequest } from "../views/entrega-form-view";
+
+type Entrega = Schemas["DtoEntrega"];
+
+/** The first page of each referenced entity: what its selects offer. */
+const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
 
 /** Creates an entrega, or edits the one with `id`. */
 export function EntregaFormContainer({ id }: { id?: string }) {
-  const { entregaRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : entregaRepository.get(id)),
-    [entregaRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/entregas/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New entrega" : "Edit entrega";
 
@@ -12022,15 +11220,9 @@ export function EntregaFormContainer({ id }: { id?: string }) {
 }
 
 function EntregaForm({ existing }: { existing: Entrega | null }) {
-  const { entregaRepository, compraRepository, proveedorRepository } = useDependencies();
-  const compras = useAsync(
-    () => compraRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
-    [compraRepository],
-  );
-  const proveedores = useAsync(
-    () => proveedorRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
-    [proveedorRepository],
-  );
+  const { api } = useDependencies();
+  const compras = useAsync(() => unwrap(api.GET("/compras", OPTIONS)), [api]);
+  const proveedores = useAsync(() => unwrap(api.GET("/proveedores", OPTIONS)), [api]);
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toEntregaForm(existing));
   const [saving, setSaving] = useState(false);
@@ -12041,11 +11233,12 @@ function EntregaForm({ existing }: { existing: Entrega | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toEntregaDraft(values);
-      const saved =
+      const body = toEntregaRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await entregaRepository.create(draft)
-          : await entregaRepository.update(existing.id, draft);
+          ? api.POST("/entregas", { body })
+          : api.PUT("/entregas/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/entregas/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -12075,22 +11268,22 @@ function EntregaForm({ existing }: { existing: Entrega | null }) {
   );
 }
 
-=== web/src/presentation/features/entrega/containers/entrega-list-container.test.tsx ===
+=== web/src/features/entrega/containers/entrega-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { EntregaError } from "../../../../domain/entrega/errors";
-import { EntregaMother, fakeEntregaRepository } from "../../../../test-support/entrega";
-import { renderScreen } from "../../../../test-support/render";
+import { EntregaMother, entregaCollection } from "../../../test-support/entrega";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { EntregaListContainer } from "./entrega-list-container";
 
 describe("EntregaListContainer", () => {
   test("should show a row per entrega when there are some", async () => {
     // Arrange
     const seed = [EntregaMother.random(), EntregaMother.random()];
-    const entregaRepository = fakeEntregaRepository(seed);
+    const api = fakeApi([entregaCollection(seed)]);
 
     // Act
-    renderScreen(<EntregaListContainer />, { entregaRepository });
+    renderScreen(<EntregaListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -12099,8 +11292,8 @@ describe("EntregaListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => EntregaMother.random());
-    const entregaRepository = fakeEntregaRepository(seed);
-    renderScreen(<EntregaListContainer />, { entregaRepository });
+    const api = fakeApi([entregaCollection(seed)]);
+    renderScreen(<EntregaListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -12114,11 +11307,11 @@ describe("EntregaListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => EntregaMother.random());
-    const entregaRepository = fakeEntregaRepository(seed);
+    const api = fakeApi([entregaCollection(seed)]);
     const path = "/entregas?page=2";
 
     // Act
-    renderScreen(<EntregaListContainer />, { entregaRepository }, path);
+    renderScreen(<EntregaListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -12126,10 +11319,10 @@ describe("EntregaListContainer", () => {
 
   test("should say so when there is no entrega", async () => {
     // Arrange
-    const entregaRepository = fakeEntregaRepository();
+    const api = fakeApi([entregaCollection()]);
 
     // Act
-    renderScreen(<EntregaListContainer />, { entregaRepository });
+    renderScreen(<EntregaListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No entregas yet.")).toBeTruthy();
@@ -12137,38 +11330,37 @@ describe("EntregaListContainer", () => {
 
   test("should show the error code when the entregas cannot be listed", async () => {
     // Arrange
-    const entregaRepository = {
-      ...fakeEntregaRepository(),
-      list: () => Promise.reject(new EntregaError("entrega.repositorio")),
-    };
+    const failures = { "GET /entregas": "entrega.repositorio" };
+    const api = fakeApi([entregaCollection()], failures);
 
     // Act
-    renderScreen(<EntregaListContainer />, { entregaRepository });
+    renderScreen(<EntregaListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("entrega.repositorio");
   });
 });
 
-=== web/src/presentation/features/entrega/containers/entrega-list-container.tsx ===
+=== web/src/features/entrega/containers/entrega-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { EntregaListView } from "../views/entrega-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function EntregaListContainer() {
-  const { entregaRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
   const entregas = useAsync(
-    () => entregaRepository.list({ limit: PAGE_SIZE, offset }),
-    [entregaRepository, offset],
+    () => unwrap(api.GET("/entregas", { params: { query } })),
+    [api, offset],
   );
 
   return (
@@ -12186,38 +11378,76 @@ export function EntregaListContainer() {
           <EmptyState message="No entregas yet." />
         ) : (
           <>
-            <EntregaListView entregas={entregas.data.items} />
-            <Pagination {...entregas.data} onOffsetChange={goTo} />
+            <EntregaListView entregas={entregas.data.elementos} />
+            <Pagination
+              total={entregas.data.total}
+              limit={entregas.data.limite}
+              offset={entregas.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/entrega/views/entrega-detail-view.tsx ===
-import type { Entrega } from "../../../../domain/entrega/model";
-import { useDependencies } from "../../../core/dependencies";
-import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
+=== web/src/features/entrega/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface EntregaProblem {
+  field: string | null;
+  text: string;
+}
 
-export function EntregaDetailView({ entrega }: { entrega: Entrega }) {
-  const { compraRepository, proveedorRepository } = useDependencies();
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "entrega.validacion.compra_id_no_encontrado": "Compra does not exist",
+  "entrega.validacion.destinatario_id_no_encontrado": "Destinatario does not exist",
+  "entrega.validacion.carrier_vacio": "Carrier is required",
+  "entrega.duplicado": "An entrega with these values already exists",
+  "entrega.no_encontrado": "This entrega no longer exists",
+  "entrega.repositorio": "The entrega could not be saved, try again later",
+  "entrega.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "entrega.validacion.compra_id_no_encontrado": "compraId",
+  "entrega.validacion.destinatario_id_no_encontrado": "destinatarioId",
+  "entrega.validacion.carrier_vacio": "carrier",
+};
+
+export function toProblem(code: string): EntregaProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/entrega/views/entrega-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+import { ReferenceLink } from "../../../shared/ui/reference-link";
+
+type Entrega = Schemas["DtoEntrega"];
+
+/** `entrega`, and the label of each compra and proveedor it references, for its links. */
+export function EntregaDetailView({
+  entrega,
+  compraLabel,
+  proveedorLabel,
+}: {
+  entrega: Entrega;
+  compraLabel: (id: string) => Promise<string>;
+  proveedorLabel: (id: string) => Promise<string>;
+}) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Compra</dt>
       <dd>
-        <ReferenceLink
-          path="/compras"
-          id={entrega.compraId}
-          load={labelOf(compraRepository, (item) => item.id)}
-        />
+        <ReferenceLink path="/compras" id={entrega.compraId} load={compraLabel} />
       </dd>
       <dt className="font-semibold">Destinatario</dt>
       <dd>
-        <ReferenceLink
-          path="/proveedores"
-          id={entrega.destinatarioId}
-          load={labelOf(proveedorRepository, (item) => item.name)}
-        />
+        <ReferenceLink path="/proveedores" id={entrega.destinatarioId} load={proveedorLabel} />
       </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{entrega.carrier}</dd>
@@ -12225,11 +11455,14 @@ export function EntregaDetailView({ entrega }: { entrega: Entrega }) {
   );
 }
 
-=== web/src/presentation/features/entrega/views/entrega-form-view.tsx ===
-import type { EntregaProblem } from "../../../../domain/entrega/messages";
-import type { Entrega, EntregaDraft } from "../../../../domain/entrega/model";
-import { type ReferenceOption, textOf, textOrNull } from "../../../shared/forms";
+=== web/src/features/entrega/views/entrega-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
+import { optionalText, type ReferenceOption, textOf } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { EntregaProblem } from "../messages";
+
+type Entrega = Schemas["DtoEntrega"];
+type EntregaRequest = Schemas["PeticionCrearEntrega"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface EntregaFormValues {
@@ -12260,10 +11493,11 @@ export interface EntregaFormOptions {
   destinatarioId: ReferenceOption[];
 }
 
-export function toEntregaDraft(values: EntregaFormValues): EntregaDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toEntregaRequest(values: EntregaFormValues): EntregaRequest {
   return {
     compraId: values.compraId,
-    destinatarioId: textOrNull(values.destinatarioId),
+    destinatarioId: optionalText(values.destinatarioId),
     carrier: values.carrier,
   };
 }
@@ -12346,9 +11580,11 @@ export function EntregaFormView({
   );
 }
 
-=== web/src/presentation/features/entrega/views/entrega-list-view.tsx ===
+=== web/src/features/entrega/views/entrega-list-view.tsx ===
 import { Link } from "wouter";
-import type { Entrega } from "../../../../domain/entrega/model";
+import type { Schemas } from "../../../api/client";
+
+type Entrega = Schemas["DtoEntrega"];
 
 export function EntregaListView({ entregas }: { entregas: Entrega[] }) {
   return (
@@ -12381,21 +11617,22 @@ export function EntregaListView({ entregas }: { entregas: Entrega[] }) {
   );
 }
 
-=== web/src/presentation/features/proveedor/containers/proveedor-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
+=== web/src/features/proveedor/containers/proveedor-detail-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
-import { renderScreen } from "../../../../test-support/render";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
+import { renderScreen } from "../../../test-support/render";
 import { ProveedorDetailContainer } from "./proveedor-detail-container";
 
 describe("ProveedorDetailContainer", () => {
   test("should show the proveedor when it exists", async () => {
     // Arrange
     const seeded = ProveedorMother.random();
-    const proveedorRepository = fakeProveedorRepository([seeded]);
+    const api = fakeApi([proveedorCollection([seeded])]);
 
     // Act
-    renderScreen(<ProveedorDetailContainer id={seeded.id} />, { proveedorRepository });
+    renderScreen(<ProveedorDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -12403,12 +11640,10 @@ describe("ProveedorDetailContainer", () => {
 
   test("should show the not-found code when the proveedor does not exist", async () => {
     // Arrange
-    const proveedorRepository = fakeProveedorRepository();
+    const api = fakeApi([proveedorCollection()]);
 
     // Act
-    renderScreen(<ProveedorDetailContainer id={crypto.randomUUID()} />, {
-      proveedorRepository,
-    });
+    renderScreen(<ProveedorDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("proveedor.no_encontrado");
@@ -12417,35 +11652,37 @@ describe("ProveedorDetailContainer", () => {
   test("should delete the proveedor only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = ProveedorMother.random();
-    const fake = fakeProveedorRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<ProveedorDetailContainer id={seeded.id} />, {
-      proveedorRepository: { ...fake, remove },
-    });
+    const stored = proveedorCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ProveedorDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/proveedores"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 });
 
-=== web/src/presentation/features/proveedor/containers/proveedor-detail-container.tsx ===
+=== web/src/features/proveedor/containers/proveedor-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { ProveedorDetailView } from "../views/proveedor-detail-view";
 
 export function ProveedorDetailContainer({ id }: { id: string }) {
-  const { proveedorRepository } = useDependencies();
-  const proveedor = useAsync(() => proveedorRepository.get(id), [proveedorRepository, id]);
+  const { api } = useDependencies();
+  const proveedor = useAsync(
+    () => unwrap(api.GET("/proveedores/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -12453,7 +11690,7 @@ export function ProveedorDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await proveedorRepository.remove(id);
+      await unwrap(api.DELETE("/proveedores/{id}", { params: { path: { id } } }));
       navigate("/proveedores");
     } catch (error) {
       setFailure(error);
@@ -12494,71 +11731,67 @@ export function ProveedorDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/proveedor/containers/proveedor-form-container.test.tsx ===
+=== web/src/features/proveedor/containers/proveedor-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ProveedorError } from "../../../../domain/proveedor/errors";
-import type { ProveedorDraft } from "../../../../domain/proveedor/model";
-import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
+import { renderScreen } from "../../../test-support/render";
 import { ProveedorFormContainer } from "./proveedor-form-container";
 
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: ProveedorDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearProveedor"]) {
   await screen.findByText("Save");
-  type("Name", draft.name);
-  type("Email", draft.email);
+  type("Name", request.name);
+  type("Email", request.email);
 }
 
 describe("ProveedorFormContainer", () => {
   test("should create the proveedor from what was typed and show it", async () => {
     // Arrange
-    const draft = ProveedorMother.draft();
-    const proveedorRepository = fakeProveedorRepository();
-    const { history } = renderScreen(<ProveedorFormContainer />, { proveedorRepository });
-    await fillIn(draft);
+    const request = ProveedorMother.request();
+    const stored = proveedorCollection();
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ProveedorFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/proveedores/"));
-    const {
-      items: [created],
-    } = await proveedorRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/proveedores/${created?.id}`);
   });
 
   test("should save the edited proveedor when an existing one is submitted", async () => {
     // Arrange
     const seeded = ProveedorMother.random();
-    const proveedorRepository = fakeProveedorRepository([seeded]);
-    const { history } = renderScreen(<ProveedorFormContainer id={seeded.id} />, {
-      proveedorRepository,
-    });
+    const stored = proveedorCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ProveedorFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/proveedores/${seeded.id}`));
-    expect(await proveedorRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = ProveedorMother.request();
     const code = "proveedor.validacion.invalid";
-    const proveedorRepository = {
-      ...fakeProveedorRepository(),
-      create: () => Promise.reject(new ProveedorError(code)),
-    };
-    renderScreen(<ProveedorFormContainer />, { proveedorRepository });
-    await fillIn(ProveedorMother.draft());
+    const failures = { "POST /proveedores": code };
+    const api = fakeApi([proveedorCollection()], failures);
+    renderScreen(<ProveedorFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -12569,12 +11802,11 @@ describe("ProveedorFormContainer", () => {
 
   test("should say a proveedor with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const proveedorRepository = {
-      ...fakeProveedorRepository(),
-      create: () => Promise.reject(new ProveedorError("proveedor.duplicado")),
-    };
-    renderScreen(<ProveedorFormContainer />, { proveedorRepository });
-    await fillIn(ProveedorMother.draft());
+    const request = ProveedorMother.request();
+    const failures = { "POST /proveedores": "proveedor.duplicado" };
+    const api = fakeApi([proveedorCollection()], failures);
+    renderScreen(<ProveedorFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -12587,12 +11819,11 @@ describe("ProveedorFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const proveedorRepository = {
-      ...fakeProveedorRepository(),
-      create: () => Promise.reject(new ProveedorError("proveedor.name_invalido")),
-    };
-    renderScreen(<ProveedorFormContainer />, { proveedorRepository });
-    await fillIn(ProveedorMother.draft());
+    const request = ProveedorMother.request();
+    const failures = { "POST /proveedores": "proveedor.name_invalido" };
+    const api = fakeApi([proveedorCollection()], failures);
+    renderScreen(<ProveedorFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -12605,22 +11836,32 @@ describe("ProveedorFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/proveedor/containers/proveedor-form-container.tsx ===
+=== web/src/features/proveedor/containers/proveedor-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/proveedor/messages";
-import type { Proveedor } from "../../../../domain/proveedor/model";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { ProveedorFormView, toProveedorDraft, toProveedorForm } from "../views/proveedor-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import {
+  ProveedorFormView,
+  toProveedorForm,
+  toProveedorRequest,
+} from "../views/proveedor-form-view";
+
+type Proveedor = Schemas["DtoProveedor"];
 
 /** Creates a proveedor, or edits the one with `id`. */
 export function ProveedorFormContainer({ id }: { id?: string }) {
-  const { proveedorRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : proveedorRepository.get(id)),
-    [proveedorRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/proveedores/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New proveedor" : "Edit proveedor";
 
@@ -12638,7 +11879,7 @@ export function ProveedorFormContainer({ id }: { id?: string }) {
 }
 
 function ProveedorForm({ existing }: { existing: Proveedor | null }) {
-  const { proveedorRepository } = useDependencies();
+  const { api } = useDependencies();
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toProveedorForm(existing));
   const [saving, setSaving] = useState(false);
@@ -12649,11 +11890,12 @@ function ProveedorForm({ existing }: { existing: Proveedor | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toProveedorDraft(values);
-      const saved =
+      const body = toProveedorRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await proveedorRepository.create(draft)
-          : await proveedorRepository.update(existing.id, draft);
+          ? api.POST("/proveedores", { body })
+          : api.PUT("/proveedores/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/proveedores/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -12677,22 +11919,22 @@ function ProveedorForm({ existing }: { existing: Proveedor | null }) {
   );
 }
 
-=== web/src/presentation/features/proveedor/containers/proveedor-list-container.test.tsx ===
+=== web/src/features/proveedor/containers/proveedor-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { ProveedorError } from "../../../../domain/proveedor/errors";
-import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
-import { renderScreen } from "../../../../test-support/render";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
+import { renderScreen } from "../../../test-support/render";
 import { ProveedorListContainer } from "./proveedor-list-container";
 
 describe("ProveedorListContainer", () => {
   test("should show a row per proveedor when there are some", async () => {
     // Arrange
     const seed = [ProveedorMother.random(), ProveedorMother.random()];
-    const proveedorRepository = fakeProveedorRepository(seed);
+    const api = fakeApi([proveedorCollection(seed)]);
 
     // Act
-    renderScreen(<ProveedorListContainer />, { proveedorRepository });
+    renderScreen(<ProveedorListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -12701,8 +11943,8 @@ describe("ProveedorListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => ProveedorMother.random());
-    const proveedorRepository = fakeProveedorRepository(seed);
-    renderScreen(<ProveedorListContainer />, { proveedorRepository });
+    const api = fakeApi([proveedorCollection(seed)]);
+    renderScreen(<ProveedorListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -12716,11 +11958,11 @@ describe("ProveedorListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => ProveedorMother.random());
-    const proveedorRepository = fakeProveedorRepository(seed);
+    const api = fakeApi([proveedorCollection(seed)]);
     const path = "/proveedores?page=2";
 
     // Act
-    renderScreen(<ProveedorListContainer />, { proveedorRepository }, path);
+    renderScreen(<ProveedorListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -12728,10 +11970,10 @@ describe("ProveedorListContainer", () => {
 
   test("should say so when there is no proveedor", async () => {
     // Arrange
-    const proveedorRepository = fakeProveedorRepository();
+    const api = fakeApi([proveedorCollection()]);
 
     // Act
-    renderScreen(<ProveedorListContainer />, { proveedorRepository });
+    renderScreen(<ProveedorListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No proveedores yet.")).toBeTruthy();
@@ -12739,38 +11981,37 @@ describe("ProveedorListContainer", () => {
 
   test("should show the error code when the proveedores cannot be listed", async () => {
     // Arrange
-    const proveedorRepository = {
-      ...fakeProveedorRepository(),
-      list: () => Promise.reject(new ProveedorError("proveedor.repositorio")),
-    };
+    const failures = { "GET /proveedores": "proveedor.repositorio" };
+    const api = fakeApi([proveedorCollection()], failures);
 
     // Act
-    renderScreen(<ProveedorListContainer />, { proveedorRepository });
+    renderScreen(<ProveedorListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("proveedor.repositorio");
   });
 });
 
-=== web/src/presentation/features/proveedor/containers/proveedor-list-container.tsx ===
+=== web/src/features/proveedor/containers/proveedor-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { ProveedorListView } from "../views/proveedor-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function ProveedorListContainer() {
-  const { proveedorRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
   const proveedores = useAsync(
-    () => proveedorRepository.list({ limit: PAGE_SIZE, offset }),
-    [proveedorRepository, offset],
+    () => unwrap(api.GET("/proveedores", { params: { query } })),
+    [api, offset],
   );
 
   return (
@@ -12788,16 +12029,53 @@ export function ProveedorListContainer() {
           <EmptyState message="No proveedores yet." />
         ) : (
           <>
-            <ProveedorListView proveedores={proveedores.data.items} />
-            <Pagination {...proveedores.data} onOffsetChange={goTo} />
+            <ProveedorListView proveedores={proveedores.data.elementos} />
+            <Pagination
+              total={proveedores.data.total}
+              limit={proveedores.data.limite}
+              offset={proveedores.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/proveedor/views/proveedor-detail-view.tsx ===
-import type { Proveedor } from "../../../../domain/proveedor/model";
+=== web/src/features/proveedor/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ProveedorProblem {
+  field: string | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "proveedor.name_invalido": "Name is not valid",
+  "proveedor.validacion.email_vacio": "Email is required",
+  "proveedor.duplicado": "A proveedor with these values already exists",
+  "proveedor.no_encontrado": "This proveedor no longer exists",
+  "proveedor.repositorio": "The proveedor could not be saved, try again later",
+  "proveedor.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "proveedor.name_invalido": "name",
+  "proveedor.validacion.email_vacio": "email",
+};
+
+export function toProblem(code: string): ProveedorProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/proveedor/views/proveedor-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+
+type Proveedor = Schemas["DtoProveedor"];
 
 export function ProveedorDetailView({ proveedor }: { proveedor: Proveedor }) {
   return (
@@ -12810,10 +12088,13 @@ export function ProveedorDetailView({ proveedor }: { proveedor: Proveedor }) {
   );
 }
 
-=== web/src/presentation/features/proveedor/views/proveedor-form-view.tsx ===
-import type { ProveedorProblem } from "../../../../domain/proveedor/messages";
-import type { Proveedor, ProveedorDraft } from "../../../../domain/proveedor/model";
+=== web/src/features/proveedor/views/proveedor-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { ProveedorProblem } from "../messages";
+
+type Proveedor = Schemas["DtoProveedor"];
+type ProveedorRequest = Schemas["PeticionCrearProveedor"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface ProveedorFormValues {
@@ -12835,7 +12116,8 @@ export function toProveedorForm(proveedor: Proveedor | null): ProveedorFormValue
   };
 }
 
-export function toProveedorDraft(values: ProveedorFormValues): ProveedorDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toProveedorRequest(values: ProveedorFormValues): ProveedorRequest {
   return {
     name: values.name,
     email: values.email,
@@ -12895,9 +12177,11 @@ export function ProveedorFormView({
   );
 }
 
-=== web/src/presentation/features/proveedor/views/proveedor-list-view.tsx ===
+=== web/src/features/proveedor/views/proveedor-list-view.tsx ===
 import { Link } from "wouter";
-import type { Proveedor } from "../../../../domain/proveedor/model";
+import type { Schemas } from "../../../api/client";
+
+type Proveedor = Schemas["DtoProveedor"];
 
 export function ProveedorListView({ proveedores }: { proveedores: Proveedor[] }) {
   return (
@@ -12928,14 +12212,99 @@ export function ProveedorListView({ proveedores }: { proveedores: Proveedor[] })
   );
 }
 
+=== web/src/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+//
+// The composition root: the only module that builds the API client. Screens reach it through
+// `useDependencies()`, so a test hands them a fake instead.
+
+import { type ApiClient, createApiClient } from "../api/client";
+
+export interface Dependencies {
+  api: ApiClient;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return { api };
+}
+
+=== web/src/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { CompraDetailContainer } from "../features/compra/containers/compra-detail-container";
+import { CompraFormContainer } from "../features/compra/containers/compra-form-container";
+import { CompraListContainer } from "../features/compra/containers/compra-list-container";
+import { EntregaDetailContainer } from "../features/entrega/containers/entrega-detail-container";
+import { EntregaFormContainer } from "../features/entrega/containers/entrega-form-container";
+import { EntregaListContainer } from "../features/entrega/containers/entrega-list-container";
+import { ProveedorDetailContainer } from "../features/proveedor/containers/proveedor-detail-container";
+import { ProveedorFormContainer } from "../features/proveedor/containers/proveedor-form-container";
+import { ProveedorListContainer } from "../features/proveedor/containers/proveedor-list-container";
+import { HomePage } from "../pages/home";
+import { NotFoundPage } from "../pages/not-found";
+import { customRoutes } from "../routes";
+import type { NavEntry } from "../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [
+  { label: "Compras", href: "/compras" },
+  { label: "Entregas", href: "/entregas" },
+  { label: "Proveedores", href: "/proveedores" },
+];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      {customRoutes}
+      <Route path="/compras">
+        <CompraListContainer />
+      </Route>
+      <Route path="/compras/new">
+        <CompraFormContainer />
+      </Route>
+      <Route path="/compras/:id/edit">{(params) => <CompraFormContainer id={params.id} />}</Route>
+      <Route path="/compras/:id">{(params) => <CompraDetailContainer id={params.id} />}</Route>
+      <Route path="/entregas">
+        <EntregaListContainer />
+      </Route>
+      <Route path="/entregas/new">
+        <EntregaFormContainer />
+      </Route>
+      <Route path="/entregas/:id/edit">{(params) => <EntregaFormContainer id={params.id} />}</Route>
+      <Route path="/entregas/:id">{(params) => <EntregaDetailContainer id={params.id} />}</Route>
+      <Route path="/proveedores">
+        <ProveedorListContainer />
+      </Route>
+      <Route path="/proveedores/new">
+        <ProveedorFormContainer />
+      </Route>
+      <Route path="/proveedores/:id/edit">
+        {(params) => <ProveedorFormContainer id={params.id} />}
+      </Route>
+      <Route path="/proveedores/:id">
+        {(params) => <ProveedorDetailContainer id={params.id} />}
+      </Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
 === web/src/test-support/compra.ts ===
-import { CompraError } from "../domain/compra/errors";
-import type { Compra, CompraDraft } from "../domain/compra/model";
-import type { CompraRepository } from "../domain/compra/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Compra = Schemas["DtoCompra"];
+type CompraRequest = Schemas["PeticionCrearCompra"];
 
 /** Valid compras for tests; pass `overrides` for the fields a test is about. */
 export const CompraMother = {
-  draft(overrides: Partial<CompraDraft> = {}): CompraDraft {
+  request(overrides: Partial<CompraRequest> = {}): CompraRequest {
     return {
       proveedorId: crypto.randomUUID(),
       approverId: crypto.randomUUID(),
@@ -12945,49 +12314,25 @@ export const CompraMother = {
   },
 
   random(overrides: Partial<Compra> = {}): Compra {
-    return { id: crypto.randomUUID(), ...CompraMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...CompraMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `CompraRepository`. Override a method to make it fail. */
-export function fakeCompraRepository(seed: Compra[] = []): CompraRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new CompraError("compra.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
-    },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+/** The fake API's `/compras`, holding `seed`. */
+export function compraCollection(seed: Compra[] = []) {
+  return collection("/compras", "compra", seed);
 }
 
 === web/src/test-support/entrega.ts ===
-import { EntregaError } from "../domain/entrega/errors";
-import type { Entrega, EntregaDraft } from "../domain/entrega/model";
-import type { EntregaRepository } from "../domain/entrega/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Entrega = Schemas["DtoEntrega"];
+type EntregaRequest = Schemas["PeticionCrearEntrega"];
 
 /** Valid entregas for tests; pass `overrides` for the fields a test is about. */
 export const EntregaMother = {
-  draft(overrides: Partial<EntregaDraft> = {}): EntregaDraft {
+  request(overrides: Partial<EntregaRequest> = {}): EntregaRequest {
     return {
       compraId: crypto.randomUUID(),
       destinatarioId: crypto.randomUUID(),
@@ -12997,49 +12342,104 @@ export const EntregaMother = {
   },
 
   random(overrides: Partial<Entrega> = {}): Entrega {
-    return { id: crypto.randomUUID(), ...EntregaMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...EntregaMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `EntregaRepository`. Override a method to make it fail. */
-export function fakeEntregaRepository(seed: Entrega[] = []): EntregaRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new EntregaError("entrega.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+/** The fake API's `/entregas`, holding `seed`. */
+export function entregaCollection(seed: Entrega[] = []) {
+  return collection("/entregas", "entrega", seed);
+}
+
+=== web/src/test-support/fake-api.ts ===
+import { type ApiClient, createApiClient } from "../api/client";
+
+/** What the fake API holds under `path`: the API's DTOs, by id. */
+export interface Collection<T extends { id: string }> {
+  path: string;
+  /** The code a missing item answers: `producto.no_encontrado`. */
+  notFound: string;
+  items: Map<string, T>;
+}
+
+/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
+export function collection<T extends { id: string }>(
+  path: string,
+  entity: string,
+  seed: T[] = [],
+): Collection<T> {
+  const items = new Map(seed.map((item) => [item.id, item]));
+  return { path, notFound: `${entity}.no_encontrado`, items };
+}
+
+/**
+ * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
+ * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
+ * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ */
+export function fakeApi(
+  collections: Collection<{ id: string }>[],
+  failures: Record<string, string> = {},
+): ApiClient {
+  return createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/api/, "");
+      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
+      if (target === undefined) return answer(404, "http.404");
+      const failure = failures[`${request.method} ${target.path}`];
+      if (failure !== undefined) return answer(400, failure);
+      const id = path.slice(target.path.length + 1);
+      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
     },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+  });
+}
+
+async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
+  if (request.method === "POST") {
+    const created = { ...(await request.json()), id: crypto.randomUUID() };
+    target.items.set(created.id, created);
+    return Response.json(created, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const all = [...target.items.values()];
+  const elementos = all.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+}
+
+async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
+  const found = target.items.get(id);
+  if (found === undefined) return answer(404, target.notFound);
+  if (request.method === "DELETE") {
+    target.items.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method === "PUT") {
+    // Like the API, an update replaces every field: one left out is cleared.
+    const updated = { ...(await request.json()), id };
+    target.items.set(id, updated);
+    return Response.json(updated);
+  }
+  return Response.json(found);
+}
+
+/** A `RespuestaError` the way the API answers one. */
+function answer(status: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status });
 }
 
 === web/src/test-support/proveedor.ts ===
-import { ProveedorError } from "../domain/proveedor/errors";
-import type { Proveedor, ProveedorDraft } from "../domain/proveedor/model";
-import type { ProveedorRepository } from "../domain/proveedor/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Proveedor = Schemas["DtoProveedor"];
+type ProveedorRequest = Schemas["PeticionCrearProveedor"];
 
 /** Valid proveedores for tests; pass `overrides` for the fields a test is about. */
 export const ProveedorMother = {
-  draft(overrides: Partial<ProveedorDraft> = {}): ProveedorDraft {
+  request(overrides: Partial<ProveedorRequest> = {}): ProveedorRequest {
     return {
       name: "example",
       email: "example",
@@ -13048,37 +12448,11 @@ export const ProveedorMother = {
   },
 
   random(overrides: Partial<Proveedor> = {}): Proveedor {
-    return { id: crypto.randomUUID(), ...ProveedorMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...ProveedorMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `ProveedorRepository`. Override a method to make it fail. */
-export function fakeProveedorRepository(seed: Proveedor[] = []): ProveedorRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new ProveedorError("proveedor.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
-    },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+/** The fake API's `/proveedores`, holding `seed`. */
+export function proveedorCollection(seed: Proveedor[] = []) {
+  return collection("/proveedores", "proveedor", seed);
 }

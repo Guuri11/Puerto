@@ -2,8 +2,8 @@ import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
-import { DependenciesProvider } from "../presentation/core/dependencies";
-import type { Dependencies } from "../presentation/core/generated/dependencies";
+import { DependenciesProvider } from "../dependencies";
+import type { Dependencies } from "../generated/dependencies";
 
 /**
  * Renders a screen with the adapters it uses (`dependencies` needs only those) at `path`.

@@ -1,28 +1,33 @@
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
 {% if access.create_roles -%}
-import { useAuth } from "../../../core/auth";
+import { useAuth } from "../../../auth/auth";
 {% endif -%}
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { {{ pascal }}ListView } from "../views/{{ kebab }}-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function {{ pascal }}ListContainer() {
-  const { {{ camel }}Repository } = useDependencies();
+  const { api } = useDependencies();
 {%- if access.create_roles %}
   const { can } = useAuth();
 {%- endif %}
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
+{%- if list_load_inline %}
+  const {{ plural_ident }} = useAsync(() => unwrap(api.GET("/{{ plural }}", { params: { query } })), [api, offset]);
+{%- else %}
   const {{ plural_ident }} = useAsync(
-    () => {{ camel }}Repository.list({ limit: PAGE_SIZE, offset }),
-    [{{ camel }}Repository, offset],
+    () => unwrap(api.GET("/{{ plural }}", { params: { query } })),
+    [api, offset],
   );
+{%- endif %}
 
   return (
     <section className="space-y-4">
@@ -47,8 +52,13 @@ export function {{ pascal }}ListContainer() {
           <EmptyState message="No {{ words_plural }} yet." />
         ) : (
           <>
-            <{{ pascal }}ListView {{ plural_ident }}={{ "{" }}{{ plural_ident }}.data.items} />
-            <Pagination {...{{ plural_ident }}.data} onOffsetChange={goTo} />
+            <{{ pascal }}ListView {{ plural_ident }}={{ "{" }}{{ plural_ident }}.data.elementos} />
+            <Pagination
+              total={{ "{" }}{{ plural_ident }}.data.total}
+              limit={{ "{" }}{{ plural_ident }}.data.limite}
+              offset={{ "{" }}{{ plural_ident }}.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>

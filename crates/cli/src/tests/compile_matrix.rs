@@ -1081,7 +1081,7 @@ fn compiles_with_domain_first_layered_flow_and_fields() {
     format();
     scaffold::run_generate_presentation("Factura", &output).unwrap();
     format();
-    // The flow's last step in a web project: `core/generated/*` already routes Factura.
+    // The flow's last step in a web project: `generated/*` already routes Factura.
     scaffold::run_generate_web("Factura", &output, OverwritePolicy::Ask).unwrap();
 
     assert_generated_project_is_clean(&output, &dir, "layered_fields", &[]);
@@ -1161,11 +1161,7 @@ fn web_shell_passes_its_own_checks() {
     // What `puerto nuevo` does last.
     crate::generators::format::format_project(&output).unwrap();
     assert_generated_project_is_clean(&output, &dir, "web_shell", &[]);
-    assert!(
-        output
-            .join("web/src/infrastructure/http/schema.d.ts")
-            .exists()
-    );
+    assert!(output.join("web/src/api/schema.d.ts").exists());
 
     cleanup(&dir);
 }

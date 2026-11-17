@@ -117,24 +117,19 @@ fn list_route_reads_limit_and_offset_and_answers_a_page_dto() {
 }
 
 #[test]
-fn web_template_ships_the_page_type_and_the_pagination_control() {
+fn web_template_ships_the_page_size_and_the_pagination_control() {
     let dir = temp_dir("paged_web_template");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("paged-web-template", &dir).unwrap();
 
-    let page = read(&output, "web/src/domain/shared/page.ts");
-    assert!(page.contains("export interface Page<T>"));
-    assert!(page.contains("export interface PageRequest"));
-    assert!(page.contains("export const PAGE_SIZE = 20;"));
+    let http = read(&output, "web/src/api/http.ts");
+    assert!(http.contains("export const PAGE_SIZE = 20;"));
+    assert!(http.contains("export const MAX_PAGE_LIMIT = 100;"));
+    assert!(output.join("web/src/shared/ui/pagination.tsx").exists());
     assert!(
         output
-            .join("web/src/presentation/shared/ui/pagination.tsx")
-            .exists()
-    );
-    assert!(
-        output
-            .join("web/src/presentation/shared/ui/pagination.test.tsx")
+            .join("web/src/shared/ui/pagination.test.tsx")
             .exists()
     );
 
@@ -145,27 +140,23 @@ fn web_template_ships_the_page_type_and_the_pagination_control() {
 fn web_slice_lists_a_page_at_a_time() {
     let (dir, output) = web_project_with_producto("paged_web_slice");
 
-    let port = read(&output, "web/src/domain/producto/repository.ts");
-    assert!(port.contains("list(page: PageRequest): Promise<Page<Producto>>;"));
-    let adapter = read(
-        &output,
-        "web/src/infrastructure/producto/producto-repository-http.ts",
-    );
-    assert!(
-        adapter.contains("params: { query: { limite: page.limit, desplazamiento: page.offset } }")
-    );
-    assert!(adapter.contains("items: data.elementos.map(toProducto)"));
-    let fake = read(&output, "web/src/test-support/producto.ts");
-    assert!(fake.contains("items: all.slice(offset, offset + limit)"));
     let list = read(
         &output,
-        "web/src/presentation/features/producto/containers/producto-list-container.tsx",
+        "web/src/features/producto/containers/producto-list-container.tsx",
     );
-    assert!(list.contains("<Pagination"));
-    assert!(list.contains("productoRepository.list({ limit: PAGE_SIZE, offset })"));
+    assert!(list.contains("const query = { limite: PAGE_SIZE, desplazamiento: offset };"));
+    assert!(
+        list.contains(r#"api.GET("/productos", { params: { query } })"#),
+        "{list}"
+    );
+    assert!(list.contains("<ProductoListView productos={productos.data.elementos} />"));
+    assert!(list.contains("offset={productos.data.desplazamiento}"));
+    // The fake API pages the way the generated one does.
+    let fake = read(&output, "web/src/test-support/fake-api.ts");
+    assert!(fake.contains("const elementos = all.slice(desplazamiento, desplazamiento + limite);"));
     let list_test = read(
         &output,
-        "web/src/presentation/features/producto/containers/producto-list-container.test.tsx",
+        "web/src/features/producto/containers/producto-list-container.test.tsx",
     );
     assert!(list_test.contains("should show the next page when Next is pressed"));
 

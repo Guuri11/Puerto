@@ -1,8 +1,6 @@
-import type { {{ pascal }}Draft } from "./model";
-
 /** What a screen shows for an API error: under the input it is about, or in the alert. */
 export interface {{ pascal }}Problem {
-  field: keyof {{ pascal }}Draft | null;
+  field: string | null;
   text: string;
 }
 
@@ -17,7 +15,7 @@ const TEXTS: Record<string, string> = {
 };
 
 /** The input each field's code is about. */
-const FIELDS: Record<string, keyof {{ pascal }}Draft> = {
+const FIELDS: Record<string, string> = {
 {%- if field_problem %}
 {%- for p in problems %}{% if p.field %}
   "{{ p.code }}": "{{ p.field }}",

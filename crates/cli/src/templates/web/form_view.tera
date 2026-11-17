@@ -1,9 +1,12 @@
-{% if enums %}import { {% for e in enums %}parse{{ e.name }}, {% endfor %}type {{ pascal }}, type {{ pascal }}Draft }{% else %}import type { {{ pascal }}, {{ pascal }}Draft }{% endif %} from "../../../../domain/{{ kebab }}/model";
-import type { {{ pascal }}Problem } from "../../../../domain/{{ kebab }}/messages";
+import type { Schemas } from "../../../api/client";
 {%- if form_helpers %}
 import {% if form_helpers_type_only %}type {% endif %}{ {{ form_helpers | join(sep=", ") }} } from "../../../shared/forms";
 {%- endif %}
 import { FieldError } from "../../../shared/ui/field-error";
+import type { {{ pascal }}Problem } from "../messages";
+
+type {{ pascal }} = Schemas["Dto{{ pascal }}"];
+type {{ pascal }}Request = Schemas["PeticionCrear{{ pascal }}"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface {{ pascal }}FormValues {
@@ -37,7 +40,8 @@ export interface {{ pascal }}FormOptions {
 }
 
 {% endif -%}
-export function to{{ pascal }}Draft(values: {{ pascal }}FormValues): {{ pascal }}Draft {
+/** What a create or an update sends: the same fields for both. */
+export function to{{ pascal }}Request(values: {{ pascal }}FormValues): {{ pascal }}Request {
   return {
 {%- for f in fields %}
     {{ f.camel }}: {{ f.from_form }},

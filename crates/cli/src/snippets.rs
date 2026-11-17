@@ -1156,37 +1156,25 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
 
 // ── Frontend snippets (web projects) ─────────────────────────────────────────
 //
-// Zed reads them per language (`typescript.json`, `tsx.json`); VS Code from one file, each entry
-// scoped to its language.
-
-pub const WEB_TS_SNIPPETS_JSON: &str = r##"{
-  "Web — HTTP repository method": {
-    "prefix": "web-repo-method",
-    "body": [
-      "async ${1:method}(id) {",
-      "\tconst { data, error, response } = await api.${2:GET}(\"/${3:entities}/{id}\", {",
-      "\t\tparams: { path: { id } },",
-      "\t});",
-      "\tif (data === undefined) throw new ${4:Entity}Error(apiErrorCode(error, response));",
-      "\treturn to${4:Entity}(data);",
-      "},"
-    ],
-    "description": "A method of the HTTP repository (infrastructure/<entity>/<entity>-repository-http.ts): an openapi-fetch call, the API's error code as the entity's Error. Declare it on the port (domain/<entity>/repository.ts) and the fake (test-support/<entity>.ts) too."
-  }
-}"##;
+// Zed reads them per language (`tsx.json`); VS Code from one file, each entry scoped to it. The
+// screens call the API from their containers (ADR-0025): there is no `.ts` layer to snippet.
 
 pub const WEB_TSX_SNIPPETS_JSON: &str = r##"{
   "Web — container + view": {
     "prefix": "web-container",
     "body": [
-      "import type { ${1:Entity} } from \"../../../../domain/${2:entity-name}/model\";",
-      "import { useDependencies } from \"../../../core/dependencies\";",
-      "import { useAsync } from \"../../../core/hooks/use-async\";",
+      "import type { Schemas } from \"../../../api/client\";",
+      "import { unwrap } from \"../../../api/http\";",
+      "import { useDependencies } from \"../../../dependencies\";",
       "import { ErrorAlert } from \"../../../shared/ui/error-alert\";",
+      "import { useAsync } from \"../../../shared/use-async\";",
       "",
       "export function ${1:Entity}${3:Summary}Container({ id }: { id: string }) {",
-      "\tconst { ${4:entity}Repository } = useDependencies();",
-      "\tconst ${4:entity} = useAsync(() => ${4:entity}Repository.get(id), [${4:entity}Repository, id]);",
+      "\tconst { api } = useDependencies();",
+      "\tconst ${4:entity} = useAsync(",
+      "\t\t() => unwrap(api.GET(\"/${5:entities}/{id}\", { params: { path: { id } } })),",
+      "\t\t[api, id],",
+      "\t);",
       "",
       "\treturn (",
       "\t\t<section className=\"space-y-4\">",
@@ -1198,36 +1186,37 @@ pub const WEB_TSX_SNIPPETS_JSON: &str = r##"{
       "}",
       "",
       "/** Props only. Move it to `views/` once it grows: containers load, views render. */",
-      "function ${1:Entity}${3:Summary}View({ ${4:entity} }: { ${4:entity}: ${1:Entity} }) {",
+      "function ${1:Entity}${3:Summary}View({ ${4:entity} }: { ${4:entity}: Schemas[\"Dto${1:Entity}\"] }) {",
       "\treturn <p>{${4:entity}.id}</p>;$0",
       "}"
     ],
-    "description": "A container (features/<entity>/containers/): loads through useDependencies() + useAsync, renders loading / error / its view."
+    "description": "A container (features/<entity>/containers/): calls the API through useDependencies() + useAsync + unwrap, renders loading / error / its view."
   },
   "Web — container test": {
     "prefix": "web-container-test",
     "body": [
       "import { describe, expect, test } from \"bun:test\";",
       "import { screen } from \"@testing-library/react\";",
-      "import { ${1:Entity}Mother, fake${1:Entity}Repository } from \"../../../../test-support/${2:entity-name}\";",
-      "import { renderScreen } from \"../../../../test-support/render\";",
-      "import { ${1:Entity}${3:Summary}Container } from \"./${2:entity-name}-${5:summary}-container\";",
+      "import { fakeApi } from \"../../../test-support/fake-api\";",
+      "import { ${1:Entity}Mother, ${4:entity}Collection } from \"../../../test-support/${2:entity-name}\";",
+      "import { renderScreen } from \"../../../test-support/render\";",
+      "import { ${1:Entity}${3:Summary}Container } from \"./${2:entity-name}-${6:summary}-container\";",
       "",
       "describe(\"${1:Entity}${3:Summary}Container\", () => {",
-      "\ttest(\"should show the ${6:entity label} when it exists\", async () => {",
+      "\ttest(\"should show the ${7:entity label} when it exists\", async () => {",
       "\t\t// Arrange",
       "\t\tconst seeded = ${1:Entity}Mother.random();",
-      "\t\tconst ${4:entity}Repository = fake${1:Entity}Repository([seeded]);",
+      "\t\tconst api = fakeApi([${4:entity}Collection([seeded])]);",
       "",
       "\t\t// Act",
-      "\t\trenderScreen(<${1:Entity}${3:Summary}Container id={seeded.id} />, { ${4:entity}Repository });",
+      "\t\trenderScreen(<${1:Entity}${3:Summary}Container id={seeded.id} />, { api });",
       "",
       "\t\t// Assert",
       "\t\texpect(await screen.findByText(seeded.id)).toBeTruthy();",
       "\t});",
       "});"
     ],
-    "description": "A container test: render it with the in-memory fake repository, assert on what the user sees."
+    "description": "A container test: render it against the fake API (test-support/fake-api.ts), assert on what the user sees."
   },
   "Web — form field": {
     "prefix": "web-form-field",
@@ -1254,7 +1243,7 @@ pub const WEB_TSX_SNIPPETS_JSON: &str = r##"{
       "\t{(params) => <${2:Entity}${3:Summary}Container id={params.id} />}",
       "</Route>,"
     ],
-    "description": "A route in customRoutes (presentation/core/routes.tsx — yours; core/generated/routes.tsx is rewritten)."
+    "description": "A route in customRoutes (src/routes.tsx — yours; generated/routes.tsx is rewritten)."
   }
 }"##;
 
@@ -1281,12 +1270,8 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
             "✓ .zed/snippets/rust.json + sql.json  (Zed — loaded automatically from project root)"
         );
         if web {
-            write_file(
-                &base.join(".zed/snippets/typescript.json"),
-                WEB_TS_SNIPPETS_JSON,
-            )?;
             write_file(&base.join(".zed/snippets/tsx.json"), WEB_TSX_SNIPPETS_JSON)?;
-            println!("✓ .zed/snippets/typescript.json + tsx.json  (the web/ frontend)");
+            println!("✓ .zed/snippets/tsx.json  (the web/ frontend)");
         }
     }
     if write_vscode {
@@ -1313,18 +1298,12 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-/// The frontend snippets in one VS Code file: each scoped to the language Zed files it under.
+/// The frontend snippets in one VS Code file, scoped to the language Zed files them under.
 fn vscode_web_snippets() -> Result<String, serde_json::Error> {
-    let mut all = serde_json::Map::new();
-    for (json, scope) in [
-        (WEB_TS_SNIPPETS_JSON, "typescript"),
-        (WEB_TSX_SNIPPETS_JSON, "typescriptreact"),
-    ] {
-        let snippets: serde_json::Map<String, serde_json::Value> = serde_json::from_str(json)?;
-        for (name, mut snippet) in snippets {
-            snippet["scope"] = scope.into();
-            all.insert(name, snippet);
-        }
+    let mut all: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(WEB_TSX_SNIPPETS_JSON)?;
+    for snippet in all.values_mut() {
+        snippet["scope"] = "typescriptreact".into();
     }
     Ok(serde_json::to_string_pretty(&all)? + "\n")
 }

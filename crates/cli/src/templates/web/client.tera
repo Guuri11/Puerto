@@ -1,22 +1,13 @@
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 
 /** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
 export type ApiClient = Client<paths>;
 
+/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
+export type Schemas = components["schemas"];
+
 /** `/api` is the backend: proxied to `:8080` by Vite in development. */
 export function createApiClient(options: ClientOptions = {}): ApiClient {
   return createClient<paths>({ baseUrl: "/api", ...options });
-}
-
-/**
- * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
- * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
- */
-export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "codigo" in error) {
-    const { codigo } = error;
-    if (typeof codigo === "string") return codigo;
-  }
-  return `http.${response.status}`;
 }

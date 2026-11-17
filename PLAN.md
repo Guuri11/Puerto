@@ -3285,7 +3285,7 @@ una tabla que ya existe (la migración la escribe el usuario: `puerto generar mi
 
 ## Fase 21 — El frontend, solo presentación (ADR-0025)
 
-**Estado:** en curso. Decidida por Sergio el 2026-11-17: las capas `domain/`, `application/` e
+**Estado:** hecha (2026-11-17), sin publicar. Decidida por Sergio el 2026-11-17: las capas `domain/`, `application/` e
 `infrastructure/` del frontend son abstracciones de un solo uso. El frontend queda como capa de
 presentación —contenedores que llaman al cliente tipado, vistas que solo reciben props— sobre
 `openapi-typescript` + `openapi-fetch`, que ya estaban. Los nombres siguen en inglés: las pantallas
@@ -3314,7 +3314,7 @@ test-support/           render.tsx · fake-api.ts (con la primera entidad) · <e
 
 Desaparecen `domain/`, `application/`, `infrastructure/`, `presentation/` y `core/`.
 
-### 21.1 — Las pantallas sobre el cliente tipado
+### 21.1 — Las pantallas sobre el cliente tipado ✅
 
 - **Por entidad, 11 ficheros** (antes 16): `features/<k>/messages.ts`, las tres vistas, los tres
   contenedores y sus tests, `test-support/<k>.ts`. Sin `model.ts`, `errors.ts`, `repository.ts`
@@ -3341,7 +3341,9 @@ Desaparecen `domain/`, `application/`, `infrastructure/`, `presentation/` y `cor
   `generated/` ni `use-async` (los tipos sí); solo `generated/dependencies.ts` y `test-support/`
   importan `createApiClient`; `test-support/` solo lo importan los tests; sin ciclos.
 - **Auth:** los mismos ficheros, en `auth/`, `pages/` y `shared/ui/`; el puerto `AuthGateway` se
-  queda.
+  queda. El nombre opcional del registro local se deja fuera si está vacío (`optionalText`).
+- **Snippets:** `web-container` y `web-container-test` usan el cliente y la API falsa; el snippet
+  de método del repositorio HTTP (el único de `.ts`) desaparece con el repositorio.
 - Tests de la CLI: las rutas de `web_entity_files` / `web_required_files`; ningún fichero bajo
   `domain/`, `infrastructure/` o `presentation/`; la deriva de `validar` con las rutas nuevas; los
   snapshots; el compile matrix (`bun run typecheck`, `lint`, `lint:arch`, `bun test`, `build`) en

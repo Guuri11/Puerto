@@ -138,10 +138,10 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/presentation/core/generated/*`, `web/src/infrastructure/http/schema.d.ts` y
-`docs/api/openapi.json` también se reescriben (`generar bootstrap`, `make web/sync`); las pantallas
-de una entidad son ficheros suyos como los demás; `web/src/presentation/core/routes.tsx` (tus
-propias pantallas) es tuyo. El detalle, en `web/AGENTS.md`.
+Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
+como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+`web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
 
@@ -184,10 +184,10 @@ comando.
 
 ## Frontend (`web/`)
 
-Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Sigue la misma regla de
-dependencias que los crates (`domain` ← `application` ← `infrastructure` ← `presentation`), que
-comprueba `make web/lint`. Sus reglas (capas, ficheros generados, dónde van los casos de uso)
-están en `web/AGENTS.md`.
+Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Es solo presentación: los
+contenedores llaman a la API con su cliente tipado y las vistas pintan lo que reciben; las reglas
+viven en el backend. `make web/lint` comprueba que una vista no llama a la API. Sus reglas
+(carpetas, ficheros generados, tests) están en `web/AGENTS.md`.
 
 La spec OpenAPI es el contrato entre las dos mitades: `docs/api/openapi.json`, exportada por un test
 de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ruta o un DTO, ejecuta
@@ -3549,367 +3549,37 @@ objeto_valor = "Email"
 nombre = "Email"
 tipo = "String"
 
-=== web/src/domain/cuenta/errors.ts ===
-/**
- * A request about a cuenta that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `cuenta.no_encontrado`, `cuenta.validacion.<field>_vacio`.
- */
-export class CuentaError extends Error {
-  readonly code: string;
-
-  constructor(code: string) {
-    super(code);
-    this.name = "CuentaError";
-    this.code = code;
-  }
-}
-
-=== web/src/domain/cuenta/messages.ts ===
-import type { CuentaDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface CuentaProblem {
-  field: keyof CuentaDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "cuenta.validacion.title_vacio": "Title is required",
-  "cuenta.name_invalido": "Name is not valid",
-  "cuenta.sku_invalido": "Sku is not valid",
-  "cuenta.middle_name_invalido": "Middle name is not valid",
-  "cuenta.tag_invalido": "Tags are not valid",
-  "cuenta.status_invalido": "Status is not valid",
-  "cuenta.email_invalido": "Email is not valid",
-  "cuenta.duplicado": "A cuenta with these values already exists",
-  "cuenta.no_encontrado": "This cuenta no longer exists",
-  "cuenta.repositorio": "The cuenta could not be saved, try again later",
-  "cuenta.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof CuentaDraft> = {
-  "cuenta.validacion.title_vacio": "title",
-  "cuenta.name_invalido": "name",
-  "cuenta.sku_invalido": "sku",
-  "cuenta.middle_name_invalido": "middleName",
-  "cuenta.tag_invalido": "tags",
-  "cuenta.status_invalido": "status",
-  "cuenta.email_invalido": "email",
-};
-
-export function toProblem(code: string): CuentaProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/cuenta/model.ts ===
-import { CuentaError } from "./errors";
-
-export interface Cuenta {
-  id: string;
-  title: string;
-  price: number;
-  name: string;
-  sku: string;
-  note: string | null;
-  middleName: string | null;
-  tags: string[];
-  status: Status;
-  email: string;
-}
-
-/** What a create or an update sends: a cuenta without its id. */
-export type CuentaDraft = Omit<Cuenta, "id">;
-
-export const statusValues = ["Active", "Archived"] as const;
-
-export type Status = (typeof statusValues)[number];
-
-/** Narrows the API's `string` to a `Status`, rejecting with `cuenta.status_invalido`. */
-export function parseStatus(value: string): Status {
-  const found = statusValues.find((candidate) => candidate === value);
-  if (found === undefined) throw new CuentaError("cuenta.status_invalido");
-  return found;
-}
-
-=== web/src/domain/cuenta/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Cuenta, CuentaDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `CuentaError` the API answered. */
-export interface CuentaRepository {
-  list(page: PageRequest): Promise<Page<Cuenta>>;
-  get(id: string): Promise<Cuenta>;
-  create(draft: CuentaDraft): Promise<Cuenta>;
-  update(id: string, draft: CuentaDraft): Promise<Cuenta>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/infrastructure/cuenta/cuenta-repository-http.test.ts ===
-import { describe, expect, test } from "bun:test";
-import { CuentaError } from "../../domain/cuenta/errors";
-import { CuentaMother } from "../../test-support/cuenta";
-import { createApiClient } from "../http/client";
-import { cuentaRepositoryHttp } from "./cuenta-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: cuentaRepositoryHttp(api), requests };
-}
-
-describe("cuentaRepositoryHttp", () => {
-  test("should ask for the page and return its cuentas", async () => {
-    // Arrange
-    const cuenta = CuentaMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [cuenta],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/cuentas");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [cuenta], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating a cuenta", async () => {
-    // Arrange
-    const draft = CuentaMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the cuenta does not exist", async () => {
-    // Arrange
-    const code = "cuenta.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(CuentaError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the cuenta", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/cuentas/42");
-  });
-});
-
-=== web/src/infrastructure/cuenta/cuenta-repository-http.ts ===
-import { CuentaError } from "../../domain/cuenta/errors";
-import { type Cuenta, type CuentaDraft, parseStatus } from "../../domain/cuenta/model";
-import type { CuentaRepository } from "../../domain/cuenta/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type CuentaDto = components["schemas"]["DtoCuenta"];
-type CuentaRequest = components["schemas"]["PeticionCrearCuenta"];
-
-function toCuenta(dto: CuentaDto): Cuenta {
-  return {
-    id: dto.id,
-    title: dto.title,
-    price: dto.price,
-    name: dto.name,
-    sku: dto.sku,
-    note: dto.note ?? null,
-    middleName: dto.middleName ?? null,
-    tags: dto.tags,
-    status: parseStatus(dto.status),
-    email: dto.email,
-  };
-}
-
-function toRequest(draft: CuentaDraft): CuentaRequest {
-  return {
-    title: draft.title,
-    price: draft.price,
-    name: draft.name,
-    sku: draft.sku,
-    note: draft.note ?? undefined,
-    middleName: draft.middleName ?? undefined,
-    tags: draft.tags,
-    status: draft.status,
-    email: draft.email,
-  };
-}
-
-/** `CuentaRepository` over the REST API (`/cuentas`). */
-export function cuentaRepositoryHttp(api: ApiClient): CuentaRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/cuentas", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new CuentaError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toCuenta),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/cuentas/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new CuentaError(apiErrorCode(error, response));
-      return toCuenta(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/cuentas", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new CuentaError(apiErrorCode(error, response));
-      return toCuenta(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/cuentas/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new CuentaError(apiErrorCode(error, response));
-      return toCuenta(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/cuentas/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new CuentaError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/infrastructure/http/client.ts ===
+=== web/src/api/client.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 
 /** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
 export type ApiClient = Client<paths>;
+
+/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
+export type Schemas = components["schemas"];
 
 /** `/api` is the backend: proxied to `:8080` by Vite in development. */
 export function createApiClient(options: ClientOptions = {}): ApiClient {
   return createClient<paths>({ baseUrl: "/api", ...options });
 }
 
-/**
- * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
- * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
- */
-export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "codigo" in error) {
-    const { codigo } = error;
-    if (typeof codigo === "string") return codigo;
-  }
-  return `http.${response.status}`;
-}
-
-=== web/src/presentation/core/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-//
-// The composition root: the only module that imports `infrastructure/`. Screens reach the
-// adapters through `useDependencies()`, so a test hands them a fake instead.
-
-import type { CuentaRepository } from "../../../domain/cuenta/repository";
-import { cuentaRepositoryHttp } from "../../../infrastructure/cuenta/cuenta-repository-http";
-import { createApiClient } from "../../../infrastructure/http/client";
-
-export interface Dependencies {
-  cuentaRepository: CuentaRepository;
-}
-
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
-  return {
-    cuentaRepository: cuentaRepositoryHttp(api),
-  };
-}
-
-=== web/src/presentation/core/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-
-import { Route, Switch } from "wouter";
-import { CuentaDetailContainer } from "../../features/cuenta/containers/cuenta-detail-container";
-import { CuentaFormContainer } from "../../features/cuenta/containers/cuenta-form-container";
-import { CuentaListContainer } from "../../features/cuenta/containers/cuenta-list-container";
-import { HomePage } from "../../pages/home";
-import { NotFoundPage } from "../../pages/not-found";
-import type { NavEntry } from "../../shared/ui/layout";
-import { customRoutes } from "../routes";
-
-export const navEntries: NavEntry[] = [{ label: "Cuentas", href: "/cuentas" }];
-
-export function AppRoutes() {
-  return (
-    <Switch>
-      <Route path="/">
-        <HomePage entries={navEntries} />
-      </Route>
-      {customRoutes}
-      <Route path="/cuentas">
-        <CuentaListContainer />
-      </Route>
-      <Route path="/cuentas/new">
-        <CuentaFormContainer />
-      </Route>
-      <Route path="/cuentas/:id/edit">{(params) => <CuentaFormContainer id={params.id} />}</Route>
-      <Route path="/cuentas/:id">{(params) => <CuentaDetailContainer id={params.id} />}</Route>
-      <Route>
-        <NotFoundPage />
-      </Route>
-    </Switch>
-  );
-}
-
-=== web/src/presentation/features/cuenta/containers/cuenta-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
+=== web/src/features/cuenta/containers/cuenta-detail-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { CuentaMother, fakeCuentaRepository } from "../../../../test-support/cuenta";
-import { renderScreen } from "../../../../test-support/render";
+import { CuentaMother, cuentaCollection } from "../../../test-support/cuenta";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { CuentaDetailContainer } from "./cuenta-detail-container";
 
 describe("CuentaDetailContainer", () => {
   test("should show the cuenta when it exists", async () => {
     // Arrange
     const seeded = CuentaMother.random();
-    const cuentaRepository = fakeCuentaRepository([seeded]);
+    const api = fakeApi([cuentaCollection([seeded])]);
 
     // Act
-    renderScreen(<CuentaDetailContainer id={seeded.id} />, { cuentaRepository });
+    renderScreen(<CuentaDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -3917,12 +3587,10 @@ describe("CuentaDetailContainer", () => {
 
   test("should show the not-found code when the cuenta does not exist", async () => {
     // Arrange
-    const cuentaRepository = fakeCuentaRepository();
+    const api = fakeApi([cuentaCollection()]);
 
     // Act
-    renderScreen(<CuentaDetailContainer id={crypto.randomUUID()} />, {
-      cuentaRepository,
-    });
+    renderScreen(<CuentaDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("cuenta.no_encontrado");
@@ -3931,35 +3599,37 @@ describe("CuentaDetailContainer", () => {
   test("should delete the cuenta only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = CuentaMother.random();
-    const fake = fakeCuentaRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<CuentaDetailContainer id={seeded.id} />, {
-      cuentaRepository: { ...fake, remove },
-    });
+    const stored = cuentaCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<CuentaDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/cuentas"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 });
 
-=== web/src/presentation/features/cuenta/containers/cuenta-detail-container.tsx ===
+=== web/src/features/cuenta/containers/cuenta-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { CuentaDetailView } from "../views/cuenta-detail-view";
 
 export function CuentaDetailContainer({ id }: { id: string }) {
-  const { cuentaRepository } = useDependencies();
-  const cuenta = useAsync(() => cuentaRepository.get(id), [cuentaRepository, id]);
+  const { api } = useDependencies();
+  const cuenta = useAsync(
+    () => unwrap(api.GET("/cuentas/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -3967,7 +3637,7 @@ export function CuentaDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await cuentaRepository.remove(id);
+      await unwrap(api.DELETE("/cuentas/{id}", { params: { path: { id } } }));
       navigate("/cuentas");
     } catch (error) {
       setFailure(error);
@@ -4008,79 +3678,75 @@ export function CuentaDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/cuenta/containers/cuenta-form-container.test.tsx ===
+=== web/src/features/cuenta/containers/cuenta-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { CuentaError } from "../../../../domain/cuenta/errors";
-import type { CuentaDraft } from "../../../../domain/cuenta/model";
-import { CuentaMother, fakeCuentaRepository } from "../../../../test-support/cuenta";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
 import { textOf } from "../../../shared/forms";
+import { CuentaMother, cuentaCollection } from "../../../test-support/cuenta";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { CuentaFormContainer } from "./cuenta-form-container";
 
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: CuentaDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearCuenta"]) {
   await screen.findByText("Save");
-  type("Title", draft.title);
-  type("Price", String(draft.price));
-  type("Name", draft.name);
-  type("Sku", draft.sku);
-  type("Note", textOf(draft.note));
-  type("Middle name", textOf(draft.middleName));
-  type("Tags", draft.tags.join(", "));
-  type("Status", draft.status);
-  type("Email", draft.email);
+  type("Title", request.title);
+  type("Price", String(request.price));
+  type("Name", request.name);
+  type("Sku", request.sku);
+  type("Note", textOf(request.note));
+  type("Middle name", textOf(request.middleName));
+  type("Tags", request.tags.join(", "));
+  type("Status", request.status);
+  type("Email", request.email);
 }
 
 describe("CuentaFormContainer", () => {
   test("should create the cuenta from what was typed and show it", async () => {
     // Arrange
-    const draft = CuentaMother.draft();
-    const cuentaRepository = fakeCuentaRepository();
-    const { history } = renderScreen(<CuentaFormContainer />, { cuentaRepository });
-    await fillIn(draft);
+    const request = CuentaMother.request();
+    const stored = cuentaCollection();
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<CuentaFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/cuentas/"));
-    const {
-      items: [created],
-    } = await cuentaRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/cuentas/${created?.id}`);
   });
 
   test("should save the edited cuenta when an existing one is submitted", async () => {
     // Arrange
     const seeded = CuentaMother.random();
-    const cuentaRepository = fakeCuentaRepository([seeded]);
-    const { history } = renderScreen(<CuentaFormContainer id={seeded.id} />, {
-      cuentaRepository,
-    });
+    const stored = cuentaCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<CuentaFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/cuentas/${seeded.id}`));
-    expect(await cuentaRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = CuentaMother.request();
     const code = "cuenta.validacion.invalid";
-    const cuentaRepository = {
-      ...fakeCuentaRepository(),
-      create: () => Promise.reject(new CuentaError(code)),
-    };
-    renderScreen(<CuentaFormContainer />, { cuentaRepository });
-    await fillIn(CuentaMother.draft());
+    const failures = { "POST /cuentas": code };
+    const api = fakeApi([cuentaCollection()], failures);
+    renderScreen(<CuentaFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -4091,12 +3757,11 @@ describe("CuentaFormContainer", () => {
 
   test("should say a cuenta with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const cuentaRepository = {
-      ...fakeCuentaRepository(),
-      create: () => Promise.reject(new CuentaError("cuenta.duplicado")),
-    };
-    renderScreen(<CuentaFormContainer />, { cuentaRepository });
-    await fillIn(CuentaMother.draft());
+    const request = CuentaMother.request();
+    const failures = { "POST /cuentas": "cuenta.duplicado" };
+    const api = fakeApi([cuentaCollection()], failures);
+    renderScreen(<CuentaFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -4109,12 +3774,11 @@ describe("CuentaFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const cuentaRepository = {
-      ...fakeCuentaRepository(),
-      create: () => Promise.reject(new CuentaError("cuenta.validacion.title_vacio")),
-    };
-    renderScreen(<CuentaFormContainer />, { cuentaRepository });
-    await fillIn(CuentaMother.draft());
+    const request = CuentaMother.request();
+    const failures = { "POST /cuentas": "cuenta.validacion.title_vacio" };
+    const api = fakeApi([cuentaCollection()], failures);
+    renderScreen(<CuentaFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -4127,22 +3791,28 @@ describe("CuentaFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/cuenta/containers/cuenta-form-container.tsx ===
+=== web/src/features/cuenta/containers/cuenta-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/cuenta/messages";
-import type { Cuenta } from "../../../../domain/cuenta/model";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { CuentaFormView, toCuentaDraft, toCuentaForm } from "../views/cuenta-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { CuentaFormView, toCuentaForm, toCuentaRequest } from "../views/cuenta-form-view";
+
+type Cuenta = Schemas["DtoCuenta"];
 
 /** Creates a cuenta, or edits the one with `id`. */
 export function CuentaFormContainer({ id }: { id?: string }) {
-  const { cuentaRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : cuentaRepository.get(id)),
-    [cuentaRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/cuentas/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New cuenta" : "Edit cuenta";
 
@@ -4160,7 +3830,7 @@ export function CuentaFormContainer({ id }: { id?: string }) {
 }
 
 function CuentaForm({ existing }: { existing: Cuenta | null }) {
-  const { cuentaRepository } = useDependencies();
+  const { api } = useDependencies();
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toCuentaForm(existing));
   const [saving, setSaving] = useState(false);
@@ -4171,11 +3841,12 @@ function CuentaForm({ existing }: { existing: Cuenta | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toCuentaDraft(values);
-      const saved =
+      const body = toCuentaRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await cuentaRepository.create(draft)
-          : await cuentaRepository.update(existing.id, draft);
+          ? api.POST("/cuentas", { body })
+          : api.PUT("/cuentas/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/cuentas/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -4199,22 +3870,22 @@ function CuentaForm({ existing }: { existing: Cuenta | null }) {
   );
 }
 
-=== web/src/presentation/features/cuenta/containers/cuenta-list-container.test.tsx ===
+=== web/src/features/cuenta/containers/cuenta-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { CuentaError } from "../../../../domain/cuenta/errors";
-import { CuentaMother, fakeCuentaRepository } from "../../../../test-support/cuenta";
-import { renderScreen } from "../../../../test-support/render";
+import { CuentaMother, cuentaCollection } from "../../../test-support/cuenta";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { CuentaListContainer } from "./cuenta-list-container";
 
 describe("CuentaListContainer", () => {
   test("should show a row per cuenta when there are some", async () => {
     // Arrange
     const seed = [CuentaMother.random(), CuentaMother.random()];
-    const cuentaRepository = fakeCuentaRepository(seed);
+    const api = fakeApi([cuentaCollection(seed)]);
 
     // Act
-    renderScreen(<CuentaListContainer />, { cuentaRepository });
+    renderScreen(<CuentaListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -4223,8 +3894,8 @@ describe("CuentaListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => CuentaMother.random());
-    const cuentaRepository = fakeCuentaRepository(seed);
-    renderScreen(<CuentaListContainer />, { cuentaRepository });
+    const api = fakeApi([cuentaCollection(seed)]);
+    renderScreen(<CuentaListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -4238,11 +3909,11 @@ describe("CuentaListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => CuentaMother.random());
-    const cuentaRepository = fakeCuentaRepository(seed);
+    const api = fakeApi([cuentaCollection(seed)]);
     const path = "/cuentas?page=2";
 
     // Act
-    renderScreen(<CuentaListContainer />, { cuentaRepository }, path);
+    renderScreen(<CuentaListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -4250,10 +3921,10 @@ describe("CuentaListContainer", () => {
 
   test("should say so when there is no cuenta", async () => {
     // Arrange
-    const cuentaRepository = fakeCuentaRepository();
+    const api = fakeApi([cuentaCollection()]);
 
     // Act
-    renderScreen(<CuentaListContainer />, { cuentaRepository });
+    renderScreen(<CuentaListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No cuentas yet.")).toBeTruthy();
@@ -4261,39 +3932,35 @@ describe("CuentaListContainer", () => {
 
   test("should show the error code when the cuentas cannot be listed", async () => {
     // Arrange
-    const cuentaRepository = {
-      ...fakeCuentaRepository(),
-      list: () => Promise.reject(new CuentaError("cuenta.repositorio")),
-    };
+    const failures = { "GET /cuentas": "cuenta.repositorio" };
+    const api = fakeApi([cuentaCollection()], failures);
 
     // Act
-    renderScreen(<CuentaListContainer />, { cuentaRepository });
+    renderScreen(<CuentaListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("cuenta.repositorio");
   });
 });
 
-=== web/src/presentation/features/cuenta/containers/cuenta-list-container.tsx ===
+=== web/src/features/cuenta/containers/cuenta-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { CuentaListView } from "../views/cuenta-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function CuentaListContainer() {
-  const { cuentaRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const cuentas = useAsync(
-    () => cuentaRepository.list({ limit: PAGE_SIZE, offset }),
-    [cuentaRepository, offset],
-  );
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
+  const cuentas = useAsync(() => unwrap(api.GET("/cuentas", { params: { query } })), [api, offset]);
 
   return (
     <section className="space-y-4">
@@ -4310,16 +3977,63 @@ export function CuentaListContainer() {
           <EmptyState message="No cuentas yet." />
         ) : (
           <>
-            <CuentaListView cuentas={cuentas.data.items} />
-            <Pagination {...cuentas.data} onOffsetChange={goTo} />
+            <CuentaListView cuentas={cuentas.data.elementos} />
+            <Pagination
+              total={cuentas.data.total}
+              limit={cuentas.data.limite}
+              offset={cuentas.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/cuenta/views/cuenta-detail-view.tsx ===
-import type { Cuenta } from "../../../../domain/cuenta/model";
+=== web/src/features/cuenta/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface CuentaProblem {
+  field: string | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "cuenta.validacion.title_vacio": "Title is required",
+  "cuenta.name_invalido": "Name is not valid",
+  "cuenta.sku_invalido": "Sku is not valid",
+  "cuenta.middle_name_invalido": "Middle name is not valid",
+  "cuenta.tag_invalido": "Tags are not valid",
+  "cuenta.status_invalido": "Status is not valid",
+  "cuenta.email_invalido": "Email is not valid",
+  "cuenta.duplicado": "A cuenta with these values already exists",
+  "cuenta.no_encontrado": "This cuenta no longer exists",
+  "cuenta.repositorio": "The cuenta could not be saved, try again later",
+  "cuenta.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "cuenta.validacion.title_vacio": "title",
+  "cuenta.name_invalido": "name",
+  "cuenta.sku_invalido": "sku",
+  "cuenta.middle_name_invalido": "middleName",
+  "cuenta.tag_invalido": "tags",
+  "cuenta.status_invalido": "status",
+  "cuenta.email_invalido": "email",
+};
+
+export function toProblem(code: string): CuentaProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/cuenta/views/cuenta-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+
+type Cuenta = Schemas["DtoCuenta"];
 
 export function CuentaDetailView({ cuenta }: { cuenta: Cuenta }) {
   return (
@@ -4346,11 +4060,14 @@ export function CuentaDetailView({ cuenta }: { cuenta: Cuenta }) {
   );
 }
 
-=== web/src/presentation/features/cuenta/views/cuenta-form-view.tsx ===
-import type { CuentaProblem } from "../../../../domain/cuenta/messages";
-import { type Cuenta, type CuentaDraft, parseStatus } from "../../../../domain/cuenta/model";
-import { splitList, textOf, textOrNull } from "../../../shared/forms";
+=== web/src/features/cuenta/views/cuenta-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
+import { optionalText, splitList, textOf } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { CuentaProblem } from "../messages";
+
+type Cuenta = Schemas["DtoCuenta"];
+type CuentaRequest = Schemas["PeticionCrearCuenta"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface CuentaFormValues {
@@ -4393,16 +4110,17 @@ export function toCuentaForm(cuenta: Cuenta | null): CuentaFormValues {
   };
 }
 
-export function toCuentaDraft(values: CuentaFormValues): CuentaDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toCuentaRequest(values: CuentaFormValues): CuentaRequest {
   return {
     title: values.title,
     price: Number(values.price),
     name: values.name,
     sku: values.sku,
-    note: textOrNull(values.note),
-    middleName: textOrNull(values.middleName),
+    note: optionalText(values.note),
+    middleName: optionalText(values.middleName),
     tags: splitList(values.tags),
-    status: parseStatus(values.status),
+    status: values.status,
     email: values.email,
   };
 }
@@ -4544,9 +4262,11 @@ export function CuentaFormView({
   );
 }
 
-=== web/src/presentation/features/cuenta/views/cuenta-list-view.tsx ===
+=== web/src/features/cuenta/views/cuenta-list-view.tsx ===
 import { Link } from "wouter";
-import type { Cuenta } from "../../../../domain/cuenta/model";
+import type { Schemas } from "../../../api/client";
+
+type Cuenta = Schemas["DtoCuenta"];
 
 export function CuentaListView({ cuentas }: { cuentas: Cuenta[] }) {
   return (
@@ -4591,14 +4311,69 @@ export function CuentaListView({ cuentas }: { cuentas: Cuenta[] }) {
   );
 }
 
+=== web/src/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+//
+// The composition root: the only module that builds the API client. Screens reach it through
+// `useDependencies()`, so a test hands them a fake instead.
+
+import { type ApiClient, createApiClient } from "../api/client";
+
+export interface Dependencies {
+  api: ApiClient;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return { api };
+}
+
+=== web/src/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { CuentaDetailContainer } from "../features/cuenta/containers/cuenta-detail-container";
+import { CuentaFormContainer } from "../features/cuenta/containers/cuenta-form-container";
+import { CuentaListContainer } from "../features/cuenta/containers/cuenta-list-container";
+import { HomePage } from "../pages/home";
+import { NotFoundPage } from "../pages/not-found";
+import { customRoutes } from "../routes";
+import type { NavEntry } from "../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Cuentas", href: "/cuentas" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      {customRoutes}
+      <Route path="/cuentas">
+        <CuentaListContainer />
+      </Route>
+      <Route path="/cuentas/new">
+        <CuentaFormContainer />
+      </Route>
+      <Route path="/cuentas/:id/edit">{(params) => <CuentaFormContainer id={params.id} />}</Route>
+      <Route path="/cuentas/:id">{(params) => <CuentaDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
 === web/src/test-support/cuenta.ts ===
-import { CuentaError } from "../domain/cuenta/errors";
-import type { Cuenta, CuentaDraft } from "../domain/cuenta/model";
-import type { CuentaRepository } from "../domain/cuenta/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Cuenta = Schemas["DtoCuenta"];
+type CuentaRequest = Schemas["PeticionCrearCuenta"];
 
 /** Valid cuentas for tests; pass `overrides` for the fields a test is about. */
 export const CuentaMother = {
-  draft(overrides: Partial<CuentaDraft> = {}): CuentaDraft {
+  request(overrides: Partial<CuentaRequest> = {}): CuentaRequest {
     return {
       title: "example",
       price: 42,
@@ -4614,37 +4389,90 @@ export const CuentaMother = {
   },
 
   random(overrides: Partial<Cuenta> = {}): Cuenta {
-    return { id: crypto.randomUUID(), ...CuentaMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...CuentaMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `CuentaRepository`. Override a method to make it fail. */
-export function fakeCuentaRepository(seed: Cuenta[] = []): CuentaRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new CuentaError("cuenta.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+/** The fake API's `/cuentas`, holding `seed`. */
+export function cuentaCollection(seed: Cuenta[] = []) {
+  return collection("/cuentas", "cuenta", seed);
+}
+
+=== web/src/test-support/fake-api.ts ===
+import { type ApiClient, createApiClient } from "../api/client";
+
+/** What the fake API holds under `path`: the API's DTOs, by id. */
+export interface Collection<T extends { id: string }> {
+  path: string;
+  /** The code a missing item answers: `producto.no_encontrado`. */
+  notFound: string;
+  items: Map<string, T>;
+}
+
+/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
+export function collection<T extends { id: string }>(
+  path: string,
+  entity: string,
+  seed: T[] = [],
+): Collection<T> {
+  const items = new Map(seed.map((item) => [item.id, item]));
+  return { path, notFound: `${entity}.no_encontrado`, items };
+}
+
+/**
+ * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
+ * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
+ * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ */
+export function fakeApi(
+  collections: Collection<{ id: string }>[],
+  failures: Record<string, string> = {},
+): ApiClient {
+  return createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/api/, "");
+      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
+      if (target === undefined) return answer(404, "http.404");
+      const failure = failures[`${request.method} ${target.path}`];
+      if (failure !== undefined) return answer(400, failure);
+      const id = path.slice(target.path.length + 1);
+      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
     },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+  });
+}
+
+async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
+  if (request.method === "POST") {
+    const created = { ...(await request.json()), id: crypto.randomUUID() };
+    target.items.set(created.id, created);
+    return Response.json(created, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const all = [...target.items.values()];
+  const elementos = all.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+}
+
+async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
+  const found = target.items.get(id);
+  if (found === undefined) return answer(404, target.notFound);
+  if (request.method === "DELETE") {
+    target.items.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method === "PUT") {
+    // Like the API, an update replaces every field: one left out is cleared.
+    const updated = { ...(await request.json()), id };
+    target.items.set(id, updated);
+    return Response.json(updated);
+  }
+  return Response.json(found);
+}
+
+/** A `RespuestaError` the way the API answers one. */
+function answer(status: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status });
 }

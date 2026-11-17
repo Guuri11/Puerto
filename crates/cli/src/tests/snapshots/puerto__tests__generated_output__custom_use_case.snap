@@ -138,10 +138,10 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/presentation/core/generated/*`, `web/src/infrastructure/http/schema.d.ts` y
-`docs/api/openapi.json` también se reescriben (`generar bootstrap`, `make web/sync`); las pantallas
-de una entidad son ficheros suyos como los demás; `web/src/presentation/core/routes.tsx` (tus
-propias pantallas) es tuyo. El detalle, en `web/AGENTS.md`.
+Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
+como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+`web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
 
@@ -184,10 +184,10 @@ comando.
 
 ## Frontend (`web/`)
 
-Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Sigue la misma regla de
-dependencias que los crates (`domain` ← `application` ← `infrastructure` ← `presentation`), que
-comprueba `make web/lint`. Sus reglas (capas, ficheros generados, dónde van los casos de uso)
-están en `web/AGENTS.md`.
+Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Es solo presentación: los
+contenedores llaman a la API con su cliente tipado y las vistas pintan lo que reciben; las reglas
+viven en el backend. `make web/lint` comprueba que una vista no llama a la API. Sus reglas
+(carpetas, ficheros generados, tests) están en `web/AGENTS.md`.
 
 La spec OpenAPI es el contrato entre las dos mitades: `docs/api/openapi.json`, exportada por un test
 de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ruta o un DTO, ejecuta
@@ -2775,323 +2775,37 @@ tipo = "String"
 nombre = "price"
 tipo = "i64"
 
-=== web/src/domain/producto/errors.ts ===
-/**
- * A request about a producto that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `producto.no_encontrado`, `producto.validacion.<field>_vacio`.
- */
-export class ProductoError extends Error {
-  readonly code: string;
-
-  constructor(code: string) {
-    super(code);
-    this.name = "ProductoError";
-    this.code = code;
-  }
-}
-
-=== web/src/domain/producto/messages.ts ===
-import type { ProductoDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ProductoProblem {
-  field: keyof ProductoDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "producto.validacion.title_vacio": "Title is required",
-  "producto.duplicado": "A producto with these values already exists",
-  "producto.no_encontrado": "This producto no longer exists",
-  "producto.repositorio": "The producto could not be saved, try again later",
-  "producto.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof ProductoDraft> = {
-  "producto.validacion.title_vacio": "title",
-};
-
-export function toProblem(code: string): ProductoProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/producto/model.ts ===
-export interface Producto {
-  id: string;
-  title: string;
-  price: number;
-}
-
-/** What a create or an update sends: a producto without its id. */
-export type ProductoDraft = Omit<Producto, "id">;
-
-=== web/src/domain/producto/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Producto, ProductoDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `ProductoError` the API answered. */
-export interface ProductoRepository {
-  list(page: PageRequest): Promise<Page<Producto>>;
-  get(id: string): Promise<Producto>;
-  create(draft: ProductoDraft): Promise<Producto>;
-  update(id: string, draft: ProductoDraft): Promise<Producto>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/infrastructure/http/client.ts ===
+=== web/src/api/client.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 
 /** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
 export type ApiClient = Client<paths>;
+
+/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
+export type Schemas = components["schemas"];
 
 /** `/api` is the backend: proxied to `:8080` by Vite in development. */
 export function createApiClient(options: ClientOptions = {}): ApiClient {
   return createClient<paths>({ baseUrl: "/api", ...options });
 }
 
-/**
- * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
- * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
- */
-export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "codigo" in error) {
-    const { codigo } = error;
-    if (typeof codigo === "string") return codigo;
-  }
-  return `http.${response.status}`;
-}
-
-=== web/src/infrastructure/producto/producto-repository-http.test.ts ===
+=== web/src/features/producto/containers/producto-detail-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
-import { ProductoError } from "../../domain/producto/errors";
-import { ProductoMother } from "../../test-support/producto";
-import { createApiClient } from "../http/client";
-import { productoRepositoryHttp } from "./producto-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: productoRepositoryHttp(api), requests };
-}
-
-describe("productoRepositoryHttp", () => {
-  test("should ask for the page and return its productos", async () => {
-    // Arrange
-    const producto = ProductoMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [producto],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/productos");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [producto], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating a producto", async () => {
-    // Arrange
-    const draft = ProductoMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the producto does not exist", async () => {
-    // Arrange
-    const code = "producto.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(ProductoError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the producto", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/productos/42");
-  });
-});
-
-=== web/src/infrastructure/producto/producto-repository-http.ts ===
-import { ProductoError } from "../../domain/producto/errors";
-import type { Producto, ProductoDraft } from "../../domain/producto/model";
-import type { ProductoRepository } from "../../domain/producto/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type ProductoDto = components["schemas"]["DtoProducto"];
-type ProductoRequest = components["schemas"]["PeticionCrearProducto"];
-
-function toProducto(dto: ProductoDto): Producto {
-  return {
-    id: dto.id,
-    title: dto.title,
-    price: dto.price,
-  };
-}
-
-function toRequest(draft: ProductoDraft): ProductoRequest {
-  return {
-    title: draft.title,
-    price: draft.price,
-  };
-}
-
-/** `ProductoRepository` over the REST API (`/productos`). */
-export function productoRepositoryHttp(api: ApiClient): ProductoRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/productos", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new ProductoError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toProducto),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/productos/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new ProductoError(apiErrorCode(error, response));
-      return toProducto(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/productos", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new ProductoError(apiErrorCode(error, response));
-      return toProducto(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/productos/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new ProductoError(apiErrorCode(error, response));
-      return toProducto(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/productos/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new ProductoError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/presentation/core/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-//
-// The composition root: the only module that imports `infrastructure/`. Screens reach the
-// adapters through `useDependencies()`, so a test hands them a fake instead.
-
-import type { ProductoRepository } from "../../../domain/producto/repository";
-import { createApiClient } from "../../../infrastructure/http/client";
-import { productoRepositoryHttp } from "../../../infrastructure/producto/producto-repository-http";
-
-export interface Dependencies {
-  productoRepository: ProductoRepository;
-}
-
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
-  return {
-    productoRepository: productoRepositoryHttp(api),
-  };
-}
-
-=== web/src/presentation/core/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-
-import { Route, Switch } from "wouter";
-import { ProductoDetailContainer } from "../../features/producto/containers/producto-detail-container";
-import { ProductoFormContainer } from "../../features/producto/containers/producto-form-container";
-import { ProductoListContainer } from "../../features/producto/containers/producto-list-container";
-import { HomePage } from "../../pages/home";
-import { NotFoundPage } from "../../pages/not-found";
-import type { NavEntry } from "../../shared/ui/layout";
-import { customRoutes } from "../routes";
-
-export const navEntries: NavEntry[] = [{ label: "Productos", href: "/productos" }];
-
-export function AppRoutes() {
-  return (
-    <Switch>
-      <Route path="/">
-        <HomePage entries={navEntries} />
-      </Route>
-      {customRoutes}
-      <Route path="/productos">
-        <ProductoListContainer />
-      </Route>
-      <Route path="/productos/new">
-        <ProductoFormContainer />
-      </Route>
-      <Route path="/productos/:id/edit">
-        {(params) => <ProductoFormContainer id={params.id} />}
-      </Route>
-      <Route path="/productos/:id">{(params) => <ProductoDetailContainer id={params.id} />}</Route>
-      <Route>
-        <NotFoundPage />
-      </Route>
-    </Switch>
-  );
-}
-
-=== web/src/presentation/features/producto/containers/producto-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { fakeProductoRepository, ProductoMother } from "../../../../test-support/producto";
-import { renderScreen } from "../../../../test-support/render";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProductoMother, productoCollection } from "../../../test-support/producto";
+import { renderScreen } from "../../../test-support/render";
 import { ProductoDetailContainer } from "./producto-detail-container";
 
 describe("ProductoDetailContainer", () => {
   test("should show the producto when it exists", async () => {
     // Arrange
     const seeded = ProductoMother.random();
-    const productoRepository = fakeProductoRepository([seeded]);
+    const api = fakeApi([productoCollection([seeded])]);
 
     // Act
-    renderScreen(<ProductoDetailContainer id={seeded.id} />, { productoRepository });
+    renderScreen(<ProductoDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -3099,12 +2813,10 @@ describe("ProductoDetailContainer", () => {
 
   test("should show the not-found code when the producto does not exist", async () => {
     // Arrange
-    const productoRepository = fakeProductoRepository();
+    const api = fakeApi([productoCollection()]);
 
     // Act
-    renderScreen(<ProductoDetailContainer id={crypto.randomUUID()} />, {
-      productoRepository,
-    });
+    renderScreen(<ProductoDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("producto.no_encontrado");
@@ -3113,35 +2825,37 @@ describe("ProductoDetailContainer", () => {
   test("should delete the producto only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = ProductoMother.random();
-    const fake = fakeProductoRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<ProductoDetailContainer id={seeded.id} />, {
-      productoRepository: { ...fake, remove },
-    });
+    const stored = productoCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ProductoDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/productos"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 });
 
-=== web/src/presentation/features/producto/containers/producto-detail-container.tsx ===
+=== web/src/features/producto/containers/producto-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { ProductoDetailView } from "../views/producto-detail-view";
 
 export function ProductoDetailContainer({ id }: { id: string }) {
-  const { productoRepository } = useDependencies();
-  const producto = useAsync(() => productoRepository.get(id), [productoRepository, id]);
+  const { api } = useDependencies();
+  const producto = useAsync(
+    () => unwrap(api.GET("/productos/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -3149,7 +2863,7 @@ export function ProductoDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await productoRepository.remove(id);
+      await unwrap(api.DELETE("/productos/{id}", { params: { path: { id } } }));
       navigate("/productos");
     } catch (error) {
       setFailure(error);
@@ -3190,71 +2904,67 @@ export function ProductoDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/producto/containers/producto-form-container.test.tsx ===
+=== web/src/features/producto/containers/producto-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ProductoError } from "../../../../domain/producto/errors";
-import type { ProductoDraft } from "../../../../domain/producto/model";
-import { fakeProductoRepository, ProductoMother } from "../../../../test-support/producto";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProductoMother, productoCollection } from "../../../test-support/producto";
+import { renderScreen } from "../../../test-support/render";
 import { ProductoFormContainer } from "./producto-form-container";
 
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: ProductoDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearProducto"]) {
   await screen.findByText("Save");
-  type("Title", draft.title);
-  type("Price", String(draft.price));
+  type("Title", request.title);
+  type("Price", String(request.price));
 }
 
 describe("ProductoFormContainer", () => {
   test("should create the producto from what was typed and show it", async () => {
     // Arrange
-    const draft = ProductoMother.draft();
-    const productoRepository = fakeProductoRepository();
-    const { history } = renderScreen(<ProductoFormContainer />, { productoRepository });
-    await fillIn(draft);
+    const request = ProductoMother.request();
+    const stored = productoCollection();
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ProductoFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/productos/"));
-    const {
-      items: [created],
-    } = await productoRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/productos/${created?.id}`);
   });
 
   test("should save the edited producto when an existing one is submitted", async () => {
     // Arrange
     const seeded = ProductoMother.random();
-    const productoRepository = fakeProductoRepository([seeded]);
-    const { history } = renderScreen(<ProductoFormContainer id={seeded.id} />, {
-      productoRepository,
-    });
+    const stored = productoCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ProductoFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/productos/${seeded.id}`));
-    expect(await productoRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = ProductoMother.request();
     const code = "producto.validacion.invalid";
-    const productoRepository = {
-      ...fakeProductoRepository(),
-      create: () => Promise.reject(new ProductoError(code)),
-    };
-    renderScreen(<ProductoFormContainer />, { productoRepository });
-    await fillIn(ProductoMother.draft());
+    const failures = { "POST /productos": code };
+    const api = fakeApi([productoCollection()], failures);
+    renderScreen(<ProductoFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3265,12 +2975,11 @@ describe("ProductoFormContainer", () => {
 
   test("should say a producto with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const productoRepository = {
-      ...fakeProductoRepository(),
-      create: () => Promise.reject(new ProductoError("producto.duplicado")),
-    };
-    renderScreen(<ProductoFormContainer />, { productoRepository });
-    await fillIn(ProductoMother.draft());
+    const request = ProductoMother.request();
+    const failures = { "POST /productos": "producto.duplicado" };
+    const api = fakeApi([productoCollection()], failures);
+    renderScreen(<ProductoFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3283,12 +2992,11 @@ describe("ProductoFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const productoRepository = {
-      ...fakeProductoRepository(),
-      create: () => Promise.reject(new ProductoError("producto.validacion.title_vacio")),
-    };
-    renderScreen(<ProductoFormContainer />, { productoRepository });
-    await fillIn(ProductoMother.draft());
+    const request = ProductoMother.request();
+    const failures = { "POST /productos": "producto.validacion.title_vacio" };
+    const api = fakeApi([productoCollection()], failures);
+    renderScreen(<ProductoFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3301,22 +3009,28 @@ describe("ProductoFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/producto/containers/producto-form-container.tsx ===
+=== web/src/features/producto/containers/producto-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/producto/messages";
-import type { Producto } from "../../../../domain/producto/model";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { ProductoFormView, toProductoDraft, toProductoForm } from "../views/producto-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { ProductoFormView, toProductoForm, toProductoRequest } from "../views/producto-form-view";
+
+type Producto = Schemas["DtoProducto"];
 
 /** Creates a producto, or edits the one with `id`. */
 export function ProductoFormContainer({ id }: { id?: string }) {
-  const { productoRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : productoRepository.get(id)),
-    [productoRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/productos/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New producto" : "Edit producto";
 
@@ -3334,7 +3048,7 @@ export function ProductoFormContainer({ id }: { id?: string }) {
 }
 
 function ProductoForm({ existing }: { existing: Producto | null }) {
-  const { productoRepository } = useDependencies();
+  const { api } = useDependencies();
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toProductoForm(existing));
   const [saving, setSaving] = useState(false);
@@ -3345,11 +3059,12 @@ function ProductoForm({ existing }: { existing: Producto | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toProductoDraft(values);
-      const saved =
+      const body = toProductoRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await productoRepository.create(draft)
-          : await productoRepository.update(existing.id, draft);
+          ? api.POST("/productos", { body })
+          : api.PUT("/productos/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/productos/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -3373,22 +3088,22 @@ function ProductoForm({ existing }: { existing: Producto | null }) {
   );
 }
 
-=== web/src/presentation/features/producto/containers/producto-list-container.test.tsx ===
+=== web/src/features/producto/containers/producto-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { ProductoError } from "../../../../domain/producto/errors";
-import { fakeProductoRepository, ProductoMother } from "../../../../test-support/producto";
-import { renderScreen } from "../../../../test-support/render";
+import { fakeApi } from "../../../test-support/fake-api";
+import { ProductoMother, productoCollection } from "../../../test-support/producto";
+import { renderScreen } from "../../../test-support/render";
 import { ProductoListContainer } from "./producto-list-container";
 
 describe("ProductoListContainer", () => {
   test("should show a row per producto when there are some", async () => {
     // Arrange
     const seed = [ProductoMother.random(), ProductoMother.random()];
-    const productoRepository = fakeProductoRepository(seed);
+    const api = fakeApi([productoCollection(seed)]);
 
     // Act
-    renderScreen(<ProductoListContainer />, { productoRepository });
+    renderScreen(<ProductoListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -3397,8 +3112,8 @@ describe("ProductoListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => ProductoMother.random());
-    const productoRepository = fakeProductoRepository(seed);
-    renderScreen(<ProductoListContainer />, { productoRepository });
+    const api = fakeApi([productoCollection(seed)]);
+    renderScreen(<ProductoListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -3412,11 +3127,11 @@ describe("ProductoListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => ProductoMother.random());
-    const productoRepository = fakeProductoRepository(seed);
+    const api = fakeApi([productoCollection(seed)]);
     const path = "/productos?page=2";
 
     // Act
-    renderScreen(<ProductoListContainer />, { productoRepository }, path);
+    renderScreen(<ProductoListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -3424,10 +3139,10 @@ describe("ProductoListContainer", () => {
 
   test("should say so when there is no producto", async () => {
     // Arrange
-    const productoRepository = fakeProductoRepository();
+    const api = fakeApi([productoCollection()]);
 
     // Act
-    renderScreen(<ProductoListContainer />, { productoRepository });
+    renderScreen(<ProductoListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No productos yet.")).toBeTruthy();
@@ -3435,38 +3150,37 @@ describe("ProductoListContainer", () => {
 
   test("should show the error code when the productos cannot be listed", async () => {
     // Arrange
-    const productoRepository = {
-      ...fakeProductoRepository(),
-      list: () => Promise.reject(new ProductoError("producto.repositorio")),
-    };
+    const failures = { "GET /productos": "producto.repositorio" };
+    const api = fakeApi([productoCollection()], failures);
 
     // Act
-    renderScreen(<ProductoListContainer />, { productoRepository });
+    renderScreen(<ProductoListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("producto.repositorio");
   });
 });
 
-=== web/src/presentation/features/producto/containers/producto-list-container.tsx ===
+=== web/src/features/producto/containers/producto-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { ProductoListView } from "../views/producto-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function ProductoListContainer() {
-  const { productoRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
   const productos = useAsync(
-    () => productoRepository.list({ limit: PAGE_SIZE, offset }),
-    [productoRepository, offset],
+    () => unwrap(api.GET("/productos", { params: { query } })),
+    [api, offset],
   );
 
   return (
@@ -3484,16 +3198,51 @@ export function ProductoListContainer() {
           <EmptyState message="No productos yet." />
         ) : (
           <>
-            <ProductoListView productos={productos.data.items} />
-            <Pagination {...productos.data} onOffsetChange={goTo} />
+            <ProductoListView productos={productos.data.elementos} />
+            <Pagination
+              total={productos.data.total}
+              limit={productos.data.limite}
+              offset={productos.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/producto/views/producto-detail-view.tsx ===
-import type { Producto } from "../../../../domain/producto/model";
+=== web/src/features/producto/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ProductoProblem {
+  field: string | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "producto.validacion.title_vacio": "Title is required",
+  "producto.duplicado": "A producto with these values already exists",
+  "producto.no_encontrado": "This producto no longer exists",
+  "producto.repositorio": "The producto could not be saved, try again later",
+  "producto.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "producto.validacion.title_vacio": "title",
+};
+
+export function toProblem(code: string): ProductoProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/producto/views/producto-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+
+type Producto = Schemas["DtoProducto"];
 
 export function ProductoDetailView({ producto }: { producto: Producto }) {
   return (
@@ -3506,10 +3255,13 @@ export function ProductoDetailView({ producto }: { producto: Producto }) {
   );
 }
 
-=== web/src/presentation/features/producto/views/producto-form-view.tsx ===
-import type { ProductoProblem } from "../../../../domain/producto/messages";
-import type { Producto, ProductoDraft } from "../../../../domain/producto/model";
+=== web/src/features/producto/views/producto-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { ProductoProblem } from "../messages";
+
+type Producto = Schemas["DtoProducto"];
+type ProductoRequest = Schemas["PeticionCrearProducto"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface ProductoFormValues {
@@ -3531,7 +3283,8 @@ export function toProductoForm(producto: Producto | null): ProductoFormValues {
   };
 }
 
-export function toProductoDraft(values: ProductoFormValues): ProductoDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toProductoRequest(values: ProductoFormValues): ProductoRequest {
   return {
     title: values.title,
     price: Number(values.price),
@@ -3591,9 +3344,11 @@ export function ProductoFormView({
   );
 }
 
-=== web/src/presentation/features/producto/views/producto-list-view.tsx ===
+=== web/src/features/producto/views/producto-list-view.tsx ===
 import { Link } from "wouter";
-import type { Producto } from "../../../../domain/producto/model";
+import type { Schemas } from "../../../api/client";
+
+type Producto = Schemas["DtoProducto"];
 
 export function ProductoListView({ productos }: { productos: Producto[] }) {
   return (
@@ -3624,14 +3379,150 @@ export function ProductoListView({ productos }: { productos: Producto[] }) {
   );
 }
 
+=== web/src/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+//
+// The composition root: the only module that builds the API client. Screens reach it through
+// `useDependencies()`, so a test hands them a fake instead.
+
+import { type ApiClient, createApiClient } from "../api/client";
+
+export interface Dependencies {
+  api: ApiClient;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return { api };
+}
+
+=== web/src/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { ProductoDetailContainer } from "../features/producto/containers/producto-detail-container";
+import { ProductoFormContainer } from "../features/producto/containers/producto-form-container";
+import { ProductoListContainer } from "../features/producto/containers/producto-list-container";
+import { HomePage } from "../pages/home";
+import { NotFoundPage } from "../pages/not-found";
+import { customRoutes } from "../routes";
+import type { NavEntry } from "../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Productos", href: "/productos" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      {customRoutes}
+      <Route path="/productos">
+        <ProductoListContainer />
+      </Route>
+      <Route path="/productos/new">
+        <ProductoFormContainer />
+      </Route>
+      <Route path="/productos/:id/edit">
+        {(params) => <ProductoFormContainer id={params.id} />}
+      </Route>
+      <Route path="/productos/:id">{(params) => <ProductoDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/test-support/fake-api.ts ===
+import { type ApiClient, createApiClient } from "../api/client";
+
+/** What the fake API holds under `path`: the API's DTOs, by id. */
+export interface Collection<T extends { id: string }> {
+  path: string;
+  /** The code a missing item answers: `producto.no_encontrado`. */
+  notFound: string;
+  items: Map<string, T>;
+}
+
+/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
+export function collection<T extends { id: string }>(
+  path: string,
+  entity: string,
+  seed: T[] = [],
+): Collection<T> {
+  const items = new Map(seed.map((item) => [item.id, item]));
+  return { path, notFound: `${entity}.no_encontrado`, items };
+}
+
+/**
+ * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
+ * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
+ * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ */
+export function fakeApi(
+  collections: Collection<{ id: string }>[],
+  failures: Record<string, string> = {},
+): ApiClient {
+  return createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/api/, "");
+      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
+      if (target === undefined) return answer(404, "http.404");
+      const failure = failures[`${request.method} ${target.path}`];
+      if (failure !== undefined) return answer(400, failure);
+      const id = path.slice(target.path.length + 1);
+      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
+    },
+  });
+}
+
+async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
+  if (request.method === "POST") {
+    const created = { ...(await request.json()), id: crypto.randomUUID() };
+    target.items.set(created.id, created);
+    return Response.json(created, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const all = [...target.items.values()];
+  const elementos = all.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+}
+
+async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
+  const found = target.items.get(id);
+  if (found === undefined) return answer(404, target.notFound);
+  if (request.method === "DELETE") {
+    target.items.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method === "PUT") {
+    // Like the API, an update replaces every field: one left out is cleared.
+    const updated = { ...(await request.json()), id };
+    target.items.set(id, updated);
+    return Response.json(updated);
+  }
+  return Response.json(found);
+}
+
+/** A `RespuestaError` the way the API answers one. */
+function answer(status: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status });
+}
+
 === web/src/test-support/producto.ts ===
-import { ProductoError } from "../domain/producto/errors";
-import type { Producto, ProductoDraft } from "../domain/producto/model";
-import type { ProductoRepository } from "../domain/producto/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Producto = Schemas["DtoProducto"];
+type ProductoRequest = Schemas["PeticionCrearProducto"];
 
 /** Valid productos for tests; pass `overrides` for the fields a test is about. */
 export const ProductoMother = {
-  draft(overrides: Partial<ProductoDraft> = {}): ProductoDraft {
+  request(overrides: Partial<ProductoRequest> = {}): ProductoRequest {
     return {
       title: "example",
       price: 42,
@@ -3640,37 +3531,11 @@ export const ProductoMother = {
   },
 
   random(overrides: Partial<Producto> = {}): Producto {
-    return { id: crypto.randomUUID(), ...ProductoMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...ProductoMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `ProductoRepository`. Override a method to make it fail. */
-export function fakeProductoRepository(seed: Producto[] = []): ProductoRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new ProductoError("producto.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
-    },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+/** The fake API's `/productos`, holding `seed`. */
+export function productoCollection(seed: Producto[] = []) {
+  return collection("/productos", "producto", seed);
 }

@@ -1,25 +1,28 @@
-import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
-{%- if targets %}
-import { useDependencies } from "../../../core/dependencies";
-{%- endif %}
+import type { Schemas } from "../../../api/client";
 {%- if display_helpers %}
 import { {{ display_helpers | join(sep=", ") }} } from "../../../shared/forms";
 {%- endif %}
 {%- if targets %}
-import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
+import { ReferenceLink } from "../../../shared/ui/reference-link";
 {%- endif %}
 
-export function {{ pascal }}DetailView({ {{ ident }} }: { {{ ident }}: {{ pascal }} }) {
-{%- if targets %}
-{%- if view_deps_inline %}
-  const { {% for t in targets %}{{ t.camel }}Repository{% if not loop.last %}, {% endif %}{% endfor %} } = useDependencies();
-{%- else %}
-  const {
+type {{ pascal }} = Schemas["Dto{{ pascal }}"];
+
+{% if targets -%}
+/** `{{ ident }}`, and the label of each {% for t in targets %}{{ t.words }}{% if not loop.last %} and {% endif %}{% endfor %} it references, for its links. */
+export function {{ pascal }}DetailView({
+  {{ ident }},
 {%- for t in targets %}
-    {{ t.camel }}Repository,
+  {{ t.camel }}Label,
 {%- endfor %}
-  } = useDependencies();
-{%- endif %}
+}: {
+  {{ ident }}: {{ pascal }};
+{%- for t in targets %}
+  {{ t.camel }}Label: (id: string) => Promise<string>;
+{%- endfor %}
+}) {
+{%- else -%}
+export function {{ pascal }}DetailView({ {{ ident }} }: { {{ ident }}: {{ pascal }} }) {
 {%- endif %}
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
@@ -29,12 +32,12 @@ export function {{ pascal }}DetailView({ {{ ident }} }: { {{ ident }}: {{ pascal
 {%- for r in references %}{% if r.camel == f.camel %}
       <dd>
 {%- if r.link_inline %}
-        <ReferenceLink path="{{ r.ref_path }}" id={{ "{" }}{{ ident }}.{{ r.camel }}} load={labelOf({{ r.repository }}, (item) => item.{{ r.target_label }})} />
+        <ReferenceLink path="{{ r.ref_path }}" id={{ "{" }}{{ ident }}.{{ r.camel }}} load={{ "{" }}{{ r.loader }}} />
 {%- else %}
         <ReferenceLink
           path="{{ r.ref_path }}"
           id={{ "{" }}{{ ident }}.{{ r.camel }}}
-          load={labelOf({{ r.repository }}, (item) => item.{{ r.target_label }})}
+          load={{ "{" }}{{ r.loader }}}
         />
 {%- endif %}
       </dd>

@@ -1,8 +1,8 @@
-//! The frontend slice of an entity (`web/`, Phase 9 — ADR-0013).
+//! The frontend slice of an entity (`web/`, Phase 9 — ADR-0013, ADR-0025).
 //!
 //! `scaffold` writes it next to the Rust layers in a `[proyecto] web = true` project; `generate web`
-//! writes it alone. The two files under `presentation/core/generated/` are regenerated from
-//! puerto.toml with `bootstrap.rs`, never patched.
+//! writes it alone. The files under `generated/` are regenerated from puerto.toml with
+//! `bootstrap.rs`, never patched. The screens work on the API's own types (ADR-0025).
 
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
@@ -17,32 +17,25 @@ use crate::generators::naming::{
     snake_to_kebab, snake_to_words, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
-use crate::generators::types::{
-    WebEnumCtx, WebFieldCtx, web_enum_ctx, web_field_ctx, with_article,
-};
+use crate::generators::types::{WebFieldCtx, web_field_ctx, with_article};
 use crate::puerto_toml::{Entity, Field, PuertoConfig};
 
 /// Every frontend file `scaffold` writes for one entity, relative to the project root — what the
-/// overwrite guard checks. `infrastructure/http/client.ts` is not one: it is written once, with
-/// the first entity, and never overwritten.
+/// overwrite guard checks. `api/client.ts` and `test-support/fake-api.ts` are not: they are
+/// written once, with the first entity, and never overwritten.
 pub fn web_entity_files(snake: &str) -> Vec<PathBuf> {
     let k = snake_to_kebab(snake);
     [
-        format!("web/src/domain/{k}/model.ts"),
-        format!("web/src/domain/{k}/errors.ts"),
-        format!("web/src/domain/{k}/messages.ts"),
-        format!("web/src/domain/{k}/repository.ts"),
-        format!("web/src/infrastructure/{k}/{k}-repository-http.ts"),
-        format!("web/src/infrastructure/{k}/{k}-repository-http.test.ts"),
-        format!("web/src/presentation/features/{k}/views/{k}-list-view.tsx"),
-        format!("web/src/presentation/features/{k}/views/{k}-detail-view.tsx"),
-        format!("web/src/presentation/features/{k}/views/{k}-form-view.tsx"),
-        format!("web/src/presentation/features/{k}/containers/{k}-list-container.tsx"),
-        format!("web/src/presentation/features/{k}/containers/{k}-list-container.test.tsx"),
-        format!("web/src/presentation/features/{k}/containers/{k}-detail-container.tsx"),
-        format!("web/src/presentation/features/{k}/containers/{k}-detail-container.test.tsx"),
-        format!("web/src/presentation/features/{k}/containers/{k}-form-container.tsx"),
-        format!("web/src/presentation/features/{k}/containers/{k}-form-container.test.tsx"),
+        format!("web/src/features/{k}/messages.ts"),
+        format!("web/src/features/{k}/views/{k}-list-view.tsx"),
+        format!("web/src/features/{k}/views/{k}-detail-view.tsx"),
+        format!("web/src/features/{k}/views/{k}-form-view.tsx"),
+        format!("web/src/features/{k}/containers/{k}-list-container.tsx"),
+        format!("web/src/features/{k}/containers/{k}-list-container.test.tsx"),
+        format!("web/src/features/{k}/containers/{k}-detail-container.tsx"),
+        format!("web/src/features/{k}/containers/{k}-detail-container.test.tsx"),
+        format!("web/src/features/{k}/containers/{k}-form-container.tsx"),
+        format!("web/src/features/{k}/containers/{k}-form-container.test.tsx"),
         format!("web/src/test-support/{k}.ts"),
     ]
     .into_iter()
@@ -50,21 +43,26 @@ pub fn web_entity_files(snake: &str) -> Vec<PathBuf> {
     .collect()
 }
 
-/// The frontend files `core/generated/*` import for one entity: without them `bun run typecheck`
-/// fails, the way a missing module fails `cargo build` (see `consistency.rs`).
+/// The frontend files `generated/routes.tsx` imports for one entity: without them
+/// `bun run typecheck` fails, the way a missing module fails `cargo build` (see `consistency.rs`).
 pub fn web_required_files(snake: &str) -> Vec<PathBuf> {
     let k = snake_to_kebab(snake);
     [
-        format!("web/src/domain/{k}/repository.ts"),
-        format!("web/src/infrastructure/{k}/{k}-repository-http.ts"),
-        format!("web/src/presentation/features/{k}/containers/{k}-list-container.tsx"),
-        format!("web/src/presentation/features/{k}/containers/{k}-detail-container.tsx"),
-        format!("web/src/presentation/features/{k}/containers/{k}-form-container.tsx"),
+        format!("web/src/features/{k}/containers/{k}-list-container.tsx"),
+        format!("web/src/features/{k}/containers/{k}-detail-container.tsx"),
+        format!("web/src/features/{k}/containers/{k}-form-container.tsx"),
     ]
     .into_iter()
     .map(PathBuf::from)
     .collect()
 }
+
+/// Written with the first entity, never overwritten: both import `api/schema.d.ts`, which exists
+/// only after `make web/sync`, and a fresh project's `bun run typecheck` must pass.
+const ONCE_FILES: [(&str, &str); 2] = [
+    ("web/src/api/client.ts", "web/client.tera"),
+    ("web/src/test-support/fake-api.ts", "web/fake_api.tera"),
+];
 
 /// Whether `entity` gets a frontend slice: it has the five CRUD use cases, the endpoints the
 /// screens call. The Saludo demo and custom-only entities have none.
@@ -145,12 +143,26 @@ const TAKEN_IDENTIFIERS: &[&str] = &[
     "with",
     "yield",
     // locals and parameters of the generated files
+    "api",
+    "body",
+    "code",
     "existing",
     "failure",
+    "history",
+    "location",
     "navigate",
+    "offset",
+    "options",
+    "path",
     "problem",
+    "query",
     "remove",
+    "request",
     "saving",
+    "seed",
+    "target",
+    "title",
+    "user",
     "values",
 ];
 
@@ -225,17 +237,14 @@ struct WebTargetCtx {
     fields: Vec<String>,
     /// The `useAsync(…)` loading it fits on one line.
     load_inline: bool,
-    /// The form test's targets for `draft`: one `{Target}Mother.random({ id })` per reference.
+    /// The form test's targets for `owner`: one `{Target}Mother.random({ id })` per reference.
     seeds: Vec<String>,
-    /// `{target}Repository: fake{Target}Repository([…seeds]),` fits on one line.
+    /// `{target}Collection([…seeds]),` fits on one line.
     seeds_inline: bool,
-    /// The detail test's targets for `seeded` (an entity, not a draft), and whether they fit.
-    detail_seeds: Vec<String>,
-    detail_seeds_inline: bool,
 }
 
 /// A reference as the detail screen shows it (Phase 20.6): a link named by its target's label,
-/// loaded through the target's repository.
+/// which the detail container loads.
 #[derive(Serialize)]
 struct WebReferenceCtx {
     camel: String,
@@ -243,13 +252,18 @@ struct WebReferenceCtx {
     label: String,
     ref_path: String,
     required: bool,
-    /// The dependency it loads its target from (`customerRepository`) and the target's label.
-    repository: String,
+    /// The target's names in the tests (`ClienteMother`, `clienteCollection`) and its label.
+    target_pascal: String,
+    target_camel: String,
     target_label: String,
+    /// What the detail view calls to name it: `clienteLabel`.
+    loader: String,
     /// The view's `<ReferenceLink … />` fits on one line.
     link_inline: bool,
-    /// The detail test's `const target = await referenced.….get(…);` fits on one line.
+    /// The detail test's `const target = …Mother.random({ id: … });` fits on one line, and so does
+    /// its `const api = fakeApi([…]);`.
     target_inline: bool,
+    api_inline: bool,
 }
 
 /// The entities `fields` reference, in the order they are first named. `config` gives their
@@ -261,23 +275,11 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
             continue;
         };
         let camel = snake_to_camel(&f.name);
-        let optional = f.field_type.starts_with("Option<");
-        // A Mother's optional reference is present; `??` only satisfies the type.
-        let seed_of = |owner: &str| {
-            format!(
-                "{target}Mother.random({{ id: {owner}.{camel}{} }})",
-                if optional {
-                    " ?? crypto.randomUUID()"
-                } else {
-                    ""
-                }
-            )
-        };
-        let (seed, detail_seed) = (seed_of("draft"), seed_of("seeded"));
+        // A Mother's reference is present; `??` only satisfies `Partial`.
+        let seed = format!("{target}Mother.random({{ id: owner.{camel} ?? crypto.randomUUID() }})");
         if let Some(known) = targets.iter_mut().find(|t| t.entity.pascal == target) {
             known.fields.push(camel);
             known.seeds.push(seed);
-            known.detail_seeds.push(detail_seed);
             continue;
         }
         let label = config
@@ -290,8 +292,8 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
             .map_or_else(|| "id".to_string(), |t| snake_to_camel(&t.name));
         let entity = web_entity_ctx(target);
         let load_inline = fits(&format!(
-            "  const {} = useAsync(() => {}Repository.list({{ limit: MAX_PAGE_LIMIT, offset: 0 }}), [{}Repository]);",
-            entity.plural_ident, entity.camel, entity.camel
+            "  const {} = useAsync(() => unwrap(api.GET(\"/{}\", OPTIONS)), [api]);",
+            entity.plural_ident, entity.plural
         ));
         targets.push(WebTargetCtx {
             entity,
@@ -300,21 +302,14 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
             load_inline,
             seeds: vec![seed],
             seeds_inline: false,
-            detail_seeds: vec![detail_seed],
-            detail_seeds_inline: false,
         });
     }
     for t in &mut targets {
-        let line = |seeds: &[String]| {
-            format!(
-                "    {}Repository: fake{}Repository([{}]),",
-                t.entity.camel,
-                t.entity.pascal,
-                seeds.join(", ")
-            )
-        };
-        t.seeds_inline = fits(&line(&t.seeds));
-        t.detail_seeds_inline = fits(&line(&t.detail_seeds));
+        t.seeds_inline = fits(&format!(
+            "    {}Collection([{}]),",
+            t.entity.camel,
+            t.seeds.join(", ")
+        ));
     }
     targets
 }
@@ -333,23 +328,33 @@ fn web_references(
             let target = targets
                 .iter()
                 .find(|t| Some(t.entity.pascal.as_str()) == field.references.as_deref())?;
-            let repository = format!("{}Repository", target.entity.camel);
-            let unwrap = if web.required { "" } else { " ?? \"\"" };
+            let loader = format!("{}Label", target.entity.camel);
+            let fallback = if web.required {
+                ""
+            } else {
+                " ?? crypto.randomUUID()"
+            };
             Some(WebReferenceCtx {
                 link_inline: fits(&format!(
-                    "        <ReferenceLink path=\"{}\" id={{{}.{}}} load={{labelOf({repository}, (item) => item.{})}} />",
-                    web.ref_path, entity.ident, web.camel, target.label
+                    "        <ReferenceLink path=\"{}\" id={{{}.{}}} load={{{loader}}} />",
+                    web.ref_path, entity.ident, web.camel
                 )),
                 target_inline: fits(&format!(
-                    "    const target = await referenced.{repository}.get(seeded.{}{unwrap});",
-                    web.camel
+                    "    const target = {}Mother.random({{ id: seeded.{}{fallback} }});",
+                    target.entity.pascal, web.camel
+                )),
+                api_inline: fits(&format!(
+                    "    const api = fakeApi([{}Collection([seeded]), {}Collection([target])]);",
+                    entity.camel, target.entity.camel
                 )),
                 camel: web.camel.clone(),
                 label: web.label.clone(),
                 ref_path: web.ref_path.clone(),
                 required: web.required,
-                repository,
+                target_pascal: target.entity.pascal.clone(),
+                target_camel: target.entity.camel.clone(),
                 target_label: target.label.clone(),
+                loader,
             })
         })
         .collect()
@@ -362,20 +367,12 @@ fn entity_template_ctx(
     config: Option<&PuertoConfig>,
 ) -> tera::Context {
     let entity = web_entity_ctx(pascal);
-    let web_fields: Vec<WebFieldCtx> = effective_fields(fields)
+    let eff = effective_fields(fields);
+    let web_fields: Vec<WebFieldCtx> = eff
         .iter()
         .map(|f| web_field_ctx(f, &entity.ident))
         .collect();
-    let mut enums: Vec<WebEnumCtx> = vec![];
-    for declared in effective_fields(fields)
-        .iter()
-        .filter_map(|f| web_enum_ctx(f, &entity.snake))
-    {
-        if !enums.iter().any(|e| e.name == declared.name) {
-            enums.push(declared);
-        }
-    }
-    // The `presentation/shared/forms.ts` helpers each group of files calls.
+    // The `shared/forms.ts` helpers each group of files calls.
     let helpers = |pick: fn(&WebFieldCtx) -> &Vec<&'static str>| {
         let mut names: Vec<&str> = web_fields
             .iter()
@@ -387,7 +384,7 @@ fn entity_template_ctx(
     };
     let mut ctx = tera::Context::from_serialize(&entity).unwrap_or_default();
     ctx.insert("access", &web_access_ctx(access, &entity.snake));
-    let targets = web_targets(&effective_fields(fields), config);
+    let targets = web_targets(&eff, config);
     let mut form_helpers = helpers(|f| &f.to_form_helpers);
     form_helpers.extend(helpers(|f| &f.from_form_helpers));
     form_helpers.sort_unstable();
@@ -405,19 +402,11 @@ fn entity_template_ctx(
     ctx.insert("form_helpers_type_only", &form_helpers_type_only);
     ctx.insert("fill_helpers", &helpers(|f| &f.to_form_helpers));
     ctx.insert("display_helpers", &helpers(|f| &f.display_helpers));
-    ctx.insert("enums", &enums);
-    let problems = web_problems(&entity, &effective_fields(fields), &web_fields);
-    let field_problem = problems.iter().find(|p| p.field.is_some());
+    let problems = web_problems(&entity, &eff, &web_fields);
     ctx.insert(
-        "field_problem_inline",
-        &field_problem.is_some_and(|p| {
-            fits(&format!(
-                "      create: () => Promise.reject(new {}Error(\"{}\")),",
-                entity.pascal, p.code
-            ))
-        }),
+        "field_problem",
+        &problems.iter().find(|p| p.field.is_some()),
     );
-    ctx.insert("field_problem", &field_problem);
     ctx.insert("problems", &problems);
     ctx.insert(
         "duplicate_text",
@@ -426,39 +415,56 @@ fn entity_template_ctx(
             capitalize(&entity.a_words)
         ),
     );
-    ctx.insert("fields", &web_fields);
     ctx.insert(
-        "form_deps_inline",
+        "list_load_inline",
         &fits(&format!(
-            "  const {{ {}Repository{} }} = useDependencies();",
-            entity.camel,
+            "  const {} = useAsync(() => unwrap(api.GET(\"/{}\", {{ params: {{ query }} }})), [api, offset]);",
+            entity.plural_ident, entity.plural
+        )),
+    );
+    ctx.insert(
+        "detail_load_inline",
+        &fits(&format!(
+            "  const {} = useAsync(() => unwrap(api.GET(\"/{}/{{id}}\", {{ params: {{ path: {{ id }} }} }})), [api, id]);",
+            entity.ident, entity.plural
+        )),
+    );
+    ctx.insert(
+        "detail_view_inline",
+        &fits(&format!(
+            "            <{}DetailView {}={{{}.data}}{} />",
+            entity.pascal,
+            entity.ident,
+            entity.ident,
             targets
                 .iter()
-                .map(|t| format!(", {}Repository", t.entity.camel))
+                .map(|t| format!(" {0}Label={{{0}Label}}", t.entity.camel))
                 .collect::<String>()
         )),
     );
-    let eff = effective_fields(fields);
+    // Biome keeps an array on one line while it fits: one target, few references.
+    ctx.insert(
+        "referenced_inline",
+        &(targets.iter().all(|t| t.seeds_inline)
+            && fits(&format!(
+                "  return [{}];",
+                targets
+                    .iter()
+                    .map(|t| format!("{}Collection([{}])", t.entity.camel, t.seeds.join(", ")))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))),
+    );
     ctx.insert(
         "references",
         &web_references(&entity, &web_fields, &eff, &targets),
     );
-    ctx.insert(
-        "view_deps_inline",
-        &fits(&format!(
-            "  const {{ {} }} = useDependencies();",
-            targets
-                .iter()
-                .map(|t| format!("{}Repository", t.entity.camel))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )),
-    );
+    ctx.insert("fields", &web_fields);
     ctx.insert("targets", &targets);
     ctx
 }
 
-/// An error code of the entity's API and what the screens say for it (`domain/<entity>/messages.ts`).
+/// An error code of the entity's API and what the screens say for it (`features/<k>/messages.ts`).
 #[derive(Serialize)]
 struct WebProblemCtx {
     code: String,
@@ -549,13 +555,8 @@ fn render_ts(template: &str, ctx: &tera::Context) -> Result<String, RenderError>
 }
 
 /// One template per file of the slice, in `web_entity_files` order.
-const ENTITY_TEMPLATES: [&str; 16] = [
-    "web/model.tera",
-    "web/errors.tera",
+const ENTITY_TEMPLATES: [&str; 11] = [
     "web/messages.tera",
-    "web/repository.tera",
-    "web/repository_http.tera",
-    "web/repository_http_test.tera",
     "web/list_view.tera",
     "web/detail_view.tera",
     "web/form_view.tera",
@@ -568,11 +569,7 @@ const ENTITY_TEMPLATES: [&str; 16] = [
     "web/test_support.tera",
 ];
 
-/// Writes the entity's frontend slice, and `infrastructure/http/client.ts` when it is missing.
-///
-/// The client is not in the `puerto nuevo` template: it imports `schema.d.ts`, which exists only
-/// after `make web/sync`, and a fresh project's `bun run typecheck` must pass. The first entity
-/// needs a sync anyway.
+/// Writes the entity's frontend slice, and the [`ONCE_FILES`] that are missing.
 pub fn write_web_files(
     pascal: &str,
     base: &Path,
@@ -584,17 +581,16 @@ pub fn write_web_files(
     for (path, template) in web_entity_files(&snake).iter().zip(ENTITY_TEMPLATES) {
         write_file(&base.join(path), &render_ts(template, &ctx)?)?;
     }
-    let client = base.join("web/src/infrastructure/http/client.ts");
-    if !client.exists() {
-        write_file(
-            &client,
-            &render_ts("web/client.tera", &tera::Context::new())?,
-        )?;
+    for (path, template) in ONCE_FILES {
+        let path = base.join(path);
+        if !path.exists() {
+            write_file(&path, &render_ts(template, &tera::Context::new())?)?;
+        }
     }
     Ok(())
 }
 
-/// An entity in `core/generated/routes.tsx`, with the line-width decisions Biome would make.
+/// An entity in `generated/routes.tsx`, with the line-width decisions Biome would make.
 #[derive(Serialize)]
 struct RoutedEntityCtx {
     #[serde(flatten)]
@@ -678,22 +674,22 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
     ctx
 }
 
-/// `web/src/presentation/core/generated/dependencies.ts` — the composition root.
+/// `web/src/generated/dependencies.ts` — the composition root.
 pub fn generate_web_dependencies(config: &PuertoConfig) -> Result<String, RenderError> {
     render_ts("web/dependencies.tera", &generated_ctx(config))
 }
 
-/// `web/src/presentation/core/generated/routes.tsx` — the route table and the nav entries.
+/// `web/src/generated/routes.tsx` — the route table and the nav entries.
 pub fn generate_web_routes(config: &PuertoConfig) -> Result<String, RenderError> {
     render_ts("web/routes.tera", &generated_ctx(config))
 }
 
-/// `web/src/presentation/core/generated/roles.ts` — auth projects only.
+/// `web/src/generated/roles.ts` — auth projects only.
 pub fn generate_web_roles(config: &PuertoConfig) -> Result<String, RenderError> {
     render_ts("web/roles.tera", &generated_ctx(config))
 }
 
-/// Rewrites both `core/generated/*` files from puerto.toml. Nothing in a project without `web`.
+/// Rewrites the `generated/*` files from puerto.toml. Nothing in a project without `web`.
 pub fn regenerate_web(
     base: &Path,
     config: &PuertoConfig,
@@ -701,7 +697,7 @@ pub fn regenerate_web(
     if !config.project.web {
         return Ok(());
     }
-    let generated = base.join("web/src/presentation/core/generated");
+    let generated = base.join("web/src/generated");
     write_file(
         &generated.join("dependencies.ts"),
         &generate_web_dependencies(config)?,
@@ -729,7 +725,7 @@ pub fn web_slice_refusal(entity: &Entity) -> Option<String> {
     None
 }
 
-/// `puerto generar web <Name>` — the frontend slice alone, plus the `core/generated/*` files.
+/// `puerto generar web <Name>` — the frontend slice alone, plus the `generated/*` files.
 pub fn run_generate_web(
     name: &str,
     base: &Path,
@@ -758,8 +754,8 @@ pub fn run_generate_web(
     regenerate_web(base, &config)?;
 
     let kebab = snake_to_kebab(&snake);
-    println!("✓ web/src/          — domain/{kebab}, infrastructure/{kebab}, features/{kebab}");
-    println!("✓ core/generated/   — dependencies.ts, routes.tsx");
+    println!("✓ web/src/features/{kebab}/ — containers, views, messages");
+    println!("✓ web/src/generated/       — dependencies.ts, routes.tsx");
     println!("\nNext: make web/sync   (exports the spec, regenerates the web types)");
     Ok(())
 }

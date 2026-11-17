@@ -513,32 +513,29 @@ fn new_with_auth_and_web_writes_the_gateway_the_provider_and_the_callback() {
     let (dir, output) = auth_web_project("auth_web_files");
 
     for file in [
-        "web/src/domain/auth/session.ts",
-        "web/src/infrastructure/auth/oidc-auth-gateway.ts",
-        "web/src/infrastructure/auth/oidc-auth-gateway.test.ts",
-        "web/src/infrastructure/auth/bearer-middleware.ts",
-        "web/src/infrastructure/auth/bearer-middleware.test.ts",
-        "web/src/presentation/core/auth.tsx",
-        "web/src/presentation/core/auth.test.tsx",
-        "web/src/presentation/pages/auth-callback.tsx",
-        "web/src/presentation/pages/auth-callback.test.tsx",
-        "web/src/presentation/shared/ui/user-menu.tsx",
-        "web/src/presentation/shared/ui/user-menu.test.tsx",
+        "web/src/auth/session.ts",
+        "web/src/auth/oidc-auth-gateway.ts",
+        "web/src/auth/oidc-auth-gateway.test.ts",
+        "web/src/auth/bearer-middleware.ts",
+        "web/src/auth/bearer-middleware.test.ts",
+        "web/src/auth/auth.tsx",
+        "web/src/auth/auth.test.tsx",
+        "web/src/pages/auth-callback.tsx",
+        "web/src/pages/auth-callback.test.tsx",
+        "web/src/shared/ui/user-menu.tsx",
+        "web/src/shared/ui/user-menu.test.tsx",
         "web/src/test-support/auth.ts",
     ] {
         assert!(output.join(file).exists(), "{file} missing");
     }
     // The app runs inside the provider, the layout shows who is signed in, tests sign a caller in.
     assert!(read(&output, "web/src/main.tsx").contains("<AuthProvider>"));
-    assert!(read(&output, "web/src/presentation/shared/ui/layout.tsx").contains("<UserMenu />"));
+    assert!(read(&output, "web/src/shared/ui/layout.tsx").contains("<UserMenu />"));
     let render = read(&output, "web/src/test-support/render.tsx");
     assert!(render.contains("CurrentUserMother.caller()"), "{render}");
     assert!(!render.contains("{% raw %}"), "{render}");
     // The composition root builds the gateway and signs every call; the callback has its route.
-    let dependencies = read(
-        &output,
-        "web/src/presentation/core/generated/dependencies.ts",
-    );
+    let dependencies = read(&output, "web/src/generated/dependencies.ts");
     assert!(
         dependencies.contains("auth: AuthGateway;"),
         "{dependencies}"
@@ -547,16 +544,12 @@ fn new_with_auth_and_web_writes_the_gateway_the_provider_and_the_callback() {
         dependencies.contains("oidcAuthGateway(oidcSettingsFromEnv())"),
         "{dependencies}"
     );
-    let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
+    let routes = read(&output, "web/src/generated/routes.tsx");
     assert!(
         routes.contains("<Route path=\"/auth/callback\">"),
         "{routes}"
     );
-    assert!(
-        output
-            .join("web/src/presentation/core/generated/roles.ts")
-            .exists()
-    );
+    assert!(output.join("web/src/generated/roles.ts").exists());
     cleanup(&dir);
 }
 
@@ -624,7 +617,7 @@ fn scaffold_in_an_auth_web_project_guards_every_screen_but_the_public_ones() {
         ),
     );
 
-    let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
+    let routes = read(&output, "web/src/generated/routes.tsx");
     // List and detail are public; new and edit (create, update) are not.
     assert!(
         routes.contains("<Route path=\"/productos\">\n        <ProductoListContainer />"),
@@ -644,7 +637,7 @@ fn scaffold_in_an_auth_web_project_guards_every_screen_but_the_public_ones() {
         routes.contains("<Route path=\"/productos/:id\">{(params) => <ProductoDetailContainer"),
         "{routes}"
     );
-    let roles = read(&output, "web/src/presentation/core/generated/roles.ts");
+    let roles = read(&output, "web/src/generated/roles.ts");
     assert!(roles.contains("[\"admin\"]"), "{roles}");
     cleanup(&dir);
 }
@@ -665,7 +658,7 @@ fn scaffold_in_an_auth_web_project_hides_the_actions_a_role_guards() {
         ),
     );
 
-    let containers = "web/src/presentation/features/producto/containers";
+    let containers = "web/src/features/producto/containers";
     let list = read(
         &output,
         &format!("{containers}/producto-list-container.tsx"),
@@ -713,7 +706,7 @@ fn scaffold_in_an_auth_web_project_without_roles_checks_none() {
 
     scaffold_web_producto(&output, &access(&[], &[]));
 
-    let containers = "web/src/presentation/features/producto/containers";
+    let containers = "web/src/features/producto/containers";
     for file in [
         "producto-list-container.tsx",
         "producto-detail-container.tsx",
@@ -874,34 +867,23 @@ fn new_with_local_auth_and_web_signs_in_with_a_password_not_a_provider() {
     .unwrap();
 
     for file in [
-        "web/src/domain/auth/accounts.ts",
-        "web/src/domain/auth/messages.ts",
-        "web/src/infrastructure/auth/local-auth-gateway.ts",
-        "web/src/infrastructure/auth/local-auth-gateway.test.ts",
-        "web/src/presentation/pages/login.tsx",
-        "web/src/presentation/pages/register.tsx",
-        "web/src/presentation/core/auth.tsx",
-        "web/src/infrastructure/auth/bearer-middleware.ts",
+        "web/src/auth/accounts.ts",
+        "web/src/auth/messages.ts",
+        "web/src/auth/local-auth-gateway.ts",
+        "web/src/auth/local-auth-gateway.test.ts",
+        "web/src/pages/login.tsx",
+        "web/src/pages/register.tsx",
+        "web/src/auth/auth.tsx",
+        "web/src/auth/bearer-middleware.ts",
     ] {
         assert!(output.join(file).exists(), "{file} missing");
     }
     // No provider: no OIDC client, callback, settings or dependency.
-    assert!(
-        !output
-            .join("web/src/infrastructure/auth/oidc-auth-gateway.ts")
-            .exists()
-    );
-    assert!(
-        !output
-            .join("web/src/presentation/pages/auth-callback.tsx")
-            .exists()
-    );
+    assert!(!output.join("web/src/auth/oidc-auth-gateway.ts").exists());
+    assert!(!output.join("web/src/pages/auth-callback.tsx").exists());
     assert!(!output.join("web/.env").exists());
     assert!(!read(&output, "web/package.json").contains("oidc-client-ts"));
-    let dependencies = read(
-        &output,
-        "web/src/presentation/core/generated/dependencies.ts",
-    );
+    let dependencies = read(&output, "web/src/generated/dependencies.ts");
     assert!(
         dependencies.contains("accounts: Accounts;"),
         "{dependencies}"
@@ -910,7 +892,7 @@ fn new_with_local_auth_and_web_signs_in_with_a_password_not_a_provider() {
         dependencies.contains("localAuthGateway()"),
         "{dependencies}"
     );
-    let routes = read(&output, "web/src/presentation/core/generated/routes.tsx");
+    let routes = read(&output, "web/src/generated/routes.tsx");
     assert!(routes.contains("<Route path=\"/login\">"), "{routes}");
     assert!(routes.contains("<Route path=\"/register\">"), "{routes}");
     assert!(!routes.contains("/auth/callback"), "{routes}");

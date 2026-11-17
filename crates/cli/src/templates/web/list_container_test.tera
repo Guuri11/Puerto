@@ -1,21 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
 {% if access.create_roles -%}
-import { CurrentUserMother } from "../../../../test-support/auth";
+import { CurrentUserMother } from "../../../test-support/auth";
 {% endif -%}
-import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
-import { renderScreen } from "../../../../test-support/render";
+import { fakeApi } from "../../../test-support/fake-api";
+import { {{ camel }}Collection, {{ pascal }}Mother } from "../../../test-support/{{ kebab }}";
+import { renderScreen } from "../../../test-support/render";
 import { {{ pascal }}ListContainer } from "./{{ kebab }}-list-container";
 
 describe("{{ pascal }}ListContainer", () => {
   test("should show a row per {{ words }} when there are some", async () => {
     // Arrange
     const seed = [{{ pascal }}Mother.random(), {{ pascal }}Mother.random()];
-    const {{ camel }}Repository = fake{{ pascal }}Repository(seed);
+    const api = fakeApi([{{ camel }}Collection(seed)]);
 
     // Act
-    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
+    renderScreen(<{{ pascal }}ListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -24,8 +24,8 @@ describe("{{ pascal }}ListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => {{ pascal }}Mother.random());
-    const {{ camel }}Repository = fake{{ pascal }}Repository(seed);
-    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
+    const api = fakeApi([{{ camel }}Collection(seed)]);
+    renderScreen(<{{ pascal }}ListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -39,11 +39,11 @@ describe("{{ pascal }}ListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => {{ pascal }}Mother.random());
-    const {{ camel }}Repository = fake{{ pascal }}Repository(seed);
+    const api = fakeApi([{{ camel }}Collection(seed)]);
     const path = "/{{ plural }}?page=2";
 
     // Act
-    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository }, path);
+    renderScreen(<{{ pascal }}ListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -51,10 +51,10 @@ describe("{{ pascal }}ListContainer", () => {
 
   test("should say so when there is no {{ words }}", async () => {
     // Arrange
-    const {{ camel }}Repository = fake{{ pascal }}Repository();
+    const api = fakeApi([{{ camel }}Collection()]);
 
     // Act
-    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
+    renderScreen(<{{ pascal }}ListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No {{ words_plural }} yet.")).toBeTruthy();
@@ -62,13 +62,11 @@ describe("{{ pascal }}ListContainer", () => {
 
   test("should show the error code when the {{ words_plural }} cannot be listed", async () => {
     // Arrange
-    const {{ camel }}Repository = {
-      ...fake{{ pascal }}Repository(),
-      list: () => Promise.reject(new {{ pascal }}Error("{{ snake }}.repositorio")),
-    };
+    const failures = { "GET /{{ plural }}": "{{ snake }}.repositorio" };
+    const api = fakeApi([{{ camel }}Collection()], failures);
 
     // Act
-    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository });
+    renderScreen(<{{ pascal }}ListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.repositorio");
@@ -77,11 +75,11 @@ describe("{{ pascal }}ListContainer", () => {
 
   test("should not offer New to a user without its role", async () => {
     // Arrange
-    const {{ camel }}Repository = fake{{ pascal }}Repository([{{ pascal }}Mother.random()]);
+    const api = fakeApi([{{ camel }}Collection([{{ pascal }}Mother.random()])]);
     const user = CurrentUserMother.random();
 
     // Act
-    renderScreen(<{{ pascal }}ListContainer />, { {{ camel }}Repository }, "/", { user });
+    renderScreen(<{{ pascal }}ListContainer />, { api }, "/", { user });
 
     // Assert
     expect(await screen.findByText("View")).toBeTruthy();

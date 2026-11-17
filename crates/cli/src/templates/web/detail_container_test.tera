@@ -1,56 +1,24 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-{% if access.delete_protected -%}
-import { {{ pascal }}Error } from "../../../../domain/{{ kebab }}/errors";
-{% endif -%}
-{% if targets -%}
-import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
-{% endif -%}
 {% if access.update_roles or access.delete_roles -%}
-import { CurrentUserMother } from "../../../../test-support/auth";
+import { CurrentUserMother } from "../../../test-support/auth";
 {% endif -%}
+import { fakeApi } from "../../../test-support/fake-api";
 {% for t in targets -%}
-import { fake{{ t.pascal }}Repository, {{ t.pascal }}Mother } from "../../../../test-support/{{ t.kebab }}";
+import { {{ t.camel }}Collection, {{ t.pascal }}Mother } from "../../../test-support/{{ t.kebab }}";
 {% endfor -%}
-import { fake{{ pascal }}Repository, {{ pascal }}Mother } from "../../../../test-support/{{ kebab }}";
-import { renderScreen } from "../../../../test-support/render";
+import { {{ camel }}Collection, {{ pascal }}Mother } from "../../../test-support/{{ kebab }}";
+import { renderScreen } from "../../../test-support/render";
 import { {{ pascal }}DetailContainer } from "./{{ kebab }}-detail-container";
-
-{%- if targets %}
-
-/** The repositories the reference links load from, holding what `seeded` references. */
-function referencedBy(seeded: {{ pascal }}) {
-  return {
-{%- for t in targets %}
-{%- if t.detail_seeds_inline %}
-    {{ t.camel }}Repository: fake{{ t.pascal }}Repository([{{ t.detail_seeds | join(sep=", ") }}]),
-{%- else %}
-    {{ t.camel }}Repository: fake{{ t.pascal }}Repository([
-{%- for seed in t.detail_seeds %}
-      {{ seed }},
-{%- endfor %}
-    ]),
-{%- endif %}
-{%- endfor %}
-  };
-}
-{%- endif %}
 
 describe("{{ pascal }}DetailContainer", () => {
   test("should show the {{ words }} when it exists", async () => {
     // Arrange
     const seeded = {{ pascal }}Mother.random();
-    const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
+    const api = fakeApi([{{ camel }}Collection([seeded])]);
 
     // Act
-{%- if targets %}
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
-      {{ camel }}Repository,
-      ...referencedBy(seeded),
-    });
-{%- else %}
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
-{%- endif %}
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -60,21 +28,24 @@ describe("{{ pascal }}DetailContainer", () => {
   test("should link the {{ r.label | lower }} to its page, named by its label", async () => {
     // Arrange
     const seeded = {{ pascal }}Mother.random();
-    const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
-    const referenced = referencedBy(seeded);
 {%- if r.target_inline %}
-    const target = await referenced.{{ r.repository }}.get(seeded.{{ r.camel }}{% if not r.required %} ?? ""{% endif %});
+    const target = {{ r.target_pascal }}Mother.random({ id: seeded.{{ r.camel }}{% if not r.required %} ?? crypto.randomUUID(){% endif %} });
 {%- else %}
-    const target = await referenced.{{ r.repository }}.get(
-      seeded.{{ r.camel }}{% if not r.required %} ?? ""{% endif %},
-    );
+    const target = {{ r.target_pascal }}Mother.random({
+      id: seeded.{{ r.camel }}{% if not r.required %} ?? crypto.randomUUID(){% endif %},
+    });
+{%- endif %}
+{%- if r.api_inline %}
+    const api = fakeApi([{{ camel }}Collection([seeded]), {{ r.target_camel }}Collection([target])]);
+{%- else %}
+    const api = fakeApi([
+      {{ camel }}Collection([seeded]),
+      {{ r.target_camel }}Collection([target]),
+    ]);
 {%- endif %}
 
     // Act
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
-      {{ camel }}Repository,
-      ...referenced,
-    });
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api });
 
     // Assert: by its href — two references to one target may share a label.
     const selector = `a[href="{{ r.ref_path }}/${seeded.{{ r.camel }}}"]`;
@@ -84,12 +55,10 @@ describe("{{ pascal }}DetailContainer", () => {
 
   test("should show the not-found code when the {{ words }} does not exist", async () => {
     // Arrange
-    const {{ camel }}Repository = fake{{ pascal }}Repository();
+    const api = fakeApi([{{ camel }}Collection()]);
 
     // Act
-    renderScreen(<{{ pascal }}DetailContainer id={crypto.randomUUID()} />, {
-      {{ camel }}Repository,
-    });
+    renderScreen(<{{ pascal }}DetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.no_encontrado");
@@ -98,23 +67,18 @@ describe("{{ pascal }}DetailContainer", () => {
   test("should delete the {{ words }} only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = {{ pascal }}Mother.random();
-    const fake = fake{{ pascal }}Repository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
-      {{ camel }}Repository: { ...fake, remove },
-{%- if targets %}
-      ...referencedBy(seeded),
-{%- endif %}
-    });
+    const stored = {{ camel }}Collection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/{{ plural }}"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 {%- for action in ["Edit", "Delete"] %}
 {%- if action == "Edit" %}{% set guard = access.update_roles %}{% else %}{% set guard = access.delete_roles %}{% endif %}
@@ -123,16 +87,11 @@ describe("{{ pascal }}DetailContainer", () => {
   test("should not offer {{ action }} to a user without its role", async () => {
     // Arrange
     const seeded = {{ pascal }}Mother.random();
-    const {{ camel }}Repository = fake{{ pascal }}Repository([seeded]);
+    const api = fakeApi([{{ camel }}Collection([seeded])]);
     const user = CurrentUserMother.random();
 
     // Act
-{%- if targets %}
-    const dependencies = { {{ camel }}Repository, ...referencedBy(seeded) };
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, dependencies, "/", { user });
-{%- else %}
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository }, "/", { user });
-{%- endif %}
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api }, "/", { user });
 
     // Assert
     expect(await screen.findByText("{{ fields[0].label }}", { selector: "dt" })).toBeTruthy();
@@ -145,18 +104,9 @@ describe("{{ pascal }}DetailContainer", () => {
   test("should show auth.prohibido when the API refuses the deletion", async () => {
     // Arrange
     const seeded = {{ pascal }}Mother.random();
-    const {{ camel }}Repository = {
-      ...fake{{ pascal }}Repository([seeded]),
-      remove: () => Promise.reject(new {{ pascal }}Error("auth.prohibido")),
-    };
-{%- if targets %}
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, {
-      {{ camel }}Repository,
-      ...referencedBy(seeded),
-    });
-{%- else %}
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { {{ camel }}Repository });
-{%- endif %}
+    const failures = { "DELETE /{{ plural }}": "auth.prohibido" };
+    const api = fakeApi([{{ camel }}Collection([seeded])], failures);
+    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
 
     // Act

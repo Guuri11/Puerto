@@ -158,10 +158,10 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/presentation/core/generated/*`, `web/src/infrastructure/http/schema.d.ts` y
-`docs/api/openapi.json` también se reescriben (`generar bootstrap`, `make web/sync`); las pantallas
-de una entidad son ficheros suyos como los demás; `web/src/presentation/core/routes.tsx` (tus
-propias pantallas) es tuyo. El detalle, en `web/AGENTS.md`.
+Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
+como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+`web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
 
@@ -204,10 +204,10 @@ comando.
 
 ## Frontend (`web/`)
 
-Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Sigue la misma regla de
-dependencias que los crates (`domain` ← `application` ← `infrastructure` ← `presentation`), que
-comprueba `make web/lint`. Sus reglas (capas, ficheros generados, dónde van los casos de uso)
-están en `web/AGENTS.md`.
+Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Es solo presentación: los
+contenedores llaman a la API con su cliente tipado y las vistas pintan lo que reciben; las reglas
+viven en el backend. `make web/lint` comprueba que una vista no llama a la API. Sus reglas
+(carpetas, ficheros generados, tests) están en `web/AGENTS.md`.
 
 La spec OpenAPI es el contrato entre las dos mitades: `docs/api/openapi.json`, exportada por un test
 de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ruta o un DTO, ejecuta
@@ -249,12 +249,12 @@ producción.
 
 ### Auth en `web/`
 
-- `useAuth()` (`presentation/core/auth.tsx`) da `{ user, can(role), login, logout }`; `user` es
-  `GET /me`, nunca el token. Las pantallas generadas esconden lo que `can` niega, pero decide la
-  API: su `403` llega a la alerta como `auth.prohibido`.
-- `core/generated/routes.tsx` envuelve cada pantalla no pública en `<RequireAuth>`, que inicia
-  sesión y vuelve. Envuelve igual tus propias rutas en `routes.tsx`.
-- El token se queda en memoria y `oidc-client-ts` se queda en `infrastructure/auth/`
+- `useAuth()` (`auth/auth.tsx`) da `{ user, can(role), login, logout }`; `user` es `GET /me`,
+  nunca el token. Las pantallas generadas esconden lo que `can` niega, pero decide la API: su
+  `403` llega a la alerta como `auth.prohibido`.
+- `generated/routes.tsx` envuelve cada pantalla no pública en `<RequireAuth>`, que inicia sesión y
+  vuelve. Envuelve igual tus propias rutas en `routes.tsx`.
+- El token se queda en memoria y `oidc-client-ts` se queda en `auth/oidc-auth-gateway.ts`
   (`make web/lint` lo comprueba): al recargar se vuelve a iniciar sesión con la sesión del
   proveedor. `web/.env` guarda `VITE_AUTH_*`.
 - Los tests de pantalla inician sesión con alguien que tiene todos los roles (`renderScreen`); pasa
@@ -486,7 +486,7 @@ web/lint: web/require-install ## Comprueba tipos, lint y la regla de dependencia
 web/sync: web/require-install ## Tras un scaffold o un cambio de DTO: exporta la spec OpenAPI y regenera los tipos del frontend
 	@echo "${CYAN}Exportando docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
-	@echo "${CYAN}Generando web/src/infrastructure/http/schema.d.ts...${NC}"
+	@echo "${CYAN}Generando web/src/api/schema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formateando web/ (Biome, sin arreglos de lint)...${NC}"
 	cd web && $(BUN) run format
@@ -6345,11 +6345,8 @@ tipo = "String"
 privado = true
 
 === web/.dependency-cruiser.cjs ===
-// The Dependency Rule of the frontend — the same one the Rust crates follow:
-//
-//   presentation → infrastructure → application → domain
-//
-// `bun run lint:arch` fails on any import that points the other way.
+// The frontend is the presentation layer (ADR-0025 of Puerto): containers call the API, views
+// take props. `bun run lint:arch` fails on any import that breaks it.
 module.exports = {
   forbidden: [
     {
@@ -6357,48 +6354,30 @@ module.exports = {
       comment:
         "The provider's client stays behind AuthGateway: screens see a CurrentUser, never a token.",
       severity: "error",
-      from: { pathNot: "^src/infrastructure/auth/" },
+      from: { pathNot: "^src/auth/oidc-auth-gateway" },
       to: { path: "oidc-client-ts" },
     },
     {
-      name: "domain-imports-nothing",
-      comment: "domain/ is plain TypeScript: no npm package, no other layer.",
-      severity: "error",
-      from: { path: "^src/domain/" },
-      to: { pathNot: "^src/domain/" },
-    },
-    {
-      name: "application-imports-domain-only",
-      comment: "A use case takes its ports as arguments; it never reaches an adapter or a screen.",
-      severity: "error",
-      from: { path: "^src/application/" },
-      to: { pathNot: "^src/(application|domain)/" },
-    },
-    {
-      name: "infrastructure-implements-domain-ports",
-      comment: "Adapters know the domain, never the screens or the use cases.",
-      severity: "error",
-      from: { path: "^src/infrastructure/" },
-      to: { path: "^src/(application|presentation)/" },
-    },
-    {
-      name: "only-the-composition-root-imports-infrastructure",
+      name: "views-take-props",
       comment:
-        "Screens reach adapters through useDependencies(); only core/generated/dependencies.ts builds them.",
+        "A view renders what its container hands it: no API client, no dependencies, no data hooks (types are fine).",
+      severity: "error",
+      from: { path: "^src/features/[^/]+/views/" },
+      to: {
+        path: "^src/(api/|dependencies\\.tsx$|generated/|shared/use-async\\.ts$)",
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+    {
+      name: "only-the-composition-root-builds-the-client",
+      comment:
+        "Screens reach the API through useDependencies(), so a test hands them a fake: only generated/dependencies.ts and test-support/ build it.",
       severity: "error",
       from: {
-        path: "^src/presentation/",
-        pathNot: "^src/presentation/core/generated/dependencies\\.ts$",
+        path: "^src/",
+        pathNot: ["^src/generated/dependencies\\.ts$", "^src/test-support/"],
       },
-      to: { path: "^src/infrastructure/" },
-    },
-    {
-      name: "test-support-never-reaches-an-adapter",
-      comment:
-        "Mothers and fakes stand in for adapters: they build domain values, never call the API.",
-      severity: "error",
-      from: { path: "^src/test-support/" },
-      to: { path: "^src/(application|infrastructure)/" },
+      to: { path: "^src/api/client\\.ts$", dependencyTypesNot: ["type-only"] },
     },
     {
       name: "only-tests-import-test-support",
@@ -6455,7 +6434,7 @@ VITE_AUTH_AUDIENCE=
     "format": "biome check --write --linter-enabled=false .",
     "lint:arch": "bun --bun depcruise src",
     "test": "bun test",
-    "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/infrastructure/http/schema.d.ts"
+    "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {
     "oidc-client-ts": "3.5.0",
@@ -6483,185 +6462,209 @@ VITE_AUTH_AUDIENCE=
   }
 }
 
-=== web/src/domain/auth/session.ts ===
-/** The signed-in user as the API resolved them (`GET /me`): never the provider's own claims. */
-export interface CurrentUser {
-  id: string;
-  email: string | null;
-  name: string | null;
-  /** What the API checks with `#[requiere_rol]`. */
-  roles: string[];
+=== web/src/api/client.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { components, paths } from "./schema";
+
+/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
+export type ApiClient = Client<paths>;
+
+/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
+export type Schemas = components["schemas"];
+
+/** `/api` is the backend: proxied to `:8080` by Vite in development. */
+export function createApiClient(options: ClientOptions = {}): ApiClient {
+  return createClient<paths>({ baseUrl: "/api", ...options });
 }
 
-/**
- * Who is signed in, and how to sign in and out. The adapter talks to the provider (OIDC) or to
- * the API (local); screens reach it through `useAuth()`.
- */
-export interface AuthGateway {
-  /** The signed-in user, or `null` when nobody is. */
-  currentUser(): Promise<CurrentUser | null>;
-  /** The bearer token for the API, or `null` when nobody is signed in. */
-  accessToken(): Promise<string | null>;
-  /** Signs in, then comes back to `returnTo` (a path of this app). */
-  login(returnTo: string): Promise<void>;
-  /** Finishes a sign-in on `/auth/callback`; answers the path `login` was given. */
-  completeLogin(): Promise<string>;
+=== web/src/auth/auth.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen, waitFor } from "@testing-library/react";
+import { CurrentUserMother, fakeAuthGateway } from "../test-support/auth";
+import { renderScreen } from "../test-support/render";
+import { RequireAuth, useAuth } from "./auth";
+
+function Secret() {
+  const { can } = useAuth();
+  return <p>{can("admin") ? "admin area" : "member area"}</p>;
+}
+
+describe("RequireAuth", () => {
+  test("should start a sign-in that comes back here when nobody is signed in", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: null });
+
+    // Act
+    renderScreen(
+      <RequireAuth>
+        <Secret />
+      </RequireAuth>,
+      { auth },
+      "/orders?page=2",
+    );
+
+    // Assert
+    await waitFor(() => expect(auth.logins).toEqual(["/orders?page=2"]));
+    expect(screen.queryByText("member area")).toBeNull();
+  });
+
+  test("should show the page to a signed-in user without signing in again", async () => {
+    // Arrange
+    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
+
+    // Act
+    renderScreen(
+      <RequireAuth>
+        <Secret />
+      </RequireAuth>,
+      { auth },
+    );
+
+    // Assert
+    expect(await screen.findByText("member area")).toBeTruthy();
+    expect(auth.logins).toEqual([]);
+  });
+});
+
+describe("useAuth", () => {
+  test("should allow a role only when the user holds it", async () => {
+    // Arrange
+    const user = CurrentUserMother.random({ roles: ["admin"] });
+
+    // Act
+    renderScreen(<Secret />, {}, "/", { user });
+
+    // Assert
+    expect(await screen.findByText("admin area")).toBeTruthy();
+  });
+});
+
+describe("AuthProvider", () => {
+  test("should show the error code when the API does not accept the session", async () => {
+    // Arrange
+    const auth = {
+      ...fakeAuthGateway(),
+      currentUser: () => Promise.reject(new Error("auth.no_autenticado")),
+    };
+
+    // Act
+    renderScreen(<Secret />, { auth });
+
+    // Assert
+    expect((await screen.findByRole("alert")).textContent).toBe("auth.no_autenticado");
+  });
+});
+
+=== web/src/auth/auth.tsx ===
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useLocation, useSearch } from "wouter";
+import { useDependencies } from "../dependencies";
+import { ErrorAlert } from "../shared/ui/error-alert";
+import type { CurrentUser } from "./session";
+
+export interface Auth {
+  /** The signed-in user, `null` when nobody is. */
+  user: CurrentUser | null;
+  /** Whether the user holds `role`. Screens hide what the API would refuse; the API still decides. */
+  can(role: string): boolean;
+  /** Signs in, then comes back to the current page. */
+  login(): Promise<void>;
   logout(): Promise<void>;
+  /** Asks the gateway again who is signed in: after a sign-in that did not leave the app. */
+  refresh(): Promise<void>;
+  /** Finishes a sign-in (`/auth/callback`): answers the page to go back to. */
+  completeLogin(): Promise<string>;
 }
 
-/** A sign-in the provider or the API refused, or a `GET /me` that failed. */
-export class AuthError extends Error {
-  readonly code: string;
+type State =
+  | { status: "loading" }
+  | { status: "ready"; user: CurrentUser | null }
+  | { status: "error"; error: unknown };
 
-  constructor(code: string) {
-    super(code);
-    this.name = "AuthError";
-    this.code = code;
+const AuthContext = createContext<Auth | null>(null);
+
+/** Asks the gateway who is signed in once, before rendering the app: no screen flickers. */
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const { auth } = useDependencies();
+  const [location] = useLocation();
+  const search = useSearch();
+  const [state, setState] = useState<State>({ status: "loading" });
+
+  useEffect(() => {
+    auth.currentUser().then(
+      (user) => setState({ status: "ready", user }),
+      (error: unknown) => setState({ status: "error", error }),
+    );
+  }, [auth]);
+
+  const here = search === "" ? location : `${location}?${search}`;
+  const login = useCallback(() => auth.login(here), [auth, here]);
+  const refresh = useCallback(async () => {
+    setState({ status: "ready", user: await auth.currentUser() });
+  }, [auth]);
+  const completeLogin = useCallback(async () => {
+    const back = await auth.completeLogin();
+    await refresh();
+    return back;
+  }, [auth, refresh]);
+  const logout = useCallback(async () => {
+    await auth.logout();
+    setState({ status: "ready", user: null });
+  }, [auth]);
+  const user = state.status === "ready" ? state.user : null;
+  const value = useMemo<Auth>(
+    () => ({
+      user,
+      can: (role) => user?.roles.includes(role) ?? false,
+      login,
+      logout,
+      refresh,
+      completeLogin,
+    }),
+    [user, login, logout, refresh, completeLogin],
+  );
+
+  if (state.status === "loading") return <span className="loading loading-spinner" />;
+  if (state.status === "error") return <ErrorAlert error={state.error} />;
+  return <AuthContext value={value}>{children}</AuthContext>;
+}
+
+export function useAuth(): Auth {
+  const auth = useContext(AuthContext);
+  if (auth === null) {
+    throw new Error("useAuth() called outside <AuthProvider>");
   }
+  return auth;
 }
 
-=== web/src/domain/equipo/errors.ts ===
-/**
- * A request about an equipo that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `equipo.no_encontrado`, `equipo.validacion.<field>_vacio`.
- */
-export class EquipoError extends Error {
-  readonly code: string;
+/** Renders `children` for a signed-in user; anyone else is sent to sign in, and back here. */
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const { user, login } = useAuth();
+  const started = useRef(false);
 
-  constructor(code: string) {
-    super(code);
-    this.name = "EquipoError";
-    this.code = code;
-  }
+  useEffect(() => {
+    // Once: StrictMode runs effects twice.
+    if (user !== null || started.current) return;
+    started.current = true;
+    void login();
+  }, [user, login]);
+
+  return user === null ? <span className="loading loading-spinner" /> : children;
 }
 
-=== web/src/domain/equipo/messages.ts ===
-import type { EquipoDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface EquipoProblem {
-  field: keyof EquipoDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "equipo.validacion.nombre_vacio": "Nombre is required",
-  "equipo.duplicado": "An equipo with these values already exists",
-  "equipo.no_encontrado": "This equipo no longer exists",
-  "equipo.repositorio": "The equipo could not be saved, try again later",
-  "equipo.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof EquipoDraft> = {
-  "equipo.validacion.nombre_vacio": "nombre",
-};
-
-export function toProblem(code: string): EquipoProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/equipo/model.ts ===
-export interface Equipo {
-  id: string;
-  nombre: string;
-}
-
-/** What a create or an update sends: an equipo without its id. */
-export type EquipoDraft = Omit<Equipo, "id">;
-
-=== web/src/domain/equipo/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Equipo, EquipoDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `EquipoError` the API answered. */
-export interface EquipoRepository {
-  list(page: PageRequest): Promise<Page<Equipo>>;
-  get(id: string): Promise<Equipo>;
-  create(draft: EquipoDraft): Promise<Equipo>;
-  update(id: string, draft: EquipoDraft): Promise<Equipo>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/domain/jugador/errors.ts ===
-/**
- * A request about a jugador that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `jugador.no_encontrado`, `jugador.validacion.<field>_vacio`.
- */
-export class JugadorError extends Error {
-  readonly code: string;
-
-  constructor(code: string) {
-    super(code);
-    this.name = "JugadorError";
-    this.code = code;
-  }
-}
-
-=== web/src/domain/jugador/messages.ts ===
-import type { JugadorDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface JugadorProblem {
-  field: keyof JugadorDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "jugador.validacion.equipo_id_no_encontrado": "Equipo does not exist",
-  "jugador.validacion.email_vacio": "Email is required",
-  "jugador.duplicado": "A jugador with these values already exists",
-  "jugador.no_encontrado": "This jugador no longer exists",
-  "jugador.repositorio": "The jugador could not be saved, try again later",
-  "jugador.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof JugadorDraft> = {
-  "jugador.validacion.equipo_id_no_encontrado": "equipoId",
-  "jugador.validacion.email_vacio": "email",
-};
-
-export function toProblem(code: string): JugadorProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/jugador/model.ts ===
-export interface Jugador {
-  id: string;
-  equipoId: string;
-  dorsal: number;
-  email: string;
-}
-
-/** What a create or an update sends: a jugador without its id. */
-export type JugadorDraft = Omit<Jugador, "id">;
-
-=== web/src/domain/jugador/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Jugador, JugadorDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `JugadorError` the API answered. */
-export interface JugadorRepository {
-  list(page: PageRequest): Promise<Page<Jugador>>;
-  get(id: string): Promise<Jugador>;
-  create(draft: JugadorDraft): Promise<Jugador>;
-  update(id: string, draft: JugadorDraft): Promise<Jugador>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/infrastructure/auth/bearer-middleware.test.ts ===
+=== web/src/auth/bearer-middleware.test.ts ===
 import { describe, expect, test } from "bun:test";
 import createClient from "openapi-fetch";
-import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
+import { CurrentUserMother, fakeAuthGateway } from "../test-support/auth";
 import { bearerMiddleware } from "./bearer-middleware";
 
 /** One endpoint is enough: the middleware does not look at the path. */
@@ -6720,9 +6723,9 @@ describe("bearerMiddleware", () => {
   });
 });
 
-=== web/src/infrastructure/auth/bearer-middleware.ts ===
+=== web/src/auth/bearer-middleware.ts ===
 import type { Middleware } from "openapi-fetch";
-import type { AuthGateway } from "../../domain/auth/session";
+import type { AuthGateway } from "./session";
 
 /**
  * Signs every API call with the user's token; a `401` means the session is gone, so it signs in
@@ -6744,11 +6747,11 @@ export function bearerMiddleware(auth: AuthGateway): Middleware {
   };
 }
 
-=== web/src/infrastructure/auth/oidc-auth-gateway.test.ts ===
+=== web/src/auth/oidc-auth-gateway.test.ts ===
 import { describe, expect, test } from "bun:test";
 import type { User } from "oidc-client-ts";
-import { AuthError } from "../../domain/auth/session";
 import { type OidcClient, oidcAuthGatewayOver, oidcSettingsFromEnv } from "./oidc-auth-gateway";
+import { AuthError } from "./session";
 
 /** A client signed in with `user` (`null`: nobody); `redirects` records each redirect. */
 function client(user: Partial<User> | null) {
@@ -6855,9 +6858,9 @@ describe("oidcSettingsFromEnv", () => {
   });
 });
 
-=== web/src/infrastructure/auth/oidc-auth-gateway.ts ===
+=== web/src/auth/oidc-auth-gateway.ts ===
 import { InMemoryWebStorage, UserManager, WebStorageStateStore } from "oidc-client-ts";
-import { AuthError, type AuthGateway, type CurrentUser } from "../../domain/auth/session";
+import { AuthError, type AuthGateway, type CurrentUser } from "./session";
 
 /** Where the provider is and who this app is to it — `web/.env`. */
 export interface OidcSettings {
@@ -6953,683 +6956,59 @@ export function oidcAuthGatewayOver(client: OidcClient, fetchMe: FetchMe): AuthG
   };
 }
 
-=== web/src/infrastructure/equipo/equipo-repository-http.test.ts ===
-import { describe, expect, test } from "bun:test";
-import { EquipoError } from "../../domain/equipo/errors";
-import { EquipoMother } from "../../test-support/equipo";
-import { createApiClient } from "../http/client";
-import { equipoRepositoryHttp } from "./equipo-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: equipoRepositoryHttp(api), requests };
-}
-
-describe("equipoRepositoryHttp", () => {
-  test("should ask for the page and return its equipos", async () => {
-    // Arrange
-    const equipo = EquipoMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [equipo],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/equipos");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [equipo], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating an equipo", async () => {
-    // Arrange
-    const draft = EquipoMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the equipo does not exist", async () => {
-    // Arrange
-    const code = "equipo.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(EquipoError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the equipo", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/equipos/42");
-  });
-});
-
-=== web/src/infrastructure/equipo/equipo-repository-http.ts ===
-import { EquipoError } from "../../domain/equipo/errors";
-import type { Equipo, EquipoDraft } from "../../domain/equipo/model";
-import type { EquipoRepository } from "../../domain/equipo/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type EquipoDto = components["schemas"]["DtoEquipo"];
-type EquipoRequest = components["schemas"]["PeticionCrearEquipo"];
-
-function toEquipo(dto: EquipoDto): Equipo {
-  return {
-    id: dto.id,
-    nombre: dto.nombre,
-  };
-}
-
-function toRequest(draft: EquipoDraft): EquipoRequest {
-  return {
-    nombre: draft.nombre,
-  };
-}
-
-/** `EquipoRepository` over the REST API (`/equipos`). */
-export function equipoRepositoryHttp(api: ApiClient): EquipoRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/equipos", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new EquipoError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toEquipo),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/equipos/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new EquipoError(apiErrorCode(error, response));
-      return toEquipo(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/equipos", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new EquipoError(apiErrorCode(error, response));
-      return toEquipo(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/equipos/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new EquipoError(apiErrorCode(error, response));
-      return toEquipo(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/equipos/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new EquipoError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/infrastructure/http/client.ts ===
-import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { paths } from "./schema";
-
-/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
-export type ApiClient = Client<paths>;
-
-/** `/api` is the backend: proxied to `:8080` by Vite in development. */
-export function createApiClient(options: ClientOptions = {}): ApiClient {
-  return createClient<paths>({ baseUrl: "/api", ...options });
+=== web/src/auth/session.ts ===
+/** The signed-in user as the API resolved them (`GET /me`): never the provider's own claims. */
+export interface CurrentUser {
+  id: string;
+  email: string | null;
+  name: string | null;
+  /** What the API checks with `#[requiere_rol]`. */
+  roles: string[];
 }
 
 /**
- * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
- * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ * Who is signed in, and how to sign in and out. The adapter talks to the provider (OIDC) or to
+ * the API (local); screens reach it through `useAuth()`.
  */
-export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "codigo" in error) {
-    const { codigo } = error;
-    if (typeof codigo === "string") return codigo;
-  }
-  return `http.${response.status}`;
-}
-
-=== web/src/infrastructure/jugador/jugador-repository-http.test.ts ===
-import { describe, expect, test } from "bun:test";
-import { JugadorError } from "../../domain/jugador/errors";
-import { JugadorMother } from "../../test-support/jugador";
-import { createApiClient } from "../http/client";
-import { jugadorRepositoryHttp } from "./jugador-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: jugadorRepositoryHttp(api), requests };
-}
-
-describe("jugadorRepositoryHttp", () => {
-  test("should ask for the page and return its jugadores", async () => {
-    // Arrange
-    const jugador = JugadorMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [jugador],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/jugadores");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [jugador], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating a jugador", async () => {
-    // Arrange
-    const draft = JugadorMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the jugador does not exist", async () => {
-    // Arrange
-    const code = "jugador.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(JugadorError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the jugador", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/jugadores/42");
-  });
-});
-
-=== web/src/infrastructure/jugador/jugador-repository-http.ts ===
-import { JugadorError } from "../../domain/jugador/errors";
-import type { Jugador, JugadorDraft } from "../../domain/jugador/model";
-import type { JugadorRepository } from "../../domain/jugador/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type JugadorDto = components["schemas"]["DtoJugador"];
-type JugadorRequest = components["schemas"]["PeticionCrearJugador"];
-
-function toJugador(dto: JugadorDto): Jugador {
-  return {
-    id: dto.id,
-    equipoId: dto.equipoId,
-    dorsal: dto.dorsal,
-    email: dto.email ?? "",
-  };
-}
-
-function toRequest(draft: JugadorDraft): JugadorRequest {
-  return {
-    equipoId: draft.equipoId,
-    dorsal: draft.dorsal,
-    email: draft.email,
-  };
-}
-
-/** `JugadorRepository` over the REST API (`/jugadores`). */
-export function jugadorRepositoryHttp(api: ApiClient): JugadorRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/jugadores", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new JugadorError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toJugador),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/jugadores/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new JugadorError(apiErrorCode(error, response));
-      return toJugador(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/jugadores", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new JugadorError(apiErrorCode(error, response));
-      return toJugador(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/jugadores/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new JugadorError(apiErrorCode(error, response));
-      return toJugador(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/jugadores/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new JugadorError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/main.tsx ===
-import "./index.css";
-
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { AuthProvider } from "./presentation/core/auth";
-import { DependenciesProvider } from "./presentation/core/dependencies";
-import { createDependencies } from "./presentation/core/generated/dependencies";
-import { AppRoutes, navEntries } from "./presentation/core/generated/routes";
-import { Layout } from "./presentation/shared/ui/layout";
-
-const root = document.getElementById("root");
-if (root === null) {
-  throw new Error("index.html has no #root element");
-}
-
-createRoot(root).render(
-  <StrictMode>
-    <DependenciesProvider value={createDependencies()}>
-      <AuthProvider>
-        <Layout title={document.title} nav={navEntries}>
-          <AppRoutes />
-        </Layout>
-      </AuthProvider>
-    </DependenciesProvider>
-  </StrictMode>,
-);
-
-=== web/src/presentation/core/auth.test.tsx ===
-import { describe, expect, test } from "bun:test";
-import { screen, waitFor } from "@testing-library/react";
-import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
-import { renderScreen } from "../../test-support/render";
-import { RequireAuth, useAuth } from "./auth";
-
-function Secret() {
-  const { can } = useAuth();
-  return <p>{can("admin") ? "admin area" : "member area"}</p>;
-}
-
-describe("RequireAuth", () => {
-  test("should start a sign-in that comes back here when nobody is signed in", async () => {
-    // Arrange
-    const auth = fakeAuthGateway({ user: null });
-
-    // Act
-    renderScreen(
-      <RequireAuth>
-        <Secret />
-      </RequireAuth>,
-      { auth },
-      "/orders?page=2",
-    );
-
-    // Assert
-    await waitFor(() => expect(auth.logins).toEqual(["/orders?page=2"]));
-    expect(screen.queryByText("member area")).toBeNull();
-  });
-
-  test("should show the page to a signed-in user without signing in again", async () => {
-    // Arrange
-    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
-
-    // Act
-    renderScreen(
-      <RequireAuth>
-        <Secret />
-      </RequireAuth>,
-      { auth },
-    );
-
-    // Assert
-    expect(await screen.findByText("member area")).toBeTruthy();
-    expect(auth.logins).toEqual([]);
-  });
-});
-
-describe("useAuth", () => {
-  test("should allow a role only when the user holds it", async () => {
-    // Arrange
-    const user = CurrentUserMother.random({ roles: ["admin"] });
-
-    // Act
-    renderScreen(<Secret />, {}, "/", { user });
-
-    // Assert
-    expect(await screen.findByText("admin area")).toBeTruthy();
-  });
-});
-
-describe("AuthProvider", () => {
-  test("should show the error code when the API does not accept the session", async () => {
-    // Arrange
-    const auth = {
-      ...fakeAuthGateway(),
-      currentUser: () => Promise.reject(new Error("auth.no_autenticado")),
-    };
-
-    // Act
-    renderScreen(<Secret />, { auth });
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe("auth.no_autenticado");
-  });
-});
-
-=== web/src/presentation/core/auth.tsx ===
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { useLocation, useSearch } from "wouter";
-import type { CurrentUser } from "../../domain/auth/session";
-import { ErrorAlert } from "../shared/ui/error-alert";
-import { useDependencies } from "./dependencies";
-
-export interface Auth {
-  /** The signed-in user, `null` when nobody is. */
-  user: CurrentUser | null;
-  /** Whether the user holds `role`. Screens hide what the API would refuse; the API still decides. */
-  can(role: string): boolean;
-  /** Signs in, then comes back to the current page. */
-  login(): Promise<void>;
-  logout(): Promise<void>;
-  /** Asks the gateway again who is signed in: after a sign-in that did not leave the app. */
-  refresh(): Promise<void>;
-  /** Finishes a sign-in (`/auth/callback`): answers the page to go back to. */
+export interface AuthGateway {
+  /** The signed-in user, or `null` when nobody is. */
+  currentUser(): Promise<CurrentUser | null>;
+  /** The bearer token for the API, or `null` when nobody is signed in. */
+  accessToken(): Promise<string | null>;
+  /** Signs in, then comes back to `returnTo` (a path of this app). */
+  login(returnTo: string): Promise<void>;
+  /** Finishes a sign-in on `/auth/callback`; answers the path `login` was given. */
   completeLogin(): Promise<string>;
+  logout(): Promise<void>;
 }
 
-type State =
-  | { status: "loading" }
-  | { status: "ready"; user: CurrentUser | null }
-  | { status: "error"; error: unknown };
+/** A sign-in the provider or the API refused, or a `GET /me` that failed. */
+export class AuthError extends Error {
+  readonly code: string;
 
-const AuthContext = createContext<Auth | null>(null);
-
-/** Asks the gateway who is signed in once, before rendering the app: no screen flickers. */
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const { auth } = useDependencies();
-  const [location] = useLocation();
-  const search = useSearch();
-  const [state, setState] = useState<State>({ status: "loading" });
-
-  useEffect(() => {
-    auth.currentUser().then(
-      (user) => setState({ status: "ready", user }),
-      (error: unknown) => setState({ status: "error", error }),
-    );
-  }, [auth]);
-
-  const here = search === "" ? location : `${location}?${search}`;
-  const login = useCallback(() => auth.login(here), [auth, here]);
-  const refresh = useCallback(async () => {
-    setState({ status: "ready", user: await auth.currentUser() });
-  }, [auth]);
-  const completeLogin = useCallback(async () => {
-    const back = await auth.completeLogin();
-    await refresh();
-    return back;
-  }, [auth, refresh]);
-  const logout = useCallback(async () => {
-    await auth.logout();
-    setState({ status: "ready", user: null });
-  }, [auth]);
-  const user = state.status === "ready" ? state.user : null;
-  const value = useMemo<Auth>(
-    () => ({
-      user,
-      can: (role) => user?.roles.includes(role) ?? false,
-      login,
-      logout,
-      refresh,
-      completeLogin,
-    }),
-    [user, login, logout, refresh, completeLogin],
-  );
-
-  if (state.status === "loading") return <span className="loading loading-spinner" />;
-  if (state.status === "error") return <ErrorAlert error={state.error} />;
-  return <AuthContext value={value}>{children}</AuthContext>;
-}
-
-export function useAuth(): Auth {
-  const auth = useContext(AuthContext);
-  if (auth === null) {
-    throw new Error("useAuth() called outside <AuthProvider>");
+  constructor(code: string) {
+    super(code);
+    this.name = "AuthError";
+    this.code = code;
   }
-  return auth;
 }
 
-/** Renders `children` for a signed-in user; anyone else is sent to sign in, and back here. */
-export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, login } = useAuth();
-  const started = useRef(false);
-
-  useEffect(() => {
-    // Once: StrictMode runs effects twice.
-    if (user !== null || started.current) return;
-    started.current = true;
-    void login();
-  }, [user, login]);
-
-  return user === null ? <span className="loading loading-spinner" /> : children;
-}
-
-=== web/src/presentation/core/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-//
-// The composition root: the only module that imports `infrastructure/`. Screens reach the
-// adapters through `useDependencies()`, so a test hands them a fake instead.
-
-import type { AuthGateway } from "../../../domain/auth/session";
-import type { EquipoRepository } from "../../../domain/equipo/repository";
-import type { JugadorRepository } from "../../../domain/jugador/repository";
-import { bearerMiddleware } from "../../../infrastructure/auth/bearer-middleware";
-import {
-  oidcAuthGateway,
-  oidcSettingsFromEnv,
-} from "../../../infrastructure/auth/oidc-auth-gateway";
-import { equipoRepositoryHttp } from "../../../infrastructure/equipo/equipo-repository-http";
-import { createApiClient } from "../../../infrastructure/http/client";
-import { jugadorRepositoryHttp } from "../../../infrastructure/jugador/jugador-repository-http";
-
-export interface Dependencies {
-  auth: AuthGateway;
-  equipoRepository: EquipoRepository;
-  jugadorRepository: JugadorRepository;
-}
-
-export function createDependencies(): Dependencies {
-  const auth = oidcAuthGateway(oidcSettingsFromEnv());
-  const api = createApiClient();
-  api.use(bearerMiddleware(auth));
-  return {
-    auth,
-    equipoRepository: equipoRepositoryHttp(api),
-    jugadorRepository: jugadorRepositoryHttp(api),
-  };
-}
-
-=== web/src/presentation/core/generated/roles.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-
-/**
- * Every role a generated screen checks (`roles` in puerto.toml). The screen tests' caller holds
- * them all (`CurrentUserMother.caller()`).
- */
-export const ROLES: string[] = ["admin"];
-
-=== web/src/presentation/core/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-
-import { Route, Switch } from "wouter";
-import { EquipoDetailContainer } from "../../features/equipo/containers/equipo-detail-container";
-import { EquipoFormContainer } from "../../features/equipo/containers/equipo-form-container";
-import { EquipoListContainer } from "../../features/equipo/containers/equipo-list-container";
-import { JugadorDetailContainer } from "../../features/jugador/containers/jugador-detail-container";
-import { JugadorFormContainer } from "../../features/jugador/containers/jugador-form-container";
-import { JugadorListContainer } from "../../features/jugador/containers/jugador-list-container";
-import { AuthCallbackPage } from "../../pages/auth-callback";
-import { HomePage } from "../../pages/home";
-import { NotFoundPage } from "../../pages/not-found";
-import type { NavEntry } from "../../shared/ui/layout";
-import { RequireAuth } from "../auth";
-import { customRoutes } from "../routes";
-
-export const navEntries: NavEntry[] = [
-  { label: "Equipos", href: "/equipos" },
-  { label: "Jugadores", href: "/jugadores" },
-];
-
-export function AppRoutes() {
-  return (
-    <Switch>
-      <Route path="/">
-        <HomePage entries={navEntries} />
-      </Route>
-      <Route path="/auth/callback">
-        <AuthCallbackPage />
-      </Route>
-      {customRoutes}
-      <Route path="/equipos">
-        <RequireAuth>
-          <EquipoListContainer />
-        </RequireAuth>
-      </Route>
-      <Route path="/equipos/new">
-        <RequireAuth>
-          <EquipoFormContainer />
-        </RequireAuth>
-      </Route>
-      <Route path="/equipos/:id/edit">
-        {(params) => (
-          <RequireAuth>
-            <EquipoFormContainer id={params.id} />
-          </RequireAuth>
-        )}
-      </Route>
-      <Route path="/equipos/:id">
-        {(params) => (
-          <RequireAuth>
-            <EquipoDetailContainer id={params.id} />
-          </RequireAuth>
-        )}
-      </Route>
-      <Route path="/jugadores">
-        <JugadorListContainer />
-      </Route>
-      <Route path="/jugadores/new">
-        <RequireAuth>
-          <JugadorFormContainer />
-        </RequireAuth>
-      </Route>
-      <Route path="/jugadores/:id/edit">
-        {(params) => (
-          <RequireAuth>
-            <JugadorFormContainer id={params.id} />
-          </RequireAuth>
-        )}
-      </Route>
-      <Route path="/jugadores/:id">{(params) => <JugadorDetailContainer id={params.id} />}</Route>
-      <Route>
-        <NotFoundPage />
-      </Route>
-    </Switch>
-  );
-}
-
-=== web/src/presentation/features/equipo/containers/equipo-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
+=== web/src/features/equipo/containers/equipo-detail-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { EquipoError } from "../../../../domain/equipo/errors";
-import { EquipoMother, fakeEquipoRepository } from "../../../../test-support/equipo";
-import { renderScreen } from "../../../../test-support/render";
+import { EquipoMother, equipoCollection } from "../../../test-support/equipo";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { EquipoDetailContainer } from "./equipo-detail-container";
 
 describe("EquipoDetailContainer", () => {
   test("should show the equipo when it exists", async () => {
     // Arrange
     const seeded = EquipoMother.random();
-    const equipoRepository = fakeEquipoRepository([seeded]);
+    const api = fakeApi([equipoCollection([seeded])]);
 
     // Act
-    renderScreen(<EquipoDetailContainer id={seeded.id} />, { equipoRepository });
+    renderScreen(<EquipoDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -7637,12 +7016,10 @@ describe("EquipoDetailContainer", () => {
 
   test("should show the not-found code when the equipo does not exist", async () => {
     // Arrange
-    const equipoRepository = fakeEquipoRepository();
+    const api = fakeApi([equipoCollection()]);
 
     // Act
-    renderScreen(<EquipoDetailContainer id={crypto.randomUUID()} />, {
-      equipoRepository,
-    });
+    renderScreen(<EquipoDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("equipo.no_encontrado");
@@ -7651,30 +7028,26 @@ describe("EquipoDetailContainer", () => {
   test("should delete the equipo only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = EquipoMother.random();
-    const fake = fakeEquipoRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<EquipoDetailContainer id={seeded.id} />, {
-      equipoRepository: { ...fake, remove },
-    });
+    const stored = equipoCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<EquipoDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/equipos"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 
   test("should show auth.prohibido when the API refuses the deletion", async () => {
     // Arrange
     const seeded = EquipoMother.random();
-    const equipoRepository = {
-      ...fakeEquipoRepository([seeded]),
-      remove: () => Promise.reject(new EquipoError("auth.prohibido")),
-    };
-    renderScreen(<EquipoDetailContainer id={seeded.id} />, { equipoRepository });
+    const failures = { "DELETE /equipos": "auth.prohibido" };
+    const api = fakeApi([equipoCollection([seeded])], failures);
+    renderScreen(<EquipoDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
 
     // Act
@@ -7685,18 +7058,22 @@ describe("EquipoDetailContainer", () => {
   });
 });
 
-=== web/src/presentation/features/equipo/containers/equipo-detail-container.tsx ===
+=== web/src/features/equipo/containers/equipo-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { EquipoDetailView } from "../views/equipo-detail-view";
 
 export function EquipoDetailContainer({ id }: { id: string }) {
-  const { equipoRepository } = useDependencies();
-  const equipo = useAsync(() => equipoRepository.get(id), [equipoRepository, id]);
+  const { api } = useDependencies();
+  const equipo = useAsync(
+    () => unwrap(api.GET("/equipos/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -7704,7 +7081,7 @@ export function EquipoDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await equipoRepository.remove(id);
+      await unwrap(api.DELETE("/equipos/{id}", { params: { path: { id } } }));
       navigate("/equipos");
     } catch (error) {
       setFailure(error);
@@ -7745,70 +7122,66 @@ export function EquipoDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/equipo/containers/equipo-form-container.test.tsx ===
+=== web/src/features/equipo/containers/equipo-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { EquipoError } from "../../../../domain/equipo/errors";
-import type { EquipoDraft } from "../../../../domain/equipo/model";
-import { EquipoMother, fakeEquipoRepository } from "../../../../test-support/equipo";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
+import { EquipoMother, equipoCollection } from "../../../test-support/equipo";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { EquipoFormContainer } from "./equipo-form-container";
 
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: EquipoDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearEquipo"]) {
   await screen.findByText("Save");
-  type("Nombre", draft.nombre);
+  type("Nombre", request.nombre);
 }
 
 describe("EquipoFormContainer", () => {
   test("should create the equipo from what was typed and show it", async () => {
     // Arrange
-    const draft = EquipoMother.draft();
-    const equipoRepository = fakeEquipoRepository();
-    const { history } = renderScreen(<EquipoFormContainer />, { equipoRepository });
-    await fillIn(draft);
+    const request = EquipoMother.request();
+    const stored = equipoCollection();
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<EquipoFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/equipos/"));
-    const {
-      items: [created],
-    } = await equipoRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/equipos/${created?.id}`);
   });
 
   test("should save the edited equipo when an existing one is submitted", async () => {
     // Arrange
     const seeded = EquipoMother.random();
-    const equipoRepository = fakeEquipoRepository([seeded]);
-    const { history } = renderScreen(<EquipoFormContainer id={seeded.id} />, {
-      equipoRepository,
-    });
+    const stored = equipoCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<EquipoFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/equipos/${seeded.id}`));
-    expect(await equipoRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = EquipoMother.request();
     const code = "equipo.validacion.invalid";
-    const equipoRepository = {
-      ...fakeEquipoRepository(),
-      create: () => Promise.reject(new EquipoError(code)),
-    };
-    renderScreen(<EquipoFormContainer />, { equipoRepository });
-    await fillIn(EquipoMother.draft());
+    const failures = { "POST /equipos": code };
+    const api = fakeApi([equipoCollection()], failures);
+    renderScreen(<EquipoFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -7819,12 +7192,11 @@ describe("EquipoFormContainer", () => {
 
   test("should say a equipo with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const equipoRepository = {
-      ...fakeEquipoRepository(),
-      create: () => Promise.reject(new EquipoError("equipo.duplicado")),
-    };
-    renderScreen(<EquipoFormContainer />, { equipoRepository });
-    await fillIn(EquipoMother.draft());
+    const request = EquipoMother.request();
+    const failures = { "POST /equipos": "equipo.duplicado" };
+    const api = fakeApi([equipoCollection()], failures);
+    renderScreen(<EquipoFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -7837,12 +7209,11 @@ describe("EquipoFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const equipoRepository = {
-      ...fakeEquipoRepository(),
-      create: () => Promise.reject(new EquipoError("equipo.validacion.nombre_vacio")),
-    };
-    renderScreen(<EquipoFormContainer />, { equipoRepository });
-    await fillIn(EquipoMother.draft());
+    const request = EquipoMother.request();
+    const failures = { "POST /equipos": "equipo.validacion.nombre_vacio" };
+    const api = fakeApi([equipoCollection()], failures);
+    renderScreen(<EquipoFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -7855,22 +7226,28 @@ describe("EquipoFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/equipo/containers/equipo-form-container.tsx ===
+=== web/src/features/equipo/containers/equipo-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/equipo/messages";
-import type { Equipo } from "../../../../domain/equipo/model";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { EquipoFormView, toEquipoDraft, toEquipoForm } from "../views/equipo-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { EquipoFormView, toEquipoForm, toEquipoRequest } from "../views/equipo-form-view";
+
+type Equipo = Schemas["DtoEquipo"];
 
 /** Creates an equipo, or edits the one with `id`. */
 export function EquipoFormContainer({ id }: { id?: string }) {
-  const { equipoRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : equipoRepository.get(id)),
-    [equipoRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/equipos/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New equipo" : "Edit equipo";
 
@@ -7888,7 +7265,7 @@ export function EquipoFormContainer({ id }: { id?: string }) {
 }
 
 function EquipoForm({ existing }: { existing: Equipo | null }) {
-  const { equipoRepository } = useDependencies();
+  const { api } = useDependencies();
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toEquipoForm(existing));
   const [saving, setSaving] = useState(false);
@@ -7899,11 +7276,12 @@ function EquipoForm({ existing }: { existing: Equipo | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toEquipoDraft(values);
-      const saved =
+      const body = toEquipoRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await equipoRepository.create(draft)
-          : await equipoRepository.update(existing.id, draft);
+          ? api.POST("/equipos", { body })
+          : api.PUT("/equipos/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/equipos/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -7927,22 +7305,22 @@ function EquipoForm({ existing }: { existing: Equipo | null }) {
   );
 }
 
-=== web/src/presentation/features/equipo/containers/equipo-list-container.test.tsx ===
+=== web/src/features/equipo/containers/equipo-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { EquipoError } from "../../../../domain/equipo/errors";
-import { EquipoMother, fakeEquipoRepository } from "../../../../test-support/equipo";
-import { renderScreen } from "../../../../test-support/render";
+import { EquipoMother, equipoCollection } from "../../../test-support/equipo";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { EquipoListContainer } from "./equipo-list-container";
 
 describe("EquipoListContainer", () => {
   test("should show a row per equipo when there are some", async () => {
     // Arrange
     const seed = [EquipoMother.random(), EquipoMother.random()];
-    const equipoRepository = fakeEquipoRepository(seed);
+    const api = fakeApi([equipoCollection(seed)]);
 
     // Act
-    renderScreen(<EquipoListContainer />, { equipoRepository });
+    renderScreen(<EquipoListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -7951,8 +7329,8 @@ describe("EquipoListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => EquipoMother.random());
-    const equipoRepository = fakeEquipoRepository(seed);
-    renderScreen(<EquipoListContainer />, { equipoRepository });
+    const api = fakeApi([equipoCollection(seed)]);
+    renderScreen(<EquipoListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -7966,11 +7344,11 @@ describe("EquipoListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => EquipoMother.random());
-    const equipoRepository = fakeEquipoRepository(seed);
+    const api = fakeApi([equipoCollection(seed)]);
     const path = "/equipos?page=2";
 
     // Act
-    renderScreen(<EquipoListContainer />, { equipoRepository }, path);
+    renderScreen(<EquipoListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -7978,10 +7356,10 @@ describe("EquipoListContainer", () => {
 
   test("should say so when there is no equipo", async () => {
     // Arrange
-    const equipoRepository = fakeEquipoRepository();
+    const api = fakeApi([equipoCollection()]);
 
     // Act
-    renderScreen(<EquipoListContainer />, { equipoRepository });
+    renderScreen(<EquipoListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No equipos yet.")).toBeTruthy();
@@ -7989,39 +7367,35 @@ describe("EquipoListContainer", () => {
 
   test("should show the error code when the equipos cannot be listed", async () => {
     // Arrange
-    const equipoRepository = {
-      ...fakeEquipoRepository(),
-      list: () => Promise.reject(new EquipoError("equipo.repositorio")),
-    };
+    const failures = { "GET /equipos": "equipo.repositorio" };
+    const api = fakeApi([equipoCollection()], failures);
 
     // Act
-    renderScreen(<EquipoListContainer />, { equipoRepository });
+    renderScreen(<EquipoListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("equipo.repositorio");
   });
 });
 
-=== web/src/presentation/features/equipo/containers/equipo-list-container.tsx ===
+=== web/src/features/equipo/containers/equipo-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { EquipoListView } from "../views/equipo-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function EquipoListContainer() {
-  const { equipoRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const equipos = useAsync(
-    () => equipoRepository.list({ limit: PAGE_SIZE, offset }),
-    [equipoRepository, offset],
-  );
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
+  const equipos = useAsync(() => unwrap(api.GET("/equipos", { params: { query } })), [api, offset]);
 
   return (
     <section className="space-y-4">
@@ -8038,16 +7412,51 @@ export function EquipoListContainer() {
           <EmptyState message="No equipos yet." />
         ) : (
           <>
-            <EquipoListView equipos={equipos.data.items} />
-            <Pagination {...equipos.data} onOffsetChange={goTo} />
+            <EquipoListView equipos={equipos.data.elementos} />
+            <Pagination
+              total={equipos.data.total}
+              limit={equipos.data.limite}
+              offset={equipos.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/equipo/views/equipo-detail-view.tsx ===
-import type { Equipo } from "../../../../domain/equipo/model";
+=== web/src/features/equipo/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface EquipoProblem {
+  field: string | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "equipo.validacion.nombre_vacio": "Nombre is required",
+  "equipo.duplicado": "An equipo with these values already exists",
+  "equipo.no_encontrado": "This equipo no longer exists",
+  "equipo.repositorio": "The equipo could not be saved, try again later",
+  "equipo.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "equipo.validacion.nombre_vacio": "nombre",
+};
+
+export function toProblem(code: string): EquipoProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/equipo/views/equipo-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+
+type Equipo = Schemas["DtoEquipo"];
 
 export function EquipoDetailView({ equipo }: { equipo: Equipo }) {
   return (
@@ -8058,10 +7467,13 @@ export function EquipoDetailView({ equipo }: { equipo: Equipo }) {
   );
 }
 
-=== web/src/presentation/features/equipo/views/equipo-form-view.tsx ===
-import type { EquipoProblem } from "../../../../domain/equipo/messages";
-import type { Equipo, EquipoDraft } from "../../../../domain/equipo/model";
+=== web/src/features/equipo/views/equipo-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { EquipoProblem } from "../messages";
+
+type Equipo = Schemas["DtoEquipo"];
+type EquipoRequest = Schemas["PeticionCrearEquipo"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface EquipoFormValues {
@@ -8080,7 +7492,8 @@ export function toEquipoForm(equipo: Equipo | null): EquipoFormValues {
   };
 }
 
-export function toEquipoDraft(values: EquipoFormValues): EquipoDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toEquipoRequest(values: EquipoFormValues): EquipoRequest {
   return {
     nombre: values.nombre,
   };
@@ -8127,9 +7540,11 @@ export function EquipoFormView({
   );
 }
 
-=== web/src/presentation/features/equipo/views/equipo-list-view.tsx ===
+=== web/src/features/equipo/views/equipo-list-view.tsx ===
 import { Link } from "wouter";
-import type { Equipo } from "../../../../domain/equipo/model";
+import type { Schemas } from "../../../api/client";
+
+type Equipo = Schemas["DtoEquipo"];
 
 export function EquipoListView({ equipos }: { equipos: Equipo[] }) {
   return (
@@ -8158,35 +7573,24 @@ export function EquipoListView({ equipos }: { equipos: Equipo[] }) {
   );
 }
 
-=== web/src/presentation/features/jugador/containers/jugador-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
+=== web/src/features/jugador/containers/jugador-detail-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { JugadorError } from "../../../../domain/jugador/errors";
-import type { Jugador } from "../../../../domain/jugador/model";
-import { CurrentUserMother } from "../../../../test-support/auth";
-import { EquipoMother, fakeEquipoRepository } from "../../../../test-support/equipo";
-import { fakeJugadorRepository, JugadorMother } from "../../../../test-support/jugador";
-import { renderScreen } from "../../../../test-support/render";
+import { CurrentUserMother } from "../../../test-support/auth";
+import { EquipoMother, equipoCollection } from "../../../test-support/equipo";
+import { fakeApi } from "../../../test-support/fake-api";
+import { JugadorMother, jugadorCollection } from "../../../test-support/jugador";
+import { renderScreen } from "../../../test-support/render";
 import { JugadorDetailContainer } from "./jugador-detail-container";
-
-/** The repositories the reference links load from, holding what `seeded` references. */
-function referencedBy(seeded: Jugador) {
-  return {
-    equipoRepository: fakeEquipoRepository([EquipoMother.random({ id: seeded.equipoId })]),
-  };
-}
 
 describe("JugadorDetailContainer", () => {
   test("should show the jugador when it exists", async () => {
     // Arrange
     const seeded = JugadorMother.random();
-    const jugadorRepository = fakeJugadorRepository([seeded]);
+    const api = fakeApi([jugadorCollection([seeded])]);
 
     // Act
-    renderScreen(<JugadorDetailContainer id={seeded.id} />, {
-      jugadorRepository,
-      ...referencedBy(seeded),
-    });
+    renderScreen(<JugadorDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -8195,15 +7599,11 @@ describe("JugadorDetailContainer", () => {
   test("should link the equipo to its page, named by its label", async () => {
     // Arrange
     const seeded = JugadorMother.random();
-    const jugadorRepository = fakeJugadorRepository([seeded]);
-    const referenced = referencedBy(seeded);
-    const target = await referenced.equipoRepository.get(seeded.equipoId);
+    const target = EquipoMother.random({ id: seeded.equipoId });
+    const api = fakeApi([jugadorCollection([seeded]), equipoCollection([target])]);
 
     // Act
-    renderScreen(<JugadorDetailContainer id={seeded.id} />, {
-      jugadorRepository,
-      ...referenced,
-    });
+    renderScreen(<JugadorDetailContainer id={seeded.id} />, { api });
 
     // Assert: by its href — two references to one target may share a label.
     const selector = `a[href="/equipos/${seeded.equipoId}"]`;
@@ -8212,12 +7612,10 @@ describe("JugadorDetailContainer", () => {
 
   test("should show the not-found code when the jugador does not exist", async () => {
     // Arrange
-    const jugadorRepository = fakeJugadorRepository();
+    const api = fakeApi([jugadorCollection()]);
 
     // Act
-    renderScreen(<JugadorDetailContainer id={crypto.randomUUID()} />, {
-      jugadorRepository,
-    });
+    renderScreen(<JugadorDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("jugador.no_encontrado");
@@ -8226,32 +7624,28 @@ describe("JugadorDetailContainer", () => {
   test("should delete the jugador only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = JugadorMother.random();
-    const fake = fakeJugadorRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<JugadorDetailContainer id={seeded.id} />, {
-      jugadorRepository: { ...fake, remove },
-      ...referencedBy(seeded),
-    });
+    const stored = jugadorCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<JugadorDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/jugadores"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 
   test("should not offer Edit to a user without its role", async () => {
     // Arrange
     const seeded = JugadorMother.random();
-    const jugadorRepository = fakeJugadorRepository([seeded]);
+    const api = fakeApi([jugadorCollection([seeded])]);
     const user = CurrentUserMother.random();
 
     // Act
-    const dependencies = { jugadorRepository, ...referencedBy(seeded) };
-    renderScreen(<JugadorDetailContainer id={seeded.id} />, dependencies, "/", { user });
+    renderScreen(<JugadorDetailContainer id={seeded.id} />, { api }, "/", { user });
 
     // Assert
     expect(await screen.findByText("Equipo", { selector: "dt" })).toBeTruthy();
@@ -8261,12 +7655,11 @@ describe("JugadorDetailContainer", () => {
   test("should not offer Delete to a user without its role", async () => {
     // Arrange
     const seeded = JugadorMother.random();
-    const jugadorRepository = fakeJugadorRepository([seeded]);
+    const api = fakeApi([jugadorCollection([seeded])]);
     const user = CurrentUserMother.random();
 
     // Act
-    const dependencies = { jugadorRepository, ...referencedBy(seeded) };
-    renderScreen(<JugadorDetailContainer id={seeded.id} />, dependencies, "/", { user });
+    renderScreen(<JugadorDetailContainer id={seeded.id} />, { api }, "/", { user });
 
     // Assert
     expect(await screen.findByText("Equipo", { selector: "dt" })).toBeTruthy();
@@ -8276,14 +7669,9 @@ describe("JugadorDetailContainer", () => {
   test("should show auth.prohibido when the API refuses the deletion", async () => {
     // Arrange
     const seeded = JugadorMother.random();
-    const jugadorRepository = {
-      ...fakeJugadorRepository([seeded]),
-      remove: () => Promise.reject(new JugadorError("auth.prohibido")),
-    };
-    renderScreen(<JugadorDetailContainer id={seeded.id} />, {
-      jugadorRepository,
-      ...referencedBy(seeded),
-    });
+    const failures = { "DELETE /jugadores": "auth.prohibido" };
+    const api = fakeApi([jugadorCollection([seeded])], failures);
+    renderScreen(<JugadorDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
 
     // Act
@@ -8294,20 +7682,24 @@ describe("JugadorDetailContainer", () => {
   });
 });
 
-=== web/src/presentation/features/jugador/containers/jugador-detail-container.tsx ===
+=== web/src/features/jugador/containers/jugador-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "../../../core/auth";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useAuth } from "../../../auth/auth";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { JugadorDetailView } from "../views/jugador-detail-view";
 
 export function JugadorDetailContainer({ id }: { id: string }) {
-  const { jugadorRepository } = useDependencies();
+  const { api } = useDependencies();
   const { can } = useAuth();
-  const jugador = useAsync(() => jugadorRepository.get(id), [jugadorRepository, id]);
+  const jugador = useAsync(
+    () => unwrap(api.GET("/jugadores/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -8315,11 +7707,16 @@ export function JugadorDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await jugadorRepository.remove(id);
+      await unwrap(api.DELETE("/jugadores/{id}", { params: { path: { id } } }));
       navigate("/jugadores");
     } catch (error) {
       setFailure(error);
     }
+  };
+  const equipoLabel = async (target: string) => {
+    const params = { path: { id: target } };
+    const found = await unwrap(api.GET("/equipos/{id}", { params }));
+    return found.nombre;
   };
 
   return (
@@ -8331,7 +7728,7 @@ export function JugadorDetailContainer({ id }: { id: string }) {
       {jugador.status === "ok" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <JugadorDetailView jugador={jugador.data} />
+            <JugadorDetailView jugador={jugador.data} equipoLabel={equipoLabel} />
             <div className="card-actions justify-end">
               {can("admin") && (
                 <Link href={`/jugadores/${id}/edit`} className="btn">
@@ -8360,14 +7757,14 @@ export function JugadorDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/jugador/containers/jugador-form-container.test.tsx ===
+=== web/src/features/jugador/containers/jugador-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { JugadorError } from "../../../../domain/jugador/errors";
-import type { JugadorDraft } from "../../../../domain/jugador/model";
-import { EquipoMother, fakeEquipoRepository } from "../../../../test-support/equipo";
-import { fakeJugadorRepository, JugadorMother } from "../../../../test-support/jugador";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
+import { EquipoMother, equipoCollection } from "../../../test-support/equipo";
+import { fakeApi } from "../../../test-support/fake-api";
+import { JugadorMother, jugadorCollection } from "../../../test-support/jugador";
+import { renderScreen } from "../../../test-support/render";
 import { JugadorFormContainer } from "./jugador-form-container";
 
 function type(label: string, value: string) {
@@ -8381,74 +7778,60 @@ async function choose(label: string, id: string) {
   fireEvent.change(select, { target: { value: id } });
 }
 
-/** The repositories the selects read, holding what `draft` references. */
-function referencedBy(draft: JugadorDraft) {
-  return {
-    equipoRepository: fakeEquipoRepository([EquipoMother.random({ id: draft.equipoId })]),
-  };
+/** The collections the selects read, holding what `owner` references. */
+function referencedBy(owner: Partial<Schemas["DtoJugador"]>) {
+  return [equipoCollection([EquipoMother.random({ id: owner.equipoId ?? crypto.randomUUID() })])];
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: JugadorDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearJugador"]) {
   await screen.findByText("Save");
-  await choose("Equipo", draft.equipoId);
-  type("Dorsal", String(draft.dorsal));
-  type("Email", draft.email);
+  await choose("Equipo", request.equipoId);
+  type("Dorsal", String(request.dorsal));
+  type("Email", request.email);
 }
 
 describe("JugadorFormContainer", () => {
   test("should create the jugador from what was typed and show it", async () => {
     // Arrange
-    const draft = JugadorMother.draft();
-    const jugadorRepository = fakeJugadorRepository();
-    const { history } = renderScreen(<JugadorFormContainer />, {
-      jugadorRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = JugadorMother.request();
+    const stored = jugadorCollection();
+    const api = fakeApi([stored, ...referencedBy(request)]);
+    const { history } = renderScreen(<JugadorFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/jugadores/"));
-    const {
-      items: [created],
-    } = await jugadorRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/jugadores/${created?.id}`);
   });
 
   test("should save the edited jugador when an existing one is submitted", async () => {
     // Arrange
     const seeded = JugadorMother.random();
-    const jugadorRepository = fakeJugadorRepository([seeded]);
-    const { history } = renderScreen(<JugadorFormContainer id={seeded.id} />, {
-      jugadorRepository,
-      ...referencedBy(seeded),
-    });
+    const stored = jugadorCollection([seeded]);
+    const api = fakeApi([stored, ...referencedBy(seeded)]);
+    const { history } = renderScreen(<JugadorFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/jugadores/${seeded.id}`));
-    expect(await jugadorRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = JugadorMother.request();
     const code = "jugador.validacion.invalid";
-    const jugadorRepository = {
-      ...fakeJugadorRepository(),
-      create: () => Promise.reject(new JugadorError(code)),
-    };
-    const draft = JugadorMother.draft();
-    renderScreen(<JugadorFormContainer />, {
-      jugadorRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const failures = { "POST /jugadores": code };
+    const api = fakeApi([jugadorCollection(), ...referencedBy(request)], failures);
+    renderScreen(<JugadorFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -8459,16 +7842,11 @@ describe("JugadorFormContainer", () => {
 
   test("should say a jugador with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const jugadorRepository = {
-      ...fakeJugadorRepository(),
-      create: () => Promise.reject(new JugadorError("jugador.duplicado")),
-    };
-    const draft = JugadorMother.draft();
-    renderScreen(<JugadorFormContainer />, {
-      jugadorRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = JugadorMother.request();
+    const failures = { "POST /jugadores": "jugador.duplicado" };
+    const api = fakeApi([jugadorCollection(), ...referencedBy(request)], failures);
+    renderScreen(<JugadorFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -8482,12 +7860,10 @@ describe("JugadorFormContainer", () => {
   test("should offer every equipo in the selects that reference one", async () => {
     // Arrange
     const equipo = EquipoMother.random();
+    const api = fakeApi([equipoCollection([equipo])]);
 
     // Act
-    renderScreen(<JugadorFormContainer />, {
-      jugadorRepository: fakeJugadorRepository(),
-      equipoRepository: fakeEquipoRepository([equipo]),
-    });
+    renderScreen(<JugadorFormContainer />, { api });
 
     // Assert
     const options = await screen.findAllByRole("option", { name: equipo.nombre });
@@ -8496,16 +7872,11 @@ describe("JugadorFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const jugadorRepository = {
-      ...fakeJugadorRepository(),
-      create: () => Promise.reject(new JugadorError("jugador.validacion.equipo_id_no_encontrado")),
-    };
-    const draft = JugadorMother.draft();
-    renderScreen(<JugadorFormContainer />, {
-      jugadorRepository,
-      ...referencedBy(draft),
-    });
-    await fillIn(draft);
+    const request = JugadorMother.request();
+    const failures = { "POST /jugadores": "jugador.validacion.equipo_id_no_encontrado" };
+    const api = fakeApi([jugadorCollection(), ...referencedBy(request)], failures);
+    renderScreen(<JugadorFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -8518,24 +7889,32 @@ describe("JugadorFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/jugador/containers/jugador-form-container.tsx ===
+=== web/src/features/jugador/containers/jugador-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/jugador/messages";
-import type { Jugador } from "../../../../domain/jugador/model";
-import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { MAX_PAGE_LIMIT, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { referenceOptions } from "../../../shared/forms";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { JugadorFormView, toJugadorDraft, toJugadorForm } from "../views/jugador-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { JugadorFormView, toJugadorForm, toJugadorRequest } from "../views/jugador-form-view";
+
+type Jugador = Schemas["DtoJugador"];
+
+/** The first page of each referenced entity: what its selects offer. */
+const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
 
 /** Creates a jugador, or edits the one with `id`. */
 export function JugadorFormContainer({ id }: { id?: string }) {
-  const { jugadorRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : jugadorRepository.get(id)),
-    [jugadorRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/jugadores/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New jugador" : "Edit jugador";
 
@@ -8553,11 +7932,8 @@ export function JugadorFormContainer({ id }: { id?: string }) {
 }
 
 function JugadorForm({ existing }: { existing: Jugador | null }) {
-  const { jugadorRepository, equipoRepository } = useDependencies();
-  const equipos = useAsync(
-    () => equipoRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
-    [equipoRepository],
-  );
+  const { api } = useDependencies();
+  const equipos = useAsync(() => unwrap(api.GET("/equipos", OPTIONS)), [api]);
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toJugadorForm(existing));
   const [saving, setSaving] = useState(false);
@@ -8568,11 +7944,12 @@ function JugadorForm({ existing }: { existing: Jugador | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toJugadorDraft(values);
-      const saved =
+      const body = toJugadorRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await jugadorRepository.create(draft)
-          : await jugadorRepository.update(existing.id, draft);
+          ? api.POST("/jugadores", { body })
+          : api.PUT("/jugadores/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/jugadores/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -8600,22 +7977,22 @@ function JugadorForm({ existing }: { existing: Jugador | null }) {
   );
 }
 
-=== web/src/presentation/features/jugador/containers/jugador-list-container.test.tsx ===
+=== web/src/features/jugador/containers/jugador-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { JugadorError } from "../../../../domain/jugador/errors";
-import { fakeJugadorRepository, JugadorMother } from "../../../../test-support/jugador";
-import { renderScreen } from "../../../../test-support/render";
+import { fakeApi } from "../../../test-support/fake-api";
+import { JugadorMother, jugadorCollection } from "../../../test-support/jugador";
+import { renderScreen } from "../../../test-support/render";
 import { JugadorListContainer } from "./jugador-list-container";
 
 describe("JugadorListContainer", () => {
   test("should show a row per jugador when there are some", async () => {
     // Arrange
     const seed = [JugadorMother.random(), JugadorMother.random()];
-    const jugadorRepository = fakeJugadorRepository(seed);
+    const api = fakeApi([jugadorCollection(seed)]);
 
     // Act
-    renderScreen(<JugadorListContainer />, { jugadorRepository });
+    renderScreen(<JugadorListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -8624,8 +8001,8 @@ describe("JugadorListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => JugadorMother.random());
-    const jugadorRepository = fakeJugadorRepository(seed);
-    renderScreen(<JugadorListContainer />, { jugadorRepository });
+    const api = fakeApi([jugadorCollection(seed)]);
+    renderScreen(<JugadorListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -8639,11 +8016,11 @@ describe("JugadorListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => JugadorMother.random());
-    const jugadorRepository = fakeJugadorRepository(seed);
+    const api = fakeApi([jugadorCollection(seed)]);
     const path = "/jugadores?page=2";
 
     // Act
-    renderScreen(<JugadorListContainer />, { jugadorRepository }, path);
+    renderScreen(<JugadorListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -8651,10 +8028,10 @@ describe("JugadorListContainer", () => {
 
   test("should say so when there is no jugador", async () => {
     // Arrange
-    const jugadorRepository = fakeJugadorRepository();
+    const api = fakeApi([jugadorCollection()]);
 
     // Act
-    renderScreen(<JugadorListContainer />, { jugadorRepository });
+    renderScreen(<JugadorListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No jugadores yet.")).toBeTruthy();
@@ -8662,38 +8039,37 @@ describe("JugadorListContainer", () => {
 
   test("should show the error code when the jugadores cannot be listed", async () => {
     // Arrange
-    const jugadorRepository = {
-      ...fakeJugadorRepository(),
-      list: () => Promise.reject(new JugadorError("jugador.repositorio")),
-    };
+    const failures = { "GET /jugadores": "jugador.repositorio" };
+    const api = fakeApi([jugadorCollection()], failures);
 
     // Act
-    renderScreen(<JugadorListContainer />, { jugadorRepository });
+    renderScreen(<JugadorListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("jugador.repositorio");
   });
 });
 
-=== web/src/presentation/features/jugador/containers/jugador-list-container.tsx ===
+=== web/src/features/jugador/containers/jugador-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { JugadorListView } from "../views/jugador-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function JugadorListContainer() {
-  const { jugadorRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
   const jugadores = useAsync(
-    () => jugadorRepository.list({ limit: PAGE_SIZE, offset }),
-    [jugadorRepository, offset],
+    () => unwrap(api.GET("/jugadores", { params: { query } })),
+    [api, offset],
   );
 
   return (
@@ -8711,30 +8087,68 @@ export function JugadorListContainer() {
           <EmptyState message="No jugadores yet." />
         ) : (
           <>
-            <JugadorListView jugadores={jugadores.data.items} />
-            <Pagination {...jugadores.data} onOffsetChange={goTo} />
+            <JugadorListView jugadores={jugadores.data.elementos} />
+            <Pagination
+              total={jugadores.data.total}
+              limit={jugadores.data.limite}
+              offset={jugadores.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/jugador/views/jugador-detail-view.tsx ===
-import type { Jugador } from "../../../../domain/jugador/model";
-import { useDependencies } from "../../../core/dependencies";
-import { labelOf, ReferenceLink } from "../../../shared/ui/reference-link";
+=== web/src/features/jugador/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface JugadorProblem {
+  field: string | null;
+  text: string;
+}
 
-export function JugadorDetailView({ jugador }: { jugador: Jugador }) {
-  const { equipoRepository } = useDependencies();
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "jugador.validacion.equipo_id_no_encontrado": "Equipo does not exist",
+  "jugador.validacion.email_vacio": "Email is required",
+  "jugador.duplicado": "A jugador with these values already exists",
+  "jugador.no_encontrado": "This jugador no longer exists",
+  "jugador.repositorio": "The jugador could not be saved, try again later",
+  "jugador.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "jugador.validacion.equipo_id_no_encontrado": "equipoId",
+  "jugador.validacion.email_vacio": "email",
+};
+
+export function toProblem(code: string): JugadorProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/jugador/views/jugador-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+import { ReferenceLink } from "../../../shared/ui/reference-link";
+
+type Jugador = Schemas["DtoJugador"];
+
+/** `jugador`, and the label of each equipo it references, for its links. */
+export function JugadorDetailView({
+  jugador,
+  equipoLabel,
+}: {
+  jugador: Jugador;
+  equipoLabel: (id: string) => Promise<string>;
+}) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Equipo</dt>
       <dd>
-        <ReferenceLink
-          path="/equipos"
-          id={jugador.equipoId}
-          load={labelOf(equipoRepository, (item) => item.nombre)}
-        />
+        <ReferenceLink path="/equipos" id={jugador.equipoId} load={equipoLabel} />
       </dd>
       <dt className="font-semibold">Dorsal</dt>
       <dd>{jugador.dorsal}</dd>
@@ -8744,11 +8158,14 @@ export function JugadorDetailView({ jugador }: { jugador: Jugador }) {
   );
 }
 
-=== web/src/presentation/features/jugador/views/jugador-form-view.tsx ===
-import type { JugadorProblem } from "../../../../domain/jugador/messages";
-import type { Jugador, JugadorDraft } from "../../../../domain/jugador/model";
+=== web/src/features/jugador/views/jugador-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
 import type { ReferenceOption } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { JugadorProblem } from "../messages";
+
+type Jugador = Schemas["DtoJugador"];
+type JugadorRequest = Schemas["PeticionCrearJugador"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface JugadorFormValues {
@@ -8769,7 +8186,7 @@ export function toJugadorForm(jugador: Jugador | null): JugadorFormValues {
   return {
     equipoId: jugador.equipoId,
     dorsal: String(jugador.dorsal),
-    email: jugador.email,
+    email: jugador.email ?? "",
   };
 }
 
@@ -8778,7 +8195,8 @@ export interface JugadorFormOptions {
   equipoId: ReferenceOption[];
 }
 
-export function toJugadorDraft(values: JugadorFormValues): JugadorDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toJugadorRequest(values: JugadorFormValues): JugadorRequest {
   return {
     equipoId: values.equipoId,
     dorsal: Number(values.dorsal),
@@ -8859,9 +8277,11 @@ export function JugadorFormView({
   );
 }
 
-=== web/src/presentation/features/jugador/views/jugador-list-view.tsx ===
+=== web/src/features/jugador/views/jugador-list-view.tsx ===
 import { Link } from "wouter";
-import type { Jugador } from "../../../../domain/jugador/model";
+import type { Schemas } from "../../../api/client";
+
+type Jugador = Schemas["DtoJugador"];
 
 export function JugadorListView({ jugadores }: { jugadores: Jugador[] }) {
   return (
@@ -8894,11 +8314,150 @@ export function JugadorListView({ jugadores }: { jugadores: Jugador[] }) {
   );
 }
 
-=== web/src/presentation/pages/auth-callback.test.tsx ===
+=== web/src/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+//
+// The composition root: the only module that builds the API client. Screens reach it through
+// `useDependencies()`, so a test hands them a fake instead.
+
+import { type ApiClient, createApiClient } from "../api/client";
+import { bearerMiddleware } from "../auth/bearer-middleware";
+import { oidcAuthGateway, oidcSettingsFromEnv } from "../auth/oidc-auth-gateway";
+import type { AuthGateway } from "../auth/session";
+
+export interface Dependencies {
+  api: ApiClient;
+  auth: AuthGateway;
+}
+
+export function createDependencies(): Dependencies {
+  const auth = oidcAuthGateway(oidcSettingsFromEnv());
+  const api = createApiClient();
+  api.use(bearerMiddleware(auth));
+  return { api, auth };
+}
+
+=== web/src/generated/roles.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+
+/**
+ * Every role a generated screen checks (`roles` in puerto.toml). The screen tests' caller holds
+ * them all (`CurrentUserMother.caller()`).
+ */
+export const ROLES: string[] = ["admin"];
+
+=== web/src/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { RequireAuth } from "../auth/auth";
+import { EquipoDetailContainer } from "../features/equipo/containers/equipo-detail-container";
+import { EquipoFormContainer } from "../features/equipo/containers/equipo-form-container";
+import { EquipoListContainer } from "../features/equipo/containers/equipo-list-container";
+import { JugadorDetailContainer } from "../features/jugador/containers/jugador-detail-container";
+import { JugadorFormContainer } from "../features/jugador/containers/jugador-form-container";
+import { JugadorListContainer } from "../features/jugador/containers/jugador-list-container";
+import { AuthCallbackPage } from "../pages/auth-callback";
+import { HomePage } from "../pages/home";
+import { NotFoundPage } from "../pages/not-found";
+import { customRoutes } from "../routes";
+import type { NavEntry } from "../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [
+  { label: "Equipos", href: "/equipos" },
+  { label: "Jugadores", href: "/jugadores" },
+];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      <Route path="/auth/callback">
+        <AuthCallbackPage />
+      </Route>
+      {customRoutes}
+      <Route path="/equipos">
+        <RequireAuth>
+          <EquipoListContainer />
+        </RequireAuth>
+      </Route>
+      <Route path="/equipos/new">
+        <RequireAuth>
+          <EquipoFormContainer />
+        </RequireAuth>
+      </Route>
+      <Route path="/equipos/:id/edit">
+        {(params) => (
+          <RequireAuth>
+            <EquipoFormContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+      <Route path="/equipos/:id">
+        {(params) => (
+          <RequireAuth>
+            <EquipoDetailContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+      <Route path="/jugadores">
+        <JugadorListContainer />
+      </Route>
+      <Route path="/jugadores/new">
+        <RequireAuth>
+          <JugadorFormContainer />
+        </RequireAuth>
+      </Route>
+      <Route path="/jugadores/:id/edit">
+        {(params) => (
+          <RequireAuth>
+            <JugadorFormContainer id={params.id} />
+          </RequireAuth>
+        )}
+      </Route>
+      <Route path="/jugadores/:id">{(params) => <JugadorDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/main.tsx ===
+import "./index.css";
+
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { AuthProvider } from "./auth/auth";
+import { DependenciesProvider } from "./dependencies";
+import { createDependencies } from "./generated/dependencies";
+import { AppRoutes, navEntries } from "./generated/routes";
+import { Layout } from "./shared/ui/layout";
+
+const root = document.getElementById("root");
+if (root === null) {
+  throw new Error("index.html has no #root element");
+}
+
+createRoot(root).render(
+  <StrictMode>
+    <DependenciesProvider value={createDependencies()}>
+      <AuthProvider>
+        <Layout title={document.title} nav={navEntries}>
+          <AppRoutes />
+        </Layout>
+      </AuthProvider>
+    </DependenciesProvider>
+  </StrictMode>,
+);
+
+=== web/src/pages/auth-callback.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { screen, waitFor } from "@testing-library/react";
-import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
-import { renderScreen } from "../../test-support/render";
+import { CurrentUserMother, fakeAuthGateway } from "../test-support/auth";
+import { renderScreen } from "../test-support/render";
 import { AuthCallbackPage } from "./auth-callback";
 
 describe("AuthCallbackPage", () => {
@@ -8930,10 +8489,10 @@ describe("AuthCallbackPage", () => {
   });
 });
 
-=== web/src/presentation/pages/auth-callback.tsx ===
+=== web/src/pages/auth-callback.tsx ===
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "../core/auth";
+import { useAuth } from "../auth/auth";
 import { ErrorAlert } from "../shared/ui/error-alert";
 
 /** Where the provider sends the user back after signing in (`redirect_uri`). */
@@ -8957,7 +8516,7 @@ export function AuthCallbackPage() {
   );
 }
 
-=== web/src/presentation/shared/ui/layout.tsx ===
+=== web/src/shared/ui/layout.tsx ===
 import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { UserMenu } from "./user-menu";
@@ -9000,11 +8559,11 @@ export function Layout({
   );
 }
 
-=== web/src/presentation/shared/ui/user-menu.test.tsx ===
+=== web/src/shared/ui/user-menu.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { CurrentUserMother, fakeAuthGateway } from "../../../test-support/auth";
-import { renderScreen } from "../../../test-support/render";
+import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
+import { renderScreen } from "../../test-support/render";
 import { UserMenu } from "./user-menu";
 
 describe("UserMenu", () => {
@@ -9033,8 +8592,8 @@ describe("UserMenu", () => {
   });
 });
 
-=== web/src/presentation/shared/ui/user-menu.tsx ===
-import { useAuth } from "../../core/auth";
+=== web/src/shared/ui/user-menu.tsx ===
+import { useAuth } from "../../auth/auth";
 
 /** Who is signed in, and the button to sign in or out. */
 export function UserMenu() {
@@ -9057,8 +8616,8 @@ export function UserMenu() {
 }
 
 === web/src/test-support/auth.ts ===
-import type { AuthGateway, CurrentUser } from "../domain/auth/session";
-import { ROLES } from "../presentation/core/generated/roles";
+import type { AuthGateway, CurrentUser } from "../auth/session";
+import { ROLES } from "../generated/roles";
 
 /** Signed-in users for tests; pass `overrides` for what a test is about. */
 export const CurrentUserMother = {
@@ -9089,13 +8648,15 @@ export function fakeAuthGateway({ user = null }: { user?: CurrentUser | null } =
 }
 
 === web/src/test-support/equipo.ts ===
-import { EquipoError } from "../domain/equipo/errors";
-import type { Equipo, EquipoDraft } from "../domain/equipo/model";
-import type { EquipoRepository } from "../domain/equipo/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Equipo = Schemas["DtoEquipo"];
+type EquipoRequest = Schemas["PeticionCrearEquipo"];
 
 /** Valid equipos for tests; pass `overrides` for the fields a test is about. */
 export const EquipoMother = {
-  draft(overrides: Partial<EquipoDraft> = {}): EquipoDraft {
+  request(overrides: Partial<EquipoRequest> = {}): EquipoRequest {
     return {
       nombre: "example",
       ...overrides,
@@ -9103,49 +8664,104 @@ export const EquipoMother = {
   },
 
   random(overrides: Partial<Equipo> = {}): Equipo {
-    return { id: crypto.randomUUID(), ...EquipoMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...EquipoMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `EquipoRepository`. Override a method to make it fail. */
-export function fakeEquipoRepository(seed: Equipo[] = []): EquipoRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new EquipoError("equipo.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+/** The fake API's `/equipos`, holding `seed`. */
+export function equipoCollection(seed: Equipo[] = []) {
+  return collection("/equipos", "equipo", seed);
+}
+
+=== web/src/test-support/fake-api.ts ===
+import { type ApiClient, createApiClient } from "../api/client";
+
+/** What the fake API holds under `path`: the API's DTOs, by id. */
+export interface Collection<T extends { id: string }> {
+  path: string;
+  /** The code a missing item answers: `producto.no_encontrado`. */
+  notFound: string;
+  items: Map<string, T>;
+}
+
+/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
+export function collection<T extends { id: string }>(
+  path: string,
+  entity: string,
+  seed: T[] = [],
+): Collection<T> {
+  const items = new Map(seed.map((item) => [item.id, item]));
+  return { path, notFound: `${entity}.no_encontrado`, items };
+}
+
+/**
+ * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
+ * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
+ * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ */
+export function fakeApi(
+  collections: Collection<{ id: string }>[],
+  failures: Record<string, string> = {},
+): ApiClient {
+  return createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/api/, "");
+      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
+      if (target === undefined) return answer(404, "http.404");
+      const failure = failures[`${request.method} ${target.path}`];
+      if (failure !== undefined) return answer(400, failure);
+      const id = path.slice(target.path.length + 1);
+      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
     },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+  });
+}
+
+async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
+  if (request.method === "POST") {
+    const created = { ...(await request.json()), id: crypto.randomUUID() };
+    target.items.set(created.id, created);
+    return Response.json(created, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const all = [...target.items.values()];
+  const elementos = all.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+}
+
+async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
+  const found = target.items.get(id);
+  if (found === undefined) return answer(404, target.notFound);
+  if (request.method === "DELETE") {
+    target.items.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method === "PUT") {
+    // Like the API, an update replaces every field: one left out is cleared.
+    const updated = { ...(await request.json()), id };
+    target.items.set(id, updated);
+    return Response.json(updated);
+  }
+  return Response.json(found);
+}
+
+/** A `RespuestaError` the way the API answers one. */
+function answer(status: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status });
 }
 
 === web/src/test-support/jugador.ts ===
-import { JugadorError } from "../domain/jugador/errors";
-import type { Jugador, JugadorDraft } from "../domain/jugador/model";
-import type { JugadorRepository } from "../domain/jugador/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Jugador = Schemas["DtoJugador"];
+type JugadorRequest = Schemas["PeticionCrearJugador"];
 
 /** Valid jugadores for tests; pass `overrides` for the fields a test is about. */
 export const JugadorMother = {
-  draft(overrides: Partial<JugadorDraft> = {}): JugadorDraft {
+  request(overrides: Partial<JugadorRequest> = {}): JugadorRequest {
     return {
       equipoId: crypto.randomUUID(),
       dorsal: 42,
@@ -9155,39 +8771,13 @@ export const JugadorMother = {
   },
 
   random(overrides: Partial<Jugador> = {}): Jugador {
-    return { id: crypto.randomUUID(), ...JugadorMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...JugadorMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `JugadorRepository`. Override a method to make it fail. */
-export function fakeJugadorRepository(seed: Jugador[] = []): JugadorRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new JugadorError("jugador.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
-    },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+/** The fake API's `/jugadores`, holding `seed`. */
+export function jugadorCollection(seed: Jugador[] = []) {
+  return collection("/jugadores", "jugador", seed);
 }
 
 === web/src/test-support/render.tsx ===
@@ -9195,10 +8785,10 @@ import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
-import type { CurrentUser } from "../domain/auth/session";
-import { AuthProvider } from "../presentation/core/auth";
-import { DependenciesProvider } from "../presentation/core/dependencies";
-import type { Dependencies } from "../presentation/core/generated/dependencies";
+import { AuthProvider } from "../auth/auth";
+import type { CurrentUser } from "../auth/session";
+import { DependenciesProvider } from "../dependencies";
+import type { Dependencies } from "../generated/dependencies";
 import { CurrentUserMother, fakeAuthGateway } from "./auth";
 
 /**

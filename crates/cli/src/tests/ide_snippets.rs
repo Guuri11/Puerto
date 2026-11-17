@@ -686,11 +686,7 @@ fn web_projects_get_the_frontend_snippets() {
     let web = new_project_non_interactive(Some("snip-web".into()), false, &dir).unwrap();
     snippets::apply(&web, None).unwrap();
 
-    for file in [
-        ".zed/snippets/typescript.json",
-        ".zed/snippets/tsx.json",
-        ".vscode/puerto.ts.code-snippets",
-    ] {
+    for file in [".zed/snippets/tsx.json", ".vscode/puerto.ts.code-snippets"] {
         let json = fs::read_to_string(web.join(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
         assert!(
             serde_json::from_str::<serde_json::Value>(&json).is_ok(),
@@ -701,7 +697,6 @@ fn web_projects_get_the_frontend_snippets() {
         snippet_bodies(&fs::read_to_string(web.join(".vscode/puerto.ts.code-snippets")).unwrap());
     for prefix in [
         "web-container",
-        "web-repo-method",
         "web-container-test",
         "web-form-field",
         "web-route",
@@ -735,7 +730,6 @@ fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
     fs::create_dir_all(&dir).unwrap();
     let output = generate_project("compile-snippets-web", &dir).unwrap();
     scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
-    let ts = snippet_bodies(crate::snippets::WEB_TS_SNIPPETS_JSON);
     let tsx = snippet_bodies(crate::snippets::WEB_TSX_SNIPPETS_JSON);
     let producto = &[
         ("Entity", "Producto"),
@@ -744,37 +738,13 @@ fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
         ("Summary", "Summary"),
         ("summary", "summary"),
         ("entity label", "producto"),
-        ("method", "refresh"),
         ("entities", "productos"),
         ("/entities/:id/summary", "/productos/:id/summary"),
     ];
     let web = "web/src";
 
-    // A repository method: on the port, the fake and the HTTP adapter.
-    replace_in(
-        &output,
-        &format!("{web}/domain/producto/repository.ts"),
-        "  get(id: string): Promise<Producto>;\n",
-        "  get(id: string): Promise<Producto>;\n  refresh(id: string): Promise<Producto>;\n",
-    );
-    replace_in(
-        &output,
-        &format!("{web}/test-support/producto.ts"),
-        "    get: async (id) => find(id),\n",
-        "    get: async (id) => find(id),\n    refresh: async (id) => find(id),\n",
-    );
-    replace_in(
-        &output,
-        &format!("{web}/infrastructure/producto/producto-repository-http.ts"),
-        "ProductoRepository {\n  return {\n",
-        &format!(
-            "ProductoRepository {{\n  return {{\n{}",
-            expand_snippet(&ts["web-repo-method"], producto)
-        ),
-    );
-
     // A screen, its test, and its route.
-    let containers = format!("{web}/presentation/features/producto/containers");
+    let containers = format!("{web}/features/producto/containers");
     fs::write(
         output.join(format!("{containers}/producto-summary-container.tsx")),
         expand_snippet(&tsx["web-container"], producto),
@@ -786,7 +756,7 @@ fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
     )
     .unwrap();
     let route = expand_snippet(&tsx["web-route"], producto);
-    let routes = format!("{web}/presentation/core/routes.tsx");
+    let routes = format!("{web}/routes.tsx");
     replace_in(
         &output,
         &routes,
@@ -797,25 +767,26 @@ fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
         &output,
         &routes,
         "import type { ReactElement } from \"react\";\n",
-        "import type { ReactElement } from \"react\";\nimport { Route } from \"wouter\";\nimport { ProductoSummaryContainer } from \"../features/producto/containers/producto-summary-container\";\n",
+        "import type { ReactElement } from \"react\";\nimport { Route } from \"wouter\";\nimport { ProductoSummaryContainer } from \"./features/producto/containers/producto-summary-container\";\n",
     );
 
     // The route is reached through the generated table: `{customRoutes}` inside its `<Switch>`.
     fs::write(
-        output.join(format!("{web}/presentation/core/routes.test.tsx")),
+        output.join(format!("{web}/routes.test.tsx")),
         r#"import { expect, test } from "bun:test";
 import { screen } from "@testing-library/react";
-import { fakeProductoRepository, ProductoMother } from "../../test-support/producto";
-import { renderScreen } from "../../test-support/render";
 import { AppRoutes } from "./generated/routes";
+import { fakeApi } from "./test-support/fake-api";
+import { ProductoMother, productoCollection } from "./test-support/producto";
+import { renderScreen } from "./test-support/render";
 
 test("should reach a custom route through the generated route table", async () => {
   // Arrange
   const seeded = ProductoMother.random();
-  const productoRepository = fakeProductoRepository([seeded]);
+  const api = fakeApi([productoCollection([seeded])]);
 
   // Act
-  renderScreen(<AppRoutes />, { productoRepository }, `/productos/${seeded.id}/summary`);
+  renderScreen(<AppRoutes />, { api }, `/productos/${seeded.id}/summary`);
 
   // Assert
   expect(await screen.findByText(seeded.id)).toBeTruthy();
@@ -825,7 +796,7 @@ test("should reach a custom route through the generated route table", async () =
     .unwrap();
 
     // The form's `nombre` input, rewritten from `web-form-field`.
-    let form = format!("{web}/presentation/features/producto/views/producto-form-view.tsx");
+    let form = format!("{web}/features/producto/views/producto-form-view.tsx");
     let src = fs::read_to_string(output.join(&form)).unwrap();
     let start = src.find("      <label className=\"fieldset\">\n        <span className=\"fieldset-legend\">Nombre</span>").unwrap();
     let field_error = "<FieldError problem={problem} field=\"nombre\" />\n";

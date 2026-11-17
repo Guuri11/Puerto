@@ -138,10 +138,10 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/presentation/core/generated/*`, `web/src/infrastructure/http/schema.d.ts` y
-`docs/api/openapi.json` también se reescriben (`generar bootstrap`, `make web/sync`); las pantallas
-de una entidad son ficheros suyos como los demás; `web/src/presentation/core/routes.tsx` (tus
-propias pantallas) es tuyo. El detalle, en `web/AGENTS.md`.
+Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
+como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+`web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
 
@@ -184,10 +184,10 @@ comando.
 
 ## Frontend (`web/`)
 
-Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Sigue la misma regla de
-dependencias que los crates (`domain` ← `application` ← `infrastructure` ← `presentation`), que
-comprueba `make web/lint`. Sus reglas (capas, ficheros generados, dónde van los casos de uso)
-están en `web/AGENTS.md`.
+Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Es solo presentación: los
+contenedores llaman a la API con su cliente tipado y las vistas pintan lo que reciben; las reglas
+viven en el backend. `make web/lint` comprueba que una vista no llama a la API. Sus reglas
+(carpetas, ficheros generados, tests) están en `web/AGENTS.md`.
 
 La spec OpenAPI es el contrato entre las dos mitades: `docs/api/openapi.json`, exportada por un test
 de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ruta o un DTO, ejecuta
@@ -2627,331 +2627,37 @@ variantes = [
     "Closed",
 ]
 
-=== web/src/domain/billete/errors.ts ===
-/**
- * A request about a billete that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `billete.no_encontrado`, `billete.validacion.<field>_vacio`.
- */
-export class BilleteError extends Error {
-  readonly code: string;
-
-  constructor(code: string) {
-    super(code);
-    this.name = "BilleteError";
-    this.code = code;
-  }
-}
-
-=== web/src/domain/billete/messages.ts ===
-import type { BilleteDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface BilleteProblem {
-  field: keyof BilleteDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "billete.state_invalido": "State is not valid",
-  "billete.duplicado": "A billete with these values already exists",
-  "billete.no_encontrado": "This billete no longer exists",
-  "billete.repositorio": "The billete could not be saved, try again later",
-  "billete.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof BilleteDraft> = {
-  "billete.state_invalido": "state",
-};
-
-export function toProblem(code: string): BilleteProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/billete/model.ts ===
-import { BilleteError } from "./errors";
-
-export interface Billete {
-  id: string;
-  state: State;
-}
-
-/** What a create or an update sends: a billete without its id. */
-export type BilleteDraft = Omit<Billete, "id">;
-
-export const stateValues = ["Open", "Closed"] as const;
-
-export type State = (typeof stateValues)[number];
-
-/** Narrows the API's `string` to a `State`, rejecting with `billete.state_invalido`. */
-export function parseState(value: string): State {
-  const found = stateValues.find((candidate) => candidate === value);
-  if (found === undefined) throw new BilleteError("billete.state_invalido");
-  return found;
-}
-
-=== web/src/domain/billete/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Billete, BilleteDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `BilleteError` the API answered. */
-export interface BilleteRepository {
-  list(page: PageRequest): Promise<Page<Billete>>;
-  get(id: string): Promise<Billete>;
-  create(draft: BilleteDraft): Promise<Billete>;
-  update(id: string, draft: BilleteDraft): Promise<Billete>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/infrastructure/billete/billete-repository-http.test.ts ===
-import { describe, expect, test } from "bun:test";
-import { BilleteError } from "../../domain/billete/errors";
-import { BilleteMother } from "../../test-support/billete";
-import { createApiClient } from "../http/client";
-import { billeteRepositoryHttp } from "./billete-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: billeteRepositoryHttp(api), requests };
-}
-
-describe("billeteRepositoryHttp", () => {
-  test("should ask for the page and return its billetes", async () => {
-    // Arrange
-    const billete = BilleteMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [billete],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/billetes");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [billete], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating a billete", async () => {
-    // Arrange
-    const draft = BilleteMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the billete does not exist", async () => {
-    // Arrange
-    const code = "billete.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(BilleteError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the billete", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/billetes/42");
-  });
-});
-
-=== web/src/infrastructure/billete/billete-repository-http.ts ===
-import { BilleteError } from "../../domain/billete/errors";
-import { type Billete, type BilleteDraft, parseState } from "../../domain/billete/model";
-import type { BilleteRepository } from "../../domain/billete/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type BilleteDto = components["schemas"]["DtoBillete"];
-type BilleteRequest = components["schemas"]["PeticionCrearBillete"];
-
-function toBillete(dto: BilleteDto): Billete {
-  return {
-    id: dto.id,
-    state: parseState(dto.state),
-  };
-}
-
-function toRequest(draft: BilleteDraft): BilleteRequest {
-  return {
-    state: draft.state,
-  };
-}
-
-/** `BilleteRepository` over the REST API (`/billetes`). */
-export function billeteRepositoryHttp(api: ApiClient): BilleteRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/billetes", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new BilleteError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toBillete),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/billetes/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new BilleteError(apiErrorCode(error, response));
-      return toBillete(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/billetes", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new BilleteError(apiErrorCode(error, response));
-      return toBillete(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/billetes/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new BilleteError(apiErrorCode(error, response));
-      return toBillete(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/billetes/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new BilleteError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/infrastructure/http/client.ts ===
+=== web/src/api/client.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 
 /** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
 export type ApiClient = Client<paths>;
+
+/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
+export type Schemas = components["schemas"];
 
 /** `/api` is the backend: proxied to `:8080` by Vite in development. */
 export function createApiClient(options: ClientOptions = {}): ApiClient {
   return createClient<paths>({ baseUrl: "/api", ...options });
 }
 
-/**
- * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
- * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
- */
-export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "codigo" in error) {
-    const { codigo } = error;
-    if (typeof codigo === "string") return codigo;
-  }
-  return `http.${response.status}`;
-}
-
-=== web/src/presentation/core/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-//
-// The composition root: the only module that imports `infrastructure/`. Screens reach the
-// adapters through `useDependencies()`, so a test hands them a fake instead.
-
-import type { BilleteRepository } from "../../../domain/billete/repository";
-import { billeteRepositoryHttp } from "../../../infrastructure/billete/billete-repository-http";
-import { createApiClient } from "../../../infrastructure/http/client";
-
-export interface Dependencies {
-  billeteRepository: BilleteRepository;
-}
-
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
-  return {
-    billeteRepository: billeteRepositoryHttp(api),
-  };
-}
-
-=== web/src/presentation/core/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-
-import { Route, Switch } from "wouter";
-import { BilleteDetailContainer } from "../../features/billete/containers/billete-detail-container";
-import { BilleteFormContainer } from "../../features/billete/containers/billete-form-container";
-import { BilleteListContainer } from "../../features/billete/containers/billete-list-container";
-import { HomePage } from "../../pages/home";
-import { NotFoundPage } from "../../pages/not-found";
-import type { NavEntry } from "../../shared/ui/layout";
-import { customRoutes } from "../routes";
-
-export const navEntries: NavEntry[] = [{ label: "Billetes", href: "/billetes" }];
-
-export function AppRoutes() {
-  return (
-    <Switch>
-      <Route path="/">
-        <HomePage entries={navEntries} />
-      </Route>
-      {customRoutes}
-      <Route path="/billetes">
-        <BilleteListContainer />
-      </Route>
-      <Route path="/billetes/new">
-        <BilleteFormContainer />
-      </Route>
-      <Route path="/billetes/:id/edit">{(params) => <BilleteFormContainer id={params.id} />}</Route>
-      <Route path="/billetes/:id">{(params) => <BilleteDetailContainer id={params.id} />}</Route>
-      <Route>
-        <NotFoundPage />
-      </Route>
-    </Switch>
-  );
-}
-
-=== web/src/presentation/features/billete/containers/billete-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
+=== web/src/features/billete/containers/billete-detail-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { BilleteMother, fakeBilleteRepository } from "../../../../test-support/billete";
-import { renderScreen } from "../../../../test-support/render";
+import { BilleteMother, billeteCollection } from "../../../test-support/billete";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { BilleteDetailContainer } from "./billete-detail-container";
 
 describe("BilleteDetailContainer", () => {
   test("should show the billete when it exists", async () => {
     // Arrange
     const seeded = BilleteMother.random();
-    const billeteRepository = fakeBilleteRepository([seeded]);
+    const api = fakeApi([billeteCollection([seeded])]);
 
     // Act
-    renderScreen(<BilleteDetailContainer id={seeded.id} />, { billeteRepository });
+    renderScreen(<BilleteDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -2959,12 +2665,10 @@ describe("BilleteDetailContainer", () => {
 
   test("should show the not-found code when the billete does not exist", async () => {
     // Arrange
-    const billeteRepository = fakeBilleteRepository();
+    const api = fakeApi([billeteCollection()]);
 
     // Act
-    renderScreen(<BilleteDetailContainer id={crypto.randomUUID()} />, {
-      billeteRepository,
-    });
+    renderScreen(<BilleteDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("billete.no_encontrado");
@@ -2973,35 +2677,37 @@ describe("BilleteDetailContainer", () => {
   test("should delete the billete only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = BilleteMother.random();
-    const fake = fakeBilleteRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<BilleteDetailContainer id={seeded.id} />, {
-      billeteRepository: { ...fake, remove },
-    });
+    const stored = billeteCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<BilleteDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/billetes"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 });
 
-=== web/src/presentation/features/billete/containers/billete-detail-container.tsx ===
+=== web/src/features/billete/containers/billete-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { BilleteDetailView } from "../views/billete-detail-view";
 
 export function BilleteDetailContainer({ id }: { id: string }) {
-  const { billeteRepository } = useDependencies();
-  const billete = useAsync(() => billeteRepository.get(id), [billeteRepository, id]);
+  const { api } = useDependencies();
+  const billete = useAsync(
+    () => unwrap(api.GET("/billetes/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -3009,7 +2715,7 @@ export function BilleteDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await billeteRepository.remove(id);
+      await unwrap(api.DELETE("/billetes/{id}", { params: { path: { id } } }));
       navigate("/billetes");
     } catch (error) {
       setFailure(error);
@@ -3050,70 +2756,66 @@ export function BilleteDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/billete/containers/billete-form-container.test.tsx ===
+=== web/src/features/billete/containers/billete-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { BilleteError } from "../../../../domain/billete/errors";
-import type { BilleteDraft } from "../../../../domain/billete/model";
-import { BilleteMother, fakeBilleteRepository } from "../../../../test-support/billete";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
+import { BilleteMother, billeteCollection } from "../../../test-support/billete";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { BilleteFormContainer } from "./billete-form-container";
 
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: BilleteDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearBillete"]) {
   await screen.findByText("Save");
-  type("State", draft.state);
+  type("State", request.state);
 }
 
 describe("BilleteFormContainer", () => {
   test("should create the billete from what was typed and show it", async () => {
     // Arrange
-    const draft = BilleteMother.draft();
-    const billeteRepository = fakeBilleteRepository();
-    const { history } = renderScreen(<BilleteFormContainer />, { billeteRepository });
-    await fillIn(draft);
+    const request = BilleteMother.request();
+    const stored = billeteCollection();
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<BilleteFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/billetes/"));
-    const {
-      items: [created],
-    } = await billeteRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/billetes/${created?.id}`);
   });
 
   test("should save the edited billete when an existing one is submitted", async () => {
     // Arrange
     const seeded = BilleteMother.random();
-    const billeteRepository = fakeBilleteRepository([seeded]);
-    const { history } = renderScreen(<BilleteFormContainer id={seeded.id} />, {
-      billeteRepository,
-    });
+    const stored = billeteCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<BilleteFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/billetes/${seeded.id}`));
-    expect(await billeteRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = BilleteMother.request();
     const code = "billete.validacion.invalid";
-    const billeteRepository = {
-      ...fakeBilleteRepository(),
-      create: () => Promise.reject(new BilleteError(code)),
-    };
-    renderScreen(<BilleteFormContainer />, { billeteRepository });
-    await fillIn(BilleteMother.draft());
+    const failures = { "POST /billetes": code };
+    const api = fakeApi([billeteCollection()], failures);
+    renderScreen(<BilleteFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3124,12 +2826,11 @@ describe("BilleteFormContainer", () => {
 
   test("should say a billete with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const billeteRepository = {
-      ...fakeBilleteRepository(),
-      create: () => Promise.reject(new BilleteError("billete.duplicado")),
-    };
-    renderScreen(<BilleteFormContainer />, { billeteRepository });
-    await fillIn(BilleteMother.draft());
+    const request = BilleteMother.request();
+    const failures = { "POST /billetes": "billete.duplicado" };
+    const api = fakeApi([billeteCollection()], failures);
+    renderScreen(<BilleteFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3142,12 +2843,11 @@ describe("BilleteFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const billeteRepository = {
-      ...fakeBilleteRepository(),
-      create: () => Promise.reject(new BilleteError("billete.state_invalido")),
-    };
-    renderScreen(<BilleteFormContainer />, { billeteRepository });
-    await fillIn(BilleteMother.draft());
+    const request = BilleteMother.request();
+    const failures = { "POST /billetes": "billete.state_invalido" };
+    const api = fakeApi([billeteCollection()], failures);
+    renderScreen(<BilleteFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3160,22 +2860,28 @@ describe("BilleteFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/billete/containers/billete-form-container.tsx ===
+=== web/src/features/billete/containers/billete-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/billete/messages";
-import type { Billete } from "../../../../domain/billete/model";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { BilleteFormView, toBilleteDraft, toBilleteForm } from "../views/billete-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { BilleteFormView, toBilleteForm, toBilleteRequest } from "../views/billete-form-view";
+
+type Billete = Schemas["DtoBillete"];
 
 /** Creates a billete, or edits the one with `id`. */
 export function BilleteFormContainer({ id }: { id?: string }) {
-  const { billeteRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : billeteRepository.get(id)),
-    [billeteRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/billetes/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New billete" : "Edit billete";
 
@@ -3193,7 +2899,7 @@ export function BilleteFormContainer({ id }: { id?: string }) {
 }
 
 function BilleteForm({ existing }: { existing: Billete | null }) {
-  const { billeteRepository } = useDependencies();
+  const { api } = useDependencies();
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toBilleteForm(existing));
   const [saving, setSaving] = useState(false);
@@ -3204,11 +2910,12 @@ function BilleteForm({ existing }: { existing: Billete | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toBilleteDraft(values);
-      const saved =
+      const body = toBilleteRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await billeteRepository.create(draft)
-          : await billeteRepository.update(existing.id, draft);
+          ? api.POST("/billetes", { body })
+          : api.PUT("/billetes/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/billetes/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -3232,22 +2939,22 @@ function BilleteForm({ existing }: { existing: Billete | null }) {
   );
 }
 
-=== web/src/presentation/features/billete/containers/billete-list-container.test.tsx ===
+=== web/src/features/billete/containers/billete-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { BilleteError } from "../../../../domain/billete/errors";
-import { BilleteMother, fakeBilleteRepository } from "../../../../test-support/billete";
-import { renderScreen } from "../../../../test-support/render";
+import { BilleteMother, billeteCollection } from "../../../test-support/billete";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { BilleteListContainer } from "./billete-list-container";
 
 describe("BilleteListContainer", () => {
   test("should show a row per billete when there are some", async () => {
     // Arrange
     const seed = [BilleteMother.random(), BilleteMother.random()];
-    const billeteRepository = fakeBilleteRepository(seed);
+    const api = fakeApi([billeteCollection(seed)]);
 
     // Act
-    renderScreen(<BilleteListContainer />, { billeteRepository });
+    renderScreen(<BilleteListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -3256,8 +2963,8 @@ describe("BilleteListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => BilleteMother.random());
-    const billeteRepository = fakeBilleteRepository(seed);
-    renderScreen(<BilleteListContainer />, { billeteRepository });
+    const api = fakeApi([billeteCollection(seed)]);
+    renderScreen(<BilleteListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -3271,11 +2978,11 @@ describe("BilleteListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => BilleteMother.random());
-    const billeteRepository = fakeBilleteRepository(seed);
+    const api = fakeApi([billeteCollection(seed)]);
     const path = "/billetes?page=2";
 
     // Act
-    renderScreen(<BilleteListContainer />, { billeteRepository }, path);
+    renderScreen(<BilleteListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -3283,10 +2990,10 @@ describe("BilleteListContainer", () => {
 
   test("should say so when there is no billete", async () => {
     // Arrange
-    const billeteRepository = fakeBilleteRepository();
+    const api = fakeApi([billeteCollection()]);
 
     // Act
-    renderScreen(<BilleteListContainer />, { billeteRepository });
+    renderScreen(<BilleteListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No billetes yet.")).toBeTruthy();
@@ -3294,38 +3001,37 @@ describe("BilleteListContainer", () => {
 
   test("should show the error code when the billetes cannot be listed", async () => {
     // Arrange
-    const billeteRepository = {
-      ...fakeBilleteRepository(),
-      list: () => Promise.reject(new BilleteError("billete.repositorio")),
-    };
+    const failures = { "GET /billetes": "billete.repositorio" };
+    const api = fakeApi([billeteCollection()], failures);
 
     // Act
-    renderScreen(<BilleteListContainer />, { billeteRepository });
+    renderScreen(<BilleteListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("billete.repositorio");
   });
 });
 
-=== web/src/presentation/features/billete/containers/billete-list-container.tsx ===
+=== web/src/features/billete/containers/billete-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { BilleteListView } from "../views/billete-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function BilleteListContainer() {
-  const { billeteRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
   const billetes = useAsync(
-    () => billeteRepository.list({ limit: PAGE_SIZE, offset }),
-    [billeteRepository, offset],
+    () => unwrap(api.GET("/billetes", { params: { query } })),
+    [api, offset],
   );
 
   return (
@@ -3343,16 +3049,51 @@ export function BilleteListContainer() {
           <EmptyState message="No billetes yet." />
         ) : (
           <>
-            <BilleteListView billetes={billetes.data.items} />
-            <Pagination {...billetes.data} onOffsetChange={goTo} />
+            <BilleteListView billetes={billetes.data.elementos} />
+            <Pagination
+              total={billetes.data.total}
+              limit={billetes.data.limite}
+              offset={billetes.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/billete/views/billete-detail-view.tsx ===
-import type { Billete } from "../../../../domain/billete/model";
+=== web/src/features/billete/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface BilleteProblem {
+  field: string | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "billete.state_invalido": "State is not valid",
+  "billete.duplicado": "A billete with these values already exists",
+  "billete.no_encontrado": "This billete no longer exists",
+  "billete.repositorio": "The billete could not be saved, try again later",
+  "billete.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "billete.state_invalido": "state",
+};
+
+export function toProblem(code: string): BilleteProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/billete/views/billete-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+
+type Billete = Schemas["DtoBillete"];
 
 export function BilleteDetailView({ billete }: { billete: Billete }) {
   return (
@@ -3363,10 +3104,13 @@ export function BilleteDetailView({ billete }: { billete: Billete }) {
   );
 }
 
-=== web/src/presentation/features/billete/views/billete-form-view.tsx ===
-import type { BilleteProblem } from "../../../../domain/billete/messages";
-import { type Billete, type BilleteDraft, parseState } from "../../../../domain/billete/model";
+=== web/src/features/billete/views/billete-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { BilleteProblem } from "../messages";
+
+type Billete = Schemas["DtoBillete"];
+type BilleteRequest = Schemas["PeticionCrearBillete"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface BilleteFormValues {
@@ -3385,9 +3129,10 @@ export function toBilleteForm(billete: Billete | null): BilleteFormValues {
   };
 }
 
-export function toBilleteDraft(values: BilleteFormValues): BilleteDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toBilleteRequest(values: BilleteFormValues): BilleteRequest {
   return {
-    state: parseState(values.state),
+    state: values.state,
   };
 }
 
@@ -3435,9 +3180,11 @@ export function BilleteFormView({
   );
 }
 
-=== web/src/presentation/features/billete/views/billete-list-view.tsx ===
+=== web/src/features/billete/views/billete-list-view.tsx ===
 import { Link } from "wouter";
-import type { Billete } from "../../../../domain/billete/model";
+import type { Schemas } from "../../../api/client";
+
+type Billete = Schemas["DtoBillete"];
 
 export function BilleteListView({ billetes }: { billetes: Billete[] }) {
   return (
@@ -3466,14 +3213,69 @@ export function BilleteListView({ billetes }: { billetes: Billete[] }) {
   );
 }
 
+=== web/src/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+//
+// The composition root: the only module that builds the API client. Screens reach it through
+// `useDependencies()`, so a test hands them a fake instead.
+
+import { type ApiClient, createApiClient } from "../api/client";
+
+export interface Dependencies {
+  api: ApiClient;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return { api };
+}
+
+=== web/src/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { BilleteDetailContainer } from "../features/billete/containers/billete-detail-container";
+import { BilleteFormContainer } from "../features/billete/containers/billete-form-container";
+import { BilleteListContainer } from "../features/billete/containers/billete-list-container";
+import { HomePage } from "../pages/home";
+import { NotFoundPage } from "../pages/not-found";
+import { customRoutes } from "../routes";
+import type { NavEntry } from "../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Billetes", href: "/billetes" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      {customRoutes}
+      <Route path="/billetes">
+        <BilleteListContainer />
+      </Route>
+      <Route path="/billetes/new">
+        <BilleteFormContainer />
+      </Route>
+      <Route path="/billetes/:id/edit">{(params) => <BilleteFormContainer id={params.id} />}</Route>
+      <Route path="/billetes/:id">{(params) => <BilleteDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
 === web/src/test-support/billete.ts ===
-import { BilleteError } from "../domain/billete/errors";
-import type { Billete, BilleteDraft } from "../domain/billete/model";
-import type { BilleteRepository } from "../domain/billete/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Billete = Schemas["DtoBillete"];
+type BilleteRequest = Schemas["PeticionCrearBillete"];
 
 /** Valid billetes for tests; pass `overrides` for the fields a test is about. */
 export const BilleteMother = {
-  draft(overrides: Partial<BilleteDraft> = {}): BilleteDraft {
+  request(overrides: Partial<BilleteRequest> = {}): BilleteRequest {
     return {
       state: "Open",
       ...overrides,
@@ -3481,37 +3283,90 @@ export const BilleteMother = {
   },
 
   random(overrides: Partial<Billete> = {}): Billete {
-    return { id: crypto.randomUUID(), ...BilleteMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...BilleteMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `BilleteRepository`. Override a method to make it fail. */
-export function fakeBilleteRepository(seed: Billete[] = []): BilleteRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new BilleteError("billete.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+/** The fake API's `/billetes`, holding `seed`. */
+export function billeteCollection(seed: Billete[] = []) {
+  return collection("/billetes", "billete", seed);
+}
+
+=== web/src/test-support/fake-api.ts ===
+import { type ApiClient, createApiClient } from "../api/client";
+
+/** What the fake API holds under `path`: the API's DTOs, by id. */
+export interface Collection<T extends { id: string }> {
+  path: string;
+  /** The code a missing item answers: `producto.no_encontrado`. */
+  notFound: string;
+  items: Map<string, T>;
+}
+
+/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
+export function collection<T extends { id: string }>(
+  path: string,
+  entity: string,
+  seed: T[] = [],
+): Collection<T> {
+  const items = new Map(seed.map((item) => [item.id, item]));
+  return { path, notFound: `${entity}.no_encontrado`, items };
+}
+
+/**
+ * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
+ * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
+ * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ */
+export function fakeApi(
+  collections: Collection<{ id: string }>[],
+  failures: Record<string, string> = {},
+): ApiClient {
+  return createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/api/, "");
+      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
+      if (target === undefined) return answer(404, "http.404");
+      const failure = failures[`${request.method} ${target.path}`];
+      if (failure !== undefined) return answer(400, failure);
+      const id = path.slice(target.path.length + 1);
+      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
     },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+  });
+}
+
+async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
+  if (request.method === "POST") {
+    const created = { ...(await request.json()), id: crypto.randomUUID() };
+    target.items.set(created.id, created);
+    return Response.json(created, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const all = [...target.items.values()];
+  const elementos = all.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+}
+
+async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
+  const found = target.items.get(id);
+  if (found === undefined) return answer(404, target.notFound);
+  if (request.method === "DELETE") {
+    target.items.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method === "PUT") {
+    // Like the API, an update replaces every field: one left out is cleared.
+    const updated = { ...(await request.json()), id };
+    target.items.set(id, updated);
+    return Response.json(updated);
+  }
+  return Response.json(found);
+}
+
+/** A `RespuestaError` the way the API answers one. */
+function answer(status: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status });
 }

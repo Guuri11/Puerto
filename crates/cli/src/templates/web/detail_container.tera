@@ -1,20 +1,28 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { unwrap } from "../../../api/http";
 {% if access.update_roles or access.delete_roles -%}
-import { useAuth } from "../../../core/auth";
+import { useAuth } from "../../../auth/auth";
 {% endif -%}
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { {{ pascal }}DetailView } from "../views/{{ kebab }}-detail-view";
 
 export function {{ pascal }}DetailContainer({ id }: { id: string }) {
-  const { {{ camel }}Repository } = useDependencies();
+  const { api } = useDependencies();
 {%- if access.update_roles or access.delete_roles %}
   const { can } = useAuth();
 {%- endif %}
-  const {{ ident }} = useAsync(() => {{ camel }}Repository.get(id), [{{ camel }}Repository, id]);
+{%- if detail_load_inline %}
+  const {{ ident }} = useAsync(() => unwrap(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })), [api, id]);
+{%- else %}
+  const {{ ident }} = useAsync(
+    () => unwrap(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
+{%- endif %}
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -22,12 +30,19 @@ export function {{ pascal }}DetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await {{ camel }}Repository.remove(id);
+      await unwrap(api.DELETE("/{{ plural }}/{id}", { params: { path: { id } } }));
       navigate("/{{ plural }}");
     } catch (error) {
       setFailure(error);
     }
   };
+{%- for t in targets %}
+  const {{ t.camel }}Label = async (target: string) => {
+    const params = { path: { id: target } };
+    const found = await unwrap(api.GET("/{{ t.plural }}/{id}", { params }));
+    return found.{{ t.label }};
+  };
+{%- endfor %}
 
   return (
     <section className="space-y-4">
@@ -38,7 +53,16 @@ export function {{ pascal }}DetailContainer({ id }: { id: string }) {
       {{ "{" }}{{ ident }}.status === "ok" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <{{ pascal }}DetailView {{ ident }}={{ "{" }}{{ ident }}.data} />
+{%- if detail_view_inline %}
+            <{{ pascal }}DetailView {{ ident }}={{ "{" }}{{ ident }}.data}{% for t in targets %} {{ t.camel }}Label={{ "{" }}{{ t.camel }}Label}{% endfor %} />
+{%- else %}
+            <{{ pascal }}DetailView
+              {{ ident }}={{ "{" }}{{ ident }}.data}
+{%- for t in targets %}
+              {{ t.camel }}Label={{ "{" }}{{ t.camel }}Label}
+{%- endfor %}
+            />
+{%- endif %}
             <div className="card-actions justify-end">
 {%- if access.update_roles %}
               {{ "{" }}{% for r in access.update_roles %}can("{{ r }}") && {% endfor %}(

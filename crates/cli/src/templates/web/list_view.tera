@@ -1,8 +1,10 @@
 import { Link } from "wouter";
-import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
+import type { Schemas } from "../../../api/client";
 {%- if display_helpers %}
 import { {{ display_helpers | join(sep=", ") }} } from "../../../shared/forms";
 {%- endif %}
+
+type {{ pascal }} = Schemas["Dto{{ pascal }}"];
 
 export function {{ pascal }}ListView({ {{ plural_ident }} }: { {{ plural_ident }}: {{ pascal }}[] }) {
   return (

@@ -1,6 +1,6 @@
-{% if local %}import type { Accounts } from "../domain/auth/accounts";
-{% endif %}import type { AuthGateway, CurrentUser } from "../domain/auth/session";
-import { ROLES } from "../presentation/core/generated/roles";
+{% if local %}import type { Accounts } from "../auth/accounts";
+{% endif %}import type { AuthGateway, CurrentUser } from "../auth/session";
+import { ROLES } from "../generated/roles";
 
 /** Signed-in users for tests; pass `overrides` for what a test is about. */
 export const CurrentUserMother = {

@@ -138,10 +138,10 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/presentation/core/generated/*`, `web/src/infrastructure/http/schema.d.ts` y
-`docs/api/openapi.json` también se reescriben (`generar bootstrap`, `make web/sync`); las pantallas
-de una entidad son ficheros suyos como los demás; `web/src/presentation/core/routes.tsx` (tus
-propias pantallas) es tuyo. El detalle, en `web/AGENTS.md`.
+Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
+como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+`web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
 
@@ -184,10 +184,10 @@ comando.
 
 ## Frontend (`web/`)
 
-Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Sigue la misma regla de
-dependencias que los crates (`domain` ← `application` ← `infrastructure` ← `presentation`), que
-comprueba `make web/lint`. Sus reglas (capas, ficheros generados, dónde van los casos de uso)
-están en `web/AGENTS.md`.
+Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Es solo presentación: los
+contenedores llaman a la API con su cliente tipado y las vistas pintan lo que reciben; las reglas
+viven en el backend. `make web/lint` comprueba que una vista no llama a la API. Sus reglas
+(carpetas, ficheros generados, tests) están en `web/AGENTS.md`.
 
 La spec OpenAPI es el contrato entre las dos mitades: `docs/api/openapi.json`, exportada por un test
 de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ruta o un DTO, ejecuta
@@ -2892,328 +2892,37 @@ tipo = "String"
 nombre = "Money"
 tipo = "i64"
 
-=== web/src/domain/cliente/errors.ts ===
-/**
- * A request about a cliente that the API refused. `code` is the API's `RespuestaError.codigo`:
- * `cliente.no_encontrado`, `cliente.validacion.<field>_vacio`.
- */
-export class ClienteError extends Error {
-  readonly code: string;
-
-  constructor(code: string) {
-    super(code);
-    this.name = "ClienteError";
-    this.code = code;
-  }
-}
-
-=== web/src/domain/cliente/messages.ts ===
-import type { ClienteDraft } from "./model";
-
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ClienteProblem {
-  field: keyof ClienteDraft | null;
-  text: string;
-}
-
-/**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
- */
-const TEXTS: Record<string, string> = {
-  "cliente.validacion.name_vacio": "Name is required",
-  "cliente.email_invalido": "Email is not valid",
-  "cliente.money_invalido": "Credit is not valid",
-  "cliente.duplicado": "A cliente with these values already exists",
-  "cliente.no_encontrado": "This cliente no longer exists",
-  "cliente.repositorio": "The cliente could not be saved, try again later",
-  "cliente.desconocido": "Something went wrong",
-};
-
-/** The input each field's code is about. */
-const FIELDS: Record<string, keyof ClienteDraft> = {
-  "cliente.validacion.name_vacio": "name",
-  "cliente.email_invalido": "email",
-  "cliente.money_invalido": "credit",
-};
-
-export function toProblem(code: string): ClienteProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
-}
-
-=== web/src/domain/cliente/model.ts ===
-export interface Cliente {
-  id: string;
-  name: string;
-  email: string;
-  credit: number;
-}
-
-/** What a create or an update sends: a cliente without its id. */
-export type ClienteDraft = Omit<Cliente, "id">;
-
-=== web/src/domain/cliente/repository.ts ===
-import type { Page, PageRequest } from "../shared/page";
-import type { Cliente, ClienteDraft } from "./model";
-
-/** The port the screens call. Every method rejects with the `ClienteError` the API answered. */
-export interface ClienteRepository {
-  list(page: PageRequest): Promise<Page<Cliente>>;
-  get(id: string): Promise<Cliente>;
-  create(draft: ClienteDraft): Promise<Cliente>;
-  update(id: string, draft: ClienteDraft): Promise<Cliente>;
-  remove(id: string): Promise<void>;
-}
-
-=== web/src/infrastructure/cliente/cliente-repository-http.test.ts ===
-import { describe, expect, test } from "bun:test";
-import { ClienteError } from "../../domain/cliente/errors";
-import { ClienteMother } from "../../test-support/cliente";
-import { createApiClient } from "../http/client";
-import { clienteRepositoryHttp } from "./cliente-repository-http";
-
-/** A repository whose every request is answered with `status` and `body`. */
-function answering(status: number, body?: unknown) {
-  const requests: Request[] = [];
-  const api = createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return body === undefined ? new Response(null, { status }) : Response.json(body, { status });
-    },
-  });
-  return { repository: clienteRepositoryHttp(api), requests };
-}
-
-describe("clienteRepositoryHttp", () => {
-  test("should ask for the page and return its clientes", async () => {
-    // Arrange
-    const cliente = ClienteMother.random();
-    const { repository, requests } = answering(200, {
-      elementos: [cliente],
-      total: 21,
-      limite: 20,
-      desplazamiento: 20,
-    });
-
-    // Act
-    const listed = await repository.list({ limit: 20, offset: 20 });
-
-    // Assert
-    const url = new URL(requests[0]?.url ?? "");
-    expect(url.pathname).toBe("/api/clientes");
-    expect(url.search).toBe("?limite=20&desplazamiento=20");
-    expect(listed).toEqual({ items: [cliente], total: 21, limit: 20, offset: 20 });
-  });
-
-  test("should send the draft when creating a cliente", async () => {
-    // Arrange
-    const draft = ClienteMother.draft();
-    const { repository, requests } = answering(201, { id: crypto.randomUUID(), ...draft });
-
-    // Act
-    const created = await repository.create(draft);
-
-    // Assert
-    expect(requests[0]?.method).toBe("POST");
-    expect(await requests[0]?.json()).toEqual(draft);
-    expect(created).toMatchObject(draft);
-  });
-
-  test("should reject with the API's error code when the cliente does not exist", async () => {
-    // Arrange
-    const code = "cliente.no_encontrado";
-    const { repository } = answering(404, { codigo: code, mensaje: code });
-
-    // Act
-    const result = repository.get(crypto.randomUUID());
-
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(ClienteError);
-    await expect(result).rejects.toMatchObject({ code });
-  });
-
-  test("should resolve when the API deletes the cliente", async () => {
-    // Arrange
-    const { repository, requests } = answering(204);
-
-    // Act
-    await repository.remove("42");
-
-    // Assert
-    expect(requests[0]?.url).toBe("http://localhost/api/clientes/42");
-  });
-});
-
-=== web/src/infrastructure/cliente/cliente-repository-http.ts ===
-import { ClienteError } from "../../domain/cliente/errors";
-import type { Cliente, ClienteDraft } from "../../domain/cliente/model";
-import type { ClienteRepository } from "../../domain/cliente/repository";
-import { type ApiClient, apiErrorCode } from "../http/client";
-import type { components } from "../http/schema";
-
-type ClienteDto = components["schemas"]["DtoCliente"];
-type ClienteRequest = components["schemas"]["PeticionCrearCliente"];
-
-function toCliente(dto: ClienteDto): Cliente {
-  return {
-    id: dto.id,
-    name: dto.name,
-    email: dto.email,
-    credit: dto.credit,
-  };
-}
-
-function toRequest(draft: ClienteDraft): ClienteRequest {
-  return {
-    name: draft.name,
-    email: draft.email,
-    credit: draft.credit,
-  };
-}
-
-/** `ClienteRepository` over the REST API (`/clientes`). */
-export function clienteRepositoryHttp(api: ApiClient): ClienteRepository {
-  return {
-    async list(page) {
-      const { data, error, response } = await api.GET("/clientes", {
-        params: { query: { limite: page.limit, desplazamiento: page.offset } },
-      });
-      if (data === undefined) throw new ClienteError(apiErrorCode(error, response));
-      return {
-        items: data.elementos.map(toCliente),
-        total: data.total,
-        limit: data.limite,
-        offset: data.desplazamiento,
-      };
-    },
-    async get(id) {
-      const { data, error, response } = await api.GET("/clientes/{id}", {
-        params: { path: { id } },
-      });
-      if (data === undefined) throw new ClienteError(apiErrorCode(error, response));
-      return toCliente(data);
-    },
-    async create(draft) {
-      const { data, error, response } = await api.POST("/clientes", {
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new ClienteError(apiErrorCode(error, response));
-      return toCliente(data);
-    },
-    async update(id, draft) {
-      const { data, error, response } = await api.PUT("/clientes/{id}", {
-        params: { path: { id } },
-        body: toRequest(draft),
-      });
-      if (data === undefined) throw new ClienteError(apiErrorCode(error, response));
-      return toCliente(data);
-    },
-    async remove(id) {
-      const { error, response } = await api.DELETE("/clientes/{id}", {
-        params: { path: { id } },
-      });
-      if (!response.ok) throw new ClienteError(apiErrorCode(error, response));
-    },
-  };
-}
-
-=== web/src/infrastructure/http/client.ts ===
+=== web/src/api/client.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { paths } from "./schema";
+import type { components, paths } from "./schema";
 
 /** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
 export type ApiClient = Client<paths>;
+
+/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
+export type Schemas = components["schemas"];
 
 /** `/api` is the backend: proxied to `:8080` by Vite in development. */
 export function createApiClient(options: ClientOptions = {}): ApiClient {
   return createClient<paths>({ baseUrl: "/api", ...options });
 }
 
-/**
- * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
- * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
- */
-export function apiErrorCode(error: unknown, response: Response): string {
-  if (typeof error === "object" && error !== null && "codigo" in error) {
-    const { codigo } = error;
-    if (typeof codigo === "string") return codigo;
-  }
-  return `http.${response.status}`;
-}
-
-=== web/src/presentation/core/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-//
-// The composition root: the only module that imports `infrastructure/`. Screens reach the
-// adapters through `useDependencies()`, so a test hands them a fake instead.
-
-import type { ClienteRepository } from "../../../domain/cliente/repository";
-import { clienteRepositoryHttp } from "../../../infrastructure/cliente/cliente-repository-http";
-import { createApiClient } from "../../../infrastructure/http/client";
-
-export interface Dependencies {
-  clienteRepository: ClienteRepository;
-}
-
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
-  return {
-    clienteRepository: clienteRepositoryHttp(api),
-  };
-}
-
-=== web/src/presentation/core/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
-
-import { Route, Switch } from "wouter";
-import { ClienteDetailContainer } from "../../features/cliente/containers/cliente-detail-container";
-import { ClienteFormContainer } from "../../features/cliente/containers/cliente-form-container";
-import { ClienteListContainer } from "../../features/cliente/containers/cliente-list-container";
-import { HomePage } from "../../pages/home";
-import { NotFoundPage } from "../../pages/not-found";
-import type { NavEntry } from "../../shared/ui/layout";
-import { customRoutes } from "../routes";
-
-export const navEntries: NavEntry[] = [{ label: "Clientes", href: "/clientes" }];
-
-export function AppRoutes() {
-  return (
-    <Switch>
-      <Route path="/">
-        <HomePage entries={navEntries} />
-      </Route>
-      {customRoutes}
-      <Route path="/clientes">
-        <ClienteListContainer />
-      </Route>
-      <Route path="/clientes/new">
-        <ClienteFormContainer />
-      </Route>
-      <Route path="/clientes/:id/edit">{(params) => <ClienteFormContainer id={params.id} />}</Route>
-      <Route path="/clientes/:id">{(params) => <ClienteDetailContainer id={params.id} />}</Route>
-      <Route>
-        <NotFoundPage />
-      </Route>
-    </Switch>
-  );
-}
-
-=== web/src/presentation/features/cliente/containers/cliente-detail-container.test.tsx ===
-import { describe, expect, mock, test } from "bun:test";
+=== web/src/features/cliente/containers/cliente-detail-container.test.tsx ===
+import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
-import { renderScreen } from "../../../../test-support/render";
+import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { ClienteDetailContainer } from "./cliente-detail-container";
 
 describe("ClienteDetailContainer", () => {
   test("should show the cliente when it exists", async () => {
     // Arrange
     const seeded = ClienteMother.random();
-    const clienteRepository = fakeClienteRepository([seeded]);
+    const api = fakeApi([clienteCollection([seeded])]);
 
     // Act
-    renderScreen(<ClienteDetailContainer id={seeded.id} />, { clienteRepository });
+    renderScreen(<ClienteDetailContainer id={seeded.id} />, { api });
 
     // Assert
     expect(await screen.findByText("Edit")).toBeTruthy();
@@ -3221,12 +2930,10 @@ describe("ClienteDetailContainer", () => {
 
   test("should show the not-found code when the cliente does not exist", async () => {
     // Arrange
-    const clienteRepository = fakeClienteRepository();
+    const api = fakeApi([clienteCollection()]);
 
     // Act
-    renderScreen(<ClienteDetailContainer id={crypto.randomUUID()} />, {
-      clienteRepository,
-    });
+    renderScreen(<ClienteDetailContainer id={crypto.randomUUID()} />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("cliente.no_encontrado");
@@ -3235,35 +2942,37 @@ describe("ClienteDetailContainer", () => {
   test("should delete the cliente only once the deletion is confirmed", async () => {
     // Arrange
     const seeded = ClienteMother.random();
-    const fake = fakeClienteRepository([seeded]);
-    const remove = mock(fake.remove);
-    const { history } = renderScreen(<ClienteDetailContainer id={seeded.id} />, {
-      clienteRepository: { ...fake, remove },
-    });
+    const stored = clienteCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ClienteDetailContainer id={seeded.id} />, { api });
     fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(remove).not.toHaveBeenCalled();
+    expect(stored.items.has(seeded.id)).toBe(true);
 
     // Act
     fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe("/clientes"));
-    expect(remove).toHaveBeenCalledWith(seeded.id);
+    expect(stored.items.has(seeded.id)).toBe(false);
   });
 });
 
-=== web/src/presentation/features/cliente/containers/cliente-detail-container.tsx ===
+=== web/src/features/cliente/containers/cliente-detail-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
+import { useAsync } from "../../../shared/use-async";
 import { ClienteDetailView } from "../views/cliente-detail-view";
 
 export function ClienteDetailContainer({ id }: { id: string }) {
-  const { clienteRepository } = useDependencies();
-  const cliente = useAsync(() => clienteRepository.get(id), [clienteRepository, id]);
+  const { api } = useDependencies();
+  const cliente = useAsync(
+    () => unwrap(api.GET("/clientes/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
@@ -3271,7 +2980,7 @@ export function ClienteDetailContainer({ id }: { id: string }) {
   const remove = async () => {
     setConfirming(false);
     try {
-      await clienteRepository.remove(id);
+      await unwrap(api.DELETE("/clientes/{id}", { params: { path: { id } } }));
       navigate("/clientes");
     } catch (error) {
       setFailure(error);
@@ -3312,72 +3021,68 @@ export function ClienteDetailContainer({ id }: { id: string }) {
   );
 }
 
-=== web/src/presentation/features/cliente/containers/cliente-form-container.test.tsx ===
+=== web/src/features/cliente/containers/cliente-form-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ClienteError } from "../../../../domain/cliente/errors";
-import type { ClienteDraft } from "../../../../domain/cliente/model";
-import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
-import { renderScreen } from "../../../../test-support/render";
+import type { Schemas } from "../../../api/client";
+import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { ClienteFormContainer } from "./cliente-form-container";
 
 function type(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 }
 
-/** Fills the empty form with `draft`, the way a user would. */
-async function fillIn(draft: ClienteDraft) {
+/** Fills the empty form with `request`, the way a user would. */
+async function fillIn(request: Schemas["PeticionCrearCliente"]) {
   await screen.findByText("Save");
-  type("Name", draft.name);
-  type("Email", draft.email);
-  type("Credit", String(draft.credit));
+  type("Name", request.name);
+  type("Email", request.email);
+  type("Credit", String(request.credit));
 }
 
 describe("ClienteFormContainer", () => {
   test("should create the cliente from what was typed and show it", async () => {
     // Arrange
-    const draft = ClienteMother.draft();
-    const clienteRepository = fakeClienteRepository();
-    const { history } = renderScreen(<ClienteFormContainer />, { clienteRepository });
-    await fillIn(draft);
+    const request = ClienteMother.request();
+    const stored = clienteCollection();
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ClienteFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toStartWith("/clientes/"));
-    const {
-      items: [created],
-    } = await clienteRepository.list({ limit: 1, offset: 0 });
-    expect(created).toMatchObject(draft);
+    const [created] = stored.items.values();
+    expect(created).toMatchObject(request);
     expect(history.at(-1)).toBe(`/clientes/${created?.id}`);
   });
 
   test("should save the edited cliente when an existing one is submitted", async () => {
     // Arrange
     const seeded = ClienteMother.random();
-    const clienteRepository = fakeClienteRepository([seeded]);
-    const { history } = renderScreen(<ClienteFormContainer id={seeded.id} />, {
-      clienteRepository,
-    });
+    const stored = clienteCollection([seeded]);
+    const api = fakeApi([stored]);
+    const { history } = renderScreen(<ClienteFormContainer id={seeded.id} />, { api });
 
     // Act
     fireEvent.click(await screen.findByText("Save"));
 
     // Assert
     await waitFor(() => expect(history.at(-1)).toBe(`/clientes/${seeded.id}`));
-    expect(await clienteRepository.get(seeded.id)).toEqual(seeded);
+    expect(stored.items.get(seeded.id)).toEqual(seeded);
   });
-
   test("should show the code itself when the API answers one the form does not know", async () => {
     // Arrange
+    const request = ClienteMother.request();
     const code = "cliente.validacion.invalid";
-    const clienteRepository = {
-      ...fakeClienteRepository(),
-      create: () => Promise.reject(new ClienteError(code)),
-    };
-    renderScreen(<ClienteFormContainer />, { clienteRepository });
-    await fillIn(ClienteMother.draft());
+    const failures = { "POST /clientes": code };
+    const api = fakeApi([clienteCollection()], failures);
+    renderScreen(<ClienteFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3388,12 +3093,11 @@ describe("ClienteFormContainer", () => {
 
   test("should say a cliente with these values exists when the API answers a duplicate", async () => {
     // Arrange
-    const clienteRepository = {
-      ...fakeClienteRepository(),
-      create: () => Promise.reject(new ClienteError("cliente.duplicado")),
-    };
-    renderScreen(<ClienteFormContainer />, { clienteRepository });
-    await fillIn(ClienteMother.draft());
+    const request = ClienteMother.request();
+    const failures = { "POST /clientes": "cliente.duplicado" };
+    const api = fakeApi([clienteCollection()], failures);
+    renderScreen(<ClienteFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3406,12 +3110,11 @@ describe("ClienteFormContainer", () => {
 
   test("should show the message under its input when the API rejects one field", async () => {
     // Arrange
-    const clienteRepository = {
-      ...fakeClienteRepository(),
-      create: () => Promise.reject(new ClienteError("cliente.validacion.name_vacio")),
-    };
-    renderScreen(<ClienteFormContainer />, { clienteRepository });
-    await fillIn(ClienteMother.draft());
+    const request = ClienteMother.request();
+    const failures = { "POST /clientes": "cliente.validacion.name_vacio" };
+    const api = fakeApi([clienteCollection()], failures);
+    renderScreen(<ClienteFormContainer />, { api });
+    await fillIn(request);
 
     // Act
     fireEvent.click(screen.getByText("Save"));
@@ -3424,22 +3127,28 @@ describe("ClienteFormContainer", () => {
   });
 });
 
-=== web/src/presentation/features/cliente/containers/cliente-form-container.tsx ===
+=== web/src/features/cliente/containers/cliente-form-container.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { toProblem } from "../../../../domain/cliente/messages";
-import type { Cliente } from "../../../../domain/cliente/model";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import type { Schemas } from "../../../api/client";
+import { unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { ClienteFormView, toClienteDraft, toClienteForm } from "../views/cliente-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { ClienteFormView, toClienteForm, toClienteRequest } from "../views/cliente-form-view";
+
+type Cliente = Schemas["DtoCliente"];
 
 /** Creates a cliente, or edits the one with `id`. */
 export function ClienteFormContainer({ id }: { id?: string }) {
-  const { clienteRepository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : clienteRepository.get(id)),
-    [clienteRepository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/clientes/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New cliente" : "Edit cliente";
 
@@ -3457,7 +3166,7 @@ export function ClienteFormContainer({ id }: { id?: string }) {
 }
 
 function ClienteForm({ existing }: { existing: Cliente | null }) {
-  const { clienteRepository } = useDependencies();
+  const { api } = useDependencies();
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toClienteForm(existing));
   const [saving, setSaving] = useState(false);
@@ -3468,11 +3177,12 @@ function ClienteForm({ existing }: { existing: Cliente | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = toClienteDraft(values);
-      const saved =
+      const body = toClienteRequest(values);
+      const saved = await unwrap(
         existing === null
-          ? await clienteRepository.create(draft)
-          : await clienteRepository.update(existing.id, draft);
+          ? api.POST("/clientes", { body })
+          : api.PUT("/clientes/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/clientes/${saved.id}`);
     } catch (error) {
       setFailure(error);
@@ -3496,22 +3206,22 @@ function ClienteForm({ existing }: { existing: Cliente | null }) {
   );
 }
 
-=== web/src/presentation/features/cliente/containers/cliente-list-container.test.tsx ===
+=== web/src/features/cliente/containers/cliente-list-container.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { ClienteError } from "../../../../domain/cliente/errors";
-import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
-import { renderScreen } from "../../../../test-support/render";
+import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
+import { fakeApi } from "../../../test-support/fake-api";
+import { renderScreen } from "../../../test-support/render";
 import { ClienteListContainer } from "./cliente-list-container";
 
 describe("ClienteListContainer", () => {
   test("should show a row per cliente when there are some", async () => {
     // Arrange
     const seed = [ClienteMother.random(), ClienteMother.random()];
-    const clienteRepository = fakeClienteRepository(seed);
+    const api = fakeApi([clienteCollection(seed)]);
 
     // Act
-    renderScreen(<ClienteListContainer />, { clienteRepository });
+    renderScreen(<ClienteListContainer />, { api });
 
     // Assert
     expect(await screen.findAllByText("View")).toHaveLength(2);
@@ -3520,8 +3230,8 @@ describe("ClienteListContainer", () => {
   test("should show the next page when Next is pressed", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => ClienteMother.random());
-    const clienteRepository = fakeClienteRepository(seed);
-    renderScreen(<ClienteListContainer />, { clienteRepository });
+    const api = fakeApi([clienteCollection(seed)]);
+    renderScreen(<ClienteListContainer />, { api });
     expect(await screen.findAllByText("View")).toHaveLength(20);
 
     // Act
@@ -3535,11 +3245,11 @@ describe("ClienteListContainer", () => {
   test("should open the page the URL names", async () => {
     // Arrange
     const seed = Array.from({ length: 25 }, () => ClienteMother.random());
-    const clienteRepository = fakeClienteRepository(seed);
+    const api = fakeApi([clienteCollection(seed)]);
     const path = "/clientes?page=2";
 
     // Act
-    renderScreen(<ClienteListContainer />, { clienteRepository }, path);
+    renderScreen(<ClienteListContainer />, { api }, path);
 
     // Assert
     expect(await screen.findByText("21–25 of 25")).toBeTruthy();
@@ -3547,10 +3257,10 @@ describe("ClienteListContainer", () => {
 
   test("should say so when there is no cliente", async () => {
     // Arrange
-    const clienteRepository = fakeClienteRepository();
+    const api = fakeApi([clienteCollection()]);
 
     // Act
-    renderScreen(<ClienteListContainer />, { clienteRepository });
+    renderScreen(<ClienteListContainer />, { api });
 
     // Assert
     expect(await screen.findByText("No clientes yet.")).toBeTruthy();
@@ -3558,38 +3268,37 @@ describe("ClienteListContainer", () => {
 
   test("should show the error code when the clientes cannot be listed", async () => {
     // Arrange
-    const clienteRepository = {
-      ...fakeClienteRepository(),
-      list: () => Promise.reject(new ClienteError("cliente.repositorio")),
-    };
+    const failures = { "GET /clientes": "cliente.repositorio" };
+    const api = fakeApi([clienteCollection()], failures);
 
     // Act
-    renderScreen(<ClienteListContainer />, { clienteRepository });
+    renderScreen(<ClienteListContainer />, { api });
 
     // Assert
     expect((await screen.findByRole("alert")).textContent).toBe("cliente.repositorio");
   });
 });
 
-=== web/src/presentation/features/cliente/containers/cliente-list-container.tsx ===
+=== web/src/features/cliente/containers/cliente-list-container.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE } from "../../../../domain/shared/page";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
+import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 import { EmptyState } from "../../../shared/ui/empty-state";
 import { ErrorAlert } from "../../../shared/ui/error-alert";
 import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
+import { useAsync } from "../../../shared/use-async";
 import { ClienteListView } from "../views/cliente-list-view";
 
 /** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
 export function ClienteListContainer() {
-  const { clienteRepository } = useDependencies();
+  const { api } = useDependencies();
   const [location, navigate] = useLocation();
   const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
   const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
+  const query = { limite: PAGE_SIZE, desplazamiento: offset };
   const clientes = useAsync(
-    () => clienteRepository.list({ limit: PAGE_SIZE, offset }),
-    [clienteRepository, offset],
+    () => unwrap(api.GET("/clientes", { params: { query } })),
+    [api, offset],
   );
 
   return (
@@ -3607,16 +3316,55 @@ export function ClienteListContainer() {
           <EmptyState message="No clientes yet." />
         ) : (
           <>
-            <ClienteListView clientes={clientes.data.items} />
-            <Pagination {...clientes.data} onOffsetChange={goTo} />
+            <ClienteListView clientes={clientes.data.elementos} />
+            <Pagination
+              total={clientes.data.total}
+              limit={clientes.data.limite}
+              offset={clientes.data.desplazamiento}
+              onOffsetChange={goTo}
+            />
           </>
         ))}
     </section>
   );
 }
 
-=== web/src/presentation/features/cliente/views/cliente-detail-view.tsx ===
-import type { Cliente } from "../../../../domain/cliente/model";
+=== web/src/features/cliente/messages.ts ===
+/** What a screen shows for an API error: under the input it is about, or in the alert. */
+export interface ClienteProblem {
+  field: string | null;
+  text: string;
+}
+
+/**
+ * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
+ * this file is the place to translate them. A code missing here shows as it is.
+ */
+const TEXTS: Record<string, string> = {
+  "cliente.validacion.name_vacio": "Name is required",
+  "cliente.email_invalido": "Email is not valid",
+  "cliente.money_invalido": "Credit is not valid",
+  "cliente.duplicado": "A cliente with these values already exists",
+  "cliente.no_encontrado": "This cliente no longer exists",
+  "cliente.repositorio": "The cliente could not be saved, try again later",
+  "cliente.desconocido": "Something went wrong",
+};
+
+/** The input each field's code is about. */
+const FIELDS: Record<string, string> = {
+  "cliente.validacion.name_vacio": "name",
+  "cliente.email_invalido": "email",
+  "cliente.money_invalido": "credit",
+};
+
+export function toProblem(code: string): ClienteProblem {
+  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+}
+
+=== web/src/features/cliente/views/cliente-detail-view.tsx ===
+import type { Schemas } from "../../../api/client";
+
+type Cliente = Schemas["DtoCliente"];
 
 export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
   return (
@@ -3631,10 +3379,13 @@ export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
   );
 }
 
-=== web/src/presentation/features/cliente/views/cliente-form-view.tsx ===
-import type { ClienteProblem } from "../../../../domain/cliente/messages";
-import type { Cliente, ClienteDraft } from "../../../../domain/cliente/model";
+=== web/src/features/cliente/views/cliente-form-view.tsx ===
+import type { Schemas } from "../../../api/client";
 import { FieldError } from "../../../shared/ui/field-error";
+import type { ClienteProblem } from "../messages";
+
+type Cliente = Schemas["DtoCliente"];
+type ClienteRequest = Schemas["PeticionCrearCliente"];
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface ClienteFormValues {
@@ -3659,7 +3410,8 @@ export function toClienteForm(cliente: Cliente | null): ClienteFormValues {
   };
 }
 
-export function toClienteDraft(values: ClienteFormValues): ClienteDraft {
+/** What a create or an update sends: the same fields for both. */
+export function toClienteRequest(values: ClienteFormValues): ClienteRequest {
   return {
     name: values.name,
     email: values.email,
@@ -3732,9 +3484,11 @@ export function ClienteFormView({
   );
 }
 
-=== web/src/presentation/features/cliente/views/cliente-list-view.tsx ===
+=== web/src/features/cliente/views/cliente-list-view.tsx ===
 import { Link } from "wouter";
-import type { Cliente } from "../../../../domain/cliente/model";
+import type { Schemas } from "../../../api/client";
+
+type Cliente = Schemas["DtoCliente"];
 
 export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
   return (
@@ -3767,14 +3521,69 @@ export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
   );
 }
 
+=== web/src/generated/dependencies.ts ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+//
+// The composition root: the only module that builds the API client. Screens reach it through
+// `useDependencies()`, so a test hands them a fake instead.
+
+import { type ApiClient, createApiClient } from "../api/client";
+
+export interface Dependencies {
+  api: ApiClient;
+}
+
+export function createDependencies(): Dependencies {
+  const api = createApiClient();
+  return { api };
+}
+
+=== web/src/generated/routes.tsx ===
+// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { ClienteDetailContainer } from "../features/cliente/containers/cliente-detail-container";
+import { ClienteFormContainer } from "../features/cliente/containers/cliente-form-container";
+import { ClienteListContainer } from "../features/cliente/containers/cliente-list-container";
+import { HomePage } from "../pages/home";
+import { NotFoundPage } from "../pages/not-found";
+import { customRoutes } from "../routes";
+import type { NavEntry } from "../shared/ui/layout";
+
+export const navEntries: NavEntry[] = [{ label: "Clientes", href: "/clientes" }];
+
+export function AppRoutes() {
+  return (
+    <Switch>
+      <Route path="/">
+        <HomePage entries={navEntries} />
+      </Route>
+      {customRoutes}
+      <Route path="/clientes">
+        <ClienteListContainer />
+      </Route>
+      <Route path="/clientes/new">
+        <ClienteFormContainer />
+      </Route>
+      <Route path="/clientes/:id/edit">{(params) => <ClienteFormContainer id={params.id} />}</Route>
+      <Route path="/clientes/:id">{(params) => <ClienteDetailContainer id={params.id} />}</Route>
+      <Route>
+        <NotFoundPage />
+      </Route>
+    </Switch>
+  );
+}
+
 === web/src/test-support/cliente.ts ===
-import { ClienteError } from "../domain/cliente/errors";
-import type { Cliente, ClienteDraft } from "../domain/cliente/model";
-import type { ClienteRepository } from "../domain/cliente/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type Cliente = Schemas["DtoCliente"];
+type ClienteRequest = Schemas["PeticionCrearCliente"];
 
 /** Valid clientes for tests; pass `overrides` for the fields a test is about. */
 export const ClienteMother = {
-  draft(overrides: Partial<ClienteDraft> = {}): ClienteDraft {
+  request(overrides: Partial<ClienteRequest> = {}): ClienteRequest {
     return {
       name: "example",
       email: "example",
@@ -3784,37 +3593,90 @@ export const ClienteMother = {
   },
 
   random(overrides: Partial<Cliente> = {}): Cliente {
-    return { id: crypto.randomUUID(), ...ClienteMother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...ClienteMother.request(), ...overrides };
   },
 };
 
-/** An in-memory `ClienteRepository`. Override a method to make it fail. */
-export function fakeClienteRepository(seed: Cliente[] = []): ClienteRepository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new ClienteError("cliente.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
+/** The fake API's `/clientes`, holding `seed`. */
+export function clienteCollection(seed: Cliente[] = []) {
+  return collection("/clientes", "cliente", seed);
+}
+
+=== web/src/test-support/fake-api.ts ===
+import { type ApiClient, createApiClient } from "../api/client";
+
+/** What the fake API holds under `path`: the API's DTOs, by id. */
+export interface Collection<T extends { id: string }> {
+  path: string;
+  /** The code a missing item answers: `producto.no_encontrado`. */
+  notFound: string;
+  items: Map<string, T>;
+}
+
+/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
+export function collection<T extends { id: string }>(
+  path: string,
+  entity: string,
+  seed: T[] = [],
+): Collection<T> {
+  const items = new Map(seed.map((item) => [item.id, item]));
+  return { path, notFound: `${entity}.no_encontrado`, items };
+}
+
+/**
+ * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
+ * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
+ * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ */
+export function fakeApi(
+  collections: Collection<{ id: string }>[],
+  failures: Record<string, string> = {},
+): ApiClient {
+  return createApiClient({
+    baseUrl: "http://localhost/api",
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/api/, "");
+      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
+      if (target === undefined) return answer(404, "http.404");
+      const failure = failures[`${request.method} ${target.path}`];
+      if (failure !== undefined) return answer(400, failure);
+      const id = path.slice(target.path.length + 1);
+      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
     },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+  });
+}
+
+async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
+  if (request.method === "POST") {
+    const created = { ...(await request.json()), id: crypto.randomUUID() };
+    target.items.set(created.id, created);
+    return Response.json(created, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const all = [...target.items.values()];
+  const elementos = all.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+}
+
+async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
+  const found = target.items.get(id);
+  if (found === undefined) return answer(404, target.notFound);
+  if (request.method === "DELETE") {
+    target.items.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method === "PUT") {
+    // Like the API, an update replaces every field: one left out is cleared.
+    const updated = { ...(await request.json()), id };
+    target.items.set(id, updated);
+    return Response.json(updated);
+  }
+  return Response.json(found);
+}
+
+/** A `RespuestaError` the way the API answers one. */
+function answer(status: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status });
 }

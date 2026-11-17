@@ -1,22 +1,32 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { {{ pascal }} } from "../../../../domain/{{ kebab }}/model";
-import { useDependencies } from "../../../core/dependencies";
-import { useAsync } from "../../../core/hooks/use-async";
-import { toProblem } from "../../../../domain/{{ kebab }}/messages";
+import type { Schemas } from "../../../api/client";
+import { {% if targets %}MAX_PAGE_LIMIT, {% endif %}unwrap } from "../../../api/http";
+import { useDependencies } from "../../../dependencies";
 {%- if targets %}
-import { MAX_PAGE_LIMIT } from "../../../../domain/shared/page";
 import { referenceOptions } from "../../../shared/forms";
 {%- endif %}
 import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { {{ pascal }}FormView, to{{ pascal }}Draft, to{{ pascal }}Form } from "../views/{{ kebab }}-form-view";
+import { useAsync } from "../../../shared/use-async";
+import { toProblem } from "../messages";
+import { {{ pascal }}FormView, to{{ pascal }}Form, to{{ pascal }}Request } from "../views/{{ kebab }}-form-view";
+
+type {{ pascal }} = Schemas["Dto{{ pascal }}"];
+{%- if targets %}
+
+/** The first page of each referenced entity: what its selects offer. */
+const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
+{%- endif %}
 
 /** Creates {{ a_words }}, or edits the one with `id`. */
 export function {{ pascal }}FormContainer({ id }: { id?: string }) {
-  const { {{ camel }}Repository } = useDependencies();
+  const { api } = useDependencies();
   const existing = useAsync(
-    () => (id === undefined ? Promise.resolve(null) : {{ camel }}Repository.get(id)),
-    [{{ camel }}Repository, id],
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : unwrap(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })),
+    [api, id],
   );
   const title = id === undefined ? "New {{ words }}" : "Edit {{ words }}";
 
@@ -34,23 +44,14 @@ export function {{ pascal }}FormContainer({ id }: { id?: string }) {
 }
 
 function {{ pascal }}Form({ existing }: { existing: {{ pascal }} | null }) {
-{%- if form_deps_inline %}
-  const { {{ camel }}Repository{% for t in targets %}, {{ t.camel }}Repository{% endfor %} } = useDependencies();
-{%- else %}
-  const {
-    {{ camel }}Repository,
-{%- for t in targets %}
-    {{ t.camel }}Repository,
-{%- endfor %}
-  } = useDependencies();
-{%- endif %}
+  const { api } = useDependencies();
 {%- for t in targets %}
 {%- if t.load_inline %}
-  const {{ t.plural_ident }} = useAsync(() => {{ t.camel }}Repository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }), [{{ t.camel }}Repository]);
+  const {{ t.plural_ident }} = useAsync(() => unwrap(api.GET("/{{ t.plural }}", OPTIONS)), [api]);
 {%- else %}
   const {{ t.plural_ident }} = useAsync(
-    () => {{ t.camel }}Repository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
-    [{{ t.camel }}Repository],
+    () => unwrap(api.GET("/{{ t.plural }}", OPTIONS)),
+    [api],
   );
 {%- endif %}
 {%- endfor %}
@@ -64,11 +65,12 @@ function {{ pascal }}Form({ existing }: { existing: {{ pascal }} | null }) {
     setSaving(true);
     setFailure(null);
     try {
-      const draft = to{{ pascal }}Draft(values);
-      const saved =
+      const body = to{{ pascal }}Request(values);
+      const saved = await unwrap(
         existing === null
-          ? await {{ camel }}Repository.create(draft)
-          : await {{ camel }}Repository.update(existing.id, draft);
+          ? api.POST("/{{ plural }}", { body })
+          : api.PUT("/{{ plural }}/{id}", { params: { path: { id: existing.id } }, body }),
+      );
       navigate(`/{{ plural }}/${saved.id}`);
     } catch (error) {
       setFailure(error);

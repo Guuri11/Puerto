@@ -17,14 +17,14 @@ fn list_screen_reads_and_writes_its_page_in_the_url() {
 
     let container = read(
         &output,
-        "web/src/presentation/features/producto/containers/producto-list-container.tsx",
+        "web/src/features/producto/containers/producto-list-container.tsx",
     );
     assert!(container.contains("const offset = offsetFromSearch(useSearch(), PAGE_SIZE);"));
     assert!(container.contains("navigate(location + pageSearch(next, PAGE_SIZE))"));
     assert!(!container.contains("useState"));
     let test = read(
         &output,
-        "web/src/presentation/features/producto/containers/producto-list-container.test.tsx",
+        "web/src/features/producto/containers/producto-list-container.test.tsx",
     );
     assert!(test.contains("const path = \"/productos?page=2\";"));
 

@@ -1,10 +1,12 @@
-import { {{ pascal }}Error } from "../domain/{{ kebab }}/errors";
-import type { {{ pascal }}, {{ pascal }}Draft } from "../domain/{{ kebab }}/model";
-import type { {{ pascal }}Repository } from "../domain/{{ kebab }}/repository";
+import type { Schemas } from "../api/client";
+import { collection } from "./fake-api";
+
+type {{ pascal }} = Schemas["Dto{{ pascal }}"];
+type {{ pascal }}Request = Schemas["PeticionCrear{{ pascal }}"];
 
 /** Valid {{ words_plural }} for tests; pass `overrides` for the fields a test is about. */
 export const {{ pascal }}Mother = {
-  draft(overrides: Partial<{{ pascal }}Draft> = {}): {{ pascal }}Draft {
+  request(overrides: Partial<{{ pascal }}Request> = {}): {{ pascal }}Request {
     return {
 {%- for f in fields %}
       {{ f.camel }}: {{ f.mother }},
@@ -14,37 +16,11 @@ export const {{ pascal }}Mother = {
   },
 
   random(overrides: Partial<{{ pascal }}> = {}): {{ pascal }} {
-    return { id: crypto.randomUUID(), ...{{ pascal }}Mother.draft(), ...overrides };
+    return { id: crypto.randomUUID(), ...{{ pascal }}Mother.request(), ...overrides };
   },
 };
 
-/** An in-memory `{{ pascal }}Repository`. Override a method to make it fail. */
-export function fake{{ pascal }}Repository(seed: {{ pascal }}[] = []): {{ pascal }}Repository {
-  const store = new Map(seed.map((item) => [item.id, item]));
-  const find = (id: string) => {
-    const found = store.get(id);
-    if (found === undefined) throw new {{ pascal }}Error("{{ snake }}.no_encontrado");
-    return found;
-  };
-  return {
-    list: async ({ limit, offset }) => {
-      const all = [...store.values()];
-      return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
-    },
-    get: async (id) => find(id),
-    create: async (draft) => {
-      const created = { id: crypto.randomUUID(), ...draft };
-      store.set(created.id, created);
-      return created;
-    },
-    update: async (id, draft) => {
-      const updated = { ...find(id), ...draft };
-      store.set(id, updated);
-      return updated;
-    },
-    remove: async (id) => {
-      find(id);
-      store.delete(id);
-    },
-  };
+/** The fake API's `/{{ plural }}`, holding `seed`. */
+export function {{ camel }}Collection(seed: {{ pascal }}[] = []) {
+  return collection("/{{ plural }}", "{{ snake }}", seed);
 }

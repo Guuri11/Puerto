@@ -937,7 +937,7 @@ fn should_filter_the_page_and_its_total_in_postgres() {
 
 // ── 18.5: the frontend ──────────────────────────────────────────────────────
 
-const PEDIDO_WEB: &str = "web/src/presentation/features/pedido";
+const PEDIDO_WEB: &str = "web/src/features/pedido";
 
 #[test]
 fn should_choose_a_reference_from_a_select_of_its_targets() {
@@ -967,12 +967,17 @@ fn should_choose_a_reference_from_a_select_of_its_targets() {
         &format!("{PEDIDO_WEB}/containers/pedido-form-container.tsx"),
     );
     assert!(
-        container.contains("clienteRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 })"),
+        container.contains(
+            r#"const clientes = useAsync(() => unwrap(api.GET("/clientes", OPTIONS)), [api]);"#
+        ),
         "{container}"
+    );
+    assert!(
+        container.contains("const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };")
     );
     // One load per target entity, whatever the number of references to it.
     assert_eq!(
-        container.matches("clienteRepository.list(").count(),
+        container.matches(r#"api.GET("/clientes""#).count(),
         1,
         "{container}"
     );
@@ -985,9 +990,9 @@ fn should_choose_a_reference_from_a_select_of_its_targets() {
         &output,
         &format!("{PEDIDO_WEB}/containers/pedido-form-container.test.tsx"),
     );
-    assert!(test.contains("...referencedBy(draft),"), "{test}");
+    assert!(test.contains("...referencedBy(request)"), "{test}");
     assert!(
-        test.contains("ClienteMother.random({ id: draft.clienteId }),"),
+        test.contains("ClienteMother.random({ id: owner.clienteId ?? crypto.randomUUID() }),"),
         "{test}"
     );
     assert!(
@@ -995,12 +1000,12 @@ fn should_choose_a_reference_from_a_select_of_its_targets() {
         "{test}"
     );
 
-    let page = read(&output, "web/src/domain/shared/page.ts");
+    let http = read(&output, "web/src/api/http.ts");
     assert!(
-        page.contains("export const MAX_PAGE_LIMIT = 100;"),
-        "{page}"
+        http.contains("export const MAX_PAGE_LIMIT = 100;"),
+        "{http}"
     );
-    let forms = read(&output, "web/src/presentation/shared/forms.ts");
+    let forms = read(&output, "web/src/shared/forms.ts");
     assert!(
         forms.contains("export function referenceOptions<"),
         "{forms}"
@@ -1022,17 +1027,18 @@ fn should_label_a_target_without_a_string_field_by_its_id() {
 
     let container = read(
         &output,
-        "web/src/presentation/features/parcel/containers/parcel-form-container.tsx",
+        "web/src/features/parcel/containers/parcel-form-container.tsx",
     );
     assert!(container.contains("(pallet) => pallet.id)"), "{container}");
 
     cleanup(&dir);
 }
 
-/// A form with selects of two different targets loads both: every form test gives it both
-/// repositories, or the select of the one it was not given crashes on `undefined`.
+/// A form with selects of two different targets loads both: the test of one target's options holds
+/// only that target, and the fake API answers the other with a `404` (its select's alert), never a
+/// crash.
 #[test]
-fn should_give_the_form_every_target_repository_when_it_offers_one_target() {
+fn should_offer_one_targets_items_while_the_fake_api_answers_the_other_with_a_404() {
     let dir = temp_dir("references_web_two_targets");
     cleanup(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -1047,7 +1053,7 @@ fn should_give_the_form_every_target_repository_when_it_offers_one_target() {
 
     let test = read(
         &output,
-        "web/src/presentation/features/parcel/containers/parcel-form-container.test.tsx",
+        "web/src/features/parcel/containers/parcel-form-container.test.tsx",
     );
     let offer = |target: &str| {
         let start = test
@@ -1060,21 +1066,18 @@ fn should_give_the_form_every_target_repository_when_it_offers_one_target() {
     };
     let cliente = offer("cliente");
     assert!(
-        cliente.contains("clienteRepository: fakeClienteRepository([cliente]),"),
-        "{cliente}"
-    );
-    assert!(
-        cliente.contains("palletRepository: fakePalletRepository(),"),
+        cliente.contains("const api = fakeApi([clienteCollection([cliente])]);"),
         "{cliente}"
     );
     let pallet = offer("pallet");
     assert!(
-        pallet.contains("palletRepository: fakePalletRepository([pallet]),"),
+        pallet.contains("const api = fakeApi([palletCollection([pallet])]);"),
         "{pallet}"
     );
+    let fake = read(&output, "web/src/test-support/fake-api.ts");
     assert!(
-        pallet.contains("clienteRepository: fakeClienteRepository(),"),
-        "{pallet}"
+        fake.contains(r#"if (target === undefined) return answer(404, "http.404");"#),
+        "{fake}"
     );
 
     cleanup(&dir);
@@ -1088,20 +1091,28 @@ fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
         &output,
         &format!("{PEDIDO_WEB}/views/pedido-detail-view.tsx"),
     );
-    // canasta's detail showed a UUID: the link is named by the target's label (Phase 20.6).
+    // canasta's detail showed a UUID: the link is named by the target's label (Phase 20.6),
+    // which the container loads — the view only takes props (ADR-0025).
     assert!(
-        detail.contains("          load={labelOf(clienteRepository, (item) => item.nombre)}"),
+        detail.contains(
+            r#"<ReferenceLink path="/clientes" id={pedido.clienteId} load={clienteLabel} />"#
+        ),
         "{detail}"
     );
-    assert!(
-        detail.contains("  const { clienteRepository } = useDependencies();"),
-        "{detail}"
+    assert!(!detail.contains("useDependencies"), "{detail}");
+    let container = read(
+        &output,
+        &format!("{PEDIDO_WEB}/containers/pedido-detail-container.tsx"),
     );
     assert!(
-        output
-            .join("web/src/presentation/shared/ui/reference-link.tsx")
-            .exists()
+        container.contains(r#"const found = await unwrap(api.GET("/clientes/{id}", { params }));"#),
+        "{container}"
     );
+    assert!(
+        container.contains("    return found.nombre;"),
+        "{container}"
+    );
+    assert!(output.join("web/src/shared/ui/reference-link.tsx").exists());
     let detail_test = read(
         &output,
         &format!("{PEDIDO_WEB}/containers/pedido-detail-container.test.tsx"),
@@ -1116,7 +1127,7 @@ fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
         "{detail_test}"
     );
 
-    let messages = read(&output, "web/src/domain/pedido/messages.ts");
+    let messages = read(&output, "web/src/features/pedido/messages.ts");
     assert!(
         messages.contains(
             "\"pedido.validacion.cliente_id_no_encontrado\": \"Cliente does not exist\","

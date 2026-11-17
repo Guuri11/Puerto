@@ -552,10 +552,16 @@ campos = []
 === web/package.json ===
 (borrado)
 
-=== web/src/application/README.md ===
+=== web/src/api/http.ts ===
 (borrado)
 
-=== web/src/domain/shared/page.ts ===
+=== web/src/dependencies.tsx ===
+(borrado)
+
+=== web/src/generated/dependencies.ts ===
+(borrado)
+
+=== web/src/generated/routes.tsx ===
 (borrado)
 
 === web/src/index.css ===
@@ -564,73 +570,64 @@ campos = []
 === web/src/main.tsx ===
 (borrado)
 
-=== web/src/presentation/core/dependencies.tsx ===
+=== web/src/pages/home.test.tsx ===
 (borrado)
 
-=== web/src/presentation/core/generated/dependencies.ts ===
+=== web/src/pages/home.tsx ===
 (borrado)
 
-=== web/src/presentation/core/generated/routes.tsx ===
+=== web/src/pages/not-found.tsx ===
 (borrado)
 
-=== web/src/presentation/core/hooks/use-async.test.ts ===
+=== web/src/routes.tsx ===
 (borrado)
 
-=== web/src/presentation/core/hooks/use-async.ts ===
+=== web/src/shared/forms.test.ts ===
 (borrado)
 
-=== web/src/presentation/core/routes.tsx ===
+=== web/src/shared/forms.ts ===
 (borrado)
 
-=== web/src/presentation/pages/home.test.tsx ===
+=== web/src/shared/ui/confirm-dialog.test.tsx ===
 (borrado)
 
-=== web/src/presentation/pages/home.tsx ===
+=== web/src/shared/ui/confirm-dialog.tsx ===
 (borrado)
 
-=== web/src/presentation/pages/not-found.tsx ===
+=== web/src/shared/ui/empty-state.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/forms.test.ts ===
+=== web/src/shared/ui/error-alert.test.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/forms.ts ===
+=== web/src/shared/ui/error-alert.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/ui/confirm-dialog.test.tsx ===
+=== web/src/shared/ui/field-error.test.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/ui/confirm-dialog.tsx ===
+=== web/src/shared/ui/field-error.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/ui/empty-state.tsx ===
+=== web/src/shared/ui/layout.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/ui/error-alert.test.tsx ===
+=== web/src/shared/ui/pagination.test.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/ui/error-alert.tsx ===
+=== web/src/shared/ui/pagination.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/ui/field-error.test.tsx ===
+=== web/src/shared/ui/reference-link.test.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/ui/field-error.tsx ===
+=== web/src/shared/ui/reference-link.tsx ===
 (borrado)
 
-=== web/src/presentation/shared/ui/layout.tsx ===
+=== web/src/shared/use-async.test.ts ===
 (borrado)
 
-=== web/src/presentation/shared/ui/pagination.test.tsx ===
-(borrado)
-
-=== web/src/presentation/shared/ui/pagination.tsx ===
-(borrado)
-
-=== web/src/presentation/shared/ui/reference-link.test.tsx ===
-(borrado)
-
-=== web/src/presentation/shared/ui/reference-link.tsx ===
+=== web/src/shared/use-async.ts ===
 (borrado)
 
 === web/src/test-support/happy-dom.ts ===

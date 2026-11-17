@@ -1,49 +1,28 @@
-// The Dependency Rule of the frontend — the same one the Rust crates follow:
-//
-//   presentation → infrastructure → application → domain
-//
-// `bun run lint:arch` fails on any import that points the other way.
+// The frontend is the presentation layer (ADR-0025 of Puerto): containers call the API, views
+// take props. `bun run lint:arch` fails on any import that breaks it.
 module.exports = {
   forbidden: [
     {
-      name: "domain-imports-nothing",
-      comment: "domain/ is plain TypeScript: no npm package, no other layer.",
-      severity: "error",
-      from: { path: "^src/domain/" },
-      to: { pathNot: "^src/domain/" },
-    },
-    {
-      name: "application-imports-domain-only",
-      comment: "A use case takes its ports as arguments; it never reaches an adapter or a screen.",
-      severity: "error",
-      from: { path: "^src/application/" },
-      to: { pathNot: "^src/(application|domain)/" },
-    },
-    {
-      name: "infrastructure-implements-domain-ports",
-      comment: "Adapters know the domain, never the screens or the use cases.",
-      severity: "error",
-      from: { path: "^src/infrastructure/" },
-      to: { path: "^src/(application|presentation)/" },
-    },
-    {
-      name: "only-the-composition-root-imports-infrastructure",
+      name: "views-take-props",
       comment:
-        "Screens reach adapters through useDependencies(); only core/generated/dependencies.ts builds them.",
+        "A view renders what its container hands it: no API client, no dependencies, no data hooks (types are fine).",
+      severity: "error",
+      from: { path: "^src/features/[^/]+/views/" },
+      to: {
+        path: "^src/(api/|dependencies\\.tsx$|generated/|shared/use-async\\.ts$)",
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+    {
+      name: "only-the-composition-root-builds-the-client",
+      comment:
+        "Screens reach the API through useDependencies(), so a test hands them a fake: only generated/dependencies.ts and test-support/ build it.",
       severity: "error",
       from: {
-        path: "^src/presentation/",
-        pathNot: "^src/presentation/core/generated/dependencies\\.ts$",
+        path: "^src/",
+        pathNot: ["^src/generated/dependencies\\.ts$", "^src/test-support/"],
       },
-      to: { path: "^src/infrastructure/" },
-    },
-    {
-      name: "test-support-never-reaches-an-adapter",
-      comment:
-        "Mothers and fakes stand in for adapters: they build domain values, never call the API.",
-      severity: "error",
-      from: { path: "^src/test-support/" },
-      to: { path: "^src/(application|infrastructure)/" },
+      to: { path: "^src/api/client\\.ts$", dependencyTypesNot: ["type-only"] },
     },
     {
       name: "only-tests-import-test-support",
