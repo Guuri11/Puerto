@@ -536,7 +536,7 @@ tokio = { workspace = true }
 === contextos/billete/aplicacion/src/actualizar_billete.rs ===
 use async_trait::async_trait;
 use dominio_billete::errores::ErrorBillete;
-use dominio_billete::modelo::{Billete, IdBillete};
+use dominio_billete::modelo::{Billete, IdBillete, PropsBillete};
 use dominio_billete::repositorio::RepositorioBillete;
 use dominio_billete::valores::State;
 use std::sync::Arc;
@@ -589,8 +589,9 @@ impl ActualizarBillete for ActualizarBilleteImpl {
                 err
             })?;
         let state = params.state.parse::<State>()?;
-        entidad.state = state;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsBillete { state })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_billete: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(
             |e| tracing::error!(error = %e, "actualizar_billete: fallo del repositorio"),
         )?;
@@ -1305,6 +1306,7 @@ pub struct Billete {
 
 impl Billete {
     pub fn new(props: PropsBillete) -> Result<Self, ErrorBillete> {
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdBillete::generar(),
@@ -1316,8 +1318,22 @@ impl Billete {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsBillete) -> Result<(), ErrorBillete> {
+        Self::validar(&props)?;
+        self.state = props.state;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Billete) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(_props: &PropsBillete) -> Result<(), ErrorBillete> {
+        Ok(())
     }
 }
 
@@ -2540,7 +2556,7 @@ tokio = { workspace = true }
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dominio_cliente::errores::ErrorCliente;
-use dominio_cliente::modelo::{Cliente, IdCliente};
+use dominio_cliente::modelo::{Cliente, IdCliente, PropsCliente};
 use dominio_cliente::repositorio::RepositorioCliente;
 use dominio_cliente::valores::{Age, Code, Joined, Label, MiddleName, Name, Status};
 use nucleo::valores::Email;
@@ -2612,15 +2628,18 @@ impl ActualizarCliente for ActualizarClienteImpl {
             .map(Label::new)
             .collect::<Result<Vec<_>, _>>()?;
         let status = params.status.parse::<Status>()?;
-        entidad.email = email;
-        entidad.name = name;
-        entidad.code = code;
-        entidad.age = age;
-        entidad.joined = joined;
-        entidad.middle = middle;
-        entidad.labels = labels;
-        entidad.status = status;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsCliente {
+                email,
+                name,
+                code,
+                age,
+                joined,
+                middle,
+                labels,
+                status,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_cliente: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(
             |e| tracing::error!(error = %e, "actualizar_cliente: fallo del repositorio"),
         )?;
@@ -3724,6 +3743,7 @@ pub struct Cliente {
 
 impl Cliente {
     pub fn new(props: PropsCliente) -> Result<Self, ErrorCliente> {
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdCliente::generar(),
@@ -3742,8 +3762,29 @@ impl Cliente {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsCliente) -> Result<(), ErrorCliente> {
+        Self::validar(&props)?;
+        self.email = props.email;
+        self.name = props.name;
+        self.code = props.code;
+        self.age = props.age;
+        self.joined = props.joined;
+        self.middle = props.middle;
+        self.labels = props.labels;
+        self.status = props.status;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Cliente) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(_props: &PropsCliente) -> Result<(), ErrorCliente> {
+        Ok(())
     }
 }
 
@@ -5420,7 +5461,7 @@ tokio = { workspace = true }
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dominio_producto::errores::ErrorProducto;
-use dominio_producto::modelo::{IdProducto, Producto};
+use dominio_producto::modelo::{IdProducto, Producto, PropsProducto};
 use dominio_producto::repositorio::RepositorioProducto;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -5485,30 +5526,23 @@ impl ActualizarProducto for ActualizarProductoImpl {
                 tracing::warn!(error = %err, "actualizar_producto: rechazado");
                 err
             })?;
-        if params.title.trim().is_empty() {
-            let err = ErrorProducto::Validacion("title_vacio".into());
-            tracing::warn!(error = %err, "actualizar_producto: rechazado");
-            return Err(err);
-        }
-        if params.sku.trim().is_empty() {
-            let err = ErrorProducto::Validacion("sku_vacio".into());
-            tracing::warn!(error = %err, "actualizar_producto: rechazado");
-            return Err(err);
-        }
-        entidad.title = params.title;
-        entidad.sku = params.sku;
-        entidad.price = params.price;
-        entidad.rating = params.rating;
-        entidad.active = params.active;
-        entidad.ref_id = params.ref_id;
-        entidad.published_at = params.published_at;
-        entidad.summary = params.summary;
-        entidad.views = params.views;
-        entidad.expires_at = params.expires_at;
-        entidad.tags = params.tags;
-        entidad.scores = params.scores;
-        entidad.meta = params.meta;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsProducto {
+                title: params.title,
+                sku: params.sku,
+                price: params.price,
+                rating: params.rating,
+                active: params.active,
+                ref_id: params.ref_id,
+                published_at: params.published_at,
+                summary: params.summary,
+                views: params.views,
+                expires_at: params.expires_at,
+                tags: params.tags,
+                scores: params.scores,
+                meta: params.meta,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_producto: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(
             |e| tracing::error!(error = %e, "actualizar_producto: fallo del repositorio"),
         )?;
@@ -6638,12 +6672,7 @@ pub struct Producto {
 
 impl Producto {
     pub fn new(props: PropsProducto) -> Result<Self, ErrorProducto> {
-        if props.title.trim().is_empty() {
-            return Err(ErrorProducto::Validacion("title_vacio".into()));
-        }
-        if props.sku.trim().is_empty() {
-            return Err(ErrorProducto::Validacion("sku_vacio".into()));
-        }
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdProducto::generar(),
@@ -6667,8 +6696,40 @@ impl Producto {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsProducto) -> Result<(), ErrorProducto> {
+        Self::validar(&props)?;
+        self.title = props.title;
+        self.sku = props.sku;
+        self.price = props.price;
+        self.rating = props.rating;
+        self.active = props.active;
+        self.ref_id = props.ref_id;
+        self.published_at = props.published_at;
+        self.summary = props.summary;
+        self.views = props.views;
+        self.expires_at = props.expires_at;
+        self.tags = props.tags;
+        self.scores = props.scores;
+        self.meta = props.meta;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Producto) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(props: &PropsProducto) -> Result<(), ErrorProducto> {
+        if props.title.trim().is_empty() {
+            return Err(ErrorProducto::Validacion("title_vacio".into()));
+        }
+        if props.sku.trim().is_empty() {
+            return Err(ErrorProducto::Validacion("sku_vacio".into()));
+        }
+        Ok(())
     }
 }
 
@@ -6782,6 +6843,45 @@ mod tests {
             meta: HashMap::new(),
         });
         assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_producto_cuando_title_es_una_cadena_vacia() {
+        let mut entidad = Producto::new(PropsProducto {
+            title: "example".to_string(),
+            sku: "example".to_string(),
+            price: 42,
+            rating: 1.5,
+            active: true,
+            ref_id: Uuid::new_v4(),
+            published_at: Utc::now(),
+            summary: None,
+            views: None,
+            expires_at: None,
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+        })
+        .unwrap();
+        let resultado = entidad.actualizar(PropsProducto {
+            title: "".into(),
+            sku: "example".to_string(),
+            price: 42,
+            rating: 1.5,
+            active: true,
+            ref_id: Uuid::new_v4(),
+            published_at: Utc::now(),
+            summary: None,
+            views: None,
+            expires_at: None,
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+        });
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "producto.validacion.title_vacio"
+        );
     }
 }
 

@@ -306,7 +306,7 @@ tokio = { workspace = true }
 === contextos/billete/aplicacion/src/actualizar_billete.rs ===
 use async_trait::async_trait;
 use dominio_billete::errores::ErrorBillete;
-use dominio_billete::modelo::{Billete, IdBillete};
+use dominio_billete::modelo::{Billete, IdBillete, PropsBillete};
 use dominio_billete::repositorio::RepositorioBillete;
 use dominio_billete::valores::State;
 use std::sync::Arc;
@@ -359,8 +359,9 @@ impl ActualizarBillete for ActualizarBilleteImpl {
                 err
             })?;
         let state = params.state.parse::<State>()?;
-        entidad.state = state;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsBillete { state })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_billete: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(
             |e| tracing::error!(error = %e, "actualizar_billete: fallo del repositorio"),
         )?;
@@ -1075,6 +1076,7 @@ pub struct Billete {
 
 impl Billete {
     pub fn new(props: PropsBillete) -> Result<Self, ErrorBillete> {
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdBillete::generar(),
@@ -1086,8 +1088,22 @@ impl Billete {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsBillete) -> Result<(), ErrorBillete> {
+        Self::validar(&props)?;
+        self.state = props.state;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Billete) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(_props: &PropsBillete) -> Result<(), ErrorBillete> {
+        Ok(())
     }
 }
 

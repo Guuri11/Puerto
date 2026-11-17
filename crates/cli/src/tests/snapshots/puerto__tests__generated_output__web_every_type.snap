@@ -307,7 +307,7 @@ tokio = { workspace = true }
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dominio_case::errores::ErrorCase;
-use dominio_case::modelo::{Case, IdCase};
+use dominio_case::modelo::{Case, IdCase, PropsCase};
 use dominio_case::repositorio::RepositorioCase;
 use dominio_case::valores::{Label, MiddleName, Status};
 use std::collections::HashMap;
@@ -370,11 +370,6 @@ impl ActualizarCase for ActualizarCaseImpl {
                 tracing::warn!(error = %err, "actualizar_case: rechazado");
                 err
             })?;
-        if params.title.trim().is_empty() {
-            let err = ErrorCase::Validacion("title_vacio".into());
-            tracing::warn!(error = %err, "actualizar_case: rechazado");
-            return Err(err);
-        }
         let status = params.status.parse::<Status>()?;
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
         let labels: Vec<Label> = params
@@ -382,20 +377,23 @@ impl ActualizarCase for ActualizarCaseImpl {
             .into_iter()
             .map(Label::new)
             .collect::<Result<Vec<_>, _>>()?;
-        entidad.title = params.title;
-        entidad.summary = params.summary;
-        entidad.views = params.views;
-        entidad.ratio = params.ratio;
-        entidad.urgent = params.urgent;
-        entidad.due_at = params.due_at;
-        entidad.opened_at = params.opened_at;
-        entidad.tags = params.tags;
-        entidad.scores = params.scores;
-        entidad.meta = params.meta;
-        entidad.status = status;
-        entidad.middle_name = middle_name;
-        entidad.labels = labels;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsCase {
+                title: params.title,
+                summary: params.summary,
+                views: params.views,
+                ratio: params.ratio,
+                urgent: params.urgent,
+                due_at: params.due_at,
+                opened_at: params.opened_at,
+                tags: params.tags,
+                scores: params.scores,
+                meta: params.meta,
+                status,
+                middle_name,
+                labels,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_case: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(
             |e| tracing::error!(error = %e, "actualizar_case: fallo del repositorio"),
         )?;
@@ -1407,9 +1405,7 @@ pub struct Case {
 
 impl Case {
     pub fn new(props: PropsCase) -> Result<Self, ErrorCase> {
-        if props.title.trim().is_empty() {
-            return Err(ErrorCase::Validacion("title_vacio".into()));
-        }
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdCase::generar(),
@@ -1433,8 +1429,37 @@ impl Case {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsCase) -> Result<(), ErrorCase> {
+        Self::validar(&props)?;
+        self.title = props.title;
+        self.summary = props.summary;
+        self.views = props.views;
+        self.ratio = props.ratio;
+        self.urgent = props.urgent;
+        self.due_at = props.due_at;
+        self.opened_at = props.opened_at;
+        self.tags = props.tags;
+        self.scores = props.scores;
+        self.meta = props.meta;
+        self.status = props.status;
+        self.middle_name = props.middle_name;
+        self.labels = props.labels;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Case) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(props: &PropsCase) -> Result<(), ErrorCase> {
+        if props.title.trim().is_empty() {
+            return Err(ErrorCase::Validacion("title_vacio".into()));
+        }
+        Ok(())
     }
 }
 
@@ -1504,6 +1529,45 @@ mod tests {
             labels: vec![],
         });
         assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_case_cuando_title_es_una_cadena_vacia() {
+        let mut entidad = Case::new(PropsCase {
+            title: "example".to_string(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        })
+        .unwrap();
+        let resultado = entidad.actualizar(PropsCase {
+            title: "".into(),
+            summary: None,
+            views: None,
+            ratio: None,
+            urgent: None,
+            due_at: None,
+            opened_at: Utc::now(),
+            tags: vec![],
+            scores: vec![],
+            meta: HashMap::new(),
+            status: Status::Open,
+            middle_name: None,
+            labels: vec![],
+        });
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "case.validacion.title_vacio"
+        );
     }
 
     #[test]

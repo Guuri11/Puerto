@@ -49,10 +49,8 @@ pub struct {{ pascal }} {
 
 impl {{ pascal }} {
     pub fn new(props: Props{{ pascal }}) -> Result<Self, Error{{ pascal }}> {
-{% for f in fields | filter(attribute="required_string", value=true) %}        if props.{{ f.name }}.trim().is_empty() {
-            return Err(Error{{ pascal }}::Validacion("{{ f.name }}_vacio".into()));
-        }
-{% endfor %}        let ahora = chrono::Utc::now();
+        Self::validar(&props)?;
+        let ahora = chrono::Utc::now();
         Ok(Self {
             id: Id{{ pascal }}::generar(),
             creado_en: ahora,
@@ -63,8 +61,25 @@ impl {{ pascal }} {
 {% endfor %}        })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: Props{{ pascal }}) -> Result<(), Error{{ pascal }}> {
+        Self::validar(&props)?;
+{% for f in fields %}        self.{{ f.name }} = props.{{ f.name }};
+{% endfor %}        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: {{ pascal }}) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar({% if fields | filter(attribute="required_string", value=true) %}props{% else %}_props{% endif %}: &Props{{ pascal }}) -> Result<(), Error{{ pascal }}> {
+{% for f in fields | filter(attribute="required_string", value=true) %}        if props.{{ f.name }}.trim().is_empty() {
+            return Err(Error{{ pascal }}::Validacion("{{ f.name }}_vacio".into()));
+        }
+{% endfor %}        Ok(())
     }
 }
 {% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% set enum_vos = fields | filter(attribute="is_enum_vo", value=true) %}
@@ -100,7 +115,22 @@ mod tests {
 {% for f in fields %}            {{ f.name }}: {% if f.name == sf.name %}"   ".into(){% else %}{{ f.props_literal }}{% endif %},
 {% endfor %}        });
         assert!(resultado.is_err());
-    }{% endfor %}{% for f in string_vos %}
+    }{% endfor %}{% if required %}
+
+    #[test]
+    fn deberia_rechazar_actualizar_{{ snake }}_cuando_{{ required.0.name }}_es_una_cadena_vacia() {
+        let mut entidad = {{ pascal }}::new(Props{{ pascal }} {
+{% for f in fields %}            {{ f.name }}: {{ f.props_literal }},
+{% endfor %}        })
+        .unwrap();
+        let resultado = entidad.actualizar(Props{{ pascal }} {
+{% for f in fields %}            {{ f.name }}: {% if f.name == required.0.name %}"".into(){% else %}{{ f.props_literal }}{% endif %},
+{% endfor %}        });
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "{{ snake }}.validacion.{{ required.0.name }}_vacio"
+        );
+    }{% endif %}{% for f in string_vos %}
 
     #[test]
     fn deberia_rechazar_{{ snake }}_cuando_{{ f.vo_snake }}_es_una_cadena_vacia() {

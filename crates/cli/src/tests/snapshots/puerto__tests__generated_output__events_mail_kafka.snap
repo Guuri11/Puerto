@@ -1199,7 +1199,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dominio_producto::errores::ErrorProducto;
 use dominio_producto::eventos::{EventoProducto, SnapshotProducto};
-use dominio_producto::modelo::{IdProducto, Producto};
+use dominio_producto::modelo::{IdProducto, Producto, PropsProducto};
 use dominio_producto::repositorio::RepositorioProducto;
 use dominio_producto::unit_of_work::UnitOfWorkFactoryProducto;
 use dominio_producto::valores::{Name, Sku, Status};
@@ -1263,14 +1263,17 @@ impl ActualizarProducto for ActualizarProductoImpl {
         let name = Name::new(params.name)?;
         let sku = Sku::new(params.sku)?;
         let status = params.status.parse::<Status>()?;
-        entidad.name = name;
-        entidad.sku = sku;
-        entidad.price = params.price;
-        entidad.status = status;
-        entidad.tags = params.tags;
-        entidad.released_at = params.released_at;
-        entidad.meta = params.meta;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsProducto {
+                name,
+                sku,
+                price: params.price,
+                status,
+                tags: params.tags,
+                released_at: params.released_at,
+                meta: params.meta,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_producto: rechazado"))?;
         let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
         uow.guardar(&entidad).await.inspect_err(fallido)?;
         uow.registrar(EventoProducto::Actualizado(SnapshotProducto::from_entidad(
@@ -2592,6 +2595,7 @@ pub struct Producto {
 
 impl Producto {
     pub fn new(props: PropsProducto) -> Result<Self, ErrorProducto> {
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdProducto::generar(),
@@ -2609,8 +2613,28 @@ impl Producto {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsProducto) -> Result<(), ErrorProducto> {
+        Self::validar(&props)?;
+        self.name = props.name;
+        self.sku = props.sku;
+        self.price = props.price;
+        self.status = props.status;
+        self.tags = props.tags;
+        self.released_at = props.released_at;
+        self.meta = props.meta;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Producto) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(_props: &PropsProducto) -> Result<(), ErrorProducto> {
+        Ok(())
     }
 }
 

@@ -306,7 +306,7 @@ tokio = { workspace = true }
 === contextos/linea_pedido/aplicacion/src/actualizar_linea_pedido.rs ===
 use async_trait::async_trait;
 use dominio_linea_pedido::errores::ErrorLineaPedido;
-use dominio_linea_pedido::modelo::{IdLineaPedido, LineaPedido};
+use dominio_linea_pedido::modelo::{IdLineaPedido, LineaPedido, PropsLineaPedido};
 use dominio_linea_pedido::repositorio::RepositorioLineaPedido;
 use dominio_linea_pedido::valores::Sku;
 use std::sync::Arc;
@@ -370,19 +370,17 @@ impl ActualizarLineaPedido for ActualizarLineaPedidoImpl {
                 tracing::warn!(error = %err, "actualizar_linea_pedido: rechazado");
                 err
             })?;
-        if params.title.trim().is_empty() {
-            let err = ErrorLineaPedido::Validacion("title_vacio".into());
-            tracing::warn!(error = %err, "actualizar_linea_pedido: rechazado");
-            return Err(err);
-        }
         let sku = Sku::new(params.sku)?;
-        entidad.title = params.title;
-        entidad.quantity = params.quantity;
-        entidad.rate = params.rate;
-        entidad.in_stock = params.in_stock;
-        entidad.ref_id = params.ref_id;
-        entidad.sku = sku;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsLineaPedido {
+                title: params.title,
+                quantity: params.quantity,
+                rate: params.rate,
+                in_stock: params.in_stock,
+                ref_id: params.ref_id,
+                sku,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_linea_pedido: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(
             |e| tracing::error!(error = %e, "actualizar_linea_pedido: fallo del repositorio"),
         )?;
@@ -1335,9 +1333,7 @@ pub struct LineaPedido {
 
 impl LineaPedido {
     pub fn new(props: PropsLineaPedido) -> Result<Self, ErrorLineaPedido> {
-        if props.title.trim().is_empty() {
-            return Err(ErrorLineaPedido::Validacion("title_vacio".into()));
-        }
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdLineaPedido::generar(),
@@ -1354,8 +1350,30 @@ impl LineaPedido {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsLineaPedido) -> Result<(), ErrorLineaPedido> {
+        Self::validar(&props)?;
+        self.title = props.title;
+        self.quantity = props.quantity;
+        self.rate = props.rate;
+        self.in_stock = props.in_stock;
+        self.ref_id = props.ref_id;
+        self.sku = props.sku;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: LineaPedido) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(props: &PropsLineaPedido) -> Result<(), ErrorLineaPedido> {
+        if props.title.trim().is_empty() {
+            return Err(ErrorLineaPedido::Validacion("title_vacio".into()));
+        }
+        Ok(())
     }
 }
 
@@ -1404,6 +1422,31 @@ mod tests {
             sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
         });
         assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_linea_pedido_cuando_title_es_una_cadena_vacia() {
+        let mut entidad = LineaPedido::new(PropsLineaPedido {
+            title: "example".to_string(),
+            quantity: 42,
+            rate: 1.5,
+            in_stock: true,
+            ref_id: Uuid::new_v4(),
+            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
+        })
+        .unwrap();
+        let resultado = entidad.actualizar(PropsLineaPedido {
+            title: "".into(),
+            quantity: 42,
+            rate: 1.5,
+            in_stock: true,
+            ref_id: Uuid::new_v4(),
+            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
+        });
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.validacion.title_vacio"
+        );
     }
 
     #[test]

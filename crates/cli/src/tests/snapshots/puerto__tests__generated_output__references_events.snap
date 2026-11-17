@@ -573,7 +573,7 @@ tokio = { workspace = true }
 use async_trait::async_trait;
 use dominio_compra::errores::ErrorCompra;
 use dominio_compra::eventos::{EventoCompra, SnapshotCompra};
-use dominio_compra::modelo::{Compra, IdCompra};
+use dominio_compra::modelo::{Compra, IdCompra, PropsCompra};
 use dominio_compra::repositorio::RepositorioCompra;
 use dominio_compra::unit_of_work::UnitOfWorkFactoryCompra;
 use dominio_proveedor::modelo::IdProveedor;
@@ -629,10 +629,13 @@ impl ActualizarCompra for ActualizarCompraImpl {
                 tracing::warn!(error = %err, "actualizar_compra: rechazado");
                 err
             })?;
-        entidad.proveedor_id = params.proveedor_id;
-        entidad.approver_id = params.approver_id;
-        entidad.total = params.total;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsCompra {
+                proveedor_id: params.proveedor_id,
+                approver_id: params.approver_id,
+                total: params.total,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_compra: rechazado"))?;
         let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
         uow.guardar(&entidad).await.inspect_err(fallido)?;
         uow.registrar(EventoCompra::Actualizado(SnapshotCompra::from_entidad(
@@ -1704,6 +1707,7 @@ pub struct Compra {
 
 impl Compra {
     pub fn new(props: PropsCompra) -> Result<Self, ErrorCompra> {
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdCompra::generar(),
@@ -1717,8 +1721,24 @@ impl Compra {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsCompra) -> Result<(), ErrorCompra> {
+        Self::validar(&props)?;
+        self.proveedor_id = props.proveedor_id;
+        self.approver_id = props.approver_id;
+        self.total = props.total;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Compra) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(_props: &PropsCompra) -> Result<(), ErrorCompra> {
+        Ok(())
     }
 }
 
@@ -3438,7 +3458,7 @@ use async_trait::async_trait;
 use dominio_compra::modelo::IdCompra;
 use dominio_entrega::errores::ErrorEntrega;
 use dominio_entrega::eventos::{EventoEntrega, SnapshotEntrega};
-use dominio_entrega::modelo::{Entrega, IdEntrega};
+use dominio_entrega::modelo::{Entrega, IdEntrega, PropsEntrega};
 use dominio_entrega::repositorio::RepositorioEntrega;
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
 use dominio_proveedor::modelo::IdProveedor;
@@ -3494,15 +3514,13 @@ impl ActualizarEntrega for ActualizarEntregaImpl {
                 tracing::warn!(error = %err, "actualizar_entrega: rechazado");
                 err
             })?;
-        if params.carrier.trim().is_empty() {
-            let err = ErrorEntrega::Validacion("carrier_vacio".into());
-            tracing::warn!(error = %err, "actualizar_entrega: rechazado");
-            return Err(err);
-        }
-        entidad.compra_id = params.compra_id;
-        entidad.destinatario_id = params.destinatario_id;
-        entidad.carrier = params.carrier;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsEntrega {
+                compra_id: params.compra_id,
+                destinatario_id: params.destinatario_id,
+                carrier: params.carrier,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_entrega: rechazado"))?;
         let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
         uow.guardar(&entidad).await.inspect_err(fallido)?;
         uow.registrar(EventoEntrega::Actualizado(SnapshotEntrega::from_entidad(
@@ -4648,9 +4666,7 @@ pub struct Entrega {
 
 impl Entrega {
     pub fn new(props: PropsEntrega) -> Result<Self, ErrorEntrega> {
-        if props.carrier.trim().is_empty() {
-            return Err(ErrorEntrega::Validacion("carrier_vacio".into()));
-        }
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdEntrega::generar(),
@@ -4664,8 +4680,27 @@ impl Entrega {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsEntrega) -> Result<(), ErrorEntrega> {
+        Self::validar(&props)?;
+        self.compra_id = props.compra_id;
+        self.destinatario_id = props.destinatario_id;
+        self.carrier = props.carrier;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Entrega) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(props: &PropsEntrega) -> Result<(), ErrorEntrega> {
+        if props.carrier.trim().is_empty() {
+            return Err(ErrorEntrega::Validacion("carrier_vacio".into()));
+        }
+        Ok(())
     }
 }
 
@@ -4705,6 +4740,25 @@ mod tests {
             carrier: "   ".into(),
         });
         assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_entrega_cuando_carrier_es_una_cadena_vacia() {
+        let mut entidad = Entrega::new(PropsEntrega {
+            compra_id: IdCompra::generar(),
+            destinatario_id: None,
+            carrier: "example".to_string(),
+        })
+        .unwrap();
+        let resultado = entidad.actualizar(PropsEntrega {
+            compra_id: IdCompra::generar(),
+            destinatario_id: None,
+            carrier: "".into(),
+        });
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "entrega.validacion.carrier_vacio"
+        );
     }
 }
 
@@ -6453,7 +6507,7 @@ tokio = { workspace = true }
 use async_trait::async_trait;
 use dominio_proveedor::errores::ErrorProveedor;
 use dominio_proveedor::eventos::{EventoProveedor, SnapshotProveedor};
-use dominio_proveedor::modelo::{IdProveedor, Proveedor};
+use dominio_proveedor::modelo::{IdProveedor, PropsProveedor, Proveedor};
 use dominio_proveedor::repositorio::RepositorioProveedor;
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
 use dominio_proveedor::valores::Name;
@@ -6514,15 +6568,13 @@ impl ActualizarProveedor for ActualizarProveedorImpl {
                 tracing::warn!(error = %err, "actualizar_proveedor: rechazado");
                 err
             })?;
-        if params.email.trim().is_empty() {
-            let err = ErrorProveedor::Validacion("email_vacio".into());
-            tracing::warn!(error = %err, "actualizar_proveedor: rechazado");
-            return Err(err);
-        }
         let name = Name::new(params.name)?;
-        entidad.name = name;
-        entidad.email = params.email;
-        entidad.actualizado_en = chrono::Utc::now();
+        entidad
+            .actualizar(PropsProveedor {
+                name,
+                email: params.email,
+            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_proveedor: rechazado"))?;
         let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
         uow.guardar(&entidad).await.inspect_err(fallido)?;
         uow.registrar(EventoProveedor::Actualizado(
@@ -7609,9 +7661,7 @@ pub struct Proveedor {
 
 impl Proveedor {
     pub fn new(props: PropsProveedor) -> Result<Self, ErrorProveedor> {
-        if props.email.trim().is_empty() {
-            return Err(ErrorProveedor::Validacion("email_vacio".into()));
-        }
+        Self::validar(&props)?;
         let ahora = chrono::Utc::now();
         Ok(Self {
             id: IdProveedor::generar(),
@@ -7624,8 +7674,26 @@ impl Proveedor {
         })
     }
 
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsProveedor) -> Result<(), ErrorProveedor> {
+        Self::validar(&props)?;
+        self.name = props.name;
+        self.email = props.email;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
     pub fn from_repositorio(datos: Proveedor) -> Self {
         datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(props: &PropsProveedor) -> Result<(), ErrorProveedor> {
+        if props.email.trim().is_empty() {
+            return Err(ErrorProveedor::Validacion("email_vacio".into()));
+        }
+        Ok(())
     }
 }
 
@@ -7662,6 +7730,23 @@ mod tests {
             email: "   ".into(),
         });
         assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_proveedor_cuando_email_es_una_cadena_vacia() {
+        let mut entidad = Proveedor::new(PropsProveedor {
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
+            email: "example".to_string(),
+        })
+        .unwrap();
+        let resultado = entidad.actualizar(PropsProveedor {
+            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
+            email: "".into(),
+        });
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "proveedor.validacion.email_vacio"
+        );
     }
 
     #[test]

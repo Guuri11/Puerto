@@ -220,6 +220,22 @@ fn generate_model_with_custom_fields() {
     assert!(result.contains("deberia_crear_producto_cuando_los_campos_son_validos"));
     assert!(result.contains("deberia_rechazar_producto_cuando_title_es_una_cadena_vacia"));
     assert!(result.contains("deberia_rechazar_producto_cuando_title_solo_tiene_espacios"));
+    // canasta wrote its rules twice (`new` and the update use case): both go through `validar`.
+    assert!(result.contains("fn validar(props: &PropsProducto) -> Result<(), ErrorProducto> {"));
+    assert!(result.contains(
+        "pub fn actualizar(&mut self, props: PropsProducto) -> Result<(), ErrorProducto> {"
+    ));
+    assert_eq!(
+        result.matches("Self::validar(&props)?;").count(),
+        2,
+        "{result}"
+    );
+    assert!(result.contains("self.title = props.title;"));
+    assert!(result.contains("self.actualizado_en = chrono::Utc::now();"));
+    assert!(
+        result
+            .contains("fn deberia_rechazar_actualizar_producto_cuando_title_es_una_cadena_vacia()")
+    );
     assert!(
         !result.contains("if props.price.trim().is_empty()"),
         "non-String types should not have empty checks"
@@ -597,14 +613,12 @@ fn generate_update_use_case_impl_with_custom_fields() {
 
     assert!(result.contains("ActualizarProductoImpl"));
     assert!(result.contains("ParamsActualizarProducto"));
-    assert!(result.contains("entidad.title = params.title;"));
-    assert!(result.contains("entidad.price = params.price;"));
-    assert!(result.contains("if params.title.trim().is_empty()"));
-    assert!(
-        !result.contains("if params.price.trim().is_empty()"),
-        "non-String types should not have empty validation"
-    );
-    assert!(result.contains("ErrorProducto::Validacion(\"title_vacio\""));
+    // The model's rules, not a copy of them: `entidad.actualizar` runs what `new` runs.
+    assert!(result.contains(".actualizar(PropsProducto {"), "{result}");
+    assert!(result.contains("title: params.title,"));
+    assert!(result.contains("price: params.price,"));
+    assert!(!result.contains("trim().is_empty()"), "{result}");
+    assert!(!result.contains("entidad.title ="), "{result}");
 }
 
 #[test]
@@ -628,8 +642,8 @@ fn generate_update_use_case_impl_assigns_uuid_fields() {
     ];
     let result = generate_update_use_case_impl("Item", "item", &fields, &[]).unwrap();
 
-    assert!(result.contains("entidad.name = params.name;"));
-    assert!(result.contains("entidad.categoria_id = params.categoria_id;"));
+    assert!(result.contains("name: params.name,"));
+    assert!(result.contains("categoria_id: params.categoria_id,"));
     // `Uuid` belongs to the test module (the impl names no primitive type); at file level it would
     // be an unused import in a non-test build, which `-D warnings` rejects.
     assert!(result.contains("    use uuid::Uuid;"));
@@ -763,9 +777,9 @@ fn write_application_files_with_fields_generates_dynamic_impls() {
     let update_content =
         fs::read_to_string(dir.join("contextos/producto/aplicacion/src/actualizar_producto.rs"))
             .unwrap();
-    assert!(update_content.contains("entidad.title = params.title;"));
-    assert!(update_content.contains("entidad.price = params.price;"));
-    assert!(update_content.contains("if params.title.trim().is_empty()"));
+    assert!(update_content.contains(".actualizar(PropsProducto {"));
+    assert!(update_content.contains("title: params.title,"));
+    assert!(update_content.contains("price: params.price,"));
 
     cleanup(&dir);
 }

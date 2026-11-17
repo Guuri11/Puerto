@@ -5,7 +5,7 @@ use async_trait::async_trait;
 {% endfor %}
 use dominio_{{ snake }}::{
     errores::Error{{ pascal }},
-    modelo::{{ pascal }},
+    modelo::{{ "{" }}{{ pascal }}, Props{{ pascal }}},
     repositorio::Repositorio{{ pascal }},
 };
 
@@ -27,14 +27,12 @@ impl Actualizar{{ pascal }} for Actualizar{{ pascal }}Impl {
                 tracing::warn!(error = %err, "actualizar_{{ snake }}: rechazado");
                 err
             })?;
-{% for f in required %}        if params.{{ f.name }}.trim().is_empty() {
-            let err = Error{{ pascal }}::Validacion("{{ f.name }}_vacio".into());
-            tracing::warn!(error = %err, "actualizar_{{ snake }}: rechazado");
-            return Err(err);
-        }
-{% endfor %}{% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
-{% endfor %}{% for f in fields %}        entidad.{{ f.name }} = {% if not f.is_vo %}params.{% endif %}{{ f.name }};
-{% endfor %}        entidad.actualizado_en = chrono::Utc::now();
+{% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
+{% endfor %}        entidad
+            .actualizar(Props{{ pascal }} {
+{% for f in fields %}                {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
+{% endfor %}            })
+            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_{{ snake }}: rechazado"))?;
         self.repositorio.guardar(&entidad).await.inspect_err(|e| tracing::error!(error = %e, "actualizar_{{ snake }}: fallo del repositorio"))?;
         Ok(entidad)
     }
