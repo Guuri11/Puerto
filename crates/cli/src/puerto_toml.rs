@@ -11,7 +11,7 @@ use crate::validation::is_pascal_case;
 pub struct PuertoConfig {
     #[serde(rename = "proyecto")]
     pub project: Project,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(rename = "entidad")]
     pub entity: Vec<Entity>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

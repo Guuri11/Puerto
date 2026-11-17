@@ -570,8 +570,8 @@ fn no_demo_puerto_toml_has_no_entity_block() {
         "puerto.toml should not mention Saludo"
     );
     assert!(
-        content.contains("[proyecto]"),
-        "puerto.toml should still have [proyecto]"
+        content.starts_with("[proyecto]"),
+        "puerto.toml should open with [proyecto], without an empty `entidad = []` above it:\n{content}"
     );
 
     cleanup(&dir);
