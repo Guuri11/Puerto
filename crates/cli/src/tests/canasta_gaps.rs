@@ -483,3 +483,28 @@ fn a_private_field_must_be_text_and_needs_an_auth_project() {
     assert!(err.contains("auth"), "{err}");
     cleanup(&dir);
 }
+
+#[test]
+fn validation_rejects_a_private_field_that_is_not_free_text() {
+    let entity = |arg: &str| puerto_toml::Entity {
+        name: "Jugador".into(),
+        fields: vec![puerto_toml::Field {
+            private: true,
+            ..puerto_toml::parse_field_arg(arg).unwrap()
+        }],
+        ..Default::default()
+    };
+
+    assert!(crate::validation::validate_entity_shape(&entity("email:Email:String")).is_empty());
+    for arg in [
+        "puesto:Puesto:enum:Base/Pivot",
+        "equipo_id:ref:Equipo",
+        "dorsal:i64",
+    ] {
+        let errors = crate::validation::validate_entity_shape(&entity(arg));
+        assert!(
+            errors.iter().any(|e| e.contains("privado:")),
+            "{arg}: {errors:?}"
+        );
+    }
+}

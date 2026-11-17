@@ -726,7 +726,8 @@ pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String>
     }
     for f in fields.iter().filter(|f| f.private) {
         let text = matches!(f.field_type.as_str(), "String" | "Option<String>");
-        if !text || crate::generators::types::is_enum_vo(f) || f.references.is_some() {
+        // A reference is a `Uuid`: never text.
+        if !text || crate::generators::types::is_enum_vo(f) {
             errors.push(format!(
                 "privado: '{}' is a {} — a private field is text (String, Option<String> or a \
                  value object over one, not an enum)",
