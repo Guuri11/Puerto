@@ -9,7 +9,8 @@ use dominio_{{ snake }}::{
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
 /// Guarda {{ plural }} en la memoria del proceso: se pierden cuando el proceso se para.
-/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes{% set uniques = fields | filter(attribute="unique", value=true) %}{% if unique_conditions %};
+/// Como el adaptador de Postgres, oculta las filas borradas y lista {% if order_by == "creado_en DESC, id" %}primero las más recientes{% else %}en el orden de `puerto.toml`
+/// (`{{ order_by }}`; los textos, por bytes y no con la collation de Postgres){% endif %}{% set uniques = fields | filter(attribute="unique", value=true) %}{% if unique_conditions %};
 /// un valor único que ya tiene otra fila viva es `Duplicado`{% endif %}.
 /// Cubre el hueco hasta que haya base de datos (`puerto nuevo --db` genera repositorios Postgres).
 #[derive(Default)]
@@ -43,10 +44,8 @@ impl Repositorio{{ pascal }} for Repositorio{{ pascal }}EnMemoria {
             .filter(|fila| !fila.borrado)
 {% for r in refs %}            .filter(|fila| filtro.{{ r.name }}.is_none_or(|id| fila.{{ r.name }} == {% if r.field_type is starting_with("Option<") %}Some(id){% else %}id{% endif %}))
 {% endfor %}            .collect();
-        vivos.sort_by(|a, b| {
-            b.creado_en
-                .cmp(&a.creado_en)
-                .then_with(|| a.id.valor().cmp(&b.id.valor()))
+        vivos.sort_by(|a, b| {{ "{" }}
+            {{ order_chain }}
         });
         let total = vivos.len() as u64;
         let elementos = vivos

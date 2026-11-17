@@ -682,7 +682,8 @@ pub fn validate_role_name(role: &str) -> Result<(), String> {
 
 /// An entity's `unicos`: each group names two or more of its own fields, once each, none of them
 /// an `Option`, a `Vec` or a map (a null never collides in a unique index; a list or a map is not
-/// what a row is told apart by), and no group is listed twice.
+/// what a row is told apart by), and no group is listed twice. Its `orden`: each key (`-` for
+/// descending) names one of its own plain, required fields, once.
 pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String> {
     let fields = crate::generators::effective_fields(&entity.fields);
     let mut errors = vec![];
@@ -722,6 +723,32 @@ pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String>
             errors.push(format!("unicos: [{shown}] is listed twice"));
         }
         seen.push(sorted);
+    }
+    for (i, key) in entity.order.iter().enumerate() {
+        let name = key.strip_prefix('-').unwrap_or(key);
+        match fields.iter().find(|f| f.name == name) {
+            None if name.is_empty() => errors.push(format!(
+                "orden: '{key}' names no field — a field, or `-` and a field for descending"
+            )),
+            None => errors.push(format!("orden: '{name}' is not a field of {}", entity.name)),
+            Some(f)
+                if f.field_type.starts_with("Option<")
+                    || f.field_type.starts_with("Vec<")
+                    || f.field_type.starts_with("HashMap<") =>
+            {
+                errors.push(format!(
+                    "orden: '{name}' is a {} — a list is ordered by plain, required fields",
+                    f.field_type
+                ));
+            }
+            Some(_) => {}
+        }
+        let earlier = entity.order[..i]
+            .iter()
+            .any(|k| k.strip_prefix('-').unwrap_or(k) == name);
+        if earlier {
+            errors.push(format!("orden: names '{name}' twice"));
+        }
     }
     errors
 }

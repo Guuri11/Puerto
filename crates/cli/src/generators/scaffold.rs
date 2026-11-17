@@ -96,25 +96,28 @@ impl ScaffoldAccess {
 }
 
 /// What a scaffold says about the entity's rows beyond its fields: its uniques over several fields
-/// (`--unico a,b`, repeatable). A re-scaffold without them keeps what the block says.
+/// (`--unico a,b`, repeatable) and the order of its list (`--orden=-a,b`). A re-scaffold without
+/// one keeps what the block says.
 #[derive(Default)]
 pub struct EntityShape {
     pub uniques: Vec<Vec<String>>,
+    pub order: Vec<String>,
 }
 
 impl EntityShape {
-    /// `--unico jugador_id,partido_id` (one group each) as the CLI got them.
-    pub fn from_args(uniques: &[String]) -> Self {
+    /// `--unico jugador_id,partido_id` (one group each) and `--orden` as the CLI got them.
+    pub fn from_args(uniques: &[String], order: &[String]) -> Self {
         Self {
             uniques: uniques
                 .iter()
                 .map(|group| group.split(',').map(|f| f.trim().to_string()).collect())
                 .collect(),
+            order: order.iter().map(|k| k.trim().to_string()).collect(),
         }
     }
 
     fn is_empty(&self) -> bool {
-        self.uniques.is_empty()
+        self.uniques.is_empty() && self.order.is_empty()
     }
 }
 
@@ -128,6 +131,7 @@ pub(crate) fn check_shape(
         name: pascal.to_string(),
         fields: fields.to_vec(),
         uniques: shape.uniques.clone(),
+        order: shape.order.clone(),
         ..Default::default()
     });
     if errors.is_empty() {
@@ -151,13 +155,22 @@ pub(crate) fn record_shape(
     }
     let mut config = crate::puerto_toml::read(base)?;
     match config.entity.iter_mut().find(|e| e.name == pascal) {
-        Some(entity) => entity.uniques = shape.uniques.clone(),
+        // What is not given stays as the block says.
+        Some(entity) => {
+            if !shape.uniques.is_empty() {
+                entity.uniques = shape.uniques.clone();
+            }
+            if !shape.order.is_empty() {
+                entity.order = shape.order.clone();
+            }
+        }
         None => config.entity.push(crate::puerto_toml::Entity {
             name: pascal.to_string(),
             use_cases: crud_use_cases(&pascal_to_snake(pascal)),
             db,
             fields: fields.to_vec(),
             uniques: shape.uniques.clone(),
+            order: shape.order.clone(),
             ..Default::default()
         }),
     }

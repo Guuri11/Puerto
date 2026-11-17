@@ -105,6 +105,11 @@ pub struct Entity {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(rename = "unicos")]
     pub uniques: Vec<Vec<String>>,
+    /// The order of its list (`--orden=-puntos,nombre`): own fields, a `-` for descending; then
+    /// `creado_en DESC, id`. Empty: the newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "orden")]
+    pub order: Vec<String>,
     /// Auth projects: the use cases whose routes take no `BearerAuth` — what scaffold wrote
     /// (`--publico`); after it, `rutas.rs` is the user's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

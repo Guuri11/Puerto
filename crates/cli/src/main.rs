@@ -101,6 +101,10 @@ enum GenerateAction {
         /// unique index in Postgres, checked by the in-memory repository too. Repeatable
         #[arg(long = "unico")]
         unique: Vec<String>,
+        /// The order of the list, comma-separated, a `-` for descending (e.g. --orden=-puntos,nombre).
+        /// Then the newest first
+        #[arg(long = "orden", value_delimiter = ',', allow_hyphen_values = true)]
+        order: Vec<String>,
         /// Fields after -- separator. Primitives: titulo:String precio:i64! nota:opt:String etiquetas:vec:String
         /// Value Objects: nombre:Nombre:String edad:Edad:i64 estado:Estado:enum:Activo/Inactivo apodo:Apodo:opt:String
         /// Shared VO (type inferred from puerto.toml): email:Email
@@ -179,6 +183,10 @@ enum GenerateAction {
         /// A unique over several fields, comma-separated (e.g. jugador_id,partido_id). Repeatable
         #[arg(long = "unico")]
         unique: Vec<String>,
+        /// The order of the list, comma-separated, a `-` for descending (e.g. --orden=-puntos,nombre).
+        /// Then the newest first
+        #[arg(long = "orden", value_delimiter = ',', allow_hyphen_values = true)]
+        order: Vec<String>,
         /// Fields after -- separator. Same syntax as `generar scaffold`. They are written to
         /// puerto.toml, so `generar aplicacion/repositorio/presentacion` pick them up.
         #[arg(raw = true)]
@@ -308,6 +316,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     public,
                     role,
                     unique,
+                    order,
                     fields,
                 },
         } => {
@@ -321,7 +330,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
                 .and_then(|parsed| {
                     let access = scaffold::ScaffoldAccess::from_args(&public, &role)?;
-                    let shape = scaffold::EntityShape::from_args(&unique);
+                    let shape = scaffold::EntityShape::from_args(&unique, &order);
                     scaffold::run_scaffold_with_options(
                         &name, &cwd, &parsed, policy, &access, &shape,
                     )
@@ -395,6 +404,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 GenerateAction::Domain {
                     name,
                     unique,
+                    order,
                     fields,
                 },
         } => {
@@ -402,7 +412,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
                 .and_then(|parsed| {
-                    let shape = scaffold::EntityShape::from_args(&unique);
+                    let shape = scaffold::EntityShape::from_args(&unique, &order);
                     scaffold::run_generate_domain_with(&name, &cwd, &parsed, &shape)
                 })
                 .map(|()| format_after_generation(&cwd))

@@ -104,7 +104,9 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 
 Un único sobre varios campos (una línea por jugador y partido) es `--unico jugador_id,partido_id`
 en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
-también por el repositorio en memoria; queda en `[[entidad]] unicos`.
+también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden de la lista es
+`--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
+`[[entidad]] orden`.
 
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token) y
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth).
@@ -3675,7 +3677,8 @@ use dominio_jugador::{
 use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 /// Guarda jugadores en la memoria del proceso: se pierden cuando el proceso se para.
-/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes;
+/// Como el adaptador de Postgres, oculta las filas borradas y lista en el orden de `puerto.toml`
+/// (`dorsal DESC, creado_en DESC, id`; los textos, por bytes y no con la collation de Postgres);
 /// un valor único que ya tiene otra fila viva es `Duplicado`.
 /// Cubre el hueco hasta que haya base de datos (`puerto nuevo --db` genera repositorios Postgres).
 #[derive(Default)]
@@ -3718,8 +3721,10 @@ impl RepositorioJugador for RepositorioJugadorEnMemoria {
             .filter(|fila| filtro.equipo_id.is_none_or(|id| fila.equipo_id == id))
             .collect();
         vivos.sort_by(|a, b| {
-            b.creado_en
-                .cmp(&a.creado_en)
+            a.dorsal
+                .cmp(&b.dorsal)
+                .reverse()
+                .then_with(|| b.creado_en.cmp(&a.creado_en))
                 .then_with(|| a.id.valor().cmp(&b.id.valor()))
         });
         let total = vivos.len() as u64;
@@ -6105,6 +6110,7 @@ unicos = [[
     "equipo_id",
     "dorsal",
 ]]
+orden = ["-dorsal"]
 publicos = [
     "listar_jugadores",
     "obtener_jugador",

@@ -116,7 +116,9 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 
 Un único sobre varios campos (una línea por jugador y partido) es `--unico jugador_id,partido_id`
 en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
-también por el repositorio en memoria; queda en `[[entidad]] unicos`.
+también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden de la lista es
+`--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
+`[[entidad]] orden`.
 
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token) y
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth).

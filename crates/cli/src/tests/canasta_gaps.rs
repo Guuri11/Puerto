@@ -118,8 +118,16 @@ fn scaffold_linea(name: &str, db: bool, shape: &scaffold::EntityShape) -> (PathB
     (dir, output)
 }
 
+fn strings(args: &[&str]) -> Vec<String> {
+    args.iter().map(|a| a.to_string()).collect()
+}
+
 fn unique_shape(groups: &[&str]) -> scaffold::EntityShape {
-    scaffold::EntityShape::from_args(&groups.iter().map(|g| g.to_string()).collect::<Vec<_>>())
+    scaffold::EntityShape::from_args(&strings(groups), &[])
+}
+
+fn order_shape(keys: &[&str]) -> scaffold::EntityShape {
+    scaffold::EntityShape::from_args(&[], &strings(keys))
 }
 
 #[test]
@@ -252,6 +260,96 @@ fn a_unique_group_is_a_partial_index_and_the_in_memory_repository_enforces_it() 
     // Two seeded rows must not collide on the group: its fields get a fresh value each.
     assert!(
         memory.contains("jugador: Uuid::new_v4().to_string(),"),
+        "{memory}"
+    );
+    cleanup(&dir);
+}
+
+// ── 20.8: the order of a list ─────────────────────────────────────────────────
+
+#[test]
+fn scaffold_records_the_order_and_keeps_the_uniques_it_was_not_given() {
+    let (dir, output) = scaffold_linea(
+        "canasta_order_toml",
+        false,
+        &scaffold::EntityShape::from_args(&strings(&["jugador,partido"]), &strings(&["-faltas"])),
+    );
+    let linea = |output: &Path| {
+        puerto_toml::read(output)
+            .unwrap()
+            .entity
+            .into_iter()
+            .find(|e| e.name == "Linea")
+            .unwrap()
+    };
+    assert_eq!(linea(&output).order, strings(&["-faltas"]));
+
+    // Only --orden: the uniques stay; nothing: both stay.
+    scaffold::run_scaffold_with_options(
+        "Linea",
+        &output,
+        &[],
+        OverwritePolicy::Force,
+        &scaffold::ScaffoldAccess::default(),
+        &order_shape(&["jugador", "-faltas"]),
+    )
+    .unwrap();
+    assert_eq!(linea(&output).order, strings(&["jugador", "-faltas"]));
+    assert_eq!(linea(&output).uniques.len(), 1);
+    scaffold::run_scaffold("Linea", &output, &[], OverwritePolicy::Force).unwrap();
+    assert_eq!(linea(&output).order.len(), 2);
+    cleanup(&dir);
+}
+
+#[test]
+fn validation_rejects_an_order_that_names_no_sortable_field() {
+    let entity = |keys: &[&str]| puerto_toml::Entity {
+        name: "Linea".into(),
+        fields: linea_fields(),
+        order: strings(keys),
+        ..Default::default()
+    };
+    let errors_of = |keys: &[&str]| crate::validation::validate_entity_shape(&entity(keys));
+
+    assert!(errors_of(&["-faltas", "jugador"]).is_empty());
+    for (keys, expected) in [
+        (&["equipo"][..], "'equipo' is not a field"),
+        (&["faltas", "-faltas"][..], "'faltas' twice"),
+        (&["nota"][..], "'nota'"),
+        (&["-"][..], "'-'"),
+    ] {
+        let errors = errors_of(keys);
+        assert!(
+            errors.iter().any(|e| e.contains(expected)),
+            "{keys:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn the_order_reaches_postgres_and_the_in_memory_repository() {
+    let shape = order_shape(&["-faltas", "jugador"]);
+    let (dir, output) = scaffold_linea("canasta_order_pg", true, &shape);
+    let pg = read(
+        &output,
+        "contextos/linea/infraestructura/src/repositorio.rs",
+    );
+    assert!(
+        pg.contains("ORDER BY faltas DESC, jugador, creado_en DESC, id LIMIT $1 OFFSET $2"),
+        "{pg}"
+    );
+    cleanup(&dir);
+
+    let (dir, output) = scaffold_linea("canasta_order_memory", false, &shape);
+    let memory = read(
+        &output,
+        "contextos/linea/infraestructura/src/repositorio.rs",
+    );
+    let compact: String = memory.split_whitespace().collect();
+    assert!(
+        compact.contains(
+            "a.faltas.cmp(&b.faltas).reverse().then_with(||a.jugador.cmp(&b.jugador)).then_with(||b.creado_en.cmp(&a.creado_en))"
+        ),
         "{memory}"
     );
     cleanup(&dir);

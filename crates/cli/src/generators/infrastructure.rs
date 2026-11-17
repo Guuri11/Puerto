@@ -9,6 +9,7 @@ use crate::generators::naming::{
     entity_ctx, pascal_to_snake, pluralize, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
+use crate::generators::scaffold::EntityShape;
 use crate::generators::types::{
     FieldCtx, field_ctx, is_enum_vo, is_reference, is_value_object, literal_names_vo, reference_id,
     resolve_type, seed_literal, vo_import_path,
@@ -126,7 +127,7 @@ pub fn generate_crud_infra_db_repository(
     shared_vos: &[ValueObjectDefinition],
     events: bool,
 ) -> Result<String, RenderError> {
-    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &[]);
+    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &EntityShape::default());
     ctx.insert("events", &events);
     render("infrastructure/repository_pg_crud.tera", &ctx)
 }
@@ -141,7 +142,7 @@ pub fn generate_pg_seed(
     shared_vos: &[ValueObjectDefinition],
     events: bool,
 ) -> Result<String, RenderError> {
-    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &[]);
+    let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &EntityShape::default());
     ctx.insert("events", &events);
     render("infrastructure/siembra.tera", &ctx)
 }
@@ -153,12 +154,13 @@ fn pg_crud_ctx(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-    groups: &[Vec<String>],
+    shape: &EntityShape,
 ) -> tera::Context {
     let eff = effective_fields(fields);
 
     // SQL text stays a Rust computation: the `$n` numbering is index-dependent.
-    let mut ctx = seed_ctx(pascal, snake, fields, shared_vos, groups);
+    let mut ctx = seed_ctx(pascal, snake, fields, shared_vos, shape);
+    let groups = &shape.uniques;
     // A row's references must exist: it is seeded with a target seeded first, through the
     // target's own repository tests (transitively, for the target's own references).
     let mut field_ctxs = seeded_field_ctxs(&eff, pascal, shared_vos, groups);
@@ -233,9 +235,9 @@ fn seed_ctx(
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-    groups: &[Vec<String>],
+    shape: &EntityShape,
 ) -> tera::Context {
-    seed_ctx_with(pascal, snake, fields, shared_vos, &[], groups)
+    seed_ctx_with(pascal, snake, fields, shared_vos, &[], shape)
 }
 
 /// [`seed_ctx`] with more test imports.
@@ -245,9 +247,10 @@ fn seed_ctx_with(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
     more_test_imports: &[String],
-    groups: &[Vec<String>],
+    shape: &EntityShape,
 ) -> tera::Context {
     let eff = effective_fields(fields);
+    let groups = &shape.uniques;
     let seeded: Vec<&Field> = eff
         .iter()
         .filter(|f| seeds_its_own_value(f, groups))
@@ -287,16 +290,81 @@ fn seed_ctx_with(
         &seeded_field_ctxs(&eff, pascal, shared_vos, groups),
     );
     insert_unique_groups(&mut ctx, &eff, pascal, shared_vos, groups);
+    insert_order(&mut ctx, &eff, &shape.order);
     ctx
 }
 
-/// The entity's uniques over several fields, as `puerto.toml` declares them (`[[entidad]] unicos`).
-fn unique_groups_of(base: &Path, pascal: &str) -> Vec<Vec<String>> {
+/// What `puerto.toml` says about the entity's rows beyond its fields (`[[entidad]] unicos`,
+/// `orden`).
+fn shape_of(base: &Path, pascal: &str) -> EntityShape {
     crate::puerto_toml::read(base)
         .ok()
         .and_then(|c| c.entity.into_iter().find(|e| e.name == pascal))
-        .map(|e| e.uniques)
+        .map(|e| EntityShape {
+            uniques: e.uniques,
+            order: e.order,
+        })
         .unwrap_or_default()
+}
+
+/// The order of the entity's list (`[[entidad]] orden`, then the newest first): `order_by` for
+/// Postgres and `order_chain`, the in-memory repository's comparison of `a` and `b`.
+fn insert_order(ctx: &mut tera::Context, eff: &[Field], order: &[String]) {
+    let mut sql: Vec<String> = vec![];
+    let mut chain: Vec<String> = vec![];
+    for key in order {
+        let (name, descending) = match key.strip_prefix('-') {
+            Some(name) => (name, true),
+            None => (key.as_str(), false),
+        };
+        let Some(field) = eff.iter().find(|f| f.name == name) else {
+            continue;
+        };
+        sql.push(if descending {
+            format!("{name} DESC")
+        } else {
+            name.to_string()
+        });
+        let ascending = order_comparison(field);
+        chain.push(if descending {
+            format!("{ascending}.reverse()")
+        } else {
+            ascending
+        });
+    }
+    sql.push("creado_en DESC, id".to_string());
+    chain.push("b.creado_en.cmp(&a.creado_en)".to_string());
+    chain.push("a.id.valor().cmp(&b.id.valor())".to_string());
+    let (first, rest) = chain
+        .split_first()
+        .expect("the chain ends in creado_en and id");
+    let chain = rest.iter().fold(first.clone(), |all, next| {
+        format!("{all}.then_with(|| {next})")
+    });
+    ctx.insert("order_by", &sql.join(", "));
+    ctx.insert("order_chain", &chain);
+}
+
+/// `a.{field}` compared with `b.{field}`, ascending, by the primitive it holds: a VO by its value
+/// (an enum by its name), a reference by its `Uuid`, a float with `total_cmp`.
+fn order_comparison(field: &Field) -> String {
+    let name = &field.name;
+    let inner = crate::generators::types::vo_inner_type(field);
+    if is_reference(field) {
+        format!("a.{name}.valor().cmp(&b.{name}.valor())")
+    } else if crate::generators::types::is_enum_vo(field) {
+        format!("a.{name}.as_str().cmp(b.{name}.as_str())")
+    } else if is_value_object(field) && inner == "String" {
+        format!("a.{name}.valor().cmp(b.{name}.valor())")
+    } else if is_value_object(field) && inner == "f64" {
+        format!("a.{name}.valor().total_cmp(&b.{name}.valor())")
+    } else if is_value_object(field) {
+        format!("a.{name}.valor().cmp(&b.{name}.valor())")
+    } else if field.field_type == "f64" {
+        format!("a.{name}.total_cmp(&b.{name})")
+    } else {
+        format!("a.{name}.cmp(&b.{name})")
+    }
 }
 
 /// What the repositories and their tests say about the uniques: `unique_groups` (one test each,
@@ -461,13 +529,13 @@ pub fn write_repository_files(
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let events = crate::puerto_toml::events_enabled(base);
-    let groups = unique_groups_of(base, pascal);
+    let shape = shape_of(base, pascal);
     if db {
         write_file(
             &base.join(layout::infra_file(snake, "fila")),
             &generate_infra_entity(pascal, snake, fields, shared_vos)?,
         )?;
-        let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &groups);
+        let mut ctx = pg_crud_ctx(pascal, snake, fields, shared_vos, &shape);
         ctx.insert("events", &events);
         write_file(
             &base.join(layout::infra_file(snake, "repositorio")),
@@ -500,7 +568,7 @@ pub fn write_repository_files(
                         push_reference_imports(&mut imports, &effective_fields(fields));
                         imports
                     },
-                    &groups,
+                    &shape,
                 ),
             )?,
         )?;
@@ -540,7 +608,7 @@ pub fn run_generate_repository(name: &str, base: &Path) -> Result<(), Box<dyn st
         run_create_table_migration(
             &snake,
             base,
-            &create_table_sql_with(&snake, &fields, &unique_groups_of(base, &pascal)),
+            &create_table_sql_with(&snake, &fields, &shape_of(base, &pascal).uniques),
         )?;
     }
 

@@ -20,6 +20,9 @@ unicos = [["jugador_id", "partido_id"]]   # opcional: un único sobre varios cam
                                  # CREATE UNIQUE INDEX <tabla>_<a>_<b>_key … WHERE borrado = false; el
                                  # repositorio en memoria también lo comprueba. Dos o más campos propios,
                                  # sin Option/Vec/HashMap. Un re-scaffold sin --unico conserva el del bloque
+orden = ["-puntos", "nombre"]    # opcional: el orden de la lista (`--orden=-puntos,nombre`; `-`, descendente),
+                                 # después `creado_en DESC, id`. Campos propios sin Option/Vec/HashMap.
+                                 # En memoria, el mismo orden (los textos, por bytes)
 publicos = ["listar_productos"]    # opcional, proyectos con auth: rutas sin BearerAuth
 roles = { crear_producto = ["admin"] }   # opcional, proyectos con auth: #[requiere_rol] por ruta.
                                  # Las claves son casos de uso de la entidad, nunca también
