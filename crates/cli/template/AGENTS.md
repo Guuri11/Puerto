@@ -48,6 +48,10 @@ crates de infraestructura y en los binarios. No copies su código en el proyecto
 la CLI `puerto` (`puerto validar` avisa cuando se desfasan). Tus propios middleware y rutas van en
 `presentacion/api/src/app.rs`, que ningún generador toca.
 
+**Las rutas se sirven bajo `/api`**: `#[oai(path = "/productos")]` responde en
+`GET /api/productos`. La Swagger UI está en `/` y las sondas en `/health` y `/health/ready`, sin
+prefijo.
+
 **El `lib.rs` de cada crate es plano**: un `pub mod` por fichero, sin `mod.rs`. Añadir un caso de
 uso es una línea en el `lib.rs` del crate de aplicación más su fichero, y `puerto generar
 caso-de-uso` escribe las dos cosas.

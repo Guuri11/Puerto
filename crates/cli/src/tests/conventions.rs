@@ -329,6 +329,8 @@ fn generated_project_has_a_root_entry_point_for_agents() {
         "puerto-nucleo",
         "puerto-web",
         "puerto-sqlx",
+        // canasta's agent called `GET /productos`: the routes are served under `/api`.
+        "`/api`",
     ] {
         assert!(agents.contains(must), "root AGENTS.md misses '{must}'");
     }
